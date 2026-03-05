@@ -481,15 +481,15 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
   );
 }
 
-// Regression test for T23: all-false bool mask in decode mode (past_sequence_length > 0).
-// Before the T23 fix: seq_len=0 + negative seqlen_offset produced negative seqlens_k → UB/crash.
-// After the T23 fix: clamped to max(0, ...) → uniform softmax → mean of V values.
+// Regression test: all-false bool mask in decode mode (past_sequence_length > 0).
+// Before the fix: seq_len=0 + negative seqlen_offset produced negative seqlens_k → UB/crash.
+// After the fix: clamped to max(0, ...) → uniform softmax → mean of V values.
 TEST(AttentionTest, Attention4DAttnMaskBoolAllFalseDecodeWithPast) {
   int batch_size = 1;
   int q_num_heads = 2;
-  int q_sequence_length = 1;     // decode: single token
+  int q_sequence_length = 1;  // decode: single token
   int head_size = 8;
-  int kv_sequence_length = 1;    // appending 1 new token
+  int kv_sequence_length = 1;  // appending 1 new token
   int kv_num_heads = 2;
   int v_head_size = 8;
   int past_sequence_length = 3;  // 3 tokens in cache → total_seq = 4
@@ -1628,8 +1628,8 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked) {
 }
 
 // Edge case: nonpad_kv_seqlen=0 exercised on CUDA Flash/MEA path with fp16 and GQA.
-// This verifies the val >= 0 fix in ConvertNonpadKvSeqlenToFlashSeqlensKKernel (Kernel B)
-// and ConvertNonpadKvSeqlenToAttentionBiasKernel (Kernel C).
+// This verifies the val >= 0 assertion in ConvertNonpadKvSeqlenToFlashSeqlensKKernel
+// and ConvertNonpadKvSeqlenToAttentionBiasKernel.
 TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked_FP16_GQA) {
   if (!HasCudaEnvironment(530)) {
     return;  // fp16 requires SM 5.3+
@@ -1687,7 +1687,7 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked_FP16_GQA) {
   std::vector<float> expected_y(y_elements, 0.0f);  // batch 0 = zeros
   for (int n = 0; n < q_num_heads; n++) {
     for (int h = 0; h < head_size; h++) {
-      expected_y[(1 * q_num_heads + n) * head_size + h] = 0.15f;   // batch 1
+      expected_y[(1 * q_num_heads + n) * head_size + h] = 0.15f;  // batch 1
     }
   }
   test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},

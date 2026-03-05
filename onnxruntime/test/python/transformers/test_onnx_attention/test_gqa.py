@@ -833,8 +833,8 @@ class TestONNXAttentionMemoryEfficientGQA(unittest.TestCase):
         )
 
     # Note: GQA past tests removed — MEA is ineligible when past_key is present
-    # (ComputeInternal requires past_key == nullptr for MEA). GQA past goes through
-    # flash attention regardless of ORT_DISABLE_FLASH_ATTENTION.
+    # (ComputeInternal requires past_key == nullptr for MEA). GQA past requires
+    # flash attention. The ONNX Attention op does not honor ORT_DISABLE_FLASH_ATTENTION.
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")

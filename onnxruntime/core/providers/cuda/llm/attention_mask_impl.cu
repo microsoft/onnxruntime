@@ -99,10 +99,10 @@ __global__ void ConvertMaskToSeqlensKernel(
   }
 
   // seqlens_k output: seq_len + seqlen_offset
-  // GQA convention (seqlen_offset=-1): stores last valid index (count - 1)
-  // Flash convention (seqlen_offset=0): stores actual count
-  // Clamp to 0: all-false mask (seq_len=0) with negative offset (e.g. GQA decode)
-  // would produce negative seqlens_k, which is undefined in Flash/GQA kernels.
+  // Decode with past (seqlen_offset=-kv_seq_len): pre-append cache count
+  // Prompt/MEA (seqlen_offset=0): actual token count
+  // Clamp to 0: all-false mask (seq_len=0) with negative decode offset
+  // would produce negative seqlens_k, which is undefined in Flash kernels.
   seqlens_k[batch_idx] = max(0, seq_len + seqlen_offset);
 }
 
@@ -186,56 +186,7 @@ template Status LaunchConvertBoolMaskToAttentionBias<__half>(
 template Status LaunchConvertBoolMaskToAttentionBias<__nv_bfloat16>(
     const bool*, __nv_bfloat16*, int64_t, float, cudaStream_t, int);
 
-// CUDA kernel to convert nonpad_kv_seqlen (int64) to seqlens_k (int32) for GQA.
-// GQA convention: seqlens_k = nonpad_kv_seqlen - 1 (last valid index, not count).
-//
-// Validation (via CUDA_KERNEL_ASSERT, reported asynchronously):
-// - val must be > 0 (nonpad_kv_seqlen=0 → seqlens_k=0 → attends to garbage at pos 0)
-// - val must be <= total_sequence_length (out of bounds)
-__global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
-    const int64_t* __restrict__ nonpad_kv_seqlen,
-    int* __restrict__ seqlens_k,
-    const int batch_size,
-    const int total_sequence_length,
-    const int min_expected_seqlen) {
-  int idx = threadIdx.x + blockIdx.x * blockDim.x;
-  if (idx < batch_size) {
-    int64_t val = nonpad_kv_seqlen[idx];
-    // GQA convention: val is a token count (1-based), so val=0 is invalid.
-    // seqlens_k = val - 1 gives a last-valid-index; val=0 would yield -1, which is
-    // undefined in GQA's mha_fwd_kvcache kernel.
-    CUDA_KERNEL_ASSERT(val > 0);
-    CUDA_KERNEL_ASSERT(val <= static_cast<int64_t>(total_sequence_length));
-    if (min_expected_seqlen > 0) {
-      CUDA_KERNEL_ASSERT(val >= static_cast<int64_t>(min_expected_seqlen));
-    }
-    val = max(static_cast<int64_t>(1), min(val, static_cast<int64_t>(total_sequence_length)));
-    seqlens_k[idx] = static_cast<int>(val) - 1;
-  }
-}
-
-Status LaunchConvertNonpadKvSeqlenToSeqlensK(
-    const int64_t* nonpad_kv_seqlen,
-    int* seqlens_k,
-    int batch_size,
-    int total_sequence_length,
-    cudaStream_t stream,
-    int max_threads_per_block,
-    int min_expected_seqlen) {
-  if (batch_size == 0) {
-    return Status::OK();
-  }
-
-  int threads = std::min(batch_size, max_threads_per_block);
-  int blocks = (batch_size + threads - 1) / threads;
-
-  ConvertNonpadKvSeqlenToSeqlensKKernel<<<blocks, threads, 0, stream>>>(
-      nonpad_kv_seqlen, seqlens_k, batch_size, total_sequence_length, min_expected_seqlen);
-
-  return CUDA_CALL(cudaGetLastError());
-}
-
-// Like ConvertNonpadKvSeqlenToSeqlensKKernel but produces the actual count (no -1 offset).
+// Convert nonpad_kv_seqlen (int64) to seqlens_k (int32) as actual token count.
 // Flash attention's mha_fwd_kvcache expects seqlens_k_ = number of valid tokens.
 __global__ void ConvertNonpadKvSeqlenToFlashSeqlensKKernel(
     const int64_t* __restrict__ nonpad_kv_seqlen,

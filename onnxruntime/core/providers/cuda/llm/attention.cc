@@ -67,7 +67,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
                   qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKMask ||
                   qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftCap ||
                   qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftMax,
-              "qk_matmul_output_mode must be 0, 1, 2, or 3.");
+              "qk_matmul_output_mode must be one of: kNone(-1), kQK(0), kQKMask(1), kQKSoftCap(2), kQKSoftMax(3).");
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
@@ -118,7 +118,7 @@ static Status TransposeBSNHtoBNSH(int batch_size, int sequence_length,
 //           - 4D BNSH: transposes Q/K/V to BSNH before kernel
 //   Path 3: no past, no mask (prompt) -> mha_fwd
 //   Eligibility: fp16/bf16, head_size==v_head_size, no output_qk, no softcap,
-//                no softmax_precision, (no mask OR bool mask + past)
+//                no softmax_precision, (no mask OR bool mask + past OR nonpad_kv_seqlen)
 //
 // PERFORMANCE NOTE: ONNX Attention's decode path is inherently ~15-30% slower than
 // contrib GQA's decode path for grouped-query attention workloads. This is because:
@@ -448,8 +448,9 @@ Status Attention<T>::RunFlashAttention(
 //   Path 1: nonpad_kv_seqlen (opset 24 external cache) -> has_custom_right_padding mode
 //   Path 2: no past, with mask (prompt) -> standard MEA with additive bias
 //   Path 3: no past, no mask (prompt) -> standard MEA
-//   Eligibility: fp16/bf16, SM75+, no past_key (decode excluded),
-//                head_size <= 128, bias stride alignment
+//   Eligibility: see has_memory_efficient_attention() (SM50+/53+/80+ by dtype,
+//                head_size <= 1024), plus: no output_qk, no softcap,
+//                no softmax_precision, no past_key (decode excluded), bias stride alignment
 //
 template <typename T>
 Status Attention<T>::RunMemoryEfficientAttention(
@@ -503,9 +504,9 @@ Status Attention<T>::RunMemoryEfficientAttention(
   IAllocatorUniquePtr<void> v_expand_buffer;
 
   if (is_gqa) {
-    // GQA+MEA only works with fp16/bf16 (MEA doesn't support fp32).
-    // Use if constexpr to avoid instantiating LaunchUngroup<float> which has no explicit
-    // template instantiation in group_query_attention_impl.cu.
+    // GQA+MEA only works with fp16/bf16 (LaunchUngroup lacks fp32 template instantiation
+    // in group_query_attention_impl.cu).
+    // Use if constexpr to avoid instantiating LaunchUngroup<float>.
     if constexpr (std::is_same_v<T, float>) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "GQA with Memory Efficient Attention requires fp16 or bf16, not fp32.");
@@ -744,7 +745,8 @@ Status Attention<T>::RunMemoryEfficientAttention(
 //   Universal fallback via MHA's QkvToContext.
 //   Path 1: nonpad_kv_seqlen -> converts to attention_bias [B, q_seq, total_seq]
 //   Path 2: all other cases -> passes mask/bias directly
-//   Supports: all dtypes (fp16/bf16/fp32), all mask types, all head sizes
+//   Supports: all dtypes (fp16/bf16/fp32), all mask types (bool/float/none), all head sizes
+//   Not supported: softcap, softmax_precision, output_qk modes beyond kNone/kQK
 //   Limitation: MHA only (q_num_heads must equal kv_num_heads)
 //
 template <typename T>
@@ -909,7 +911,7 @@ Status Attention<T>::RunUnfusedAttention(
 // ============================================================================
 // MHA path (q_num_heads == kv_num_heads): uses direct kernel dispatch cascade
 //   flash → memory efficient → unfused
-// GQA path (q_num_heads != kv_num_heads): uses flash (with kvcache) or MEA
+// GQA path (q_num_heads != kv_num_heads): uses flash (handles GQA natively) or MEA
 //   (with head expansion via LaunchUngroup). Unfused fallback not yet supported for GQA.
 // ============================================================================
 template <typename T>

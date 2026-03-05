@@ -12,7 +12,7 @@ namespace cuda {
 //
 // The mask is expected to have the following properties:
 // 1. It represents right-padding only (valid tokens first, padding at the end)
-// 2. Each batch's mask should start with True (valid) values
+// 2. All-false masks (zero-length sequence) are valid; otherwise mask should start with True
 // 3. True values should be contiguous, followed by contiguous False (padding) values
 // 4. The mask must be broadcastable to (batch_size, num_heads, q_seq_len, total_seq_len)
 //
@@ -28,7 +28,7 @@ namespace cuda {
 //  -N: subtract N from count (for decode with mha_fwd_kvcache where N=kv_sequence_length,
 //      giving the number of tokens already in cache BEFORE appending new ones)
 //
-// Note: Mask validity (right-padding convention, starts with True, contiguous True/False)
+// Note: Mask validity (right-padding convention, contiguous True/False)
 //   is checked asynchronously via CUDA_KERNEL_ASSERT inside the kernel. Invalid masks will
 //   trigger a device-side assertion failure.
 Status LaunchConvertMaskToFlashSeqlensK(
@@ -56,23 +56,9 @@ Status LaunchConvertBoolMaskToAttentionBias(
     cudaStream_t stream,
     int max_threads_per_block);
 
-// Convert nonpad_kv_seqlen (int64, per-batch valid KV lengths) to seqlens_k (int32) for GQA.
-// GQA convention: seqlens_k[i] = nonpad_kv_seqlen[i] - 1 (last valid index, not count).
-//
-// IMPORTANT: nonpad_kv_seqlen must be >= 1 for every batch element.
-// A value of 0 would produce seqlens_k=0, which GQA interprets as "1 valid token at
-// position 0" (last-valid-index convention), causing silent attention to garbage data.
-Status LaunchConvertNonpadKvSeqlenToSeqlensK(
-    const int64_t* nonpad_kv_seqlen,
-    int* seqlens_k,
-    int batch_size,
-    int total_sequence_length,
-    cudaStream_t stream,
-    int max_threads_per_block,
-    int min_expected_seqlen = 0);
-
-// Like LaunchConvertNonpadKvSeqlenToSeqlensK but produces the actual count (no -1 offset).
-// Flash attention's mha_fwd_kvcache expects seqlens_k_ = number of valid tokens.
+// Convert nonpad_kv_seqlen (int64, per-batch valid KV lengths) to seqlens_k (int32)
+// as actual token count. Flash attention's mha_fwd_kvcache expects seqlens_k_ = number
+// of valid tokens.
 Status LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
     const int64_t* nonpad_kv_seqlen,
     int* seqlens_k,
