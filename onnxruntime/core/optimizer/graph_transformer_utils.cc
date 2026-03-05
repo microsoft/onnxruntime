@@ -18,6 +18,8 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include "core/optimizer/dq_matmulnbits_fusion.h"
+
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -273,6 +275,26 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<EnsureUniqueDQForNodeUnit>());
         transformers.emplace_back(std::make_unique<WhereDummyDq>());
       }
+
+#if !defined(DISABLE_CONTRIB_OPS)
+      {
+        const bool enable_dq_matmulnbits_fusion =
+            session_options.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsEnableDQMatMulNBitsFusion, "0") == "1";
+        if (enable_dq_matmulnbits_fusion && !disable_quant_qdq) {
+          const int64_t qdq_matmulnbits_accuracy_level =
+              ParseStringWithClassicLocale<int64_t>(
+                  session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                                    "4"));
+          transformers.emplace_back(std::make_unique<DQMatMulNBitsFusion>(
+              qdq_matmulnbits_accuracy_level));
+        }
+      }
+#else
+      ORT_ENFORCE(session_options.config_options.GetConfigOrDefault(
+                      kOrtSessionOptionsEnableDQMatMulNBitsFusion, "0") != "1",
+                  "DQ->MatMulNBits fusion requires contrib ops but DISABLE_CONTRIB_OPS is defined");
+#endif
 
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
