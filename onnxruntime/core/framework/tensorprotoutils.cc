@@ -392,6 +392,12 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
 
   if (has_model_path) {
     anchor_dir = model_path.parent_path();
+
+    if (anchor_dir.empty()) {
+      // model_path is a bare filename (e.g., "model.onnx") with no directory component.
+      // Use the "." which resolves to the current working directory.
+      anchor_dir = ".";
+    }
   } else {
     std::error_code ec;
     anchor_dir = std::filesystem::current_path(ec);
@@ -404,7 +410,7 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(anchor_dir, anchor_canonical));
 
   std::filesystem::path resolved;
-  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(anchor_dir / location, resolved));
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(anchor_canonical / location, resolved));
 
   if (IsUnderDirectory(anchor_canonical, resolved)) {
     return Status::OK();
@@ -418,7 +424,7 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
     ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
     auto real_model_dir = real_model_path.parent_path();
 
-    if (IsUnderDirectory(real_model_dir, resolved)) {
+    if (!real_model_dir.empty() && IsUnderDirectory(real_model_dir, resolved)) {
       return Status::OK();
     }
 

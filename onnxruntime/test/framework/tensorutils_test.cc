@@ -566,6 +566,21 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   // Model in a directory that does not exist.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin"));
 
+  // Model path is a bare filename (no directory component). parent_path() returns empty,
+  // so anchor_dir falls back to "." (current directory). Path traversal should still be blocked.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("model.onnx", "data.bin"));
+  ASSERT_FALSE(utils::ValidateExternalDataPath("model.onnx", "../data.bin").IsOK());
+
+  // Model relative path checks.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./model.onnx", "data.bin"));
+  ASSERT_FALSE(utils::ValidateExternalDataPath("./model.onnx", "../data.bin").IsOK());
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./abc/model.onnx", "data.bin"));
+#ifdef _WIN32
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\model.onnx", "data.bin"));
+  ASSERT_FALSE(utils::ValidateExternalDataPath(".\\model.onnx", "../data.bin").IsOK());
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\abc\\model.onnx", "data.bin"));
+#endif
+
   //
   // Tests for an empty model path (model loaded from bytes).
   // The model path would be empty when 1) the session loads a model from bytes and 2) the application does not
