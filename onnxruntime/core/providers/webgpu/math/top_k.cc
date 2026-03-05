@@ -168,8 +168,8 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
   InlinedVector<size_t> perm(input_rank);
   std::iota(perm.begin(), perm.end(), 0);
   if (is_transpose_required) {
-    perm[axis] = input_rank - 1;
-    perm[input_rank - 1] = axis;
+    perm[static_cast<size_t>(axis)] = static_cast<size_t>(input_rank - 1);
+    perm[static_cast<size_t>(input_rank - 1)] = static_cast<size_t>(axis);
   }
 
   // Prepare input (transpose if needed)
