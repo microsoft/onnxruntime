@@ -357,10 +357,14 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
                 "Absolute paths not allowed for external data location");
   if (!base_dir.empty()) {
     // Resolve and verify the path stays within model directory
-    auto base_canonical = std::filesystem::weakly_canonical(base_dir);
+    std::error_code ec;
+    auto base_canonical = std::filesystem::weakly_canonical(base_dir, ec);
+    ORT_RETURN_IF(ec, "Failed to resolve base directory: ", base_dir, " - ", ec.message());
+
     // If the symlink exists, it resolves to the target path;
     // so if the symlink is outside the directory it would be caught here.
-    auto resolved = std::filesystem::weakly_canonical(base_dir / location);
+    auto resolved = std::filesystem::weakly_canonical(base_dir / location, ec);
+    ORT_RETURN_IF(ec, "Failed to resolve external data path: ", location, " - ", ec.message());
 
     // Check that resolved path starts with base directory
     auto [base_end, resolved_it] = std::mismatch(
@@ -372,7 +376,9 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
       // real (canonical) path of the model file to support symlinked models
       // (e.g. models in Hugging Face Hub local cache).
       if (!model_path.empty()) {
-        auto real_model_dir = std::filesystem::weakly_canonical(model_path).parent_path();
+        auto real_model_path = std::filesystem::weakly_canonical(model_path, ec);
+        ORT_RETURN_IF(ec, "Failed to resolve model path: ", model_path, " - ", ec.message());
+        auto real_model_dir = real_model_path.parent_path();
 
         auto [real_base_end, real_resolved_it] = std::mismatch(
             real_model_dir.begin(), real_model_dir.end(),
@@ -412,9 +418,15 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
     // Use weakly_canonical to resolve symlinks, then verify that the path stays within the current working directory.
     // This catches scenarios where a seemingly correct path actually points outside the working directory
     // (e.g., ./a/symlink.bin -> /outside/data.bin).
-    auto cwd = std::filesystem::current_path();
-    auto cwd_canonical = std::filesystem::weakly_canonical(cwd);
-    auto resolved = std::filesystem::weakly_canonical(cwd / location);
+    std::error_code ec;
+    auto cwd = std::filesystem::current_path(ec);
+    ORT_RETURN_IF(ec, "Failed to get current working directory: ", ec.message());
+
+    auto cwd_canonical = std::filesystem::weakly_canonical(cwd, ec);
+    ORT_RETURN_IF(ec, "Failed to resolve current working directory: ", ec.message());
+
+    auto resolved = std::filesystem::weakly_canonical(cwd / location, ec);
+    ORT_RETURN_IF(ec, "Failed to resolve external data path: ", location, " - ", ec.message());
 
     auto [base_end, resolved_it] = std::mismatch(
         cwd_canonical.begin(), cwd_canonical.end(),
