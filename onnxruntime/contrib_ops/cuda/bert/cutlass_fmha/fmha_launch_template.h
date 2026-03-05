@@ -258,8 +258,18 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
                     params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
 
-  // Attention bias strides must also satisfy alignment requirements.
-  // Mirror the checks in AttentionKernel::check_supported to avoid ORT_ENFORCE crashes.
+  // Bias stride alignment check: route to the unaligned kernel when bias strides
+  // don't satisfy the aligned kernel's kAlignmentQ requirement.
+  //
+  // kAlignmentQ is template-dependent (kernel_forward.h:414):
+  //   isAligned=true:  kAlignmentQ = DefaultConfig::kAlignmentA (8 for fp16/bf16 SM75+)
+  //   isAligned=false: kAlignmentQ = GemmType::kMinimumAlignment (4 for fp16/bf16 SM75+)
+  // So check_supported (line 632) enforces DIFFERENT thresholds per path.
+  //
+  // The ONNX Attention kernel (core/providers/cuda/llm/attention.cc) gates MEA eligibility
+  // at kMinimumAlignment (4), allowing strides like 12 that the unaligned kernel handles.
+  // Without this check, such inputs dispatch to the aligned kernel where 12%8≠0 crashes.
+  // Contrib MHA gates at 4*sizeof(T)=8 for fp16, making this check redundant there.
   if (params.attn_bias != nullptr) {
     int num_keys = params.kv_sequence_length;
     int num_queries = params.sequence_length;
