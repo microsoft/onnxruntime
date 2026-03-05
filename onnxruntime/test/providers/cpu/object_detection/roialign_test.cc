@@ -812,5 +812,47 @@ TEST(RoiAlignTest, MismatchNumRois) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Dimension mismatch in unification between 4 and 5");
 }
+
+TEST(RoiAlignTest, BatchIndicesOutOfRange) {
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 4, 4},
+                       {0.f, 1.f, 2.f, 3.f,
+                        4.f, 5.f, 6.f, 7.f,
+                        8.f, 9.f, 10.f, 11.f,
+                        12.f, 13.f, 14.f, 15.f});
+  test.AddInput<float>("rois", {1, 4}, {0.f, 0.f, 3.f, 3.f});
+  test.AddInput<int64_t>("batch_indices", {1}, {1});  // <-- failure condition
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value 1 at index 0 is out of range [0, 1)", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, BatchIndicesNegative) {
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 4, 4},
+                       {0.f, 1.f, 2.f, 3.f,
+                        4.f, 5.f, 6.f, 7.f,
+                        8.f, 9.f, 10.f, 11.f,
+                        12.f, 13.f, 14.f, 15.f});
+  test.AddInput<float>("rois", {1, 4}, {0.f, 0.f, 3.f, 3.f});
+  test.AddInput<int64_t>("batch_indices", {1}, {-1});  // <-- failure condition
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value -1 at index 0 is out of range [0, 1)", {}, nullptr, &execution_providers);
+}
 }  // namespace test
 }  // namespace onnxruntime
