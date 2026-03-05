@@ -20,7 +20,43 @@ if (NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 20)
 endif()
 
+# Disable fast-math for Intel oneAPI compiler
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
+    # Using icx-cl compiler driver with MSVC-like arguments
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fp:precise")
+  else()
+    # Using icpx compiler driver
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math")
+  endif()
+endif()
+
+include(CheckCXXCompilerFlag)
+include(CheckLanguage)
 include(CMakeDependentOption)
+include(FetchContent)
+include(CheckFunctionExists)
+include(CheckSymbolExists)
+include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
+
+if (MSVC)
+  #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+
+  # Prevents CMake from injecting '#pragma system_header', which results in warnings being disabled in projects that
+  # use precompiled headers.
+  set(CMAKE_PCH_PROLOGUE "")
+endif()
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+# NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+enable_testing()
+if (NOT CMAKE_BUILD_TYPE)
+  message(STATUS "Build type not set - using RelWithDebInfo")
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
+endif()
 
 # Options
 option(onnxruntime_USE_VCPKG "Build with the vcpkg package manager" OFF)
@@ -222,43 +258,6 @@ option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is com
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
-
-# Disable fast-math for Intel oneAPI compiler
-if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
-  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
-    # Using icx-cl compiler driver with MSVC-like arguments
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fp:precise")
-  else()
-    # Using icpx compiler driver
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math")
-  endif()
-endif()
-
-include(CheckCXXCompilerFlag)
-include(CheckLanguage)
-include(FetchContent)
-include(CheckFunctionExists)
-include(CheckSymbolExists)
-include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
-
-if (MSVC)
-  #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
-
-  # Prevents CMake from injecting '#pragma system_header', which results in warnings being disabled in projects that
-  # use precompiled headers.
-  set(CMAKE_PCH_PROLOGUE "")
-endif()
-
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-# NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-enable_testing()
-if (NOT CMAKE_BUILD_TYPE)
-  message(STATUS "Build type not set - using RelWithDebInfo")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
-endif()
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
