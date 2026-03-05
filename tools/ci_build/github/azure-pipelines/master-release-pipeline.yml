@@ -11,6 +11,61 @@ parameters:
   type: boolean
   default: false
 
+- name: nuget_cuda12_packaging
+  displayName: 'Run Zip-Nuget-Java-Nodejs Packaging Pipeline (940)'
+  type: boolean
+  default: true
+
+- name: nuget_cuda13_packaging
+  displayName: 'Run Nuget - Packaging - CUDA13 (2138)'
+  type: boolean
+  default: true
+
+- name: python_packaging
+  displayName: 'Run Python packaging pipeline (841)'
+  type: boolean
+  default: true
+
+- name: python_cuda12_packaging
+  displayName: 'Run Python-CUDA-Packaging-Pipeline (1299)'
+  type: boolean
+  default: true
+
+- name: python_cuda13_packaging
+  displayName: 'Run Python CUDA 13 Packaging Pipeline (2104)'
+  type: boolean
+  default: true
+
+- name: python_dml_packaging
+  displayName: 'Run Python DML Packaging Pipeline (1625)'
+  type: boolean
+  default: true
+
+- name: qnn_nuget_packaging
+  displayName: 'Run QNN_Nuget_Windows (1234)'
+  type: boolean
+  default: true
+
+- name: dml_nuget_packaging
+  displayName: 'Run DML Nuget Pipeline (1994)'
+  type: boolean
+  default: true
+
+- name: npm_packaging
+  displayName: 'Run Npm Packaging Pipeline (1080)'
+  type: boolean
+  default: true
+
+- name: ios_packaging
+  displayName: 'Run onnxruntime-ios-packaging-pipeline (995)'
+  type: boolean
+  default: true
+
+- name: webgpu_python_packaging
+  displayName: 'Run WebGPU Python Packaging Pipeline (2107)'
+  type: boolean
+  default: true
+
 resources:
   repositories:
   - repository: 1esPipelines

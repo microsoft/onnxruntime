@@ -8,7 +8,6 @@ import datetime
 import json
 import logging
 import os
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -81,43 +80,79 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
     PipelineConfig(
         id=841,
         name="Python packaging pipeline",
-        project="Lotus",
+    ),
+    PipelineConfig(
+        id=940,
+        name="Zip-Nuget-Java-Nodejs Packaging Pipeline",
+        template_parameters={
+            "IsReleaseBuild": True,
+            "NugetPackageSuffix": "NONE",
+        },
+    ),
+    PipelineConfig(
+        id=2138,
+        name="Nuget - Packaging - CUDA13",
+        template_parameters={
+            "IsReleaseBuild": True,
+            "NugetPackageSuffix": "NONE",
+        },
+    ),
+    PipelineConfig(
+        id=1299,
+        name="Python-CUDA-Packaging-Pipeline",
+    ),
+    PipelineConfig(
+        id=2104,
+        name="Python CUDA 13 Packaging Pipeline",
+    ),
+    PipelineConfig(
+        id=1625,
+        name="Python DML Packaging Pipeline",
+    ),
+    PipelineConfig(
+        id=1234,
+        name="QNN_Nuget_Windows",
+        template_parameters={
+            "IsReleaseBuild": True,
+            "NugetPackageSuffix": "NONE",
+        },
+    ),
+    PipelineConfig(
+        id=1994,
+        name="DML Nuget Pipeline",
+        template_parameters={
+            "DoEsrp": True,
+            "IsReleaseBuild": True,
+            "NugetPackageSuffix": "NONE",
+        },
+    ),
+    PipelineConfig(
+        id=1080,
+        name="Npm Packaging Pipeline",
+        template_parameters={
+            "NpmPublish": "nightly (@dev)",
+        },
+    ),
+    PipelineConfig(
+        id=995,
+        name="onnxruntime-ios-packaging-pipeline",
+        template_parameters={
+            "buildType": "release",
+        },
+    ),
+    PipelineConfig(
+        id=2107,
+        name="WebGPU Python Packaging Pipeline",
     ),
 ]
 
 
 def get_token() -> str:
-    env_token = os.environ.get("SYSTEM_ACCESSTOKEN", "").strip()
-    if env_token:
-        logger.info("Using token from SYSTEM_ACCESSTOKEN environment variable.")
-        return env_token
-
-    ado_resource_id = "499b84ac-1321-427f-aa17-267ca6975798"
-    command = [
-        "az.cmd" if sys.platform == "win32" else "az",
-        "account",
-        "get-access-token",
-        "--resource",
-        ado_resource_id,
-        "--query",
-        "accessToken",
-        "--output",
-        "tsv",
-    ]
-    try:
-        logger.info("Acquiring Azure DevOps token via Azure CLI")
-        process = subprocess.run(command, capture_output=True, text=True, check=True, encoding="utf-8")
-        token = process.stdout.strip()
-        if not token:
-            raise ValueError("Token from 'az' command is empty.")
-        logger.info("Successfully acquired token.")
-        return token
-    except FileNotFoundError:
-        logger.error("Azure CLI ('az') is not installed in the PATH.")
+    token = os.environ.get("SYSTEM_ACCESSTOKEN", "").strip()
+    if not token:
+        logger.error("SYSTEM_ACCESSTOKEN environment variable is not set.")
         sys.exit(1)
-    except subprocess.CalledProcessError as e:
-        logger.error("Failed to acquire token: %s", e.stderr)
-        sys.exit(1)
+    return token
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -221,7 +256,6 @@ def publish_run_status(
     branch: str,
     kusto_client: QueuedIngestClient | None,
 ) -> None:
-    """Publish the current status of a single run to Kusto."""
     if kusto_client is None:
         return
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -331,11 +365,22 @@ def main() -> int:
         logger.error("All pipeline triggers failed.")
         return 1
 
-    any_failed = False
-    for run in triggered:
-        wait_for_run(run, token, args.poll_interval, branch, kusto_client)
-        if run.result != BuildResult.SUCCEEDED:
-            any_failed = True
+    pending = list(triggered)
+    while pending:
+        time.sleep(args.poll_interval)
+        still_pending: list[TriggeredRun] = []
+        for run in pending:
+            get_run_status(run, token)
+            publish_run_status(run, branch, kusto_client)
+            if run.state == BuildState.COMPLETED:
+                symbol = "OK" if run.result == BuildResult.SUCCEEDED else "FAIL"
+                logger.info("[%s] '%s' (run %d): %s", symbol, run.config.name, run.run_id, run.result.value.upper())
+            else:
+                logger.info("'%s' (run %d): state=%s", run.config.name, run.run_id, run.state.value)
+                still_pending.append(run)
+        pending = still_pending
+
+    any_failed = any(run.result != BuildResult.SUCCEEDED for run in triggered)
 
     logger.info("=" * 60)
     for run in triggered:
