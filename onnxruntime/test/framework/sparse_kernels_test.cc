@@ -655,11 +655,19 @@ static void CreateTensorWithExternalData(
     const std::vector<T>& test_data,
     std::basic_string<ORTCHAR_T>& filename,
     TensorProto& tensor_proto) {
+  size_t size_in_bytes = test_data.size() * sizeof(T);
+  std::vector<unsigned char> le_data;
+  le_data.resize(size_in_bytes);
+
+  auto src_span = gsl::make_span(test_data.data(), test_data.size());
+  auto dst_span = gsl::make_span(le_data.data(), le_data.size());
+
+  ASSERT_STATUS_OK(onnxruntime::utils::WriteLittleEndian(src_span, dst_span));
+
   // Create external data
   FILE* fp;
   CreateTestFile(fp, filename);
-  size_t size_in_bytes = test_data.size() * sizeof(T);
-  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
+  ASSERT_EQ(size_in_bytes, fwrite(le_data.data(), 1, size_in_bytes, fp));
   ASSERT_EQ(0, fclose(fp));
 
   // set the tensor_proto to reference this external data
