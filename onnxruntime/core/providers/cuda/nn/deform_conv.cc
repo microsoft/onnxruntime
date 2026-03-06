@@ -231,7 +231,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     if (gemm_writes_directly) {
       // Strided batched: one call for all groups. Strides between batches:
       const int64_t stride_col = kernel_dim * col_stride;   // = kernel_dim * output_image_size when cur_parallel==1
-      const int64_t stride_w = (M / group) * kernel_dim;
+      const int64_t stride_weight = (M / group) * kernel_dim;
       const int64_t stride_y = (M / group) * output_image_size;
       CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
           cublas,
@@ -246,7 +246,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
           stride_col,
           reinterpret_cast<const CudaT*>(Wdata),
           narrow<int>(kernel_dim),
-          stride_w,
+          stride_weight,
           &beta,
           reinterpret_cast<CudaT*>(Ydata + b * M * output_image_size),
           narrow<int>(output_image_size),
