@@ -21,6 +21,11 @@ namespace {
 // nearest integer grid points. Standard implementation for deformable convolution sampling.
 template <typename T>
 T BilinearInterpolate(const T* in, int64_t height, int64_t width, T h, T w) {
+  // Early exit for clearly out-of-bounds (skip floor() for OOB case).
+  if (h <= static_cast<T>(-1) || h >= height || w <= static_cast<T>(-1) || w >= width) {
+    return static_cast<T>(0);
+  }
+
   const int64_t h_low = static_cast<int64_t>(std::floor(h));
   const int64_t w_low = static_cast<int64_t>(std::floor(w));
   const int64_t h_high = h_low + 1;
@@ -37,10 +42,7 @@ T BilinearInterpolate(const T* in, int64_t height, int64_t width, T h, T w) {
            lh * hw * in[h_high * width + w_low] + lh * lw * in[h_high * width + w_high];
   }
 
-  // Slow path: near boundary or out of bounds.
-  if (h <= static_cast<T>(-1) || h >= height || w <= static_cast<T>(-1) || w >= width) {
-    return static_cast<T>(0);
-  }
+  // Slow path: near boundary (one or more of the 4 corners may be out of bounds).
   const T lh = h - static_cast<T>(h_low);
   const T lw = w - static_cast<T>(w_low);
   const T hh = static_cast<T>(1) - lh;
