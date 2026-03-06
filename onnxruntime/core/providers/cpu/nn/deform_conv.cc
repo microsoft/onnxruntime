@@ -21,36 +21,35 @@ namespace {
 // nearest integer grid points. Standard implementation for deformable convolution sampling.
 template <typename T>
 T BilinearInterpolate(const T* in, int64_t height, int64_t width, T h, T w) {
-  // Out-of-bounds: return zero (same as zero-padding).
-  if (h <= static_cast<T>(-1) || h >= height || w <= static_cast<T>(-1) || w >= width) {
-    return static_cast<T>(0);
-  }
-
-  // Integer floor and ceiling indices for the 2x2 neighborhood.
   const int64_t h_low = static_cast<int64_t>(std::floor(h));
   const int64_t w_low = static_cast<int64_t>(std::floor(w));
   const int64_t h_high = h_low + 1;
   const int64_t w_high = w_low + 1;
 
-  // Fractional parts for interpolation weights.
+  // Fast path: all 4 corners in bounds (h in [0, height-1), w in [0, width-1)).
+  // Most sampling points in deformable conv fall here; avoids 4 per-corner branches.
+  if (h_low >= 0 && h_high < height && w_low >= 0 && w_high < width) {
+    const T lh = h - static_cast<T>(h_low);
+    const T lw = w - static_cast<T>(w_low);
+    const T hh = static_cast<T>(1) - lh;
+    const T hw = static_cast<T>(1) - lw;
+    return hh * hw * in[h_low * width + w_low] + hh * lw * in[h_low * width + w_high] +
+           lh * hw * in[h_high * width + w_low] + lh * lw * in[h_high * width + w_high];
+  }
+
+  // Slow path: near boundary or out of bounds.
+  if (h <= static_cast<T>(-1) || h >= height || w <= static_cast<T>(-1) || w >= width) {
+    return static_cast<T>(0);
+  }
   const T lh = h - static_cast<T>(h_low);
   const T lw = w - static_cast<T>(w_low);
   const T hh = static_cast<T>(1) - lh;
   const T hw = static_cast<T>(1) - lw;
-
-  // Load four corner values; use 0 when index is out of bounds.
   const T v1 = (h_low >= 0 && w_low >= 0) ? in[h_low * width + w_low] : static_cast<T>(0);
   const T v2 = (h_low >= 0 && w_high < width) ? in[h_low * width + w_high] : static_cast<T>(0);
   const T v3 = (h_high < height && w_low >= 0) ? in[h_high * width + w_low] : static_cast<T>(0);
   const T v4 = (h_high < height && w_high < width) ? in[h_high * width + w_high] : static_cast<T>(0);
-
-  // Bilinear weights: (1-lh)*(1-lw), (1-lh)*lw, lh*(1-lw), lh*lw.
-  const T w1 = hh * hw;
-  const T w2 = hh * lw;
-  const T w3 = lh * hw;
-  const T w4 = lh * lw;
-
-  return w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4;
+  return hh * hw * v1 + hh * lw * v2 + lh * hw * v3 + lh * lw * v4;
 }
 
 // Deformable Im2Col for a SINGLE image.
@@ -96,13 +95,20 @@ void DeformableIm2col(
 
           // Offset tensor layout: [offset_grp, 2*kH*kW, H_out, W_out] flattened.
           // For (i,j) we use channel indices 2*(i*kW+j) and 2*(i*kW+j)+1 for offset_h, offset_w.
+          // Precompute pointers to avoid offset_base * output_size multiplication in inner loop.
           const int64_t offset_base =
               offset_grp * 2 * kernel_size + 2 * (i * kernel_w + j);
+          const T* ptr_offset_h = data_offset + offset_base * output_size;
+          const T* ptr_offset_w = data_offset + (offset_base + 1) * output_size;
 
-          // Mask base index; only used when UseMask=true (compiler removes when false).
-          [[maybe_unused]] int64_t mask_base = 0;
+          // Base terms for h_im, w_im: invariant in inner loop (i, j fixed).
+          const T base_h = -pad_h + static_cast<T>(i) * dilation_h;
+          const T base_w = -pad_w + static_cast<T>(j) * dilation_w;
+
+          // Mask pointer; only used when UseMask=true (compiler removes when false).
+          [[maybe_unused]] const T* ptr_mask = nullptr;
           if constexpr (UseMask) {
-            mask_base = offset_grp * kernel_size + i * kernel_w + j;
+            ptr_mask = data_mask + (offset_grp * kernel_size + i * kernel_w + j) * output_size;
           }
 
           // Loop over output spatial positions.
@@ -110,15 +116,12 @@ void DeformableIm2col(
             for (int64_t w_col = 0; w_col < width_col; ++w_col) {
               const int64_t spatial_idx = h_col * width_col + w_col;
 
-              // Fetch learned offsets for this (output_pos, kernel_pos).
-              const T offset_h =
-                  data_offset[offset_base * output_size + spatial_idx];
-              const T offset_w =
-                  data_offset[(offset_base + 1) * output_size + spatial_idx];
+              const T offset_h = ptr_offset_h[spatial_idx];
+              const T offset_w = ptr_offset_w[spatial_idx];
 
               // Deformed sampling coordinates (fractional, for bilinear interpolation).
-              const T h_im = h_col * stride_h - pad_h + i * dilation_h + offset_h;
-              const T w_im = w_col * stride_w - pad_w + j * dilation_w + offset_w;
+              const T h_im = h_col * stride_h + base_h + offset_h;
+              const T w_im = w_col * stride_w + base_w + offset_w;
 
               // Sample input at deformed location; returns 0 if out of bounds.
               T val = BilinearInterpolate(im_ptr, height, width, h_im, w_im);
@@ -130,7 +133,7 @@ void DeformableIm2col(
               // skip blocks SIMD. (3) Multiplying by 0 is cheap when vectorized. In typical DCN
               // usage (moderate mask density), the unconditional path usually wins.
               if constexpr (UseMask) {
-                val *= data_mask[mask_base * output_size + spatial_idx];
+                val *= ptr_mask[spatial_idx];
               }
 
               col_ptr[spatial_idx] = val;
