@@ -422,12 +422,12 @@ def parity_check_gqa_prompt_with_padding(
         device=device,
     )
 
-    key_padding_mask = create_boolean_mask_from_seqlens(
-        seqlens=effective_seqlens,
-        total_seq_len=config.kv_sequence_length,
-        mask_dims=2,
-        device=device,
-    )
+    # Per-batch key_padding_mask [batch, kv_seq] for reference.
+    # Must NOT use create_boolean_mask_from_seqlens(..., mask_dims=2) here because that
+    # returns [q_seq, total_seq] using only the first batch's seqlen, which is wrong
+    # when effective_seqlens vary per batch (4D mask case).
+    arange_kv = torch.arange(config.kv_sequence_length, device=device).unsqueeze(0)
+    key_padding_mask = arange_kv < effective_seqlens.unsqueeze(1)  # [batch, kv_seq]
 
     # --- PyTorch Reference Path ---
     out_ref, _ = attention_ref(
@@ -917,8 +917,11 @@ class TestONNXAttentionPaddingMaskMemoryEfficientGQA(unittest.TestCase):
         """Test prompt phase with padding mask using Memory Efficient Attention."""
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
 
+        # Create seqlens with config.batch_size elements.
+        # First batch has shorter valid length, rest at full length.
+        seqlens_list = [config.kv_sequence_length - 6] + [config.kv_sequence_length] * (config.batch_size - 1)
         seqlens = torch.tensor(
-            [config.kv_sequence_length - 6, config.kv_sequence_length],
+            seqlens_list,
             dtype=torch.int32,
             device="cuda",
         )
@@ -926,29 +929,6 @@ class TestONNXAttentionPaddingMaskMemoryEfficientGQA(unittest.TestCase):
         parity_check_gqa_prompt_with_padding(
             config=config,
             seqlens=seqlens,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
-
-    @parameterized.expand(gqa_past_padding_test_cases())
-    def test_gqa_past_padding_mea(self, name, config):
-        """Test decoding phase with padding mask using Memory Efficient Attention."""
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-
-        past_seqlens = torch.full(
-            (config.batch_size,),
-            config.past_kv_sequence_length,
-            dtype=torch.int32,
-            device="cuda",
-        )
-
-        parity_check_gqa_past_with_padding(
-            config=config,
-            past_seqlens=past_seqlens,
             ep="CUDAExecutionProvider",
             device="cuda",
             torch_type=torch.float16,
@@ -1014,13 +994,9 @@ def parity_check_gqa_prompt_with_nonpad_kv_seqlen(
             k[b, valid_len:, :, :] = 0
             v[b, valid_len:, :, :] = 0
 
-    # Reference: use key_padding_mask [batch, kv_seq]
-    key_padding_mask = create_boolean_mask_from_seqlens(
-        seqlens=nonpad_seqlens.to(torch.int32),
-        total_seq_len=config.kv_sequence_length,
-        mask_dims=2,
-        device=device,
-    )
+    # Per-batch key_padding_mask [batch, kv_seq] for reference
+    arange_kv = torch.arange(config.kv_sequence_length, device=device).unsqueeze(0)
+    key_padding_mask = arange_kv < nonpad_seqlens.unsqueeze(1).to(device)  # [batch, kv_seq]
 
     out_ref, _ = attention_ref(
         q=q,

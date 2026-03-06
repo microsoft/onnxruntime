@@ -772,9 +772,7 @@ def run_tensorscatter_attention_with_mask(
     k_ref = key_cache_ref.reshape(batch_size, total_kv_seq_len, kv_num_heads, head_size)
     v_ref = value_cache_ref.reshape(batch_size, total_kv_seq_len, kv_num_heads, head_size)
 
-    ref_output = numpy_attention_ref(
-        q_ref, k_ref, v_ref, nonpad_seqlens, is_causal=bool(is_causal), attn_bias=ref_bias
-    )
+    ref_output = numpy_attention_ref(q_ref, k_ref, v_ref, nonpad_seqlens, is_causal=bool(is_causal), attn_bias=ref_bias)
     ref_output_3d = ref_output.reshape(batch_size, q_seq_len, q_hidden)
 
     # --- ORT execution ---
@@ -859,8 +857,19 @@ def _make_mask_test_params(cases, use_bool_mask):
     mask_str = "bool" if use_bool_mask else "float"
     for batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, mask_pos, label in cases:
         name = f"b{batch}_qh{q_heads}_kvh{kv_heads}_{label}_{mask_str}"
-        yield (name, batch, q_seq, q_heads, kv_heads, _HEAD_SIZE, _TOTAL_KV_SEQ_LEN,
-               scatter_pos, seqlens, mask_pos, use_bool_mask)
+        yield (
+            name,
+            batch,
+            q_seq,
+            q_heads,
+            kv_heads,
+            _HEAD_SIZE,
+            _TOTAL_KV_SEQ_LEN,
+            scatter_pos,
+            seqlens,
+            mask_pos,
+            use_bool_mask,
+        )
 
 
 def nonpad_mask_cpu_test_cases():

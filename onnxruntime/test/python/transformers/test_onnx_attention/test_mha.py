@@ -683,13 +683,12 @@ def parity_check_mha_prompt_with_bool_mask(
             device=device,
         )
 
-    # Create 2D key_padding_mask for reference (per-batch, shape [batch, total_seq])
-    key_padding_mask = create_boolean_mask_from_seqlens(
-        seqlens=effective_seqlens,
-        total_seq_len=config.kv_sequence_length,
-        mask_dims=2,
-        device=device,
-    )
+    # Per-batch key_padding_mask [batch, kv_seq] for reference.
+    # Must NOT use create_boolean_mask_from_seqlens(..., mask_dims=2) here because that
+    # returns [q_seq, total_seq] using only the first batch's seqlen, which is wrong
+    # when effective_seqlens vary per batch (4D mask case).
+    arange_kv = torch.arange(config.kv_sequence_length, device=device).unsqueeze(0)
+    key_padding_mask = arange_kv < effective_seqlens.unsqueeze(1)  # [batch, kv_seq]
 
     # --- PyTorch Reference Path ---
     out_ref, _ = attention_ref(
@@ -982,13 +981,9 @@ def parity_check_mha_prompt_with_nonpad_kv_seqlen(
             k[b, valid_len:, :, :] = 0
             v[b, valid_len:, :, :] = 0
 
-    # Reference: use key_padding_mask [batch, kv_seq]
-    key_padding_mask = create_boolean_mask_from_seqlens(
-        seqlens=nonpad_seqlens.to(torch.int32),
-        total_seq_len=config.kv_sequence_length,
-        mask_dims=2,
-        device=device,
-    )
+    # Per-batch key_padding_mask [batch, kv_seq] for reference
+    arange_kv = torch.arange(config.kv_sequence_length, device=device).unsqueeze(0)
+    key_padding_mask = arange_kv < nonpad_seqlens.unsqueeze(1).to(device)  # [batch, kv_seq]
 
     out_ref, _ = attention_ref(
         q=q,
