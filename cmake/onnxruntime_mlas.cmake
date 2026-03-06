@@ -590,6 +590,7 @@ else()
             COMPILES_P10
           )
           if(COMPILES_P10)
+            enable_language(ASM)
             check_cxx_source_compiles("
               #ifdef _AIX
               #define POWER_10       0x40000
@@ -619,6 +620,11 @@ else()
               ${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp
               ${MLAS_SRC_DIR}/power/qgemm_kernel_power10.cpp
             )
+	    # Only compile assembly on non-AIX systems
+            if (NOT AIX)
+              list(APPEND mlas_platform_srcs_power10 ${MLAS_SRC_DIR}/power/SgemmKernelPackA.S)
+              set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPackA.S PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
+            endif()
             set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10 -DSINGLE")
             set_source_files_properties(${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
             set_source_files_properties(${MLAS_SRC_DIR}/power/qgemm_kernel_power10.cpp PROPERTIES COMPILE_FLAGS "-O3 -mcpu=power10")
