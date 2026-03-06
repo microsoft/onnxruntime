@@ -1699,6 +1699,63 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked_FP16_GQA) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+// Regression test: BFloat16 must route to Flash Attention on SM80+.
+// BFloat16 is a 2-byte type so disable_flash_attention_ should be false,
+// allowing Flash to handle GQA natively via kv_num_heads.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_BF16_Flash) {
+  if (!HasCudaEnvironment(800)) {
+    return;  // BFloat16 requires SM 8.0+
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 1;
+  int kv_sequence_length = 4;
+  int head_size = 64;
+
+  int q_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  int k_elements = batch_size * kv_num_heads * kv_sequence_length * head_size;
+
+  std::vector<float> q(q_elements, 1.0f);
+  std::vector<float> k(k_elements, 1.0f);
+  std::vector<float> v(k_elements);
+  for (int n = 0; n < kv_num_heads; n++) {
+    for (int s = 0; s < kv_sequence_length; s++) {
+      float val = static_cast<float>(s + 1) * 0.1f;
+      for (int h = 0; h < head_size; h++) {
+        v[(n * kv_sequence_length + s) * head_size + h] = val;
+      }
+    }
+  }
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<BFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, FloatsToBFloat16s(q));
+  test.AddInput<BFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, FloatsToBFloat16s(k));
+  test.AddInput<BFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, FloatsToBFloat16s(v));
+  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<BFloat16>();
+  test.AddOptionalInputEdge<BFloat16>();
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {batch_size}, {2});
+
+  // 2 valid positions: uniform softmax → mean of V[0] and V[1] = (0.1 + 0.2) / 2 = 0.15
+  int y_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  std::vector<float> expected_y(y_elements, 0.15f);
+  test.AddOutput<BFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                           FloatsToBFloat16s(expected_y), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<BFloat16>();
+  test.AddOptionalOutputEdge<BFloat16>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(AttentionTest, Attention_NonPadKVSeqLen_NoneMasked) {
   OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
 
@@ -1783,7 +1840,7 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_ExceedsTotalSeqLen) {
            {}, nullptr, &execution_providers);
 }
 
-// Test combined nonpad_kv_seqlen + bool attn_mask (T26).
+// Test combined nonpad_kv_seqlen + bool attn_mask.
 // Both masks should compose additively: nonpad_kv_seqlen masks positions >= valid_len,
 // and attn_mask further masks positions within the valid range.
 // Previously this combination crashed with ORT_ENFORCE; now it falls back to MEA gracefully.

@@ -112,6 +112,53 @@ static Status TransposeBSNHtoBNSH(int batch_size, int sequence_length,
 }
 
 // ============================================================================
+// ConvertAttnMaskToBias: shared helper for mask→additive bias conversion.
+// Used by both Flash (nonpad+mask) and MEA paths to avoid code duplication.
+// Converts bool masks to additive bias (true→0, false→mask_filter_value),
+// passes float masks through directly, and sets broadcast flags from mask shape.
+// ============================================================================
+template <typename T>
+Status Attention<T>::ConvertAttnMaskToBias(
+    OpKernelContext* context,
+    const Tensor* attn_mask,
+    cudaStream_t cuda_stream,
+    int max_threads_per_block,
+    IAllocatorUniquePtr<void>& converted_mask_buffer,
+    const void*& attn_bias_data,
+    bool& broadcast_bias_dim_0,
+    bool& broadcast_bias_dim_1) const {
+  if (attn_mask->IsDataType<bool>()) {
+    using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+    int64_t num_elements = attn_mask->Shape().Size();
+    converted_mask_buffer = GetScratchBuffer<void>(
+        num_elements * sizeof(NativeCudaT), context->GetComputeStream());
+    float mask_filter_value = static_cast<float>(std::numeric_limits<T>::lowest());
+    ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
+        attn_mask->Data<bool>(),
+        reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
+        num_elements, mask_filter_value, cuda_stream,
+        max_threads_per_block));
+    attn_bias_data = converted_mask_buffer.get();
+  } else {
+    attn_bias_data = attn_mask->Data<T>();
+  }
+
+  size_t mask_dims = attn_mask->Shape().NumDimensions();
+  auto dims = attn_mask->Shape().GetDims();
+  if (mask_dims == 2) {
+    broadcast_bias_dim_0 = true;
+    broadcast_bias_dim_1 = true;
+  } else if (mask_dims == 3) {
+    broadcast_bias_dim_0 = true;
+    broadcast_bias_dim_1 = dims[0] == 1;
+  } else {
+    broadcast_bias_dim_0 = dims[0] == 1;
+    broadcast_bias_dim_1 = dims[1] == 1;
+  }
+  return Status::OK();
+}
+
+// ============================================================================
 // RunFlashAttention: Direct flash attention kernel call
 // ============================================================================
 //
@@ -121,13 +168,17 @@ static Status TransposeBSNHtoBNSH(int batch_size, int sequence_length,
 //           - Supports: bool mask -> seqlens_k, no mask -> fill past_seq_len
 //           - 4D BNSH: transposes Q/K/V to BSNH before kernel
 //   Path 3: no past, no mask (prompt) -> mha_fwd
-//   Eligibility: fp16/bf16, head_size==v_head_size, no output_qk, no softcap,
-//                no softmax_precision, (no mask OR bool mask + past OR nonpad_kv_seqlen)
+//   Eligibility: fp16/bf16, head_size==v_head_size, no output_qk,
+//                (no mask OR bool mask + past OR nonpad_kv_seqlen without mask)
+//   Note: softcap and softmax_precision are early-rejected before the cascade.
+//   Note: nonpad_kv_seqlen + attn_mask is supported but routes to MEA/unfused,
+//         not Flash (Flash has no bias parameter for this combination).
 //
 // PERFORMANCE NOTE: ONNX Attention's internal-cache decode path (past_key/past_value)
-// is inherently ~15-30% slower than contrib GQA's decode path for grouped-query attention
-// workloads. This overhead does NOT apply when using external KV cache via
-// TensorScatter + nonpad_kv_seqlen (opset 24), which avoids the copy entirely.
+// is ~15-30% slower than contrib GQA's decode path for grouped-query attention workloads.
+// When using external KV cache via TensorScatter + nonpad_kv_seqlen (opset 24), the
+// copy overhead (point 1) is eliminated. The remaining ~5-15% gap is from the missing
+// XQA kernel (point 2).
 //
 // The internal-cache overhead comes from:
 //
@@ -137,14 +188,17 @@ static Status TransposeBSNHtoBNSH(int batch_size, int sequence_length,
 //    Since past and present have different shapes, they cannot share the same buffer.
 //    Contrib GQA allows past and present to be the same tensor (in-place append),
 //    eliminating the memset + strided copy overhead (~67MB per decode step for typical LLM).
+//    This overhead does NOT apply to the external-cache path (TensorScatter +
+//    nonpad_kv_seqlen), which bypasses past/present entirely.
 //
 // 2. No XQA kernel: GQA's specialized XQA decode kernel (xqa_loader.h) requires
 //    past_present_share_buffer to function. Since ONNX Attention cannot share buffers
 //    (see point 1), XQA is fundamentally incompatible with this op's spec design.
+//    This accounts for the remaining ~5-15% gap even on the external-cache path.
 //
-// 3. These are spec-level limitations of the internal-cache path, not implementation gaps.
-//    For production LLM inference, prefer the external-cache path (TensorScatter +
-//    nonpad_kv_seqlen) which achieves parity with contrib GQA performance.
+// 3. These are spec-level limitations, not implementation gaps. For production LLM
+//    inference, the external-cache path (TensorScatter + nonpad_kv_seqlen) is
+//    recommended and achieves near-parity with contrib GQA performance.
 //
 template <typename T>
 Status Attention<T>::RunFlashAttention(
@@ -457,8 +511,9 @@ Status Attention<T>::RunFlashAttention(
 //   Path 2: no past, with mask (prompt) -> standard MEA with additive bias
 //   Path 3: no past, no mask (prompt) -> standard MEA
 //   Eligibility: see has_memory_efficient_attention() (SM50+/53+/80+ by dtype,
-//                head_size <= 1024), plus: no output_qk, no softcap,
-//                no softmax_precision, no past_key (decode excluded), bias stride alignment
+//                head_size <= 1024), plus: no output_qk, no past_key (decode excluded),
+//                bias stride alignment.
+//   Note: softcap and softmax_precision are early-rejected before the cascade.
 //
 template <typename T>
 Status Attention<T>::RunMemoryEfficientAttention(
@@ -578,34 +633,10 @@ Status Attention<T>::RunMemoryEfficientAttention(
     // When attn_mask is also provided, convert it to additive attn_bias so MEA
     // applies both custom right padding (seqlens_k) and the attention mask (attn_bias).
     if (attn_mask != nullptr) {
-      if (attn_mask->IsDataType<bool>()) {
-        using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
-        int64_t num_elements = attn_mask->Shape().Size();
-        converted_mask_buffer = GetScratchBuffer<void>(
-            num_elements * sizeof(NativeCudaT), context->GetComputeStream());
-        float mask_filter_value = static_cast<float>(std::numeric_limits<T>::lowest());
-        ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
-            attn_mask->Data<bool>(),
-            reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
-            num_elements, mask_filter_value, cuda_stream,
-            device_prop.maxThreadsPerBlock));
-        attn_bias_data = converted_mask_buffer.get();
-      } else {
-        attn_bias_data = attn_mask->Data<T>();
-      }
-
-      size_t mask_dims = attn_mask->Shape().NumDimensions();
-      auto dims = attn_mask->Shape().GetDims();
-      if (mask_dims == 2) {
-        broadcast_bias_dim_0 = true;
-        broadcast_bias_dim_1 = true;
-      } else if (mask_dims == 3) {
-        broadcast_bias_dim_0 = true;
-        broadcast_bias_dim_1 = dims[0] == 1;
-      } else {
-        broadcast_bias_dim_0 = dims[0] == 1;
-        broadcast_bias_dim_1 = dims[1] == 1;
-      }
+      ORT_RETURN_IF_ERROR(ConvertAttnMaskToBias(context, attn_mask, cuda_stream,
+                                                device_prop.maxThreadsPerBlock,
+                                                converted_mask_buffer, attn_bias_data,
+                                                broadcast_bias_dim_0, broadcast_bias_dim_1));
     }
 
     onnxruntime::contrib::cuda::MemoryEfficientAttentionParams p;
@@ -651,43 +682,10 @@ Status Attention<T>::RunMemoryEfficientAttention(
   // custom_right_padding seqlens approach which would produce NaN.
   else {
     if (attn_mask != nullptr) {
-      if (attn_mask->IsDataType<bool>()) {
-        // Convert bool mask to additive attention bias (true→0.0, false→mask_filter_value).
-        // This handles all-false masks correctly (uniform softmax weights from extreme bias).
-        using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
-        int64_t num_elements = attn_mask->Shape().Size();
-        converted_mask_buffer = GetScratchBuffer<void>(
-            num_elements * sizeof(NativeCudaT), context->GetComputeStream());
-        float mask_filter_value = static_cast<float>(std::numeric_limits<T>::lowest());
-        ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
-            attn_mask->Data<bool>(),
-            reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
-            num_elements, mask_filter_value, cuda_stream,
-            device_prop.maxThreadsPerBlock));
-        attn_bias_data = converted_mask_buffer.get();
-      } else {
-        attn_bias_data = attn_mask->Data<T>();
-      }
-
-      // Determine broadcast flags based on bias logical shape [B, num_heads, q_seq, kv_seq].
-      // MEA indexes bias as: offset = batch_id * strideB + head_id * strideH + q_pos * strideM + kv_pos.
-      // broadcast_attn_bias_dim_0=true sets strideB=0; dim_1=true sets strideH=0.
-      // strideM is always total_seq (num_keys), so the data must have [q_seq, total_seq] as inner dims.
-      size_t mask_dims = attn_mask->Shape().NumDimensions();
-      auto dims = attn_mask->Shape().GetDims();
-      if (mask_dims == 2) {
-        // 2D mask: [q_seq, total_seq] per ONNX spec. Broadcasts over batch and heads.
-        // MEA reads bias[q_pos * total_seq + kv_pos] for all (batch, head) pairs
-        // via strideB=0, strideH=0, strideM=total_seq.
-        broadcast_bias_dim_0 = true;  // broadcast over batch
-        broadcast_bias_dim_1 = true;  // broadcast over heads
-      } else if (mask_dims == 3) {
-        broadcast_bias_dim_0 = true;
-        broadcast_bias_dim_1 = dims[0] == 1;
-      } else {
-        broadcast_bias_dim_0 = dims[0] == 1;
-        broadcast_bias_dim_1 = dims[1] == 1;
-      }
+      ORT_RETURN_IF_ERROR(ConvertAttnMaskToBias(context, attn_mask, cuda_stream,
+                                                device_prop.maxThreadsPerBlock,
+                                                converted_mask_buffer, attn_bias_data,
+                                                broadcast_bias_dim_0, broadcast_bias_dim_1));
     }
 
     onnxruntime::contrib::cuda::MemoryEfficientAttentionParams p;
@@ -909,7 +907,8 @@ Status Attention<T>::RunUnfusedAttention(
       ORT_ENFORCE(mask_dims == 2 || (mask_dims == 4 && mask_shape[1] == 1),
                   "nonpad_kv_seqlen + attn_mask composition in unfused path only supports "
                   "2D masks [q, t] and 4D masks with head_dim=1 [B, 1, q, t]. "
-                  "Got mask shape: ", mask_shape);
+                  "Got mask shape: ",
+                  mask_shape);
 
       int64_t mask_elements = mask_shape.Size();
       const NativeCudaT* mask_bias_ptr = nullptr;

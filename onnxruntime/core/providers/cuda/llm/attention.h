@@ -40,6 +40,16 @@ class Attention final : public CudaKernel {
       Tensor* output_qk,
       const attention_helper::AttentionParameters& parameters) const;
 
+  Status ConvertAttnMaskToBias(
+      OpKernelContext* context,
+      const Tensor* attn_mask,
+      cudaStream_t cuda_stream,
+      int max_threads_per_block,
+      IAllocatorUniquePtr<void>& converted_mask_buffer,
+      const void*& attn_bias_data,
+      bool& broadcast_bias_dim_0,
+      bool& broadcast_bias_dim_1) const;
+
  protected:
   bool is_causal_;
   int kv_num_heads_;
