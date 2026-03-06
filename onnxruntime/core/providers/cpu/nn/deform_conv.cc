@@ -205,6 +205,9 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
     const T* mask_curr = use_mask ? (mask_data + n * (offset_group * kernel_size * output_image_size)) : nullptr;
     T* col_buffer_ptr = col_buffer.get();
 
+    // DeformableIm2col only needs pad_h, pad_w (begin-side pads) for coordinate mapping.
+    // pad_h_end and pad_w_end are used in out_h/out_w computation (params) but do not affect
+    // the im2col sampling logic; they only influence output dimensions.
     DeformableIm2col<T>(
         X_curr,
         offset_curr,
