@@ -299,6 +299,7 @@ __global__ void DeformConvAddBiasKernel(
     // Equivalent to: channel_idx = batch_channel_idx % M;
     // We only need channel_idx (i.e. m)
     channel_div.divmod(batch_channel_idx, batch_idx, channel_idx);
+    (void)batch_idx;  // Only channel_idx is needed
 
     // channel_idx is what we need (i.e. m)
     Y[idx] += DeformConvLdg(B + channel_idx);
@@ -435,14 +436,14 @@ Status DeformConvIm2ColImpl(
 }
 
 #define INST_DeformConvIm2ColImpl(T) \
-  template Status DeformConvIm2ColImpl<T>(cudaStream_t, const T*, const T*, const T*, T*, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, bool);
+  template Status DeformConvIm2ColImpl<T>(cudaStream_t, const T*, const T*, const T*, T*, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, bool)
 
-INST_DeformConvIm2ColImpl(float)
-    INST_DeformConvIm2ColImpl(double)
-        INST_DeformConvIm2ColImpl(half)
-            INST_DeformConvIm2ColImpl(BFloat16)
+INST_DeformConvIm2ColImpl(float);
+INST_DeformConvIm2ColImpl(double);
+INST_DeformConvIm2ColImpl(half);
+INST_DeformConvIm2ColImpl(BFloat16);
 
-                template Status DeformConvCopyGemmOutputRowMajorToNCHW<float>(cudaStream_t, const float*, float*, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvCopyGemmOutputRowMajorToNCHW<float>(cudaStream_t, const float*, float*, int64_t, int64_t, int64_t, int64_t);
 template Status DeformConvCopyGemmOutputRowMajorToNCHW<double>(cudaStream_t, const double*, double*, int64_t, int64_t, int64_t, int64_t);
 template Status DeformConvCopyGemmOutputRowMajorToNCHW<half>(cudaStream_t, const half*, half*, int64_t, int64_t, int64_t, int64_t);
 template Status DeformConvCopyGemmOutputRowMajorToNCHW<BFloat16>(cudaStream_t, const BFloat16*, BFloat16*, int64_t, int64_t, int64_t, int64_t);
