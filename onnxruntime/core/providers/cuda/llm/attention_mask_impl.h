@@ -82,6 +82,19 @@ Status LaunchConvertNonpadKvSeqlenToAttentionBias(
     cudaStream_t stream,
     int max_threads_per_block);
 
+// Additively compose an addend bias into an existing bias buffer in-place.
+// Supports cyclic broadcasting: addend of size [q, t] is repeated over batch
+// to compose with a bias of size [B, q, t]. When both have the same number
+// of elements (e.g. 4D mask [B, 1, q, t]), it performs a direct element-wise add.
+template <typename T>
+Status LaunchAddBiasInPlace(
+    T* bias,
+    const T* addend,
+    int64_t total_elements,
+    int64_t addend_elements,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 // Fill an int32 buffer with a constant value entirely on device.
 // CUDA-graph-capturable alternative to host vector + cudaMemcpyAsync.
 Status LaunchFillInt32(int* output, int value, int count, cudaStream_t stream, int max_threads_per_block);

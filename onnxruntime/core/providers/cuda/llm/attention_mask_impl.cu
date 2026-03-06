@@ -280,6 +280,50 @@ template Status LaunchConvertNonpadKvSeqlenToAttentionBias<__half>(
 template Status LaunchConvertNonpadKvSeqlenToAttentionBias<__nv_bfloat16>(
     const int64_t*, __nv_bfloat16*, int, int, int, float, cudaStream_t, int);
 
+// Add an addend bias into an existing bias buffer using cyclic broadcasting.
+// Used to compose nonpad_kv_seqlen bias [B, q, t] with an attn_mask bias that
+// may be smaller (e.g. 2D [q, t] broadcasts over batch).
+template <typename T>
+__global__ void AddBiasInPlaceKernel(
+    T* __restrict__ bias,
+    const T* __restrict__ addend,
+    int64_t total_elements,
+    int64_t addend_elements) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total_elements;
+       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    float sum = static_cast<float>(bias[idx]) + static_cast<float>(addend[idx % addend_elements]);
+    bias[idx] = T(sum);
+  }
+}
+
+template <typename T>
+Status LaunchAddBiasInPlace(
+    T* bias,
+    const T* addend,
+    int64_t total_elements,
+    int64_t addend_elements,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  if (total_elements == 0) {
+    return Status::OK();
+  }
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), total_elements));
+  int64_t blocks = (total_elements + threads - 1) / threads;
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  AddBiasInPlaceKernel<T><<<grid_size, threads, 0, stream>>>(
+      bias, addend, total_elements, addend_elements);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchAddBiasInPlace<float>(float*, const float*, int64_t, int64_t, cudaStream_t, int);
+template Status LaunchAddBiasInPlace<__half>(__half*, const __half*, int64_t, int64_t, cudaStream_t, int);
+template Status LaunchAddBiasInPlace<__nv_bfloat16>(__nv_bfloat16*, const __nv_bfloat16*, int64_t, int64_t, cudaStream_t, int);
+
 // Simple kernel to fill an int32 buffer with a constant value on device.
 // Used for CUDA-graph-capturable seqlens_k initialization (no host memory).
 __global__ void FillInt32Kernel(int* __restrict__ output, const int value, const int count) {

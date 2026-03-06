@@ -74,7 +74,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(scale_ > 0 || std::isnan(scale_), "scale must be greater than 0 if specified");
 
   const auto* kernel_options = this->GetAttentionKernelOptions();
-  disable_flash_attention_ = !std::is_same<T, MLFloat16>::value || !kernel_options->UseFlashAttention();
+  disable_flash_attention_ = std::is_same<T, float>::value || !kernel_options->UseFlashAttention();
   disable_memory_efficient_attention_ = !kernel_options->UseEfficientAttention();
 }
 
@@ -124,8 +124,12 @@ static Status TransposeBSNHtoBNSH(int batch_size, int sequence_length,
 //   Eligibility: fp16/bf16, head_size==v_head_size, no output_qk, no softcap,
 //                no softmax_precision, (no mask OR bool mask + past OR nonpad_kv_seqlen)
 //
-// PERFORMANCE NOTE: ONNX Attention's decode path is inherently ~15-30% slower than
-// contrib GQA's decode path for grouped-query attention workloads. This is because:
+// PERFORMANCE NOTE: ONNX Attention's internal-cache decode path (past_key/past_value)
+// is inherently ~15-30% slower than contrib GQA's decode path for grouped-query attention
+// workloads. This overhead does NOT apply when using external KV cache via
+// TensorScatter + nonpad_kv_seqlen (opset 24), which avoids the copy entirely.
+//
+// The internal-cache overhead comes from:
 //
 // 1. No past_present_share_buffer: The ONNX Attention spec requires past_key/value
 //    shape = (B, H, past_seq, head_size) and present_key/value shape =
@@ -138,9 +142,9 @@ static Status TransposeBSNHtoBNSH(int batch_size, int sequence_length,
 //    past_present_share_buffer to function. Since ONNX Attention cannot share buffers
 //    (see point 1), XQA is fundamentally incompatible with this op's spec design.
 //
-// 3. These are spec-level limitations, not implementation gaps. A graph optimizer that
-//    transparently replaces ONNX Attention with contrib GQA on supported hardware
-//    would be the recommended approach to close this performance gap.
+// 3. These are spec-level limitations of the internal-cache path, not implementation gaps.
+//    For production LLM inference, prefer the external-cache path (TensorScatter +
+//    nonpad_kv_seqlen) which achieves parity with contrib GQA performance.
 //
 template <typename T>
 Status Attention<T>::RunFlashAttention(
@@ -782,8 +786,10 @@ Status Attention<T>::RunMemoryEfficientAttention(
 //
 // Unfused Attention dispatch paths:
 //   Universal fallback via MHA's QkvToContext.
-//   Path 1: nonpad_kv_seqlen -> converts to attention_bias [B, q_seq, total_seq]
-//   Path 2: all other cases -> passes mask/bias directly
+//   Path 1: nonpad_kv_seqlen only -> converts to attention_bias [B, q_seq, total_seq]
+//   Path 2: nonpad_kv_seqlen + attn_mask -> composes both into attention_bias [B, q_seq, total_seq]
+//           (nonpad bias + mask bias added element-wise with cyclic broadcasting)
+//   Path 3: all other cases -> passes mask/bias directly
 //   Supports: all dtypes (fp16/bf16/fp32), all mask types (bool/float/none), all head sizes
 //   Not supported: softcap, softmax_precision, output_qk modes beyond kNone/kQK
 //   Limitation: MHA only (q_num_heads must equal kv_num_heads)
@@ -874,12 +880,9 @@ Status Attention<T>::RunUnfusedAttention(
 
   // Handle attention mask / nonpad_kv_seqlen → attention_bias
   IAllocatorUniquePtr<void> converted_mask_buffer;
+  IAllocatorUniquePtr<void> mask_bias_buffer;  // temp buffer for mask→bias when composing
   if (nonpad_kv_seqlen != nullptr) {
     // Convert nonpad_kv_seqlen to additive attention bias: [B, q_seq, total_seq]
-    // TODO: Support nonpad_kv_seqlen + attn_mask composition in unfused path.
-    // When both are present, the nonpad bias and mask bias should be additively composed
-    // into a single attention_bias buffer. Currently only nonpad_kv_seqlen is used here;
-    // the combined case is handled by MEA in RunMemoryEfficientAttention.
     using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
     int64_t bias_elements = static_cast<int64_t>(parameters.batch_size) *
                             parameters.q_sequence_length *
@@ -894,8 +897,44 @@ Status Attention<T>::RunUnfusedAttention(
         contribop_parameters.mask_filter_value,
         cuda_stream,
         device_prop.maxThreadsPerBlock));
+
+    // When attn_mask is also present, compose it into the nonpad bias additively.
+    // The nonpad bias is [B, q, t]; the mask is added with cyclic broadcasting
+    // (e.g. a 2D [q, t] mask repeats over the batch dimension).
+    if (attn_mask != nullptr) {
+      int64_t mask_elements = attn_mask->Shape().Size();
+      const NativeCudaT* mask_bias_ptr = nullptr;
+
+      if (attn_mask->IsDataType<bool>()) {
+        // Convert bool mask to additive bias in a temp buffer, then add in-place.
+        mask_bias_buffer = GetScratchBuffer<void>(mask_elements * sizeof(NativeCudaT), context->GetComputeStream());
+        ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
+            attn_mask->Data<bool>(),
+            reinterpret_cast<NativeCudaT*>(mask_bias_buffer.get()),
+            mask_elements,
+            contribop_parameters.mask_filter_value,
+            cuda_stream,
+            device_prop.maxThreadsPerBlock));
+        mask_bias_ptr = reinterpret_cast<const NativeCudaT*>(mask_bias_buffer.get());
+      } else {
+        // Float mask is already in additive bias format.
+        mask_bias_ptr = reinterpret_cast<const NativeCudaT*>(attn_mask->Data<T>());
+      }
+
+      // Add mask bias into nonpad bias with cyclic broadcasting.
+      // 2D mask [q, t]: mask_elements = q*t, repeats for each batch → correct.
+      // 4D mask [B, 1, q, t]: mask_elements = B*q*t = bias_elements → direct add.
+      ORT_RETURN_IF_ERROR(LaunchAddBiasInPlace<NativeCudaT>(
+          reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
+          mask_bias_ptr,
+          bias_elements,
+          mask_elements,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    }
+
     data.attention_bias = reinterpret_cast<const CudaT*>(converted_mask_buffer.get());
-    // nonpad bias is [B, q_seq, total_seq] → broadcasts over heads but not batch
+    // Composed bias is [B, q_seq, total_seq] → broadcasts over heads but not batch.
     contribop_parameters.broadcast_attn_bias_dim_0 = false;
     contribop_parameters.broadcast_attn_bias_dim_1 = true;
   } else if (attn_mask != nullptr) {
@@ -968,11 +1007,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* nonpad_kv_seqlen = context->Input<Tensor>(6);  // optional, Opset 24
 
   // When both nonpad_kv_seqlen and attn_mask are provided, Flash Attention cannot handle
-  // the combination (no bias parameter). Route to MEA which supports seqlen_k_ptr + attn_bias.
+  // the combination (no bias parameter). Route to MEA or Unfused which support composition.
   if (nonpad_kv_seqlen != nullptr && attn_mask != nullptr) {
     LOGS_DEFAULT(WARNING) << "Both nonpad_kv_seqlen and attn_mask provided. "
                           << "Flash Attention does not support this combination; "
-                          << "falling back to Memory Efficient Attention.";
+                          << "falling back to Memory Efficient Attention or Unfused path.";
   }
 
   attention_helper::AttentionParameters parameters;
@@ -999,7 +1038,30 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // === KERNEL SELECTION CASCADE ===
   // Priority: flash attention > memory efficient attention > unfused attention
+  //
+  // 4D BNSH handling per kernel:
+  //   Flash: strictly requires BSNH — Q is transposed BNSH→BSNH before calling mha_fwd*.
+  //          K/V passed as BNSH to mha_fwd_kvcache (it handles both layouts).
+  //   MEA:   accepts both BSNH and BNSH natively via is_kv_bsnh flag. Q transposed to BSNH.
+  //   Unfused: accepts both via QkvToContext's qkv_format (Q_K_V_BSNH or Q_K_V_BNSH).
+  //
+  // nonpad_kv_seqlen + attn_mask routing:
+  //   Flash: cannot handle this combo (no bias param when seqlens_k is used) → excluded.
+  //   MEA:   supports both (custom_right_padding for seqlens + additive attn_bias for mask).
+  //   Unfused: nonpad → attention_bias conversion only; mask composition TODO(titaiwang).
   const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
+
+  // Early-reject features not supported by any CUDA kernel path.
+  // TODO(titaiwang): Support softcap and softmax_precision on CUDA kernels.
+  // When a kernel adds support, move these checks to the unfused fallback section.
+  if (parameters.softcap != 0.0f) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "softcap is not supported yet in Attention op (CUDA).");
+  }
+  if (parameters.softmax_precision != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "softmax_precision is not supported yet in Attention op (CUDA).");
+  }
 
 #if USE_FLASH_ATTENTION
   {
@@ -1011,8 +1073,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                             parameters.q_num_heads, parameters.kv_num_heads) &&
         parameters.head_size == parameters.v_head_size &&
         !has_output_qk &&
-        parameters.softcap == 0.0f &&
-        parameters.softmax_precision == 0 &&
         // Bool masks without past_key (prompt) can't use flash because mha_fwd_kvcache's
         // causal semantics are decode-oriented (window offset by seqlens_k). For causal
         // prompt with padding, MEA handles it correctly via attention bias conversion.
@@ -1042,8 +1102,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
             sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
             parameters.head_size, parameters.v_head_size) &&
         !has_output_qk &&
-        parameters.softcap == 0.0f &&
-        parameters.softmax_precision == 0 &&
         past_key == nullptr;
 
     // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
@@ -1072,17 +1130,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   // Fallback: unfused attention
-  // TODO: Support softcap and softmax_precision on CUDA kernels.
-  // Currently rejected by all three kernel paths (flash, MEA, unfused).
-  if (parameters.softcap != 0.0f) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softcap is not supported yet in Attention op (CUDA).");
-  }
-  if (parameters.softmax_precision != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softmax_precision is not supported yet in Attention op (CUDA).");
-  }
-  // TODO: Support additional output_qk modes beyond kNone and kQK.
+  // TODO(titaiwang): Support additional output_qk modes beyond kNone and kQK.
   // Currently only unfused handles output_qk, and only kNone/kQK modes.
   if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
       qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kQK) {
@@ -1092,7 +1140,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (is_gqa) {
-    // TODO: Support GQA in unfused attention path for fp32/old-GPU fallback.
+    // TODO(titaiwang): Support GQA in unfused attention path for fp32/old-GPU fallback.
     // Currently blocked because QkvToContext allocates K/V workspace assuming
     // num_heads == kv_num_heads. GQA needs a head expansion step (ExpandKVHeads kernel)
     // to replicate kv_num_heads -> q_num_heads before unfused can process.
