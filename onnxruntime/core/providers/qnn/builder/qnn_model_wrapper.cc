@@ -88,6 +88,15 @@ Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
   return Status::OK();
 }
 
+void QnnModelWrapper::SetTensorMemTypeFromSettings(QnnTensorWrapper& tensor_wrapper,
+                                                    const std::string& tensor_name) {
+  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (true == model_settings_.htp_shared_memory && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+  }
+  SetQnnTensorMemType(tensor_wrapper.GetQnnTensor(), mem_type);
+}
+
 bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   // Keep a copy of tensor name sine it will be moved with the wrapper into model_tensors_map_
   std::string tensor_name = tensor_wrapper.GetName();
@@ -101,11 +110,7 @@ bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
     return true;
   }
 
-  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
-  if (true == model_settings_.htp_shared_memory && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
-    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
-  }
-  SetQnnTensorMemType(tensor_wrapper.GetQnnTensor(), mem_type);
+  SetTensorMemTypeFromSettings(tensor_wrapper, tensor_name);
 
   const Qnn_TensorType_t& qnn_tensor_type = tensor_wrapper.GetTensorType();
   // save created tensors for later lookup to populate graph node construction
