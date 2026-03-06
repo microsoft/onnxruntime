@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 24
+#define ORT_API_VERSION 25
 
 #ifdef __cplusplus
 extern "C" {
@@ -7196,11 +7196,36 @@ struct OrtApi {
    */
   ORT_API_T(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
 
+  /** \brief Get the element data type and shape for an OrtValue that represents a Tensor (scalar, dense, or sparse).
+   *
+   * \note This function is an alternative to ::GetTensorTypeAndShape() that does not allocate a new array for
+   *       the shape data. The OrtValue instance's internal shape data is returned directly.
+   *
+   * \note Returns an error if the underlying OrtValue is not a Tensor.
+   *
+   * \param[in] value The OrtValue instance.
+   * \param[out] elem_type Output parameter set to the tensor element data type.
+   * \param[out] shape_data Output parameter set to the OrtValue instance's internal shape data array.
+   *                        For a scalar, `shape_data` is NULL and `shape_data_count` is 0.
+   *                        Must not be released as it is owned by the OrtValue instance. This pointer becomes invalid
+   *                        when the OrtValue is released or if the underlying shape data is updated or reallocated.
+   * \param[out] shape_data_count Output parameter set to the number of elements in `shape_data`.
+   *                              `shape_data_count` is 0 for a scalar.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetTensorElementTypeAndShapeDataReference, _In_ const OrtValue* value,
+                  _Out_ ONNXTensorElementDataType* elem_type,
+                  _Outptr_result_maybenull_ const int64_t** shape_data,
+                  _Out_ size_t* shape_data_count);
+
   /** \brief Enable profiling for this run
    *
    * \param[in] options
    * \param[in] profile_file_prefix The prefix for the profile file. The actual filename will be:
-   *                                <profile_file_prefix>_<timestamp>.json
+   *                                [profile_file_prefix]_[timestamp].json
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -8012,6 +8037,29 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state);
+
+  /** \brief Sets the OrtModel to compile.
+   *
+   * Sets an OrtModel created via the Model Editor API as the input for compilation.
+   *
+   * The input model's source (file path, memory buffer, or OrtModel) must be set with
+   * one of: ModelCompilationOptions_SetInputModelPath, ModelCompilationOptions_SetInputModelFromBuffer,
+   * or ModelCompilationOptions_SetInputModel.
+   *
+   * The OrtModel must have a complete graph with inputs, outputs, and nodes defined.
+   * The caller retains ownership of the OrtModel and must not release it until after
+   * CompileModel returns.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] model The OrtModel to compile. The model is borrowed (not copied or owned).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const OrtModel* model);
 };
 
 /**

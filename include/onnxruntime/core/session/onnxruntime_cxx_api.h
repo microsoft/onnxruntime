@@ -1612,6 +1612,8 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetFlags(uint32_t flags);                                    ///< Wraps OrtApi::ModelCompilationOptions_SetFlags
 
   ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
+
+  ModelCompilationOptions& SetInputModel(const OrtModel* model);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
@@ -2233,6 +2235,19 @@ struct ConstValueImpl : Base<T> {
   const R* GetSparseTensorValues() const;
 
 #endif
+
+  /// <summary>
+  /// Returns the tensor's element type and a reference to the tensor's internal shape data. The shape data is owned
+  /// by the Ort::Value and becomes invalid when the Ort::Value is destroyed or if the underlying shape data is
+  /// updated or reallocated.
+  ///
+  /// For a scalar, shape.shape is nullptr and shape.shape_len is 0.
+  ///
+  /// Wraps OrtApi::GetTensorElementTypeAndShapeDataReference.
+  /// </summary>
+  /// <param name="elem_type">Output parameter set to the element's data type.</param>
+  /// <param name="shape">Output parameter set to the OrtValue instance's shape data and number of elements.</param>
+  void GetTensorElementTypeAndShapeDataReference(ONNXTensorElementDataType& elem_type, Shape& shape) const;
 };
 
 template <typename T>

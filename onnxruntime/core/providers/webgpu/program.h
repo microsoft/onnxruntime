@@ -23,6 +23,8 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
 
+#include "core/providers/webgpu/string_utils.h"
+
 namespace onnxruntime {
 namespace webgpu {
 class ShaderHelper;
@@ -37,6 +39,7 @@ enum class ProgramUniformVariableDataType {
   Int32,
 };
 std::ostream& operator<<(std::ostream& os, ProgramUniformVariableDataType);
+OStringStream& operator<<(OStringStream& os, ProgramUniformVariableDataType);
 
 constexpr size_t ProgramUniformVariableDataTypeSize[] = {sizeof(float), sizeof(uint16_t), sizeof(uint32_t), sizeof(int32_t)};
 
@@ -80,6 +83,7 @@ enum class ProgramConstantDataType {
   Bool
 };
 std::ostream& operator<<(std::ostream& os, ProgramConstantDataType);
+OStringStream& operator<<(OStringStream& os, ProgramConstantDataType);
 
 constexpr std::string_view ProgramConstantDataTypeName[] = {"f32", "f16", "u32", "i32", "bool"};
 
@@ -158,7 +162,7 @@ enum class ProgramTensorMetadataDependency : int {
   TypeAndRank = Type | Rank,
   TypeAndShape = Type | Shape,
 };
-std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency);
+OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency);
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -216,7 +220,7 @@ enum class ProgramVariableDataType {
   // if you add a new type here, you also need to update ProgramVariableDataTypeName
 };
 #ifndef NDEBUG
-std::ostream& operator<<(std::ostream& os, ProgramVariableDataType);
+OStringStream& operator<<(OStringStream& os, ProgramVariableDataType);
 #endif
 
 int NumberOfComponents(ProgramVariableDataType type);

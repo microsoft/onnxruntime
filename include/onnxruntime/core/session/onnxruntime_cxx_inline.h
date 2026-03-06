@@ -1180,6 +1180,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetGraphOptimizationLev
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const OrtModel* model) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModel(this->p_, model));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>
@@ -2386,6 +2391,13 @@ inline const R* ConstValueImpl<T>::GetSparseTensorValues() const {
 }
 
 #endif
+
+template <typename T>
+void ConstValueImpl<T>::GetTensorElementTypeAndShapeDataReference(ONNXTensorElementDataType& elem_type,
+                                                                  Shape& shape) const {
+  ThrowOnError(GetApi().GetTensorElementTypeAndShapeDataReference(this->p_, &elem_type, &shape.shape,
+                                                                  &shape.shape_len));
+}
 
 template <typename T>
 void ValueImpl<T>::FillStringTensor(const char* const* s, size_t s_len) {

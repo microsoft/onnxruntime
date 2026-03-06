@@ -110,8 +110,9 @@ class WhisperEncoder(torch.nn.Module):
                 input_names=input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
-                opset_version=17,
+                opset_version=18,
                 do_constant_folding=True,
+                dynamo=False,
                 verbose=verbose,
             )
 

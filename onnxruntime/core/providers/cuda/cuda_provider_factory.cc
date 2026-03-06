@@ -682,8 +682,8 @@ struct CudaEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 
   CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
-                                                                                default_logger{default_logger_in},
                                                                                 ep_api{*ort_api_in.GetEpApi()},
+                                                                                default_logger{default_logger_in},
                                                                                 data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;

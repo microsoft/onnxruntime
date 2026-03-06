@@ -66,14 +66,6 @@
 #define LOCAL_SWITCH BOOL_SWITCH
 #endif
 
-#ifdef ORT_QUICK_BUILD
-// Quick build mode: only fp16 kernels are compiled
-#define FP16_SWITCH(COND, ...)         \
-  [&] {                                \
-    using elem_type = cutlass::half_t; \
-    return __VA_ARGS__();              \
-  }()
-#else
 #define FP16_SWITCH(COND, ...)               \
   [&] {                                      \
     if (COND) {                              \
@@ -84,7 +76,6 @@
       return __VA_ARGS__();                  \
     }                                        \
   }()
-#endif
 
 #ifdef ORT_QUICK_BUILD
 // Quick build mode: only hdim128 kernels are compiled

@@ -122,7 +122,10 @@ function(AddTest)
   onnxruntime_add_include_to_target(${_UT_TARGET} date::date flatbuffers::flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
-    target_include_directories(${_UT_TARGET} PRIVATE ${CUDAToolkit_INCLUDE_DIRS} ${CUDNN_INCLUDE_DIR})
+    target_include_directories(${_UT_TARGET} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      target_include_directories(${_UT_TARGET} PRIVATE ${CUDNN_INCLUDE_DIR})
+    endif()
     if (onnxruntime_USE_NCCL)
       target_include_directories(${_UT_TARGET} PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
@@ -590,6 +593,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_runtime_path.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_version.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
           )
@@ -669,10 +673,6 @@ if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
 
-if(onnxruntime_USE_ARMNN)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
-endif()
-
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
@@ -683,7 +683,6 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
@@ -692,7 +691,7 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
 endif()
-if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
 
@@ -753,7 +752,7 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
@@ -1217,6 +1216,13 @@ block()
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
   )
 
+  if (onnxruntime_USE_DNNL)
+    list(APPEND supporting_test_srcs
+      ${TEST_SRC_DIR}/common/dnnl_op_test_utils.cc
+      ${TEST_SRC_DIR}/common/dnnl_op_test_utils.h
+    )
+  endif()
+
   list(APPEND onnxruntime_provider_test_srcs
     ${supporting_test_srcs}
     ${onnxruntime_unittest_main_src}
@@ -1520,8 +1526,13 @@ endif()
                               onnxruntime_common ${CMAKE_DL_LIBS})
         set_target_properties(onnxruntime_runtime_path_test_shared_library PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
       else()
-        target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
-                              onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
+        if (CPUINFO_SUPPORTED)
+          target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
+                                onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
+        else()
+          target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
+                                onnxruntime_common ${CMAKE_DL_LIBS})
+        endif()
       endif()
       target_include_directories(onnxruntime_runtime_path_test_shared_library PRIVATE ${ONNXRUNTIME_ROOT})
 
@@ -1786,7 +1797,10 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     list(APPEND custom_op_src_patterns
         "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu"
         "${TEST_SRC_DIR}/testdata/custom_op_library/cuda/cuda_ops.*")
-    list(APPEND custom_op_lib_include ${CUDAToolkit_INCLUDE_DIRS} ${CUDNN_INCLUDE_DIR})
+    list(APPEND custom_op_lib_include ${CUDAToolkit_INCLUDE_DIRS})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      list(APPEND custom_op_lib_include ${CUDNN_INCLUDE_DIR})
+    endif()
     if (HAS_QSPECTRE)
       list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /Qspectre>")
     endif()

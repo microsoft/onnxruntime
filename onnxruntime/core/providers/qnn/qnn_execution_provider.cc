@@ -602,6 +602,19 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  static const std::string QNN_HTP_EXTENDED_UDMA_MODE = "extended_udma";
+  auto htp_extended_udma_pos = provider_options_map.find(QNN_HTP_EXTENDED_UDMA_MODE);
+  if (htp_extended_udma_pos != provider_options_map.end()) {
+    if ("1" == htp_extended_udma_pos->second) {
+      enable_htp_extended_udma_mode_ = true;
+    } else if ("0" == htp_extended_udma_pos->second) {
+      enable_htp_extended_udma_mode_ = false;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Invalid extended_udma mode: " << enable_htp_extended_udma_mode_ << " only 0 or 1 allowed. Set to 0.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified extended_udma mode: " << enable_htp_extended_udma_mode_;
+  }
+
   // Option to skip QNN API interface version check to use other QNN library other than default.
   static const std::string SKIP_QNN_VERSION_CHECK = "skip_qnn_version_check";
   auto skip_qnn_version_check = ParseBoolOption(SKIP_QNN_VERSION_CHECK, false, provider_options_map);
@@ -1006,7 +1019,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
                                                enable_vtcm_backup_buffer_sharing_,
                                                enable_file_mapped_weights_,
                                                rpcmem_library_,
-                                               context_bin_map);
+                                               context_bin_map,
+                                               enable_htp_extended_udma_mode_);
 
   context_bin_map.clear();
 

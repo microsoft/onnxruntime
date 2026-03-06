@@ -5,11 +5,13 @@
 # --------------------------------------------------------------------------
 
 import os
+import tempfile
 import unittest
 
 import onnx
-from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
-from gpt2_model_generator import create_gpt2_attention
+from bart_model_generator import create_bart_attention_sdpa
+from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
+from gpt2_model_generator import create_gpt2_attention, create_gpt2_attention_no_past
 from model_loader import get_test_data_path
 from parity_utilities import find_transformers_source
 
@@ -151,6 +153,67 @@ class TestFusion(unittest.TestCase):
 
         self.verify_fusion(optimized_model, "bert_3d_attention_opt.onnx")
 
+    def test_attention_fusion_pre_ln(self):
+        """Test attention fusion for pre-layer-norm first block.
+
+        In a pre-LN model the first block has no Add before the first
+        LayerNormalization — the graph input feeds LN directly.
+        """
+        model = create_bert_attention_pre_ln()
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
+
+    def test_attention_fusion_pre_ln_reverse_add_order(self):
+        """Pre-LN fusion with reversed Add input ordering."""
+        model = create_bert_attention_pre_ln(switch_add_inputs=True)
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention_reverse.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
+
+    def test_attention_fusion_pre_ln_with_skiplayernorm(self):
+        """Pre-LN fusion when SkipLayerNorm fusion runs first (exercises Change 3).
+
+        The optimizer runs fuse_skip_layer_norm before fuse_attention.  When enabled,
+        the Add + LayerNorm after the residual becomes a SkipLayerNormalization node,
+        and attention fusion must handle that anchor type.
+        """
+        model = create_bert_attention_pre_ln()
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention_skiplayernorm.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        options.enable_skip_layer_norm = True
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node with SkipLN anchor")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
+
     def test_gpt2_attention_fusion(self):
         hidden_size = 64
         num_heads = 4
@@ -190,6 +253,83 @@ class TestFusion(unittest.TestCase):
                     model_suffix = "opt_no_skiplayernorm"
 
                 model_name = f"gpt2_attention_{model_suffix}.onnx"
+                self.verify_fusion(optimized_model, model_name)
+
+    def test_bart_attention_sdpa_fusion(self):
+        hidden_size = 16
+        num_heads = 4
+        for with_mask in [True, False]:
+            model = create_bart_attention_sdpa(
+                hidden_size=hidden_size,
+                num_heads=num_heads,
+                with_mask=with_mask,
+            )
+
+            options = FusionOptions("bart")
+            # Disable SkipLayerNorm fusion to match real SDPA BART behaviour,
+            # where symbolic shape inference fails and the attention fusion
+            # anchor is a plain LayerNormalization node.
+            options.enable_skip_layer_norm = False
+
+            optimized_model = optimize_by_fusion(
+                model,
+                model_type="bart",
+                num_heads=num_heads,
+                hidden_size=hidden_size,
+                optimization_options=options,
+            )
+
+            attn_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+            self.assertEqual(
+                len(attn_nodes),
+                1,
+                f"Expected 1 Attention node for with_mask={with_mask}, got {len(attn_nodes)}",
+            )
+
+            attn = attn_nodes[0]
+            num_heads_attr = next((a for a in attn.attribute if a.name == "num_heads"), None)
+            self.assertIsNotNone(num_heads_attr)
+            self.assertEqual(num_heads_attr.i, num_heads)
+
+            unidirectional_attr = next((a for a in attn.attribute if a.name == "unidirectional"), None)
+            if with_mask:
+                # With mask → decoder self-attention → unidirectional=1
+                self.assertIsNotNone(unidirectional_attr)
+                self.assertEqual(unidirectional_attr.i, 1)
+            else:
+                # No mask → encoder attention → unidirectional=0
+                if unidirectional_attr is not None:
+                    self.assertEqual(unidirectional_attr.i, 0)
+
+    def test_gpt2_attention_no_past_fusion(self):
+        hidden_size = 64
+        num_heads = 4
+        for add_cast in [True, False]:
+            for switch_add_inputs in [False, True]:
+                model = create_gpt2_attention_no_past(
+                    hidden_size=hidden_size,
+                    num_heads=num_heads,
+                    switch_add_inputs=switch_add_inputs,
+                    add_cast=add_cast,
+                )
+                dir = "."
+                model_path = os.path.join(dir, "gpt2_attention_no_past.onnx")
+                onnx.save(model, model_path)
+
+                options = FusionOptions("gpt2")
+
+                optimized_model = optimize_model(
+                    model_path,
+                    model_type="gpt2",
+                    num_heads=num_heads,
+                    hidden_size=hidden_size,
+                    optimization_options=options,
+                )
+
+                os.remove(model_path)
+
+                model_suffix = "add_opt" if switch_add_inputs else "opt"
+                model_name = f"gpt2_attention_no_past_{model_suffix}.onnx"
                 self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):

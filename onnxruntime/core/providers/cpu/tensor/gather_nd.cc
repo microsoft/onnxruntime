@@ -66,6 +66,18 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   const auto num_slices = indices_shape.SizeToDimension(indices_shape.NumDimensions() - 1);
   const auto slice_size = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_) + num_slice_dims);
   const auto num_batches = input_shape.SizeToDimension(SafeInt<size_t>(batch_dims_));
+
+  // Validate batch dimensions to prevent division by zero
+  if (num_batches == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GatherND: input tensor batch dimensions cannot be zero");
+  }
+  if (num_slices % num_batches != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GatherND: indices batch size (", num_slices,
+                           ") is not divisible by input batch size (", num_batches, ")");
+  }
+
   const auto input_batch_stride = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_));
   const auto num_slices_per_batch = num_slices / num_batches;
   std::vector<int64_t> sizes_from_slice_dims(onnxruntime::narrow<size_t>(num_slice_dims));
