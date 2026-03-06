@@ -223,7 +223,6 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   // Print configured options for the session.
-
   LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider Session Options:"
                         << "\n " << migraphx_provider_option::kDeviceId << ": " << device_id_
                         << "\n " << migraphx_provider_option::kFp16Enable << ": " << fp16_enable_
@@ -1431,6 +1430,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           auto& name = it.first;
           auto& index = it.second;
           auto input_tensor = ctx.GetInput(index);
+          if (!input_tensor.HasValue())
+            continue;
           auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
           const auto tensor_shape = tensor_info.GetShape();
           std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
@@ -1448,6 +1449,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           for (auto&& name : param_shapes.names()) {
             if (map_input_name_index.count(name) > 0) {
               auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+              if (!input_tensor.HasValue())
+                continue;
               auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
               const auto tensor_shape = tensor_info.GetShape();
               std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
@@ -1494,6 +1497,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             for (auto&& name : local_param_shapes.names()) {
               if (map_input_name_index.count(name) > 0) {
                 auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+                if (!input_tensor.HasValue())
+                  continue;
                 auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
                 const auto tensor_shape = tensor_info.GetShape();
                 const auto tensor_type = tensor_info.GetElementType();
@@ -1528,6 +1533,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           if (map_input_name_index.count(name) > 0) {
             LOGS_DEFAULT(VERBOSE) << "Setting parameters for:" << name;
             auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+            if (!input_tensor.HasValue())
+              continue;
             auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
             const auto tensor_shape = tensor_info.GetShape();
             const auto tensor_type = tensor_info.GetElementType();
