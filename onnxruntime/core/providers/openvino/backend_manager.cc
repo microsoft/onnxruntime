@@ -328,7 +328,10 @@ static bool IsQDQGraphWithUint16OrInt16(const onnxruntime::GraphViewer& graph_vi
 
 static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
                                 [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
-                                [[maybe_unused]] const onnxruntime::Node& fused_node) {
+                                [[maybe_unused]] const onnxruntime::Node& fused_node,
+                                [[maybe_unused]] const onnxruntime::GraphViewer& subgraph,
+                                [[maybe_unused]] const logging::Logger& logger,
+                                [[maybe_unused]] bool initializer_data_in_proto) {
 #ifndef RELEASE
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
@@ -341,8 +344,21 @@ static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& on
       model_name.replace_extension(".onnx");
     }
 
-    std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto->SerializeToOstream(dump);
+    // When initializer data was omitted from the proto (ORT_MEM_ADDR references), build a
+    // self-contained proto for the dump so the saved .onnx file can be reloaded standalone.
+    if (!initializer_data_in_proto) {
+      auto model_for_dump = subgraph.CreateModel(logger);
+      auto model_proto_for_dump = model_for_dump->ToProto();
+      model_proto_for_dump->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+      subgraph.ToProto(*model_proto_for_dump->mutable_graph(), /*include_initializers*/ true,
+                       /*include_outer_scope_args*/ true, /*execution_order*/ 0,
+                       /*include_initializer_data*/ true);
+      std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto_for_dump->SerializeToOstream(dump);
+    } else {
+      std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto->SerializeToOstream(dump);
+    }
   }
 #endif
 }
@@ -467,7 +483,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node, subgraph, logger, /*initializer_data_in_proto*/ true);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   }
@@ -481,7 +497,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node, subgraph, logger, /*initializer_data_in_proto*/ true);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   }
@@ -581,7 +597,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
       }
     }
 
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node, subgraph, logger, include_initializer_data_in_proto);
 
     return model_proto;
   }
