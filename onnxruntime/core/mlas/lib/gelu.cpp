@@ -14,8 +14,7 @@ Abstract:
     This module contains Gelu helper functions.
 
 --*/
-
-#include "gelu_neon_fp16.h"
+#include "mlasi.h"
 
 void
 MLASCALL

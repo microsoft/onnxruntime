@@ -55,7 +55,6 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/softmax.h
   ${MLAS_SRC_DIR}/saturation_check.cpp
   ${MLAS_SRC_DIR}/gelu.cpp
-  ${MLAS_SRC_DIR}/gelu_neon_fp16.h
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -120,6 +119,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/sconv_nchw_kernel_neon.cpp
         ${MLAS_SRC_DIR}/erf_neon_fp16.h
         ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/gelu_neon_fp16.h
         ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
       )
 
@@ -551,8 +551,6 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/erf_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/gelu_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/gelu.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/erf.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/platform.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
         endif()
 

@@ -22,9 +22,7 @@ Abstract:
 
 #include "mlasi.h"
 #include "softmax.h"
-// #ifdef MLAS_USE_SVE
-// #include "sve/mlasi_sve.h"
-// #endif
+
 //
 // Bundles the floating point constants for use by kernels written in assembly.
 //

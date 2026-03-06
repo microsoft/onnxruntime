@@ -610,7 +610,6 @@ void
     size_t N
     );
 
-using _mlas_fp16_ = uint16_t;
 typedef
 void
 (MLASCALL MLAS_COMPUTE_ERF_FP16_KERNEL)(
@@ -1438,11 +1437,11 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
 #endif
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-        MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine;
-        MLAS_COMPUTE_GELU_FP16_KERNEL* GeluFP16KernelRoutine;
-        MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine;
-#endif
+
+MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine = nullptr;
+MLAS_COMPUTE_GELU_FP16_KERNEL* GeluFP16KernelRoutine = nullptr;
+MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
+
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;

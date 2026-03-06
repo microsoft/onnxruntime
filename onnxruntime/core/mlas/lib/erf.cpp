@@ -23,14 +23,6 @@ Abstract:
 
 #include "mlasi.h"
 
-#ifdef MLAS_USE_SVE
-#include "sve/mlasi_sve.h"
-#endif
-
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-#include "erf_neon_fp16.h"
-#endif
-
 //
 // Bundles the constants for use by kernels written in assembly.
 //
