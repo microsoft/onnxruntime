@@ -268,8 +268,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormNegativePositionIds) {
   tester.AddOutput<int32_t>("mask_index", mask_index_dims, {0});
 
   // Run CPU only - expect failure due to negative position_ids
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
-                                                          kDmlExecutionProvider, kOpenVINOExecutionProvider});
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test
