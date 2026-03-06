@@ -266,7 +266,6 @@ def run_tensorscatter_attention(
     nonpad_seqlens,
     scatter_positions,
     ep,
-    device,
     torch_type,
     ort_type,
     is_causal=0,
@@ -328,6 +327,11 @@ def run_tensorscatter_attention(
 
     ref_output = numpy_attention_ref(q_ref, k_ref, v_ref, nonpad_seqlens, is_causal=bool(is_causal))
     ref_output_3d = ref_output.reshape(batch_size, q_seq_len, q_hidden)
+
+    # Compute expected present_key/present_value: BSNH → BNSH transpose of updated cache.
+    # Attention op with no past_key simply reshapes+transposes K/V to [B, H, S, D].
+    ref_present_k = k_ref.transpose(0, 2, 1, 3)  # [B, kv_num_heads, total_kv_seq_len, head_size]
+    ref_present_v = v_ref.transpose(0, 2, 1, 3)
 
     # --- ORT execution with IO Binding ---
     onnx_model_str = build_tensorscatter_attention_graph(
@@ -398,7 +402,7 @@ def run_tensorscatter_attention(
     present_k_result = present_k_ort.numpy()
     present_v_result = present_v_ort.numpy()
 
-    return output_result, ref_output_3d, present_k_result, present_v_result
+    return output_result, ref_output_3d, present_k_result, present_v_result, ref_present_k, ref_present_v
 
 
 # #################################################################################################
@@ -497,7 +501,7 @@ class TestTensorScatterAttentionCPU(unittest.TestCase):
         seqlens,
         is_causal,
     ):
-        output, ref_output, _, _ = run_tensorscatter_attention(
+        output, ref_output, present_k, present_v, ref_present_k, ref_present_v = run_tensorscatter_attention(
             batch_size=batch,
             total_kv_seq_len=total_kv,
             q_seq_len=q_seq,
@@ -507,12 +511,13 @@ class TestTensorScatterAttentionCPU(unittest.TestCase):
             nonpad_seqlens=seqlens,
             scatter_positions=scatter_pos,
             ep="CPUExecutionProvider",
-            device="cpu",
             torch_type=torch.float32,
             ort_type=TensorProto.FLOAT,
             is_causal=is_causal,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=cpu_fp32_rtol, atol=cpu_fp32_atol)
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=cpu_fp32_rtol, atol=cpu_fp32_atol)
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=cpu_fp32_rtol, atol=cpu_fp32_atol)
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
@@ -538,7 +543,7 @@ class TestTensorScatterAttentionCUDAFP16(unittest.TestCase):
         seqlens,
         is_causal,
     ):
-        output, ref_output, _, _ = run_tensorscatter_attention(
+        output, ref_output, present_k, present_v, ref_present_k, ref_present_v = run_tensorscatter_attention(
             batch_size=batch,
             total_kv_seq_len=total_kv,
             q_seq_len=q_seq,
@@ -548,12 +553,13 @@ class TestTensorScatterAttentionCUDAFP16(unittest.TestCase):
             nonpad_seqlens=seqlens,
             scatter_positions=scatter_pos,
             ep="CUDAExecutionProvider",
-            device="cuda",
             torch_type=torch.float16,
             ort_type=TensorProto.FLOAT16,
             is_causal=is_causal,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
@@ -577,7 +583,7 @@ class TestTensorScatterAttentionCUDAFP32(unittest.TestCase):
         seqlens,
         is_causal,
     ):
-        output, ref_output, _, _ = run_tensorscatter_attention(
+        output, ref_output, present_k, present_v, ref_present_k, ref_present_v = run_tensorscatter_attention(
             batch_size=batch,
             total_kv_seq_len=total_kv,
             q_seq_len=q_seq,
@@ -587,12 +593,13 @@ class TestTensorScatterAttentionCUDAFP32(unittest.TestCase):
             nonpad_seqlens=seqlens,
             scatter_positions=scatter_pos,
             ep="CUDAExecutionProvider",
-            device="cuda",
             torch_type=torch.float32,
             ort_type=TensorProto.FLOAT,
             is_causal=is_causal,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp32"], atol=atol["fp32"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp32"], atol=atol["fp32"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp32"], atol=atol["fp32"])
 
 
 # #################################################################################################
@@ -702,7 +709,6 @@ def run_tensorscatter_attention_with_mask(
     mask_positions_to_block,
     use_bool_mask,
     ep,
-    device,
     torch_type,
     ort_type,
     is_causal=0,
@@ -775,6 +781,10 @@ def run_tensorscatter_attention_with_mask(
     ref_output = numpy_attention_ref(q_ref, k_ref, v_ref, nonpad_seqlens, is_causal=bool(is_causal), attn_bias=ref_bias)
     ref_output_3d = ref_output.reshape(batch_size, q_seq_len, q_hidden)
 
+    # Compute expected present_key/present_value: BSNH → BNSH transpose of updated cache.
+    ref_present_k = k_ref.transpose(0, 2, 1, 3)
+    ref_present_v = v_ref.transpose(0, 2, 1, 3)
+
     # --- ORT execution ---
     mask_shape = [q_seq_len, total_kv_seq_len]
     onnx_model_str = build_tensorscatter_attention_graph_with_mask(
@@ -833,7 +843,9 @@ def run_tensorscatter_attention_with_mask(
     io_binding.synchronize_outputs()
 
     output_result = output_ort.numpy()
-    return output_result, ref_output_3d
+    present_k_result = present_k_ort.numpy()
+    present_v_result = present_v_ort.numpy()
+    return output_result, ref_output_3d, present_k_result, present_v_result, ref_present_k, ref_present_v
 
 
 # Test cases for nonpad_kv_seqlen + attn_mask combination
@@ -900,7 +912,7 @@ class TestTensorScatterAttentionWithMaskCPU(unittest.TestCase):
         mask_pos,
         use_bool_mask,
     ):
-        output, ref_output = run_tensorscatter_attention_with_mask(
+        output, ref_output, present_k, present_v, ref_present_k, ref_present_v = run_tensorscatter_attention_with_mask(
             batch_size=batch,
             total_kv_seq_len=total_kv,
             q_seq_len=q_seq,
@@ -912,11 +924,12 @@ class TestTensorScatterAttentionWithMaskCPU(unittest.TestCase):
             mask_positions_to_block=mask_pos,
             use_bool_mask=use_bool_mask,
             ep="CPUExecutionProvider",
-            device="cpu",
             torch_type=torch.float32,
             ort_type=TensorProto.FLOAT,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=cpu_fp32_rtol, atol=cpu_fp32_atol)
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=cpu_fp32_rtol, atol=cpu_fp32_atol)
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=cpu_fp32_rtol, atol=cpu_fp32_atol)
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
@@ -942,7 +955,7 @@ class TestTensorScatterAttentionWithMaskCUDA(unittest.TestCase):
         mask_pos,
         use_bool_mask,
     ):
-        output, ref_output = run_tensorscatter_attention_with_mask(
+        output, ref_output, present_k, present_v, ref_present_k, ref_present_v = run_tensorscatter_attention_with_mask(
             batch_size=batch,
             total_kv_seq_len=total_kv,
             q_seq_len=q_seq,
@@ -954,11 +967,12 @@ class TestTensorScatterAttentionWithMaskCUDA(unittest.TestCase):
             mask_positions_to_block=mask_pos,
             use_bool_mask=use_bool_mask,
             ep="CUDAExecutionProvider",
-            device="cuda",
             torch_type=torch.float16,
             ort_type=TensorProto.FLOAT16,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
 if __name__ == "__main__":
