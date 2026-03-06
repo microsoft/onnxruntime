@@ -212,45 +212,73 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
         offset_group,
         use_mask));
 
-    for (int64_t g = 0; g < group; ++g) {
-      const T* W_g = Wdata + g * (M / group) * kernel_dim;
-      const T* col_g = col_buffer.get() + g * kernel_dim * col_stride;
-      T* Y_g = Ydata + b * M * output_image_size + g * (M / group) * output_image_size;
+    // GEMM layout trick: compute Y = W * Col without physical transpose.
+    //
+    // Our data is row-major: W [M/group, kernel_dim], Col [kernel_dim, cur_out_size], Y [M/group, cur_out_size].
+    // cuBLAS is column-major. Key insight: row-major A[M,K] in memory equals column-major A^T[K,M].
+    // We compute Y^T = Col^T * W^T by passing Col as A and W as B, both OP_N (no transpose):
+    //   - Col (row [kernel_dim, cur_out_size]) -> cuBLAS interprets as col-major [cur_out_size, kernel_dim] = Col^T
+    //   - W (row [M/group, kernel_dim]) -> cuBLAS interprets as col-major [kernel_dim, M/group] = W^T
+    //   - C = A*B = Col^T * W^T = (W*Col)^T = Y^T; C is col-major [cur_out_size, M/group] = Y in row-major
+    //
+    // m=cur_out_size, n=M/group, k=kernel_dim; lda=cur_out_size, ldb=kernel_dim, ldc=cur_out_size.
+    //
+    // cur_parallel==1: cur_out_size==output_image_size, C layout (pos, channel) matches NCHW Y_g[0,ch,pos] -> write
+    // directly into Y_g. Use strided batched for all groups in one call.
+    // cur_parallel>1: layouts differ -> write to gemm_output_buffer, then DeformConvCopyGemmOutputRowMajorToNCHW.
 
-      // GEMM layout trick: compute Y = W * Col without physical transpose.
-      //
-      // Our data is row-major: W [M/group, kernel_dim], Col [kernel_dim, cur_out_size], Y [M/group, cur_out_size].
-      // cuBLAS is column-major. Key insight: row-major A[M,K] in memory equals column-major A^T[K,M].
-      // We compute Y^T = Col^T * W^T by passing Col as A and W as B, both OP_N (no transpose):
-      //   - Col (row [kernel_dim, cur_out_size]) -> cuBLAS interprets as col-major [cur_out_size, kernel_dim] = Col^T
-      //   - W (row [M/group, kernel_dim]) -> cuBLAS interprets as col-major [kernel_dim, M/group] = W^T
-      //   - C = A*B = Col^T * W^T = (W*Col)^T = Y^T; C is col-major [cur_out_size, M/group] = Y in row-major
-      //
-      // cublasGemmHelper: m=cur_out_size, n=M/group, k=kernel_dim; lda=cur_out_size, ldb=kernel_dim, ldc=cur_out_size
-      //
-      // cur_parallel==1: cur_out_size==output_image_size, C layout (pos, channel) matches NCHW Y_g[0,ch,pos] -> write
-      // into Y_g. cur_parallel>1: layouts differ -> write to gemm_output_buffer, then DeformConvCopyGemmOutputRowMajorToNCHW.
-      const bool gemm_writes_directly = (cur_parallel == 1);
-
-      CUBLAS_RETURN_IF_ERROR((cublasGemmHelper(
+    const bool gemm_writes_directly = (cur_parallel == 1);
+    if (gemm_writes_directly) {
+      // Strided batched: one call for all groups. Strides between batches:
+      const int64_t stride_col = kernel_dim * col_stride;   // = kernel_dim * output_image_size when cur_parallel==1
+      const int64_t stride_w = (M / group) * kernel_dim;
+      const int64_t stride_y = (M / group) * output_image_size;
+      CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
           cublas,
           CUBLAS_OP_N,
           CUBLAS_OP_N,
-          narrow<int>(cur_out_size),
+          narrow<int>(output_image_size),
           narrow<int>(M / group),
           narrow<int>(kernel_dim),
           &alpha,
-          reinterpret_cast<const CudaT*>(col_g),
-          narrow<int>(cur_out_size),
-          reinterpret_cast<const CudaT*>(W_g),
+          reinterpret_cast<const CudaT*>(col_buffer.get()),
+          narrow<int>(output_image_size),
+          stride_col,
+          reinterpret_cast<const CudaT*>(Wdata),
           narrow<int>(kernel_dim),
+          stride_w,
           &beta,
-          (gemm_writes_directly ? reinterpret_cast<CudaT*>(Y_g) : reinterpret_cast<CudaT*>(gemm_output_buffer.get())),
-          narrow<int>(gemm_writes_directly ? output_image_size : cur_out_size),
+          reinterpret_cast<CudaT*>(Ydata + b * M * output_image_size),
+          narrow<int>(output_image_size),
+          stride_y,
+          narrow<int>(group),
           device_prop,
-          UseTF32())));
+          UseTF32()));
+    } else {
+      // cur_parallel>1: GEMM output layout differs from NCHW; write to buffer then copy per group.
+      for (int64_t g = 0; g < group; ++g) {
+        const T* W_g = Wdata + g * (M / group) * kernel_dim;
+        const T* col_g = col_buffer.get() + g * kernel_dim * col_stride;
+        T* Y_g = Ydata + b * M * output_image_size + g * (M / group) * output_image_size;
 
-      if (!gemm_writes_directly) {
+        CUBLAS_RETURN_IF_ERROR((cublasGemmHelper(
+            cublas,
+            CUBLAS_OP_N,
+            CUBLAS_OP_N,
+            narrow<int>(cur_out_size),
+            narrow<int>(M / group),
+            narrow<int>(kernel_dim),
+            &alpha,
+            reinterpret_cast<const CudaT*>(col_g),
+            narrow<int>(cur_out_size),
+            reinterpret_cast<const CudaT*>(W_g),
+            narrow<int>(kernel_dim),
+            &beta,
+            reinterpret_cast<CudaT*>(gemm_output_buffer.get()),
+            narrow<int>(cur_out_size),
+            device_prop,
+            UseTF32())));
+
         ORT_RETURN_IF_ERROR(DeformConvCopyGemmOutputRowMajorToNCHW<T>(
             stream,
             gemm_output_buffer.get(),
