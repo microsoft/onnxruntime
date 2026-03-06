@@ -567,7 +567,8 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin"));
 
   // Model path is a bare filename (no directory component). parent_path() returns empty,
-  // so anchor_dir falls back to "." (current directory). Path traversal should still be blocked.
+  // so anchor_dir falls back to "." (current directory). Path traversal should still be blocked
+  // if the current working directory is not the filesystem root directory.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("model.onnx", "data.bin"));
 
   bool is_cwd_root = std::filesystem::weakly_canonical(".") == std::filesystem::weakly_canonical("..");
