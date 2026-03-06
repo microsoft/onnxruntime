@@ -16,29 +16,35 @@ namespace onnxruntime {
 
 namespace {
 
-// Bilinear interpolation at (h, w). Returns 0 if out of bounds.
+// Bilinear interpolation at fractional coordinates (h, w).
+// Returns 0 if (h,w) is out of bounds; otherwise computes weighted average of the four
+// nearest integer grid points. Standard implementation for deformable convolution sampling.
 template <typename T>
 T BilinearInterpolate(const T* in, int64_t height, int64_t width, T h, T w) {
-  // Check boundaries
+  // Out-of-bounds: return zero (same as zero-padding).
   if (h <= static_cast<T>(-1) || h >= height || w <= static_cast<T>(-1) || w >= width) {
     return static_cast<T>(0);
   }
 
+  // Integer floor and ceiling indices for the 2x2 neighborhood.
   const int64_t h_low = static_cast<int64_t>(std::floor(h));
   const int64_t w_low = static_cast<int64_t>(std::floor(w));
   const int64_t h_high = h_low + 1;
   const int64_t w_high = w_low + 1;
 
+  // Fractional parts for interpolation weights.
   const T lh = h - static_cast<T>(h_low);
   const T lw = w - static_cast<T>(w_low);
   const T hh = static_cast<T>(1) - lh;
   const T hw = static_cast<T>(1) - lw;
 
+  // Load four corner values; use 0 when index is out of bounds.
   const T v1 = (h_low >= 0 && w_low >= 0) ? in[h_low * width + w_low] : static_cast<T>(0);
   const T v2 = (h_low >= 0 && w_high < width) ? in[h_low * width + w_high] : static_cast<T>(0);
   const T v3 = (h_high < height && w_low >= 0) ? in[h_high * width + w_low] : static_cast<T>(0);
   const T v4 = (h_high < height && w_high < width) ? in[h_high * width + w_high] : static_cast<T>(0);
 
+  // Bilinear weights: (1-lh)*(1-lw), (1-lh)*lw, lh*(1-lw), lh*lw.
   const T w1 = hh * hw;
   const T w2 = hh * lw;
   const T w3 = lh * hw;
@@ -48,86 +54,86 @@ T BilinearInterpolate(const T* in, int64_t height, int64_t width, T h, T w) {
 }
 
 // Deformable Im2Col for a SINGLE image.
-// Converts the input image into a matrix suitable for GEMM.
+// Converts the input image into a matrix suitable for GEMM by sampling with learned offsets.
 // Output 'data_col' shape: [C_in * kH * kW, H_out * W_out]
-template <typename T>
+// When UseMask=false, pass nullptr for data_mask; compiler eliminates dead code for mask.
+template <typename T, bool UseMask>
 void DeformableIm2col(
     const T* data_im,                        // Input image [C, H, W]
     const T* data_offset,                    // Offset [offset_groups * 2 * kH * kW, H_out, W_out]
-    const T* data_mask,                      // Mask [offset_groups * kH * kW, H_out, W_out] (optional)
-    int64_t height, int64_t width,           // Input dimensions
-    int64_t kernel_h, int64_t kernel_w,      // Kernel dimensions
-    int64_t pad_h, int64_t pad_w,            // Padding
-    int64_t stride_h, int64_t stride_w,      // Stride
-    int64_t dilation_h, int64_t dilation_w,  // Dilation
+    const T* data_mask,                      // Mask [offset_groups * kH * kW, H_out, W_out] (nullptr when UseMask=false)
+    int64_t height, int64_t width,           // Input spatial dimensions
+    int64_t kernel_h, int64_t kernel_w,     // Kernel dimensions
+    int64_t pad_h, int64_t pad_w,            // Padding (begin) for H and W
+    int64_t stride_h, int64_t stride_w,     // Stride for H and W
+    int64_t dilation_h, int64_t dilation_w,  // Dilation for H and W
     int64_t channels,                        // Input channels
-    int64_t offset_groups,                   // Number of offset groups
-    int64_t height_col, int64_t width_col,   // Output dimensions
-    bool use_mask,                           // Use mask
-    T* data_col,                             // Output buffer
+    int64_t offset_groups,                   // Number of offset groups (channels shared per group)
+    int64_t height_col, int64_t width_col,   // Output spatial dimensions (H_out, W_out)
+    T* data_col,                             // Output buffer for im2col result
     concurrency::ThreadPool* thread_pool) {
   const int64_t channel_per_offset_group = channels / offset_groups;
+  const int64_t kernel_size = kernel_h * kernel_w;
+  const int64_t output_size = height_col * width_col;
 
-  // Loop order optimized for cache locality:
-  // Outer loop: Channels
-  // Inner loop: Spatial locations (c_col)
-  // This ensures sequential access to data_col and better locality for data_im.
-
+  // Parallelize over (channel, kernel_position) so each task processes one full row of data_col.
+  // This yields channels*kernel_size tasks, better CPU utilization and cache-friendly sequential writes.
   concurrency::ThreadPool::TryParallelFor(
-      thread_pool, static_cast<std::ptrdiff_t>(channels), 1.0,
-      [&](ptrdiff_t c_im_start, ptrdiff_t c_im_end) {
-        for (int64_t c_im = c_im_start; c_im < c_im_end; ++c_im) {
+      thread_pool,
+      static_cast<std::ptrdiff_t>(channels * kernel_size),
+      static_cast<double>(output_size) * 10.0,
+      [&](ptrdiff_t begin, ptrdiff_t end) {
+        for (ptrdiff_t idx = begin; idx < end; ++idx) {
+          // Decompose idx into (c_im, i, j): which channel and kernel position.
+          const int64_t j = static_cast<int64_t>(idx) % kernel_w;
+          const int64_t i = (static_cast<int64_t>(idx) / kernel_w) % kernel_h;
+          const int64_t c_im = static_cast<int64_t>(idx) / kernel_size;
           const int64_t offset_grp = c_im / channel_per_offset_group;
 
-          for (int64_t c_col = 0; c_col < height_col * width_col; ++c_col) {
-            const int64_t w_col = c_col % width_col;
-            const int64_t h_col = c_col / width_col;
+          // Output row: one (channel, kernel_pos) across all spatial locations.
+          T* col_ptr = data_col + static_cast<int64_t>(idx) * output_size;
+          const T* im_ptr = data_im + c_im * height * width;
 
-            // Iterate over kernel window
-            for (int64_t i = 0; i < kernel_h; ++i) {
-              for (int64_t j = 0; j < kernel_w; ++j) {
-                // Calculate the index in the offset/mask tensors.
-                // The offset tensor is organized as: (offset_groups, 2 * kH * kW, H_out, W_out).
-                // Flattened offset channel index relative to the start of the tensor:
-                // base = offset_grp * (2 * kH * kW).
-                // specific = 2 * (i * kW + j).
+          // Offset tensor layout: [offset_grp, 2*kH*kW, H_out, W_out] flattened.
+          // For (i,j) we use channel indices 2*(i*kW+j) and 2*(i*kW+j)+1 for offset_h, offset_w.
+          const int64_t offset_base =
+              offset_grp * 2 * kernel_size + 2 * (i * kernel_w + j);
 
-                const int64_t data_offset_h_ptr =
-                    ((offset_grp * (2 * kernel_h * kernel_w) + 2 * (i * kernel_w + j)) * height_col + h_col) * width_col + w_col;
+          // Mask base index; only used when UseMask=true (compiler removes when false).
+          [[maybe_unused]] int64_t mask_base = 0;
+          if constexpr (UseMask) {
+            mask_base = offset_grp * kernel_size + i * kernel_w + j;
+          }
 
-                const int64_t data_offset_w_ptr =
-                    ((offset_grp * (2 * kernel_h * kernel_w) + 2 * (i * kernel_w + j) + 1) * height_col + h_col) * width_col + w_col;
+          // Loop over output spatial positions.
+          for (int64_t h_col = 0; h_col < height_col; ++h_col) {
+            for (int64_t w_col = 0; w_col < width_col; ++w_col) {
+              const int64_t spatial_idx = h_col * width_col + w_col;
 
-                const int64_t data_mask_ptr =
-                    ((offset_grp * (kernel_h * kernel_w) + (i * kernel_w + j)) * height_col + h_col) * width_col + w_col;
+              // Fetch learned offsets for this (output_pos, kernel_pos).
+              const T offset_h =
+                  data_offset[offset_base * output_size + spatial_idx];
+              const T offset_w =
+                  data_offset[(offset_base + 1) * output_size + spatial_idx];
 
-                const T offset_h = data_offset[data_offset_h_ptr];
-                const T offset_w = data_offset[data_offset_w_ptr];
+              // Deformed sampling coordinates (fractional, for bilinear interpolation).
+              const T h_im = h_col * stride_h - pad_h + i * dilation_h + offset_h;
+              const T w_im = w_col * stride_w - pad_w + j * dilation_w + offset_w;
 
-                T val = static_cast<T>(0);
-                T mask_val = static_cast<T>(1);
-                if (use_mask) {
-                  mask_val = data_mask[data_mask_ptr];
-                }
+              // Sample input at deformed location; returns 0 if out of bounds.
+              T val = BilinearInterpolate(im_ptr, height, width, h_im, w_im);
 
-                // Only compute interpolation if mask is not zero (optimization)
-                if (mask_val != 0) {
-                  const T h_im = h_col * stride_h - pad_h + i * dilation_h + offset_h;
-                  const T w_im = w_col * stride_w - pad_w + j * dilation_w + offset_w;
-
-                  // Map (c_im, h_im, w_im) back to input
-                  // data_im is [C, H, W]
-                  const T* data_im_ptr = data_im + c_im * (height * width);
-                  val = BilinearInterpolate(data_im_ptr, height, width, h_im, w_im);
-                }
-
-                // Assign to data_col
-                // The layout of data_col row is: [Channel, KernelH, KernelW] flattened.
-                // Row index: c_im * (kH * kW) + i * kW + j
-                const int64_t col_row_idx = (c_im * kernel_h * kernel_w) + (i * kernel_w + j);
-
-                data_col[col_row_idx * (height_col * width_col) + c_col] = val * mask_val;
+              // Modulate by mask when UseMask=true; compiled away when false.
+              // Design choice: we always interpolate then multiply, rather than skip when mask==0.
+              // Rationale: (1) Skipping adds a branch; unpredictable mask values cause misprediction
+              // penalties (~15-20 cycles). (2) Straight-line code vectorizes better; conditional
+              // skip blocks SIMD. (3) Multiplying by 0 is cheap when vectorized. In typical DCN
+              // usage (moderate mask density), the unconditional path usually wins.
+              if constexpr (UseMask) {
+                val *= data_mask[mask_base * output_size + spatial_idx];
               }
+
+              col_ptr[spatial_idx] = val;
             }
           }
         }
@@ -166,22 +172,21 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const int64_t out_w = params.out_w;
   const bool use_mask = params.use_mask;
 
-  // Allocate Output
+  // Allocate output tensor [N, M, out_h, out_w].
   const TensorShape Y_shape({N, M, out_h, out_w});
   Tensor* Y = context->Output(0, Y_shape);
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
 
-  // Common sizes
+  // Precompute common sizes for the im2col + GEMM pipeline.
   const int64_t kernel_size = kH * kW;
   const int64_t output_image_size = out_h * out_w;
   const int64_t input_image_size = H * W_in;
-  const int64_t kernel_dim = C / group * kernel_size;  // The "K" dimension for GEMM (per group)
+  const int64_t kernel_dim = C / group * kernel_size;  // K dimension for GEMM: C/group * kH * kW
 
-  // Total col buffer size: (C * kH * kW) * (out_h * out_w)
-  // We allocate this per image to save memory compared to batch allocation if N is large,
-  // or simply because Im2Col is easier to implement per-image.
+  // Col buffer: shape [C*kH*kW, out_h*out_w]. Allocate per-image (process one image at a time)
+  // to reduce peak memory when N is large; im2col is implemented per-image anyway.
   const int64_t col_buffer_size = (C * kernel_size) * output_image_size;
 
   AllocatorPtr alloc;
@@ -197,58 +202,46 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  // Main Loop: Iterate over Batch
+  // Process each image in the batch.
   for (int64_t n = 0; n < N; ++n) {
-    // 1. Perform Im2Col for the current image n
-    // Pointers for current image
+    // Step 1: Deformable Im2Col for image n.
+    // Gather deformed samples into col buffer for GEMM.
     const T* X_curr = Xdata + n * (C * input_image_size);
     const T* offset_curr = offset_data + n * (offset_group * 2 * kernel_size * output_image_size);
     const T* mask_curr = use_mask ? (mask_data + n * (offset_group * kernel_size * output_image_size)) : nullptr;
     T* col_buffer_ptr = col_buffer.get();
 
-    // DeformableIm2col only needs pad_h, pad_w (begin-side pads) for coordinate mapping.
-    // pad_h_end and pad_w_end are used in out_h/out_w computation (params) but do not affect
-    // the im2col sampling logic; they only influence output dimensions.
-    DeformableIm2col<T>(
-        X_curr,
-        offset_curr,
-        mask_curr,
-        H, W_in,
-        kH, kW,
-        pad_h, pad_w,
-        stride_h, stride_w,
-        dilation_h, dilation_w,
-        C,
-        offset_group,
-        out_h, out_w,
-        use_mask,
-        col_buffer_ptr,
-        thread_pool);
+    // Dispatch to template instantiation: UseMask=true or false eliminates branch in hot loop.
+    // Note: pad_h, pad_w are begin-side paddings for coordinate mapping; pad_h_end/pad_w_end
+    // affect only output size (already baked into out_h, out_w), not im2col sampling.
+    if (use_mask) {
+      DeformableIm2col<T, true>(
+          X_curr, offset_curr, mask_curr,
+          H, W_in, kH, kW,
+          pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
+          C, offset_group, out_h, out_w,
+          col_buffer_ptr, thread_pool);
+    } else {
+      DeformableIm2col<T, false>(
+          X_curr, offset_curr, nullptr,
+          H, W_in, kH, kW,
+          pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
+          C, offset_group, out_h, out_w,
+          col_buffer_ptr, thread_pool);
+    }
 
-    // 2. Perform GEMM for each group
+    // Step 2: GEMM for each group. Y = W * Col (per group).
     for (int64_t g = 0; g < group; ++g) {
-      // Weight pointer for group g
-      // Weight shape: [M, C/group, kH, kW].
-      // Stride for group g is (M/group) * (C/group * kH * kW).
+      // Weight for group g: shape [M/group, C/group, kH, kW], row-major.
       const T* weight_g = Wdata + g * (M / group) * kernel_dim;
 
-      // Col buffer pointer for group g
-      // Col buffer shape: [C * kH * kW, output_image_size]
-      // We need the rows corresponding to group g.
-      // Row stride: output_image_size
-      // Group stride: (C/group * kH * kW) * output_image_size
+      // Col rows for group g: layout [C*kH*kW, out_h*out_w], group g spans rows [g*kernel_dim, (g+1)*kernel_dim).
       const T* col_g = col_buffer_ptr + g * kernel_dim * output_image_size;
 
-      // Output pointer for group g
-      // Output shape: [N, M, out_h, out_w]
-      // Current image offset: n * M * output_image_size
-      // Group offset: g * (M/group) * output_image_size
+      // Output slice for group g: [n, g*M/group:(g+1)*M/group, out_h, out_w].
       T* Y_g = Ydata + n * M * output_image_size + g * (M / group) * output_image_size;
 
-      // Y = W * Col
-      // W matrix: [M/group, kernel_dim]
-      // Col matrix: [kernel_dim, output_image_size]
-      // Y matrix: [M/group, output_image_size]
+      // GEMM: Y = W * Col. W [M/group, kernel_dim], Col [kernel_dim, output_image_size].
       math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
@@ -265,7 +258,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  // 3. Add Bias if present
+  // Step 3: Add bias if provided (broadcast over spatial dimensions).
   if (Bdata != nullptr) {
     int64_t total_work = N * M;
     concurrency::ThreadPool::TryParallelFor(
@@ -275,7 +268,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
             int64_t n = idx / M;
             int64_t m = idx % M;
             T* Y_ptr = Ydata + n * M * output_image_size + m * output_image_size;
-            // Vectorized: Y_ptr[i] += Bdata[m] for i in [0, output_image_size); uses Eigen SIMD.
+            // Eigen vectorized add: Y_ptr += Bdata[m] over all spatial positions.
             EigenVectorArrayMap<T>(Y_ptr, narrow<ptrdiff_t>(output_image_size)) += Bdata[m];
           }
         });
