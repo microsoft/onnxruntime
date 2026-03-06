@@ -8,6 +8,7 @@
 #include "deform_conv_impl.h"
 
 #include "core/common/narrow.h"
+#include "core/common/span_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
@@ -48,6 +49,7 @@ int GetGreatestDivisorBelowBound(int n, int bound) {
 // Returns effective max temp memory (bytes) for DeformConv batching.
 // Uses 90% of free GPU memory with tiered cap; fallback 256MB if cudaMemGetInfo fails.
 // Mirrors Conv's approach (conv_8.h); tiered limits avoid OOM on smaller GPUs.
+// Called only when input/weight shapes change (see UpdateState).
 size_t GetDeformConvEffectiveMaxTempBytes() {
   constexpr size_t kDefaultFallback = 256ULL * 1024 * 1024;
   constexpr size_t kMinTempMemSize = 32ULL * 1024 * 1024;
@@ -77,8 +79,43 @@ size_t GetDeformConvEffectiveMaxTempBytes() {
 }  // namespace
 
 template <typename T>
+Status DeformConv<T>::UpdateState(OpKernelContext* context,
+                                  const DeformConvParams& params,
+                                  int& n_parallel_imgs) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto* W = context->Input<Tensor>(1);
+  const auto x_dims = X->Shape().AsShapeVector();
+  const auto w_dims = W->Shape().AsShapeVector();
+
+  bool input_dims_changed = (state_.last_x_dims != x_dims);
+  bool w_dims_changed = (state_.last_w_dims != w_dims);
+
+  if (input_dims_changed || w_dims_changed) {
+    if (input_dims_changed) {
+      state_.last_x_dims = gsl::make_span(x_dims);
+    }
+    if (w_dims_changed) {
+      state_.last_w_dims = gsl::make_span(w_dims);
+    }
+
+    const int64_t kernel_size = params.kH * params.kW;
+    const int64_t output_image_size = params.out_h * params.out_w;
+    const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * (params.C * kernel_size + params.M / params.group) * sizeof(T);
+    const size_t effective_max_temp = GetDeformConvEffectiveMaxTempBytes();
+    const int max_parallel_imgs_mem = std::max(1, static_cast<int>(effective_max_temp / std::max(size_t(1), bytes_per_image)));
+    const int target_parallel_imgs = std::min(kMaxParallelImgs, max_parallel_imgs_mem);
+    state_.cached_n_parallel_imgs = GetGreatestDivisorBelowBound(static_cast<int>(params.N), target_parallel_imgs);
+  }
+
+  n_parallel_imgs = state_.cached_n_parallel_imgs;
+  return Status::OK();
+}
+
+template <typename T>
 Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
+
+  std::lock_guard<std::mutex> lock(state_.mutex);
 
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -113,18 +150,14 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   }
 
+  int n_parallel_imgs;
+  ORT_RETURN_IF_ERROR(UpdateState(context, params, n_parallel_imgs));
+
   const int64_t kernel_size = kH * kW;
   const int64_t output_image_size = out_h * out_w;
   const int64_t input_image_size = H * W_in;
   const int64_t kernel_dim = (C / group) * kernel_size;
 
-  // col_buffer: C * kernel_size * output_image_size; gemm_output_buffer: (M/group) * output_image_size
-  const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * (C * kernel_size + M / group) * sizeof(T);
-  const size_t effective_max_temp = GetDeformConvEffectiveMaxTempBytes();
-  const int max_parallel_imgs_mem = std::max(1, static_cast<int>(effective_max_temp / std::max(size_t(1), bytes_per_image)));
-  const int target_parallel_imgs = std::min(kMaxParallelImgs, max_parallel_imgs_mem);
-
-  const int n_parallel_imgs = GetGreatestDivisorBelowBound(static_cast<int>(N), target_parallel_imgs);
   const int64_t col_stride = static_cast<int64_t>(n_parallel_imgs) * output_image_size;
   const int64_t col_buffer_size = (C * kernel_size) * col_stride;
 
