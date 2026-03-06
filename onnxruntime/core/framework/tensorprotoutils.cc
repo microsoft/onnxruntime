@@ -594,11 +594,11 @@ static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto
   std::vector<uint8_t> unpacked_tensor;
   ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));
 
-  // ReadLittleEndian checks src and dst buffers are the same size
-  auto src_span = gsl::make_span(unpacked_tensor.data(), unpacked_tensor.size());
-  auto dst_span = gsl::make_span(p_data, expected_num_elements * element_size);
+  ORT_RETURN_IF_NOT(expected_num_elements * element_size == unpacked_tensor.size(), "Unexpected amount of data");
+  // ReadExternalDataForTensor returns data in native endian, no need to byteswap here
+  memcpy(p_data, unpacked_tensor.data(), unpacked_tensor.size());
 
-  return onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span);
+  return Status::OK();
 }
 
 template <typename T>
