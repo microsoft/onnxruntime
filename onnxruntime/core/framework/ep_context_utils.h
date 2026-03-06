@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <streambuf>
+#include <unordered_set>
 #include <vector>
 
 #include "core/common/status.h"
@@ -29,6 +30,15 @@ Status EpContextModelToProto(const onnxruntime::Model& ep_context_model,
                              const std::filesystem::path& validated_model_path,
                              const epctx::ModelGenOptions& ep_context_gen_options,
                              /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
+
+/// <summary>
+/// Gets paths for external initializer files that do not exist.
+/// </summary>
+/// <param name="graph">The top-level graph</param>
+/// <param name="invalid_files">Resulting set of paths to missing initializer files, if any</param>
+/// <returns>A status indicating success or an error.</returns>
+Status GetMissingExternalInitializerFiles(const onnxruntime::Graph& graph,
+                                          std::unordered_set<std::filesystem::path>& invalid_files);
 
 // Class that wraps the user's OrtBufferWriteFunc function to enable use with
 // C++'s std::ostream.

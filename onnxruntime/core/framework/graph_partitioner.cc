@@ -1310,13 +1310,28 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
     if (ep_context_gen_options.enable) {
+      // Checks before EP tries to compile graphs.
       if (const std::filesystem::path* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
           output_model_path_ptr != nullptr) {
-        // Check before EP compile graphs
+        // Check output path is valid.
         std::filesystem::path context_cache_path;
         ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(*output_model_path_ptr, graph.ModelPath(),
                                                       context_cache_path,
                                                       ep_context_gen_options.error_if_output_file_exists));
+      }
+
+      // Check that external initializer files exist.
+      // Note: Could be expensive for models that use many external initializer files.
+      // TODO: Should this be done in onnxruntime::Graph??
+      std::unordered_set<std::filesystem::path> invalid_ext_initializer_files;
+      ORT_RETURN_IF_ERROR(epctx::GetMissingExternalInitializerFiles(graph, invalid_ext_initializer_files));
+
+      if (!invalid_ext_initializer_files.empty()) {
+        std::ostringstream oss;
+        oss << "Invalid external initializer file path(s). First one is '"
+            << invalid_ext_initializer_files.begin()->string();
+
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, oss.str());
       }
     }
 
