@@ -10,6 +10,7 @@
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
+#include "core/framework/library_handles.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -147,6 +148,9 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
+  static std::mutex mutex_;
+  static std::once_flag init_default_flag_;
+
   // Use pointers to heap-allocated objects so that their destructors do NOT run
   // during static destruction at process exit. This avoids crashes when dependent
   // DLLs (e.g. dxcompiler.dll) have already been unloaded by the OS.
@@ -155,9 +159,12 @@ class WebGpuContextFactory {
   // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
   // On abnormal/process termination they simply leak, which is safe.
   static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
-  static std::mutex mutex_;
-  static std::once_flag init_default_flag_;
-  static wgpu::Instance default_instance_;
+  static WGPUInstance default_instance_;
+
+  // Use a module manager to ensure that dependent DLLs (e.g. dxcompiler.dll) are not unloaded while WebGPU contexts are
+  // still alive, which would cause crashes if the contexts try to call into those DLLs during their destruction.
+  static LibraryHandles* modules_;
+  static bool modules_dxc_checked_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
