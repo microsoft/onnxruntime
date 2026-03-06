@@ -510,9 +510,14 @@ class TestTensorScatterAttentionCPU(unittest.TestCase):
         numpy.testing.assert_allclose(output, ref_output, rtol=cpu_fp32_rtol, atol=cpu_fp32_atol)
 
 
-@unittest.skipIf(not has_flash_attention(), "Flash Attention (SM80+) is not available, skipping tests.")
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
 class TestTensorScatterAttentionCUDAFP16(unittest.TestCase):
-    """Test TensorScatter + Attention (opset 24) on CUDA with float16 and IO Binding."""
+    """Test TensorScatter + Attention (opset 24) on CUDA with float16 and IO Binding.
+
+    On SM80+ Flash Attention is used; on SM75+ MEA handles the fallback;
+    on older GPUs the unfused path runs.  The cascade in attention.cc picks
+    the best available backend automatically.
+    """
 
     @parameterized.expand(cuda_fp16_test_cases())
     def test_tensorscatter_attention_cuda_fp16(

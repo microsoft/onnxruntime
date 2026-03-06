@@ -742,7 +742,10 @@ def gqa_past_padding_test_cases():
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestONNXAttentionFlashGQA(unittest.TestCase):
-    """Test ONNX Attention op (opset 23) GQA path with Flash Attention."""
+    """Test ONNX Attention op (opset 23) GQA path with Flash Attention.
+
+    Requires SM80+: tests explicitly force Flash via ORT_DISABLE_FLASH_ATTENTION=0.
+    """
 
     @parameterized.expand(gqa_prompt_test_cases())
     def test_gqa_prompt_flash(self, name, config):
@@ -775,7 +778,11 @@ class TestONNXAttentionFlashGQA(unittest.TestCase):
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestONNXAttentionFlashGQABF16(unittest.TestCase):
-    """Test ONNX Attention op (opset 23) GQA path with Flash Attention using BFloat16."""
+    """Test ONNX Attention op (opset 23) GQA path with Flash Attention using BFloat16.
+
+    Requires SM80+: tests explicitly force Flash via ORT_DISABLE_FLASH_ATTENTION=0,
+    and BFloat16 requires Ampere or higher.
+    """
 
     @parameterized.expand(gqa_prompt_test_cases())
     def test_gqa_prompt_flash_bf16(self, name, config):
@@ -841,6 +848,10 @@ class TestONNXAttentionMemoryEfficientGQA(unittest.TestCase):
 class TestONNXAttentionPaddingMaskGQA(unittest.TestCase):
     """
     Test ONNX Attention op (opset 23) GQA path with boolean padding masks.
+
+    Requires SM80+: decode+padding tests explicitly force Flash via
+    ORT_DISABLE_FLASH_ATTENTION=0.  Prompt+padding uses MEA fallback and is
+    tested separately in TestONNXAttentionPaddingMaskMemoryEfficientGQA.
 
     These tests verify that the boolean attn_mask is correctly converted to
     sequence lengths on GPU and that the attention computation respects the
@@ -1096,7 +1107,10 @@ def gqa_nonpad_kv_seqlen_cpu_test_cases():
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestONNXAttentionGQANonpadKVSeqlen(unittest.TestCase):
-    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen (Flash Attention)."""
+    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen (Flash Attention).
+
+    Requires SM80+: tests explicitly force Flash via ORT_DISABLE_FLASH_ATTENTION=0.
+    """
 
     @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
     def test_gqa_nonpad_kv_seqlen_flash(self, name, config, seqlens):
@@ -1217,6 +1231,7 @@ class TestONNXAttentionGQA4DBNSH(unittest.TestCase):
     """
     Test GQA with 4D BNSH input format [batch, num_heads, seq, head_size].
 
+    Requires SM80+: tests explicitly force Flash via ORT_DISABLE_FLASH_ATTENTION=0.
     The C++ attention op detects 4D inputs and sets transpose_output=false.
     Flash/MEA always expect BSNH, so the dispatcher transposes Q internally.
     """
