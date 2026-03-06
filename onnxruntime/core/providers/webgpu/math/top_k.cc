@@ -70,20 +70,13 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Composite key for stable sort per ONNX spec: "the element with the lower
   // index will appear first" among tied values.
   //
-  // For largest=false (ascending): key = (value, index). Lower key first.
-  //   asc swap:  va > vb || (va == vb && ia > ib)  — lower key to position i
-  //   desc swap: va < vb || (va == vb && ia < ib)  — higher key to position i
-  //
-  // For largest=true (descending): key = (value, -index). Higher key first.
-  //   Among ties, higher key = lower index, so lower index appears first.
-  //   asc swap:  va > vb || (va == vb && ia < ib)  — lower key to position i
-  //   desc swap: va < vb || (va == vb && ia > ib)  — higher key to position i
-  const std::string asc_swap = largest_
-      ? "va > vb || (va == vb && ia < ib)"
-      : "va > vb || (va == vb && ia > ib)";
-  const std::string desc_swap = largest_
-      ? "va < vb || (va == vb && ia > ib)"
-      : "va < vb || (va == vb && ia < ib)";
+  // For largest=true (descending): key = (value, -index) so lower index sorts first.
+  // For largest=false (ascending): key = (value, index) so lower index sorts first.
+  // The index tiebreaker flips direction based on largest_ to achieve this.
+  const std::string asc_tiebreak = largest_ ? "ia < ib" : "ia > ib";
+  const std::string desc_tiebreak = largest_ ? "ia > ib" : "ia < ib";
+  const std::string asc_swap = "va > vb || (va == vb && " + asc_tiebreak + ")";
+  const std::string desc_swap = "va < vb || (va == vb && " + desc_tiebreak + ")";
 
   // Declare shared memory for bitonic sort
   shader.AdditionalImplementation()
