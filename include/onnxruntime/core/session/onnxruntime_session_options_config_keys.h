@@ -445,7 +445,7 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // nodes that do not store model weights internally. Instead, the weights should be provided by ONNX Runtime as
 // explicit inputs to the EPContext nodes.
 //
-// This option is ignored by an EP if "ep.ep_context_enable" is not set to "1".
+// This option is ignored by an EP if "ep.context_enable" is not set to "1".
 //
 // If the weights are originally stored in an external file, this allows multiple models to share the same
 // external weights file.
