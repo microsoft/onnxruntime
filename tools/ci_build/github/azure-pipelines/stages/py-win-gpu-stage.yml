@@ -40,11 +40,15 @@ parameters:
   type: boolean
   default: false
 
+- name: extra_suffix
+  type: string
+  default: ''
+
 stages:
-  - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
+  - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build${{ parameters.extra_suffix }}
     dependsOn: []
     jobs:
-    - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
+    - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build${{ parameters.extra_suffix }}
       timeoutInMinutes: 360
       workspace:
         clean: all
@@ -66,7 +70,7 @@ stages:
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
-          artifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
+          artifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}${{ parameters.extra_suffix }}
       variables:
       - template: ../templates/common-variables.yml
       - name: GRADLE_OPTS
@@ -181,10 +185,10 @@ stages:
         displayName: 'unzip the package'
 
 
-  - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
-    dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
+  - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests${{ parameters.extra_suffix }}
+    dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build${{ parameters.extra_suffix }}
     jobs:
-    - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
+    - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests${{ parameters.extra_suffix }}
       workspace:
         clean: all
       pool:
@@ -193,7 +197,7 @@ stages:
       templateContext:
         inputs:
         - input: pipelineArtifact
-          artifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
+          artifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}${{ parameters.extra_suffix }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
       steps:
         - checkout: self

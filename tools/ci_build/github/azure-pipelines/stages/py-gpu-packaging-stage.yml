@@ -32,9 +32,9 @@ parameters:
   type: object
   displayName: 'Python versions to build'
   default:
-    - '3.11'
-    - '3.12'
-    - '3.13'
+    # - '3.11'
+    # - '3.12'
+    # - '3.13'
     - '3.14'
 
 - name: LinuxPythonConfigurations
@@ -66,23 +66,27 @@ stages:
     # Use separated cudnn folder for CUDA 13.0 on Windows.
     - ${{ if eq(parameters.cuda_version, '13.0') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
-        - template: py-win-gpu-stage.yml
-          parameters:
-            PYTHON_VERSION: ${{ python_version }}
-            EP_NAME: gpu
-            CudaVersion: ${{ parameters.cuda_version }}
-            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
-            use_tensorrt: True
+        - ${{ each cuda_arch in split(parameters.cmake_cuda_archs, ';') }}:
+          - template: py-win-gpu-stage.yml
+            parameters:
+              PYTHON_VERSION: ${{ python_version }}
+              EP_NAME: gpu
+              CudaVersion: ${{ parameters.cuda_version }}
+              EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ cuda_arch }}"
+              use_tensorrt: True
+              extra_suffix: _CudaArch_${{ cuda_arch }}
 
     - ${{ if eq(parameters.cuda_version, '12.8') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
-        - template: py-win-gpu-stage.yml
-          parameters:
-            PYTHON_VERSION: ${{ python_version }}
-            EP_NAME: gpu
-            CudaVersion: ${{ parameters.cuda_version }}
-            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
-            use_tensorrt: True
+        - ${{ each cuda_arch in split(parameters.cmake_cuda_archs, ';') }}:
+          - template: py-win-gpu-stage.yml
+            parameters:
+              PYTHON_VERSION: ${{ python_version }}
+              EP_NAME: gpu
+              CudaVersion: ${{ parameters.cuda_version }}
+              EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ cuda_arch }}"
+              use_tensorrt: True
+              extra_suffix: _CudaArch_${{ cuda_arch }}
 
     # Linux: one parallel stage per Python version
     - ${{ each config in parameters.LinuxPythonConfigurations }}:
