@@ -268,7 +268,7 @@ struct GraphNode {
       return (val.has_value()) ? print_bool(val.value()) : "None";
     };
 
-    auto string = std::format("node_name={} op_type={} scale_factor={:.2f} visited={} queued={} down_to_output={} processed={} from_node={} to_node={} node_input_name={} node_output_name={}",
+    auto string = fmt::format("node_name={} op_type={} scale_factor={:.2f} visited={} queued={} down_to_output={} processed={} from_node={} to_node={} node_input_name={} node_output_name={}",
                               node_name,
                               op_type,
                               scale_factor,
