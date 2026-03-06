@@ -26,5 +26,16 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FusedConvFloat);
 
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    NhwcFusedConv,
+    1,
+    float,
+    KernelDefBuilder()
+        // Allow the optional "sum" input (index 3) to be reused as the output buffer (index 0),
+        // consistent with the FusedConv kernel registration.
+        .MayInplace(3, 0)
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    FusedConvFloat);
+
 }  // namespace contrib
 }  // namespace onnxruntime

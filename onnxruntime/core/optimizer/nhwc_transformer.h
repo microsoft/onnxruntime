@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
@@ -54,10 +55,14 @@ class OpIdHash {
  * @brief Information needed for operator layout transformation
  */
 struct OpTransformInfo {
+  using FilterFn = std::function<bool(const onnx_transpose_optimization::api::GraphRef& graph,
+                                      onnx_transpose_optimization::api::NodeRef& node)>;
+
   const std::string optype_;
   const std::string domain_;
   const int version_;
   const bool has_channels_last_attrib_;
+  const FilterFn filter_{nullptr};
 };
 
 using OpTransformMap = std::unordered_map<OpIdInfo, OpTransformInfo, OpIdHash>;
