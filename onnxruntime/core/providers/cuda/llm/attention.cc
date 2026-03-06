@@ -1017,7 +1017,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // When both nonpad_kv_seqlen and attn_mask are provided, Flash Attention cannot handle
   // the combination (no bias parameter). Route to MEA or Unfused which support composition.
   if (nonpad_kv_seqlen != nullptr && attn_mask != nullptr) {
-    LOGS_DEFAULT(WARNING) << "Both nonpad_kv_seqlen and attn_mask provided. "
+    LOGS_DEFAULT(VERBOSE) << "Both nonpad_kv_seqlen and attn_mask provided. "
                           << "Flash Attention does not support this combination; "
                           << "falling back to Memory Efficient Attention or Unfused path.";
   }
