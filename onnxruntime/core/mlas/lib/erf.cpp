@@ -22,6 +22,15 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
+
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#include "erf_neon_fp16.h"
+#endif
+
 //
 // Bundles the constants for use by kernels written in assembly.
 //
@@ -266,3 +275,24 @@ Return Value:
     MlasErfKernel(Input, Output, N);
 #endif
 }
+
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+    )
+{
+    if(GetMlasPlatform().ErfFP16KernelRoutine){
+        GetMlasPlatform().ErfFP16KernelRoutine(Input, Output, N);
+        return;
+    }
+    std::vector<float> input_fp32(N);
+    std::vector<float> output_fp32(N);
+
+    MlasConvertHalfToFloatBuffer(Input, input_fp32.data(), N);
+    MlasComputeErf(input_fp32.data(), output_fp32.data(), N);
+    MlasConvertFloatToHalfBuffer(output_fp32.data(), Output, N);
+}
+ 

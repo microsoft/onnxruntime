@@ -610,6 +610,32 @@ void
     size_t N
     );
 
+using _mlas_fp16_ = uint16_t;
+typedef
+void
+(MLASCALL MLAS_COMPUTE_ERF_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+typedef
+void
+(MLASCALL MLAS_COMPUTE_GELU_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    MLAS_FP16* Temp,
+    size_t N,
+    MLAS_GELU_ALGORITHM Algo
+);
+
+typedef void
+(MLASCALL MLAS_COMPUTE_TANH_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
 typedef
 float
 (MLASCALL MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL)(
@@ -1077,6 +1103,7 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
+
 #if defined(MLAS_TARGET_AMD64)
     MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
     MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
@@ -1435,6 +1462,11 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* ComputeSumExpF32Kernel;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
+#endif
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+        MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine;
+        MLAS_COMPUTE_GELU_FP16_KERNEL* GeluFP16KernelRoutine;
+        MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;

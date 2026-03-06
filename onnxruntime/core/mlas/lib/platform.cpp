@@ -19,6 +19,10 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#include "erf_neon_fp16.h"
+#include "gelu_neon_fp16.h"
+#endif
 #if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
@@ -648,6 +652,25 @@ Return Value:
     }
 #endif
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasSveGeluFP16Kernel;
+            this->TanhFP16KernelRoutine = MlasSveTanhFP16Kernel;
+        }
+        else{
+            this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel; 
+            this->TanhFP16KernelRoutine = nullptr;
+        }
+    #else
+        this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+        this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
+        this->TanhFP16KernelRoutine = nullptr;
+    #endif
+#endif
+
     //
     // Check if the processor supports ASIMD I8MM instructions.
     //
@@ -665,9 +688,10 @@ Return Value:
     this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
-    this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
+    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
+        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
 #endif
 
 #endif // MLAS_TARGET_ARM64
