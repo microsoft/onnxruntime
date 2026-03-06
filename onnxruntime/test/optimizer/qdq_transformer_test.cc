@@ -3294,7 +3294,7 @@ void TestWhereWithDqInput(bool is_dq_1,
 
   // Q
   auto* q_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
-  auto* q_zp = builder.MakeInitializer<uint16_t>({}, 0.0, 1.0);
+  auto* q_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
   auto* q_out = builder.MakeOutput();
   builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out});
 
