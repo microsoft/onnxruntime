@@ -569,15 +569,17 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   // Model path is a bare filename (no directory component). parent_path() returns empty,
   // so anchor_dir falls back to "." (current directory). Path traversal should still be blocked.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("model.onnx", "data.bin"));
-  ASSERT_FALSE(utils::ValidateExternalDataPath("model.onnx", "../data.bin").IsOK());
+
+  bool is_cwd_root = std::filesystem::weakly_canonical(".") == std::filesystem::weakly_canonical("..");
+  ASSERT_EQ(utils::ValidateExternalDataPath("model.onnx", "../data.bin").IsOK(), is_cwd_root);
 
   // Model relative path checks.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./model.onnx", "data.bin"));
-  ASSERT_FALSE(utils::ValidateExternalDataPath("./model.onnx", "../data.bin").IsOK());
+  ASSERT_EQ(utils::ValidateExternalDataPath("./model.onnx", "../data.bin").IsOK(), is_cwd_root);
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./abc/model.onnx", "data.bin"));
 #ifdef _WIN32
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\model.onnx", "data.bin"));
-  ASSERT_FALSE(utils::ValidateExternalDataPath(".\\model.onnx", "../data.bin").IsOK());
+  ASSERT_EQ(utils::ValidateExternalDataPath(".\\model.onnx", "../data.bin").IsOK(), is_cwd_root);
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\abc\\model.onnx", "data.bin"));
 #endif
 

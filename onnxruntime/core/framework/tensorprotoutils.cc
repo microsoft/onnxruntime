@@ -370,7 +370,7 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
 
 #if defined(__wasm__)
   if (model_path.empty()) {
-    // On WASM, std::filesystem::current_path() is not always supported.
+    // On WASM, filesystem utilities are not expected to always be fully supported.
     // So, we only do a lexical check: reject ".." components that would escape the working directory.
     auto norm_location = location.lexically_normal();
     for (const auto& path_component : norm_location) {
@@ -382,26 +382,15 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
     return Status::OK();
   }
 
-  // If there is a model_path in WASM, then there may be a virtual filesystem and we fallthrough
-  // to the logic that resolves symlinks.
-#endif  // defined(__wasm__)
+  // If there's a model_path on WASM, then there may be a virtual filesystem and we fallthrough
+  // to the logic below that uses std::filesystem utilities.
+#endif
 
   // Determine the anchor directory: use model directory if provided, otherwise the current working directory.
-  std::filesystem::path anchor_dir;
-  const bool has_model_path = !model_path.empty();
+  std::filesystem::path anchor_dir = model_path.parent_path();
 
-  if (has_model_path) {
-    anchor_dir = model_path.parent_path();
-
-    if (anchor_dir.empty()) {
-      // model_path is a bare filename (e.g., "model.onnx") with no directory component.
-      // Use the "." which resolves to the current working directory.
-      anchor_dir = ".";
-    }
-  } else {
-    std::error_code ec;
-    anchor_dir = std::filesystem::current_path(ec);
-    ORT_RETURN_IF(ec, "Failed to get current working directory: ", ec.message());
+  if (anchor_dir.empty()) {  // Happens if either model_path.empty() or model_path.parent_path().empty()
+    anchor_dir = ORT_TSTR(".");
   }
 
   // Resolve the anchor directory and the full location path to their canonical forms.
@@ -419,7 +408,7 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   // Fall back to checking against the canonical model directory.
   // This supports symlinked models (e.g., Hugging Face Hub local cache) where the canonical
   // parent of the model file differs from the logical parent directory.
-  if (has_model_path) {
+  if (!model_path.empty()) {
     std::filesystem::path real_model_path;
     ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
     auto real_model_dir = real_model_path.parent_path();
