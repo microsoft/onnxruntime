@@ -1,23 +1,38 @@
 """
 Stable Diffusion Component Latency Benchmark
 
-Benchmarks latency of SD pipeline component models for two sets:
+Benchmarks latency of SD pipeline component models for three sets:
   - float (dynamic shapes)
-  - qdq (quantized, mostly static shapes)
+  - qdq (quantized, qdq cleanup disabled)
+  - qdq_cleanup (quantized, qdq cleanup enabled via
+    session.enable_quant_qdq_cleanup = "1")
 
 Only directories that contain a `model.onnx` are benchmarked.
+
+For each setting the ORT-optimized graph is also dumped (separately from
+latency measurement) and analysed with onnx-ir to produce per-component
+operator counts, including a breakdown of QuantizeLinear / DequantizeLinear
+nodes by activation vs. weight (initializer) first-input.
 
 Output is a nested dictionary structure:
 {
   "latency_ms": {
+	"float": { "unet": { ...stats... }, ... },
+	"qdq":   { ... },
+	"qdq_cleanup": { ... }
+  },
+  "op_analysis": {
 	"float": {
-	  "unet": { ...stats... },
-	  "text_encoder": { ...stats... }
+	  "unet": {
+		"total_ops": 123,
+		"op_counts": { "Conv": 10, ... },
+		"total_q": 0, "total_dq": 0,
+		"q_activation": 0, "q_weight": 0,
+		"dq_activation": 0, "dq_weight": 0
+	  }, ...
 	},
-	"qdq": {
-	  "unet": { ...stats... },
-	  ...
-	}
+	"qdq":   { ... },
+	"qdq_cleanup": { ... }
   },
   "metadata": { ... }
 }
@@ -30,6 +45,8 @@ import json
 import os
 import platform
 import sys
+import shutil
+import tempfile
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -40,6 +57,12 @@ try:
 	import onnxruntime as ort
 except ImportError:
 	print("Error: onnxruntime not installed. Run: pip install onnxruntime")
+	sys.exit(1)
+
+try:
+	import onnx_ir as ir
+except ImportError:
+	print("Error: onnx-ir not installed. Run: pip install onnx-ir")
 	sys.exit(1)
 
 
@@ -80,6 +103,9 @@ class BenchmarkConfig:
 	output_file: Optional[str] = None
 	seed: int = 42
 	verbose: bool = False
+	skip_latency: bool = False
+	skip_analysis: bool = False
+	optimized_model_dir: Optional[str] = None
 
 
 def inspect_model_inputs(session: ort.InferenceSession) -> List[Dict[str, Any]]:
@@ -179,8 +205,15 @@ def generate_inputs(
 	return inputs
 
 
-def create_session(model_path: str) -> ort.InferenceSession:
+def create_session(
+	model_path: str,
+	extra_session_options: Optional[Dict[str, str]] = None,
+) -> ort.InferenceSession:
 	sess_options = ort.SessionOptions()
+	sess_options.log_severity_level = 3
+	if extra_session_options:
+		for key, value in extra_session_options.items():
+			sess_options.add_session_config_entry(key, value)
 	return ort.InferenceSession(
 		model_path,
 		sess_options,
@@ -247,11 +280,12 @@ def benchmark_component(
 	iterations: int,
 	dynamic_dim_map: Dict[str, int],
 	verbose: bool,
+	extra_session_options: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
 	if verbose:
 		print(f"  [{set_name}] {component_key}: loading {model_path}")
 
-	session = create_session(model_path)
+	session = create_session(model_path, extra_session_options)
 	inputs = generate_inputs(session, dynamic_dim_map)
 	latencies = run_latency(session, inputs, warmup, iterations)
 	stats = latency_stats(latencies)
@@ -272,12 +306,19 @@ def benchmark_component(
 	return result
 
 
+# Maps set_name -> (model_subfolder, extra session options)
+_SET_CONFIG: Dict[str, Tuple[str, Optional[Dict[str, str]]]] = {
+	"float": ("float", None),
+	"qdq": ("qdq", {"session.enable_quant_qdq_cleanup": "0"}),
+	"qdq_cleanup": ("qdq", {"session.enable_quant_qdq_cleanup": "1"}),
+}
+
+
 def benchmark_all_components(config: BenchmarkConfig) -> Dict[str, Any]:
 	root = os.path.abspath(config.model_root)
-	sets = ["float", "qdq"]
 
 	output: Dict[str, Any] = {
-		"latency_ms": {"float": {}, "qdq": {}},
+		"latency_ms": {name: {} for name in _SET_CONFIG},
 		"metadata": {
 			"model_root": root,
 			"warmup": config.warmup,
@@ -289,8 +330,8 @@ def benchmark_all_components(config: BenchmarkConfig) -> Dict[str, Any]:
 		},
 	}
 
-	for set_name in sets:
-		set_dir = os.path.join(root, set_name)
+	for set_name, (subfolder, extra_opts) in _SET_CONFIG.items():
+		set_dir = os.path.join(root, subfolder)
 		if not os.path.isdir(set_dir):
 			print(f"Warning: set folder not found, skipping: {set_dir}")
 			continue
@@ -311,10 +352,186 @@ def benchmark_all_components(config: BenchmarkConfig) -> Dict[str, Any]:
 				iterations=config.iterations,
 				dynamic_dim_map=DYNAMIC_DIM_MAP,
 				verbose=config.verbose,
+				extra_session_options=extra_opts,
 			)
 			output["latency_ms"][set_name][component_key] = component_result
 
 	return output
+
+
+# ---------------------------------------------------------------------------
+# Optimized-graph operator analysis (separate from latency measurement)
+# ---------------------------------------------------------------------------
+
+
+def dump_optimized_model(
+	model_path: str,
+	extra_session_options: Optional[Dict[str, str]] = None,
+	output_dir: Optional[str] = None,
+	model_name: str = "model_optimized",
+) -> Tuple[str, str, bool]:
+	"""Create an ORT session that writes the optimized graph to a directory.
+
+	If *output_dir* is given the optimized model is written there and kept;
+	otherwise a temporary directory is created.
+
+	Returns (dir_path, optimized_model_path, is_temp).  When *is_temp* is
+	True the caller is responsible for removing *dir_path*.
+	"""
+	if output_dir is not None:
+		os.makedirs(output_dir, exist_ok=True)
+		out_dir = output_dir
+		is_temp = False
+	else:
+		out_dir = tempfile.mkdtemp(prefix="sd_bench_opt_")
+		is_temp = True
+
+	opt_path = os.path.join(out_dir, f"{model_name}.onnx")
+
+	so = ort.SessionOptions()
+	so.log_severity_level = 3
+	so.optimized_model_filepath = opt_path
+	so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+	so.add_session_config_entry(
+		"session.optimized_model_external_initializers_file_name",
+		f"{model_name}.onnx.data",
+	)
+	if extra_session_options:
+		for key, value in extra_session_options.items():
+			so.add_session_config_entry(key, value)
+
+	# Creating the session triggers the optimized-model dump.
+	ort.InferenceSession(model_path, so, providers=["CPUExecutionProvider"])
+	return out_dir, opt_path, is_temp
+
+
+_SHAPE_OPS = frozenset({
+	"Reshape", "Transpose", "Squeeze", "Unsqueeze", "Flatten", "Expand",
+})
+
+
+def analyze_optimized_graph(optimized_path: str) -> Dict[str, Any]:
+	"""Load an optimized ONNX model with onnx-ir and compute op statistics."""
+	model = ir.load(optimized_path)
+	graph = model.graph
+
+	op_counts: Dict[str, int] = {}
+	total_q = 0
+	total_dq = 0
+	q_activation = 0
+	q_weight = 0
+	dq_activation = 0
+	dq_weight = 0
+	# Q outputs consumed by a shape-related op (Reshape, Transpose, …)
+	q_consumed_by_shape_op = 0
+	# DQ whose first input is produced by a shape-related op
+	dq_input_from_shape_op = 0
+
+	for node in graph:
+		op_type = node.op_type
+		op_counts[op_type] = op_counts.get(op_type, 0) + 1
+
+		if op_type in ("QuantizeLinear", "DequantizeLinear"):
+			# First input determines activation vs weight/initializer.
+			first_input = node.inputs[0] if node.inputs else None
+			is_weight = first_input is not None and first_input.is_initializer()
+
+			if op_type == "QuantizeLinear":
+				total_q += 1
+				if is_weight:
+					q_weight += 1
+				else:
+					q_activation += 1
+				# Check if any consumer of this Q is a shape-related op.
+				for output in node.outputs:
+					if output is not None and any(
+						c.op_type in _SHAPE_OPS for c in output.consumers()
+					):
+						q_consumed_by_shape_op += 1
+						break
+			else:
+				total_dq += 1
+				if is_weight:
+					dq_weight += 1
+				else:
+					dq_activation += 1
+				# Check if the producer of the first input is a shape-related op.
+				if first_input is not None:
+					producer = first_input.producer()
+					if producer is not None and producer.op_type in _SHAPE_OPS:
+						dq_input_from_shape_op += 1
+
+	return {
+		"total_ops": len(list(graph)),
+		"op_counts": dict(sorted(op_counts.items(), key=lambda x: -x[1])),
+		"total_q": total_q,
+		"total_dq": total_dq,
+		"q_activation": q_activation,
+		"q_weight": q_weight,
+		"dq_activation": dq_activation,
+		"dq_weight": dq_weight,
+		"q_consumed_by_shape_op": q_consumed_by_shape_op,
+		"dq_input_from_shape_op": dq_input_from_shape_op,
+	}
+
+
+def analyze_component(
+	set_name: str,
+	component_key: str,
+	model_path: str,
+	verbose: bool,
+	extra_session_options: Optional[Dict[str, str]] = None,
+	optimized_model_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+	if verbose:
+		print(f"  [{set_name}] {component_key}: dumping optimized graph")
+
+	# Build an informative model name: e.g. "qdq_cleanup__unet" or "float__vae_decoder"
+	safe_component = component_key.replace("/", "_").replace("\\", "_")
+	model_name = f"{set_name}__{safe_component}"
+
+	out_dir, opt_path, is_temp = dump_optimized_model(
+		model_path, extra_session_options,
+		output_dir=optimized_model_dir,
+		model_name=model_name,
+	)
+	try:
+		result = analyze_optimized_graph(opt_path)
+	finally:
+		if is_temp:
+			shutil.rmtree(out_dir, ignore_errors=True)
+
+	result["model_path"] = model_path
+	return result
+
+
+def analyze_all_components(config: BenchmarkConfig) -> Dict[str, Dict[str, Any]]:
+	"""Dump optimized graphs and collect op statistics for all sets."""
+	root = os.path.abspath(config.model_root)
+	analysis: Dict[str, Dict[str, Any]] = {name: {} for name in _SET_CONFIG}
+
+	for set_name, (subfolder, extra_opts) in _SET_CONFIG.items():
+		set_dir = os.path.join(root, subfolder)
+		if not os.path.isdir(set_dir):
+			continue
+
+		components = find_component_models(set_dir)
+		if not components:
+			continue
+
+		print(f"\nAnalysing optimized graphs for '{set_name}' ({len(components)} components)")
+		for component_key, model_path in components:
+			print(f"  - {component_key}")
+			analysis[set_name][component_key] = analyze_component(
+				set_name=set_name,
+				component_key=component_key,
+				model_path=model_path,
+				verbose=config.verbose,
+				extra_session_options=extra_opts,
+				optimized_model_dir=config.optimized_model_dir,
+			)
+
+	return analysis
 
 
 def save_results(data: Dict[str, Any], output_file: str) -> str:
@@ -339,7 +556,7 @@ def default_output_path(model_root: str) -> str:
 
 def parse_args() -> BenchmarkConfig:
 	parser = argparse.ArgumentParser(
-		description="Benchmark SD component latency for float and qdq model sets"
+		description="Benchmark SD component latency for float, qdq, and qdq_cleanup model sets"
 	)
 	parser.add_argument(
 		"--model-root",
@@ -379,6 +596,22 @@ def parse_args() -> BenchmarkConfig:
 		action="store_true",
 		help="Verbose logging",
 	)
+	parser.add_argument(
+		"--skip-latency",
+		action="store_true",
+		help="Skip the latency benchmark pass",
+	)
+	parser.add_argument(
+		"--skip-analysis",
+		action="store_true",
+		help="Skip the optimized-graph operator analysis pass",
+	)
+	parser.add_argument(
+		"--optimized-model-dir",
+		default=None,
+		help="Directory to save optimized models in (kept after run). "
+		"If not set, a temp directory is used and cleaned up.",
+	)
 
 	args = parser.parse_args()
 	return BenchmarkConfig(
@@ -388,6 +621,9 @@ def parse_args() -> BenchmarkConfig:
 		output_file=args.output,
 		seed=args.seed,
 		verbose=args.verbose,
+		skip_latency=args.skip_latency,
+		skip_analysis=args.skip_analysis,
+		optimized_model_dir=args.optimized_model_dir,
 	)
 
 
@@ -398,13 +634,34 @@ def main() -> None:
 		print(f"Error: model root folder not found: {config.model_root}")
 		sys.exit(1)
 
+	if config.skip_latency and config.skip_analysis:
+		print("Error: --skip-latency and --skip-analysis cannot both be set")
+		sys.exit(1)
+
 	np.random.seed(config.seed)
 
-	start = time.perf_counter()
-	results = benchmark_all_components(config)
-	elapsed_s = time.perf_counter() - start
+	results: Dict[str, Any] = {
+		"metadata": {
+			"model_root": os.path.abspath(config.model_root),
+			"seed": config.seed,
+			"ort_version": ort.__version__,
+			"platform": platform.platform(),
+			"python_version": platform.python_version(),
+		},
+	}
 
-	results["metadata"]["total_elapsed_s"] = round(elapsed_s, 3)
+	# --- Latency benchmark ---
+	if not config.skip_latency:
+		start = time.perf_counter()
+		bench = benchmark_all_components(config)
+		elapsed_s = time.perf_counter() - start
+		results["latency_ms"] = bench["latency_ms"]
+		results["metadata"].update(bench["metadata"])
+		results["metadata"]["total_elapsed_s"] = round(elapsed_s, 3)
+
+	# --- Operator analysis (separate pass, does not affect latency) ---
+	if not config.skip_analysis:
+		results["op_analysis"] = analyze_all_components(config)
 
 	output_path = config.output_file or default_output_path(config.model_root)
 	saved_path = save_results(results, output_path)
