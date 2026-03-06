@@ -8,6 +8,7 @@
 #include <cmath>
 
 #include "core/common/common.h"
+#include "core/util/math_cpuonly.h"
 #include "core/common/narrow.h"
 #include "core/util/math.h"
 
@@ -274,10 +275,8 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
             int64_t n = idx / M;
             int64_t m = idx % M;
             T* Y_ptr = Ydata + n * M * output_image_size + m * output_image_size;
-            T bias_val = Bdata[m];
-            for (int64_t i = 0; i < output_image_size; ++i) {
-              Y_ptr[i] += bias_val;
-            }
+            // Vectorized: Y_ptr[i] += Bdata[m] for i in [0, output_image_size); uses Eigen SIMD.
+            EigenVectorArrayMap<T>(Y_ptr, narrow<ptrdiff_t>(output_image_size)) += Bdata[m];
           }
         });
   }
