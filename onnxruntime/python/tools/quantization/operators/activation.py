@@ -99,11 +99,11 @@ class QDQRemovableActivation(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def reg2quant(self):
         node = self.node
 
         # If input to this node is not quantized then keep this node
-        if not self.quantizer.is_tensor_quantized(node.input[0]):
+        if not self.quantizer.is_tensor_reg2quant(node.input[0]):
             return
 
         if (
@@ -113,7 +113,7 @@ class QDQRemovableActivation(QDQOperatorBase):
         ):
             self.quantizer.remove_node(self.node)
         else:
-            self.quantizer.quantize_activation_tensor(node.input[0])
+            self.quantizer.reg2quant_activation_tensor(node.input[0])
 
         if not self.disable_qdq_for_node_output:
-            self.quantizer.quantize_activation_tensor(node.output[0])
+            self.quantizer.reg2quant_activation_tensor(node.output[0])
