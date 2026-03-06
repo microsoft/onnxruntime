@@ -1061,7 +1061,7 @@ typedef enum OrtGraphicsApi {
  * \since Version 1.25.
  */
 typedef struct OrtGraphicsInteropConfig {
-  uint32_t version;          /**< Must be ORT_API_VERSION */
+  uint32_t version;            /**< Must be ORT_API_VERSION */
   OrtGraphicsApi graphics_api; /**< The graphics API to use for interop */
 
   /** \brief Command queue/submission queue for graphics workloads (optional).

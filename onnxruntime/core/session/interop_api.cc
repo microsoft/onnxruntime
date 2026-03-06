@@ -428,6 +428,7 @@ static constexpr OrtInteropApi ort_interop_api = {
     &OrtInteropAPI::ReleaseExternalSemaphoreHandle,
     &OrtInteropAPI::WaitSemaphore,
     &OrtInteropAPI::SignalSemaphore,
+    // End of Version 24 - DO NOT MODIFY ABOVE
     &OrtInteropAPI::InitGraphicsInteropForEpDevice,
     &OrtInteropAPI::DeinitGraphicsInteropForEpDevice,
     // End of Version 25 - DO NOT MODIFY ABOVE

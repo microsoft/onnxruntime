@@ -834,7 +834,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
     # --- DX Interop Feature ---
     dx_interop_group = parser.add_argument_group("DirectX Interop Feature")
-    dx_interop_group.add_argument("--enable_dx_interop", action="store_true", help="Enable DirectX Interop feature for graphics API synchronization.")
+    dx_interop_group.add_argument(
+        "--enable_dx_interop",
+        action="store_true",
+        help="Enable DirectX Interop feature for graphics API synchronization.",
+    )
 
 
 def add_other_feature_args(parser: argparse.ArgumentParser) -> None:

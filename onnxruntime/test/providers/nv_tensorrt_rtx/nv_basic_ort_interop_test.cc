@@ -54,7 +54,7 @@ inline D3D12CreateDeviceLoadResult LoadD3D12CreateDevice() {
 }
 
 void CreateD3D12Buffer(ID3D12Device* pDevice, size_t size, ID3D12Resource** ppResource,
-                      D3D12_RESOURCE_STATES initState) {
+                       D3D12_RESOURCE_STATES initState) {
   D3D12_RESOURCE_DESC bufferDesc = {};
   bufferDesc.MipLevels = 1;
   bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -328,7 +328,10 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
   if (ep_supports_external_importer) {
     Ort::Status s(interop_api.CreateExternalResourceImporterForDevice(trt_ep_device, &importer));
     if (s.IsOK() && importer != nullptr) {
-      enum FenceState { FENCE_UPLOAD_DONE = 1, FENCE_KERNEL_DONE = 2 };
+      enum FenceState {
+        FENCE_UPLOAD_DONE = 1,
+        FENCE_KERNEL_DONE = 2
+      };
       pDevice->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&pFence));
       pDevice->CreateSharedHandle(pFence.Get(), nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle);
       ASSERT_NE(sharedFenceHandle, nullptr);
@@ -354,8 +357,9 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
   const OrtHardwareDevice* hw_device = ort_api.EpDevice_Device(trt_ep_device);
   UINT vID = ort_api.HardwareDevice_VendorId(hw_device);
   {
-    Ort::Status mem_status(ort_api.CreateMemoryInfo_V2("Device_Agnostic", OrtMemoryInfoDeviceType_GPU, vID, 0,
-                                                      OrtDeviceMemoryType_DEFAULT, 0, OrtArenaAllocator, &memory_info_agnostic));
+    Ort::Status mem_status(ort_api.CreateMemoryInfo_V2(
+        "Device_Agnostic", OrtMemoryInfoDeviceType_GPU, vID, 0,
+        OrtDeviceMemoryType_DEFAULT, 0, OrtArenaAllocator, &memory_info_agnostic));
     ASSERT_TRUE(mem_status.IsOK()) << mem_status.GetErrorMessage();
   }
   ASSERT_NE(memory_info_agnostic, nullptr);
@@ -437,7 +441,10 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
 
     // Run 2 iterations: upload -> sync -> inference -> download
     const bool use_semaphore_sync = (importer != nullptr && ort_sem_handle != nullptr);
-    enum FenceState { FENCE_UPLOAD_DONE = 1, FENCE_KERNEL_DONE = 2 };
+    enum FenceState {
+      FENCE_UPLOAD_DONE = 1,
+      FENCE_KERNEL_DONE = 2
+    };
     Ort::RunOptions run_options;
     run_options.AddConfigEntry("disable_synchronize_execution_providers", "1");
     for (int iter = 0; iter < 2; iter++) {
