@@ -140,9 +140,6 @@ option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
-option(onnxruntime_USE_ARMNN "Build with ArmNN support" OFF)
-option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu operator for the ArmNN EP" ON)
-option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch Normalization operator for the ArmNN EP" ON)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
@@ -943,10 +940,6 @@ if (onnxruntime_USE_MIGRAPHX_INTERFACE AND (NOT onnxruntime_USE_MIGRAPHX))
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_MIGRAPHX_PROVIDER_INTERFACE=1)
 endif()
 
-if (onnxruntime_USE_ARMNN)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ARMNN=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
-endif()
 if (onnxruntime_USE_COREML)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_COREML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
@@ -1326,37 +1319,6 @@ if (onnxruntime_USE_ACL)
 
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph)
 
-endif()
-
-# ArmNN
-if (onnxruntime_USE_ARMNN)
-  if (NOT onnxruntime_ARMNN_RELU_USE_CPU)
-    add_definitions(-DRELU_ARMNN=1)
-  endif()
-  if (NOT onnxruntime_ARMNN_BN_USE_CPU)
-    add_definitions(-DBN_ARMNN=1)
-  endif()
-
-  if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-    add_library(arm_compute SHARED IMPORTED)
-    set_target_properties(arm_compute PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
-
-    add_library(arm_compute_graph SHARED IMPORTED)
-    set_target_properties(arm_compute_graph PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-  endif()
-
-  if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
-    add_library(armnn SHARED IMPORTED)
-    set_target_properties(armnn PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
-  endif()
-
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_graph)
 endif()
 
 if (onnxruntime_USE_DNNL)

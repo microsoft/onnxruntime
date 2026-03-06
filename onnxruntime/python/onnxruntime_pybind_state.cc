@@ -1106,11 +1106,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     }
     return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math);
 #endif
-  } else if (type == kArmNNExecutionProvider) {
-#ifdef USE_ARMNN
-    return onnxruntime::ArmNNProviderFactoryCreator::Create(
-        session_options.enable_cpu_mem_arena);
-#endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);

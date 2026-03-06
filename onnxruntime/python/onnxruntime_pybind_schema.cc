@@ -54,9 +54,6 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_ACL
             onnxruntime::ACLProviderFactoryCreator::Create(false),
 #endif
-#ifdef USE_ARMNN
-            onnxruntime::ArmNNProviderFactoryCreator::Create(0),
-#endif
 #ifdef USE_DML
             []() {
               ConfigOptions config_options{};
