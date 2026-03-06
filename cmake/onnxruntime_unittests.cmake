@@ -1141,9 +1141,40 @@ if (MSVC)
 endif()
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
-if(NOT DEFINED onnx_SOURCE_DIR)
-  find_path(onnx_SOURCE_DIR NAMES "onnx/onnx-ml.proto3" "onnx/onnx-ml.proto" REQUIRED)
+
+# Auto-detect vendored ONNX if onnx_SOURCE_DIR is not set or empty
+if(NOT DEFINED onnx_SOURCE_DIR OR NOT onnx_SOURCE_DIR)
+  # cmake/onnxruntime_unittests.cmake -> cmake -> repo root
+  get_filename_component(_ort_repo_root
+    "${CMAKE_CURRENT_LIST_DIR}/.."
+    ABSOLUTE
+  )
+
+  set(_vendored_onnx_dir
+    "${_ort_repo_root}/cmake/external/onnx/onnx"
+  )
+
+  if(EXISTS "${_vendored_onnx_dir}/onnx-ml.proto"
+     OR EXISTS "${_vendored_onnx_dir}/onnx-ml.proto3")
+    set(onnx_SOURCE_DIR "${_vendored_onnx_dir}")
+    message(STATUS "Using vendored ONNX from ${onnx_SOURCE_DIR}")
+  endif()
 endif()
+
+# Fallback to legacy search if still not found
+if(NOT onnx_SOURCE_DIR)
+  find_path(onnx_SOURCE_DIR
+    onnx/onnx-ml.proto
+    onnx/onnx-ml.proto3
+  )
+endif()
+
+# Preserve original REQUIRED behavior with a clear error
+if(NOT onnx_SOURCE_DIR)
+  message(FATAL_ERROR
+    "Could not find ONNX sources. Set onnx_SOURCE_DIR explicitly.")
+endif()
+
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${onnx_SOURCE_DIR} TARGET onnx_test_data_proto)
 
 #
