@@ -16,6 +16,7 @@ Abstract:
 --*/
 #include "mlas_sve_fp16.h"
 
+using _mlas_fp16_ = uint16_t;
 struct MlasTanhConstants_fp16_scalar {
     __fp16 LowerRange;
     __fp16 UpperRange;

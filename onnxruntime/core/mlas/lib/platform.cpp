@@ -670,12 +670,10 @@ Return Value:
         else{
             this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
             this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel; 
-            this->TanhFP16KernelRoutine = nullptr;
         }
     #else
         this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
         this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
-        this->TanhFP16KernelRoutine = nullptr;
     #endif
 #endif
 
@@ -696,8 +694,7 @@ Return Value:
     this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
-    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
         this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
         this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
 #endif
