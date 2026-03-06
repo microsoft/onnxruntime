@@ -58,7 +58,6 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/softmax.h
   ${MLAS_SRC_DIR}/saturation_check.cpp
   ${MLAS_SRC_DIR}/gelu.cpp
-  ${MLAS_SRC_DIR}/gelu_neon_fp16.h
 )
 
 target_sources(onnxruntime_mlas PRIVATE

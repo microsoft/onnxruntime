@@ -30,7 +30,3 @@ MlasNeonGeluFP16Kernel(
     size_t count,
     MLAS_GELU_ALGORITHM algo
 );
-
-#ifdef MLAS_USE_SVE
-#include "sve/mlasi_sve.h"
-#endif
