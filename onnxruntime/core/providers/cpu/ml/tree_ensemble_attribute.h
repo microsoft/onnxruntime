@@ -89,7 +89,7 @@ struct TreeEnsembleAttributesV3 {
                 "nodes_falsenodeids and nodes_truenodeids must have the same size, got ",
                 nodes_falsenodeids.size(), " and ", nodes_truenodeids.size());
     ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size() ||
-                nodes_falsenodeids.size() == nodes_values_as_tensor.size(),
+                    nodes_falsenodeids.size() == nodes_values_as_tensor.size(),
                 "nodes_falsenodeids size (", nodes_falsenodeids.size(),
                 ") must match nodes_values (", nodes_values.size(),
                 ") or nodes_values_as_tensor (", nodes_values_as_tensor.size(), ")");

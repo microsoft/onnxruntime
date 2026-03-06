@@ -408,7 +408,6 @@ TEST(MLOpTest, TreeEnsembleClassifierMismatchedClassArrays) {
            "target_class_ids and target_class_nodeids must have the same size");
 }
 
-
 TEST(MLOpTest, TreeEnsembleClassifierMismatchedNodeArrays) {
   OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
 
