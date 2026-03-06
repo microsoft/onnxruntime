@@ -1783,5 +1783,102 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_ExceedsTotalSeqLen) {
            {}, nullptr, &execution_providers);
 }
 
+// Test combined nonpad_kv_seqlen + bool attn_mask (T26).
+// Both masks should compose additively: nonpad_kv_seqlen masks positions >= valid_len,
+// and attn_mask further masks positions within the valid range.
+// Previously this combination crashed with ORT_ENFORCE; now it falls back to MEA gracefully.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_WithBoolAttnMask) {
+  // batch_size=1, q_num_heads=1, kv_num_heads=1
+  // q_seq_len=1, kv_seq_len=4, head_size=2
+  // nonpad_kv_seqlen=[3] => positions 0,1,2 valid by padding
+  // attn_mask=[true, false, true, true] => position 1 masked by attn_mask
+  // Combined: only positions 0 and 2 are effective
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {1, 1, 1, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  // Q and K designed for uniform attention scores on valid positions
+  std::vector<float> q = {1.0f, 1.0f};
+  std::vector<float> k(8, 1.0f);
+  // V: [10, 20], [30, 40], [50, 60], [70, 80]
+  std::vector<float> v = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  // 2D bool mask [1, 4]: position 1 is false (masked out)
+  test.AddInput<bool>("attn_mask", {1, 4}, {true, false, true, true});
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {3});
+
+  // nonpad masks position 3 (>= valid_len=3), attn_mask masks position 1
+  // Active positions: 0 and 2, with uniform attention scores
+  // Output = mean(V[0], V[2]) = [(10+50)/2, (20+60)/2] = [30.0, 40.0]
+  std::vector<float> expected_y = {30.0f, 40.0f};
+  test.AddOutput<float>("Y", {1, 1, 1, 2}, expected_y, false, 0, 1e-3f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  if (HasCudaEnvironment(0)) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test combined nonpad_kv_seqlen + float attn_mask with multi-batch.
+// Verifies additive composition works with float attention bias values.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
+  // batch_size=2, q_num_heads=1, kv_num_heads=1
+  // q_seq_len=1, kv_seq_len=4, head_size=2
+  // nonpad_kv_seqlen=[3, 2] => batch 0 has 3 valid, batch 1 has 2 valid
+  // 2D float attn_mask [1, 4] = [0, -inf, 0, 0] => masks position 1 for all batches
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {2, 1, 1, 2};
+  std::vector<int64_t> k_shape = {2, 1, 4, 2};
+  std::vector<int64_t> v_shape = {2, 1, 4, 2};
+
+  std::vector<float> q = {1.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<float> k(16, 1.0f);
+  // Batch 0 V: [1,1], [2,2], [3,3], [99,99]
+  // Batch 1 V: [5,5], [6,6], [99,99], [99,99]
+  std::vector<float> v = {
+      1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 99.0f, 99.0f,   // batch 0
+      5.0f, 5.0f, 6.0f, 6.0f, 99.0f, 99.0f, 99.0f, 99.0f  // batch 1
+  };
+
+  float neg_inf = -std::numeric_limits<float>::infinity();
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  // 2D float mask [1, 4]: position 1 gets -inf
+  test.AddInput<float>("attn_mask", {1, 4}, {0.0f, neg_inf, 0.0f, 0.0f});
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {3, 2});
+
+  // Batch 0: nonpad masks pos 3, attn_mask masks pos 1 → active: 0,2
+  //   Output = mean(V[0], V[2]) = [(1+3)/2, (1+3)/2] = [2.0, 2.0]
+  // Batch 1: nonpad masks pos 2,3, attn_mask masks pos 1 → active: 0 only
+  //   Output = V[0] = [5.0, 5.0]
+  std::vector<float> expected_y = {2.0f, 2.0f, 5.0f, 5.0f};
+  test.AddOutput<float>("Y", {2, 1, 1, 2}, expected_y, false, 0, 1e-3f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  if (HasCudaEnvironment(0)) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

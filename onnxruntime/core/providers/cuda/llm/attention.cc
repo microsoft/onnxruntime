@@ -72,6 +72,10 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
   ORT_ENFORCE(scale_ > 0 || std::isnan(scale_), "scale must be greater than 0 if specified");
+
+  const auto* kernel_options = this->GetAttentionKernelOptions();
+  disable_flash_attention_ = !std::is_same<T, MLFloat16>::value || !kernel_options->UseFlashAttention();
+  disable_memory_efficient_attention_ = !kernel_options->UseEfficientAttention();
 }
 
 // ============================================================================
@@ -567,6 +571,39 @@ Status Attention<T>::RunMemoryEfficientAttention(
         cuda_stream,
         device_prop.maxThreadsPerBlock));
 
+    // When attn_mask is also provided, convert it to additive attn_bias so MEA
+    // applies both custom right padding (seqlens_k) and the attention mask (attn_bias).
+    if (attn_mask != nullptr) {
+      if (attn_mask->IsDataType<bool>()) {
+        using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+        int64_t num_elements = attn_mask->Shape().Size();
+        converted_mask_buffer = GetScratchBuffer<void>(
+            num_elements * sizeof(NativeCudaT), context->GetComputeStream());
+        float mask_filter_value = static_cast<float>(std::numeric_limits<T>::lowest());
+        ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
+            attn_mask->Data<bool>(),
+            reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
+            num_elements, mask_filter_value, cuda_stream,
+            device_prop.maxThreadsPerBlock));
+        attn_bias_data = converted_mask_buffer.get();
+      } else {
+        attn_bias_data = attn_mask->Data<T>();
+      }
+
+      size_t mask_dims = attn_mask->Shape().NumDimensions();
+      auto dims = attn_mask->Shape().GetDims();
+      if (mask_dims == 2) {
+        broadcast_bias_dim_0 = true;
+        broadcast_bias_dim_1 = true;
+      } else if (mask_dims == 3) {
+        broadcast_bias_dim_0 = true;
+        broadcast_bias_dim_1 = dims[0] == 1;
+      } else {
+        broadcast_bias_dim_0 = dims[0] == 1;
+        broadcast_bias_dim_1 = dims[1] == 1;
+      }
+    }
+
     onnxruntime::contrib::cuda::MemoryEfficientAttentionParams p;
     p.sm = sm;
     p.is_half = std::is_same<T, MLFloat16>::value;
@@ -583,10 +620,12 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.scale = parameters.scale;
     p.seqlen_k_ptr = seqlens_k_buffer.get();
     p.has_custom_right_padding = true;
+    p.broadcast_attn_bias_dim_0 = broadcast_bias_dim_0;
+    p.broadcast_attn_bias_dim_1 = broadcast_bias_dim_1;
     p.query = q_data;
     p.key = k_data;
     p.value = v_data;
-    p.attn_bias = nullptr;
+    p.attn_bias = attn_bias_data;
     p.stream = cuda_stream;
     p.output = out_data;
 
@@ -837,6 +876,10 @@ Status Attention<T>::RunUnfusedAttention(
   IAllocatorUniquePtr<void> converted_mask_buffer;
   if (nonpad_kv_seqlen != nullptr) {
     // Convert nonpad_kv_seqlen to additive attention bias: [B, q_seq, total_seq]
+    // TODO: Support nonpad_kv_seqlen + attn_mask composition in unfused path.
+    // When both are present, the nonpad bias and mask bias should be additively composed
+    // into a single attention_bias buffer. Currently only nonpad_kv_seqlen is used here;
+    // the combined case is handled by MEA in RunMemoryEfficientAttention.
     using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
     int64_t bias_elements = static_cast<int64_t>(parameters.batch_size) *
                             parameters.q_sequence_length *
@@ -924,13 +967,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_value = context->Input<Tensor>(5);
   const Tensor* nonpad_kv_seqlen = context->Input<Tensor>(6);  // optional, Opset 24
 
-  // TODO: Support nonpad_kv_seqlen + attn_mask together. The ONNX spec allows both
-  // (additive composition: attn_bias += attn_mask then attn_bias += padding_mask).
-  // CPU implementation supports it. CUDA blocks it because flash has no bias parameter.
-  // To support: route to MEA (set both seqlen_k_ptr and attn_bias) or unfused
-  // (compose two additive biases). ~20 lines. Implement when a real model needs it.
-  ORT_ENFORCE(nonpad_kv_seqlen == nullptr || attn_mask == nullptr,
-              "nonpad_kv_seqlen and attn_mask cannot both be provided.");
+  // When both nonpad_kv_seqlen and attn_mask are provided, Flash Attention cannot handle
+  // the combination (no bias parameter). Route to MEA which supports seqlen_k_ptr + attn_bias.
+  if (nonpad_kv_seqlen != nullptr && attn_mask != nullptr) {
+    LOGS_DEFAULT(WARNING) << "Both nonpad_kv_seqlen and attn_mask provided. "
+                          << "Flash Attention does not support this combination; "
+                          << "falling back to Memory Efficient Attention.";
+  }
 
   attention_helper::AttentionParameters parameters;
   TensorShape y_shape;
@@ -962,6 +1005,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   {
     auto& device_prop = GetDeviceProp();
     bool flash_eligible =
+        !disable_flash_attention_ &&
         !std::is_same<T, float>::value &&
         onnxruntime::flash::is_supported<T>(device_prop, parameters.head_size,
                                             parameters.q_num_heads, parameters.kv_num_heads) &&
@@ -976,7 +1020,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // Note: contrib MHA similarly excludes flash when attention_bias is present
         // (no mask support in mha_fwd). Float masks and bool prompt masks route to MEA
         // which supports additive bias natively.
-        (attn_mask == nullptr || (attn_mask->IsDataType<bool>() && past_key != nullptr));
+        (attn_mask == nullptr || (attn_mask->IsDataType<bool>() && past_key != nullptr)) &&
+        // Flash cannot handle nonpad_kv_seqlen + attn_mask simultaneously (no bias parameter
+        // in mha_fwd/mha_fwd_kvcache when seqlens_k is used). Route to MEA instead.
+        !(nonpad_kv_seqlen != nullptr && attn_mask != nullptr);
 
     if (flash_eligible) {
       return RunFlashAttention(context, Q, K, V, attn_mask, past_key, past_value,
@@ -990,6 +1037,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     auto& device_prop = GetDeviceProp();
     int sm = device_prop.major * 10 + device_prop.minor;
     bool mea_eligible =
+        !disable_memory_efficient_attention_ &&
         onnxruntime::contrib::cuda::has_memory_efficient_attention(
             sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
             parameters.head_size, parameters.v_head_size) &&
@@ -999,10 +1047,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         past_key == nullptr;
 
     // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
-    // "unaligned" kernel path. When an attention mask is present without nonpad_kv_seqlen,
-    // it becomes an additive bias with bias_strideM = total_sequence_length. Skip MEA if
-    // this stride can't satisfy the kernel's minimum alignment requirement.
-    if (mea_eligible && attn_mask != nullptr && nonpad_kv_seqlen == nullptr) {
+    // "unaligned" kernel path. When an attention mask is present (with or without
+    // nonpad_kv_seqlen), it becomes an additive bias with bias_strideM =
+    // total_sequence_length. Skip MEA if this stride can't satisfy the kernel's
+    // minimum alignment requirement.
+    if (mea_eligible && attn_mask != nullptr) {
       int min_bias_align = 1;
       if ((std::is_same<T, float>::value && sm >= 80) ||
           (!std::is_same<T, float>::value && sm >= 75)) {

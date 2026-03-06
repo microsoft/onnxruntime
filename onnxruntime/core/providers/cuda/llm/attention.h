@@ -48,6 +48,8 @@ class Attention final : public CudaKernel {
   float scale_;
   float softcap_;
   int softmax_precision_;
+  bool disable_flash_attention_;
+  bool disable_memory_efficient_attention_;
 };
 
 }  // namespace cuda
