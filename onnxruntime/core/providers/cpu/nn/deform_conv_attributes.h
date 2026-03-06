@@ -119,6 +119,7 @@ inline Status DeformConvValidateAndParse(
   // Validate tensor shapes
   ORT_RETURN_IF_NOT(W_shape.NumDimensions() == 4, "Weight must be 4D.");
   ORT_RETURN_IF_NOT(offset_shape.NumDimensions() == 4, "Offset must be 4D.");
+  ORT_RETURN_IF_NOT(offset_shape[0] == params.N, "Offset batch size must match input batch size.");
   ORT_RETURN_IF_NOT(
       offset_shape[1] == params.offset_group * 2 * params.kH * params.kW,
       "Offset channel count must be offset_group * 2 * kH * kW.");
@@ -131,6 +132,7 @@ inline Status DeformConvValidateAndParse(
   // Validate mask if present
   if (params.use_mask) {
     ORT_RETURN_IF_NOT(mask_shape->NumDimensions() == 4, "Mask must be 4D.");
+    ORT_RETURN_IF_NOT((*mask_shape)[0] == params.N, "Mask batch size must match input batch size.");
     ORT_RETURN_IF_NOT(
         (*mask_shape)[1] == params.offset_group * params.kH * params.kW,
         "Mask channel count must be offset_group * kH * kW.");
