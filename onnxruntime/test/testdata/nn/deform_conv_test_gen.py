@@ -119,7 +119,7 @@ def _build_onnx_model():
 def _to_cpp_array(name: str, arr: np.ndarray) -> str:
     """Format numpy array as C++ initializer list."""
     flat = arr.flatten().tolist()
-    vals = ", ".join(f"{x:.9g}" for x in flat)
+    vals = ", ".join(f"{x:.9g}f" for x in flat)
     return f"static const std::vector<float> {name} = {{{vals}}};"
 
 
