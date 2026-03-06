@@ -398,10 +398,10 @@ def parity_check_gqa_prompt_with_padding(
     )
     v = torch.randn_like(k) * std
 
-    # 3D masks broadcast across batches (no batch dimension), so they can only
+    # 2D and 3D masks broadcast across batches (no per-batch dimension), so they can only
     # represent one padding pattern. The mask uses batch 0's seqlen for all batches.
     # Adjust effective_seqlens so the reference comparison matches the actual mask.
-    if config.attn_mask_dims == 3:
+    if config.attn_mask_dims in (2, 3):
         effective_seqlens = torch.full_like(seqlens, seqlens[0].item())
     else:
         effective_seqlens = seqlens
@@ -676,6 +676,8 @@ def gqa_prompt_padding_test_cases():
     Generate test cases for ONNX Attention op GQA path with boolean padding masks.
 
     Tests 2D, 3D, and 4D boolean masks for right-padding scenarios.
+    Includes a batch_size=4, q_seq=1 case where batch_size != q_seq_len to
+    guard against 2D mask shape bugs (must be [q_seq, total_seq] not [batch, total_seq]).
     """
     batches = [2]
     seqs = [(16, 16)]
@@ -702,6 +704,24 @@ def gqa_prompt_padding_test_cases():
                         )
                         name = f"b{b}_sq{sq}_skv{skv}_nh{n}_{n2}_h{h}_mask{mask_dims}d"
                         yield name, config
+
+    # Guard case: batch_size=4 != q_seq_len=1 (decode). This catches the original bug
+    # where 2D mask was [batch, total_seq] instead of [q_seq, total_seq].
+    for mask_dims in mask_dims_options:
+        config = AttentionConfig(
+            batch_size=4,
+            q_sequence_length=1,
+            kv_sequence_length=32,
+            past_kv_sequence_length=0,
+            q_num_heads=8,
+            kv_num_heads=2,
+            head_size=128,
+            is_causal=1,
+            has_attn_mask=True,
+            attn_mask_dims=mask_dims,
+        )
+        name = f"b4_sq1_skv32_nh8_2_h128_mask{mask_dims}d_shape_guard"
+        yield name, config
 
 
 def gqa_past_padding_test_cases():

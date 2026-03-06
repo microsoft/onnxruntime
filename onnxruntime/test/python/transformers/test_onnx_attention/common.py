@@ -234,14 +234,13 @@ def create_attention_node_and_io(
             mask_ort_type = ort_type  # additive mask uses same type as Q/K/V
 
         # Mask shapes differ between GQA (bool) and MHA (additive/bool) paths:
-        # GQA bool: 2D=[batch, total_seq] — GQA converts to seqlens_k directly, bypassing ONNX broadcasting.
-        # MHA (additive or bool): 2D=[q_seq, total_seq] — follows ONNX right-aligned broadcasting.
+        # Per ONNX spec, 2D mask is [q_seq, total_seq] for all paths.
         # 3D and 4D are the same for both paths.
         # ONNX broadcasting aligns from the right: 3D [A, B, C] → [_, A, B, C] where A=heads
         is_gqa = config.kv_num_heads != config.q_num_heads
         if config.attn_mask_type == "bool" and is_gqa:
             if config.attn_mask_dims == 2:
-                mask_shape = [config.batch_size, mask_seq_len]
+                mask_shape = [config.q_sequence_length, mask_seq_len]
             elif config.attn_mask_dims == 3:
                 mask_shape = [config.q_num_heads, config.q_sequence_length, mask_seq_len]
             else:  # 4D
@@ -740,7 +739,7 @@ def create_boolean_mask_from_seqlens(
 
     Returns:
         Boolean mask where True = valid, False = padding.
-        - 2D: [batch_size, total_seq_len] - broadcasts to [batch, 1, 1, total_seq]
+        - 2D: [q_seq_len, total_seq_len] - broadcasts to [batch, heads, q_seq, total_seq]
         - 3D: [num_heads, q_seq_len, total_seq_len] - broadcasts to [1, num_heads, q_seq, total_seq]
         - 4D: [batch_size, num_heads, q_seq_len, total_seq_len] - no broadcasting
     """
@@ -753,7 +752,10 @@ def create_boolean_mask_from_seqlens(
     mask_2d = arange < seqlens_expanded  # [batch_size, total_seq_len]
 
     if mask_dims == 2:
-        return mask_2d
+        # 2D: [q_seq_len, total_seq_len] per ONNX spec. Broadcasts across batch and heads.
+        # Since 2D masks can't vary per batch, use the first batch's pattern.
+        mask_1d = mask_2d[0:1, :]  # [1, total_seq_len]
+        return mask_1d.expand(q_seq_len, total_seq_len).contiguous()
     elif mask_dims == 3:
         # 3D mask: [num_heads, q_seq_len, total_seq_len]
         # For right-padding tests, all batches should have the same mask pattern per position.

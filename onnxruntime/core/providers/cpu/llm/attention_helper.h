@@ -91,6 +91,13 @@ inline Status ComputeOutputShapeForAttention(
 
     parameters.transpose_output = true;  // whether to transpose the input/output with permutation (0, 2, 1, 3)
     parameters.q_sequence_length = onnxruntime::narrow<int>(Q->Shape()[1]);
+
+    // Validate mask second-to-last dim matches q_sequence_length (same check as 4D path).
+    // For 2D mask [A, B]: A must equal q_seq. For 3D mask [A, B, C]: B must equal q_seq.
+    ORT_ENFORCE(attn_mask == nullptr ||
+                    attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 2] == Q->Shape()[1],
+                "inconsistent q_sequence_length (between attn_mask and Q)");
+
     parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[2]) / parameters.q_num_heads;
     parameters.kv_sequence_length = onnxruntime::narrow<int>(K->Shape()[1]);
     parameters.v_head_size = onnxruntime::narrow<int>(V->Shape()[2]) / parameters.kv_num_heads;
