@@ -8,7 +8,6 @@ import tempfile
 import unittest
 
 import onnx
-from onnx import helper
 
 from onnxruntime.capi.onnxruntime_pybind11_state import (
     OrtCompiledModelCompatibility,
@@ -25,8 +24,8 @@ if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.versio
 
 def _create_model_with_compatibility_metadata(ep_compatibility_info=None):
     """Create a minimal valid ONNX model with optional compatibility metadata."""
-    graph = helper.make_graph([], "test_graph", [], [])
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    graph = onnx.helper.make_graph([], "test_graph", [], [])
+    model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
 
     if ep_compatibility_info:
         for ep_type, compat_info in ep_compatibility_info.items():
