@@ -216,29 +216,19 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
       const T* col_g = col_buffer.get() + g * kernel_dim * col_stride;
       T* Y_g = Ydata + b * M * output_image_size + g * (M / group) * output_image_size;
 
-      // Avoid physical transpose by using cuBLAS OP_N/OP_N logic.
-      // We want Y = W * Col.
-      // W is [M/group, kernel_dim] (Row-Major).
-      // Col is [kernel_dim, cur_out_size] (Row-Major).
-      // We compute Y^T = Col^T * W^T.
-      // Col^T (Col-Major [cur_out_size, kernel_dim]) is exactly Col (Row-Major [kernel_dim, cur_out_size]) in memory.
-      // W^T (Col-Major [kernel_dim, M/group]) is exactly W (Row-Major [M/group, kernel_dim]) in memory.
-      // Result Y^T is Col-Major [cur_out_size, M/group].
-      // In memory, Y^T (Col-Major) is exactly Y (Row-Major [M/group, cur_out_size]).
-      // So we get Y in Row-Major layout.
-
-      // A = Col (Row-Major [kernel_dim, cur_out_size]) -> interpreted as Col-Major [cur_out_size, kernel_dim].
-      // B = W (Row-Major [M/group, kernel_dim]) -> interpreted as Col-Major [kernel_dim, M/group].
-      // C = A * B = Col^T * W^T = Y^T.
-      // C is Col-Major [cur_out_size, M/group].
-      // m = cur_out_size, n = M/group, k = kernel_dim.
-      // lda = cur_out_size.
-      // ldb = kernel_dim.
-      // ldc = cur_out_size.
+      // GEMM layout trick: compute Y = W * Col without physical transpose.
       //
-      // When cur_parallel == 1: cur_out_size == output_image_size, so C layout (pos, channel) matches
-      // NCHW Y_g[0, channel, pos] exactly. Write directly to Y_g and skip the copy kernel.
-      // When cur_parallel > 1: layouts differ, must copy via DeformConvCopyGemmOutputRowMajorToNCHW.
+      // Our data is row-major: W [M/group, kernel_dim], Col [kernel_dim, cur_out_size], Y [M/group, cur_out_size].
+      // cuBLAS is column-major. Key insight: row-major A[M,K] in memory equals column-major A^T[K,M].
+      // We compute Y^T = Col^T * W^T by passing Col as A and W as B, both OP_N (no transpose):
+      //   - Col (row [kernel_dim, cur_out_size]) -> cuBLAS interprets as col-major [cur_out_size, kernel_dim] = Col^T
+      //   - W (row [M/group, kernel_dim]) -> cuBLAS interprets as col-major [kernel_dim, M/group] = W^T
+      //   - C = A*B = Col^T * W^T = (W*Col)^T = Y^T; C is col-major [cur_out_size, M/group] = Y in row-major
+      //
+      // cublasGemmHelper: m=cur_out_size, n=M/group, k=kernel_dim; lda=cur_out_size, ldb=kernel_dim, ldc=cur_out_size
+      //
+      // cur_parallel==1: cur_out_size==output_image_size, C layout (pos, channel) matches NCHW Y_g[0,ch,pos] -> write
+      // into Y_g. cur_parallel>1: layouts differ -> write to gemm_output_buffer, then DeformConvCopyGemmOutputRowMajorToNCHW.
       const bool gemm_writes_directly = (cur_parallel == 1);
 
       CUBLAS_RETURN_IF_ERROR((cublasGemmHelper(
