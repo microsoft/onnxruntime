@@ -417,7 +417,9 @@ Status DeformConvIm2ColImpl(
     }
   };
 
-  if (kH == 3 && kW == 3) {
+  if (kH == 1 && kW == 1) {
+    launch(DeformConvKSize<1>{}, DeformConvKSize<1>{});
+  } else if (kH == 3 && kW == 3) {
     launch(DeformConvKSize<3>{}, DeformConvKSize<3>{});
   } else if (kH == 5 && kW == 5) {
     launch(DeformConvKSize<5>{}, DeformConvKSize<5>{});
