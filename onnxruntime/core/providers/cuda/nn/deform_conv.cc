@@ -115,8 +115,6 @@ template <typename T>
 Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  std::lock_guard<std::mutex> lock(state_.mutex);
-
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
   const auto* offset = context->Input<Tensor>(2);
@@ -151,7 +149,10 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   int n_parallel_imgs;
-  ORT_RETURN_IF_ERROR(UpdateState(context, params, n_parallel_imgs));
+  {
+    std::lock_guard<std::mutex> lock(state_.mutex);
+    ORT_RETURN_IF_ERROR(UpdateState(context, params, n_parallel_imgs));
+  }
 
   const int64_t kernel_size = kH * kW;
   const int64_t output_image_size = out_h * out_w;
