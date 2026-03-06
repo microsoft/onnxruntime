@@ -14,9 +14,16 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "test/autoep/test_autoep_utils.h"
+#include "test/autoep/library/example_plugin_ep/ep_test_hooks.h"
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -287,6 +294,66 @@ void RunAddMulAddModel(const Ort::SessionOptions& session_options,
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(7, 17, 31, 49, 71, 97));
+}
+
+struct ExampleEpHooks {
+  using ResetFn = void (*)();
+  using GetFn = uint64_t (*)();
+
+  ResetFn reset{};
+  GetFn get{};
+};
+
+ExampleEpHooks LoadExampleEpHooks(const Utils::ExamplePluginInfo& ep_info) {
+  ExampleEpHooks hooks{};
+#if defined(_WIN32)
+  HMODULE lib = LoadLibraryW(ep_info.library_path.wstring().c_str());
+  if (!lib) return hooks;
+  hooks.reset = reinterpret_cast<ExampleEpHooks::ResetFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetSyncCount"));
+  hooks.get = reinterpret_cast<ExampleEpHooks::GetFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetSyncCount"));
+#else
+  void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+  if (!lib) return hooks;
+  hooks.reset = reinterpret_cast<ExampleEpHooks::ResetFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetSyncCount"));
+  hooks.get = reinterpret_cast<ExampleEpHooks::GetFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetSyncCount"));
+#endif
+  return hooks;
+}
+
+void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+  // Create input
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data(6, 2.0f);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+  ort_input_names.push_back("X");
+
+  Ort::IoBinding io_binding(session);
+  io_binding.BindInput("X", ort_inputs[0]);
+  io_binding.BindOutput("Y", memory_info);
+
+  Ort::RunOptions run_options;
+
+  // Run session and get outputs
+  session.Run(run_options, io_binding);
+  io_binding.SynchronizeOutputs();
+  std::vector<Ort::Value> ort_outputs = io_binding.GetOutputValues();
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
 }  // namespace
@@ -1028,6 +1095,27 @@ TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
   EXPECT_NE(reasons_bitmask, 0u) << "GPU device should be incompatible with example_plugin_ep (CPU-only)";
 
   api->ReleaseDeviceEpIncompatibilityDetails(details);
+}
+
+TEST(OrtEpLibrary, PluginEp_Sync) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // Create session with example plugin EP
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  const auto hooks = LoadExampleEpHooks(Utils::example_ep_info);
+  ASSERT_NE(hooks.reset, nullptr);
+  ASSERT_NE(hooks.get, nullptr);
+
+  hooks.reset();
+
+  RunMulModelWithPluginEpUsingIOBinding(session_options);
+
+  ASSERT_EQ(hooks.get(), 1) << "Expected Sync to be called once during inference";
 }
 }  // namespace test
 }  // namespace onnxruntime
