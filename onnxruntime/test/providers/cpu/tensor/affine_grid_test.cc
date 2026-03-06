@@ -269,5 +269,95 @@ TEST(AffineGridTest, invalid_3d_theta_wrong_dim2) {
   test.AddOutput<float>("grid", {1, 2, 2, 3, 3}, std::vector<float>(36, 0.0f));
   test.Run(OpTester::ExpectResult::kExpectFailure, "theta shape must be [N, 3, 4] for 3D");
 }
+
+// Test: 2D - H must be positive (zero)
+TEST(AffineGridTest, invalid_2d_H_zero) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {4}, {1, 1, 0, 3});
+  test.AddOutput<float>("grid", {1, 0, 3, 2}, std::vector<float>(0, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[2] (H=0) must be positive");
+}
+
+// Test: 2D - H must be positive (negative)
+TEST(AffineGridTest, invalid_2d_H_negative) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {4}, {1, 1, -1, 3});
+  test.AddOutput<float>("grid", {1, 1, 3, 2}, std::vector<float>(6, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[2] (H=-1) must be positive");
+}
+
+// Test: 2D - W must be positive (zero)
+TEST(AffineGridTest, invalid_2d_W_zero) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {4}, {1, 1, 2, 0});
+  test.AddOutput<float>("grid", {1, 2, 0, 2}, std::vector<float>(0, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[3] (W=0) must be positive");
+}
+
+// Test: 2D - W must be positive (negative)
+TEST(AffineGridTest, invalid_2d_W_negative) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {4}, {1, 1, 2, -2});
+  test.AddOutput<float>("grid", {1, 2, 1, 2}, std::vector<float>(4, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[3] (W=-2) must be positive");
+}
+
+// Test: 3D - D must be positive (zero)
+TEST(AffineGridTest, invalid_3d_D_zero) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 3, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {5}, {1, 1, 0, 2, 3});
+  test.AddOutput<float>("grid", {1, 0, 2, 3, 3}, std::vector<float>(0, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[2] (D=0) must be positive");
+}
+
+// Test: 3D - D must be positive (negative)
+TEST(AffineGridTest, invalid_3d_D_negative) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 3, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {5}, {1, 1, -1, 2, 3});
+  test.AddOutput<float>("grid", {1, 1, 2, 3, 3}, std::vector<float>(18, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[2] (D=-1) must be positive");
+}
+
+// Test: 3D - H must be positive (zero)
+TEST(AffineGridTest, invalid_3d_H_zero) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 3, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {5}, {1, 1, 2, 0, 3});
+  test.AddOutput<float>("grid", {1, 2, 0, 3, 3}, std::vector<float>(0, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[3] (H=0) must be positive");
+}
+
+// Test: 3D - H must be positive (negative)
+TEST(AffineGridTest, invalid_3d_H_negative) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 3, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {5}, {1, 1, 2, -3, 3});
+  test.AddOutput<float>("grid", {1, 2, 1, 3, 3}, std::vector<float>(18, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[3] (H=-3) must be positive");
+}
+
+// Test: 3D - W must be positive (zero)
+TEST(AffineGridTest, invalid_3d_W_zero) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 3, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {5}, {1, 1, 2, 3, 0});
+  test.AddOutput<float>("grid", {1, 2, 3, 0, 3}, std::vector<float>(0, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[4] (W=0) must be positive");
+}
+
+// Test: 3D - W must be positive (negative)
+TEST(AffineGridTest, invalid_3d_W_negative) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 3, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {5}, {1, 1, 2, 3, -4});
+  test.AddOutput<float>("grid", {1, 2, 3, 1, 3}, std::vector<float>(18, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "size[4] (W=-4) must be positive");
+}
 }  // namespace test
 }  // namespace onnxruntime

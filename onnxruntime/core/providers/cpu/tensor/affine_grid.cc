@@ -123,6 +123,8 @@ Status AffineGrid<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF(theta_shape[1] != 2 || theta_shape[2] != 3,
                   "AffineGrid: theta shape must be [N, 2, 3] for 2D, got [",
                   theta_shape[0], ", ", theta_shape[1], ", ", theta_shape[2], "]");
+    ORT_RETURN_IF(H <= 0, "AffineGrid: size[2] (H=", H, ") must be positive");
+    ORT_RETURN_IF(W <= 0, "AffineGrid: size[3] (W=", W, ") must be positive");
 
     TensorShape grid_shape{N, H, W, 2};
     auto grid = context->Output(0, grid_shape);
@@ -144,6 +146,9 @@ Status AffineGrid<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF(theta_shape[1] != 3 || theta_shape[2] != 4,
                   "AffineGrid: theta shape must be [N, 3, 4] for 3D, got [",
                   theta_shape[0], ", ", theta_shape[1], ", ", theta_shape[2], "]");
+    ORT_RETURN_IF(D <= 0, "AffineGrid: size[2] (D=", D, ") must be positive");
+    ORT_RETURN_IF(H <= 0, "AffineGrid: size[3] (H=", H, ") must be positive");
+    ORT_RETURN_IF(W <= 0, "AffineGrid: size[4] (W=", W, ") must be positive");
 
     TensorShape grid_shape{N, D, H, W, 3};
     auto grid = context->Output(0, grid_shape);
