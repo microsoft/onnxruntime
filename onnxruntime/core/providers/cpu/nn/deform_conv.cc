@@ -64,9 +64,9 @@ void DeformableIm2col(
     const T* data_offset,                    // Offset [offset_groups * 2 * kH * kW, H_out, W_out]
     const T* data_mask,                      // Mask [offset_groups * kH * kW, H_out, W_out] (nullptr when UseMask=false)
     int64_t height, int64_t width,           // Input spatial dimensions
-    int64_t kernel_h, int64_t kernel_w,     // Kernel dimensions
+    int64_t kernel_h, int64_t kernel_w,      // Kernel dimensions
     int64_t pad_h, int64_t pad_w,            // Padding (begin) for H and W
-    int64_t stride_h, int64_t stride_w,     // Stride for H and W
+    int64_t stride_h, int64_t stride_w,      // Stride for H and W
     int64_t dilation_h, int64_t dilation_w,  // Dilation for H and W
     int64_t channels,                        // Input channels
     int64_t offset_groups,                   // Number of offset groups (channels shared per group)
