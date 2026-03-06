@@ -400,7 +400,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     ]
     dl_libs.extend(qnn_deps)
     # NV TensorRT RTX
-    nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
+    nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so", "*plugins*.so"]
     dl_libs.extend(nv_tensorrt_rtx_deps)
     libs.extend(nv_tensorrt_rtx_deps)
     if nightly_build:
@@ -488,7 +488,7 @@ else:
     ]
     libs.extend(migraphx_deps)
     # NV TensorRT RTX Libs
-    nv_tensorrt_rtx_deps = ["tensorrt_onnxparser_rtx_*.dll", "tensorrt_rtx_*.dll"]
+    nv_tensorrt_rtx_deps = ["tensorrt_onnxparser_rtx_*.dll", "tensorrt_rtx_*.dll", "*plugins*.dll"]
     libs.extend(nv_tensorrt_rtx_deps)
 
 if is_manylinux:
