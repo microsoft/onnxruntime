@@ -25,6 +25,7 @@ endif()
 # - Android builds from Linux Docker containers have trouble finding clang-scan-deps.
 # - The MSVC /permissive option is needed for compiling some of the CUDA EP code which uses CUTLASS.
 #   This option is not compatible with C++20 modules.
+# So we will skip module scanning for now.
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 # Disable fast-math for Intel oneAPI compiler
