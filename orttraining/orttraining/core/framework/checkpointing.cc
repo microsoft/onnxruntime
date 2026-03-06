@@ -78,9 +78,23 @@ Status SaveRuntimeTensor(
 
   saved_tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
 
-  ORT_RETURN_IF_NOT(
-      data_file.write(tensor_data.data(), length),
-      "Failed to write to data file: ", ToUTF8String(relative_data_path));
+  if constexpr (endian::native != endian::little) {
+    std::vector<char> le_data;
+    le_data.resize(length);
+
+    size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(saved_tensor_proto);
+    auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(tensor_data.data()), tensor_data.size_bytes());
+    auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(le_data.data()), le_data.size());
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span));
+
+    ORT_RETURN_IF_NOT(
+        data_file.write(le_data.data(), length),
+        "Failed to write to data file: ", ToUTF8String(relative_data_path));
+  } else {
+    ORT_RETURN_IF_NOT(
+        data_file.write(tensor_data.data(), length),
+        "Failed to write to data file: ", ToUTF8String(relative_data_path));
+  }
 
   tensor_proto = std::move(saved_tensor_proto);
   return Status::OK();

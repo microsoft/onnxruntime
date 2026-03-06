@@ -10,7 +10,6 @@
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/data_transfer_manager.h"
-#include "core/framework/endian_utils.h"
 
 namespace onnxruntime {
 
@@ -30,10 +29,6 @@ inline Status CopyTensorDataToByteSpan(
   ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
   Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), dst_alloc_info};
   ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
-  if constexpr (endian::native != endian::little) {
-    gsl::span<std::byte> bytes_span(reinterpret_cast<std::byte*>(dst_span.data()), dst_span.size_bytes());
-    onnxruntime::utils::SwapByteOrderInplace(src_tensor.DataType()->Size(), bytes_span);
-  }
   return Status::OK();
 }
 
