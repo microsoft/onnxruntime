@@ -232,14 +232,6 @@ __global__ void DeformableIm2ColKernel(
       if (use_mask) {
         // Access mask using pre-calculated base and stride.
         mask_val = DeformConvLdg(mask_ptr_base + kernel_idx * out_size);
-
-        // [Optimization 1] Early Exit / Pruning
-        // If mask is 0, the contribution is 0. Skip expensive offset load and interpolation.
-        // Note: casting to float for comparison is safe for standard floating point types.
-        if (static_cast<float>(mask_val) == 0.0f) {
-          data_col_ptr_base[kernel_idx * col_stride] = static_cast<T>(0);
-          return;
-        }
       }
 
       // Calculate offset pointers relative to the base.
@@ -255,7 +247,7 @@ __global__ void DeformableIm2ColKernel(
 
       T val = BilinearInterpolate(input_ptr, height, width, h_im, w_im);
 
-      // Write result to data_col using pre-calculated base.
+      // Match CPU path: always interpolate then apply mask to keep branch-free hot loop.
       data_col_ptr_base[kernel_idx * col_stride] = val * mask_val;
     };
 
