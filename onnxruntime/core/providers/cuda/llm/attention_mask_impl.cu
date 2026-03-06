@@ -305,7 +305,7 @@ Status LaunchAddBiasInPlace(
     int64_t addend_elements,
     cudaStream_t stream,
     int max_threads_per_block) {
-  if (total_elements == 0) {
+  if (total_elements == 0 || addend_elements == 0) {
     return Status::OK();
   }
 

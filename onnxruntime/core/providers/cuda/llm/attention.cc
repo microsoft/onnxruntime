@@ -901,8 +901,17 @@ Status Attention<T>::RunUnfusedAttention(
     // When attn_mask is also present, compose it into the nonpad bias additively.
     // The nonpad bias is [B, q, t]; the mask is added with cyclic broadcasting
     // (e.g. a 2D [q, t] mask repeats over the batch dimension).
+    // Only 2D masks and 4D masks with head_dim=1 are supported — per-head masks
+    // (3D [H,q,t] or 4D [B,H>1,q,t]) cannot be composed into a [B,q,t] buffer.
     if (attn_mask != nullptr) {
-      int64_t mask_elements = attn_mask->Shape().Size();
+      const auto& mask_shape = attn_mask->Shape();
+      int mask_dims = static_cast<int>(mask_shape.NumDimensions());
+      ORT_ENFORCE(mask_dims == 2 || (mask_dims == 4 && mask_shape[1] == 1),
+                  "nonpad_kv_seqlen + attn_mask composition in unfused path only supports "
+                  "2D masks [q, t] and 4D masks with head_dim=1 [B, 1, q, t]. "
+                  "Got mask shape: ", mask_shape);
+
+      int64_t mask_elements = mask_shape.Size();
       const NativeCudaT* mask_bias_ptr = nullptr;
 
       if (attn_mask->IsDataType<bool>()) {
@@ -1048,7 +1057,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // nonpad_kv_seqlen + attn_mask routing:
   //   Flash: cannot handle this combo (no bias param when seqlens_k is used) → excluded.
   //   MEA:   supports both (custom_right_padding for seqlens + additive attn_bias for mask).
-  //   Unfused: nonpad → attention_bias conversion only; mask composition TODO(titaiwang).
+  //   Unfused: nonpad → attention_bias; mask composed additively when both present.
   const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
 
   // Early-reject features not supported by any CUDA kernel path.
