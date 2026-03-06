@@ -24,10 +24,10 @@ T BilinearInterpolate(const T* in, int64_t height, int64_t width, T h, T w) {
     return static_cast<T>(0);
   }
 
-  const int h_low = static_cast<int>(std::floor(h));
-  const int w_low = static_cast<int>(std::floor(w));
-  const int h_high = h_low + 1;
-  const int w_high = w_low + 1;
+  const int64_t h_low = static_cast<int64_t>(std::floor(h));
+  const int64_t w_low = static_cast<int64_t>(std::floor(w));
+  const int64_t h_high = h_low + 1;
+  const int64_t w_high = w_low + 1;
 
   const T lh = h - static_cast<T>(h_low);
   const T lw = w - static_cast<T>(w_low);
