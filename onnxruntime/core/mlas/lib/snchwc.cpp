@@ -525,8 +525,9 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     // reused for a given set of input inside the kernel.
     //
 
-    static constexpr size_t FilterSetSize = 4;
+    static constexpr size_t DefaultFilterSetSize = 4;
 
+    const size_t FilterSetSize;
     const size_t FilterSetCount;
 
     //
@@ -540,9 +541,10 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     size_t WorkRemaining;
     size_t FilterCount;
 
-    MLAS_NCHWC_GROUPED_CONV_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
+    MLAS_NCHWC_GROUPED_CONV_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock, size_t FilterSetSizeParam = DefaultFilterSetSize) :
         MLAS_NCHWC_CONV_ALGORITHM(WorkBlock),
-        FilterSetCount((OutputChannels + (BlockSize * FilterSetSize) - 1) / (BlockSize * FilterSetSize))
+        FilterSetSize(FilterSetSizeParam),
+        FilterSetCount((OutputChannels + (BlockSize * FilterSetSizeParam) - 1) / (BlockSize * FilterSetSizeParam))
     {
     }
 
@@ -647,7 +649,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     }
 };
 
-constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::FilterSetSize;
+constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::DefaultFilterSetSize;
 
 //
 // Implementation of the direct convolution algorithm where the input buffer is
@@ -657,7 +659,8 @@ constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::FilterSetSize;
 struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
     MLAS_NCHWC_CONV_NCHWC_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
-        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock)
+        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock,
+            DefaultFilterSetSize)
     {
     }
 
@@ -767,7 +770,8 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
     MLAS_NCHWC_CONV_NCHW_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
-        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock)
+        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock,
+            DefaultFilterSetSize)
     {
     }
 
@@ -866,8 +870,50 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
+    static size_t SelectPointwiseFilterSetSize(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock)
+    {
+        const size_t BlockSize = MlasNchwcGetBlockSize();
+        const size_t InputChannels = WorkBlock->InputChannels;
+        const size_t OutputChannels = WorkBlock->OutputChannels;
+        const size_t BatchCount = WorkBlock->BatchCount;
+        const size_t GroupCount = WorkBlock->GroupCount;
+        const size_t OutputHeight = WorkBlock->OutputShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex];
+        const size_t ThreadCount = std::max<size_t>(WorkBlock->tids, 1);
+
+        constexpr size_t MaxFilterTileBytes = 64 * 1024;
+        constexpr size_t MinWorkUnitsPerThread = 2;
+        constexpr size_t MaximumInputChannelBatch = 128;
+
+        const size_t EffectiveInputChannels =
+            std::min(InputChannels, MaximumInputChannelBatch);
+
+        for (size_t CandidateFilterSetSize : { size_t(16), size_t(12), size_t(8), DefaultFilterSetSize }) {
+
+            const size_t FilterTileBytes = CandidateFilterSetSize * BlockSize * EffectiveInputChannels * sizeof(float);
+            if (FilterTileBytes > MaxFilterTileBytes) {
+                continue;
+            }
+
+            const size_t FilterSetCount =
+                (OutputChannels + (BlockSize * CandidateFilterSetSize) - 1) / (BlockSize * CandidateFilterSetSize);
+
+            const size_t TotalWork = BatchCount * GroupCount * FilterSetCount * std::max<size_t>(OutputHeight, 1);
+            if (TotalWork < (ThreadCount * MinWorkUnitsPerThread)) {
+                continue;
+            }
+
+            return CandidateFilterSetSize;
+        }
+
+        return DefaultFilterSetSize;
+    }
+
     MLAS_NCHWC_CONV_POINTWISE_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
-        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock)
+        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock,
+            // Select the largest pointwise filter set size that preserves
+            // enough thread-level work while keeping the per-tile filter
+            // footprint in cache-friendly bounds.
+            SelectPointwiseFilterSetSize(WorkBlock))
     {
     }
 
