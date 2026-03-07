@@ -1546,6 +1546,61 @@ void addGlobalMethods(py::module& m) {
       R"pbdoc("Validate a compiled model's compatibility information for one or more EP devices.)pbdoc");
 
   m.def(
+      "get_compatibility_info_from_model",
+      [](const std::basic_string<ORTCHAR_T>& model_path, const std::string& ep_type) -> py::object {
+        Ort::AllocatorWithDefaultOptions allocator;
+        char* compat_info = nullptr;
+        Ort::ThrowOnError(Ort::GetApi().GetCompatibilityInfoFromModel(
+            model_path.c_str(), ep_type.c_str(), allocator, &compat_info));
+        if (compat_info == nullptr) {
+          return py::none();
+        }
+        py::str result(compat_info);
+        allocator.Free(compat_info);
+        return result;
+      },
+      R"pbdoc(Extract EP compatibility info from a precompiled model file.
+
+Parses the model file to extract the compatibility info string for a specific execution provider
+from the model's metadata properties. Returns None if no compatibility info exists for the EP.
+
+Args:
+    model_path: Path to the ONNX model file.
+    ep_type: The execution provider type string (e.g. "CPUExecutionProvider").
+
+Returns:
+    The compatibility info string, or None if not found.
+)pbdoc");
+
+  m.def(
+      "get_compatibility_info_from_model_bytes",
+      [](const py::bytes& model_data, const std::string& ep_type) -> py::object {
+        const char* data_ptr = PyBytes_AS_STRING(model_data.ptr());
+        Py_ssize_t data_len = PyBytes_GET_SIZE(model_data.ptr());
+        Ort::AllocatorWithDefaultOptions allocator;
+        char* compat_info = nullptr;
+        Ort::ThrowOnError(Ort::GetApi().GetCompatibilityInfoFromModelBytes(
+            data_ptr, static_cast<size_t>(data_len), ep_type.c_str(), allocator, &compat_info));
+        if (compat_info == nullptr) {
+          return py::none();
+        }
+        py::str result(compat_info);
+        allocator.Free(compat_info);
+        return result;
+      },
+      R"pbdoc(Extract EP compatibility info from precompiled model bytes in memory.
+
+Same as get_compatibility_info_from_model but reads from a bytes object instead of a file.
+
+Args:
+    model_data: The model data as bytes.
+    ep_type: The execution provider type string (e.g. "CPUExecutionProvider").
+
+Returns:
+    The compatibility info string, or None if not found.
+)pbdoc");
+
+  m.def(
       "copy_tensors",
       [](const std::vector<const OrtValue*>& src, const std::vector<OrtValue*>& dest, py::object& py_arg) {
         const OrtEnv* ort_env = GetOrtEnv();
