@@ -645,7 +645,7 @@ ORT_API_STATUS_IMPL(
 
   input.set_data_type(ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->GetElementType()));
   auto tensor = value->GetMutable<onnxruntime::Tensor>();
-  input.set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
+  onnxruntime::utils::SetRawDataInTensorProto(input, tensor->DataRaw(), tensor->SizeInBytes());
 
   return nullptr;
   API_IMPL_END
@@ -766,7 +766,7 @@ ORT_API_STATUS_IMPL(
           return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Undefined tensor type!");
         }
         tensor_proto->set_data_type(prim_type->GetDataType());
-        tensor_proto->set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
+        onnxruntime::utils::SetRawDataInTensorProto(*tensor_proto, tensor->DataRaw(), tensor->SizeInBytes());
         break;
       }
     }

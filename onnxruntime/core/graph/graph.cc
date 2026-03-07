@@ -1242,15 +1242,6 @@ Graph::Graph(const Model& owning_model,
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     ORT_THROW_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor));
-    if constexpr (endian::native != endian::little) {
-      const AttributeProto& attrib = node.attribute(0);
-      if (attrib.type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
-        const TensorProto& sparse_values = node.attribute(0).sparse_tensor().values();
-        if ((!(sparse_values.has_raw_data())) && utils::HasRawData(*tensor)) {
-          onnxruntime::utils::ConvertRawDataInTensorProto(*tensor);
-        }
-      }
-    }
 
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
@@ -4901,6 +4892,18 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
       std::vector<uint8_t> raw_data;
       ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
+
+      // Convert it data to little endian before saving to file
+      if constexpr (endian::native != endian::little) {
+        size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(initializer);
+
+        if (element_size > 1) {
+          onnxruntime::utils::SwapByteOrderInplace(
+              element_size,
+              gsl::make_span(reinterpret_cast<std::byte*>(raw_data.data()), tensor_bytes_size));
+        }
+      }
+
       if (model_saving_options.force_embed_external_ini ||
           tensor_bytes_size < model_saving_options.initializer_size_threshold) {
         *output_proto = initializer;
@@ -6661,7 +6664,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
         // add OrtValue to ortvalue_initializers_ to keep it alive and to store the deleter if provided.
         ortvalue_initializers_.emplace(name, std::move(v));
       } else {
-        tensor_proto.set_raw_data(t.DataRaw(), t.SizeInBytes());
+        onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, t.DataRaw(), t.SizeInBytes());
       }
 
       TypeProto type_proto{utils::TypeProtoFromTensorProto(tensor_proto)};

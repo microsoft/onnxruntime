@@ -3,6 +3,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/prepacked_weights.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensorprotoutils.h"
@@ -249,26 +250,17 @@ std::vector<BFloat16> CreateValues<BFloat16>() {
 }
 
 template <typename T>
-void ConvertEndianessForVector(const std::vector<T>& test_data) {
-  const size_t element_size = sizeof(T);
-  const size_t num_elements = test_data.size();
-  char* bytes = reinterpret_cast<char*>(const_cast<T*>(test_data.data()));
-  for (size_t i = 0; i < num_elements; ++i) {
-    char* start_byte = bytes + i * element_size;
-    char* end_byte = start_byte + element_size - 1;
-    for (size_t count = 0; count < element_size / 2; ++count) {
-      std::swap(*start_byte++, *end_byte--);
-    }
-  }
-}
-
-template <typename T>
 void WriteDataToFile(FILE* fp, const std::vector<T>& test_data) {
-  if constexpr (endian::native != endian::little) {
-    ConvertEndianessForVector(test_data);
-  }
   size_t size_in_bytes = test_data.size() * sizeof(T);
-  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
+
+  std::vector<unsigned char> data;
+  data.resize(size_in_bytes);
+
+  auto src_span = gsl::make_span(test_data.data(), test_data.size());
+  auto dst_span = gsl::make_span(data.data(), data.size());
+
+  ASSERT_STATUS_OK(onnxruntime::utils::WriteLittleEndian(src_span, dst_span));
+  ASSERT_EQ(size_in_bytes, fwrite(data.data(), 1, size_in_bytes, fp));
 }
 
 std::unique_ptr<bool[]> BoolDataFromVector(const std::vector<bool>& test_data) {
@@ -310,9 +302,6 @@ void UnpackAndValidate(const TensorProto& tensor_proto, const std::filesystem::p
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tensor_proto, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  if constexpr (endian::native != endian::little) {
-    ConvertEndianessForVector(val);
-  }
 
   // Validate data
   for (size_t i = 0; i < test_data.size(); i++) {
@@ -491,9 +480,7 @@ static void TestConstantNodeConversionWithExternalData(TensorProto_DataType type
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tp, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  if constexpr (endian::native != endian::little) {
-    ConvertEndianessForVector(val);
-  }
+
   for (size_t i = 0; i < test_data.size(); i++) {
     ASSERT_EQ(val[i], test_data[i]);
   }

@@ -210,6 +210,7 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   if (external_file_path == kTensorProtoMemoryAddressTag) {
     // The external data is in the same memory as the tensor proto.
     // The offset is the address of the data.
+    // NOTE: this is an exception: data in memory is already in native endian format
     unpacked_tensor.resize(tensor_byte_size);
     std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
     return Status::OK();
@@ -235,6 +236,16 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
       file_offset,
       tensor_byte_size,
       gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
+
+  if constexpr (endian::native != endian::little) {
+    size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(tensor_proto);
+
+    if (element_size > 1) {
+      onnxruntime::utils::SwapByteOrderInplace(
+          element_size,
+          gsl::make_span(reinterpret_cast<std::byte*>(unpacked_tensor.data()), tensor_byte_size));
+    }
+  }
 
   return Status::OK();
 }
@@ -449,6 +460,42 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
 
 void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param) {
   tensor_proto.set_raw_data(std::move(param));
+  if constexpr (endian::native != endian::little) {
+    utils::ConvertRawDataInTensorProto(tensor_proto);
+  }
+}
+
+size_t GetElementSizeInTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  static const std::unordered_map<size_t, size_t> tensorproto_data_size{
+      {TensorProto_DataType_FLOAT, sizeof(float)},
+      {TensorProto_DataType_UINT8, sizeof(uint8_t)},
+      {TensorProto_DataType_INT8, sizeof(int8_t)},
+      {TensorProto_DataType_UINT16, sizeof(uint16_t)},
+      {TensorProto_DataType_INT16, sizeof(int16_t)},
+      {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
+      {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
+      {TensorProto_DataType_INT32, sizeof(int32_t)},
+      {TensorProto_DataType_UINT32, sizeof(uint32_t)},
+      {TensorProto_DataType_UINT64, sizeof(uint64_t)},
+      {TensorProto_DataType_INT64, sizeof(int64_t)},
+      {TensorProto_DataType_DOUBLE, sizeof(double)},
+      {TensorProto_DataType_BOOL, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E5M2, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
+      {TensorProto_DataType_UINT4, sizeof(uint8_t)},
+      {TensorProto_DataType_INT4, sizeof(uint8_t)},
+      {TensorProto_DataType_UINT2, sizeof(uint8_t)},
+      {TensorProto_DataType_INT2, sizeof(uint8_t)},
+  };
+
+  auto pos = tensorproto_data_size.find(tensor_proto.data_type());
+  if (pos == tensorproto_data_size.end()) {
+    return 0;
+  }
+
+  return pos->second;
 }
 
 void ConvertRawDataInTensorProto(TensorProto& tensor) {
@@ -459,35 +506,9 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   // For some data_type, element size differs for raw data vs
   // data set using the add_<data_type>data() API
   if (HasRawData(tensor)) {
-    static std::unordered_map<size_t, size_t> tensorproto_data_size{
-        {TensorProto_DataType_FLOAT, sizeof(float)},
-        {TensorProto_DataType_UINT8, sizeof(uint8_t)},
-        {TensorProto_DataType_INT8, sizeof(int8_t)},
-        {TensorProto_DataType_UINT16, sizeof(uint16_t)},
-        {TensorProto_DataType_INT16, sizeof(int16_t)},
-        {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
-        {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
-        {TensorProto_DataType_INT32, sizeof(int32_t)},
-        {TensorProto_DataType_UINT32, sizeof(uint32_t)},
-        {TensorProto_DataType_UINT64, sizeof(uint64_t)},
-        {TensorProto_DataType_INT64, sizeof(int64_t)},
-        {TensorProto_DataType_DOUBLE, sizeof(double)},
-        {TensorProto_DataType_BOOL, sizeof(uint8_t)},
-        {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
-        {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
-        {TensorProto_DataType_FLOAT8E5M2, sizeof(uint8_t)},
-        {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
-        {TensorProto_DataType_UINT4, sizeof(uint8_t)},
-        {TensorProto_DataType_INT4, sizeof(uint8_t)},
-        {TensorProto_DataType_UINT2, sizeof(uint8_t)},
-        {TensorProto_DataType_INT2, sizeof(uint8_t)},
-    };
-    auto pos = tensorproto_data_size.find(tensor.data_type());
-    if (pos == tensorproto_data_size.end()) {
-      return;
-    }
-    element_size = pos->second;
-    if (element_size == 1) {
+    element_size = GetElementSizeInTensorProto(tensor);
+
+    if (element_size <= 1) {
       return;
     }
     num_elements = tensor.raw_data().size() / element_size;
@@ -508,24 +529,37 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
       case TensorProto_DataType_INT2:
       case TensorProto_DataType_UINT8:
       case TensorProto_DataType_INT8:
-      case TensorProto_DataType_UINT16:
-      case TensorProto_DataType_INT16:
-      case TensorProto_DataType_FLOAT16:
-      case TensorProto_DataType_BFLOAT16:
       case TensorProto_DataType_FLOAT8E4M3FN:
       case TensorProto_DataType_FLOAT8E4M3FNUZ:
       case TensorProto_DataType_FLOAT8E5M2:
       case TensorProto_DataType_FLOAT8E5M2FNUZ:
+        bytes = tensor.mutable_int32_data()->mutable_data();
+        num_elements = tensor.int32_data_size() * (sizeof(int32_t) / sizeof(int8_t));
+        element_size = sizeof(int8_t);
+        break;
+
+      case TensorProto_DataType_UINT16:
+      case TensorProto_DataType_INT16:
+      case TensorProto_DataType_FLOAT16:
+      case TensorProto_DataType_BFLOAT16:
+        bytes = tensor.mutable_int32_data()->mutable_data();
+        num_elements = tensor.int32_data_size() * (sizeof(int32_t) / sizeof(int16_t));
+        element_size = sizeof(int16_t);
+        break;
+
       case TensorProto_DataType_INT32:
         bytes = tensor.mutable_int32_data()->mutable_data();
         num_elements = tensor.int32_data_size();
-        // We are setting this to int32_t size because we need to swap all 4 bytes
-        // to represent 16 bits within 32 bits correctly on a LE/BE system.
         element_size = sizeof(int32_t);
         break;
 
       // uint32_t is stored in uint64_t
       case TensorProto_DataType_UINT32:
+        bytes = tensor.mutable_uint64_data()->mutable_data();
+        num_elements = tensor.uint64_data_size() * (sizeof(uint64_t) / sizeof(uint32_t));
+        element_size = sizeof(uint32_t);
+        break;
+
       case TensorProto_DataType_UINT64:
         bytes = tensor.mutable_uint64_data()->mutable_data();
         num_elements = tensor.uint64_data_size();
@@ -560,11 +594,11 @@ static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto
   std::vector<uint8_t> unpacked_tensor;
   ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));
 
-  // ReadLittleEndian checks src and dst buffers are the same size
-  auto src_span = gsl::make_span(unpacked_tensor.data(), unpacked_tensor.size());
-  auto dst_span = gsl::make_span(p_data, expected_num_elements * element_size);
+  ORT_RETURN_IF_NOT(expected_num_elements * element_size == unpacked_tensor.size(), "Unexpected amount of data");
+  // ReadExternalDataForTensor returns data in native endian, no need to byteswap here
+  memcpy(p_data, unpacked_tensor.data(), unpacked_tensor.size());
 
-  return onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span);
+  return Status::OK();
 }
 
 template <typename T>
@@ -2312,6 +2346,12 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
       SetIndices<int32_t>(gathered_span, raw_indices, indices);
     } else {
       SetIndices<int64_t>(gathered_span, raw_indices, indices);
+    }
+
+    // Raw data is in little endian
+    if constexpr (endian::native != endian::little) {
+      gsl::span<std::byte> bytes(reinterpret_cast<std::byte*>(raw_data.data()), raw_data.size());
+      onnxruntime::utils::SwapByteOrderInplace(element_size, bytes);
     }
   } else {
     indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);

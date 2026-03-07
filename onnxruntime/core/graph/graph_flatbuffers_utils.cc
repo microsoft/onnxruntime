@@ -50,15 +50,19 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     string_data = builder.CreateVectorOfStrings(string_data_vec);
   } else {
     std::vector<uint8_t> unpacked_tensor;
-    // We can not convert this in place, because the session may be used
-    // after the model was saved in ort format. If the session is continued to be used, then
-    // we continue with initializers in memory with wrong endianess
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
+
+    // We cannot convert data before unpacking due to
+    // external data not getting converted by ConvertRawDataInTensorProto function.
+    // Instead convert data after unpacking it
     if constexpr (endian::native != endian::little) {
-      auto be_copy{initializer};
-      onnxruntime::utils::ConvertRawDataInTensorProto(be_copy);
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(be_copy, model_path, unpacked_tensor));
-    } else {
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
+      size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(initializer);
+
+      if (element_size > 1) {
+        onnxruntime::utils::SwapByteOrderInplace(
+            element_size,
+            gsl::make_span(reinterpret_cast<std::byte*>(unpacked_tensor.data()), unpacked_tensor.size()));
+      }
     }
 
     if (external_writer && unpacked_tensor.size() >= kMinimumSizeForExternalData) {
@@ -546,8 +550,21 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(
                                          tensor_data_type)
                                          ->GetElementType();
-  ort_tensor = onnxruntime::Tensor(
-      tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
+
+  if constexpr (endian::native != endian::little) {
+    std::vector<typename std::remove_reference_t<decltype(*tensor_dims)>::return_type> byteswapped_data;
+    byteswapped_data.resize(tensor_dims->size());
+
+    for (size_t i = 0; i < tensor_dims->size(); ++i) {
+      byteswapped_data[i] = tensor_dims->Get(i);
+    }
+
+    ort_tensor = onnxruntime::Tensor(
+        tensor_dtype, TensorShape(byteswapped_data.data(), byteswapped_data.size()), allocator);
+  } else {
+    ort_tensor = onnxruntime::Tensor(
+        tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
+  }
 
   if (fbs_tensor.raw_data() && fbs_tensor.raw_data()->size() == 0U) {
     // Empty tensor. Nothing to unpack.
