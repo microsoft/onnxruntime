@@ -138,7 +138,9 @@ void RunDeformConvTest(const DeformConvTestParams& params,
     test.AddOptionalInputEdge<T>();
   }
 
-  test.AddOutput<T>("Y", Y_shape, expected_Y_t, false, rtol, atol);
+  const float rtol_f = static_cast<float>(rtol);
+  const float atol_f = static_cast<float>(atol);
+  test.AddOutput<T>("Y", Y_shape, expected_Y_t, false, rtol_f, atol_f);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", DeformConvTestTraits<T>::ExcludedProviders());
 }
