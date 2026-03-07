@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <ctime>
+#include <cstdlib>
 #include <exception>
 #include <type_traits>
 #include <utility>
@@ -98,6 +99,18 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       owns_default_logger_{false} {
   if (sink_ == nullptr) {
     ORT_THROW("ISink must be provided.");
+  }
+
+  // Apply environment variable override for default severity if set.
+  // The env var acts as a default — it is only used when the caller did not provide an explicit severity
+  // (i.e., when the caller used the default WARNING level). If the caller explicitly chose a severity,
+  // the programmatic choice takes precedence.
+  const char* env_severity = std::getenv("ORT_LOG_LEVEL");
+  if (env_severity != nullptr) {
+    Severity env_sev;
+    if (SeverityFromString(env_severity, env_sev)) {
+      default_min_severity_ = env_sev;
+    }
   }
 
   if (instance_type == InstanceType::Default) {

@@ -4,6 +4,7 @@
 #include <exception>
 #include <functional>
 #include <string>
+#include <cstdlib>
 
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
@@ -313,6 +314,130 @@ TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStateme
 
   log_from_conditional_without_compound_statement(true);
   log_from_conditional_without_compound_statement(false);
+}
+
+// Tests for SeverityFromString helper
+TEST(SeverityFromStringTest, ParsesValidNames) {
+  Severity sev;
+  EXPECT_TRUE(SeverityFromString("VERBOSE", sev));
+  EXPECT_EQ(sev, Severity::kVERBOSE);
+
+  EXPECT_TRUE(SeverityFromString("INFO", sev));
+  EXPECT_EQ(sev, Severity::kINFO);
+
+  EXPECT_TRUE(SeverityFromString("WARNING", sev));
+  EXPECT_EQ(sev, Severity::kWARNING);
+
+  EXPECT_TRUE(SeverityFromString("ERROR", sev));
+  EXPECT_EQ(sev, Severity::kERROR);
+
+  EXPECT_TRUE(SeverityFromString("FATAL", sev));
+  EXPECT_EQ(sev, Severity::kFATAL);
+}
+
+TEST(SeverityFromStringTest, ParsesNumericValues) {
+  Severity sev;
+  EXPECT_TRUE(SeverityFromString("0", sev));
+  EXPECT_EQ(sev, Severity::kVERBOSE);
+
+  EXPECT_TRUE(SeverityFromString("1", sev));
+  EXPECT_EQ(sev, Severity::kINFO);
+
+  EXPECT_TRUE(SeverityFromString("2", sev));
+  EXPECT_EQ(sev, Severity::kWARNING);
+
+  EXPECT_TRUE(SeverityFromString("3", sev));
+  EXPECT_EQ(sev, Severity::kERROR);
+
+  EXPECT_TRUE(SeverityFromString("4", sev));
+  EXPECT_EQ(sev, Severity::kFATAL);
+}
+
+TEST(SeverityFromStringTest, RejectsInvalidValues) {
+  Severity sev;
+  EXPECT_FALSE(SeverityFromString("INVALID", sev));
+  EXPECT_FALSE(SeverityFromString("", sev));
+  EXPECT_FALSE(SeverityFromString("5", sev));
+  EXPECT_FALSE(SeverityFromString(nullptr, sev));
+}
+
+// Tests for ORT_LOG_LEVEL environment variable
+TEST(EnvVarLogLevelTest, EnvVarOverridesDefault) {
+  // Set env var to VERBOSE
+#ifdef _WIN32
+  _putenv_s("ORT_LOG_LEVEL", "VERBOSE");
+#else
+  setenv("ORT_LOG_LEVEL", "VERBOSE", 1);
+#endif
+
+  const std::string logger_id{"EnvVarTest"};
+  auto manager = std::make_unique<LoggingManager>(
+      std::unique_ptr<ISink>{new CLogSink{}}, Severity::kWARNING, false,
+      InstanceType::Temporal);
+
+  auto logger = manager->CreateLogger(logger_id);
+  // The logger should use VERBOSE (from env var) instead of WARNING
+  EXPECT_TRUE(logger->OutputIsEnabled(Severity::kVERBOSE, ::onnxruntime::logging::DataType::SYSTEM));
+
+  // Clean up env var
+#ifdef _WIN32
+  _putenv_s("ORT_LOG_LEVEL", "");
+#else
+  unsetenv("ORT_LOG_LEVEL");
+#endif
+}
+
+TEST(EnvVarLogLevelTest, InvalidEnvVarIsIgnored) {
+  // Set env var to an invalid value
+#ifdef _WIN32
+  _putenv_s("ORT_LOG_LEVEL", "INVALID_VALUE");
+#else
+  setenv("ORT_LOG_LEVEL", "INVALID_VALUE", 1);
+#endif
+
+  const std::string logger_id{"InvalidEnvVarTest"};
+  auto manager = std::make_unique<LoggingManager>(
+      std::unique_ptr<ISink>{new CLogSink{}}, Severity::kWARNING, false,
+      InstanceType::Temporal);
+
+  auto logger = manager->CreateLogger(logger_id);
+  // Should still use WARNING since env var is invalid
+  EXPECT_FALSE(logger->OutputIsEnabled(Severity::kINFO, ::onnxruntime::logging::DataType::SYSTEM));
+  EXPECT_TRUE(logger->OutputIsEnabled(Severity::kWARNING, ::onnxruntime::logging::DataType::SYSTEM));
+
+  // Clean up env var
+#ifdef _WIN32
+  _putenv_s("ORT_LOG_LEVEL", "");
+#else
+  unsetenv("ORT_LOG_LEVEL");
+#endif
+}
+
+TEST(EnvVarLogLevelTest, NumericEnvVarWorks) {
+  // Set env var to numeric value "1" (INFO)
+#ifdef _WIN32
+  _putenv_s("ORT_LOG_LEVEL", "1");
+#else
+  setenv("ORT_LOG_LEVEL", "1", 1);
+#endif
+
+  const std::string logger_id{"NumericEnvVarTest"};
+  auto manager = std::make_unique<LoggingManager>(
+      std::unique_ptr<ISink>{new CLogSink{}}, Severity::kWARNING, false,
+      InstanceType::Temporal);
+
+  auto logger = manager->CreateLogger(logger_id);
+  // INFO messages should now be visible
+  EXPECT_TRUE(logger->OutputIsEnabled(Severity::kINFO, ::onnxruntime::logging::DataType::SYSTEM));
+  // VERBOSE should still be filtered
+  EXPECT_FALSE(logger->OutputIsEnabled(Severity::kVERBOSE, ::onnxruntime::logging::DataType::SYSTEM));
+
+  // Clean up env var
+#ifdef _WIN32
+  _putenv_s("ORT_LOG_LEVEL", "");
+#else
+  unsetenv("ORT_LOG_LEVEL");
+#endif
 }
 
 }  // namespace test
