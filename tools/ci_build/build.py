@@ -2276,9 +2276,6 @@ def main():
 
     print(args)
 
-    if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
-        args.use_cache = True
-
     # VCPKG's scripts/toolchains/android.cmake has logic for autodetecting NDK home when the ANDROID_NDK_HOME env is not set, but it is only implemented for Windows
     if args.android and args.use_vcpkg and args.android_ndk_path is not None and os.path.exists(args.android_ndk_path):
         os.environ["ANDROID_NDK_HOME"] = args.android_ndk_path

@@ -55,7 +55,7 @@ parameters:
 - name: WithCache
   displayName: Build with Cache
   type: boolean
-  default: false
+  default: true
 
 - name: is1ES
   displayName: 'Is 1ES pipeline'
