@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <limits>
 #include <fstream>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -519,43 +520,73 @@ class PathValidationTest : public ::testing::Test {
     // Clean up the temporary directory.
     std::filesystem::remove_all(base_dir_);
     std::filesystem::remove_all(outside_dir_);
+
+    for (const auto& other_dir : other_dirs_) {
+      std::filesystem::remove_all(other_dir);
+    }
+  }
+
+  void AddDirToCleanUp(std::filesystem::path other_dir) {
+    other_dirs_.push_back(std::move(other_dir));
   }
 
   std::filesystem::path base_dir_;
   std::filesystem::path outside_dir_;
+  std::vector<std::filesystem::path> other_dirs_;
 };
 
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
+  // Use a model path whose parent is base_dir_.
+  auto model_path = base_dir_ / "model.onnx";
+
   // Valid relative path.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "data.bin"));
 
   // Empty location.
   // Only validate it is not an absolute path.
-  ASSERT_TRUE(utils::ValidateExternalDataPath(base_dir_, "").IsOK());
+  ASSERT_TRUE(utils::ValidateExternalDataPath(model_path, "").IsOK());
 
   // Path with ".." that escapes the base directory.
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "../data.bin").IsOK());
 
   // Absolute path.
 #ifdef _WIN32
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "C:\\data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "C:\\data.bin").IsOK());
   ASSERT_FALSE(utils::ValidateExternalDataPath("", "C:\\data.bin").IsOK());
 #else
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "/data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "/data.bin").IsOK());
   ASSERT_FALSE(utils::ValidateExternalDataPath("", "/data.bin").IsOK());
 #endif  // Absolute path.
 
   // Windows vs Unix path separators.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "sub/data.bin"));
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "sub\\data.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub/data.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub\\data.bin"));
 
-  // Base directory does not exist.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir", "data.bin"));
+  // Model in a directory that does not exist.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin"));
+
+  // Model path is a bare filename (no directory component). parent_path() returns empty,
+  // so anchor_dir falls back to "." (current directory). Path traversal should still be blocked
+  // if the current working directory is not the filesystem root directory.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("model.onnx", "data.bin"));
+
+  bool is_cwd_root = std::filesystem::weakly_canonical(".") == std::filesystem::weakly_canonical("..");
+  ASSERT_EQ(utils::ValidateExternalDataPath("model.onnx", "../data.bin").IsOK(), is_cwd_root);
+
+  // Model relative path checks.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./model.onnx", "data.bin"));
+  ASSERT_EQ(utils::ValidateExternalDataPath("./model.onnx", "../data.bin").IsOK(), is_cwd_root);
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./abc/model.onnx", "data.bin"));
+#ifdef _WIN32
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\model.onnx", "data.bin"));
+  ASSERT_EQ(utils::ValidateExternalDataPath(".\\model.onnx", "../data.bin").IsOK(), is_cwd_root);
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\abc\\model.onnx", "data.bin"));
+#endif
 
   //
-  // Tests for an empty base directory.
-  // The base directory would be empty when 1) the session loads a model from bytes and 2) the application does not
+  // Tests for an empty model path (model loaded from bytes).
+  // The model path would be empty when 1) the session loads a model from bytes and 2) the application does not
   // set an external file folder path via the session config option
   // kOrtSessionOptionsModelExternalInitializersFileFolderPath.
   //
@@ -579,6 +610,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
 
 TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
   // Symbolic link that points inside the base directory.
+  auto model_path = base_dir_ / "model.onnx";
   try {
     auto target = base_dir_ / "target.bin";
     std::ofstream{target};
@@ -588,11 +620,12 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
     GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
                  << e.what();
   }
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "link.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "link.bin"));
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   // Symbolic link that points outside the base directory.
+  auto model_path = base_dir_ / "model.onnx";
   auto outside_target = outside_dir_ / "outside.bin";
   try {
     {
@@ -603,8 +636,62 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   } catch (const std::exception& e) {
     GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: " << e.what();
   }
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "outside_link.bin").IsOK());
 }
+
+#if !defined(__wasm__)
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkInside) {
+  // Symbolic link within the current working directory pointing to a file still within CWD.
+  std::filesystem::path cwd = std::filesystem::current_path();
+  std::filesystem::path sub_dir = cwd / "symlink_test_subdir";
+  std::filesystem::create_directories(sub_dir);
+  AddDirToCleanUp(sub_dir);
+
+  try {
+    std::filesystem::path target = sub_dir / "target_inside.bin";
+    std::filesystem::path symlink = sub_dir / "link_inside.bin";
+    std::ofstream{target};
+    std::filesystem::create_symlink(target, symlink);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
+                 << e.what();
+  }
+
+  EXPECT_STATUS_OK(utils::ValidateExternalDataPath("", "./symlink_test_subdir/link_inside.bin"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkOutside) {
+  // Symbolic link within the current working directory pointing to a file outside CWD.
+  std::filesystem::path cwd = std::filesystem::current_path();
+  std::filesystem::path sub_dir = cwd / "symlink_test_subdir2";
+  std::filesystem::create_directories(sub_dir);
+  AddDirToCleanUp(sub_dir);
+
+  // Check if we can actually make a file outside of the current working directory (i.e., in a temp dir).
+  // This is only possible if the current working directory is NOT the same as the temp directory.
+  // Otherwise, we need to skip this test. This happens in Android CI.
+  auto [cwd_end, outside_end] = std::mismatch(cwd.begin(), cwd.end(), outside_dir_.begin(), outside_dir_.end());
+  if (cwd_end == cwd.end()) {
+    GTEST_SKIP() << "Skipping test that needs to create a symlink outside of the cwd because the cwd is the same as "
+                 << "the temp dir. cwd: " << cwd << " outside_dir_: " << outside_dir_;
+  }
+
+  try {
+    std::filesystem::path outside_target = outside_dir_ / "outside_for_empty_basedir.bin";
+    std::filesystem::path symlink = sub_dir / "outside_link.bin";
+    std::ofstream{outside_target};
+    std::filesystem::create_symlink(outside_target, symlink);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
+                 << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath("", "./symlink_test_subdir2/outside_link.bin");
+  ASSERT_FALSE(status.IsOK()) << "Expected validation to fail. cwd: " << cwd << " sub_dir: " << sub_dir
+                              << " outside_dir: " << outside_dir_;
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
+}
+#endif  // !defined(__wasm__)
 
 // Tests for ValidateEmbeddedTensorProtoDataSizeAndShape and embedded initializer size limits
 

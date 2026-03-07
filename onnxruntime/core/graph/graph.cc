@@ -3742,10 +3742,6 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   FindAllSubgraphs(all_subgraphs);
 
   const auto& model_path = GetModel().ModelPath();
-  PathString model_dir;
-  if (!model_path.empty()) {
-    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, model_dir));
-  }
 
   auto put_weights_maybe_in_memory_func = [&](Graph& graph) -> Status {
     // if we have any initializers that are not in memory, put them there.
@@ -3771,7 +3767,7 @@ Status Graph::ConvertInitializersIntoOrtValues() {
           std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
           ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
           const auto& location = external_data_info->GetRelPath();
-          auto st = utils::ValidateExternalDataPath(model_dir, location, model_path);
+          auto st = utils::ValidateExternalDataPath(model_path, location);
           if (!st.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                    "External data path validation failed for initializer: ", tensor_proto.name(),
