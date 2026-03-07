@@ -78,7 +78,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool is_nvidia,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
-                        bool has_head_sink = false)
+                        bool has_head_sink = false,
+                        bool has_softcap = false)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
@@ -89,7 +90,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         is_nvidia_(is_nvidia),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
-        has_head_sink_(has_head_sink) {
+        has_head_sink_(has_head_sink),
+        has_softcap_(has_softcap) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -102,7 +104,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
+                                          {"softcap", ProgramUniformVariableDataType::Float32});
 
  private:
   bool has_attention_bias_;
@@ -115,13 +118,14 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
+  bool has_softcap_;
 };
 
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
  public:
   FlashAttentionDecodeQKTProgram(const std::string& kernel_name,
-                                 bool has_attention_bias, uint32_t tile_size, bool use_indirect_dispatch)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), use_indirect_dispatch_(use_indirect_dispatch) {
+                                 bool has_attention_bias, uint32_t tile_size, bool use_indirect_dispatch, bool has_softcap = false)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), use_indirect_dispatch_(use_indirect_dispatch), has_softcap_(has_softcap) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -135,12 +139,14 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
+                                          {"softcap", ProgramUniformVariableDataType::Float32});
 
  private:
   bool has_attention_bias_;
   uint32_t tile_size_;
   bool use_indirect_dispatch_;
+  bool has_softcap_;
 };
 
 class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDecodeSplitVxProgram> {
