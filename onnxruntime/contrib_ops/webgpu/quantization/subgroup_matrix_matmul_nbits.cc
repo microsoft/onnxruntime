@@ -5,7 +5,6 @@
 #include <tuple>
 
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
-#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -163,150 +162,17 @@ Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
                                  uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points) {
-  // Compute tile_rows from config: 256 threads / 32 sg_size = 8 subgroups, each handles m rows.
-  constexpr uint32_t kNumSubgroups = 8;  // 256 workgroup threads / 32 subgroup size
-  const uint32_t tile_rows = kNumSubgroups * config.m;
-
-  shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(config.componentType)] << ";\n"
-                                    << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(config.resultComponentType)] << ";\n"
-                                    << "const m_dim: u32 = " << config.m << ";\n"
-                                    << "const n_dim: u32 = " << config.n << ";\n"
-                                    << "const k_dim: u32 = " << config.k << ";\n";
-
-  shader.AdditionalImplementation() << R"ADDNL_FN(
-  const tile_cols: u32 = 64;
-  const tile_k: u32 = 32;
-  const quantization_block_size: u32 = 32;
-
-  var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
-  )ADDNL_FN"
-                                    << "const tile_rows: u32 = " << tile_rows << ";\n"
-                                    << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
-  if (nbits == 4) {
-    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
-        fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
-            let b_global = tile_base + row;
-            if (b_global >= uniforms.N) {
-                return;
-            }
-            // Each call loads 8 columns, starting at col.
-            let col = c_idx * 8;
-            // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
-            // Stored in column major fashion.
-            let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
-            )ADDNL_FN_PART";
-    shader.AdditionalImplementation() << "let scale = component_type("
-                                      << scales_b.GetByOffset("(b_global * uniforms.K + k_idx + col) / quantization_block_size")
-                                      << ");"
-                                      << "let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);"
-                                      << "let b_value = "
-                                      << b.GetByOffset("b_idx") << ';';
-    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
-            let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
-            let b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
-            let tile_b_base = row * tile_k + col;
-            tile_B[tile_b_base]     = b_value_lower[0];
-            tile_B[tile_b_base + 1] = b_value_upper[0];
-            tile_B[tile_b_base + 2] = b_value_lower[1];
-            tile_B[tile_b_base + 3] = b_value_upper[1];
-            tile_B[tile_b_base + 4] = b_value_lower[2];
-            tile_B[tile_b_base + 5] = b_value_upper[2];
-            tile_B[tile_b_base + 6] = b_value_lower[3];
-            tile_B[tile_b_base + 7] = b_value_upper[3];
-        }
-    )ADDNL_FN_PART";
-  } else {
-    ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
-    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
-        fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
-            let b_global = tile_base + row;
-            if (b_global >= uniforms.N) {
-                return;
-            }
-            // Each call loads 8 columns, starting at col.
-            let col = c_idx * 8;
-            // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
-            // Stored in column major fashion.
-            let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
-        )ADDNL_FN_PART";
-    shader.AdditionalImplementation() << "let scale = component_type("
-                                      << scales_b.GetByOffset("(b_global * uniforms.K + k_idx + col) / quantization_block_size")
-                                      << ");"
-                                      << " let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);"
-                                      << "let b_value = "
-                                      << b.GetByOffset("b_idx") << ';';
-
-    shader.AdditionalImplementation() <<
-        R"ADDNL_FN_PART(let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(zero)) * scale;
-    let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(zero)) * scale;
-    let tile_b_base = row * tile_k + col;
-    tile_B[tile_b_base] = b_value0[0];
-    tile_B[tile_b_base + 1] = b_value0[1];
-    tile_B[tile_b_base + 2] = b_value0[2];
-    tile_B[tile_b_base + 3] = b_value0[3];
-    tile_B[tile_b_base + 4] = b_value1[0];
-    tile_B[tile_b_base + 5] = b_value1[1];
-    tile_B[tile_b_base + 6] = b_value1[2];
-    tile_B[tile_b_base + 7] = b_value1[3];
-  }
-    )ADDNL_FN_PART";
-  }
-
-  shader.MainFunctionBody() << R"MAIN_FN(
-        let a_global_base = workgroup_id.y * tile_rows;
-        let b_global_base = workgroup_id.x * tile_cols;
-
-        let subtile_id =  u32(local_idx / sg_size);
-        let subtile_a_num_per_tensor_row = u32(uniforms.K / k_dim);
-        let subtile_a_num_per_tile_col = u32(tile_rows / m_dim);
-        let subtile_a_id = (workgroup_id.y * subtile_a_num_per_tile_col + subtile_id) * subtile_a_num_per_tensor_row;
-
-        let subtile_a_size = m_dim * k_dim;
-        var matrix_a_offset = subtile_a_id * subtile_a_size;
-
-        var matC00: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
-        var matC01: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
-        var matC02: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
-        var matC03: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
-        for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
-            // Load Phase
-            loadSHMB(b_global_base, kidx, local_idx / 4, local_idx % 4);
-            workgroupBarrier();
-
-            for (var step: u32 = 0; step < tile_k; step += k_dim)
-            {
-                // Load A from global memory.
-                // Syntax: subgroupMatrixLoad src_ptr, src_offset, is_col_major, src_stride
-                var matA0: subgroup_matrix_left<component_type, k_dim, m_dim> = subgroupMatrixLoad<subgroup_matrix_left<component_type, k_dim, m_dim>>(&input_a, matrix_a_offset, false, k_dim);
-                matrix_a_offset += subtile_a_size;
-
-                // Load B from shared local memory.
-                // tile_B is stored as column major.
-                // [col0-0:32][col1-0:32][col2-0:32]..[col63-0:32]
-                var matrix_b_offset = step;
-                var matB0: subgroup_matrix_right<component_type, n_dim, k_dim> = subgroupMatrixLoad<subgroup_matrix_right<component_type, n_dim, k_dim>>(&tile_B, matrix_b_offset, true, tile_k);
-                var matB1: subgroup_matrix_right<component_type, n_dim, k_dim> = subgroupMatrixLoad<subgroup_matrix_right<component_type, n_dim, k_dim>>(&tile_B, matrix_b_offset + n_dim * tile_k, true, tile_k);
-                var matB2: subgroup_matrix_right<component_type, n_dim, k_dim> = subgroupMatrixLoad<subgroup_matrix_right<component_type, n_dim, k_dim>>(&tile_B, matrix_b_offset + 2 * n_dim * tile_k, true, tile_k);
-                var matB3: subgroup_matrix_right<component_type, n_dim, k_dim> = subgroupMatrixLoad<subgroup_matrix_right<component_type, n_dim, k_dim>>(&tile_B, matrix_b_offset + 3 * n_dim * tile_k, true, tile_k);
-
-                // Compute Phase
-                // Syntax: subgroupMatrixMultiplyAccumulate left, right, accumulate -> accumulate
-                matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
-                matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
-                matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
-                matC03 = subgroupMatrixMultiplyAccumulate(matA0, matB3, matC03);
-            }
-            workgroupBarrier();
-        }
-
-        // Write out
-        let matrix_c_offset = (a_global_base) * uniforms.N + b_global_base;
-        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N, matC00, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + n_dim, matC01, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + 2 * n_dim, matC02, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + 3 * n_dim, matC03, false, uniforms.N);
-    )MAIN_FN";
-  return Status::OK();
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_intel.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(component_type_idx, static_cast<uint32_t>(config.componentType)),
+                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
+                             WGSL_TEMPLATE_PARAMETER(k_dim, config.k),
+                             WGSL_TEMPLATE_PARAMETER(m_dim, config.m),
+                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits),
+                             WGSL_TEMPLATE_PARAMETER(n_dim, config.n),
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                             WGSL_TEMPLATE_PARAMETER(result_component_type_idx, static_cast<uint32_t>(config.resultComponentType)),
+                             WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
 Status GenerateShaderCodeOnApple(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
