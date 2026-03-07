@@ -3,6 +3,7 @@
 
 #param n_bits
 #param has_zero_points
+#param has_bias
 #param component_type_idx
 #param result_component_type_idx
 #param m_dim
@@ -33,6 +34,10 @@ const quantization_block_size: u32 = 32;
 const tile_rows: u32 = 8 * m_dim; // 256 workgroup threads / 32 subgroup size * m_dim
 
 var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
+
+#if has_bias
+var<workgroup> scratch: array<result_component_type, tile_rows * tile_cols>;
+#endif
 
 #if n_bits == 4
 fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
@@ -139,8 +144,27 @@ $MAIN {
 
     // Write out
     let matrix_c_offset = (a_global_base) * uniforms.N + b_global_base;
+#if has_bias
+    let scratch_offset = subtile_id * m_dim * tile_cols;
+    subgroupMatrixStore(&scratch, scratch_offset, matC00, false, tile_cols);
+    subgroupMatrixStore(&scratch, scratch_offset + n_dim, matC01, false, tile_cols);
+    subgroupMatrixStore(&scratch, scratch_offset + 2 * n_dim, matC02, false, tile_cols);
+    subgroupMatrixStore(&scratch, scratch_offset + 3 * n_dim, matC03, false, tile_cols);
+    workgroupBarrier();
+    // Write from scratch to output with bias addition.
+    for (var idx: u32 = local_idx; idx < tile_rows * tile_cols; idx += 256) {
+        let row = idx / tile_cols;
+        let col = idx % tile_cols;
+        let global_row = a_global_base + row;
+        let global_col = b_global_base + col;
+        if (global_row < uniforms.M && global_col < uniforms.N) {
+            output.setByOffset(global_row * uniforms.N + global_col, output_element_t(scratch[idx]) + output_element_t(bias[global_col]));
+        }
+    }
+#else
     subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N, matC00, false, uniforms.N);
     subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + n_dim, matC01, false, uniforms.N);
     subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + 2 * n_dim, matC02, false, uniforms.N);
     subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + 3 * n_dim, matC03, false, uniforms.N);
+#endif
 } // MAIN
