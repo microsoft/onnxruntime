@@ -68,6 +68,8 @@ struct Tensorrt_Provider : Provider {
     info.device_id = device_id;
     info.has_trt_options = false;
 
+    InitializeRegistry();
+
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -125,6 +127,11 @@ struct Tensorrt_Provider : Provider {
     info.preview_features = options.trt_preview_features == nullptr ? "" : options.trt_preview_features;
     info.load_user_initializer = options.trt_load_user_initializer != 0;
 
+    use_cpu_ep_memcpy_kernels_ = options.trt_use_cpu_ep_memcpy_kernels;
+    if (!use_cpu_ep_memcpy_kernels_) {
+      InitializeRegistry();
+    }
+
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -138,12 +145,16 @@ struct Tensorrt_Provider : Provider {
   }
 
   void Initialize() override {
-    InitializeRegistry();
   }
 
   void Shutdown() override {
-    DeleteRegistry();
+    if (!use_cpu_ep_memcpy_kernels_) {
+      DeleteRegistry();
+    }
   }
+
+ private:
+  bool use_cpu_ep_memcpy_kernels_{false};
 
 } g_provider;
 

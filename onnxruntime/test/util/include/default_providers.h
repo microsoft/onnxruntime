@@ -45,7 +45,7 @@ std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDn
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider();
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params);
-std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params);
+std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params, bool force_reload_library = false);
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider();
 std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params);
 std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const ProviderOptions* params, const SessionOptions* session_options = nullptr);

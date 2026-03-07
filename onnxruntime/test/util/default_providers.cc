@@ -70,12 +70,17 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params) {
+std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params,
+                                                                         bool force_reload_library) {
 #ifdef USE_TENSORRT
+  if (force_reload_library) {
+    TensorrtProviderFactoryCreator::UnloadLibrary();
+  }
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
     return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
+  ORT_UNUSED_PARAMETER(force_reload_library);
 #endif
   return nullptr;
 }
