@@ -20,6 +20,12 @@ class DataTransfer : public IDataTransfer {
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
+  common::Status CopyTensorImpl(void const* src_data,
+                                bool src_is_gpu,
+                                void* dst_data,
+                                bool dst_is_gpu,
+                                size_t bytes) const;
+
  private:
   const BufferManager& buffer_manager_;
 };

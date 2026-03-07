@@ -924,10 +924,14 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInf
   }
 }
 
-std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
 std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
-wgpu::Instance WebGpuContextFactory::default_instance_;
+
+std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
+WGPUInstance WebGpuContextFactory::default_instance_ = nullptr;
+
+LibraryHandles* WebGpuContextFactory::modules_ = nullptr;
+bool WebGpuContextFactory::modules_dxc_checked_ = false;
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
   const int context_id = config.context_id;
@@ -960,20 +964,49 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // Lazy-allocate the contexts map on first use (heap-allocated to avoid static destruction crash).
-  if (contexts_ == nullptr) {
-    contexts_ = new std::unordered_map<int32_t, WebGpuContextInfo>();
-  }
-
   if (default_instance_ == nullptr) {
     // Create wgpu::Instance
     wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.requiredFeatures = required_instance_features;
     instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
-    default_instance_ = wgpu::CreateInstance(&instance_desc);
+    default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
+
+// If we are on Windows and the build does not use external Dawn, for D3D12 backend dxil.dll and dxcompiler.dll are required.
+//
+// Dawn will try to load them later, but if the DLLs are loaded by Dawn, it could cause them to be unloaded earlier
+// than the destruction of WebGpuContextFactory, which will cause crash because the resource release can potentially
+// call into dxcompiler.dll. By loading them here, we can make sure they are not unloaded too early.
+#if !defined(__wasm__) && defined(_WIN32) && !defined(USE_EXTERNAL_DAWN)
+#if defined(DAWN_ENABLE_D3D12)
+    if (config.backend_type == static_cast<int>(WGPUBackendType_D3D12) && !modules_dxc_checked_) {
+      auto runtime_path = Env::Default().GetRuntimePath();
+      if (!runtime_path.empty()) {
+        if (modules_ == nullptr) {
+          modules_ = new LibraryHandles();
+        }
+
+        Status status;
+        void* module_handle = nullptr;
+
+        PathString dxil_path = runtime_path + ToPathString(L"dxil.dll");
+        status = Env::Default().LoadDynamicLibrary(dxil_path, false, &module_handle);
+        if (status.IsOK() && module_handle != nullptr) {
+          modules_->Add(dxil_path, module_handle);
+        }
+
+        PathString dxcompiler_path = runtime_path + ToPathString(L"dxcompiler.dll");
+        status = Env::Default().LoadDynamicLibrary(dxcompiler_path, false, &module_handle);
+        if (status.IsOK() && module_handle != nullptr) {
+          modules_->Add(dxcompiler_path, module_handle);
+        }
+        modules_dxc_checked_ = true;
+      }
+    }
+#endif  // defined(DAWN_ENABLE_D3D12)
+#endif  // !defined(__wasm__) && defined(_WIN32) && !defined(USE_EXTERNAL_DAWN)
   }
 
   if (context_id == 0) {
@@ -981,11 +1014,16 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     ORT_ENFORCE(instance == nullptr && device == nullptr,
                 "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
 
-    instance = default_instance_.Get();
+    instance = default_instance_;
   } else {
     // for context ID > 0, user must provide custom WebGPU instance and device.
     ORT_ENFORCE(instance != nullptr && device != nullptr,
                 "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
+  }
+
+  // Lazy-allocate the contexts map on first use (heap-allocated to avoid static destruction crash).
+  if (contexts_ == nullptr) {
+    contexts_ = new std::unordered_map<int32_t, WebGpuContextInfo>();
   }
 
   auto it = contexts_->find(context_id);
@@ -1034,9 +1072,22 @@ void WebGpuContextFactory::ReleaseContext(int context_id) {
 
 void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
-  delete contexts_;
-  contexts_ = nullptr;
-  default_instance_ = nullptr;
+
+  if (contexts_ != nullptr) {
+    delete contexts_;
+    contexts_ = nullptr;
+  }
+
+  if (default_instance_ != nullptr) {
+    wgpuInstanceRelease(default_instance_);
+    default_instance_ = nullptr;
+  }
+
+  if (modules_ != nullptr) {
+    delete modules_;
+    modules_ = nullptr;
+  }
+  modules_dxc_checked_ = false;
 }
 
 WebGpuContext& WebGpuContextFactory::DefaultContext() {
