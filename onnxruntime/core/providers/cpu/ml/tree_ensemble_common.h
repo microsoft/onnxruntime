@@ -938,7 +938,6 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeEnsembleCommonClassifier : public TreeEnsembleCommon<InputType, ThresholdType, OutputType> {
  private:
-  bool weights_are_all_positive_;
   bool binary_case_;
   std::vector<std::string> classlabels_strings_;
   std::vector<int64_t> classlabels_int64s_;
@@ -974,13 +973,7 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
 
   InlinedHashSet<int64_t> weights_classes;
   weights_classes.reserve(attributes.target_class_ids.size());
-  weights_are_all_positive_ = true;
-  for (size_t i = 0, end = attributes.target_class_ids.size(); i < end; ++i) {
-    weights_classes.insert(attributes.target_class_ids[i]);
-    if (weights_are_all_positive_ && (!attributes.target_class_weights.empty() ? attributes.target_class_weights[i]
-                                                                               : attributes.target_class_weights_as_tensor[i]) < 0)
-      weights_are_all_positive_ = false;
-  }
+  weights_classes.insert(attributes.target_class_ids.begin(), attributes.target_class_ids.end());
   binary_case_ = this->n_targets_or_classes_ == 2 && weights_classes.size() == 1;
   if (!classlabels_strings_.empty()) {
     class_labels_.reserve(classlabels_strings_.size());
@@ -1001,8 +994,7 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::compu
         TreeAggregatorClassifier<InputType, ThresholdType, OutputType>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
-            classlabels_int64s_, binary_case_,
-            weights_are_all_positive_));
+            classlabels_int64s_, binary_case_));
   } else {
     int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
     AllocatorPtr alloc;
@@ -1013,8 +1005,7 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::compu
         TreeAggregatorClassifier<InputType, ThresholdType, OutputType>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
-            class_labels_, binary_case_,
-            weights_are_all_positive_));
+            class_labels_, binary_case_));
     const int64_t* plabel = label_int64.Data<int64_t>();
     std::string* labels = label->MutableData<std::string>();
     for (size_t i = 0; i < (size_t)N; ++i)
