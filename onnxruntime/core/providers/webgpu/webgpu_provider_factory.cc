@@ -374,7 +374,9 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     for (size_t idx = 0; idx < num_tensors; ++idx) {
       const OrtValue* src_tensor = src_tensors[idx];
       OrtValue* dst_tensor = dst_tensors[idx];
-      auto status = impl.data_transfer_->CopyTensor(src_tensor->Get<Tensor>(), *dst_tensor->GetMutable<Tensor>());
+
+      common::Status status = impl.data_transfer_->CopyTensor(src_tensor->Get<Tensor>(), *dst_tensor->GetMutable<Tensor>());
+
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }

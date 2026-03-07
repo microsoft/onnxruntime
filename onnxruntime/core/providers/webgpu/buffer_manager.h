@@ -68,12 +68,12 @@ class IBufferCacheManager {
 class BufferManager {
  public:
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
-  void Upload(void* src, WGPUBuffer dst, size_t size) const;
-  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
+  void Upload(void* src, WGPUBuffer dst, size_t size, size_t src_offset = 0, size_t dst_offset = 0) const;
+  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size, size_t src_offset = 0, size_t dst_offset = 0) const;
+  void Download(WGPUBuffer src, void* dst, size_t size, size_t src_offset = 0, size_t dst_offset = 0) const;
   WGPUBuffer Create(size_t size, wgpu::BufferUsage usage) const;
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
   void Release(WGPUBuffer buffer) const;
-  void Download(WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(GraphCaptureState graph_capture_state) const;
 
  private:

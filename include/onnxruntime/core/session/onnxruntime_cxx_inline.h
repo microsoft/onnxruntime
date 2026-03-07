@@ -2494,11 +2494,30 @@ inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_
   return CreateTensor(info, p_data, p_data_element_count * sizeof(T), shape, shape_len, TypeToTensorType<T>::type);
 }
 
+template <typename T>
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count,
+                                 size_t p_data_element_offset,
+                                 const int64_t* shape, size_t shape_len) {
+  return CreateTensor(info, p_data, p_data_element_count * sizeof(T), p_data_element_offset * sizeof(T),
+                      shape, shape_len, TypeToTensorType<T>::type);
+}
+
 inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count,
                                  const int64_t* shape, size_t shape_len,
                                  ONNXTensorElementDataType type) {
   OrtValue* out;
   ThrowOnError(GetApi().CreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));
+  return Value{out};
+}
+
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count,
+                                 size_t p_data_byte_offset,
+                                 const int64_t* shape, size_t shape_len,
+                                 ONNXTensorElementDataType type) {
+  OrtValue* out;
+  ThrowOnError(GetApi().CreateTensorWithDataAsOrtValueWithByteOffset(info, p_data, p_data_byte_count,
+                                                                     p_data_byte_offset, shape, shape_len,
+                                                                     type, &out));
   return Value{out};
 }
 

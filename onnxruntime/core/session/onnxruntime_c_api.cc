@@ -194,6 +194,37 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type,
   return nullptr;
 }
 
+// Create a Tensor backed by a user-supplied buffer, with the tensor's start encoded as a byte
+// offset stored in the Tensor's byte_offset_ field rather than advancing p_data itself.
+// Required for GPU devices (e.g. WebGPU) where p_data is an opaque handle: pointer arithmetic
+// on such a handle would corrupt it.
+ORT_STATUS_PTR CreateTensorImplWithByteOffset(MLDataType ml_type,
+                                              const int64_t* shape, size_t shape_len,
+                                              const OrtMemoryInfo* info,
+                                              void* p_data, size_t p_data_byte_count,
+                                              ptrdiff_t byte_offset,
+                                              OrtValue& ort_value) {
+  TensorShape tensor_shape(shape, shape_len);
+  if (std::any_of(tensor_shape.GetDims().begin(), tensor_shape.GetDims().end(), [](int64_t v) { return v < 0; })) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
+  }
+
+  size_t size_to_allocate = 0;
+  Status status = Tensor::CalculateTensorStorageSize(ml_type, tensor_shape, 0 /*alignment*/, size_to_allocate);
+  if (!status.IsOK()) {
+    return ToOrtStatus(status);
+  }
+
+  if (size_to_allocate > p_data_byte_count) {
+    std::ostringstream oss;
+    oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_byte_count;
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
+  }
+
+  Tensor::InitOrtValue(ml_type, tensor_shape, p_data, *info, ort_value, byte_offset);
+  return nullptr;
+}
+
 }  // namespace
 
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
@@ -331,6 +362,22 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemor
   auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
   auto value = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(ml_type, shape, shape_len, info, p_data, p_data_len, *value));
+  *out = value.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValueWithByteOffset, _In_ const OrtMemoryInfo* info,
+                    _Inout_ void* p_data, size_t p_data_byte_count, size_t p_data_byte_offset,
+                    _In_ const int64_t* shape, size_t shape_len,
+                    ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
+  API_IMPL_BEGIN
+  auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
+  auto value = std::make_unique<OrtValue>();
+  ORT_API_RETURN_IF_ERROR(CreateTensorImplWithByteOffset(ml_type, shape, shape_len, info,
+                                                         p_data, p_data_byte_count,
+                                                         static_cast<ptrdiff_t>(p_data_byte_offset),
+                                                         *value));
   *out = value.release();
   return nullptr;
   API_IMPL_END
@@ -3893,7 +3940,6 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
   ORT_API_RETURN_IF_STATUS_NOT_OK(data_transfer->CopyTensors(pairs));
 
   return nullptr;
-
   API_IMPL_END
 }
 
@@ -4807,6 +4853,10 @@ static constexpr OrtApi ort_api_1_to_25 = {
 
     &OrtApis::RunOptionsEnableProfiling,
     &OrtApis::RunOptionsDisableProfiling,
+    // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::CreateTensorWithDataAsOrtValueWithByteOffset,
+    // End of Version 26 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4844,6 +4894,7 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
 static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
+static_assert(offsetof(OrtApi, CreateTensorWithDataAsOrtValueWithByteOffset) / sizeof(void*) == 417, "Size of version 26 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.25.0",
