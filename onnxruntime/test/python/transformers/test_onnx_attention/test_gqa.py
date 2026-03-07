@@ -24,6 +24,7 @@ It requires:
 
 import os
 import unittest
+from unittest.mock import patch
 
 import numpy
 import torch
@@ -761,6 +762,7 @@ def gqa_past_padding_test_cases():
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "0"})
 class TestONNXAttentionFlashGQA(unittest.TestCase):
     """Test ONNX Attention op (opset 23) GQA path with Flash Attention.
 
@@ -769,7 +771,6 @@ class TestONNXAttentionFlashGQA(unittest.TestCase):
 
     @parameterized.expand(gqa_prompt_test_cases())
     def test_gqa_prompt_flash(self, name, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_prompt(
             config=config,
             ep="CUDAExecutionProvider",
@@ -783,7 +784,6 @@ class TestONNXAttentionFlashGQA(unittest.TestCase):
 
     @parameterized.expand(gqa_past_test_cases())
     def test_gqa_past_flash(self, name, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_past(
             config=config,
             ep="CUDAExecutionProvider",
@@ -797,6 +797,7 @@ class TestONNXAttentionFlashGQA(unittest.TestCase):
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "0"})
 class TestONNXAttentionFlashGQABF16(unittest.TestCase):
     """Test ONNX Attention op (opset 23) GQA path with Flash Attention using BFloat16.
 
@@ -810,7 +811,6 @@ class TestONNXAttentionFlashGQABF16(unittest.TestCase):
             self.skipTest("BFloat16 not supported on this device")
 
         config.kv_cache_type = "bfloat16"
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_prompt(
             config=config,
             ep="CUDAExecutionProvider",
@@ -828,7 +828,6 @@ class TestONNXAttentionFlashGQABF16(unittest.TestCase):
             self.skipTest("BFloat16 not supported on this device")
 
         config.kv_cache_type = "bfloat16"
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_past(
             config=config,
             ep="CUDAExecutionProvider",
@@ -842,12 +841,12 @@ class TestONNXAttentionFlashGQABF16(unittest.TestCase):
 
 
 @unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
 class TestONNXAttentionMemoryEfficientGQA(unittest.TestCase):
     """Test ONNX Attention op (opset 23) GQA path with Memory Efficient Attention."""
 
     @parameterized.expand(gqa_prompt_test_cases())
     def test_gqa_prompt_memory_efficient(self, name, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         parity_check_gqa_prompt(
             config=config,
             ep="CUDAExecutionProvider",
@@ -865,6 +864,7 @@ class TestONNXAttentionMemoryEfficientGQA(unittest.TestCase):
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "0"})
 class TestONNXAttentionPaddingMaskGQA(unittest.TestCase):
     """
     Test ONNX Attention op (opset 23) GQA path with boolean padding masks.
@@ -884,8 +884,6 @@ class TestONNXAttentionPaddingMaskGQA(unittest.TestCase):
     @parameterized.expand(gqa_past_padding_test_cases())
     def test_gqa_past_padding_flash(self, name, config):
         """Test decoding phase with padding mask using Flash Attention."""
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-
         past_seqlens = torch.full(
             (config.batch_size,),
             config.past_kv_sequence_length,
@@ -906,6 +904,7 @@ class TestONNXAttentionPaddingMaskGQA(unittest.TestCase):
 
 
 @unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
 class TestONNXAttentionPaddingMaskMemoryEfficientGQA(unittest.TestCase):
     """
     Test ONNX Attention op (opset 23) GQA path with boolean padding masks
@@ -915,8 +914,6 @@ class TestONNXAttentionPaddingMaskMemoryEfficientGQA(unittest.TestCase):
     @parameterized.expand(gqa_prompt_padding_test_cases())
     def test_gqa_prompt_padding_mea(self, name, config):
         """Test prompt phase with padding mask using Memory Efficient Attention."""
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-
         # Create seqlens with config.batch_size elements.
         # First batch has shorter valid length, rest at full length.
         seqlens_list = [config.kv_sequence_length - 6] + [config.kv_sequence_length] * (config.batch_size - 1)
@@ -1102,6 +1099,7 @@ def gqa_nonpad_kv_seqlen_cpu_test_cases():
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "0"})
 class TestONNXAttentionGQANonpadKVSeqlen(unittest.TestCase):
     """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen (Flash Attention).
 
@@ -1110,7 +1108,6 @@ class TestONNXAttentionGQANonpadKVSeqlen(unittest.TestCase):
 
     @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
     def test_gqa_nonpad_kv_seqlen_flash(self, name, config, seqlens):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
 
         parity_check_gqa_prompt_with_nonpad_kv_seqlen(
@@ -1126,12 +1123,12 @@ class TestONNXAttentionGQANonpadKVSeqlen(unittest.TestCase):
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
 class TestONNXAttentionGQANonpadKVSeqlenMEA(unittest.TestCase):
     """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen (Memory Efficient Attention)."""
 
     @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
     def test_gqa_nonpad_kv_seqlen_mea(self, name, config, seqlens):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
 
         parity_check_gqa_prompt_with_nonpad_kv_seqlen(
@@ -1223,6 +1220,7 @@ def gqa_4d_bnsh_past_test_cases():
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping 4D BNSH tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "0"})
 class TestONNXAttentionGQA4DBNSH(unittest.TestCase):
     """
     Test GQA with 4D BNSH input format [batch, num_heads, seq, head_size].
@@ -1234,7 +1232,6 @@ class TestONNXAttentionGQA4DBNSH(unittest.TestCase):
 
     @parameterized.expand(gqa_4d_bnsh_test_cases())
     def test_gqa_4d_bnsh_prompt(self, name, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_prompt(
             config=config,
             ep="CUDAExecutionProvider",
@@ -1248,7 +1245,6 @@ class TestONNXAttentionGQA4DBNSH(unittest.TestCase):
 
     @parameterized.expand(gqa_4d_bnsh_past_test_cases())
     def test_gqa_4d_bnsh_decode(self, name, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_past(
             config=config,
             ep="CUDAExecutionProvider",
@@ -1267,6 +1263,7 @@ class TestONNXAttentionGQA4DBNSH(unittest.TestCase):
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping float mask tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
 class TestONNXAttentionGQAFloatMask(unittest.TestCase):
     """
     Test GQA with float additive attention mask (not bool) during prompt.
@@ -1319,20 +1316,16 @@ class TestONNXAttentionGQAFloatMask(unittest.TestCase):
         out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_bias_ref, causal=False)
 
         # ORT path (MEA handles GQA+float mask)
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        try:
-            out_ort, _, _ = attention_prompt_func(
-                q=q,
-                k=k,
-                v=v,
-                config=config,
-                attn_mask=attn_mask,
-                ep="CUDAExecutionProvider",
-                device=device,
-                ort_type=TensorProto.FLOAT16,
-            )
-        finally:
-            os.environ.pop("ORT_DISABLE_FLASH_ATTENTION", None)
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
 
         out_ort = out_ort.reshape(2, 16, 8, 128)
 

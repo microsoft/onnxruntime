@@ -22,9 +22,9 @@ Supports:
   - Past KV cache
   - 2D, 3D, 4D additive/bool masks with broadcasting
 """
-
 import os
 import unittest
+from unittest.mock import patch
 
 import numpy
 import torch
@@ -1214,6 +1214,7 @@ def mha_unfused_test_cases():
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping unfused tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1", "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1"})
 class TestONNXAttentionMHAUnfused(unittest.TestCase):
     """
     Test the unfused attention kernel by disabling flash and MEA.
@@ -1224,34 +1225,28 @@ class TestONNXAttentionMHAUnfused(unittest.TestCase):
 
     @parameterized.expand(mha_unfused_test_cases())
     def test_mha_unfused_fp16(self, name, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        os.environ["ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION"] = "1"
-        try:
-            if "decode" in name:
-                parity_check_mha_past(
-                    config=config,
-                    ep="CUDAExecutionProvider",
-                    device="cuda",
-                    torch_type=torch.float16,
-                    ort_type=TensorProto.FLOAT16,
-                    causal=config.is_causal == 1,
-                    rtol=rtol["fp16"],
-                    atol=atol["fp16"],
-                )
-            else:
-                parity_check_mha_prompt(
-                    config=config,
-                    ep="CUDAExecutionProvider",
-                    device="cuda",
-                    torch_type=torch.float16,
-                    ort_type=TensorProto.FLOAT16,
-                    causal=config.is_causal == 1,
-                    rtol=rtol["fp16"],
-                    atol=atol["fp16"],
-                )
-        finally:
-            os.environ.pop("ORT_DISABLE_FLASH_ATTENTION", None)
-            os.environ.pop("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", None)
+        if "decode" in name:
+            parity_check_mha_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=config.is_causal == 1,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+        else:
+            parity_check_mha_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=config.is_causal == 1,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
 
 
 # #################################################################################################
