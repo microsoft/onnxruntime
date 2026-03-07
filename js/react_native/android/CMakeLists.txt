@@ -1,5 +1,5 @@
+cmake_minimum_required(VERSION 3.13)
 project(OnnxruntimeJSI)
-cmake_minimum_required(VERSION 3.9.0)
 
 set(PACKAGE_NAME "onnxruntime-react-native")
 set(BUILD_DIR ${CMAKE_SOURCE_DIR}/build)
@@ -97,3 +97,6 @@ target_link_libraries(
   ${log-lib} # <-- Logcat logger
   android # <-- Android JNI core
 )
+
+# 16KB page size support (Android 15+ requirement)
+target_link_options(onnxruntimejsi PRIVATE "-Wl,-z,max-page-size=16384")
