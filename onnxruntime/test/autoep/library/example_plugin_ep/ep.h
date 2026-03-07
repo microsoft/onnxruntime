@@ -61,6 +61,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
  public:
   struct Config {
     bool enable_ep_context = false;
+    bool enable_weightless_ep_context_nodes = false;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 
