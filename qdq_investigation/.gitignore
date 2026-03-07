@@ -2,3 +2,4 @@
 *.csv
 *.onnx
 *.onnx.data
+*.docx
