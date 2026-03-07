@@ -9,8 +9,11 @@ OrtSingletonData::OrtObjects::OrtObjects(int log_level)
 }
 
 OrtSingletonData::OrtObjects& OrtSingletonData::GetOrCreateOrtObjects(int log_level) {
-  static OrtObjects ort_objects(log_level);
-  return ort_objects;
+  // Intentionally leaked to avoid calling destructors at program exit.
+  // The destructor of Ort::Env calls OrtApi::ReleaseEnv through a function pointer table that may point into an
+  // already-unloaded onnxruntime shared library, causing a crash.
+  static OrtObjects* ort_objects = new OrtObjects(log_level);
+  return *ort_objects;
 }
 
 const Ort::Env& OrtSingletonData::Env() {
