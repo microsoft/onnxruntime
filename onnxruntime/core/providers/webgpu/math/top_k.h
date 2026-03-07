@@ -28,6 +28,56 @@ class TopKProgram final : public Program<TopKProgram> {
   bool is_fp16_;
 };
 
+// Global-memory bitonic sort programs for cols > 2048
+class TopKInitProgram final : public Program<TopKInitProgram> {
+ public:
+  TopKInitProgram(bool largest, bool is_fp16)
+      : Program{"TopKInit"}, largest_{largest}, is_fp16_{is_fp16} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"cols", ProgramUniformVariableDataType::Int32},
+      {"padded_cols", ProgramUniformVariableDataType::Int32});
+
+ private:
+  bool largest_;
+  bool is_fp16_;
+};
+
+class TopKSortStepProgram final : public Program<TopKSortStepProgram> {
+ public:
+  TopKSortStepProgram(bool largest, bool is_fp16)
+      : Program{"TopKSortStep"}, largest_{largest}, is_fp16_{is_fp16} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"gap", ProgramUniformVariableDataType::Uint32},
+      {"padded_cols", ProgramUniformVariableDataType::Uint32},
+      {"total_threads", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool largest_;
+  bool is_fp16_;
+};
+
+class TopKOutputProgram final : public Program<TopKOutputProgram> {
+ public:
+  TopKOutputProgram(bool is_fp16)
+      : Program{"TopKOutput"}, is_fp16_{is_fp16} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"padded_cols", ProgramUniformVariableDataType::Int32},
+      {"k", ProgramUniformVariableDataType::Int32});
+
+ private:
+  bool is_fp16_;
+};
+
 class TopK final : public WebGpuKernel {
  public:
   TopK(const OpKernelInfo& info) : WebGpuKernel{info} {

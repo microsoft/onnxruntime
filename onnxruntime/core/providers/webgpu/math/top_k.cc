@@ -135,6 +135,92 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status TopKInitProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddOutput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  shader.AddOutput("idxs_buf", ShaderUsage::UseUniform);
+
+  const std::string max_float = is_fp16_ ? "65504.0h" : "3.4028234663852886e+38f";
+  const std::string pad_value = largest_ ? ("-" + max_float) : max_float;
+
+  shader.MainFunctionBody()
+      << "let row = workgroup_idx;\n"
+      << "let cols = uniforms.cols;\n"
+      << "let pcols = uniforms.padded_cols;\n"
+      << "for (var idx = local_idx; idx < u32(pcols); idx += 256u) {\n"
+      << "  let out_idx = u32(i32(row) * pcols + i32(idx));\n"
+      << "  if (i32(idx) < cols) {\n"
+      << "    vals_buf[out_idx] = x_element_t(" << input.GetByOffset("u32(i32(row) * cols + i32(idx))") << ");\n"
+      << "    idxs_buf[out_idx] = i32(idx);\n"
+      << "  } else {\n"
+      << "    vals_buf[out_idx] = x_element_t(" << pad_value << ");\n"
+      << "    idxs_buf[out_idx] = -1;\n"
+      << "  }\n"
+      << "}\n";
+
+  return Status::OK();
+}
+
+Status TopKSortStepProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddOutput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddOutput("idxs_buf", ShaderUsage::UseUniform);
+
+  // Same composite-key tiebreaker as shared-memory path
+  // Use within-row position (i - base) for direction, not global index
+  const std::string asc_expr = largest_ ? "(((i - base) / uniforms.block_size) & 1u) != 0u" : "(((i - base) / uniforms.block_size) & 1u) == 0u";
+  const std::string asc_tiebreak = largest_ ? "ia < ib" : "ia > ib";
+  const std::string desc_tiebreak = largest_ ? "ia > ib" : "ia < ib";
+  const std::string asc_swap = "va > vb || (va == vb && " + asc_tiebreak + ")";
+  const std::string desc_swap = "va < vb || (va == vb && " + desc_tiebreak + ")";
+
+  shader.MainFunctionBody()
+      << "if (global_idx >= uniforms.total_threads) { return; }\n"
+      << "let pcols = uniforms.padded_cols;\n"
+      << "let threads_per_row = pcols / 2u;\n"
+      << "let row = global_idx / threads_per_row;\n"
+      << "let tid = global_idx % threads_per_row;\n"
+      << "let gap = uniforms.gap;\n"
+      << "let block = tid / gap;\n"
+      << "let pos = tid % gap;\n"
+      << "let base = row * pcols;\n"
+      << "let i = base + block * 2u * gap + pos;\n"
+      << "let j = i + gap;\n"
+      << "let asc = " << asc_expr << ";\n"
+      << "let va = vals_buf[i];\n"
+      << "let vb = vals_buf[j];\n"
+      << "let ia = idxs_buf[i];\n"
+      << "let ib = idxs_buf[j];\n"
+      << "let do_swap = select(" << desc_swap << ", " << asc_swap << ", asc);\n"
+      << "if (do_swap) {\n"
+      << "  vals_buf[i] = vb;\n"
+      << "  vals_buf[j] = va;\n"
+      << "  idxs_buf[i] = ib;\n"
+      << "  idxs_buf[j] = ia;\n"
+      << "}\n";
+
+  return Status::OK();
+}
+
+Status TopKOutputProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("idxs_buf", ShaderUsage::UseUniform);
+  shader.AddOutput("values", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& indices_out = shader.AddOutput("indices", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+
+  shader.MainFunctionBody()
+      << "let row = workgroup_idx;\n"
+      << "let pcols = uniforms.padded_cols;\n"
+      << "let k = uniforms.k;\n"
+      << "for (var idx = local_idx; idx < u32(k); idx += 256u) {\n"
+      << "  let in_idx = u32(i32(row) * pcols + i32(idx));\n"
+      << "  let out_idx = u32(i32(row) * k + i32(idx));\n"
+      << "  values[out_idx] = vals_buf[in_idx];\n"
+      << "  " << indices_out.SetByOffset("out_idx", "idxs_buf[in_idx]") << "\n"
+      << "}\n";
+
+  return Status::OK();
+}
+
 static uint32_t NextPowerOf2(uint32_t v) {
   v--;
   v |= v >> 1;
@@ -213,16 +299,6 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
   const int64_t rows = effective_input_shape.Size() / cols;
   const bool is_fp16 = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
 
-  // Shared memory size must be NextPowerOf2(cols) to hold all elements for bitonic sort.
-  // Max 2048 elements (2048 * 8 bytes = 16KB shared memory limit).
-  uint32_t shared_size = NextPowerOf2(static_cast<uint32_t>(cols));
-  if (shared_size > 2048) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "TopK on WebGPU does not support axis dimension > 2048, got ", cols);
-  }
-  // Workgroup size: min(shared_size, 256) — each thread handles multiple elements via stride loops
-  uint32_t wg_size = std::min(shared_size, 256u);
-
   // Prepare output tensors
   Tensor* values_output;
   Tensor* indices_output;
@@ -242,30 +318,85 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
     indices_output = context.Output(1, output_shape);
   }
 
-  // Run TopK kernel
   bool largest = largest_ != 0;
-  TopKProgram program{wg_size, shared_size, largest, is_fp16};
+  uint32_t padded = NextPowerOf2(static_cast<uint32_t>(cols));
 
-  if (is_transpose_required) {
+  // Determine which output tensors the sort kernels write to
+  Tensor* sort_values_out = is_transpose_required ? &transposed_values : values_output;
+  Tensor* sort_indices_out = is_transpose_required ? &transposed_indices : indices_output;
+
+  if (padded <= 2048) {
+    // Small path: single-dispatch shared-memory bitonic sort
+    uint32_t wg_size = std::min(padded, 256u);
+    TopKProgram program{wg_size, padded, largest, is_fp16};
+
     program
         .AddInputs({{effective_input, ProgramTensorMetadataDependency::TypeAndRank}})
-        .AddOutputs({{&transposed_values, ProgramTensorMetadataDependency::TypeAndRank}})
-        .AddOutputs({{&transposed_indices, ProgramTensorMetadataDependency::TypeAndRank}});
+        .AddOutputs({{sort_values_out, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutputs({{sort_indices_out, ProgramTensorMetadataDependency::TypeAndRank}})
+        .CacheHint(std::to_string(wg_size), std::to_string(padded), largest ? "largest" : "smallest", is_fp16 ? "fp16" : "fp32")
+        .SetWorkgroupSize(wg_size)
+        .SetDispatchGroupSize(static_cast<uint32_t>(rows))
+        .AddUniformVariables({{static_cast<int32_t>(cols)},
+                              {static_cast<int32_t>(k)}});
+
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
   } else {
-    program
-        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-        .AddOutputs({{values_output, ProgramTensorMetadataDependency::TypeAndRank}})
-        .AddOutputs({{indices_output, ProgramTensorMetadataDependency::TypeAndRank}});
+    // Large path: multi-dispatch global-memory bitonic sort
+    uint32_t u_rows = static_cast<uint32_t>(rows);
+
+    // Allocate padded global buffers for sorting
+    Tensor vals_buf = context.CreateGPUTensor(input_tensor->DataType(), TensorShape{static_cast<int64_t>(u_rows) * padded});
+    Tensor idxs_buf = context.CreateGPUTensor(DataTypeImpl::GetType<int32_t>(), TensorShape{static_cast<int64_t>(u_rows) * padded});
+
+    // 1. Init: load input + padding into global buffers
+    TopKInitProgram init_prog{largest, is_fp16};
+    init_prog
+        .AddInputs({{effective_input, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutputs({{&vals_buf, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutputs({{&idxs_buf, ProgramTensorMetadataDependency::TypeAndRank}})
+        .CacheHint(largest ? "largest" : "smallest", is_fp16 ? "fp16" : "fp32")
+        .SetWorkgroupSize(256)
+        .SetDispatchGroupSize(u_rows)
+        .AddUniformVariables({{static_cast<int32_t>(cols)},
+                              {static_cast<int32_t>(padded)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(init_prog));
+
+    // 2. Bitonic sort steps in global memory
+    uint32_t total_threads = u_rows * (padded / 2);
+    uint32_t num_wg = (total_threads + 255) / 256;
+
+    for (uint32_t block_size = 2; block_size <= padded; block_size <<= 1) {
+      for (uint32_t gap = block_size >> 1; gap > 0; gap >>= 1) {
+        TopKSortStepProgram step_prog{largest, is_fp16};
+        step_prog
+            .AddOutputs({{&vals_buf, ProgramTensorMetadataDependency::TypeAndRank}})
+            .AddOutputs({{&idxs_buf, ProgramTensorMetadataDependency::TypeAndRank}})
+            .CacheHint(largest ? "largest" : "smallest", is_fp16 ? "fp16" : "fp32")
+            .SetWorkgroupSize(256)
+            .SetDispatchGroupSize(num_wg)
+            .AddUniformVariables({{block_size},
+                                  {gap},
+                                  {padded},
+                                  {total_threads}});
+        ORT_RETURN_IF_ERROR(context.RunProgram(step_prog));
+      }
+    }
+
+    // 3. Output: copy top-K from sorted global buffer to output
+    TopKOutputProgram out_prog{is_fp16};
+    out_prog
+        .AddInputs({{&vals_buf, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddInputs({{&idxs_buf, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutputs({{sort_values_out, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutputs({{sort_indices_out, ProgramTensorMetadataDependency::TypeAndRank}})
+        .CacheHint(is_fp16 ? "fp16" : "fp32")
+        .SetWorkgroupSize(256)
+        .SetDispatchGroupSize(u_rows)
+        .AddUniformVariables({{static_cast<int32_t>(padded)},
+                              {static_cast<int32_t>(k)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(out_prog));
   }
-
-  program
-      .CacheHint(std::to_string(wg_size), std::to_string(shared_size), largest ? "largest" : "smallest", is_fp16 ? "fp16" : "fp32")
-      .SetWorkgroupSize(wg_size)
-      .SetDispatchGroupSize(static_cast<uint32_t>(rows))
-      .AddUniformVariables({{static_cast<int32_t>(cols)},
-                            {static_cast<int32_t>(k)}});
-
-  ORT_RETURN_IF_ERROR(context.RunProgram(program));
 
   // Transpose outputs back if needed
   if (is_transpose_required) {
