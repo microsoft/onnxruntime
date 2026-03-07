@@ -356,34 +356,34 @@ struct ScatterNDDispatchTarget {
     Prepare<TData> prepare;
     ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare));
 
-    auto lambda = [&](int64_t i) {
+    auto lambda = [&](ptrdiff_t i) {
       switch (reduction) {
         case ScatterND::Reduction::Add: {
           auto func = Func_Add_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         case ScatterND::Reduction::Mul: {
           auto func = Func_Mul_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         case ScatterND::Reduction::Min: {
           auto func = Func_Min_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         case ScatterND::Reduction::Max: {
           auto func = Func_Max_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         default:
@@ -391,7 +391,7 @@ struct ScatterNDDispatchTarget {
           auto func = Func_Copy_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
       }
@@ -399,7 +399,7 @@ struct ScatterNDDispatchTarget {
     concurrency::ThreadPool::TryParallelFor(
         tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
         [&lambda](ptrdiff_t first, ptrdiff_t last) {
-          for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+          for (ptrdiff_t i = first, end = last; i < end; ++i) {
             lambda(i);
           }
         });
