@@ -972,15 +972,15 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
 
 /** \brief External memory handle type for importing GPU resources.
  *
- * \todo Add OPAQUE_WIN32 for Windows Vulkan-specific memory handles
- * \todo Add POSIX file descriptor (OPAQUE_FD) for Linux Vulkan/CUDA/OpenCL interop
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_BUFFER_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_BUFFER_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryFdKHR */
 } OrtExternalMemoryHandleType;
 
 /** \brief Descriptor for importing external memory.
@@ -1004,7 +1004,9 @@ typedef struct OrtExternalMemoryDescriptor {
  * \since Version 1.24.
  */
 typedef enum OrtExternalSemaphoreType {
-  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0,                     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+  ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32 = 1,     /**< Shared HANDLE from vkGetSemaphoreWin32HandleKHR of a VkSemaphore created as VK_SEMAPHORE_TYPE_TIMELINE */
+  ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD = 2, /**< File descriptor from vkGetSemaphoreFdKHR of a VkSemaphore created as VK_SEMAPHORE_TYPE_TIMELINE */
 } OrtExternalSemaphoreType;
 
 /** \brief Descriptor for importing external semaphores.

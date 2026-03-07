@@ -539,8 +539,6 @@ struct NvTrtRtxSyncStreamImpl : OrtSyncStreamImpl {
   const OrtApi& ort_api;
 };
 
-#if defined(_WIN32)
-
 // External Resource Import Implementation (D3D12 to CUDA)
 /**
  * @brief Derived handle for imported external memory from D3D12 to CUDA.
@@ -642,8 +640,13 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       _In_ OrtExternalMemoryHandleType handle_type) noexcept {
     (void)this_ptr;
     // CUDA supports both D3D12 resource and heap handles
+#if _WIN32
     return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE ||
-           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
+           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP ||
+           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_BUFFER_WIN32;
+#elif __linux__
+    return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_BUFFER_OPAQUE_FD;
+#endif
   }
 
   static OrtStatus* ORT_API_CALL ImportMemoryImpl(
@@ -694,6 +697,14 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
         cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
         is_dedicated = false;  // D3D12 heaps are not dedicated
         break;
+      case ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_BUFFER_WIN32:
+        cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32;
+        is_dedicated = false;  // assuming no for non-images
+        break;
+      case ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_BUFFER_OPAQUE_FD:
+        cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD;
+        is_dedicated = false;  // assuming no for non-images
+        break;
       default:
         // Should not reach here - CanImportMemory already validated handle type
         return impl.ort_api.CreateStatus(ORT_EP_FAIL, "Unexpected external memory handle type");
@@ -702,7 +713,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // Setup external memory handle descriptor
     CUDA_EXTERNAL_MEMORY_HANDLE_DESC ext_mem_desc = {};
     ext_mem_desc.type = cu_handle_type;
+#if _WIN32
     ext_mem_desc.handle.win32.handle = desc->native_handle;
+#else
+    ext_mem_desc.handle.fd = (int)(size_t)(desc->native_handle);
+#endif
     ext_mem_desc.size = desc->size_bytes;
     ext_mem_desc.flags = is_dedicated ? CUDA_EXTERNAL_MEMORY_DEDICATED : 0;
 
@@ -826,7 +841,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       _In_ OrtExternalSemaphoreType type) noexcept {
     (void)this_ptr;
     // CUDA supports D3D12 timeline fences
-    return type == ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
+#if _WIN32
+    return type == ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE || ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32;
+#elif __linux__
+    return type == ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD;
+#endif
   }
 
   static OrtStatus* ORT_API_CALL ImportSemaphoreImpl(
@@ -857,8 +876,22 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
 
     // Setup external semaphore handle descriptor for D3D12 fence
     CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC ext_sem_desc = {};
-    ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+    switch (desc->type) {
+      case ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+        break;
+      case ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_WIN32;
+        break;
+      case ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_FD;
+        break;
+    }
+#if _WIN32
     ext_sem_desc.handle.win32.handle = desc->native_handle;
+#else
+    ext_sem_desc.handle.fd = (int)(size_t)desc->native_handle;
+#endif
     ext_sem_desc.flags = 0;
 
     // Import the external semaphore
@@ -956,7 +989,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // Get the CUDA stream from OrtSyncStream
     cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.ort_api.SyncStream_GetHandle(stream));
 
-    // Setup signal parameters for D3D12 fence (timeline semaphore)
+    // Setup signal parameters for D3D12 fence / VK timeline semaphore
     CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signal_params = {};
     signal_params.params.fence.value = value;
     signal_params.flags = 0;
@@ -993,8 +1026,6 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
 };
-
-#endif  // defined(_WIN32)
 
 // OrtEpApi infrastructure to be able to use the NvTensorRTRTX EP as an OrtEpFactory for auto EP selection.
 struct NvTensorRtRtxEpFactory : OrtEpFactory {
@@ -1280,17 +1311,11 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     *out_importer = nullptr;
 
-#if defined(_WIN32)
     // Create the external resource importer
     auto importer = std::make_unique<NvTrtRtxExternalResourceImporterImpl>(ep_device, factory.ort_api);
     *out_importer = importer.release();
 
     return nullptr;
-#else
-    ORT_UNUSED_PARAMETER(ep_device);
-    return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                                        "External resource import is only available on Windows builds.");
-#endif
   }
 
   /**
