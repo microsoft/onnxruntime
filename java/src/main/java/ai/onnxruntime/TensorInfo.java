@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -293,8 +293,6 @@ public class TensorInfo implements ValueInfo {
    * @return The number of elements.
    */
   private static long elementCount(long[] shape) {
-    // Java side tensors must be less than Integer.MAX_VALUE,
-    // tensors created in native code can be larger, but are not usable in Java.
     // Tensors should not be able to be created which will overflow a 64-bit long.
     long output = 1;
     for (int i = 0; i < shape.length; i++) {
@@ -332,10 +330,11 @@ public class TensorInfo implements ValueInfo {
    */
   public Object makeCarrier() throws OrtException {
     // Zero length tensors are allowed to be returned.
-    if (!validateShape() && numElements != 0) {
+    if ((!validateShape() && numElements != 0) || (numElements * type.size >= Integer.MAX_VALUE)) {
       throw new OrtException(
-          "This tensor is not representable in Java, it's too big - shape = "
-              + Arrays.toString(shape));
+          "This tensor is not representable in Java as an array or a java.nio.Buffer, it's too big - shape = "
+              + Arrays.toString(shape)
+              + ", using tensors this large requires Java 22's java.lang.foreign.MemorySegment.");
     }
     switch (type) {
       case BFLOAT16:
@@ -423,18 +422,44 @@ public class TensorInfo implements ValueInfo {
    */
   public static TensorInfo constructFromBuffer(Buffer buffer, long[] shape, OnnxJavaType type)
       throws OrtException {
+    return constructFromMemory(buffer.remaining(), shape, type);
+  }
+
+  /**
+   * Constructs a TensorInfo from the supplied MemorySegment.
+   *
+   * @param buffer The memory segment to inspect.
+   * @param shape The shape of the tensor.
+   * @param type The Java type.
+   * @return A TensorInfo for a tensor.
+   * @throws OrtException If the supplied buffer doesn't match the shape.
+   */
+  static TensorInfo constructFromSegment(MemorySegmentShim buffer, long[] shape, OnnxJavaType type)
+      throws OrtException {
+    return constructFromMemory(buffer.byteSize(), shape, type);
+  }
+
+  /**
+   * Constructs a TensorInfo from the supplied information.
+   *
+   * @param memoryLength The length of the memory used for this TensorInfo.
+   * @param shape The shape of the tensor.
+   * @param type The Java type.
+   * @return A TensorInfo for a tensor.
+   * @throws OrtException If the supplied memory information doesn't match the shape.
+   */
+  private static TensorInfo constructFromMemory(long memoryLength, long[] shape, OnnxJavaType type)
+      throws OrtException {
     if ((type == OnnxJavaType.STRING) || (type == OnnxJavaType.UNKNOWN)) {
       throw new OrtException("Cannot create a tensor from a string or unknown buffer.");
     }
 
     long elementCount = OrtUtil.elementCount(shape);
 
-    long bufferRemaining = buffer.remaining();
-
     // Check if size matches
-    if (elementCount != bufferRemaining) {
+    if (elementCount != memoryLength) {
       // if not it could be a ByteBuffer passed in, so check how many bytes there are
-      long elemRemaining = bufferRemaining / type.size;
+      long elemRemaining = memoryLength / type.size;
       if (elementCount != elemRemaining) {
         throw new OrtException(
             "Shape "
@@ -442,7 +467,7 @@ public class TensorInfo implements ValueInfo {
                 + ", requires "
                 + elementCount
                 + " elements but the buffer has "
-                + bufferRemaining
+                + memoryLength
                 + " elements.");
       }
     }
