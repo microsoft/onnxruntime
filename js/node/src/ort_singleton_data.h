@@ -16,8 +16,15 @@
  * - The Ort::RunOptions singleton instance.
  *   This is an empty default RunOptions instance. It is created once to allow reuse across all session inference runs.
  *
- * The OrtSingletonData class uses the "Meyers Singleton" pattern to ensure thread-safe lazy initialization, as well as
- * proper destruction order at program exit.
+ * The OrtSingletonData class uses a heap-allocated singleton (intentional leak) to ensure thread-safe lazy
+ * initialization while avoiding destructor calls at program exit. This prevents crashes caused by the destructor
+ * calling into an already-unloaded onnxruntime shared library.
+ *
+ * An alternative approach would be ref-count based lifecycle management, where the singleton is explicitly destroyed
+ * (via the instance data finalize callback or cleanup hooks) before the onnxruntime DLL is unloaded. However, this is
+ * not reliable because Node.js does not guarantee the finalize callback (set by `napi_set_instance_data`) or cleanup
+ * hooks (registered by `napi_add_env_cleanup_hook`) are called when the process exits due to an uncaught exception.
+ * See https://github.com/nodejs/node/issues/58341 for details.
  */
 struct OrtSingletonData {
   struct OrtObjects {
