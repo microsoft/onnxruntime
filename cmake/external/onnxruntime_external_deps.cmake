@@ -877,3 +877,13 @@ FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)
 FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR} ORT_SOURCE_DIR)
 
 message(STATUS "Finished fetching external dependencies")
+
+if(UNIX AND NOT APPLE)
+  onnxruntime_fetchcontent_declare(
+    directx_headers
+    URL ${DEP_URL_directx_headers}
+    URL_HASH SHA1=${DEP_SHA1_directx_headers}
+    EXCLUDE_FROM_ALL
+  )
+  onnxruntime_fetchcontent_makeavailable(directx_headers)
+endif()
