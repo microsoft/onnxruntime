@@ -19,12 +19,6 @@
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
-
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
@@ -294,34 +288,6 @@ void RunAddMulAddModel(const Ort::SessionOptions& session_options,
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(7, 17, 31, 49, 71, 97));
-}
-
-struct ExampleEpHooks {
-  using ResetFn = void (*)();
-  using GetFn = uint64_t (*)();
-
-  ResetFn reset{};
-  GetFn get{};
-};
-
-ExampleEpHooks LoadExampleEpHooks(const Utils::ExamplePluginInfo& ep_info) {
-  ExampleEpHooks hooks{};
-#if defined(_WIN32)
-  HMODULE lib = LoadLibraryW(ep_info.library_path.wstring().c_str());
-  if (!lib) return hooks;
-  hooks.reset = reinterpret_cast<ExampleEpHooks::ResetFn>(
-      GetProcAddress(lib, "ExampleEpTestHooks_ResetSyncCount"));
-  hooks.get = reinterpret_cast<ExampleEpHooks::GetFn>(
-      GetProcAddress(lib, "ExampleEpTestHooks_GetSyncCount"));
-#else
-  void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
-  if (!lib) return hooks;
-  hooks.reset = reinterpret_cast<ExampleEpHooks::ResetFn>(
-      dlsym(lib, "ExampleEpTestHooks_ResetSyncCount"));
-  hooks.get = reinterpret_cast<ExampleEpHooks::GetFn>(
-      dlsym(lib, "ExampleEpTestHooks_GetSyncCount"));
-#endif
-  return hooks;
 }
 
 void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_options) {
@@ -1107,15 +1073,16 @@ TEST(OrtEpLibrary, PluginEp_Sync) {
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  const auto hooks = LoadExampleEpHooks(Utils::example_ep_info);
-  ASSERT_NE(hooks.reset, nullptr);
-  ASSERT_NE(hooks.get, nullptr);
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks);
+  ASSERT_NE(example_ep_hooks->reset, nullptr);
+  ASSERT_NE(example_ep_hooks->get, nullptr);
 
-  hooks.reset();
+  example_ep_hooks->reset();
 
   RunMulModelWithPluginEpUsingIOBinding(session_options);
 
-  ASSERT_EQ(hooks.get(), 1) << "Expected Sync to be called once during inference";
+  ASSERT_EQ(example_ep_hooks->get(), 1) << "Expected Sync to be called once during inference";
 }
 }  // namespace test
 }  // namespace onnxruntime
