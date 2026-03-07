@@ -11,6 +11,8 @@
 #include <unordered_set>
 
 #include <gsl/gsl>
+#include "core/common/safeint.h"
+#include "core/common/string_helper.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
@@ -545,6 +547,48 @@ static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, s
   return Status::OK();
 }
 
+static Status CopyStringDataFromVectorToMemory(const std::vector<std::string>& values, OrtAllocator* allocator, char*** out, size_t* size) {
+  *size = values.size();
+
+  if (out == nullptr) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_NOT(allocator != nullptr, "allocator must not be null when out is provided");
+
+  if (values.empty()) {
+    *out = nullptr;
+    return Status::OK();
+  }
+
+  auto free_with_allocator = [allocator](void* value) {
+    allocator->Free(allocator, value);
+  };
+  SafeInt<size_t> alloc_count(values.size());
+  char** array = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
+  std::unique_ptr<void, decltype(free_with_allocator)> array_guard(array, free_with_allocator);
+
+  std::vector<char*> string_values(values.size(), nullptr);
+  try {
+    for (size_t i = 0; i < values.size(); ++i) {
+      string_values[i] = onnxruntime::StrDup(values[i], allocator);
+      array[i] = string_values[i];
+    }
+  } catch (...) {
+    for (char* value : string_values) {
+      if (value != nullptr) {
+        allocator->Free(allocator, value);
+      }
+    }
+
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Failed to allocate string attribute array");
+  }
+
+  *out = array;
+  array_guard.release();
+  return Status::OK();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ float* out, _Inout_ size_t* size) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
@@ -564,6 +608,18 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKe
     auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<int64_t>(name, values);
     if (status.IsOK()) {
       status = CopyDataFromVectorToMemory<int64_t>(values, out, size);
+    }
+    return onnxruntime::ToOrtStatus(status);
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    std::vector<std::string> values;
+    auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<std::string>(name, values);
+    if (status.IsOK()) {
+      status = CopyStringDataFromVectorToMemory(values, allocator, out, size);
     }
     return onnxruntime::ToOrtStatus(status);
   });
