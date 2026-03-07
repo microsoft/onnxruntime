@@ -6,6 +6,7 @@
 #include <atomic>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <shared_mutex>
 #include <string>
@@ -185,6 +186,21 @@ class Environment {
   /// <returns></returns>
   OrtKeyValuePairs GetConfigEntries() const;
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+  const ThreadPoolWorkCallbacks* GetDefaultSessionWorkCallbacks() const {
+    std::lock_guard<std::mutex> lock{mutex_};
+    return default_session_work_callbacks_.has_value()
+               ? &default_session_work_callbacks_.value()
+               : nullptr;
+  }
+
+  Status SetDefaultSessionWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
+                                        OrtThreadPoolWorkStartFn on_start,
+                                        OrtThreadPoolWorkStopFn on_stop,
+                                        OrtThreadPoolWorkAbandonFn on_abandon,
+                                        void* user_context);
+#endif
+
   ~Environment();
 
  private:
@@ -291,6 +307,10 @@ class Environment {
   // This starts at 1 if user created an OrtEnv with the config "allow_virtual_devices" set to "1"
   // to prevent removal of the config entry in that case.
   size_t num_allow_virtual_device_uses_{};
+
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+  std::optional<ThreadPoolWorkCallbacks> default_session_work_callbacks_;
+#endif
 };
 
 }  // namespace onnxruntime

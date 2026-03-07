@@ -1290,6 +1290,15 @@ struct Env : detail::Base<OrtEnv> {
   Status CopyTensors(const std::vector<Value>& src_tensors,
                      const std::vector<Value>& dst_tensors,
                      OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
+
+  /// \brief Wraps OrtApi::SetDefaultThreadPoolCallbacks
+  /// Stores default work callbacks on the Env for per-session thread pools.
+  /// Requires ORT built with --session_threadpool_callbacks.
+  Env& SetDefaultThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
+                                     OrtThreadPoolWorkStartFn on_start,
+                                     OrtThreadPoolWorkStopFn on_stop,
+                                     OrtThreadPoolWorkAbandonFn on_abandon,
+                                     void* user_context);
 };
 
 /** \brief Custom Op Domain

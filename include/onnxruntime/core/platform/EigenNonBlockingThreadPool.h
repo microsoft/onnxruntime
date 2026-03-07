@@ -40,6 +40,7 @@
 #pragma warning(disable : 4805)
 #endif
 #include <memory>
+#include <optional>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
 #if defined(__GNUC__)
@@ -52,6 +53,14 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
+
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+// Forward declarations
+namespace onnxruntime {
+struct ThreadPoolWorkCallbacks;
+struct ThreadOptions;
+}  // namespace onnxruntime
+#endif
 
 // ORT thread pool overview
 // ------------------------
@@ -549,7 +558,11 @@ class RunQueue {
   // the caller must assume that it may still execute, for instance because it
   // has been pop'd from the queue concurrent with the revocation request.
 
-  bool RevokeWithTag(Tag tag, unsigned w_idx) {
+  bool RevokeWithTag(Tag tag, unsigned w_idx
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+                     , void** out_enqueue_data = nullptr
+#endif
+                     ) {
     bool revoked = false;
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
@@ -568,6 +581,11 @@ class RunQueue {
       if (e.tag == tag) {
         unsigned back = back_.load(std::memory_order_relaxed);
         unsigned back_idx = back & kMask;
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        if (out_enqueue_data) {
+          *out_enqueue_data = e.w.enqueue_data_;
+        }
+#endif
         if (back_idx != w_idx) {
           // Item is not at the back of the queue, mark it in-place as revoked
           e.tag = Tag();
@@ -764,7 +782,26 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   };
 
   typedef std::function<void()> Task;
-  typedef RunQueue<Task, Tag, 1024> Queue;
+
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+  // WorkItem bundles a task with optional callback data.
+  struct WorkItem {
+    Task task_;
+    void* enqueue_data_ = nullptr;
+
+    WorkItem() = default;
+    WorkItem(Task t, void* data = nullptr) : task_(std::move(t)), enqueue_data_(data) {}
+
+    // Check if this WorkItem has a valid task
+    explicit operator bool() const { return static_cast<bool>(task_); }
+  };
+
+  using Work = WorkItem;
+#else
+  using Work = Task;
+#endif
+
+  typedef RunQueue<Work, Tag, 1024> Queue;
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
@@ -773,6 +810,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        work_callbacks_(thread_options.work_callbacks ? *thread_options.work_callbacks
+                                                      : ThreadPoolWorkCallbacks{}),
+#endif
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
@@ -816,17 +857,27 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // reject work if the queue of pending work is full.
 
   void Schedule(std::function<void()> fn) override {
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+    Work work_item(std::move(fn), InvokeOnEnqueue());
+#else
+    Work work_item(std::move(fn));
+#endif
+
     PerThread* pt = GetPerThread();
     int q_idx = Rand(&pt->rand) % num_threads_;
     WorkerData& td = worker_data_[q_idx];
     Queue& q = td.queue;
-    fn = q.PushBack(std::move(fn));
-    if (!fn) {
+    work_item = q.PushBack(std::move(work_item));
+    if (!work_item) {
       // The queue accepted the work; ensure that the thread will pick it up
       td.EnsureAwake();
     } else {
       // Run the work directly if the queue rejected the work
-      fn();
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+      InvokeWorkItem(work_item);
+#else
+      work_item();
+#endif
     }
   }
 
@@ -885,7 +936,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // then it cannot have pushed tasks.
     if (ps.dispatch_q_idx != -1) {
       Queue& q = worker_data_[ps.dispatch_q_idx].queue;
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+      void* abandoned_data = nullptr;
+      if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx, &abandoned_data)) {
+        InvokeOnAbandon(abandoned_data);
+#else
       if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx)) {
+#endif
         if (!ps.dispatch_started.load(std::memory_order_acquire)) {
           // We successfully revoked a task, and saw the dispatch task
           // not started.  Hence we know we revoked the dispatch task.
@@ -921,7 +978,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     while (!ps.tasks.empty()) {
       const auto& item = ps.tasks.back();
       Queue& q = worker_data_[item.first].queue;
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+      void* abandoned_data = nullptr;
+      if (q.RevokeWithTag(pt.tag, item.second, &abandoned_data)) {
+        InvokeOnAbandon(abandoned_data);
+#else
       if (q.RevokeWithTag(pt.tag, item.second)) {
+#endif
         ps.tasks_revoked++;
       }
       ps.tasks.pop_back();
@@ -1098,15 +1161,26 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       Queue& q = td.queue;
       unsigned w_idx;
 
-      // Attempt to enqueue the task
-      auto push_status = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps, this]() {
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+      // Create the WorkItem with the task and callback data
+      void* enqueue_data = InvokeOnEnqueue();
+      Work work_item([worker_fn, par_idx, &preferred_workers, &ps, this]() {
         // Record the worker thread that actually runs this task.
         // This will form the preferred worker for the next loop.
         UpdatePreferredWorker(preferred_workers, par_idx);
         worker_fn(par_idx);
         ps.tasks_finished++;
-      },
-                                           pt.tag, w_idx);
+      }, enqueue_data);
+#else
+      Work work_item([worker_fn, par_idx, &preferred_workers, &ps, this]() {
+        UpdatePreferredWorker(preferred_workers, par_idx);
+        worker_fn(par_idx);
+        ps.tasks_finished++;
+      });
+#endif
+
+      // Attempt to enqueue the task
+      auto push_status = q.PushBackWithTag(std::move(work_item), pt.tag, w_idx);
 
       // Queue accepted the task; wake the thread that owns the queue.
       // In addition, if the queue was non-empty, attempt to wake
@@ -1118,6 +1192,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
         }
       }
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+      else {
+        InvokeOnAbandon(enqueue_data);
+      }
+#endif
     }
   }
 
@@ -1179,6 +1258,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       if (dispatch_async && extra_needed > 1) {
         assert(current_dop == 1);
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        void* enqueue_data = InvokeOnEnqueue();
+#endif
+
         // Task for dispatching work asynchronously.
         Task dispatch_task = [current_dop, new_dop, worker_fn, &preferred_workers, &ps, &pt, this]() {
           // Record that dispatch work has started.  This must occur
@@ -1205,13 +1288,20 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           ps.work_done.store(true, std::memory_order_release);
         };
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        // Create WorkItem with dispatch task and callback data
+        Work dispatch_work_item(std::move(dispatch_task), enqueue_data);
+#else
+        Work dispatch_work_item(std::move(dispatch_task));
+#endif
+
         profiler_.LogStart();
         ps.dispatch_q_idx = preferred_workers[current_dop] % num_threads_;
         WorkerData& dispatch_td = worker_data_[ps.dispatch_q_idx];
         Queue& dispatch_que = dispatch_td.queue;
 
         // assign dispatch task to selected dispatcher
-        auto push_status = dispatch_que.PushBackWithTag(dispatch_task, pt.tag, ps.dispatch_w_idx);
+        auto push_status = dispatch_que.PushBackWithTag(std::move(dispatch_work_item), pt.tag, ps.dispatch_w_idx);
         // Queue accepted the task; wake the thread that owns the queue.
         // In addition, if the queue was non-empty, attempt to wake
         // another thread (which may then steal the task).
@@ -1222,6 +1312,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           }
         } else {
           ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+          InvokeOnAbandon(enqueue_data);
+#endif
         }
         profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
       } else {
@@ -1347,6 +1440,49 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       }
     }
   }
+
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+  // Invoke the on_enqueue callback if configured, returning the enqueue_data.
+  void* InvokeOnEnqueue() {
+    if (work_callbacks_.on_enqueue) {
+      return work_callbacks_.on_enqueue(work_callbacks_.user_context);
+    }
+    return nullptr;
+  }
+
+  // Invoke a WorkItem, executing callbacks around the task if configured.
+  // This is called from WorkerLoop and Schedule (for rejected work).
+  void InvokeWorkItem(WorkItem& work_item) {
+    void* enqueue_data = work_item.enqueue_data_;
+
+    if (work_callbacks_.on_start_work) {
+      work_callbacks_.on_start_work(work_callbacks_.user_context, enqueue_data);
+    }
+
+    ORT_TRY {
+      work_item.task_();
+    }
+    ORT_CATCH(...) {
+      // Ensure on_stop_work is called even on exception
+      if (work_callbacks_.on_stop_work) {
+        work_callbacks_.on_stop_work(work_callbacks_.user_context, enqueue_data);
+      }
+      ORT_RETHROW;
+    }
+
+    if (work_callbacks_.on_stop_work) {
+      work_callbacks_.on_stop_work(work_callbacks_.user_context, enqueue_data);
+    }
+  }
+
+  // Called when enqueued work is abandoned (revoked or rejected) without execution.
+  // Allows the on_abandon callback to free resources associated with enqueue_data.
+  void InvokeOnAbandon(void* enqueue_data) {
+    if (work_callbacks_.on_abandon) {
+      work_callbacks_.on_abandon(work_callbacks_.user_context, enqueue_data);
+    }
+  }
+#endif
 
   typedef typename Environment::EnvThread Thread;
   struct WorkerData;
@@ -1496,6 +1632,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   const unsigned num_threads_;
   const bool allow_spinning_;
   const bool set_denormal_as_zero_;
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+  ThreadPoolWorkCallbacks work_callbacks_;
+#endif
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
@@ -1543,16 +1682,16 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     profiler_.LogThreadId(thread_id);
 
     while (!should_exit) {
-      Task t = q.PopFront();
-      if (!t) {
+      Work w = q.PopFront();
+      if (!w) {
         // Spin waiting for work.
         for (int i = 0; i < spin_count && !done_; i++) {
           if (((i + 1) % steal_count == 0)) {
-            t = Steal(StealAttemptKind::TRY_ONE);
+            w = Steal(StealAttemptKind::TRY_ONE);
           } else {
-            t = q.PopFront();
+            w = q.PopFront();
           }
-          if (t) break;
+          if (w) break;
 
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
@@ -1561,7 +1700,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         }
 
         // Attempt to block
-        if (!t) {
+        if (!w) {
           if (!td.SetBlocked(  // Pre-block test
                   [&]() -> bool {
                     bool should_block = true;
@@ -1580,9 +1719,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
                     // If #A is before #2 then main sees worker blocked and wakes
                     //
                     // If #A if after #2 then #B will see #1, and we abandon blocking
-                    assert(!t);
-                    t = q.PopFront();
-                    if (t) {
+                    assert(!w);
+                    w = q.PopFront();
+                    if (w) {
                       should_block = false;
                     }
 
@@ -1625,14 +1764,18 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           // Thread just unblocked.  Unless we picked up work while
           // blocking, or are exiting, then either work was pushed to
           // us, or it was pushed to an overloaded queue
-          if (!t) t = q.PopFront();
-          if (!t) t = Steal(StealAttemptKind::TRY_ALL);
+          if (!w) w = q.PopFront();
+          if (!w) w = Steal(StealAttemptKind::TRY_ALL);
         }
       }
 
-      if (t) {
+      if (w) {
         td.SetActive();
-        t();
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        InvokeWorkItem(w);
+#else
+        w();
+#endif
         profiler_.LogRun(thread_id);
         td.SetSpinning();
       }
@@ -1652,7 +1795,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // "snatching" work from a thread which is just about to notice the
   // work itself.
 
-  Task Steal(StealAttemptKind steal_kind) {
+  Work Steal(StealAttemptKind steal_kind) {
     PerThread* pt = GetPerThread();
     unsigned size = num_threads_;
     unsigned num_attempts = (steal_kind == StealAttemptKind::TRY_ALL) ? size : 1;
@@ -1663,9 +1806,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     for (unsigned i = 0; i < num_attempts; i++) {
       assert(victim < size);
       if (worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
-        Task t = worker_data_[victim].queue.PopBack();
-        if (t) {
-          return t;
+        Work w = worker_data_[victim].queue.PopBack();
+        if (w) {
+          return w;
         }
       }
       victim += inc;
@@ -1674,7 +1817,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       }
     }
 
-    return Task();
+    return Work();
   }
 
   int NonEmptyQueueIndex() {

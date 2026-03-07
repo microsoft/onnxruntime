@@ -467,6 +467,19 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
         }
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        {
+          const auto* env_cbs = session_env.GetDefaultSessionWorkCallbacks();
+          if (env_cbs != nullptr) {
+            to.work_enqueue_fn = env_cbs->on_enqueue;
+            to.work_start_fn = env_cbs->on_start_work;
+            to.work_stop_fn = env_cbs->on_stop_work;
+            to.work_abandon_fn = env_cbs->on_abandon;
+            to.work_callbacks_user_context = env_cbs->user_context;
+          }
+        }
+#endif
+
         thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
       }
@@ -502,6 +515,20 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         if (to.custom_create_thread_fn) {
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
         }
+
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        {
+          const auto* env_cbs = session_env.GetDefaultSessionWorkCallbacks();
+          if (env_cbs != nullptr) {
+            to.work_enqueue_fn = env_cbs->on_enqueue;
+            to.work_start_fn = env_cbs->on_start_work;
+            to.work_stop_fn = env_cbs->on_stop_work;
+            to.work_abandon_fn = env_cbs->on_abandon;
+            to.work_callbacks_user_context = env_cbs->user_context;
+          }
+        }
+#endif
+
         inter_op_thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
         if (inter_op_thread_pool_ == nullptr) {
