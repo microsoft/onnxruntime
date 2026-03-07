@@ -47,8 +47,9 @@ Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
 
   int log_level = info[0].As<Napi::Number>().Int32Value();
   Napi::Function tensorConstructor = info[1].As<Napi::Function>();
+  bool is_main_thread = info[2].As<Napi::Boolean>().Value();
 
-  OrtInstanceData::InitOrt(env, log_level, tensorConstructor);
+  OrtInstanceData::InitOrt(env, log_level, tensorConstructor, is_main_thread);
 
   return env.Undefined();
 }
