@@ -419,7 +419,7 @@ class KernelScope {
         session_scope_(session_scope),
         session_state_(session_scope_.session_state_),
         kernel_context_(kernel_context),
-    kernel_(kernel)
+        kernel_(kernel)
 #ifdef CONCURRENCY_VISUALIZER
         ,
         span_(session_scope_.series_, "%s.%d", kernel_.Node().OpType().c_str(), kernel_.Node().Index())
