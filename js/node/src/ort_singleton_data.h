@@ -47,13 +47,10 @@ struct OrtSingletonData {
   // Initialize ORT objects and register a cleanup hook for the given napi_env.
   // Each napi_env (thread) should call this once.
   // is_main_thread should be set to true if the calling thread is the main thread (from worker_threads.isMainThread).
-  static OrtObjects& GetOrCreateOrtObjects(napi_env env, int log_level, bool is_main_thread);
+  static void InitOrtObjects(napi_env env, int log_level, bool is_main_thread);
 
-  // Get the global Ort::Env
-  static const Ort::Env& Env();
-
-  // Get the default Ort::RunOptions
-  static const Ort::RunOptions& DefaultRunOptions();
+  // Get the ORT singleton objects. Returns nullptr if the singleton has been destroyed.
+  static OrtObjects* GetOrtObjects();
 
  private:
   static void CleanupHook(void* arg);

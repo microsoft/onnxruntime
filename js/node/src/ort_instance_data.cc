@@ -27,7 +27,7 @@ void OrtInstanceData::InitOrt(Napi::Env env, int log_level, Napi::Function tenso
 
   // Initialize ORT singleton and register cleanup hook for this env.
   // The first call creates the OrtObjects; subsequent calls increment the ref count.
-  OrtSingletonData::GetOrCreateOrtObjects(env, log_level, is_main_thread);
+  OrtSingletonData::InitOrtObjects(env, log_level, is_main_thread);
 }
 
 const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env) {
