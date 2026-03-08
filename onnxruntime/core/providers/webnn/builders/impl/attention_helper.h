@@ -55,8 +55,6 @@ inline Status ApplyRotaryEmbedding(
     emscripten::val sin_cache,     // Shape: [max_sequence_length, head_size / 2]
     emscripten::val position_ids,  // Shape: [batch_size, sequence_length] or [1]
     int32_t input_data_type,
-    uint32_t batch_size,
-    uint32_t sequence_length,
     uint32_t num_heads,
     uint32_t head_size,
     uint32_t rotary_embedding_dim,
@@ -84,13 +82,21 @@ inline Status ApplyRotaryEmbedding(
   }
 
   // Split the partial input0 data into 2 equal parts.
-  const std::vector<uint32_t> new_partial_input0_shape =
-      interleaved ? std::vector<uint32_t>({batch_size, sequence_length, num_heads, half_rotary_embedding_dim, 2})
-                  : std::vector<uint32_t>({batch_size, sequence_length, num_heads, 2, half_rotary_embedding_dim});
+  emscripten::val new_partial_input0_shape = emscripten::val::array();
+  new_partial_input0_shape.call<void>("push", input["shape"][0]);
+  new_partial_input0_shape.call<void>("push", input["shape"][1]);
+  new_partial_input0_shape.call<void>("push", input["shape"][2]);
+  if (interleaved) {
+    new_partial_input0_shape.call<void>("push", half_rotary_embedding_dim);
+    new_partial_input0_shape.call<void>("push", 2);
+  } else {
+    new_partial_input0_shape.call<void>("push", 2);
+    new_partial_input0_shape.call<void>("push", half_rotary_embedding_dim);
+  }
   emscripten::val reshape_partial_input0_options = emscripten::val::object();
   reshape_partial_input0_options.set("label", node_name + "_rotary_reshape_partial_input0");
   partial_input0 = wnn_builder.call<emscripten::val>(
-      "reshape", partial_input0, emscripten::val::array(new_partial_input0_shape), reshape_partial_input0_options);
+      "reshape", partial_input0, new_partial_input0_shape, reshape_partial_input0_options);
 
   // Split partial input0.
   const int split_axis = interleaved ? 4 : 3;
@@ -108,26 +114,36 @@ inline Status ApplyRotaryEmbedding(
 
   emscripten::val gather_position_ids = position_ids;
   if (position_ids_is_offset) {
-    // Generate a sequence from 0 to sequence_length and add the offset to it.
-    const std::vector<uint32_t> position_ids_range_shape = {1, sequence_length};
-    std::string typed_array_name = "BigInt64Array";
-    int position_ids_data_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    // Generate a sequence [0, 1, ..., sequence_length-1] with dynamic sequence_length and add the offset.
     const bool is_int64_supported = model_builder.IsInt64Supported();
-    if (!is_int64_supported) {
-      typed_array_name = "Int32Array";
-      position_ids_data_type = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    }
-    emscripten::val position_ids_range_buffer = emscripten::val::global(typed_array_name.c_str()).new_(sequence_length);
-    for (uint32_t i = 0; i < sequence_length; i++) {
-      position_ids_range_buffer.set(i, is_int64_supported ? emscripten::val::global("BigInt")(i) : emscripten::val(i));
-    }
-    emscripten::val position_ids_range_desc = emscripten::val::object();
-    position_ids_range_desc.set("shape", emscripten::val::array(position_ids_range_shape));
-    position_ids_range_desc.set("dimensions", emscripten::val::array(position_ids_range_shape));
-    ORT_RETURN_IF_NOT(SetWebnnDataType(position_ids_range_desc, position_ids_data_type),
-                      "WebNN backend does not support data type: ", position_ids_data_type);
+    emscripten::val value_one_constant = is_int64_supported
+                         ? model_builder.CreateOrGetConstant<int64_t>(
+                             ONNX_NAMESPACE::TensorProto_DataType_INT64, static_cast<int64_t>(1), {1})
+                         : model_builder.CreateOrGetConstant<int32_t>(
+                             ONNX_NAMESPACE::TensorProto_DataType_INT32, static_cast<int32_t>(1), {1});
+
+    emscripten::val position_ids_range_1d_shape = emscripten::val::array();
+    position_ids_range_1d_shape.call<void>("push", input["shape"][1]);
     emscripten::val position_ids_range = wnn_builder.call<emscripten::val>(
-        "constant", position_ids_range_desc, position_ids_range_buffer);
+      "expand", value_one_constant, position_ids_range_1d_shape);
+
+    emscripten::val cumsum_options = emscripten::val::object();
+    cumsum_options.set("label", node_name + "_rotary_position_ids_range_cumsum");
+    cumsum_options.set("exclusive", false);
+    cumsum_options.set("reversed", false);
+    position_ids_range = wnn_builder.call<emscripten::val>(
+      "cumulativeSum", position_ids_range, gsl::narrow<uint32_t>(0), cumsum_options);
+    position_ids_range = wnn_builder.call<emscripten::val>(
+      "sub", position_ids_range, value_one_constant);
+
+    emscripten::val position_ids_range_2d_shape = emscripten::val::array();
+    position_ids_range_2d_shape.call<void>("push", 1);
+    position_ids_range_2d_shape.call<void>("push", input["shape"][1]);
+    emscripten::val reshape_position_ids_range_options = emscripten::val::object();
+    reshape_position_ids_range_options.set("label", node_name + "_rotary_position_ids_range_reshape");
+    position_ids_range = wnn_builder.call<emscripten::val>(
+      "reshape", position_ids_range, position_ids_range_2d_shape, reshape_position_ids_range_options);
+
     emscripten::val position_ids_add_range_options = emscripten::val::object();
     position_ids_add_range_options.set("label", node_name + "_rotary_position_ids_add_range");
     gather_position_ids = wnn_builder.call<emscripten::val>(
@@ -147,37 +163,60 @@ inline Status ApplyRotaryEmbedding(
     gather_cos = wnn_builder.call<emscripten::val>("gather", gather_cos, gather_position_ids, gather_cos_options);
     gather_sin = wnn_builder.call<emscripten::val>("gather", gather_sin, gather_position_ids, gather_sin_options);
   } else {
-    // When position_ids is not provided, slice the cos/sin cache to get the first sequence_length rows.
+    // When position_ids is not provided, gather the first sequence_length rows using a dynamic range.
     // cos_cache/sin_cache shape: [max_sequence_length, half_rotary_embedding_dim]
-    // After slice: [sequence_length, half_rotary_embedding_dim]
-    emscripten::val slice_cos_options = emscripten::val::object();
-    emscripten::val slice_sin_options = emscripten::val::object();
-    slice_cos_options.set("label", node_name + "_rotary_slice_cos");
-    slice_sin_options.set("label", node_name + "_rotary_slice_sin");
-    const std::vector<uint32_t> slice_starts = {0, 0};
-    const std::vector<uint32_t> slice_sizes = {sequence_length, half_rotary_embedding_dim};
-    gather_cos = wnn_builder.call<emscripten::val>("slice", gather_cos,
-                                                   emscripten::val::array(slice_starts),
-                                                   emscripten::val::array(slice_sizes),
-                                                   slice_cos_options);
-    gather_sin = wnn_builder.call<emscripten::val>("slice", gather_sin,
-                                                   emscripten::val::array(slice_starts),
-                                                   emscripten::val::array(slice_sizes),
-                                                   slice_sin_options);
+    // After gather: [sequence_length, half_rotary_embedding_dim]
+    const bool is_int64_supported = model_builder.IsInt64Supported();
+    emscripten::val value_one_constant = is_int64_supported
+                         ? model_builder.CreateOrGetConstant<int64_t>(
+                             ONNX_NAMESPACE::TensorProto_DataType_INT64, static_cast<int64_t>(1), {1})
+                         : model_builder.CreateOrGetConstant<int32_t>(
+                             ONNX_NAMESPACE::TensorProto_DataType_INT32, static_cast<int32_t>(1), {1});
+
+    emscripten::val position_ids_range_1d_shape = emscripten::val::array();
+    position_ids_range_1d_shape.call<void>("push", input["shape"][1]);
+    emscripten::val position_ids_range = wnn_builder.call<emscripten::val>(
+      "expand", value_one_constant, position_ids_range_1d_shape);
+
+    emscripten::val cumsum_options = emscripten::val::object();
+    cumsum_options.set("label", node_name + "_rotary_position_ids_range_cumsum_without_ids");
+    cumsum_options.set("exclusive", false);
+    cumsum_options.set("reversed", false);
+    position_ids_range = wnn_builder.call<emscripten::val>(
+      "cumulativeSum", position_ids_range, gsl::narrow<uint32_t>(0), cumsum_options);
+    position_ids_range = wnn_builder.call<emscripten::val>(
+      "sub", position_ids_range, value_one_constant);
+
+    emscripten::val gather_cos_options = emscripten::val::object();
+    emscripten::val gather_sin_options = emscripten::val::object();
+    gather_cos_options.set("label", node_name + "_rotary_gather_cos_without_ids");
+    gather_sin_options.set("label", node_name + "_rotary_gather_sin_without_ids");
+    gather_cos_options.set("axis", 0);
+    gather_sin_options.set("axis", 0);
+    gather_cos = wnn_builder.call<emscripten::val>("gather", gather_cos, position_ids_range, gather_cos_options);
+    gather_sin = wnn_builder.call<emscripten::val>("gather", gather_sin, position_ids_range, gather_sin_options);
   }
 
   // Reshape and broadcast them to match the number of heads of the input data.
-  const std::vector<uint32_t> reshaped_cos_sin_shape =
-      interleaved ? std::vector<uint32_t>({batch_size, sequence_length, 1, half_rotary_embedding_dim, 1})
-                  : std::vector<uint32_t>({batch_size, sequence_length, 1, 1, half_rotary_embedding_dim});
+  emscripten::val reshaped_cos_sin_shape = emscripten::val::array();
+  reshaped_cos_sin_shape.call<void>("push", input["shape"][0]);
+  reshaped_cos_sin_shape.call<void>("push", input["shape"][1]);
+  reshaped_cos_sin_shape.call<void>("push", 1);
+  if (interleaved) {
+    reshaped_cos_sin_shape.call<void>("push", half_rotary_embedding_dim);
+    reshaped_cos_sin_shape.call<void>("push", 1);
+  } else {
+    reshaped_cos_sin_shape.call<void>("push", 1);
+    reshaped_cos_sin_shape.call<void>("push", half_rotary_embedding_dim);
+  }
   emscripten::val reshape_gather_cos_options = emscripten::val::object();
   emscripten::val reshape_gather_sin_options = emscripten::val::object();
   reshape_gather_cos_options.set("label", node_name + "_rotary_reshape_gather_cos");
   reshape_gather_sin_options.set("label", node_name + "_rotary_reshape_gather_sin");
   gather_cos = wnn_builder.call<emscripten::val>(
-      "reshape", gather_cos, emscripten::val::array(reshaped_cos_sin_shape), reshape_gather_cos_options);
+      "reshape", gather_cos, reshaped_cos_sin_shape, reshape_gather_cos_options);
   gather_sin = wnn_builder.call<emscripten::val>(
-      "reshape", gather_sin, emscripten::val::array(reshaped_cos_sin_shape), reshape_gather_sin_options);
+      "reshape", gather_sin, reshaped_cos_sin_shape, reshape_gather_sin_options);
 
   // Multiply the non-rotated data with the cosine and the rotated data with the sine.
   emscripten::val mul_cos_options = emscripten::val::object();
@@ -224,14 +263,17 @@ inline Status ApplyRotaryEmbedding(
   mul_sin = wnn_builder.call<emscripten::val>("mul", mul_sin, sign_constant, mul_sign_options);
 
   // Reshape mul_cos and mul_sin to (batch_size, sequence_length, num_heads, rotary_embedding_dim).
-  const std::vector<uint32_t> reshaped_mul_cos_sin_shape =
-      {batch_size, sequence_length, num_heads, rotary_embedding_dim};
+    emscripten::val reshaped_mul_cos_sin_shape = emscripten::val::array();
+    reshaped_mul_cos_sin_shape.call<void>("push", input["shape"][0]);
+    reshaped_mul_cos_sin_shape.call<void>("push", input["shape"][1]);
+    reshaped_mul_cos_sin_shape.call<void>("push", input["shape"][2]);
+    reshaped_mul_cos_sin_shape.call<void>("push", rotary_embedding_dim);
   emscripten::val reshape_mul_cos_sin_options = emscripten::val::object();
   reshape_mul_cos_sin_options.set("label", node_name + "_rotary_reshape_mul_cos_sin");
   mul_cos = wnn_builder.call<emscripten::val>(
-      "reshape", mul_cos, emscripten::val::array(reshaped_mul_cos_sin_shape), reshape_mul_cos_sin_options);
+      "reshape", mul_cos, reshaped_mul_cos_sin_shape, reshape_mul_cos_sin_options);
   mul_sin = wnn_builder.call<emscripten::val>(
-      "reshape", mul_sin, emscripten::val::array(reshaped_mul_cos_sin_shape), reshape_mul_cos_sin_options);
+      "reshape", mul_sin, reshaped_mul_cos_sin_shape, reshape_mul_cos_sin_options);
 
   // Add the multiplied cos and sin values together.
   emscripten::val add_mul_cos_sin_options = emscripten::val::object();
@@ -278,7 +320,7 @@ inline emscripten::val ScaledDotProductAttention(ModelBuilder& model_builder, co
                                                  const logging::Logger& logger, emscripten::val query,
                                                  emscripten::val key, emscripten::val value, emscripten::val scale,
                                                  emscripten::val attn_mask,
-                                                 std::vector<uint32_t> reshape_output_shape) {
+                                                 emscripten::val reshape_output_shape) {
   emscripten::val common_options = emscripten::val::object();
   // B,H,S,N * B,H,kv_S,N = B,H,S,kv_S
   common_options.set("label", node.Name() + "_/Attention/qkv/matmul_1");
@@ -312,7 +354,7 @@ inline emscripten::val ScaledDotProductAttention(ModelBuilder& model_builder, co
 
   common_options.set("label", node.Name() + "_/Attention/qkv/reshape");
   attn_output = model_builder.GetBuilder().call<emscripten::val>(
-      "reshape", attn_output, emscripten::val::array(reshape_output_shape), common_options);
+      "reshape", attn_output, reshape_output_shape, common_options);
 
   return attn_output;
 }

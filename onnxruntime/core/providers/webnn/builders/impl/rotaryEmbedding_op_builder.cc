@@ -93,6 +93,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   const bool position_ids_is_offset = has_position_ids && position_ids_shape.size() == 1;
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
+  emscripten::val original_input = input;
   emscripten::val position_ids = emscripten::val::undefined();
   if (has_position_ids) {
     position_ids = model_builder.GetOperand(input_defs[position_ids_idx]->Name());
@@ -111,15 +112,12 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   // The input can be:
   // - 3D: [batch_size, sequence_length, hidden_size]
   // - 4D: [batch_size, num_heads, sequence_length, head_size]
-  const uint32_t batch_size = static_cast<uint32_t>(input_shape[0]);
-  uint32_t sequence_length, hidden_size, head_size;
+  uint32_t hidden_size, head_size;
   if (input_is_4d) {
-    sequence_length = static_cast<uint32_t>(input_shape[2]);
     hidden_size = static_cast<uint32_t>(input_shape[1] * input_shape[3]);
     num_heads = static_cast<uint32_t>(input_shape[1]);
     head_size = static_cast<uint32_t>(input_shape[3]);
   } else {
-    sequence_length = static_cast<uint32_t>(input_shape[1]);
     hidden_size = static_cast<uint32_t>(input_shape[2]);
     // Since opset 23, if the input is 3D, the num_heads must be provided.
     if (is_onnx_domain) {
@@ -151,11 +149,16 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     transpose_options.set("permutation", emscripten::val::array(permutation));
     input = wnn_builder.call<emscripten::val>("transpose", input, transpose_options);
   } else {
-    const std::vector<uint32_t> new_shape{batch_size, sequence_length, num_heads, head_size};
+    emscripten::val new_shape = emscripten::val::array();
+    // Use input.shape to avoid passing literal 0 for dynamic dimensions.
+    new_shape.call<void>("push", input["shape"][0]);
+    new_shape.call<void>("push", input["shape"][1]);
+    new_shape.call<void>("push", num_heads);
+    new_shape.call<void>("push", head_size);
     emscripten::val reshape_input_options = emscripten::val::object();
     reshape_input_options.set("label", node_name + "_reshape_input");
     input = wnn_builder.call<emscripten::val>(
-        "reshape", input, emscripten::val::array(new_shape), reshape_input_options);
+        "reshape", input, new_shape, reshape_input_options);
   }
 
   // Apply rotary embedding using the helper function
@@ -168,8 +171,6 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
       sin_cache,
       position_ids,
       input_data_type,
-      batch_size,
-      sequence_length,
       num_heads,
       head_size,
       rotary_embedding_dim,
@@ -187,11 +188,14 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   } else {
     // The output is in 3D shape, we need to reshape it back to the original shape.
     // The output shape is same as the input shape.
-    const std::vector<uint32_t> output_shape = GetNarrowedIntFromInt64<uint32_t>(input_shape);
+    emscripten::val output_shape = emscripten::val::array();
+    output_shape.call<void>("push", original_input["shape"][0]);
+    output_shape.call<void>("push", original_input["shape"][1]);
+    output_shape.call<void>("push", original_input["shape"][2]);
     emscripten::val reshape_output_options = emscripten::val::object();
     reshape_output_options.set("label", node_name + "_reshape_output");
     output = wnn_builder.call<emscripten::val>(
-        "reshape", output, emscripten::val::array(output_shape), reshape_output_options);
+      "reshape", output, output_shape, reshape_output_options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
