@@ -884,7 +884,7 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
                                      (node.OpType() == "Sigmoid") ||
                                      (node.OpType() == "Tanh");
     if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
-      can_fuse_activation &&
+        can_fuse_activation &&
         (nchwc_input->starting_original_uses_ == 1) &&
         (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
       nchwc_node.AddAttribute("activation", node.OpType());
