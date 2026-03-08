@@ -4,6 +4,8 @@
 #param n_bits
 #param has_zero_points
 #param has_bias
+#param has_weight_idx
+#param has_weight_idx_indirect
 #param component_type_idx
 #param result_component_type_idx
 #param m_dim
@@ -49,8 +51,20 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     let col = c_idx * 8;
     // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
     // Stored in column major fashion.
-    let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
-    let scale = component_type(scales_b.getByOffset((b_global * uniforms.K + k_idx + col) / quantization_block_size));
+#if has_weight_idx
+#if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx = uniforms.weight_idx;
+#endif
+    let b_base_offset = actual_weight_idx * uniforms.K * uniforms.N;
+    let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
+#else
+    const b_base_offset : u32 = 0;
+    const scale_offset : u32 = 0;
+#endif
+    let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8) + b_base_offset / 8;
+    let scale = component_type(scales_b.getByOffset((b_global * uniforms.K + k_idx + col) / quantization_block_size + scale_offset));
     let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
     let b_value = b.getByOffset(b_idx);
     let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
@@ -77,8 +91,20 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     let col = c_idx * 8;
     // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
     // Stored in column major fashion.
-    let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
-    let scale = component_type(scales_b.getByOffset((b_global * uniforms.K + k_idx + col) / quantization_block_size));
+#if has_weight_idx
+#if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx = uniforms.weight_idx;
+#endif
+    let b_base_offset = actual_weight_idx * uniforms.K * uniforms.N;
+    let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
+#else
+    const b_base_offset : u32 = 0;
+    const scale_offset : u32 = 0;
+#endif
+    let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8) + b_base_offset / 8;
+    let scale = component_type(scales_b.getByOffset((b_global * uniforms.K + k_idx + col) / quantization_block_size + scale_offset));
     let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
     let b_value = b.getByOffset(b_idx);
     let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(zero)) * scale;
@@ -158,7 +184,16 @@ $MAIN {
         let global_row = a_global_base + row;
         let global_col = b_global_base + col;
         if (global_row < uniforms.M && global_col < uniforms.N) {
-            output.setByOffset(global_row * uniforms.N + global_col, output_element_t(scratch[idx]) + output_element_t(bias[global_col]));
+#if has_weight_idx
+#if has_weight_idx_indirect
+            let bias_col = global_col + weight_index_indirect[uniforms.weight_idx] * uniforms.N;
+#else
+            let bias_col = global_col + uniforms.weight_idx * uniforms.N;
+#endif
+#else
+            let bias_col = global_col;
+#endif
+            output.setByOffset(global_row * uniforms.N + global_col, output_element_t(scratch[idx]) + output_element_t(bias[bias_col]));
         }
     }
 #else

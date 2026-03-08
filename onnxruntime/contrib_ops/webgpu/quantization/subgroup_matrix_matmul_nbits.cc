@@ -162,10 +162,12 @@ Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
                                  const ShaderVariableHelper& output,
-                                 uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias) {
+                                 uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_intel.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(component_type_idx, static_cast<uint32_t>(config.componentType)),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
                              WGSL_TEMPLATE_PARAMETER(k_dim, config.k),
                              WGSL_TEMPLATE_PARAMETER(m_dim, config.m),
@@ -212,7 +214,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   if (!vendor_.compare("apple")) {
     return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else if (!vendor_.compare("intel") || !vendor_.compare("nvidia")) {
-    return GenerateShaderCodeOnIntel(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_);
+    return GenerateShaderCodeOnIntel(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");
