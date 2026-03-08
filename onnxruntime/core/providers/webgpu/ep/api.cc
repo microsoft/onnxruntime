@@ -45,7 +45,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   }
 
   // Initialize the global default logger
-  ::onnxruntime::ep::adapter::Logger::CreateDefaultLogger(default_logger);
+  ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(default_logger);
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<onnxruntime::webgpu::ep::Factory>();
@@ -67,7 +67,7 @@ EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
   onnxruntime::webgpu::CleanupWebGpuContexts();
 
   // STEP.4 - Destroy the global default logger wrapper
-  ::onnxruntime::ep::adapter::Logger::DestroyDefaultLogger();
+  ::onnxruntime::ep::adapter::LoggingManager::DestroyDefaultLogger();
 
   // STEP.5 - Shutdown protobuf library
   google::protobuf::ShutdownProtobufLibrary();
