@@ -1175,6 +1175,7 @@ class OrtValue:
         enabled or other scenarios where the OrtValue needs to be updated while
         the memory address can not be changed.
         """
+        np_arr = np.ascontiguousarray(np_arr)
         self._ortvalue.update_inplace(np_arr)
 
 
