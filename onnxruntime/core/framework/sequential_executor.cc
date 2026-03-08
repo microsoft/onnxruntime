@@ -415,8 +415,8 @@ class KernelScope {
   KernelScope(SessionScope& session_scope,
               OpKernelContextInternal& kernel_context,
               const OpKernel& kernel)
-        : enable_per_op_timing_(IsPerOpTimingEnabledFromEnv()),
-    session_scope_(session_scope),
+      : enable_per_op_timing_(IsPerOpTimingEnabledFromEnv()),
+        session_scope_(session_scope),
         session_state_(session_scope_.session_state_),
         kernel_context_(kernel_context),
     kernel_(kernel)
