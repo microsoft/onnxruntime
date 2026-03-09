@@ -30,5 +30,16 @@ TEST(DeviceDiscoveryTest, HasCpuDevice) {
 #endif  // defined(CPUINFO_SUPPORTED)
 }
 
+TEST(DeviceDiscoveryTest, GpuDevicesHaveValidProperties) {
+  const auto gpu_devices = GetDevicesByType(OrtHardwareDeviceType_GPU);
+
+  // GPU detection should not crash. If GPUs are present, validate their properties.
+  for (const auto& gpu_device : gpu_devices) {
+    EXPECT_EQ(gpu_device.type, OrtHardwareDeviceType_GPU);
+    EXPECT_NE(gpu_device.vendor_id, 0u);
+    EXPECT_NE(gpu_device.device_id, 0u);
+  }
+}
+
 }  // namespace onnxruntime::test
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)
