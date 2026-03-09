@@ -7295,9 +7295,12 @@ struct OrtApi {
   /// \name OrtEnv
   /// @{
 
-  /** \brief Set default thread pool callbacks for per-session thread pools.
+  /** \brief Set thread pool work callbacks for per-session thread pools.
    *
-   * Stores callbacks on the Env that will be applied to per-session thread pools.
+   * Stores callbacks on the Env that will be applied to per-session thread pools
+   * created by subsequent sessions. Does not affect sessions already created or
+   * global thread pools created via OrtApi::CreateEnvWithGlobalThreadPools.
+   *
    * Requires ORT built with --session_threadpool_callbacks.
    *
    * \param[in] env OrtEnv instance.
@@ -7311,12 +7314,14 @@ struct OrtApi {
    *
    * \since Version 1.25.
    */
-  ORT_API2_STATUS(SetDefaultThreadPoolCallbacks, _Inout_ OrtEnv* env,
+  ORT_API2_STATUS(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* env,
                   _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
                   _In_opt_ OrtThreadPoolWorkStartFn on_start,
                   _In_opt_ OrtThreadPoolWorkStopFn on_stop,
                   _In_opt_ OrtThreadPoolWorkAbandonFn on_abandon,
                   _In_opt_ void* user_context);
+
+  /// @}
 };
 
 /*

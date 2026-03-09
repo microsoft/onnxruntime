@@ -187,14 +187,26 @@ class Environment {
   OrtKeyValuePairs GetConfigEntries() const;
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-  const ThreadPoolWorkCallbacks* GetDefaultSessionWorkCallbacks() const {
-    std::lock_guard<std::mutex> lock{mutex_};
-    return default_session_work_callbacks_.has_value()
-               ? &default_session_work_callbacks_.value()
+  /**
+   * Returns the per-session thread pool work callbacks, or nullptr if not set.
+   *
+   * Not safe to call concurrently with SetPerSessionWorkCallbacks.
+   * Must be called after callbacks have been set and before they are modified.
+   */
+  const ThreadPoolWorkCallbacks* GetPerSessionWorkCallbacks() const {
+    return per_session_work_callbacks_.has_value()
+               ? &per_session_work_callbacks_.value()
                : nullptr;
   }
 
-  Status SetDefaultSessionWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
+  /**
+   * Sets thread pool work callbacks for per-session thread pools.
+   * Only affects sessions created after this call. Does not affect global thread pools.
+   *
+   * Not safe to call concurrently with GetPerSessionWorkCallbacks or session creation.
+   * Must be called before creating any sessions that should use the callbacks.
+   */
+  Status SetPerSessionWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
                                         OrtThreadPoolWorkStartFn on_start,
                                         OrtThreadPoolWorkStopFn on_stop,
                                         OrtThreadPoolWorkAbandonFn on_abandon,
@@ -309,7 +321,7 @@ class Environment {
   size_t num_allow_virtual_device_uses_{};
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-  std::optional<ThreadPoolWorkCallbacks> default_session_work_callbacks_;
+  std::optional<ThreadPoolWorkCallbacks> per_session_work_callbacks_;
 #endif
 };
 

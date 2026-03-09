@@ -40,7 +40,6 @@
 #pragma warning(disable : 4805)
 #endif
 #include <memory>
-#include <optional>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
 #if defined(__GNUC__)
@@ -1258,10 +1257,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       if (dispatch_async && extra_needed > 1) {
         assert(current_dop == 1);
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-        void* enqueue_data = InvokeOnEnqueue();
-#endif
-
         // Task for dispatching work asynchronously.
         Task dispatch_task = [current_dop, new_dop, worker_fn, &preferred_workers, &ps, &pt, this]() {
           // Record that dispatch work has started.  This must occur
@@ -1289,7 +1284,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         };
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-        // Create WorkItem with dispatch task and callback data
+        void* enqueue_data = InvokeOnEnqueue();
         Work dispatch_work_item(std::move(dispatch_task), enqueue_data);
 #else
         Work dispatch_work_item(std::move(dispatch_task));
@@ -1452,7 +1447,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   // Invoke a WorkItem, executing callbacks around the task if configured.
   // This is called from WorkerLoop and Schedule (for rejected work).
-  void InvokeWorkItem(WorkItem& work_item) {
+  void InvokeWorkItem(const WorkItem& work_item) {
     void* enqueue_data = work_item.enqueue_data_;
 
     if (work_callbacks_.on_start_work) {

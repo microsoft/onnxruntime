@@ -468,7 +468,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
         {
-          const auto* env_cbs = session_env.GetDefaultSessionWorkCallbacks();
+          const auto* env_cbs = session_env.GetPerSessionWorkCallbacks();
           if (env_cbs != nullptr) {
             to.work_enqueue_fn = env_cbs->on_enqueue;
             to.work_start_fn = env_cbs->on_start_work;
@@ -517,7 +517,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
         {
-          const auto* env_cbs = session_env.GetDefaultSessionWorkCallbacks();
+          const auto* env_cbs = session_env.GetPerSessionWorkCallbacks();
           if (env_cbs != nullptr) {
             to.work_enqueue_fn = env_cbs->on_enqueue;
             to.work_start_fn = env_cbs->on_start_work;

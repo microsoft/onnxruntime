@@ -830,6 +830,58 @@ TEST(ThreadPoolTest, TestWorkCallbacks_ParallelSection) {
   ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load() + ctx.abandon_count.load());
 }
 
+TEST(ThreadPoolTest, TestWorkCallbacks_Abandon) {
+  // Verify that on_abandon is called when enqueued work is revoked.
+  // Block all workers so dispatch tasks sit in queues unexecuted,
+  // then the main thread completes all iterations and revokes them.
+  //
+  // ThreadPool(num_threads) creates num_threads-1 actual worker threads
+  // (the calling thread counts as one).  We must block exactly
+  // num_threads-1 workers so that all pool workers are occupied.
+  WorkCallbackTestContext ctx;
+  constexpr int num_threads = 5;
+  const int num_workers = num_threads - 1;  // actual pool worker threads
+
+  CreateThreadPoolWithCallbacksAndTest(num_threads, ctx, true, [&](ThreadPool* tp) {
+    onnxruntime::Barrier workers_ready(num_workers);
+    onnxruntime::Barrier workers_released(num_workers);
+    std::atomic<bool> release{false};
+
+    for (int i = 0; i < num_workers; i++) {
+      ThreadPool::Schedule(tp, [&]() {
+        workers_ready.Notify();
+        while (!release.load(std::memory_order_acquire)) {
+          onnxruntime::concurrency::SpinPause();
+        }
+        workers_released.Notify();
+      });
+    }
+    workers_ready.Wait();  // All workers are now blocked
+
+    // Reset counters so we only measure the parallel loop below.
+    ctx.enqueue_count = 0;
+    ctx.start_count = 0;
+    ctx.stop_count = 0;
+    ctx.abandon_count = 0;
+
+    // The parallel loop enqueues a dispatch task, but no worker can pick it up.
+    // The main thread completes all iterations, then EndParallelSection revokes
+    // the dispatch task, triggering on_abandon.
+    std::atomic<int> tasks_done{0};
+    ThreadPool::TrySimpleParallelFor(tp, 100, [&](std::ptrdiff_t) {
+      tasks_done++;
+    });
+
+    ASSERT_EQ(tasks_done.load(), 100);
+    ASSERT_GT(ctx.abandon_count.load(), 0);
+    ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
+    ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load() + ctx.abandon_count.load());
+
+    release.store(true, std::memory_order_release);
+    workers_released.Wait();
+  });
+}
+
 TEST(ThreadPoolTest, TestWorkCallbacks_EnqueueReturnsNull) {
   // Verify that when on_enqueue returns nullptr, it is correctly passed
   // through to on_start_work/on_stop_work.

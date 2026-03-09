@@ -4260,7 +4260,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSessi
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetDefaultThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
+ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
                     _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
                     _In_opt_ OrtThreadPoolWorkStartFn on_start,
                     _In_opt_ OrtThreadPoolWorkStopFn on_stop,
@@ -4270,7 +4270,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetDefaultThreadPoolCallbacks, _Inout_ OrtEnv* ort_
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   auto& env = ort_env->GetEnvironment();
   return onnxruntime::ToOrtStatus(
-      env.SetDefaultSessionWorkCallbacks(on_enqueue, on_start, on_stop, on_abandon, user_context));
+      env.SetPerSessionWorkCallbacks(on_enqueue, on_start, on_stop, on_abandon, user_context));
 #else
   ORT_UNUSED_PARAMETER(ort_env);
   ORT_UNUSED_PARAMETER(on_enqueue);
@@ -4279,7 +4279,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetDefaultThreadPoolCallbacks, _Inout_ OrtEnv* ort_
   ORT_UNUSED_PARAMETER(on_abandon);
   ORT_UNUSED_PARAMETER(user_context);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
-      "SetDefaultThreadPoolCallbacks requires ORT built with --session_threadpool_callbacks");
+      "SetPerSessionThreadPoolCallbacks requires ORT built with --session_threadpool_callbacks");
 #endif
   API_IMPL_END
 }
@@ -4831,7 +4831,7 @@ static constexpr OrtApi ort_api_1_to_25 = {
 
     &OrtApis::RunOptionsEnableProfiling,
     &OrtApis::RunOptionsDisableProfiling,
-    &OrtApis::SetDefaultThreadPoolCallbacks,
+    &OrtApis::SetPerSessionThreadPoolCallbacks,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

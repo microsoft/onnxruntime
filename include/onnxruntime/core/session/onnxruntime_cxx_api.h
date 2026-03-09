@@ -1291,10 +1291,11 @@ struct Env : detail::Base<OrtEnv> {
                      const std::vector<Value>& dst_tensors,
                      OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
 
-  /// \brief Wraps OrtApi::SetDefaultThreadPoolCallbacks
-  /// Stores default work callbacks on the Env for per-session thread pools.
+  /// \brief Wraps OrtApi::SetPerSessionThreadPoolCallbacks
+  /// Stores work callbacks on the Env for per-session thread pools.
+  /// Only affects sessions created after this call. Does not affect global thread pools.
   /// Requires ORT built with --session_threadpool_callbacks.
-  Env& SetDefaultThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
+  Env& SetPerSessionThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
                                      OrtThreadPoolWorkStartFn on_start,
                                      OrtThreadPoolWorkStopFn on_stop,
                                      OrtThreadPoolWorkAbandonFn on_abandon,
