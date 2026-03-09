@@ -8,6 +8,7 @@
 #include <cwchar>
 #include <winsvc.h>
 #include "core/common/logging/logging.h"
+#include "core/common/status_code_to_hresult.h"
 #include "onnxruntime_config.h"
 
 // ETW includes
