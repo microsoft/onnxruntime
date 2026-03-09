@@ -21,6 +21,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
@@ -64,21 +65,57 @@ namespace onnxruntime {
 
 namespace {
 
+bool IsFlagValueEnabled(std::string value) {
+  if (value.empty()) {
+    return false;
+  }
+
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
 bool IsPerOpTimingEnabledFromEnv() {
-  static const bool enabled = []() {
-    std::string value = Env::Default().GetEnvironmentVar("ORT_ENABLE_PER_OP_TIMING");
-    if (value.empty()) {
-      return false;
-    }
-
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-      return static_cast<char>(std::tolower(c));
-    });
-
-    return value == "1" || value == "true" || value == "yes" || value == "on";
-  }();
-
+  static const bool enabled = IsFlagValueEnabled(Env::Default().GetEnvironmentVar("ORT_ENABLE_PER_OP_TIMING"));
   return enabled;
+}
+
+bool IsNodeTimingCaptureEnabledFromConfig(const SessionState& session_state) {
+  const auto config_value =
+      session_state.GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableNodeTimingCapture,
+                                                                          "0");
+  return IsFlagValueEnabled(config_value) || IsPerOpTimingEnabledFromEnv();
+}
+
+enum class NodeTimingCaptureGroupBy {
+  OpName,
+  OpType,
+};
+
+NodeTimingCaptureGroupBy NodeTimingCaptureGroupByFromConfig(const SessionState& session_state) {
+  auto group_by =
+      session_state.GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigNodeTimingCaptureGroupBy,
+                                                                           "op_name");
+
+  std::transform(group_by.begin(), group_by.end(), group_by.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  if (group_by == "op_type" || group_by == "type") {
+    return NodeTimingCaptureGroupBy::OpType;
+  }
+
+  if (group_by == "op_name" || group_by == "name") {
+    return NodeTimingCaptureGroupBy::OpName;
+  }
+
+  LOGS(session_state.Logger(), WARNING)
+      << "Unknown value for " << kOrtSessionOptionsConfigNodeTimingCaptureGroupBy
+      << ": '" << group_by << "'. Falling back to 'op_name'.";
+
+  return NodeTimingCaptureGroupBy::OpName;
 }
 
 }  // namespace
@@ -182,7 +219,10 @@ class SessionScope {
  public:
   friend class KernelScope;
   SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler)
-      : session_state_(session_state), run_profiler_(run_profiler)
+      : enable_node_timing_capture_(IsNodeTimingCaptureEnabledFromConfig(session_state)),
+    node_timing_capture_group_by_(NodeTimingCaptureGroupByFromConfig(session_state)),
+        session_state_(session_state),
+        run_profiler_(run_profiler)
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
         ,
         frame_(frame)
@@ -280,13 +320,25 @@ class SessionScope {
     return run_profiler_ && run_profiler_->IsEnabled();
   }
 
-  void RecordOpLatency(const std::string& op_name, uint64_t latency_us) {
-    if (!IsPerOpTimingEnabledFromEnv()) {
+  bool IsNodeTimingCaptureEnabled() const {
+    return enable_node_timing_capture_;
+  }
+
+  std::string GetNodeTimingCaptureKey(const Node& node) const {
+    if (node_timing_capture_group_by_ == NodeTimingCaptureGroupBy::OpType) {
+      return node.OpType();
+    }
+
+    return node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
+  }
+
+  void RecordOpLatency(const std::string& key, uint64_t latency_us) {
+    if (!enable_node_timing_capture_) {
       return;
     }
 
     std::lock_guard<std::mutex> lock(op_latency_stats_mutex_);
-    auto& stats = op_latency_stats_[op_name];
+    auto& stats = op_latency_stats_[key];
     stats.count += 1;
     stats.total_latency_us += latency_us;
     stats.min_latency_us = std::min(stats.min_latency_us, latency_us);
@@ -334,7 +386,7 @@ class SessionScope {
   };
 
   void LogOpLatencyStatsWarning() const {
-    if (!IsPerOpTimingEnabledFromEnv()) {
+    if (!enable_node_timing_capture_) {
       return;
     }
 
@@ -362,16 +414,21 @@ class SessionScope {
               });
 
     auto& logger = session_state_.Logger();
-    LOGS(logger, WARNING) << "[Latency] Per-op kernel latency summary: unique_ops="
+    const bool is_grouped_by_op_type = node_timing_capture_group_by_ == NodeTimingCaptureGroupBy::OpType;
+    const char* key_label = is_grouped_by_op_type ? "op_type" : "op_name";
+    const char* cardinality_label = is_grouped_by_op_type ? "unique_op_types" : "unique_nodes";
+
+    LOGS(logger, WARNING) << "[Latency] Per-op kernel latency summary: group_by=" << key_label
+                          << ", " << cardinality_label << "="
                           << op_stats.size() << ", kernel_invocations="
                           << total_kernel_invocations << ", total_kernel_time_us="
                           << total_run_latency_us;
 
     for (const auto& entry : op_stats) {
-      const auto& op_name = entry.first;
+      const auto& key = entry.first;
       const auto& stats = entry.second;
       const uint64_t avg_latency_us = stats.count == 0 ? 0 : (stats.total_latency_us / stats.count);
-      LOGS(logger, WARNING) << "[Latency] op=" << op_name
+      LOGS(logger, WARNING) << "[Latency] " << key_label << "=" << key
                             << " count=" << stats.count
                             << " total_us=" << stats.total_latency_us
                             << " avg_us=" << avg_latency_us
@@ -380,6 +437,8 @@ class SessionScope {
     }
   }
 
+  const bool enable_node_timing_capture_;
+  const NodeTimingCaptureGroupBy node_timing_capture_group_by_;
   const SessionState& session_state_;
   profiling::Profiler* run_profiler_;
   TimePoint session_start_;
@@ -415,11 +474,11 @@ class KernelScope {
   KernelScope(SessionScope& session_scope,
               OpKernelContextInternal& kernel_context,
               const OpKernel& kernel)
-        : enable_per_op_timing_(IsPerOpTimingEnabledFromEnv()),
-    session_scope_(session_scope),
+      : enable_per_op_timing_(session_scope.IsNodeTimingCaptureEnabled()),
+      session_scope_(session_scope),
         session_state_(session_scope_.session_state_),
         kernel_context_(kernel_context),
-    kernel_(kernel)
+      kernel_(kernel)
 #ifdef CONCURRENCY_VISUALIZER
         ,
         span_(session_scope_.series_, "%s.%d", kernel_.Node().OpType().c_str(), kernel_.Node().Index())
@@ -441,6 +500,9 @@ class KernelScope {
 #endif
   {
     if (enable_per_op_timing_) {
+      auto& node = kernel.Node();
+      node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
+      op_latency_key_ = session_scope_.GetNodeTimingCaptureKey(node);
       wall_clock_begin_time_ = std::chrono::steady_clock::now();
     }
 
@@ -479,8 +541,6 @@ class KernelScope {
     const bool run_profiling_enabled = session_scope_.IsRunProfilingEnabled();
 
     if (enable_per_op_timing_ && (session_profiling_enabled || run_profiling_enabled)) {
-      auto& node = kernel.Node();
-      node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
 
@@ -501,7 +561,7 @@ class KernelScope {
                                   wall_clock_end_time - wall_clock_begin_time_)
                                   .count();
       if (latency_us > 0) {
-        session_scope_.RecordOpLatency(kernel_.KernelDef().OpName(),
+        session_scope_.RecordOpLatency(op_latency_key_,
                                        static_cast<uint64_t>(latency_us));
       }
     }
@@ -562,6 +622,7 @@ class KernelScope {
   SessionScope& session_scope_;
   const SessionState& session_state_;
   std::string node_name_;
+  std::string op_latency_key_;
   OpKernelContextInternal& kernel_context_;
   const OpKernel& kernel_;
 
