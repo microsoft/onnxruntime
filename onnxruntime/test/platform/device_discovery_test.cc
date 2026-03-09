@@ -37,7 +37,7 @@ TEST(DeviceDiscoveryTest, GpuDevicesHaveValidProperties) {
   for (const auto& gpu_device : gpu_devices) {
     EXPECT_EQ(gpu_device.type, OrtHardwareDeviceType_GPU);
     EXPECT_NE(gpu_device.vendor_id, 0u);
-    EXPECT_NE(gpu_device.device_id, 0u);
+    // Note: device_id may be 0 on some platforms (e.g., Apple Silicon) where it is not populated.
   }
 }
 
