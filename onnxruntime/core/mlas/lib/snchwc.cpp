@@ -527,6 +527,12 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     static constexpr size_t DefaultFilterSetSize = 4;
 
+    static size_t SelectGroupedFilterSetSize(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock)
+    {
+        MLAS_UNREFERENCED_PARAMETER(WorkBlock);
+        return DefaultFilterSetSize;
+    }
+
     const size_t FilterSetSize;
     const size_t FilterSetCount;
 
@@ -660,7 +666,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
     MLAS_NCHWC_CONV_NCHWC_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
         MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock,
-            DefaultFilterSetSize)
+            SelectGroupedFilterSetSize(WorkBlock))
     {
     }
 
@@ -771,7 +777,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
     MLAS_NCHWC_CONV_NCHW_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
         MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock,
-            DefaultFilterSetSize)
+            SelectGroupedFilterSetSize(WorkBlock))
     {
     }
 
@@ -802,7 +808,6 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 #else
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwFloatKernel;
 #endif
-
         while (WorkRemaining > 0) {
 
             //
@@ -859,6 +864,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         }
     }
 };
+
 
 //
 // Implementation of the pointwise convolution algorithm.

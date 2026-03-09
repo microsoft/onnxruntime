@@ -343,7 +343,7 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 //
 
 #define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             32
-#define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
+#define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             32
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
 #define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
 
@@ -1001,6 +1001,8 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx;
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx;
+    MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx512F;
+    MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx512F;
 #elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM)
     MLAS_GEMV_FLOAT_KERNEL MlasGemvFloatKernel;
 #endif

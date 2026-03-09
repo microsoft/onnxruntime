@@ -26,6 +26,36 @@ Abstract:
 
 #define MLAS_SGEMM_TRANSA_ROWS              12
 
+#if defined(MLAS_TARGET_AMD64) && !defined(_WIN32)
+void
+MLASCALL
+MlasSgemmKernelM1Avx512F(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountN,
+    size_t ldb,
+    float beta
+    ) {
+    MlasSgemmKernelM1Avx(A, B, C, CountK, CountN, ldb, beta);
+}
+
+void
+MLASCALL
+MlasSgemmKernelM1TransposeBAvx512F(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountN,
+    size_t ldb,
+    float beta
+    ) {
+    MlasSgemmKernelM1TransposeBAvx(A, B, C, CountK, CountN, ldb, beta);
+}
+#endif
+
 //
 // Define the parameters to execute segments of a SGEMM operation on worker
 // threads.
