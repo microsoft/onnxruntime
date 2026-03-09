@@ -45,10 +45,6 @@
 #include "core/providers/acl/acl_provider_factory.h"
 #endif
 
-#ifdef USE_ARMNN
-#include "core/providers/armnn/armnn_provider_factory.h"
-#endif
-
 #include "test/common/cuda_op_test_utils.h"
 
 // test infrastructure
@@ -387,11 +383,6 @@ TEST_P(ModelTest, Run) {
         ASSERT_CXX_ORTSTATUS_OK(OrtSessionOptionsAppendExecutionProvider_ACL(ortso, false));
       }
 #endif
-#ifdef USE_ARMNN
-      else if (provider_name == "armnn") {
-        ASSERT_CXX_ORTSTATUS_OK(OrtSessionOptionsAppendExecutionProvider_ArmNN(ortso));
-      }
-#endif
 #ifdef USE_XNNPACK
       else if (provider_name == "xnnpack") {
         ortso.AppendExecutionProvider("XNNPACK");
@@ -556,9 +547,6 @@ static constexpr ORT_STRING_VIEW provider_name_rknpu = ORT_TSTR("rknpu");
 #ifdef USE_ACL
 static constexpr ORT_STRING_VIEW provider_name_acl = ORT_TSTR("acl");
 #endif
-#ifdef USE_ARMNN
-static constexpr ORT_STRING_VIEW provider_name_armnn = ORT_TSTR("armnn");
-#endif
 #ifdef USE_XNNPACK
 static constexpr ORT_STRING_VIEW provider_name_xnnpack = ORT_TSTR("xnnpack");
 #endif
@@ -599,9 +587,6 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #endif
 #ifdef USE_ACL
   provider_names[provider_name_acl] = {};
-#endif
-#ifdef USE_ARMNN
-  provider_names[provider_name_armnn] = {};
 #endif
 #ifdef USE_DML
   provider_names[provider_name_dml] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};

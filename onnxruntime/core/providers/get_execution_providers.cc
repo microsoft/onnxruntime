@@ -117,14 +117,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kArmNNExecutionProvider,
-#ifdef USE_ARMNN
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kAclExecutionProvider,
 #ifdef USE_ACL
             true,

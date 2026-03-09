@@ -367,5 +367,86 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryProbabilities) {
   test.Run();
 }
 
+TEST(MLOpTest, TreeEnsembleClassifierMismatchedClassArrays) {
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  // Use a minimal valid tree: one root (BRANCH_LEQ) with two leaf children.
+  std::vector<int64_t> lefts = {1, -1, -1};
+  std::vector<int64_t> rights = {2, -1, -1};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2, -2};
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  // Intentionally mismatched: class_nodeids has fewer elements than class_ids.
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1};  // only 1 element — mismatch!
+  std::vector<int64_t> class_classids = {0, 1};
+  std::vector<float> class_weights = {1.f, 1.f};
+  std::vector<int64_t> classes = {0, 1};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "target_class_ids and target_class_nodeids must have the same size");
+}
+
+TEST(MLOpTest, TreeEnsembleClassifierMismatchedNodeArrays) {
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  // nodes_falsenodeids has 3 elements, but nodes_featureids has only 2 — mismatch!
+  std::vector<int64_t> lefts = {1, -1, -1};
+  std::vector<int64_t> rights = {2, -1, -1};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2};  // only 2 elements — mismatch!
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1, 2};
+  std::vector<int64_t> class_classids = {0, 1};
+  std::vector<float> class_weights = {1.f, 1.f};
+  std::vector<int64_t> classes = {0, 1};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "nodes_falsenodeids and nodes_featureids must have the same size");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
