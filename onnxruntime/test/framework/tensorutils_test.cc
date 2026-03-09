@@ -605,7 +605,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "a/../data.bin"));
 
   // A path with multiple internal ".." that would escape current working direction should fail.
-  ASSERT_FALSE(utils::ValidateExternalDataPath("", "a/../../data.bin").IsOK());
+  ASSERT_EQ(utils::ValidateExternalDataPath("", "a/../../data.bin").IsOK(), is_cwd_root);
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
@@ -639,59 +639,60 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "outside_link.bin").IsOK());
 }
 
-#if !defined(__wasm__)
-TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkInside) {
-  // Symbolic link within the current working directory pointing to a file still within CWD.
-  std::filesystem::path cwd = std::filesystem::current_path();
-  std::filesystem::path sub_dir = cwd / "symlink_test_subdir";
-  std::filesystem::create_directories(sub_dir);
-  AddDirToCleanUp(sub_dir);
-
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkInside) {
+  // Test external data path validation when the model path is empty.
+  // Specifically tests that the following scenario is valid:
+  //   - A symbolic link within the current working directory pointing to a file still within CWD.
   try {
+    std::filesystem::path cwd = std::filesystem::current_path();
+    std::filesystem::path sub_dir = cwd / "symlink_test_subdir";
+    std::filesystem::create_directories(sub_dir);
+    AddDirToCleanUp(sub_dir);
+
     std::filesystem::path target = sub_dir / "target_inside.bin";
     std::filesystem::path symlink = sub_dir / "link_inside.bin";
     std::ofstream{target};
     std::filesystem::create_symlink(target, symlink);
   } catch (const std::exception& e) {
-    GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
+    GTEST_SKIP() << "Skipping test due to failure setting up directory and symlink files: "
                  << e.what();
   }
 
   EXPECT_STATUS_OK(utils::ValidateExternalDataPath("", "./symlink_test_subdir/link_inside.bin"));
 }
 
-TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkOutside) {
-  // Symbolic link within the current working directory pointing to a file outside CWD.
-  std::filesystem::path cwd = std::filesystem::current_path();
-  std::filesystem::path sub_dir = cwd / "symlink_test_subdir2";
-  std::filesystem::create_directories(sub_dir);
-  AddDirToCleanUp(sub_dir);
-
-  // Check if we can actually make a file outside of the current working directory (i.e., in a temp dir).
-  // This is only possible if the current working directory is NOT the same as the temp directory.
-  // Otherwise, we need to skip this test. This happens in Android CI.
-  auto [cwd_end, outside_end] = std::mismatch(cwd.begin(), cwd.end(), outside_dir_.begin(), outside_dir_.end());
-  if (cwd_end == cwd.end()) {
-    GTEST_SKIP() << "Skipping test that needs to create a symlink outside of the cwd because the cwd is the same as "
-                 << "the temp dir. cwd: " << cwd << " outside_dir_: " << outside_dir_;
-  }
-
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOutside) {
+  // Test external data path validation when the model path is empty.
+  // Specifically tests that the following scenario is NOT valid:
+  //  - A symbolic link within the current working directory pointing to a file outside CWD.
   try {
+    std::filesystem::path cwd = std::filesystem::current_path();
+    std::filesystem::path sub_dir = cwd / "symlink_test_subdir2";
+    std::filesystem::create_directories(sub_dir);
+    AddDirToCleanUp(sub_dir);
+
+    // Check if we can actually make a file outside of the current working directory (i.e., in a temp dir).
+    // This is only possible if the current working directory is NOT the same as the temp directory.
+    // Otherwise, we need to skip this test. This happens in Android CI.
+    auto [cwd_end, outside_end] = std::mismatch(cwd.begin(), cwd.end(), outside_dir_.begin(), outside_dir_.end());
+    if (cwd_end == cwd.end()) {
+      GTEST_SKIP() << "Skipping test that needs to create a symlink outside of the cwd because the cwd is the same as "
+                   << "the temp dir. cwd: " << cwd << " outside_dir_: " << outside_dir_;
+    }
+
     std::filesystem::path outside_target = outside_dir_ / "outside_for_empty_basedir.bin";
     std::filesystem::path symlink = sub_dir / "outside_link.bin";
     std::ofstream{outside_target};
     std::filesystem::create_symlink(outside_target, symlink);
   } catch (const std::exception& e) {
-    GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
+    GTEST_SKIP() << "Skipping test due to failure setting up directory and symlink files: "
                  << e.what();
   }
 
   Status status = utils::ValidateExternalDataPath("", "./symlink_test_subdir2/outside_link.bin");
-  ASSERT_FALSE(status.IsOK()) << "Expected validation to fail. cwd: " << cwd << " sub_dir: " << sub_dir
-                              << " outside_dir: " << outside_dir_;
+  ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
-#endif  // !defined(__wasm__)
 
 // Tests for ValidateEmbeddedTensorProtoDataSizeAndShape and embedded initializer size limits
 
