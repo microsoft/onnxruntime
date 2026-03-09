@@ -220,7 +220,7 @@ class SessionScope {
   friend class KernelScope;
   SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler)
       : enable_node_timing_capture_(IsNodeTimingCaptureEnabledFromConfig(session_state)),
-    node_timing_capture_group_by_(NodeTimingCaptureGroupByFromConfig(session_state)),
+        node_timing_capture_group_by_(NodeTimingCaptureGroupByFromConfig(session_state)),
         session_state_(session_state),
         run_profiler_(run_profiler)
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
