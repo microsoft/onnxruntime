@@ -258,6 +258,33 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
                     params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
 
+  // Bias stride alignment check: route to the unaligned kernel when bias strides
+  // don't satisfy the aligned kernel's kAlignmentQ requirement.
+  //
+  // kAlignmentQ is template-dependent (kernel_forward.h:414):
+  //   isAligned=true:  kAlignmentQ = DefaultConfig::kAlignmentA (8 for fp16/bf16 SM75+)
+  //   isAligned=false: kAlignmentQ = GemmType::kMinimumAlignment (4 for fp16/bf16 SM75+)
+  // So check_supported (line 632) enforces DIFFERENT thresholds per path.
+  //
+  // The ONNX Attention kernel (core/providers/cuda/llm/attention.cc) gates MEA eligibility
+  // at kMinimumAlignment (4), allowing strides like 12 that the unaligned kernel handles.
+  // Without this check, such inputs dispatch to the aligned kernel where 12%8≠0 crashes.
+  // Contrib MHA gates at 4*sizeof(T)=8 for fp16, making this check redundant there.
+  if (params.attn_bias != nullptr) {
+    int num_keys = params.kv_sequence_length;
+    int num_queries = params.sequence_length;
+    int bias_strideM = num_keys;
+    // Broadcast dimensions use stride=0, which satisfies any alignment (0 % N == 0).
+    int bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : num_queries * num_keys;
+    int bias_strideB = params.broadcast_attn_bias_dim_0
+                           ? 0
+                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * num_queries * num_keys);
+    is_aligned = is_aligned &&
+                 bias_strideM % AlignedAK::kAlignmentQ == 0 &&
+                 (params.num_heads <= 1 || bias_strideH % AlignedAK::kAlignmentQ == 0) &&
+                 (params.batch_size <= 1 || bias_strideB % AlignedAK::kAlignmentQ == 0);
+  }
+
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
                   LaunchCutlassFmha<T, ArchTag, kIsAligned::value, queries_per_block, keys_per_block, max_head_size>(params);
                 }));
