@@ -95,7 +95,8 @@ __global__ void RoIAlignForward(
     T* top_data,
     const bool is_mode_avg,
     const bool half_pixel,
-    const int64_t* batch_indices_ptr) {
+    const int64_t* batch_indices_ptr,
+    const int64_t batch_size) {
   for (size_t index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads; index += blockDim.x * gridDim.x) {
     // (n, c, ph, pw) is an element in the pooled output
     int pw = index % pooled_width;
@@ -106,6 +107,12 @@ __global__ void RoIAlignForward(
     // RoI could have 4 or 5 columns
     const T* offset_bottom_rois = bottom_rois + n * roi_cols;
     const auto roi_batch_ind = batch_indices_ptr[n];
+    // Validate batch_indices values are within [0, batch_size).
+    // If the index is out of range, we set the output to 0 for this RoI element.
+    if (roi_batch_ind < 0 || roi_batch_ind >= batch_size) {
+      top_data[index] = 0;
+      return;
+    }
 
     // Do not using rounding; this implementation detail is critical
     T roi_offset = half_pixel ? T(0.5) : T(0);
@@ -189,7 +196,8 @@ void RoiAlignImpl(
     T* top_data,
     const bool is_mode_avg,
     const bool half_pixel,
-    const int64_t* batch_indices_ptr) {
+    const int64_t* batch_indices_ptr,
+    const int64_t batch_size) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(nthreads) / GridDim::maxThreadsPerBlock));
   RoIAlignForward<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       nthreads,
@@ -206,7 +214,8 @@ void RoiAlignImpl(
       top_data,
       is_mode_avg,
       half_pixel,
-      batch_indices_ptr);
+      batch_indices_ptr,
+      batch_size);
 }
 
 #define SPECIALIZED_IMPL(T)         \
@@ -226,7 +235,8 @@ void RoiAlignImpl(
       T* top_data,                  \
       const bool is_mode_avg,       \
       const bool half_pixel,        \
-      const int64_t* batch_indices_ptr);
+      const int64_t* batch_indices_ptr, \
+      const int64_t batch_size);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

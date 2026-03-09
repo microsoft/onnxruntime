@@ -854,5 +854,43 @@ TEST(RoiAlignTest, BatchIndicesNegative) {
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value -1 at index 0 is out of range [0, 1)", {}, nullptr, &execution_providers);
 }
+
+TEST(RoiAlignTest, BatchIndicesOutOfRange_CUDA) {
+  OpTester test("RoiAlign", 10);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  test.AddInput<float>("rois", {1, 4}, {0, 0, 3, 3});
+  test.AddInput<int64_t>("batch_indices", {1}, {1});  // batch_size is 1, so 1 is out of range
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (DefaultCudaExecutionProvider()) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
+  OpTester test("RoiAlign", 10);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  test.AddInput<float>("rois", {1, 4}, {0, 0, 3, 3});
+  test.AddInput<int64_t>("batch_indices", {1}, {-1});
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (DefaultCudaExecutionProvider()) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
