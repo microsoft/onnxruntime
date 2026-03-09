@@ -18,25 +18,6 @@ Abstract:
 #include "snchwc_winograd.h"
 
 bool
-MlasNchwcShouldPreferWinograd3x3(
-    size_t OutputHeight,
-    size_t OutputWidth
-    )
-{
-    //
-    // Start with a simple runtime heuristic for the current AVX512 Winograd
-    // path. Favor Winograd once the smaller spatial dimension is large enough
-    // to amortize the transform overhead while still allowing non-square
-    // feature maps.
-    //
-    // Keep this heuristic lightweight in the dispatch path until broader
-    // benchmarking data is available.
-    //
-
-    return std::min(OutputHeight, OutputWidth) >= 25;
-}
-
-bool
 MlasNchwcIsWinograd3x3Supported(
     bool UseWinograd,
     size_t GroupCount,
@@ -45,19 +26,18 @@ MlasNchwcIsWinograd3x3Supported(
     const size_t Padding[4],
     const size_t StrideShape[2],
     size_t InputChannels,
-    size_t BlockSize,
-    size_t OutputHeight,
-    size_t OutputWidth
+    size_t BlockSize
     )
 {
-    return UseWinograd && GroupCount == 1 &&
-           KernelShape[0] == 3 && KernelShape[1] == 3 &&
-           DilationShape[0] == 1 && DilationShape[1] == 1 &&
-           StrideShape[0] == 1 && StrideShape[1] == 1 &&
-           Padding[0] == 1 && Padding[1] == 1 &&
-           Padding[2] == 1 && Padding[3] == 1 &&
-           InputChannels >= BlockSize &&
-           MlasNchwcShouldPreferWinograd3x3(OutputHeight, OutputWidth);
+    const int64_t KernelShapeInt64[2] = {static_cast<int64_t>(KernelShape[0]), static_cast<int64_t>(KernelShape[1])};
+    const int64_t DilationShapeInt64[2] = {static_cast<int64_t>(DilationShape[0]), static_cast<int64_t>(DilationShape[1])};
+    const int64_t PaddingInt64[4] = {static_cast<int64_t>(Padding[0]), static_cast<int64_t>(Padding[1]),
+                                     static_cast<int64_t>(Padding[2]), static_cast<int64_t>(Padding[3])};
+    const int64_t StrideShapeInt64[2] = {static_cast<int64_t>(StrideShape[0]), static_cast<int64_t>(StrideShape[1])};
+
+    return MlasNchwcSupportsWinograd(KernelShapeInt64, DilationShapeInt64, PaddingInt64, StrideShapeInt64) &&
+           UseWinograd && GroupCount == 1 &&
+           InputChannels >= BlockSize;
 }
 
 thread_local std::unique_ptr<float[]> MlasWinogradThreadedScratchBuffer;
@@ -74,68 +54,6 @@ MlasWinogradGetThreadedScratchBuffer(
     }
 
     return MlasWinogradThreadedScratchBuffer.get();
-}
-
-void
-MlasWinogradTransformInputF2x2_3x3(
-    const float D[MLAS_WINOGRAD_TRANSFORM_SIZE][MLAS_WINOGRAD_TRANSFORM_SIZE],
-    float V[MLAS_WINOGRAD_TRANSFORM_SIZE][MLAS_WINOGRAD_TRANSFORM_SIZE]
-    )
-{
-    float T[MLAS_WINOGRAD_TRANSFORM_SIZE][MLAS_WINOGRAD_TRANSFORM_SIZE];
-
-    for (size_t c = 0; c < MLAS_WINOGRAD_TRANSFORM_SIZE; c++) {
-        const float d0 = D[0][c];
-        const float d1 = D[1][c];
-        const float d2 = D[2][c];
-        const float d3 = D[3][c];
-
-        T[0][c] = d0 - d2;
-        T[1][c] = d1 + d2;
-        T[2][c] = d2 - d1;
-        T[3][c] = d1 - d3;
-    }
-
-    for (size_t r = 0; r < MLAS_WINOGRAD_TRANSFORM_SIZE; r++) {
-        const float t0 = T[r][0];
-        const float t1 = T[r][1];
-        const float t2 = T[r][2];
-        const float t3 = T[r][3];
-
-        V[r][0] = t0 - t2;
-        V[r][1] = t1 + t2;
-        V[r][2] = t2 - t1;
-        V[r][3] = t1 - t3;
-    }
-}
-
-void
-MlasWinogradTransformOutputF2x2_3x3(
-    const float M[MLAS_WINOGRAD_TRANSFORM_SIZE][MLAS_WINOGRAD_TRANSFORM_SIZE],
-    float Y[MLAS_WINOGRAD_TILE_SIZE][MLAS_WINOGRAD_TILE_SIZE]
-    )
-{
-    float T[MLAS_WINOGRAD_TILE_SIZE][MLAS_WINOGRAD_TRANSFORM_SIZE];
-
-    for (size_t c = 0; c < MLAS_WINOGRAD_TRANSFORM_SIZE; c++) {
-        const float m0 = M[0][c];
-        const float m1 = M[1][c];
-        const float m2 = M[2][c];
-        const float m3 = M[3][c];
-
-        T[0][c] = m0 + m1 + m2;
-        T[1][c] = m1 - m2 - m3;
-    }
-
-    for (size_t r = 0; r < MLAS_WINOGRAD_TILE_SIZE; r++) {
-        const float t0 = T[r][0];
-        const float t1 = T[r][1];
-        const float t2 = T[r][2];
-        const float t3 = T[r][3];
-
-        Y[r][0] = t0 + t1 + t2;
-        Y[r][1] = t1 - t2 - t3;
-    }
 }
 
 #if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
@@ -295,34 +213,3 @@ MlasWinogradAccumulateOutputBlocksAvx512(
     }
 }
 #endif
-
-void
-MlasWinogradAccumulateOutputBlockScalar(
-    size_t BlockSize,
-    size_t InputChannels,
-    const float* Filter,
-    const float* TransformedInput,
-    float* Accumulator
-    )
-{
-    std::fill_n(Accumulator, MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize, 0.0f);
-
-    for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
-        const float* FilterInputBlock = Filter + ic * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
-        const float* TransformedInputBlock = TransformedInput + (ic / BlockSize) * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
-
-        for (size_t k = 0; k < MLAS_WINOGRAD_TRANSFORM_COUNT; k++) {
-            const float* FilterTransform = FilterInputBlock + k * BlockSize * BlockSize;
-            const float* InputTransform = TransformedInputBlock + k * BlockSize;
-            float* OutputTransform = Accumulator + k * BlockSize;
-
-            for (size_t bi = 0; bi < BlockSize; bi++) {
-                const float InputValue = InputTransform[bi];
-                const float* FilterRow = FilterTransform + bi * BlockSize;
-                for (size_t bo = 0; bo < BlockSize; bo++) {
-                    OutputTransform[bo] += InputValue * FilterRow[bo];
-                }
-            }
-        }
-    }
-}

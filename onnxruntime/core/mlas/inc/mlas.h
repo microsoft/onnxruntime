@@ -1273,6 +1273,15 @@ MlasNchwcGetBlockSize(
     void
     );
 
+bool
+MLASCALL
+MlasNchwcSupportsWinograd(
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape
+    );
+
 void
 MLASCALL
 MlasNchwcConv(

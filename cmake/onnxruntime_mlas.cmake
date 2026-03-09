@@ -29,6 +29,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/transpose.cpp
   ${MLAS_SRC_DIR}/reorder.cpp
   ${MLAS_SRC_DIR}/snchwc.cpp
+  ${MLAS_SRC_DIR}/snchwc_winograd.h
+  ${MLAS_SRC_DIR}/snchwc_winograd.cpp
   ${MLAS_SRC_DIR}/activate.cpp
   ${MLAS_SRC_DIR}/logistic.cpp
   ${MLAS_SRC_DIR}/tanh.cpp

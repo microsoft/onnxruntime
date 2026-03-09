@@ -653,6 +653,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
 constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::DefaultFilterSetSize;
 
+#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
 struct MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 {
     const size_t TileRows;
@@ -709,75 +710,26 @@ struct MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             const float* InputChannelBlock = InputGroup + ic * InputSize;
             float* TransformedInputBlock = TransformedInput + (ic / BlockSize) * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
 
-#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
-            if (BlockSize == 16 && GetMlasPlatform().Avx512Supported_) {
-                MlasWinogradTransformInputBlockF2x2_3x3Avx512(
-                    InputChannelBlock, InputHeight, InputWidth, TileOutputY, TileOutputX, TransformedInputBlock);
-            } else {
-#endif
-                for (size_t bi = 0; bi < BlockSize; bi++) {
-                    float InputTile[MLAS_WINOGRAD_TRANSFORM_SIZE][MLAS_WINOGRAD_TRANSFORM_SIZE];
-
-                    for (size_t iy = 0; iy < MLAS_WINOGRAD_TRANSFORM_SIZE; iy++) {
-                        for (size_t ix = 0; ix < MLAS_WINOGRAD_TRANSFORM_SIZE; ix++) {
-                            const ptrdiff_t InputY = ptrdiff_t(TileOutputY + iy) - 1;
-                            const ptrdiff_t InputX = ptrdiff_t(TileOutputX + ix) - 1;
-
-                            float Value = 0.0f;
-                            if (InputY >= 0 && InputY < ptrdiff_t(InputHeight) && InputX >= 0 && InputX < ptrdiff_t(InputWidth)) {
-                                Value = InputChannelBlock[(size_t(InputY) * InputWidth + size_t(InputX)) * BlockSize + bi];
-                            }
-
-                            InputTile[iy][ix] = Value;
-                        }
-                    }
-
-                    float WinogradInput[MLAS_WINOGRAD_TRANSFORM_SIZE][MLAS_WINOGRAD_TRANSFORM_SIZE];
-                    MlasWinogradTransformInputF2x2_3x3(InputTile, WinogradInput);
-
-                    for (size_t k = 0; k < MLAS_WINOGRAD_TRANSFORM_COUNT; k++) {
-                        TransformedInputBlock[k * BlockSize + bi] = WinogradInput[k / MLAS_WINOGRAD_TRANSFORM_SIZE][k % MLAS_WINOGRAD_TRANSFORM_SIZE];
-                    }
-                }
-#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
-            }
-#endif
+            MlasWinogradTransformInputBlockF2x2_3x3Avx512(
+                InputChannelBlock, InputHeight, InputWidth, TileOutputY, TileOutputX, TransformedInputBlock);
         }
 
         for (size_t OutputBlock = 0; OutputBlock < OutputBlockCount; ) {
-            const size_t OutputBlockCountThisIteration =
-#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
-                (BlockSize == 16 && GetMlasPlatform().Avx512Supported_)
-                    ? std::min<size_t>(OutputBlockCount - OutputBlock, 2)
-                    : 1;
-#else
-                1;
-#endif
+            const size_t OutputBlockCountThisIteration = std::min<size_t>(OutputBlockCount - OutputBlock, 2);
 
             const float* FilterOutputBlock0 = FilterGroup + OutputBlock * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
             const float* FilterOutputBlock1 = OutputBlockCountThisIteration > 1
                 ? FilterGroup + (OutputBlock + 1) * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize
                 : nullptr;
 
-#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
-            if (BlockSize == 16 && GetMlasPlatform().Avx512Supported_) {
-                MlasWinogradAccumulateOutputBlocksAvx512(
-                    InputChannels,
-                    FilterOutputBlock0,
-                    FilterOutputBlock1,
-                    TransformedInput,
-                    TransformedOutput0,
-                    TransformedOutput1,
-                    OutputBlockCountThisIteration);
-            } else {
-                MlasWinogradAccumulateOutputBlockScalar(BlockSize, InputChannels, FilterOutputBlock0, TransformedInput, TransformedOutput0);
-                if (OutputBlockCountThisIteration > 1) {
-                    MlasWinogradAccumulateOutputBlockScalar(BlockSize, InputChannels, FilterOutputBlock1, TransformedInput, TransformedOutput1);
-                }
-            }
-#else
-            MlasWinogradAccumulateOutputBlockScalar(BlockSize, InputChannels, FilterOutputBlock0, TransformedInput, TransformedOutput0);
-#endif
+            MlasWinogradAccumulateOutputBlocksAvx512(
+                InputChannels,
+                FilterOutputBlock0,
+                FilterOutputBlock1,
+                TransformedInput,
+                TransformedOutput0,
+                TransformedOutput1,
+                OutputBlockCountThisIteration);
 
             for (size_t OutputBlockOffset = 0; OutputBlockOffset < OutputBlockCountThisIteration; OutputBlockOffset++) {
                 const float* BiasBlock = Bias != nullptr ? WorkBlock->Bias + Group * OutputChannels + (OutputBlock + OutputBlockOffset) * BlockSize : nullptr;
@@ -785,42 +737,9 @@ struct MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
                     (OutputBlock + OutputBlockOffset) * BlockSize * OutputSize;
                 const float* TransformedOutput = (OutputBlockOffset == 0) ? TransformedOutput0 : TransformedOutput1;
 
-#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
-                if (BlockSize == 16 && GetMlasPlatform().Avx512Supported_) {
-                    MlasWinogradTransformOutputBlockF2x2_3x3Avx512(
-                        TransformedOutput, BiasBlock, OutputBlockBase, OutputWidth,
-                        TileOutputY, TileOutputX, ValidRows, ValidCols, ZeroMode);
-                } else {
-#endif
-                    for (size_t bo = 0; bo < BlockSize; bo++) {
-                        float OutputTransform[MLAS_WINOGRAD_TRANSFORM_SIZE][MLAS_WINOGRAD_TRANSFORM_SIZE];
-                        for (size_t k = 0; k < MLAS_WINOGRAD_TRANSFORM_COUNT; k++) {
-                            OutputTransform[k / MLAS_WINOGRAD_TRANSFORM_SIZE][k % MLAS_WINOGRAD_TRANSFORM_SIZE] =
-                                TransformedOutput[k * BlockSize + bo];
-                        }
-
-                        float OutputTile[MLAS_WINOGRAD_TILE_SIZE][MLAS_WINOGRAD_TILE_SIZE];
-                        MlasWinogradTransformOutputF2x2_3x3(OutputTransform, OutputTile);
-
-                        for (size_t oy = 0; oy < ValidRows; oy++) {
-                            for (size_t ox = 0; ox < ValidCols; ox++) {
-                                float Value = OutputTile[oy][ox];
-                                if (BiasBlock != nullptr) {
-                                    Value += BiasBlock[bo];
-                                }
-
-                                float* OutputElement = OutputBlockBase + ((TileOutputY + oy) * OutputWidth + (TileOutputX + ox)) * BlockSize + bo;
-                                if (!ZeroMode) {
-                                    Value += *OutputElement;
-                                }
-
-                                *OutputElement = Value;
-                            }
-                        }
-                    }
-#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
-                }
-#endif
+                MlasWinogradTransformOutputBlockF2x2_3x3Avx512(
+                    TransformedOutput, BiasBlock, OutputBlockBase, OutputWidth,
+                    TileOutputY, TileOutputX, ValidRows, ValidCols, ZeroMode);
 
                 if (ActivationKind != MlasIdentityActivation) {
                     for (size_t oy = 0; oy < ValidRows; oy++) {
@@ -834,6 +753,7 @@ struct MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         }
     }
 };
+#endif
 
 //
 // Implementation of the direct convolution algorithm where the input buffer is
@@ -1583,6 +1503,8 @@ Return Value:
 
     MLAS_THREADED_ROUTINE* ThreadedRoutine;
 
+
+#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
     if (MlasNchwcIsWinograd3x3Supported(
             WorkBlock.UseWinograd,
             WorkBlock.GroupCount,
@@ -1591,11 +1513,11 @@ Return Value:
             WorkBlock.Padding,
             WorkBlock.StrideShape,
             WorkBlock.InputChannels,
-            MlasNchwcGetBlockSize(),
-            WorkBlock.OutputShape[0],
-            WorkBlock.OutputShape[1])) {
+            MlasNchwcGetBlockSize())) {
         ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM>;
-    } else if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
+    } else
+#endif
+    if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
         if (WorkBlock.KernelShape[0] == 1 && WorkBlock.KernelShape[1] == 1 &&
             WorkBlock.Padding[0] == 0 && WorkBlock.Padding[1] == 0 &&
             WorkBlock.Padding[2] == 0 && WorkBlock.Padding[3] == 0) {

@@ -177,23 +177,40 @@ bool NchwcTransformerImpl::IsWinograd3x3Eligible(const Node& node,
     return false;
   }
 
+  const int64_t kernel_shape[2] = {filter_tensor_proto.dims(2), filter_tensor_proto.dims(3)};
+  int64_t dilation_shape[2] = {1, 1};
+  int64_t stride_shape[2] = {1, 1};
+  int64_t padding[4] = {0, 0, 0, 0};
+
   const auto* dilations_attr = graph_utils::GetNodeAttribute(node, "dilations");
-  if (dilations_attr != nullptr &&
-      (dilations_attr->ints_size() != 2 || dilations_attr->ints(0) != 1 || dilations_attr->ints(1) != 1)) {
-    return false;
+  if (dilations_attr != nullptr) {
+    if (dilations_attr->ints_size() != 2) {
+      return false;
+    }
+
+    dilation_shape[0] = dilations_attr->ints(0);
+    dilation_shape[1] = dilations_attr->ints(1);
   }
 
   const auto* strides_attr = graph_utils::GetNodeAttribute(node, "strides");
-  if (strides_attr != nullptr &&
-      (strides_attr->ints_size() != 2 || strides_attr->ints(0) != 1 || strides_attr->ints(1) != 1)) {
-    return false;
+  if (strides_attr != nullptr) {
+    if (strides_attr->ints_size() != 2) {
+      return false;
+    }
+
+    stride_shape[0] = strides_attr->ints(0);
+    stride_shape[1] = strides_attr->ints(1);
   }
 
   const auto* auto_pad_attr = graph_utils::GetNodeAttribute(node, "auto_pad");
   if (auto_pad_attr != nullptr && utils::HasString(*auto_pad_attr)) {
     const auto& auto_pad = auto_pad_attr->s();
     if (auto_pad == "SAME_UPPER" || auto_pad == "SAME_LOWER") {
-      return true;
+      padding[0] = 1;
+      padding[1] = 1;
+      padding[2] = 1;
+      padding[3] = 1;
+      return MlasNchwcSupportsWinograd(kernel_shape, dilation_shape, padding, stride_shape);
     }
 
     if (auto_pad != "NOTSET") {
@@ -202,9 +219,16 @@ bool NchwcTransformerImpl::IsWinograd3x3Eligible(const Node& node,
   }
 
   const auto* pads_attr = graph_utils::GetNodeAttribute(node, "pads");
-  return pads_attr != nullptr && pads_attr->ints_size() == 4 &&
-         pads_attr->ints(0) == 1 && pads_attr->ints(1) == 1 &&
-         pads_attr->ints(2) == 1 && pads_attr->ints(3) == 1;
+  if (pads_attr == nullptr || pads_attr->ints_size() != 4) {
+    return false;
+  }
+
+  padding[0] = pads_attr->ints(0);
+  padding[1] = pads_attr->ints(1);
+  padding[2] = pads_attr->ints(2);
+  padding[3] = pads_attr->ints(3);
+
+  return MlasNchwcSupportsWinograd(kernel_shape, dilation_shape, padding, stride_shape);
 }
 
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {

@@ -23,12 +23,6 @@ inline constexpr size_t MLAS_WINOGRAD_TRANSFORM_SIZE = 4;
 inline constexpr size_t MLAS_WINOGRAD_TRANSFORM_COUNT = MLAS_WINOGRAD_TRANSFORM_SIZE * MLAS_WINOGRAD_TRANSFORM_SIZE;
 
 bool
-MlasNchwcShouldPreferWinograd3x3(
-    size_t OutputHeight,
-    size_t OutputWidth
-    );
-
-bool
 MlasNchwcIsWinograd3x3Supported(
     bool UseWinograd,
     size_t GroupCount,
@@ -37,26 +31,12 @@ MlasNchwcIsWinograd3x3Supported(
     const size_t Padding[4],
     const size_t StrideShape[2],
     size_t InputChannels,
-    size_t BlockSize,
-    size_t OutputHeight,
-    size_t OutputWidth
+    size_t BlockSize
     );
 
 float*
 MlasWinogradGetThreadedScratchBuffer(
     size_t FloatCount
-    );
-
-void
-MlasWinogradTransformInputF2x2_3x3(
-    const float D[4][4],
-    float V[4][4]
-    );
-
-void
-MlasWinogradTransformOutputF2x2_3x3(
-    const float M[4][4],
-    float Y[2][2]
     );
 
 #if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
@@ -94,12 +74,3 @@ MlasWinogradAccumulateOutputBlocksAvx512(
     size_t OutputBlockCountThisIteration
     );
 #endif
-
-void
-MlasWinogradAccumulateOutputBlockScalar(
-    size_t BlockSize,
-    size_t InputChannels,
-    const float* Filter,
-    const float* TransformedInput,
-    float* Accumulator
-    );
