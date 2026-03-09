@@ -23,6 +23,11 @@ common::Status LayeringRules::FromConfigString(const std::string& config_value, 
     return common::Status::OK();
   }
 
+  // Track seen annotations to reject duplicates.
+  // Separate sets for exact and prefix match annotations.
+  InlinedHashSet<std::string> seen_exact_annotations;
+  InlinedHashSet<std::string> seen_prefix_annotations;
+
   auto entries = utils::SplitString(config_value, ";");
   for (const auto& e : entries) {
     auto entry = utils::TrimString(e);
@@ -67,6 +72,15 @@ common::Status LayeringRules::FromConfigString(const std::string& config_value, 
 
       if (ann.empty()) {
         continue;
+      }
+
+      // Check for duplicate annotation (same annotation string and match type)
+      auto& seen_set = prefix_match ? seen_prefix_annotations : seen_exact_annotations;
+      auto [it, inserted] = seen_set.insert(ann);
+      if (!inserted) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Invalid layering config: Duplicate ", (prefix_match ? "prefix" : "exact"),
+                               " match annotation '", ann, "' found in entry: ", entry);
       }
 
       rules.rules.push_back({device, std::move(ann), prefix_match});
