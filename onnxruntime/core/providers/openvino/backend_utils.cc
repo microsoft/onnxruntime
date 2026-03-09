@@ -15,6 +15,7 @@
 #include "core/providers/openvino/backend_utils.h"
 #include "core/providers/openvino/ov_interface.h"
 
+
 using Exception = ov::Exception;
 
 namespace onnxruntime {
@@ -24,6 +25,14 @@ namespace backend_utils {
 
 bool IsDebugEnabled() {
   static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
+  if (!env_name.empty()) {
+    return true;
+  }
+  return false;
+}
+
+bool IsPerfCountEnabled() {
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_PERF_COUNT");
   if (!env_name.empty()) {
     return true;
   }
@@ -267,7 +276,9 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
   auto performanceMap = request->GetInfReq().get_profiling_info();
-  printPerformanceCounts(performanceMap, stream, std::move(deviceName));
+  if(!performanceMap.empty()) {
+    printPerformanceCounts(performanceMap, stream, std::move(deviceName));
+  }
 }
 
 bool IsModelStreamXML(std::istream& model_stream) {

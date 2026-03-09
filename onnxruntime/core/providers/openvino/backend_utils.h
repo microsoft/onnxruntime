@@ -72,6 +72,8 @@ namespace backend_utils {
 
 bool IsDebugEnabled();
 
+bool IsPerfCountEnabled();
+
 // Internal diagnostic function.
 bool IsCILogEnabled();
 

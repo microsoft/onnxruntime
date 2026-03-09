@@ -178,11 +178,6 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
         device_config.emplace(ov::hint::inference_precision(subgraph_context_.model_precision));
     }
   }
-#ifndef NDEBUG
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    device_config.emplace(ov::enable_profiling(true));
-  }
-#endif
 
   // Set a priority level for the current workload for preemption;  default priority is "DEFAULT"
   // CPU Plugin doesn't support workload priority
@@ -426,13 +421,18 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
     std::cout << "Inference successful" << std::endl;
   }
 
-#ifndef NDEBUG
   // Print performance counts before releasing the infer_request for thread safety
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+  if (openvino_ep::backend_utils::IsPerfCountEnabled()) {
     std::string& hw_target = session_context_.device_type;
-    printPerformanceCounts(infer_request, std::cout, hw_target);
+    std::string filename = subgraph_context_.subgraph_name + "_perf_count.txt";
+    std::ofstream out(filename);
+    if (out.is_open()) {
+      printPerformanceCounts(infer_request, out, hw_target);
+      out.close();
+    } else {
+      printPerformanceCounts(infer_request, std::cout, hw_target);
+    }
   }
-#endif
 }
 
 }  // namespace openvino_ep
