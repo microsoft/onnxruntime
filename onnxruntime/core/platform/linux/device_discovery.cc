@@ -245,6 +245,7 @@ Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, size_t device_idx, O
   gpu_device.device_id = device_id;
 
   // metadata
+  // Use "card_idx" key for consistency with DRM-based detection, using device enumeration order.
   gpu_device.metadata.Add("card_idx", MakeString(device_idx));
 
   if (const auto is_gpu_discrete = IsGpuDiscrete(vendor_id, device_id);
@@ -280,8 +281,8 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   // subsystem (nvidia-drm) may not be available but GPU PCI devices are still
   // exposed via /sys/bus/pci/devices/.
   if (gpu_devices.empty()) {
-    LOGS_DEFAULT(INFO) << "No GPUs found via /sys/class/drm. "
-                       << "Falling back to PCI bus scanning via /sys/bus/pci/devices/.";
+    LOGS_DEFAULT(VERBOSE) << "No GPUs found via /sys/class/drm. "
+                          << "Falling back to PCI bus scanning via /sys/bus/pci/devices/.";
 
     std::vector<GpuPciPathInfo> gpu_pci_path_infos{};
     ORT_RETURN_IF_ERROR(DetectGpuPciPaths(gpu_pci_path_infos));
