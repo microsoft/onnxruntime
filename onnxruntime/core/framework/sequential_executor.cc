@@ -97,7 +97,7 @@ enum class NodeTimingCaptureGroupBy {
 NodeTimingCaptureGroupBy NodeTimingCaptureGroupByFromConfig(const SessionState& session_state) {
   auto group_by =
       session_state.GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigNodeTimingCaptureGroupBy,
-                                                                           "op_name");
+                                                                          "op_name");
 
   std::transform(group_by.begin(), group_by.end(), group_by.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
