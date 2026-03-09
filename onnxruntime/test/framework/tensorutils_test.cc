@@ -599,7 +599,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "data..bin"));
 
   // A path that would escape the current working directory is invalid.
-  ASSERT_FALSE(utils::ValidateExternalDataPath("", "../data.bin").IsOK());
+  ASSERT_EQ(utils::ValidateExternalDataPath("", "../data.bin").IsOK(), is_cwd_root);
 
   // A path that uses ".." but would not escape the current working directory should be fine.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "a/../data.bin"));
