@@ -228,7 +228,10 @@ export declare namespace Env {
      *
      * There are 3 valid scenarios of accessing this property:
      * - Set a value before the first WebGPU inference session is created. The value will be used by the WebGPU backend
-     * to perform calculations. If the value is not a `GPUDevice` object, an error will be thrown.
+     * to perform calculations. If the value is not a `GPUDevice` object, an error will be thrown. When providing your
+     * own device, you must also set {@link adapter} to the `GPUAdapter` that created it. This enables shared-device
+     * mode, where ORT reuses the external device instead of creating its own — allowing zero-copy GPU tensor sharing
+     * between ORT and the host application.
      * - Get the value before the first WebGPU inference session is created. This will try to create a new GPUDevice
      * instance. Returns a `Promise` that resolves to a `GPUDevice` object.
      * - Get the value after the first WebGPU inference session is created. Returns a resolved `Promise` to the
