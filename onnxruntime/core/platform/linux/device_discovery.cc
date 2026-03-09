@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/device_discovery.h"
+#include "core/platform/linux/device_discovery_linux.h"
 
 #include <filesystem>
 #include <fstream>
@@ -175,18 +176,17 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
   return Status::OK();
 }
 
+}  // namespace
+
 // PCI bus-based GPU detection as a fallback for environments where DRM sysfs entries
 // are not available (e.g., AKS/Kubernetes containers where the nvidia-drm kernel module
 // is not loaded but GPU PCI devices are still exposed via sysfs).
 
-struct GpuPciPathInfo {
-  fs::path path;
-  std::string pci_bus_id;
-};
+namespace pci_device_discovery {
 
-Status DetectGpuPciPaths(std::vector<GpuPciPathInfo>& gpu_pci_paths_out) {
+Status DetectGpuPciPaths(const fs::path& sysfs_pci_devices_path,
+                         std::vector<GpuPciPathInfo>& gpu_pci_paths_out) {
   std::error_code error_code{};
-  const fs::path sysfs_pci_devices_path = "/sys/bus/pci/devices";
   const bool path_exists = fs::exists(sysfs_pci_devices_path, error_code);
   ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
 
@@ -263,6 +263,10 @@ Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, size_t device_idx, O
   return Status::OK();
 }
 
+}  // namespace pci_device_discovery
+
+namespace {
+
 Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   std::vector<GpuSysfsPathInfo> gpu_sysfs_path_infos{};
   ORT_RETURN_IF_ERROR(DetectGpuSysfsPaths(gpu_sysfs_path_infos));
@@ -284,14 +288,14 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
     LOGS_DEFAULT(VERBOSE) << "No GPUs found via /sys/class/drm. "
                           << "Falling back to PCI bus scanning via /sys/bus/pci/devices/.";
 
-    std::vector<GpuPciPathInfo> gpu_pci_path_infos{};
-    ORT_RETURN_IF_ERROR(DetectGpuPciPaths(gpu_pci_path_infos));
+    std::vector<pci_device_discovery::GpuPciPathInfo> gpu_pci_path_infos{};
+    ORT_RETURN_IF_ERROR(pci_device_discovery::DetectGpuPciPaths("/sys/bus/pci/devices", gpu_pci_path_infos));
 
     gpu_devices.reserve(gpu_pci_path_infos.size());
 
     for (size_t i = 0; i < gpu_pci_path_infos.size(); ++i) {
       OrtHardwareDevice gpu_device{};
-      ORT_RETURN_IF_ERROR(GetGpuDeviceFromPci(gpu_pci_path_infos[i], i, gpu_device));
+      ORT_RETURN_IF_ERROR(pci_device_discovery::GetGpuDeviceFromPci(gpu_pci_path_infos[i], i, gpu_device));
       gpu_devices.emplace_back(std::move(gpu_device));
     }
   }

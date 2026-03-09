@@ -84,7 +84,8 @@ if (WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/device_discovery.cc")
 elseif (LINUX)
     list(APPEND onnxruntime_common_src_patterns
-         "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc")
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery_linux.h")
 elseif (APPLE)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
