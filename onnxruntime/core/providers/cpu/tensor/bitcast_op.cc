@@ -54,6 +54,8 @@ Status BitCast::Compute(OpKernelContext* context) const {
   const size_t input_element_size = input->DataType()->Size();
 
   const auto* output_type = DataTypeImpl::TensorTypeFromONNXEnum(to_);
+  ORT_RETURN_IF_NOT(output_type != nullptr,
+                    "BitCast: unsupported target type (ONNX enum value: ", to_, ").");
   const size_t output_element_size = output_type->GetElementType()->Size();
 
   ORT_RETURN_IF_NOT(input_element_size == output_element_size,
