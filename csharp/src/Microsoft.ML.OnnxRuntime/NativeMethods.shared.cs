@@ -476,9 +476,25 @@ namespace Microsoft.ML.OnnxRuntime
         static NativeMethods()
         {
 #if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
-            // Register a custom DllImportResolver to handle platform-specific library loading.
-            // Replaces default resolution specifically on Windows for case-sensitivity.
-            NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, DllImportResolver);
+            if (!OrtEnv.DisableDllImportResolver)
+            {
+                try
+                {
+                    // Register a custom DllImportResolver to handle platform-specific library loading.
+                    // Replaces default resolution specifically on Windows for case-sensitivity.
+                    NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, DllImportResolver);
+                }
+                catch (InvalidOperationException)
+                {
+                    // A resolver is already registered for this assembly (e.g., by the host application).
+                    // This is not fatal — the host's resolver will handle library loading.
+                    System.Diagnostics.Trace.WriteLine(
+                        "[OnnxRuntime] A DllImportResolver is already registered for this assembly. "
+                        + "OnnxRuntime's built-in resolver will not be used. "
+                        + "To suppress this message, set OrtEnv.DisableDllImportResolver = true "
+                        + "before using any OnnxRuntime APIs.");
+                }
+            }
 #endif
 
 #if NETSTANDARD2_0

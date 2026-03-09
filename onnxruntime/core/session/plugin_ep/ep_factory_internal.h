@@ -97,6 +97,15 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->GetHardwareDeviceIncompatibilityDetails(hw, details);
   }
 
+  OrtStatus* InitGraphicsInterop(_In_ const OrtEpDevice* ep_device,
+                                 _In_ const OrtGraphicsInteropConfig* config) noexcept {
+    return impl_->InitGraphicsInterop(ep_device, config);
+  }
+
+  OrtStatus* DeinitGraphicsInterop(_In_ const OrtEpDevice* ep_device) noexcept {
+    return impl_->DeinitGraphicsInterop(ep_device);
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* /*ep*/) noexcept {
     // we never create an OrtEp so we should never be trying to release one

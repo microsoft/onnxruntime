@@ -34,6 +34,8 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::CreateSyncStreamForDevice = Forward::CreateSyncStreamForDevice;
   OrtEpFactory::CreateExternalResourceImporterForDevice = Forward::CreateExternalResourceImporterForDevice;
   OrtEpFactory::GetHardwareDeviceIncompatibilityDetails = Forward::GetHardwareDeviceIncompatibilityDetails;
+  OrtEpFactory::InitGraphicsInterop = Forward::InitGraphicsInterop;
+  OrtEpFactory::DeinitGraphicsInterop = Forward::DeinitGraphicsInterop;
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,
