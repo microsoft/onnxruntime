@@ -22,7 +22,7 @@ namespace test {
 ONNX_OPERATOR_SCHEMA(KernelInfoStringArrayAttrOp)
     .SetDoc("Test op for kernel info string-array attributes.")
     .Attr("strings_attr", "Repeated string attribute for kernel info API tests.",
-      AttrType::AttributeProto_AttributeType_STRINGS, std::vector<std::string>{})
+          AttrType::AttributeProto_AttributeType_STRINGS, std::vector<std::string>{})
     .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
 
 static void VerifyKernelInfoStringArrayAttribute(const std::vector<std::string>& attribute_values) {
