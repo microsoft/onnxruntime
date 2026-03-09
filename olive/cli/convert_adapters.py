@@ -6,8 +6,9 @@ import math
 from argparse import ArgumentParser
 from typing import TYPE_CHECKING
 
-from olive.cli.base import BaseOliveCLICommand, add_logging_options
+from olive.cli.base import BaseOliveCLICommand, add_logging_options, add_telemetry_options
 from olive.common.utils import WeightsFileFormat, save_weights
+from olive.telemetry import action
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -75,8 +76,10 @@ class ConvertAdaptersCommand(BaseOliveCLICommand):
             help="Quantization mode for int4 quantization of adapter weights. Default is symmetric.",
         )
         add_logging_options(sub_parser)
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=ConvertAdaptersCommand)
 
+    @action
     def run(self):
         import torch
         from peft import LoraConfig, load_peft_weights

@@ -14,6 +14,7 @@ from olive.cli.base import (
     add_logging_options,
     add_save_config_file_options,
     add_shared_cache_options,
+    add_telemetry_options,
     get_input_model_config,
     update_accelerator_options,
     update_shared_cache_options,
@@ -22,6 +23,7 @@ from olive.common.utils import set_nested_dict_value
 from olive.constants import Precision
 from olive.hardware.constants import ExecutionProvider
 from olive.package_config import OlivePackageConfig
+from olive.telemetry import action
 
 
 class AutoOptCommand(BaseOliveCLICommand):
@@ -167,8 +169,10 @@ class AutoOptCommand(BaseOliveCLICommand):
         add_shared_cache_options(sub_parser)
         add_logging_options(sub_parser)
         add_save_config_file_options(sub_parser)
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=AutoOptCommand)
 
+    @action
     def run(self):
         return self._run_workflow()
 

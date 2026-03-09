@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from packaging import version
 
+from olive.telemetry.telemetry import Telemetry
 from test.utils import create_onnx_model_file, delete_onnx_model_files
 
 
@@ -39,3 +40,8 @@ def maybe_patch_inc():
             yield
     else:
         yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_telemetry():
+    Telemetry().disable_telemetry()

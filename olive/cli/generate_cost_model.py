@@ -5,8 +5,9 @@
 import logging
 from pathlib import Path
 
-from olive.cli.base import BaseOliveCLICommand, add_input_model_options, get_input_model_config
+from olive.cli.base import BaseOliveCLICommand, add_input_model_options, add_telemetry_options, get_input_model_config
 from olive.model import ModelConfig
+from olive.telemetry import action
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,10 @@ class GenerateCostModelCommand(BaseOliveCLICommand):
             choices=PRECISON_TO_BYTES.keys(),
             help="Weight precision",
         )
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=GenerateCostModelCommand)
 
+    @action
     def run(self):
         import torch
 

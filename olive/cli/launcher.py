@@ -22,6 +22,7 @@ from olive.cli.run import WorkflowRunCommand
 from olive.cli.run_pass import RunPassCommand
 from olive.cli.session_params_tuning import SessionParamsTuningCommand
 from olive.cli.shared_cache import SharedCacheCommand
+from olive.telemetry import Telemetry
 
 
 def get_cli_parser(called_as_console_script: bool = True) -> ArgumentParser:
@@ -61,6 +62,10 @@ def main(raw_args=None, called_as_console_script: bool = True):
 
     args, unknown_args = parser.parse_known_args(raw_args)
 
+    telemetry = Telemetry()
+    if args.disable_telemetry:
+        telemetry.disable_telemetry()
+
     if not hasattr(args, "func"):
         parser.print_help()
         sys.exit(1)
@@ -68,6 +73,7 @@ def main(raw_args=None, called_as_console_script: bool = True):
     # Run the command
     service = args.func(parser, args, unknown_args)
     service.run()
+    telemetry.shutdown()
 
 
 def legacy_call(deprecated_module: str, command_name: str, *args):

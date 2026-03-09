@@ -4,7 +4,14 @@
 # --------------------------------------------------------------------------
 from argparse import ArgumentParser
 
-from olive.cli.base import BaseOliveCLICommand, add_input_model_options, add_logging_options, get_input_model_config
+from olive.cli.base import (
+    BaseOliveCLICommand,
+    add_input_model_options,
+    add_logging_options,
+    add_telemetry_options,
+    get_input_model_config,
+)
+from olive.telemetry import action
 
 
 class WorkflowRunCommand(BaseOliveCLICommand):
@@ -37,8 +44,10 @@ class WorkflowRunCommand(BaseOliveCLICommand):
             enable_onnx=True,
             required=False,
         )
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=WorkflowRunCommand)
 
+    @action
     def run(self):
         from olive.common.config_utils import load_config_file
         from olive.workflows import run as olive_run

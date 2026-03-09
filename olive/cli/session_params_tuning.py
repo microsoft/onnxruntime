@@ -14,11 +14,13 @@ from olive.cli.base import (
     add_logging_options,
     add_save_config_file_options,
     add_shared_cache_options,
+    add_telemetry_options,
     get_input_model_config,
     update_accelerator_options,
     update_shared_cache_options,
 )
 from olive.common.utils import set_nested_dict_value
+from olive.telemetry import action
 
 
 class SessionParamsTuningCommand(BaseOliveCLICommand):
@@ -96,6 +98,7 @@ class SessionParamsTuningCommand(BaseOliveCLICommand):
         add_logging_options(sub_parser)
         add_save_config_file_options(sub_parser)
         add_shared_cache_options(sub_parser)
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=SessionParamsTuningCommand)
 
     def _update_pass_config(self, default_pass_config) -> dict:
@@ -135,6 +138,7 @@ class SessionParamsTuningCommand(BaseOliveCLICommand):
         update_shared_cache_options(config, self.args)
         return config
 
+    @action
     def run(self):
         workflow_output = self._run_workflow()
 

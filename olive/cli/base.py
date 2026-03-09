@@ -631,6 +631,12 @@ def add_search_options(sub_parser: ArgumentParser):
     search_strategy_group.add_argument("--seed", type=int, default=0, help="Random seed for search sampler")
 
 
+def add_telemetry_options(sub_parser: ArgumentParser):
+    """Add telemetry options to the sub_parser."""
+    sub_parser.add_argument("--disable_telemetry", action="store_true", help="Disable telemetry for this command.")
+    return sub_parser
+
+
 def update_search_options(args, config):
     to_replace = []
     to_replace.extend(

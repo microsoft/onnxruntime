@@ -30,7 +30,7 @@ def get_extra_deps(rel_path):
 
 # use techniques described at https://packaging.python.org/en/latest/guides/single-sourcing-package-version/
 # Don't use technique 6 since it needs extra dependencies.
-VERSION = get_version("olive/__init__.py")
+VERSION = get_version("olive/version.py")
 EXTRAS = get_extra_deps("olive/olive_config.json")
 
 with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "requirements.txt")) as req_file:
@@ -50,7 +50,6 @@ CLASSIFIERS = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

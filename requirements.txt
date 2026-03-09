@@ -2,7 +2,8 @@ hf-xet
 numpy
 onnx
 onnx_ir>=0.1.2
-onnxscript>=0.3.0
+onnxscript>=0.5.3
+opentelemetry-sdk>=1.39.1
 optuna
 pandas
 pydantic>=2.0

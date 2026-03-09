@@ -11,11 +11,13 @@ from olive.cli.base import (
     add_logging_options,
     add_save_config_file_options,
     add_shared_cache_options,
+    add_telemetry_options,
     get_input_model_config,
     update_shared_cache_options,
 )
 from olive.common.utils import WeightsFileFormat, set_nested_dict_value
 from olive.passes.onnx.common import AdapterType
+from olive.telemetry import action
 
 
 class GenerateAdapterCommand(BaseOliveCLICommand):
@@ -45,8 +47,10 @@ class GenerateAdapterCommand(BaseOliveCLICommand):
         add_logging_options(sub_parser)
         add_save_config_file_options(sub_parser)
         add_shared_cache_options(sub_parser)
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=GenerateAdapterCommand)
 
+    @action
     def run(self):
         return self._run_workflow()
 

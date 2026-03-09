@@ -4,7 +4,8 @@
 # --------------------------------------------------------------------------
 from argparse import ArgumentParser
 
-from olive.cli.base import BaseOliveCLICommand
+from olive.cli.base import BaseOliveCLICommand, add_telemetry_options
+from olive.telemetry import action
 
 
 class ConfigureQualcommSDKCommand(BaseOliveCLICommand):
@@ -21,9 +22,10 @@ class ConfigureQualcommSDKCommand(BaseOliveCLICommand):
             required=True,
             choices=["3.6", "3.8"],
         )
-
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=ConfigureQualcommSDKCommand)
 
+    @action
     def run(self):
         from olive.platform_sdk.qualcomm.configure.configure import configure
 

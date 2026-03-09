@@ -29,6 +29,7 @@ from olive.search.search_sample import SearchSample
 from olive.search.search_strategy import SearchStrategy, SearchStrategyConfig
 from olive.systems.common import SystemType
 from olive.systems.system_config import SystemConfig
+from olive.telemetry import action
 
 if TYPE_CHECKING:
     from olive.engine.packaging.packaging_config import PackagingConfig
@@ -148,6 +149,7 @@ class Engine:
     def set_input_passes_configs(self, pass_configs: dict[str, list[RunPassConfig]]):
         self.input_passes_configs = pass_configs
 
+    @action
     def run(
         self,
         input_model_config: ModelConfig,

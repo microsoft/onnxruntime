@@ -13,12 +13,14 @@ from olive.cli.base import (
     add_logging_options,
     add_save_config_file_options,
     add_shared_cache_options,
+    add_telemetry_options,
     get_diffusers_input_model,
     get_input_model_config,
     update_shared_cache_options,
 )
 from olive.common.utils import set_nested_dict_value
 from olive.model.utils.diffusers_utils import is_valid_diffusers_model
+from olive.telemetry import action
 
 
 class ModelBuilderAccuracyLevel(IntEnum):
@@ -170,8 +172,10 @@ class CaptureOnnxGraphCommand(BaseOliveCLICommand):
         add_logging_options(sub_parser)
         add_save_config_file_options(sub_parser)
         add_shared_cache_options(sub_parser)
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=CaptureOnnxGraphCommand)
 
+    @action
     def run(self):
         return self._run_workflow()
 

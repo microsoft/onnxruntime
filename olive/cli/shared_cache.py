@@ -4,8 +4,9 @@
 # --------------------------------------------------------------------------
 import logging
 
-from olive.cli.base import BaseOliveCLICommand
+from olive.cli.base import BaseOliveCLICommand, add_telemetry_options
 from olive.common.container_client_factory import AzureContainerClientFactory
+from olive.telemetry import action
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,10 @@ class SharedCacheCommand(BaseOliveCLICommand):
             type=str,
             help="The model hash to remove from the shared cache.",
         )
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=SharedCacheCommand)
 
+    @action
     def run(self):
         container_client_factory = AzureContainerClientFactory(self.args.account, self.args.container)
         if self.args.delete:

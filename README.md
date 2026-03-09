@@ -114,6 +114,9 @@ The sample chat app to run is found as [model-chat.py](https://github.com/micros
 - [Documentation](https://microsoft.github.io/Olive)
 - [Recipes](https://github.com/microsoft/olive-recipes)
 
+## Data/Telemetry
+Distributions of this project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
+
 ## 🤝 Contributions and Feedback
 - We welcome contributions! Please read the [contribution guidelines](./CONTRIBUTING.md) for more details on how to contribute to the Olive project.
 - For feature requests or bug reports, file a [GitHub Issue](https://github.com/microsoft/Olive/issues).

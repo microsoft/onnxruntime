@@ -15,11 +15,13 @@ from olive.cli.base import (
     add_input_model_options,
     add_logging_options,
     add_save_config_file_options,
+    add_telemetry_options,
     get_input_model_config,
 )
 from olive.common.utils import set_nested_dict_value
 from olive.constants import Precision, precision_bits_from_precision
 from olive.hardware.constants import ExecutionProvider
+from olive.telemetry import action
 
 
 class OptimizeCommand(BaseOliveCLICommand):
@@ -184,6 +186,7 @@ class OptimizeCommand(BaseOliveCLICommand):
 
         add_logging_options(sub_parser)
         add_save_config_file_options(sub_parser)
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=OptimizeCommand)
 
     def __init__(self, parser: ArgumentParser, args: Namespace, unknown_args: Optional[list] = None):
@@ -216,6 +219,7 @@ class OptimizeCommand(BaseOliveCLICommand):
         self.enable_compose_onnx_models = False
         self.enable_openvino_encapsulation = False
 
+    @action
     def run(self):
         return self._run_workflow()
 

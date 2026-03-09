@@ -12,11 +12,14 @@ from olive.cli.base import (
     add_input_model_options,
     add_logging_options,
     add_save_config_file_options,
+    add_telemetry_options,
     get_input_model_config,
     update_accelerator_options,
 )
+from olive.telemetry import action
 
 
+@action
 class RunPassCommand(BaseOliveCLICommand):
     @staticmethod
     def register_subcommand(parser: ArgumentParser):
@@ -62,6 +65,7 @@ class RunPassCommand(BaseOliveCLICommand):
 
         add_logging_options(sub_parser)
         add_save_config_file_options(sub_parser)
+        add_telemetry_options(sub_parser)
         sub_parser.set_defaults(func=RunPassCommand)
 
     def _get_run_config(self, tempdir: str) -> dict[str, Any]:
