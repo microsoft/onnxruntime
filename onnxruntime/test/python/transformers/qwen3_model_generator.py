@@ -149,11 +149,14 @@ def _rotate_half_initializers(prefix):
     ]
 
 
-def _on_the_fly_rope_nodes(prefix, head_dim, max_seq_len=32):
+def _on_the_fly_rope_nodes(prefix, head_dim, max_seq_len=32, include_expand=False):
     """Build the on-the-fly RoPE computation: MatMul(inv_freq, positions) → Cos/Sin → Mul(scaling).
 
     This matches Qwen3's RoPE pattern:
         inv_freq_expanded @ position_ids_expanded → Transpose → Concat(freqs, freqs) → Cos/Sin → Mul(scaling)
+
+    When include_expand=True, adds Cast → Expand → Where nodes between inv_freq and MatMul,
+    matching the pattern seen in some exports where inv_freq is explicitly expanded to batch size.
     """
     nodes = []
 
@@ -169,6 +172,37 @@ def _on_the_fly_rope_nodes(prefix, head_dim, max_seq_len=32):
     # Cast to float for MatMul
     nodes.append(helper.make_node("Cast", [f"{prefix}_pos_unsq"], [f"{prefix}_pos_float"], f"{prefix}_pos_cast", to=1))
 
+    # inv_freq path: optionally add Cast → Expand → Where between inv_freq and MatMul
+    if include_expand:
+        matmul_inv_freq_input = f"{prefix}_inv_freq_where"
+        nodes.append(
+            helper.make_node(
+                "Cast",
+                [f"{prefix}_inv_freq"],
+                [f"{prefix}_inv_freq_cast"],
+                f"{prefix}_inv_freq_cast",
+                to=1,
+            )
+        )
+        nodes.append(
+            helper.make_node(
+                "Expand",
+                [f"{prefix}_inv_freq_cast", f"{prefix}_expand_shape"],
+                [f"{prefix}_inv_freq_expand"],
+                f"{prefix}_inv_freq_expand",
+            )
+        )
+        nodes.append(
+            helper.make_node(
+                "Where",
+                [f"{prefix}_where_cond", f"{prefix}_inv_freq_expand", f"{prefix}_where_zero"],
+                [matmul_inv_freq_input],
+                f"{prefix}_inv_freq_where",
+            )
+        )
+    else:
+        matmul_inv_freq_input = f"{prefix}_inv_freq"
+
     # MatMul: inv_freq @ position_ids → freqs
     # inv_freq shape: (1, head_dim/2, 1) → expand not needed in test
     # position_ids shape: (B, 1, S)
@@ -176,7 +210,7 @@ def _on_the_fly_rope_nodes(prefix, head_dim, max_seq_len=32):
     nodes.append(
         helper.make_node(
             "MatMul",
-            [f"{prefix}_inv_freq", f"{prefix}_pos_float"],
+            [matmul_inv_freq_input, f"{prefix}_pos_float"],
             [f"{prefix}_freqs_raw"],
             f"{prefix}_freq_matmul",
         )
@@ -233,15 +267,29 @@ def _on_the_fly_rope_nodes(prefix, head_dim, max_seq_len=32):
     return nodes
 
 
-def _on_the_fly_rope_initializers(prefix, head_dim):
+def _on_the_fly_rope_initializers(prefix, head_dim, batch_size=1, include_expand=False):
     """Initializers for on-the-fly RoPE computation."""
     inv_freq = 1.0 / (10000.0 ** (np.arange(0, head_dim, 2, dtype=np.float32) / head_dim))
-    return [
+    inits = [
         helper.make_tensor(f"{prefix}_unsq_axis", TensorProto.INT64, [1], [1]),
         helper.make_tensor(f"{prefix}_inv_freq", TensorProto.FLOAT, [1, head_dim // 2, 1], inv_freq.tolist()),
         helper.make_tensor(f"{prefix}_scaling", TensorProto.FLOAT, [], [1.0]),
         helper.make_tensor(f"{prefix}_head_unsq_axis", TensorProto.INT64, [1], [1]),
     ]
+    if include_expand:
+        inits.extend(
+            [
+                helper.make_tensor(f"{prefix}_expand_shape", TensorProto.INT64, [3], [batch_size, head_dim // 2, 1]),
+                helper.make_tensor(
+                    f"{prefix}_where_cond",
+                    TensorProto.BOOL,
+                    [batch_size, head_dim // 2, 1],
+                    [True] * (batch_size * (head_dim // 2)),
+                ),
+                helper.make_tensor(f"{prefix}_where_zero", TensorProto.FLOAT, [], [0.0]),
+            ]
+        )
+    return inits
 
 
 def create_qwen3_decoder_layer(
@@ -251,6 +299,7 @@ def create_qwen3_decoder_layer(
     batch_size=1,
     seq_len=4,
     include_rope=False,
+    include_expand_in_inv_freq=False,
 ):
     """Create a single Qwen3 decoder layer with RMSNorm, Q/K/V projections, QK-Norm, and residual Add.
 
@@ -313,8 +362,12 @@ def create_qwen3_decoder_layer(
 
     if include_rope:
         # --- On-the-fly RoPE computation (shared cos/sin) ---
-        nodes.extend(_on_the_fly_rope_nodes("rope", head_dim))
-        initializers.extend(_on_the_fly_rope_initializers("rope", head_dim))
+        nodes.extend(_on_the_fly_rope_nodes("rope", head_dim, include_expand=include_expand_in_inv_freq))
+        initializers.extend(
+            _on_the_fly_rope_initializers(
+                "rope", head_dim, batch_size=batch_size, include_expand=include_expand_in_inv_freq
+            )
+        )
         inputs.append(
             helper.make_tensor_value_info("position_ids", TensorProto.INT64, [batch_size, seq_len]),
         )

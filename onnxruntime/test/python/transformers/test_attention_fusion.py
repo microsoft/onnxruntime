@@ -462,6 +462,44 @@ class TestFusion(unittest.TestCase):
             f"Expected 1 SkipSimplifiedLayerNormalization (residual + post-attn RMSNorm), got {ssln_count}",
         )
 
+    def test_qwen3_rotary_embedding_fusion_with_expand(self):
+        """Test RotaryEmbedding fusion when inv_freq path includes Cast → Expand → Where nodes."""
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+            include_expand_in_inv_freq=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope_expand.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
+
+        self.assertEqual(
+            rope_count,
+            2,
+            f"Expected 2 RotaryEmbedding (Q + K) with Expand in inv_freq path, got {rope_count}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

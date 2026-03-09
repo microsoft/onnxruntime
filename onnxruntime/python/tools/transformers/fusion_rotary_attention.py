@@ -1295,13 +1295,14 @@ class FusionRotaryEmbeddings(Fusion):
             logger.debug("fuse_rotary_embeddings: failed to find position_ids in on-the-fly RoPE")
             return None, None, None
 
-        # Trace inv_freq: go through Cast/Expand/Where/ConstantOfShape nodes to find the weight
+        # Trace inv_freq: go through Cast/Expand/Where/Unsqueeze nodes to find the weight
+        inv_freq_input_name = matmul_node.input[0]
         inv_freq_node = self.model.get_parent(matmul_node, 0, output_name_to_node=None)
-        while inv_freq_node is not None and inv_freq_node.op_type in ("Cast", "Expand", "Where"):
+        while inv_freq_node is not None and inv_freq_node.op_type in ("Cast", "Expand", "Where", "Unsqueeze"):
+            inv_freq_input_name = inv_freq_node.input[0]
             inv_freq_node = self.model.get_parent(inv_freq_node, 0, output_name_to_node=None)
 
-        # For Expand node, the first input is the tensor to expand (inv_freq weight)
-        inv_freq_name = inv_freq_node.output[0] if inv_freq_node is not None else matmul_node.input[0]
+        inv_freq_name = inv_freq_node.output[0] if inv_freq_node is not None else inv_freq_input_name
         inv_freq_tensor = self.model.get_initializer(inv_freq_name)
 
         if inv_freq_tensor is None:
@@ -1334,20 +1335,14 @@ class FusionRotaryEmbeddings(Fusion):
                 break
 
         # Generate cos/sin caches: cos_cache[pos, :] = cos(pos * inv_freq) * scaling
-        # The Concat(freqs, freqs) doubles the frequencies, so head_size = 2 * len(inv_freq)
-        max_seq_len = 2048  # Default max sequence length for cache
+        # The RotaryEmbedding op expects cos_cache of shape (max_seq_len, head_size/2).
+        # Use 131072 to cover most LLM contexts (Qwen3 default is 32768; many models go up to 128k).
+        # Memory cost for head_dim=128: 131072 * 64 * 4 bytes * 2 caches = ~64 MB.
+        max_seq_len = 131072
         positions = np.arange(max_seq_len, dtype=np.float32).reshape(-1, 1)
         freqs = positions * inv_freq_1d.astype(np.float32)  # (max_seq_len, head_size/2)
-        # After Concat(freqs, freqs): emb has shape (max_seq_len, head_size)
-        emb = np.concatenate([freqs, freqs], axis=-1)
-        cos_cache_data = np.cos(emb) * scaling_value
-        sin_cache_data = np.sin(emb) * scaling_value
-
-        # The RotaryEmbedding op expects cos_cache of shape (max_seq_len, head_size/2)
-        # so we take only the first half (the second half is a duplicate)
-        head_size = cos_cache_data.shape[1]
-        cos_cache_data = cos_cache_data[:, : (head_size // 2)]
-        sin_cache_data = sin_cache_data[:, : (head_size // 2)]
+        cos_cache_data = np.cos(freqs) * scaling_value
+        sin_cache_data = np.sin(freqs) * scaling_value
 
         cos_cache_name = "cos_cache"
         sin_cache_name = "sin_cache"
@@ -1660,7 +1655,6 @@ class FusionRotaryEmbeddings(Fusion):
 
             # Handle on-the-fly RoPE (Qwen3): cos/sin computed from inv_freq via MatMul
             on_the_fly_rope = sin_path == sin_path_5 and cos_path == cos_path_5
-            position_ids_from_sin_path, position_ids_from_cos_path = [], []
             past_seq_len_path, curr_seq_len_path = None, None
 
             if on_the_fly_rope:
