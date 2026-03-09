@@ -82,6 +82,7 @@ fn write_output(batch : u32, m : u32, n : u32, value : output_element_t) {
 const TILE_M_SIZE : u32 = tile_m;
 const TILE_N_SIZE : u32 = tile_n;
 const TILE_K_VEC_SIZE : u32 = 16 / vec_size;
+const ADVANCE_DIM = 64 / TILE_K_VEC_SIZE;
 
 var<workgroup> src_tile : array<array<src_value_t, TILE_M_SIZE>, TILE_K_VEC_SIZE>;
 var<workgroup> weight_tile : array<array<weight_value_t, TILE_N_SIZE>, TILE_K_VEC_SIZE>;
@@ -93,32 +94,20 @@ $MAIN {
 
   var results : array<output_element_t, TILE_M_SIZE>;
   for (var k_idx = 0u; k_idx < uniforms.K_tiles; k_idx++) {
-#if vec_size != 4
-    for (var src_m = 0u; src_m < TILE_M_SIZE; src_m += 4u) {
-      let load_src_m = src_m + local_idx / 16;
-      let load_src_k = local_idx % 16;
-#else
-    for (var src_m = 0u; src_m < TILE_M_SIZE; src_m += 16u) {
+    for (var src_m = 0u; src_m < TILE_M_SIZE; src_m += ADVANCE_DIM) {
       // Loads a 16x4 vec of src into the workgroup memory.
-      let load_src_m = src_m + local_idx / 4;
-      let load_src_k = local_idx % 4;
-#endif
+      let load_src_m = src_m + local_idx / TILE_K_VEC_SIZE;
+      let load_src_k = local_idx % TILE_K_VEC_SIZE;
 
       src_tile[load_src_k][load_src_m] = load_src(batch,
                                                   m_global_base + load_src_m,
                                                   k_idx * TILE_K_VEC_SIZE + load_src_k);
     }
 
-#if vec_size != 4
-    for (var weight_n = 0u; weight_n < TILE_N_SIZE; weight_n += 4u) {
-      let load_weight_n = weight_n + local_idx / 16;
-      let load_weight_k = local_idx % 16;
-#else
-    for (var weight_n = 0u; weight_n < TILE_N_SIZE; weight_n += 16u) {
+    for (var weight_n = 0u; weight_n < TILE_N_SIZE; weight_n += ADVANCE_DIM) {
       // Loads a 16x4 vec of weight into the workgroup memory.
-      let load_weight_n = weight_n + local_idx / 4;
-      let load_weight_k = local_idx % 4;
-#endif
+      let load_weight_n = weight_n + local_idx / TILE_K_VEC_SIZE;
+      let load_weight_k = local_idx % TILE_K_VEC_SIZE;
 
       weight_tile[load_weight_k][load_weight_n] = load_weight(n_global_base + load_weight_n,
                                                               k_idx * TILE_K_VEC_SIZE + load_weight_k);
@@ -134,7 +123,7 @@ $MAIN {
       }
 #else
       for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
-#if vec_size != 4
+#if vec_size == 1
         results[m_idx] += output_element_t(weight_data * src_tile[inner_k_idx][m_idx]);
 #else
         results[m_idx] += output_element_t(dot(weight_data, src_tile[inner_k_idx][m_idx]));
