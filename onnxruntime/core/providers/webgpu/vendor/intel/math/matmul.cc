@@ -28,8 +28,7 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
-  MatMulWriteFnSource(shader, output, bias, /* is_gemm = */ false, 1,
-                      false, apply_activation, /*is_channels_last = */ false);
+  MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, /*is_channels_last = */ false);
   // generate the main function
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_));
   return Status::OK();
