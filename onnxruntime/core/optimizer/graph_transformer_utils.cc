@@ -414,7 +414,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #ifndef DISABLE_CONTRIB_OPS
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
-        transformers.emplace_back(std::make_unique<NchwcTransformer>());
+        const bool enable_nchwc_winograd =
+            session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigNchwcEnableWinograd, "0") == "1";
+        transformers.emplace_back(std::make_unique<NchwcTransformer>(enable_nchwc_winograd));
       }
 
       auto cpu_registry = cpu_execution_provider.GetKernelRegistry();

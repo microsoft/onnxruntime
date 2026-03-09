@@ -13,7 +13,9 @@ namespace onnxruntime {
 
 class NchwcTransformerImpl {
  public:
-  NchwcTransformerImpl(Graph& graph) noexcept : graph_(graph) {}
+  NchwcTransformerImpl(Graph& graph, bool allow_winograd) noexcept
+      : graph_(graph),
+        allow_winograd_(allow_winograd) {}
 
   void Transform(Node& node);
   void Finalize(bool& modified);
@@ -163,6 +165,8 @@ class NchwcTransformerImpl {
   // NHWC to NCHW format.
   Node* transpose_from_nhwc_node_{nullptr};
   NodeArg* transpose_from_nhwc_output_arg_{nullptr};
+
+  const bool allow_winograd_;
 };
 
 bool NchwcTransformerImpl::IsWinograd3x3Eligible(const Node& node,
@@ -424,7 +428,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     }
   }
 
-  reorder_filter_winograd = !reorder_filter_OIHWBo && IsWinograd3x3Eligible(node, *conv_W_tensor_proto, group_count);
+  reorder_filter_winograd = allow_winograd_ && !reorder_filter_OIHWBo &&
+                            IsWinograd3x3Eligible(node, *conv_W_tensor_proto, group_count);
 
   // Also require that the optional bias tensor be static.
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
@@ -1384,7 +1389,7 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
 }
 
 Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  NchwcTransformerImpl impl(graph);
+  NchwcTransformerImpl impl(graph, allow_winograd_);
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {

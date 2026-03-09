@@ -264,6 +264,15 @@ static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "sess
 // The model will be saved to filename post_layout_transform_step_<step_number>.onnx.
 static const char* const kDebugLayoutTransformation = "session.debug_layout_transformation";
 
+// Controls whether the NCHWc transformer may select Winograd-specific 3x3 convolution rewrites.
+//
+// Default is off. Set to "1" to allow Winograd selection for eligible NCHWc convolutions.
+//
+// Option values:
+// - "0": Disable Winograd selection in the NCHWc transformer. [DEFAULT]
+// - "1": Enable Winograd selection in the NCHWc transformer.
+static const char* const kOrtSessionOptionsConfigNchwcEnableWinograd = "session.nchwc.enable_winograd";
+
 // Graph nodes that are not supported by the execution providers (EPs) explicitly added to the session are
 // assigned (i.e., "fallback") to the CPU EP by default.
 //
