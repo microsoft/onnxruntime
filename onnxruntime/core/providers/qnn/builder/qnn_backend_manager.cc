@@ -682,8 +682,9 @@ Status QnnBackendManager::ReleaseDevice() {
 
 Status QnnBackendManager::InitializeProfiling() {
   profiling_level_merge_ = profiling_level_;
-  // use profiling level from ETW if ETW is enabled
-  if (profiling_level_etw_ != ProfilingLevel::INVALID) {
+  // Only use ETW level if it provides higher fidelity
+  if (profiling_level_etw_ != ProfilingLevel::INVALID &&
+      profiling_level_etw_ > profiling_level_) {
     profiling_level_merge_ = profiling_level_etw_;
   }
 
