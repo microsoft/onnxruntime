@@ -95,6 +95,10 @@ class AttentionConfig:
     has_attn_mask: bool = False
     attn_mask_dims: int = 2  # 2D, 3D, or 4D boolean mask
     attn_mask_type: str = "bool"  # "bool" for GQA path, "additive" for MHA path
+    has_nonpad_kv_seqlen: bool = False  # Opset 24: nonpad_kv_seqlen input
+    use_4d_bnsh: bool = False  # Use 4D [B, num_heads, seq, head_size] inputs instead of 3D
+    broadcast_mask_batch: bool = False  # Use batch dim 1 in 4D mask for broadcasting
+    broadcast_mask_heads: bool = False  # Use heads dim 1 in 4D mask for broadcasting
 
 
 # #################################################################################################
@@ -157,6 +161,7 @@ def create_attention_node_and_io(
         "attn_mask" if config.has_attn_mask else "",
         "past_key" if is_past else "",
         "past_value" if is_past else "",
+        "nonpad_kv_seqlen" if config.has_nonpad_kv_seqlen else "",
     ]
 
     # Remove trailing empty strings
@@ -178,17 +183,40 @@ def create_attention_node_and_io(
     )
 
     # --- Graph Inputs ---
-    # ONNX Attention op uses 3D inputs: [batch, seq_len, hidden_size]
-    q_hidden_size = config.q_num_heads * config.head_size
-    kv_hidden_size = config.kv_num_heads * config.head_size
-
-    graph_input = [
-        helper.make_tensor_value_info("query", ort_type, [config.batch_size, config.q_sequence_length, q_hidden_size]),
-        helper.make_tensor_value_info("key", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]),
-        helper.make_tensor_value_info(
-            "value", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
-        ),
-    ]
+    if config.use_4d_bnsh:
+        # 4D BNSH inputs: [batch, num_heads, seq_len, head_size]
+        graph_input = [
+            helper.make_tensor_value_info(
+                "query",
+                ort_type,
+                [config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size],
+            ),
+            helper.make_tensor_value_info(
+                "key",
+                ort_type,
+                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
+            ),
+            helper.make_tensor_value_info(
+                "value",
+                ort_type,
+                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
+            ),
+        ]
+    else:
+        # 3D inputs: [batch, seq_len, hidden_size]
+        q_hidden_size = config.q_num_heads * config.head_size
+        kv_hidden_size = config.kv_num_heads * config.head_size
+        graph_input = [
+            helper.make_tensor_value_info(
+                "query", ort_type, [config.batch_size, config.q_sequence_length, q_hidden_size]
+            ),
+            helper.make_tensor_value_info(
+                "key", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
+            ),
+            helper.make_tensor_value_info(
+                "value", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
+            ),
+        ]
 
     if isinstance(config.kv_cache_type, torch.dtype):
         cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
@@ -206,18 +234,19 @@ def create_attention_node_and_io(
             mask_ort_type = ort_type  # additive mask uses same type as Q/K/V
 
         # Mask shapes differ between GQA (bool) and MHA (additive/bool) paths:
-        # GQA bool: 2D=[batch, total_seq] — GQA converts to seqlens_k directly, bypassing ONNX broadcasting.
-        # MHA (additive or bool): 2D=[q_seq, total_seq] — follows ONNX right-aligned broadcasting.
+        # Per ONNX spec, 2D mask is [q_seq, total_seq] for all paths.
         # 3D and 4D are the same for both paths.
         # ONNX broadcasting aligns from the right: 3D [A, B, C] → [_, A, B, C] where A=heads
         is_gqa = config.kv_num_heads != config.q_num_heads
         if config.attn_mask_type == "bool" and is_gqa:
             if config.attn_mask_dims == 2:
-                mask_shape = [config.batch_size, mask_seq_len]
+                mask_shape = [config.q_sequence_length, mask_seq_len]
             elif config.attn_mask_dims == 3:
                 mask_shape = [config.q_num_heads, config.q_sequence_length, mask_seq_len]
             else:  # 4D
-                mask_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, mask_seq_len]
+                mask_batch = 1 if config.broadcast_mask_batch else config.batch_size
+                mask_heads = 1 if config.broadcast_mask_heads else config.q_num_heads
+                mask_shape = [mask_batch, mask_heads, config.q_sequence_length, mask_seq_len]
         else:  # additive, or bool on MHA path
             if config.attn_mask_dims == 2:
                 mask_shape = [config.q_sequence_length, mask_seq_len]
@@ -225,7 +254,9 @@ def create_attention_node_and_io(
                 # 3D aligns to [_, heads, q_seq, total_seq] — dim 0 must be 1 or num_heads
                 mask_shape = [config.q_num_heads, config.q_sequence_length, mask_seq_len]
             else:  # 4D
-                mask_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, mask_seq_len]
+                mask_batch = 1 if config.broadcast_mask_batch else config.batch_size
+                mask_heads = 1 if config.broadcast_mask_heads else config.q_num_heads
+                mask_shape = [mask_batch, mask_heads, config.q_sequence_length, mask_seq_len]
         graph_input.append(helper.make_tensor_value_info("attn_mask", mask_ort_type, mask_shape))
 
     # past_key and past_value for ONNX Attention op
@@ -239,13 +270,20 @@ def create_attention_node_and_io(
             ]
         )
 
+    # nonpad_kv_seqlen for Opset 24: int64 tensor [batch_size]
+    if config.has_nonpad_kv_seqlen:
+        graph_input.append(helper.make_tensor_value_info("nonpad_kv_seqlen", TensorProto.INT64, [config.batch_size]))
+
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
 
+    if config.use_4d_bnsh:
+        output_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size]
+    else:
+        output_shape = [config.batch_size, config.q_sequence_length, config.q_num_heads * config.head_size]
+
     graph_output = [
-        helper.make_tensor_value_info(
-            "output", ort_type, [config.batch_size, config.q_sequence_length, config.q_num_heads * config.head_size]
-        ),
+        helper.make_tensor_value_info("output", ort_type, output_shape),
         helper.make_tensor_value_info("present_key", cache_ort_type, output_k_shape),
         helper.make_tensor_value_info("present_value", cache_ort_type, output_k_shape),
     ]
@@ -262,11 +300,17 @@ def create_attention_node_and_io(
     return node, graph_input, graph_output
 
 
+def _get_opset_version(config: AttentionConfig):
+    """Return 24 when nonpad_kv_seqlen is used, otherwise 23."""
+    return 24 if config.has_nonpad_kv_seqlen else 23
+
+
 def create_attention_graph_prompt(config: AttentionConfig, ort_type):
     """Create ONNX graph for prompt phase (no past KV cache)."""
     node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False)
     graph = helper.make_graph([node], "Attention_Graph", graph_input, graph_output)
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 23)])
+    opset = _get_opset_version(config)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
     return model.SerializeToString()
 
 
@@ -274,7 +318,8 @@ def create_attention_graph_past(config: AttentionConfig, ort_type):
     """Create ONNX graph for decoding phase (with past KV cache)."""
     node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=True)
     graph = helper.make_graph([node], "Attention_Graph", graph_input, graph_output)
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 23)])
+    opset = _get_opset_version(config)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
     return model.SerializeToString()
 
 
@@ -338,6 +383,7 @@ def attention_prompt_func(
     ep,
     device,
     ort_type=TensorProto.FLOAT16,
+    nonpad_kv_seqlen=None,
 ):
     """
     Run ONNX Attention op for prompt phase (no past KV cache).
@@ -351,6 +397,7 @@ def attention_prompt_func(
         ep: Execution provider (e.g., "CUDAExecutionProvider")
         device: Device string (e.g., "cuda")
         ort_type: ONNX tensor type
+        nonpad_kv_seqlen: Optional int64 tensor [batch_size] for opset 24
     """
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -364,30 +411,55 @@ def attention_prompt_func(
         ort_type=ort_type,
     )
 
-    # Reshape to 3D [batch, seq_len, hidden_size]
-    q_3d = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
-    k_3d = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1))
-    v_3d = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1))
+    # Reshape inputs for ONNX graph
+    if config.use_4d_bnsh:
+        # 4D BNSH: [batch, num_heads, seq_len, head_size]
+        q_input = q.transpose(1, 2).contiguous()  # BSNH → BNSH
+        k_input = k.transpose(1, 2).contiguous()
+        v_input = v.transpose(1, 2).contiguous()
+    else:
+        # 3D: [batch, seq_len, hidden_size]
+        q_input = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
+        k_input = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1))
+        v_input = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1))
 
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
     io_binding = ort_session.io_binding()
 
     # Bind inputs
-    bind_tensor(io_binding, "query", q_3d, device, ort_type)
-    bind_tensor(io_binding, "key", k_3d, device, ort_type)
-    bind_tensor(io_binding, "value", v_3d, device, ort_type)
+    bind_tensor(io_binding, "query", q_input, device, ort_type)
+    bind_tensor(io_binding, "key", k_input, device, ort_type)
+    bind_tensor(io_binding, "value", v_input, device, ort_type)
 
     # Bind optional attention mask
     if config.has_attn_mask and attn_mask is not None:
         mask_ort_type = _get_mask_ort_type(config, ort_type)
         bind_tensor(io_binding, "attn_mask", attn_mask, device, mask_ort_type)
 
+    # Bind optional nonpad_kv_seqlen (opset 24+)
+    if config.has_nonpad_kv_seqlen:
+        if nonpad_kv_seqlen is None:
+            raise ValueError(
+                "Invariant violated: config.has_nonpad_kv_seqlen=True but the nonpad_kv_seqlen "
+                "tensor is None. Either provide the tensor or set has_nonpad_kv_seqlen=False."
+            )
+        bind_tensor(io_binding, "nonpad_kv_seqlen", nonpad_kv_seqlen, device, TensorProto.INT64)
+
     # Bind Outputs
     hidden_size = config.q_num_heads * config.head_size
     out_dtype = _get_out_dtype(ort_type)
 
-    out_torch = torch.zeros((config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device)
+    if config.use_4d_bnsh:
+        out_torch = torch.zeros(
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size),
+            dtype=out_dtype,
+            device=device,
+        )
+    else:
+        out_torch = torch.zeros(
+            (config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device
+        )
     bind_output_tensor(io_binding, "output", out_torch, device, ort_type)
 
     # present KV shape for prompt (no past)
@@ -450,10 +522,17 @@ def attention_past_func(
         ort_type=ort_type,
     )
 
-    # Reshape to 3D [batch, seq_len, hidden_size]
-    q_3d = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
-    new_k_3d = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
-    new_v_3d = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
+    # Reshape inputs for ONNX graph
+    if config.use_4d_bnsh:
+        # 4D BNSH: [batch, num_heads, seq_len, head_size]
+        q_input = q.transpose(1, 2).contiguous()  # BSNH → BNSH
+        new_k_input = new_k.transpose(1, 2).contiguous()
+        new_v_input = new_v.transpose(1, 2).contiguous()
+    else:
+        # 3D: [batch, seq_len, hidden_size]
+        q_input = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
+        new_k_input = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
+        new_v_input = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
 
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
@@ -463,9 +542,9 @@ def attention_past_func(
     total_seq_len = config.past_kv_sequence_length + config.kv_sequence_length
 
     # Bind inputs
-    bind_tensor(io_binding, "query", q_3d, device, ort_type)
-    bind_tensor(io_binding, "key", new_k_3d, device, ort_type)
-    bind_tensor(io_binding, "value", new_v_3d, device, ort_type)
+    bind_tensor(io_binding, "query", q_input, device, ort_type)
+    bind_tensor(io_binding, "key", new_k_input, device, ort_type)
+    bind_tensor(io_binding, "value", new_v_input, device, ort_type)
 
     # Bind optional attention mask
     if config.has_attn_mask and attn_mask is not None:
@@ -489,7 +568,16 @@ def attention_past_func(
     hidden_size = config.q_num_heads * config.head_size
     out_dtype = _get_out_dtype(ort_type)
 
-    out_torch = torch.zeros((config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device)
+    if config.use_4d_bnsh:
+        out_torch = torch.zeros(
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size),
+            dtype=out_dtype,
+            device=device,
+        )
+    else:
+        out_torch = torch.zeros(
+            (config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device
+        )
     bind_output_tensor(io_binding, "output", out_torch, device, ort_type)
 
     # present KV shape (past + new)
@@ -651,7 +739,7 @@ def create_boolean_mask_from_seqlens(
 
     Returns:
         Boolean mask where True = valid, False = padding.
-        - 2D: [batch_size, total_seq_len] - broadcasts to [batch, 1, 1, total_seq]
+        - 2D: [q_seq_len, total_seq_len] - broadcasts to [batch, heads, q_seq, total_seq]
         - 3D: [num_heads, q_seq_len, total_seq_len] - broadcasts to [1, num_heads, q_seq, total_seq]
         - 4D: [batch_size, num_heads, q_seq_len, total_seq_len] - no broadcasting
     """
@@ -664,7 +752,10 @@ def create_boolean_mask_from_seqlens(
     mask_2d = arange < seqlens_expanded  # [batch_size, total_seq_len]
 
     if mask_dims == 2:
-        return mask_2d
+        # 2D: [q_seq_len, total_seq_len] per ONNX spec. Broadcasts across batch and heads.
+        # Since 2D masks can't vary per batch, use the first batch's pattern.
+        mask_1d = mask_2d[0:1, :]  # [1, total_seq_len]
+        return mask_1d.expand(q_seq_len, total_seq_len).contiguous()
     elif mask_dims == 3:
         # 3D mask: [num_heads, q_seq_len, total_seq_len]
         # For right-padding tests, all batches should have the same mask pattern per position.
