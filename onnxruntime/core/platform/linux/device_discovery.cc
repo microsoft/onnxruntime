@@ -267,6 +267,8 @@ Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, size_t device_idx, O
 
 namespace {
 
+constexpr const char* kSysfsPciDevicesPath = "/sys/bus/pci/devices";
+
 Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   std::vector<GpuSysfsPathInfo> gpu_sysfs_path_infos{};
   ORT_RETURN_IF_ERROR(DetectGpuSysfsPaths(gpu_sysfs_path_infos));
@@ -286,10 +288,10 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   // exposed via /sys/bus/pci/devices/.
   if (gpu_devices.empty()) {
     LOGS_DEFAULT(VERBOSE) << "No GPUs found via /sys/class/drm. "
-                          << "Falling back to PCI bus scanning via /sys/bus/pci/devices/.";
+                          << "Falling back to PCI bus scanning via " << kSysfsPciDevicesPath << ".";
 
     std::vector<pci_device_discovery::GpuPciPathInfo> gpu_pci_path_infos{};
-    ORT_RETURN_IF_ERROR(pci_device_discovery::DetectGpuPciPaths("/sys/bus/pci/devices", gpu_pci_path_infos));
+    ORT_RETURN_IF_ERROR(pci_device_discovery::DetectGpuPciPaths(kSysfsPciDevicesPath, gpu_pci_path_infos));
 
     gpu_devices.reserve(gpu_pci_path_infos.size());
 
