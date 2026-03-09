@@ -529,7 +529,6 @@ void LayeringIndex::ProcessGraph(const Graph& graph, std::optional<size_t> paren
         was_updated = true;
       } else {
         // reset since no valid EP mapping
-        // so it does not propagate to sub-graphs if any
         matched_rule_idx = std::nullopt;
       }
     }
@@ -625,6 +624,68 @@ void LayeringRuleMatcher::AddPrefixRule(const std::string& annotation, size_t in
 void LayeringRuleMatcher::UpdateBestMatch(std::optional<size_t>& current_best, size_t candidate) const {
   if (!current_best || candidate < *current_best) {
     current_best = candidate;
+  }
+}
+
+std::optional<std::reference_wrapper<const InlinedHashSet<size_t>>>
+LayeringIndex::GetLayeringRulesForThisEp(const std::string& ep_type) const {
+  auto hit = ep_name_to_layering_indices_.find(ep_type);
+  if (hit == ep_name_to_layering_indices_.end()) {
+    return {};
+  }
+  return hit->second;
+}
+
+std::optional<size_t> LayeringIndex::GetNodeAssignment(const Graph& graph, NodeIndex node_id) const {
+  auto hit = graph_index_.find(&graph);
+  if (hit == graph_index_.end()) {
+    return {};
+  }
+
+  // Nodes in subgraph that were not annotated has already inherited their
+  // annotation if any from the parent node of the subgraph
+  const auto& graph_layering_index = hit->second;
+  auto layer_hit = graph_layering_index.node_to_layering_index_.find(node_id);
+  if (layer_hit != graph_layering_index.node_to_layering_index_.end()) {
+    return layer_hit->second;
+  }
+  return {};
+}
+
+void LayeringIndex::MakeNodeUnassigned(const Graph& graph, NodeIndex node_id) {
+  auto hit = graph_index_.find(&graph);
+  if (hit == graph_index_.end()) {
+    return;
+  }
+  auto& graph_layering_index = hit->second;
+  auto node_to_layer_hit = graph_layering_index.node_to_layering_index_.find(node_id);
+  std::optional<size_t> layer_idx;
+  if (node_to_layer_hit != graph_layering_index.node_to_layering_index_.end()) {
+    // Get the layer index
+    layer_idx = node_to_layer_hit->second;
+    graph_layering_index.node_to_layering_index_.erase(node_to_layer_hit);
+  }
+  // Remove node from layer collection
+  if (layer_idx) {
+    auto layer_to_nodes_hit = graph_layering_index.layer_to_node_ids_.find(*layer_idx);
+    if (layer_to_nodes_hit != graph_layering_index.layer_to_node_ids_.end()) {
+      layer_to_nodes_hit->second.erase(node_id);
+      // If the layer has no more nodes assigned across this graph,
+      // remove the layer index from the EP mapping so subsequent
+      // partitioning passes no longer reserve this layer for the EP.
+      if (layer_to_nodes_hit->second.empty()) {
+        graph_layering_index.layer_to_node_ids_.erase(layer_to_nodes_hit);
+        // Update ep_name_to_layering_indices_ to remove this layer index
+        // from the EP that owned it, making it available for other EPs.
+        auto rule_to_ep_hit = layering_index_to_ep_name_.find(*layer_idx);
+        if (rule_to_ep_hit != layering_index_to_ep_name_.end()) {
+          auto ep_hit = ep_name_to_layering_indices_.find(rule_to_ep_hit->second);
+          if (ep_hit != ep_name_to_layering_indices_.end()) {
+            ep_hit->second.erase(*layer_idx);
+          }
+        }
+      }
+    }
   }
 }
 }  // namespace onnxruntime
