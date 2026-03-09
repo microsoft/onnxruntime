@@ -182,14 +182,19 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelpe
 
 Status GenerateShaderCodeOnApple(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
-                                 const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+                                 const ShaderVariableHelper& output, uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_apple.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(component_type_idx, static_cast<uint32_t>(config.componentType)),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
+                             WGSL_TEMPLATE_PARAMETER(k_dim, config.k),
+                             WGSL_TEMPLATE_PARAMETER(m_dim, config.m),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits),
+                             WGSL_TEMPLATE_PARAMETER(n_dim, config.n),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                             WGSL_TEMPLATE_PARAMETER(result_component_type_idx, static_cast<uint32_t>(config.resultComponentType)),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
@@ -212,7 +217,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   if (!vendor_.compare("apple")) {
-    return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+    return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else if (!vendor_.compare("intel") || !vendor_.compare("nvidia")) {
     return GenerateShaderCodeOnIntel(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else {
@@ -263,7 +268,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     a = &a_prepack;
   }
 
-  uint32_t tile_size_a = 32;
+  // Apple: 128 threads / 32 subgroup size = 4 subgroups, tile_size_a = 4 * m_dim.
+  uint32_t tile_size_a = 4 * config.m;
   uint32_t work_group_size = 128;
   constexpr uint32_t kTileSizeB = 64;
   constexpr uint32_t kU32Components = 4;
@@ -316,8 +322,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
       // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
       // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
       // FP32 is around 7s.
-      has_subgroup_matrix = accuracy_level == 4;
-      config = {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 8, 8};
+      has_subgroup_matrix = accuracy_level == 4 && FindSubgroupMatrixConfig(context, config);
     } else if (context.AdapterInfo().vendor == std::string_view{"nvidia"}) {
       // NVIDIA uses dynamic config discovery from the device's reported subgroup matrix configurations.
       has_subgroup_matrix = accuracy_level == 4 && FindSubgroupMatrixConfig(context, config);
