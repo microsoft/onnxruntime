@@ -368,11 +368,11 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
 
     for (uint32_t block_size = 2; block_size <= padded; block_size <<= 1) {
       for (uint32_t gap = block_size >> 1; gap > 0; gap >>= 1) {
-        TopKSortStepProgram step_prog{largest, is_fp16};
+        TopKSortStepProgram step_prog{largest};
         step_prog
             .AddOutputs({{&vals_buf, ProgramTensorMetadataDependency::TypeAndRank}})
             .AddOutputs({{&idxs_buf, ProgramTensorMetadataDependency::TypeAndRank}})
-            .CacheHint(largest ? "largest" : "smallest", is_fp16 ? "fp16" : "fp32")
+            .CacheHint(largest ? "largest" : "smallest")
             .SetWorkgroupSize(256)
             .SetDispatchGroupSize(num_wg)
             .AddUniformVariables({{block_size},
@@ -384,13 +384,13 @@ Status TopK::ComputeInternal(ComputeContext& context) const {
     }
 
     // 3. Output: copy top-K from sorted global buffer to output
-    TopKOutputProgram out_prog{is_fp16};
+    TopKOutputProgram out_prog{};
     out_prog
         .AddInputs({{&vals_buf, ProgramTensorMetadataDependency::TypeAndRank}})
         .AddInputs({{&idxs_buf, ProgramTensorMetadataDependency::TypeAndRank}})
         .AddOutputs({{sort_values_out, ProgramTensorMetadataDependency::TypeAndRank}})
         .AddOutputs({{sort_indices_out, ProgramTensorMetadataDependency::TypeAndRank}})
-        .CacheHint(is_fp16 ? "fp16" : "fp32")
+        .CacheHint("output")
         .SetWorkgroupSize(256)
         .SetDispatchGroupSize(u_rows)
         .AddUniformVariables({{static_cast<int32_t>(padded)},

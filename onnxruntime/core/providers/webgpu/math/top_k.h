@@ -47,8 +47,8 @@ class TopKInitProgram final : public Program<TopKInitProgram> {
 
 class TopKSortStepProgram final : public Program<TopKSortStepProgram> {
  public:
-  TopKSortStepProgram(bool largest, bool is_fp16)
-      : Program{"TopKSortStep"}, largest_{largest}, is_fp16_{is_fp16} {}
+  TopKSortStepProgram(bool largest)
+      : Program{"TopKSortStep"}, largest_{largest} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -60,22 +60,18 @@ class TopKSortStepProgram final : public Program<TopKSortStepProgram> {
 
  private:
   bool largest_;
-  bool is_fp16_;
 };
 
 class TopKOutputProgram final : public Program<TopKOutputProgram> {
  public:
-  TopKOutputProgram(bool is_fp16)
-      : Program{"TopKOutput"}, is_fp16_{is_fp16} {}
+  TopKOutputProgram()
+      : Program{"TopKOutput"} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"padded_cols", ProgramUniformVariableDataType::Int32},
       {"k", ProgramUniformVariableDataType::Int32});
-
- private:
-  bool is_fp16_;
 };
 
 class TopK final : public WebGpuKernel {
