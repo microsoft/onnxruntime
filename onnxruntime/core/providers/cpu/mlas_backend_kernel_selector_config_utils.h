@@ -17,6 +17,9 @@ namespace onnxruntime {
 inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& config,
                                                             const ConfigOptions& config_options) {
   config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
+  config.use_kleidiai_sme = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiaiSME, "0") != "1";
+  std::cout << "use_kleidiai= " << config.use_kleidiai << std::endl;
+  std::cout << "use_kleidiai_sme= " << config.use_kleidiai_sme << std::endl;
 }
 
 }  // namespace onnxruntime

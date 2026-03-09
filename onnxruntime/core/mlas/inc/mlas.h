@@ -204,6 +204,7 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    bool use_kleidiai_sme = true; /** Flag to use SME CPU devices in KleidiAI if they are available. */
 };
 
 //

@@ -668,7 +668,11 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
         KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning false from MlasConvPrepare.");
         return false;
     }
-
+    // All kernels used here are SME/SME2 based.
+    if (Parameters->BackendKernelSelectorConfig && !Parameters->BackendKernelSelectorConfig->use_kleidiai_sme) {
+        KLEIDIAI_DEBUG_LOG("User explicitly disabled SME devices in KleidiAI, returning false from MlasConvPrepare.");
+        return false;
+    }
     //Check dimensions before accessing
     if (Dimensions < 2) {
         return false;
@@ -738,9 +742,14 @@ ArmKleidiAI::MlasConv(
         KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning false from MlasConv.");
         return false;
     }
+    // All kernels used here are SME/SME2 based.
+    if (Parameters->BackendKernelSelectorConfig && !Parameters->BackendKernelSelectorConfig->use_kleidiai_sme) {
+        KLEIDIAI_DEBUG_LOG("User explicitly disabled SME devices in KleidiAI, returning false from MlasConvPrepare.");
+        return false;
+    }
 
     if(!CheckCapabilitiesSme(Parameters)){
-        // Fallback to Default Mlas
+        // Fallback to Default Mlas path
         return false;
     };
     ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
