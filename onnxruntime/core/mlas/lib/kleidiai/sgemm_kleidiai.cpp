@@ -97,7 +97,23 @@ static inline void ApplyAlphaBeta2D(const float* src, size_t rows, size_t cols,
     for (size_t i = 0; i < rows; ++i) {
         const float* src_row = src + i * cols;
         float* dst_row = dst + i * ldc;
-        ApplyAlphaBetaStrided(src_row, cols, alpha, beta, dst_row, 1, /*allow_memcpy*/ (ldc == cols));
+        ApplyAlphaBetaStrided(src_row, cols, alpha, beta, dst_row, 1, /*allow_memcpy*/ false);
+    }
+}
+
+static inline void ApplyBetaToC(float* C, size_t ldc, size_t M, size_t N, float beta) {
+    if (beta == 0.0f) {
+        for (size_t i = 0; i < M; ++i) {
+            std::fill_n(C + i * ldc, N, 0.0f);
+        }
+        return;
+    }
+    if (beta != 1.0f) {
+        for (size_t i = 0; i < M; ++i) {
+            for (size_t j = 0; j < N; ++j) {
+                C[i * ldc + j] *= beta;
+            }
+        }
     }
 }
 
@@ -413,20 +429,17 @@ Return Value:
 
 --*/
 {
-    if (M == 0 || N == 0) {
+    if (M == 0 || N == 0 || BatchSize == 0) {
         return true;
     }
 
     if (Data->alpha == 0.0f || K == 0) {
-        if (Data->beta == 0.0f) {
-            for (size_t i = 0; i < M; ++i) {
-                std::fill_n(Data->C + i * Data->ldc, N, 0.0f);
-            }
-        } else if (Data->beta != 1.0f) {
-            for (size_t i = 0; i < M; ++i) {
-                for (size_t j = 0; j < N; ++j) {
-                    Data->C[i * Data->ldc + j] *= Data->beta;
-                }
+        if (BatchSize == 1) {
+            ApplyBetaToC(Data->C, Data->ldc, M, N, Data->beta);
+        } else {
+            // This reduction must be applied to every batch entry.
+            for (size_t batch = 0; batch < BatchSize; ++batch) {
+                ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
             }
         }
         return true;
