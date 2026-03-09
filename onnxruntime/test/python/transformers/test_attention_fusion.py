@@ -408,6 +408,60 @@ class TestFusion(unittest.TestCase):
             f"Expected 0 SkipSimplifiedLayerNormalization (residual + post-attn RMSNorm failed to fuse), got {ssln_count}",
         )
 
+    def test_qwen3_rotary_embedding_fusion(self):
+        """Test Qwen3 RotaryEmbedding fusion for on-the-fly RoPE with dynamic Slice indices.
+
+        Verifies that the optimizer fuses:
+          - On-the-fly RoPE (MatMul → Cos/Sin → Mul(scaling)) into RotaryEmbedding nodes
+          - Both Q and K paths get RotaryEmbedding fusion (2 total)
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
+        sln_count = sum(1 for n in nodes if n.op_type == "SimplifiedLayerNormalization")
+        ssln_count = sum(1 for n in nodes if n.op_type == "SkipSimplifiedLayerNormalization")
+
+        self.assertEqual(
+            rope_count,
+            2,
+            f"Expected 2 RotaryEmbedding (Q + K), got {rope_count}",
+        )
+        self.assertEqual(
+            sln_count,
+            3,
+            f"Expected 3 SimplifiedLayerNormalization (pre-attn + Q-norm + K-norm), got {sln_count}",
+        )
+        self.assertEqual(
+            ssln_count,
+            1,
+            f"Expected 1 SkipSimplifiedLayerNormalization (residual + post-attn RMSNorm), got {ssln_count}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
