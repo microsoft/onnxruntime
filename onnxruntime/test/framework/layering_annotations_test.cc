@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#include "core/framework/execution_providers.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/layering_annotations.h"
 #include "core/session/abi_devices.h"
@@ -11,7 +12,8 @@
 #include "core/graph/constants.h"
 #include "core/graph/model.h"  // For Model, Graph
 #include "gtest/gtest.h"
-#include "core/framework/execution_providers.h"
+
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {

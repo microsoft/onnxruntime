@@ -197,21 +197,21 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   const auto& graph_optimizer_registry = params.graph_optimizer_registry.get();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  InlinedVector<NodeIndex> assigned_filteredin_nodes;
-  InlinedVector<const Node*> filteredin_nodes;
+  InlinedVector<NodeIndex> assigned_filtered_in_nodes;
+  InlinedVector<const Node*> filtered_in_nodes;
 #endif
   // Helper to create a GraphViewer that filters nodes based on layering_index if present.
   auto create_graph_viewer = [&](std::unique_ptr<IndexedSubGraph>& sub_graph_holder,
                                  std::unique_ptr<GraphViewer>& viewer) -> Status {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     if (params.layering_index) {
-      assigned_filteredin_nodes.clear();
-      filteredin_nodes.clear();
-      filteredin_nodes.reserve(graph.NumberOfNodes());
+      assigned_filtered_in_nodes.clear();
+      filtered_in_nodes.clear();
+      filtered_in_nodes.reserve(graph.NumberOfNodes());
 
       auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
       if (rules_opt) {
-        assigned_filteredin_nodes.reserve(rules_opt->get().size());
+        assigned_filtered_in_nodes.reserve(rules_opt->get().size());
       }
 
       for (auto& node : graph.Nodes()) {
@@ -222,16 +222,16 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
           if (!rules_opt || rules_opt->get().count(*rule_idx_opt) == 0) {
             include = false;
           } else {
-            assigned_filteredin_nodes.push_back(node.Index());
+            assigned_filtered_in_nodes.push_back(node.Index());
           }
         }
         // If node has no assignment, it is included (available to any EP)
 
         if (include) {
-          filteredin_nodes.push_back(&node);
+          filtered_in_nodes.push_back(&node);
         }
       }
-      ORT_RETURN_IF_ERROR(graph_utils::CreateFilteredIndexedGraph(filteredin_nodes, graph, sub_graph_holder));
+      ORT_RETURN_IF_ERROR(graph_utils::CreateFilteredIndexedGraph(filtered_in_nodes, graph, sub_graph_holder));
       viewer = std::make_unique<GraphViewer>(graph, *sub_graph_holder);
       return Status::OK();
     }
@@ -256,7 +256,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
         // Check if all assigned filtered-in nodes are claimed
         // and if not make them available for subsequent EPs
-        for (auto& node_index : assigned_filteredin_nodes) {
+        for (auto& node_index : assigned_filtered_in_nodes) {
           if (claimed.count(node_index) == 0) {
             auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node_index);
             if (rule_idx_opt && ep_rules.count(*rule_idx_opt) > 0) {
@@ -264,7 +264,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
             }
           }
         }
-        assigned_filteredin_nodes.clear();
+        assigned_filtered_in_nodes.clear();
       }
     }
 #endif
@@ -1207,7 +1207,8 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       nullptr,
       std::ref(graph_optimizer_registry),
-      partition_params.check_load_cancellation_fn
+      partition_params.check_load_cancellation_fn,
+      partition_params.layering_index
   };
   // clang-format on
 

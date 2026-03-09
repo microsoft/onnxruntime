@@ -3042,8 +3042,11 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
       const Node& node = ep_node->GetInternalNode();
       node_set.insert(node.Index());
       internal_nodes.push_back(&node);
+    } else {
+      std::ostringstream oss;
+      oss << "node indexed [" << i << "] appears to be a ModelEditorGraph";
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, oss.str().c_str());
     }
-    // else XXX is ignoring null nodes OK?
   }
 
   // Create a GraphViewer with filtered info

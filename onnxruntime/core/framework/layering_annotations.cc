@@ -12,6 +12,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/graph/graph.h"
 
+#include <cstdlib>
 #include <limits>
 
 namespace onnxruntime {
@@ -128,15 +129,22 @@ std::optional<size_t> LayeringRuleMatcher::Match(const std::string& node_annotat
 namespace {
 bool CaseInsensitiveCompare(std::string_view a, std::string_view b) {
   return std::equal(a.begin(), a.end(), b.begin(), b.end(),
-                    [](char c1, char c2) { return std::tolower(c1) == std::tolower(c2); });
+                    [](char c1, char c2) {
+                      return std::tolower(static_cast<unsigned char>(c1)) ==
+                             std::tolower(static_cast<unsigned char>(c2));
+                    });
 }
 
 bool TryParseIndex(const std::string& str, uint32_t& index) {
+  if (str.empty() || str[0] == '-') return false;
   char* end = nullptr;
   const char* ptr = str.c_str();
   errno = 0;
   unsigned long val = std::strtoul(ptr, &end, 10);
   if (errno != 0 || end != ptr + str.size()) {
+    return false;
+  }
+  if (val > std::numeric_limits<uint32_t>::max()) {
     return false;
   }
   index = narrow<uint32_t>(val);
@@ -574,6 +582,35 @@ void LayeringIndex::Update(const Graph& graph, gsl::span<const NodeIndex> nodes)
   }
   if (was_updated && new_index) {
     graph_index_.emplace(&graph, std::move(*new_index));
+  }
+}
+
+void LayeringRuleMatcher::AddExactRule(const std::string& annotation, size_t index) {
+  // Only store the first occurrence (lowest index)
+  exact_match_rules_.insert({annotation, index});
+}
+
+void LayeringRuleMatcher::AddPrefixRule(const std::string& annotation, size_t index) {
+  TrieNode* current = &root_;
+  for (char c : annotation) {
+    auto p = current->children.insert({c, nullptr});
+    if (p.second) {
+      p.first->second = std::make_unique<TrieNode>();
+    }
+    current = p.first->second.get();
+  }
+
+  // Only store if strictly better (lower index) or not set
+  // Since we iterate rules 0..N, if a rule index is already set for this node,
+  // it corresponds to a higher priority rule, so we skip overwriting it.
+  if (!current->rule_index) {
+    current->rule_index = index;
+  }
+}
+
+void LayeringRuleMatcher::UpdateBestMatch(std::optional<size_t>& current_best, size_t candidate) const {
+  if (!current_best || candidate < *current_best) {
+    current_best = candidate;
   }
 }
 }  // namespace onnxruntime

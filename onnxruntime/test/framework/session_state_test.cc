@@ -452,7 +452,7 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
                              default_logger, profiler, sess_options);
 
   LayeringIndex* layering_index = nullptr;
-  static std::optional<LayeringIndex> layering_index_storage;
+  std::optional<LayeringIndex> layering_index_storage;
   if (!layering_config.empty()) {
     ASSERT_STATUS_OK(LayeringIndex::Create(graph, layering_config, {}, execution_providers,
                                            default_logger, layering_index_storage));

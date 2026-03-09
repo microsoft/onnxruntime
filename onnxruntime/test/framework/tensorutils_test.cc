@@ -664,7 +664,6 @@ TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
   }
 }
 
-
 // Tests for ValidateEmbeddedTensorProtoDataSizeAndShape and embedded initializer size limits
 
 TEST(TensorProtoDataSizeShapeValidationTest, ValidTensorProtoWithRawData) {
@@ -901,7 +900,6 @@ TEST(TensorProtoDataSizeShapeValidationTest, ExternalDataValidFileSizeSucceeds) 
   ASSERT_EQ(unpacked_tensor.size(), sizeof(data));
 }
 #endif  // !defined(__wasm__)
-
 
 }  // namespace test
 }  // namespace onnxruntime

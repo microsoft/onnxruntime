@@ -180,11 +180,6 @@ class Node {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-  void ClearLayeringAnnotation() {
-    std::string t;
-    layering_annotation_.swap(t);
-  }
-
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
@@ -266,6 +261,13 @@ class Node {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Make sure that the annotation does not occupy memory after partitioning is done.
+  void ClearLayeringAnnotation() {
+    std::string t;
+    layering_annotation_.swap(t);
+  }
+
   /** Gets a modifiable count of arguments for each of the Node's explicit inputs.
   @todo This should be removed in favor of a method that updates the input args and the count.
         Currently these operations are separate which is not a good setup. */

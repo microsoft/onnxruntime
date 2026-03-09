@@ -38,6 +38,13 @@ struct LayeringRules {
   std::vector<LayerAnnotation> rules;
   /// <summary>
   /// Parses the layering rules from the given configuration string.
+  /// The configuration string is in the following format.:
+  /// 'cpu(L1,L2); gpu(L3,=L4)' where cpu or gpu denote the target EP.
+  /// L1, L2, L3 are annotations that can be matched to node annotations in the graph. The '=' prefix denotes
+  /// exact match. The position of the annotation (L1, L2, L3) in the list denotes its priority in matching (left to right).
+  /// However, the prefix annotations will always have higher priority than the exact match annotations regardless
+  /// of their position in the list. In the above example, L1 has the highest priority, followed by L2,
+  /// then L3 and finally L4. The rules are separated by ';' and there can be multiple rules for different EPs.
   /// </summary>
   /// <param name="config_value">The configuration string to parse.</param>
   /// <param name="rules">Output parameter where the parsed rules will be stored.</param>
@@ -69,34 +76,11 @@ class LayeringRuleMatcher {
   TrieNode root_;
   InlinedHashMap<std::string, size_t> exact_match_rules_;
 
-  void AddExactRule(const std::string& annotation, size_t index) {
-    // Only store the first occurrence (lowest index)
-    exact_match_rules_.insert({annotation, index});
-  }
+  void AddExactRule(const std::string& annotation, size_t index);
 
-  void AddPrefixRule(const std::string& annotation, size_t index) {
-    TrieNode* current = &root_;
-    for (char c : annotation) {
-      auto p = current->children.insert({c, nullptr});
-      if (p.second) {
-        p.first->second = std::make_unique<TrieNode>();
-      }
-      current = p.first->second.get();
-    }
+  void AddPrefixRule(const std::string& annotation, size_t index);
 
-    // Only store if strictly better (lower index) or not set
-    // Since we iterate rules 0..N, if a rule index is already set for this node,
-    // it corresponds to a higher priority rule, so we skip overwriting it.
-    if (!current->rule_index) {
-      current->rule_index = index;
-    }
-  }
-
-  void UpdateBestMatch(std::optional<size_t>& current_best, size_t candidate) const {
-    if (!current_best || candidate < *current_best) {
-      current_best = candidate;
-    }
-  }
+  void UpdateBestMatch(std::optional<size_t>& current_best, size_t candidate) const;
 };
 
 namespace EpLayeringMatcher {
@@ -118,7 +102,7 @@ std::optional<std::string> Match(gsl::span<const OrtEpDevice* const> ep_devices,
 /// <param name="rule">The rule containing the device designator.</param>
 /// <returns>Optional containing the matched EP type, nullopt otherwise.</returns>
 std::optional<std::string> Match(const ExecutionProviders& providers, const LayerAnnotation& rule);
-};  // namespace EpLayeringMatcher
+}  // namespace EpLayeringMatcher
 
 // This class contains indexing information about the entire graph
 // per sub-graph info is stored in graph_index_
@@ -207,6 +191,21 @@ class LayeringIndex {
       auto layer_to_nodes_hit = graph_layering_index.layer_to_node_ids_.find(*layer_idx);
       if (layer_to_nodes_hit != graph_layering_index.layer_to_node_ids_.end()) {
         layer_to_nodes_hit->second.erase(node_id);
+        // If the layer has no more nodes assigned across this graph,
+        // remove the layer index from the EP mapping so subsequent
+        // partitioning passes no longer reserve this layer for the EP.
+        if (layer_to_nodes_hit->second.empty()) {
+          graph_layering_index.layer_to_node_ids_.erase(layer_to_nodes_hit);
+          // Update ep_name_to_layering_indices_ to remove this layer index
+          // from the EP that owned it, making it available for other EPs.
+          auto rule_to_ep_hit = layering_index_to_ep_name_.find(*layer_idx);
+          if (rule_to_ep_hit != layering_index_to_ep_name_.end()) {
+            auto ep_hit = ep_name_to_layering_indices_.find(rule_to_ep_hit->second);
+            if (ep_hit != ep_name_to_layering_indices_.end()) {
+              ep_hit->second.erase(*layer_idx);
+            }
+          }
+        }
       }
     }
   }
@@ -217,7 +216,7 @@ class LayeringIndex {
   /// and updates the assignment.
   /// </summary>
   /// <param name="graph">The graph containing the nodes.</param>
-  /// <param name="nodes">Pixels of nodes to check and update.</param>
+  /// <param name="nodes">Indices of nodes to check and update.</param>
   void Update(const Graph& graph, gsl::span<const NodeIndex> nodes);
 
  private:
@@ -242,11 +241,9 @@ class LayeringIndex {
     // If the node is not in this map, it is unassigned
     NodeIndexToLayeringIndex node_to_layering_index_;
     // This map contains mapping of LayeringRule index to the list of node ids
-    // Revers from the above 1:M
+    // Reverse from the above 1:M
     LayerIndexToNodes layer_to_node_ids_;
   };
-
-  LayeringIndex() = default;
 
   LayeringIndex(LayeringRules layering_rules, EpNameToLayeringIndices ep_name_to_layering_indices, LayeringIndexToEpName layering_index_to_ep_name)
       : rules_(std::move(layering_rules)),

@@ -330,7 +330,7 @@ static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "sessi
 ///   This enables an ad-hoc and flexible scenarios with no pre-recorded stats, but may be less accurate.
 /// The setting with no limit is expected to look like: ",file name for collected stats"
 /// Finally a setting with both limit and pre-recorded stats absent can contain a single comma: ",".
-///  The EP will place nodes on device "file name" (currently only CUDA is supported) :
+///  The EP will attempt to place nodes on device (currently only CUDA is supported) :
 /// this file is expected to be found at the same folder with the model. The file contains
 /// pre-recorded stats collected when running with kOrtSessionOptionsCollectNodeMemoryStatsToFile enforce (see above)
 static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =

@@ -473,6 +473,10 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
  */
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 /// <summary>
 /// This function creates an indexed subgraph from a collection of nodes
 /// using the graph instance. The IndexedSubgraph can then we used to create
@@ -485,7 +489,7 @@ NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 Status CreateFilteredIndexedGraph(gsl::span<const Node* const> nodes, const Graph& graph,
                                   std::unique_ptr<IndexedSubGraph>& indexed_subgraph);
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace graph_utils
 }  // namespace onnxruntime
