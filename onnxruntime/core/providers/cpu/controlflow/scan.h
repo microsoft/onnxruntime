@@ -99,5 +99,10 @@ class Scan : public controlflow::IControlFlowKernel {
   std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
 
   scan::detail::DeviceHelpers device_helpers_;
+
+ protected:
+  // When true, uses the variable-length output implementation that collects per-iteration
+  // scan outputs and concatenates them at the end.
+  bool use_var_len_output_ = false;
 };
 }  // namespace onnxruntime

@@ -106,7 +106,8 @@ class ScanImpl {
            const gsl::span<const int64_t>& output_directions,
            const gsl::span<const int64_t>& input_axes,
            const gsl::span<const int64_t>& output_axes,
-           const scan::detail::DeviceHelpers& device_helpers);
+           const scan::detail::DeviceHelpers& device_helpers,
+           bool use_var_len_output = false);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -129,6 +130,12 @@ class ScanImpl {
   Status CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables);
   Status TransposeOutput();
 
+  // Variable-length scan output methods: allows per-iteration scan outputs to differ
+  // in the concatenation-axis dimension.
+  Status AllocateLoopStateOutputs();
+  Status ExecuteVarLen(const FeedsFetchesManager& ffm);
+  Status ConcatenateScanOutputs(std::vector<std::vector<OrtValue>>& scan_output_per_iteration);
+
   using ConstTensorSlicerIterators = std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>;
   using MutableTensorSlicerIterators = std::vector<OrtValueTensorSlicer<OrtValue>::Iterator>;
 
@@ -150,6 +157,11 @@ class ScanImpl {
   const std::vector<const OrtValue*>& implicit_inputs_;
 
   const scan::detail::DeviceHelpers& device_helpers_;
+
+  // When true, uses the variable-length output implementation that collects per-iteration
+  // scan outputs and concatenates them at the end, allowing the concatenation-axis dimension
+  // to vary across iterations.
+  bool use_var_len_output_;
 };
 
 template <>
@@ -223,7 +235,7 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
   ScanImpl scan_impl{*ctx_internal, *session_state, *info_, input_directions_, output_directions_,
-                     input_axes_, output_axes_, device_helpers_};
+                     input_axes_, output_axes_, device_helpers_, use_var_len_output_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -240,7 +252,8 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    const gsl::span<const int64_t>& output_directions,
                    const gsl::span<const int64_t>& input_axes,
                    const gsl::span<const int64_t>& output_axes,
-                   const scan::detail::DeviceHelpers& device_helpers)
+                   const scan::detail::DeviceHelpers& device_helpers,
+                   bool use_var_len_output)
     : context_(context),
       session_state_(session_state),
       info_(info),
@@ -249,7 +262,8 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
       input_axes_from_attribute_(input_axes),
       output_axes_from_attribute_(output_axes),
       implicit_inputs_(context_.GetImplicitInputs()),
-      device_helpers_(device_helpers) {
+      device_helpers_(device_helpers),
+      use_var_len_output_(use_var_len_output) {
   inputs_.reserve(info_.num_scan_inputs);
   input_axes_.reserve(info_.num_scan_inputs);
 }
@@ -261,7 +275,11 @@ Status ScanImpl::Initialize() {
   status = SetupInputs();
   ORT_RETURN_IF_ERROR(status);
 
-  status = AllocateOutputTensors();
+  if (use_var_len_output_) {
+    status = AllocateLoopStateOutputs();
+  } else {
+    status = AllocateOutputTensors();
+  }
   ORT_RETURN_IF_ERROR(status);
 
   return Status::OK();
@@ -425,6 +443,10 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
 }
 
 Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
+  if (use_var_len_output_) {
+    return ExecuteVarLen(ffm);
+  }
+
   Status status = Status::OK();
 
   std::vector<LoopStateVariable> loop_state_variables;
@@ -493,6 +515,224 @@ Status ScanImpl::TransposeOutput() {
   }
 
   return status;
+}
+
+Status ScanImpl::AllocateLoopStateOutputs() {
+  Status status = Status::OK();
+  auto& graph_outputs = info_.subgraph.GetOutputs();
+
+  if (graph_outputs.size() != static_cast<size_t>(info_.num_outputs)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
+                           " outputs but Scan expects ", info_.num_outputs);
+  }
+
+  std::unique_ptr<OutputIterator> output_iter;
+
+  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
+    status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
+    ORT_RETURN_IF_ERROR(status);
+    output_iterators_.push_back(std::move(output_iter));
+  }
+
+  return Status::OK();
+}
+
+Status ScanImpl::ExecuteVarLen(const FeedsFetchesManager& ffm) {
+  Status status = Status::OK();
+
+  std::vector<LoopStateVariable> loop_state_variables;
+  status = CreateLoopStateVariables(loop_state_variables);
+  ORT_RETURN_IF_ERROR(status);
+
+  // Setup input OrtValue streams
+  std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
+  scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_inputs) - info_.num_loop_state_variables);
+
+  for (int i = 0, end = info_.num_scan_inputs; i < end; ++i) {
+    const auto& ort_value = inputs_[i];
+
+    if (input_directions_[i] == static_cast<int64_t>(ScanDirection::kForward)) {
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
+    } else {
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).rbegin());
+    }
+  }
+
+  // Iterate sequence, collecting per-iteration scan outputs
+  std::vector<std::vector<OrtValue>> scan_output_per_iteration;
+  status = IterateSequenceVarLen(context_, session_state_, loop_state_variables, scan_input_stream_iterators,
+                                 sequence_len_, info_.num_loop_state_variables, info_.num_inputs, info_.num_outputs,
+                                 implicit_inputs_, scan_output_per_iteration, ffm);
+  ORT_RETURN_IF_ERROR(status);
+
+  // Concatenate per-iteration outputs into final scan outputs (handles transpose and direction)
+  status = ConcatenateScanOutputs(scan_output_per_iteration);
+  ORT_RETURN_IF_ERROR(status);
+
+  return status;
+}
+
+Status ScanImpl::ConcatenateScanOutputs(std::vector<std::vector<OrtValue>>& scan_output_per_iteration) {
+  auto& graph_outputs = info_.subgraph.GetOutputs();
+
+  for (int i = 0; i < info_.num_scan_outputs; ++i) {
+    auto& per_iteration_outputs = scan_output_per_iteration[i];
+    int output_index = i + info_.num_loop_state_variables;
+    int64_t axis = output_axes_from_attribute_[i];
+
+    // Determine scan output direction
+    ScanDirection direction = ScanDirection::kForward;
+    if (static_cast<size_t>(i) < output_directions_.size()) {
+      direction = static_cast<ScanDirection>(output_directions_[i]);
+    }
+
+    if (per_iteration_outputs.empty()) {
+      // Zero iterations: create empty output with appropriate shape
+      auto* graph_output = graph_outputs.at(output_index);
+      auto* graph_output_shape = graph_output->Shape();
+
+      TensorShapeVector output_dims;
+      if (graph_output_shape) {
+        auto tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+        auto dims = tensor_shape.GetDims();
+        output_dims.assign(dims.begin(), dims.end());
+        // Set concat axis (dim 0 before any transpose) to 0
+        if (!output_dims.empty()) {
+          output_dims[0] = 0;
+        }
+        // Replace symbolic dims with 0
+        for (auto& dim : output_dims) {
+          if (dim < 0) dim = 0;
+        }
+      }
+
+      if (output_dims.empty()) {
+        output_dims.push_back(0);
+      }
+
+      // Apply output_axes transpose to the empty shape if needed
+      if (axis != 0 && output_dims.size() > 1) {
+        auto output_rank = static_cast<int64_t>(output_dims.size());
+        if (axis >= -output_rank && axis < output_rank) {
+          int64_t concrete_axis = HandleNegativeAxis(axis, output_rank);
+          InlinedVector<size_t> permutations;
+          TensorShapeVector transposed_dims;
+          CalculateTransposedShapeForOutput(TensorShape(output_dims), concrete_axis, permutations, transposed_dims);
+          ORT_IGNORE_RETURN_VALUE(context_.Output(output_index, TensorShape(transposed_dims)));
+        } else {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Invalid value in scan_output_axes for output ", i,
+                                 " of ", axis, ". Output tensor rank was ", output_rank);
+        }
+      } else {
+        if (axis != 0) {
+          auto output_rank = static_cast<int64_t>(output_dims.size());
+          if (axis < -output_rank || axis >= output_rank) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "Invalid value in scan_output_axes for output ", i,
+                                   " of ", axis, ". Output tensor rank was ", output_rank);
+          }
+        }
+        ORT_IGNORE_RETURN_VALUE(context_.Output(output_index, TensorShape(output_dims)));
+      }
+      continue;
+    }
+
+    // Get shape info from first per-iteration output
+    const auto& first_tensor = per_iteration_outputs.front().Get<Tensor>();
+    const auto& first_shape = first_tensor.Shape();
+    auto rank = static_cast<int64_t>(first_shape.NumDimensions());
+
+    ORT_RETURN_IF(rank == 0,
+                  "Scan output ", i, " has rank 0. Variable-length concatenation requires rank >= 1.");
+
+    // Concatenation always happens along axis 0 of the per-iteration output.
+    // If scan_output_axes specifies a different axis, we transpose afterward.
+    constexpr int64_t concat_axis = 0;
+
+    // Compute total size along concat axis and validate other dimensions match
+    int64_t total_concat_dim = 0;
+    for (size_t iter = 0; iter < per_iteration_outputs.size(); ++iter) {
+      const auto& iter_shape = per_iteration_outputs[iter].Get<Tensor>().Shape();
+
+      if (static_cast<int64_t>(iter_shape.NumDimensions()) != rank) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Scan output ", i, " has inconsistent rank across iterations. ",
+                               "Expected ", rank, " but iteration ", iter, " produced rank ",
+                               iter_shape.NumDimensions());
+      }
+
+      for (int64_t d = 0; d < rank; ++d) {
+        if (d == concat_axis) {
+          total_concat_dim += iter_shape[d];
+        } else if (iter_shape[d] != first_shape[d]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Scan output ", i, " has inconsistent shape in dimension ", d,
+                                 " across iterations. Expected ", first_shape[d],
+                                 " but iteration ", iter, " produced ", iter_shape[d]);
+        }
+      }
+    }
+
+    // Build concatenated shape
+    TensorShapeVector concat_dims(first_shape.GetDims().begin(), first_shape.GetDims().end());
+    concat_dims[concat_axis] = total_concat_dim;
+    TensorShape concat_shape(concat_dims);
+
+    auto num_iters = static_cast<int64_t>(per_iteration_outputs.size());
+
+    // Helper lambda to copy per-iteration outputs into a destination buffer,
+    // respecting the scan output direction.
+    auto copy_iterations_to_buffer = [&](void* dest) {
+      size_t offset = 0;
+      for (int64_t iter = 0; iter < num_iters; ++iter) {
+        int64_t src_iter = (direction == ScanDirection::kForward) ? iter : (num_iters - 1 - iter);
+        const auto& iter_tensor = per_iteration_outputs[src_iter].Get<Tensor>();
+        auto bytes = iter_tensor.SizeInBytes();
+        memcpy(static_cast<uint8_t*>(dest) + offset, iter_tensor.DataRaw(), bytes);
+        offset += bytes;
+      }
+    };
+
+    if (axis == 0) {
+      // No transpose needed: write directly to the final output
+      Tensor* output = context_.Output(output_index, concat_shape);
+      ORT_ENFORCE(output, "Failed to create output tensor for scan output ", i);
+      copy_iterations_to_buffer(output->MutableDataRaw());
+    } else {
+      // Need to concatenate into a temporary buffer, then transpose to the final output
+      AllocatorPtr alloc;
+      ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&alloc));
+
+      auto data_type = first_tensor.DataType();
+      OrtValue temp_output = AllocateTensorInMLValue(data_type, concat_shape, alloc);
+      auto* temp_tensor = temp_output.GetMutable<Tensor>();
+
+      copy_iterations_to_buffer(temp_tensor->MutableDataRaw());
+
+      // Validate and handle negative axis
+      if (axis >= -rank && axis < rank) {
+        axis = HandleNegativeAxis(axis, rank);
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Invalid value in scan_output_axes for output ", i,
+                               " of ", axis, ". Output tensor rank was ", rank);
+      }
+
+      InlinedVector<size_t> permutations;
+      TensorShapeVector transposed_shape;
+      CalculateTransposedShapeForOutput(concat_shape, axis, permutations, transposed_shape);
+
+      Tensor* output = context_.Output(output_index, TensorShape(transposed_shape));
+      ORT_ENFORCE(output, "Failed to create output tensor for scan output ", i);
+
+      ORT_RETURN_IF_ERROR(device_helpers_.transpose_func(permutations, *temp_tensor, *output,
+                                                         context_.GetComputeStream()));
+    }
+  }
+
+  return Status::OK();
 }
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,

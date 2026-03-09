@@ -2928,6 +2928,60 @@ void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Scan)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Scan variant with variable-length output concatenation. "
+          "Identical to ONNX Scan (opset 9), except that per-iteration scan outputs "
+          "are concatenated along the scan output axis instead of being stacked with a "
+          "new sequence dimension. This allows the concatenation-axis dimension to "
+          "differ across iterations.")
+      .Input(
+          0,
+          "initial_state_and_scan_inputs",
+          "Initial values of the N loop state variables followed by M scan_inputs",
+          "V",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "final_state_and_scan_outputs",
+          "Final values of the N loop state variables followed by K scan_outputs",
+          "V",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Attr("body",
+            "The graph to run each iteration.",
+            AttributeProto::GRAPH)
+      .Attr("num_scan_inputs",
+            "An attribute specifying the number of scan_inputs M.",
+            AttributeProto::INT)
+      .Attr("scan_input_directions",
+            "An optional list of M flags. 0 indicates forward, 1 indicates reverse.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+      .Attr("scan_output_directions",
+            "An optional list of K flags. 0 indicates appending, 1 indicates prepending.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+      .Attr("scan_input_axes",
+            "An optional list of M flags for the scan axis of each scan input.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+      .Attr("scan_output_axes",
+            "An optional list of K flags for the scan axis of each scan output.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+      .TypeConstraint(
+          "V",
+          OpSchema::all_tensor_types(),
+          "All Tensor types");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)

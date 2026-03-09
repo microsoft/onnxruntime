@@ -293,6 +293,75 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
   return status;
 }
 
+Status IterateSequenceVarLen(OpKernelContextInternal& context, const SessionState& session_state,
+                             std::vector<LoopStateVariable>& loop_state_variables,
+                             std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
+                             int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
+                             int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
+                             std::vector<std::vector<OrtValue>>& per_iteration_outputs,
+                             const FeedsFetchesManager& ffm) {
+  Status status = Status::OK();
+  int num_scan_outputs = num_variadic_outputs - num_loop_state_variables;
+
+  auto num_implicit_inputs = implicit_inputs.size();
+  auto num_inputs = num_variadic_inputs + num_implicit_inputs;
+
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
+  // No custom allocators needed: subgraph allocates fresh memory for each scan output per iteration.
+  std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
+
+  feeds.resize(num_inputs);
+
+  per_iteration_outputs.clear();
+  per_iteration_outputs.resize(num_scan_outputs);
+
+  // add implicit inputs (constant across iterations)
+  for (size_t i = 0; i < num_implicit_inputs; ++i) {
+    feeds[num_variadic_inputs + i] = *implicit_inputs[i];
+  }
+
+  for (int64_t seq_no = 0; seq_no < seq_length; ++seq_no) {
+    for (int input = 0; input < num_variadic_inputs; ++input) {
+      if (input < num_loop_state_variables) {
+        feeds[input] = loop_state_variables[input].Input();
+      } else {
+        auto& iterator = scan_input_stream_iterators[static_cast<ptrdiff_t>(input) - num_loop_state_variables];
+        feeds[input] = *iterator;
+        ++iterator;
+      }
+    }
+
+    fetches.clear();
+
+    for (int output = 0; output < num_variadic_outputs; ++output) {
+      if (output < num_loop_state_variables) {
+        fetches.push_back(loop_state_variables[output].Output());
+      } else {
+        // Leave empty: subgraph will allocate fresh memory for each scan output
+        fetches.emplace_back();
+      }
+    }
+
+    status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(),
+                                    context.GetComputeStream());
+
+    ORT_RETURN_IF_ERROR(status);
+
+    // Cycle the LoopStateVariable input/output in preparation for the next iteration
+    std::for_each(loop_state_variables.begin(), loop_state_variables.end(), [](LoopStateVariable& v) { v.Next(); });
+
+    // Save per-iteration scan outputs
+    for (int output = num_loop_state_variables; output < num_variadic_outputs; ++output) {
+      int scan_output_idx = output - num_loop_state_variables;
+      per_iteration_outputs[scan_output_idx].push_back(fetches[output]);
+    }
+  }
+
+  return status;
+}
+
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
   OrtValue ort_value;
   Tensor::InitOrtValue(data_type, shape, allocator, ort_value);
