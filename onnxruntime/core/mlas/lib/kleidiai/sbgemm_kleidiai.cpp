@@ -28,7 +28,7 @@ struct KaiTlsBuffersSbgemm {
 };
 static thread_local KaiTlsBuffersSbgemm g_kai_tls_sbgemm;
 
-KaiBF16SBgemmKernel sbgemm_gemm = GetKleidiAISBGemmUKernel();
+const KaiBF16SBgemmKernel& sbgemm_gemm = GetKleidiAISBGemmUKernel();
 
 /*++
 Routine Description:
@@ -388,47 +388,51 @@ Return Value:
             MIdx * m_step * Data[BIdx].ldc * sizeof(float) +
             NIdx * n_step * sizeof(float)
         );
-        // Allocate temporary buffer for raw A*B result (TLS reusable buffer)
-        size_t tile_elems = TileSizeM * TileSizeN;
 
-        // resize the tile to the required size
-        g_kai_tls_sbgemm.output_tile.resize(tile_elems);
+        // Final output tile and bias pointers
+        float* dst_tile = reinterpret_cast<float*>(CTile);
+        const float* bias = Data[BIdx].Bias;
+        const size_t ldc = Data[BIdx].ldc;
 
-        float* temp_tile = g_kai_tls_sbgemm.output_tile.data();
-        std::fill_n(temp_tile, tile_elems, 0.0f);
+        // Select output destination and strides once, then run_matmul exactly once.
+        const bool direct_to_c = (
+            bias == nullptr &&
+            Data[BIdx].ZeroMode &&
+            TileSizeM != 0 &&
+            TileSizeN != 0);
+
+        float* out_tile = nullptr;
+        size_t out_row_stride_bytes = 0;
+
+        if (direct_to_c) {
+            out_tile = dst_tile;
+            out_row_stride_bytes = ldc * sizeof(float);
+        } else {
+            // Compute into a temporary buffer for raw A*B result (TLS reusable buffer)
+            const size_t tile_elems = TileSizeM * TileSizeN;
+            g_kai_tls_sbgemm.output_tile.resize(tile_elems);
+            out_tile = g_kai_tls_sbgemm.output_tile.data();
+            out_row_stride_bytes = TileSizeN * sizeof(float);
+            std::fill_n(out_tile, tile_elems, 0.0f);
+        }
 
         KLEIDIAI_KERNEL_LOG(sbgemm_gemm.name
                             << " M=" << TileSizeM << " N=" << TileSizeN << " K=" << K);
         sbgemm_gemm.ukernel.run_matmul(
-                TileSizeM,
-                TileSizeN,
-                K,
-                ATile, BTile, temp_tile,
-                TileSizeN * sizeof(float), sizeof(float),
-                -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+            TileSizeM,
+            TileSizeN,
+            K,
+            ATile, BTile, out_tile,
+            out_row_stride_bytes, sizeof(float),
+            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
         );
 
-        // Final output tile pointer
-        float* dst_tile = reinterpret_cast<float*>(CTile);
-        const float* bias = Data[BIdx].Bias;
-
-        // quick copy of data in cases where we are not applying bias
-        // with bounds checking on tile sizing to ensure the data fits in the memory block
-        bool can_memcpy = (
-            bias == nullptr &&
-            Data[BIdx].ZeroMode &&
-            Data[BIdx].ldc == TileSizeN &&
-            MIdx * m_step + TileSizeM <= M &&
-            NIdx * n_step + TileSizeN <= N &&
-            TileSizeM != 0 &&
-            TileSizeN != 0);
-
-        if (can_memcpy) {
-            std::memcpy(dst_tile, temp_tile, TileSizeM * TileSizeN * sizeof(float));
-        } else if (Data[BIdx].ZeroMode) {
-            ApplyBias2D(temp_tile, TileSizeM, TileSizeN, bias, dst_tile, Data[BIdx].ldc, NIdx * n_step);
-        } else {
-            AccumulateTile(temp_tile, TileSizeM, TileSizeN, dst_tile, Data[BIdx].ldc);
+        if (!direct_to_c) {
+            if (Data[BIdx].ZeroMode) {
+                ApplyBias2D(out_tile, TileSizeM, TileSizeN, bias, dst_tile, ldc, NIdx * n_step);
+            } else {
+                AccumulateTile(out_tile, TileSizeM, TileSizeN, dst_tile, ldc);
+            }
         }
 
         if (Data[BIdx].OutputProcessor != nullptr) {

@@ -324,6 +324,10 @@ MlasSBGemmPackBSize(
         }
     }
 #endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BIsfp32);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return 0;
@@ -365,6 +369,10 @@ MlasSBGemmConvertPackB(
         return;
     }
 #endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BIsfp32);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
@@ -396,6 +404,9 @@ MlasSBGemmBatch(
         return;
     }
 #endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
     const MLAS_SBGEMM_DISPATCH* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;

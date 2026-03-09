@@ -2005,7 +2005,8 @@ struct MLAS_SBGEMM_DATA_PARAMS {
     const MLAS_SBGEMM_POSTPROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false; /**< matrix A is fp32, needs to be converted to bf16*/
     bool BIsfp32 = false; /**< matrix B is fp32, needs to be converted to bf16*/
-    bool ZeroMode = true; /**< true: C = A*B, false: C += A*B */
+    bool ZeroMode = true; /**< when true: C = A*B + Bias (if Bias != nullptr);
+                               when false: C += A*B and Bias is ignored */
     bool BIsPacked = false;   /**< Whether B is pre-packed */
 };
 
