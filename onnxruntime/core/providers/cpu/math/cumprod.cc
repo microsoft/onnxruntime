@@ -44,7 +44,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                       DataTypeImpl::GetTensorType<int64_t>()}),
+                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     CumProd<float>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -54,7 +54,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<double>())
         .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                       DataTypeImpl::GetTensorType<int64_t>()}),
+                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     CumProd<double>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -64,7 +64,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                       DataTypeImpl::GetTensorType<int64_t>()}),
+                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     CumProd<int32_t>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -74,7 +74,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                       DataTypeImpl::GetTensorType<int64_t>()}),
+                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     CumProd<int64_t>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -84,7 +84,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<uint32_t>())
         .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                       DataTypeImpl::GetTensorType<int64_t>()}),
+                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     CumProd<uint32_t>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -94,7 +94,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<uint64_t>())
         .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                       DataTypeImpl::GetTensorType<int64_t>()}),
+                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     CumProd<uint64_t>);
 
 template <typename T>

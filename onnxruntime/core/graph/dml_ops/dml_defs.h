@@ -11,7 +11,7 @@ namespace dml {
   MS_DML_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define MS_DML_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) \
   MS_DML_OPERATOR_SCHEMA_UNIQ(Counter, name)
-#define MS_DML_OPERATOR_SCHEMA_UNIQ(Counter, name)                                                      \
+#define MS_DML_OPERATOR_SCHEMA_UNIQ(Counter, name)                                                     \
   static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce op_schema_register_once##name##Counter \
       [[maybe_unused]] = ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__)
 
@@ -19,7 +19,7 @@ namespace dml {
   MS_DML_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(__COUNTER__, name, schema_func)
 #define MS_DML_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(Counter, name, schema_func) \
   MS_DML_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)
-#define MS_DML_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)                               \
+#define MS_DML_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)                              \
   static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce op_schema_register_once##name##Counter \
       [[maybe_unused]] = schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 

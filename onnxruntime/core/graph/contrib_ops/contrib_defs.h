@@ -35,7 +35,7 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ(Counter, name)
-#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ(Counter, name)                                                       \
+#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ(Counter, name)                                               \
   static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce op_schema_register_once##name##Counter \
       [[maybe_unused]] = ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__)
 
@@ -43,7 +43,7 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(__COUNTER__, name, schema_func)
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(Counter, name, schema_func) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)
-#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)                                  \
+#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)                        \
   static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce op_schema_register_once##name##Counter \
       [[maybe_unused]] = schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
