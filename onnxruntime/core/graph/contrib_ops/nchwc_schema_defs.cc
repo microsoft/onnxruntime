@@ -158,6 +158,7 @@ void RegisterNchwcSchemas() {
       .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
       .Attr("activation", "", AttributeProto::STRING, OPTIONAL_VALUE)
       .Attr("activation_params", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
+      .Attr("winograd_mode", "Internal metadata for Winograd-eligible convolutions.", AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "X", "", "T")
       .Input(1, "W", "", "T")
       .Input(2, "B", "", "T", OpSchema::Optional)

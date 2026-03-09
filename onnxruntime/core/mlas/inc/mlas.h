@@ -1249,6 +1249,14 @@ MlasReorderFilterOIHWBiBo(
 
 void
 MLASCALL
+MlasReorderFilterOIHWBiBoWinograd3x3(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
 MlasReorderFilterOIHWBo(
     const int64_t* FilterShape,
     const float* S,
@@ -1280,6 +1288,7 @@ MlasNchwcConv(
     const float* Bias,
     float* Output,
     const MLAS_ACTIVATION* Activation,
+    bool UseWinograd,
     bool ZeroMode,
     MLAS_THREADPOOL* ThreadPool,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,

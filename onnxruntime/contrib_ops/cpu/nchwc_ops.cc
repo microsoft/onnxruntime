@@ -156,17 +156,27 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   const auto* B = context->Input<Tensor>(2);
   const auto* Sum = context->Input<Tensor>(3);
 
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
-
   const auto& X_shape = X->Shape();
   const auto& W_shape = W->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
+
+  const bool use_winograd = (winograd_mode_ != 0);
+
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
   ORT_ENFORCE((static_cast<size_t>(X_shape[1]) < nchwc_block_size) || ((X_shape[1] % nchwc_block_size) == 0));
 
   TensorShapeVector kernel_shape;
-  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
+  if (use_winograd) {
+    if (!conv_attrs_.kernel_shape_specified || conv_attrs_.kernel_shape_.size() != 2) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Winograd NCHWc Conv requires an explicit 2D kernel_shape attribute.");
+    }
+    kernel_shape = conv_attrs_.kernel_shape_;
+  } else {
+    ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
+  }
   if (kernel_shape.size() != 2) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported convolution size.");
   }
@@ -221,6 +231,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
       B != nullptr ? B->Data<float>() : nullptr,
       y_data.data(),
       &activation_,
+      use_winograd,
       Sum == nullptr,
       context->GetOperatorThreadPool(),
       &mlas_backend_kernel_selector_config_,

@@ -132,6 +132,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
                   Bias,
                   NchwcOutput,
                   &Activation,
+                  false,
                   true,
                   MlasConv2DTest<Threaded>::threadpool_,
                   nullptr,

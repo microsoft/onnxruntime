@@ -45,6 +45,10 @@ class NchwcConv final : public OpKernel {
  public:
   NchwcConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+    auto status = info.GetAttr<int64_t>("winograd_mode", &winograd_mode_);
+    if (!status.IsOK()) {
+      winograd_mode_ = 0;
+    }
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 #if defined(__aarch64__) && defined(__linux__)
     auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
@@ -58,6 +62,7 @@ class NchwcConv final : public OpKernel {
   ConvAttributes conv_attrs_;
 
   MLAS_ACTIVATION activation_;
+  int64_t winograd_mode_{0};
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
 #if defined(__aarch64__) && defined(__linux__)

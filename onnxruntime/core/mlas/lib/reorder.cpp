@@ -82,6 +82,56 @@ Return Value:
 
 MLAS_FORCEINLINE
 void
+MlasWinogradTransformFilter3x3F2x2(
+    const float* S,
+    float* D
+    )
+/*++
+
+Routine Description:
+
+    This routine transforms a single 3x3 filter using the Winograd F(2x2,3x3)
+    filter transform U = G * g * G'.
+
+Arguments:
+
+    S - Supplies the address of the source 3x3 filter.
+
+    D - Supplies the address of the destination 4x4 transformed filter.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    float T[4][3];
+
+    for (size_t c = 0; c < 3; c++) {
+        const float g0 = S[0 * 3 + c];
+        const float g1 = S[1 * 3 + c];
+        const float g2 = S[2 * 3 + c];
+
+        T[0][c] = g0;
+        T[1][c] = 0.5f * (g0 + g1 + g2);
+        T[2][c] = 0.5f * (g0 - g1 + g2);
+        T[3][c] = g2;
+    }
+
+    for (size_t r = 0; r < 4; r++) {
+        const float t0 = T[r][0];
+        const float t1 = T[r][1];
+        const float t2 = T[r][2];
+
+        D[r * 4 + 0] = t0;
+        D[r * 4 + 1] = 0.5f * (t0 + t1 + t2);
+        D[r * 4 + 2] = 0.5f * (t0 - t1 + t2);
+        D[r * 4 + 3] = t2;
+    }
+}
+
+MLAS_FORCEINLINE
+void
 MlasReorderScatterFloat32x4(
     const float* S,
     float* D,
@@ -846,6 +896,111 @@ Return Value:
                 S_KernelSize += 1;
             }
 
+            S_InputChannels += BlockSize * KernelSize;
+        }
+
+        S += BlockSize * InputStride;
+    }
+}
+
+void
+MLASCALL
+MlasReorderFilterOIHWBiBoWinograd3x3(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    )
+/*++
+
+Routine Description:
+
+    This routine transforms and reorders a filter buffer from OIHW to a
+    Winograd F(2x2,3x3) blocked OIHWBiBo format.
+
+Arguments:
+
+    FilterShape - Supplies the shape of the filter tensor. The kernel shape is
+        expected to be 3x3.
+
+    S - Supplies the address of the source tensor.
+
+    D - Supplies the address of the destination tensor.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    const size_t OutputChannels = size_t(FilterShape[0]);
+    const size_t InputChannels = size_t(FilterShape[1]);
+    const size_t KernelHeight = size_t(FilterShape[2]);
+    const size_t KernelWidth = size_t(FilterShape[3]);
+
+    if (KernelHeight != 3 || KernelWidth != 3) {
+        return;
+    }
+
+    constexpr size_t WinogradKernelHeight = 4;
+    constexpr size_t WinogradKernelWidth = 4;
+    constexpr size_t WinogradKernelSize = WinogradKernelHeight * WinogradKernelWidth;
+
+    const size_t KernelSize = KernelHeight * KernelWidth;
+    const size_t InputStride = InputChannels * KernelSize;
+
+    //
+    // Transform the filter tensor from OIHW to Winograd-blocked OIHWBiBo:
+    //
+    //  OutputChannelBlock[0] = {
+    //      InputChannelBlock[0] = {
+    //          Transform[0][0] = {
+    //              InputChannel[0] = { u[0] u[1] ... u[BlockSize-1] },
+    //              ...
+    //          },
+    //          ...
+    //          Transform[3][3] = {
+    //              ...
+    //          },
+    //      },
+    //      ...
+    //  },
+    //  ...
+    //
+
+    for (size_t o = OutputChannels; o > 0;) {
+
+        const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
+        o -= OutputChannelsThisIteration;
+
+        const float* S_InputChannels = S;
+
+        for (size_t i = InputChannels; i > 0;) {
+
+            const size_t InputChannelsThisIteration = std::min(i, BlockSize);
+            i -= InputChannelsThisIteration;
+
+            float* D_Block = D;
+
+            for (size_t n = 0; n < WinogradKernelSize * BlockSize * BlockSize; n++) {
+                D_Block[n] = 0.0f;
+            }
+
+            for (size_t bi = 0; bi < InputChannelsThisIteration; bi++) {
+                for (size_t bo = 0; bo < OutputChannelsThisIteration; bo++) {
+                    const float* Filter = S_InputChannels + bi * KernelSize + bo * InputStride;
+                    float TransformedFilter[WinogradKernelSize];
+
+                    MlasWinogradTransformFilter3x3F2x2(Filter, TransformedFilter);
+
+                    for (size_t k = 0; k < WinogradKernelSize; k++) {
+                        D_Block[k * BlockSize * BlockSize + bi * BlockSize + bo] = TransformedFilter[k];
+                    }
+                }
+            }
+
+            D += WinogradKernelSize * BlockSize * BlockSize;
             S_InputChannels += BlockSize * KernelSize;
         }
 

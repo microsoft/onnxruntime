@@ -129,6 +129,7 @@ class NchwcTransformerImpl {
   void TransformTransposeToNhwc(Node& node);
   void TransformResize(Node& node);
   void TrackTransposeFromNhwc(Node& node);
+  bool IsWinograd3x3Eligible(const Node& node, const ONNX_NAMESPACE::TensorProto& filter_tensor_proto, int64_t group_count) const;
 
   Graph& graph_;
 
@@ -147,6 +148,7 @@ class NchwcTransformerImpl {
   // multiple nodes can share the NCHWc filter.
   InlinedHashMap<NodeArg*, NodeArg*> filters_OIHWBo_;
   InlinedHashMap<NodeArg*, NodeArg*> filters_OIHWBiBo_;
+  InlinedHashMap<NodeArg*, NodeArg*> filters_OIHWBiBoWinograd3x3_;
 
   // Stores a mapping of NodeArg biases that have already been aligned to the
   // NCHWc block size, so multiple nodes can share the NCHWc biases.
@@ -162,6 +164,44 @@ class NchwcTransformerImpl {
   Node* transpose_from_nhwc_node_{nullptr};
   NodeArg* transpose_from_nhwc_output_arg_{nullptr};
 };
+
+bool NchwcTransformerImpl::IsWinograd3x3Eligible(const Node& node,
+                                                 const ONNX_NAMESPACE::TensorProto& filter_tensor_proto,
+                                                 int64_t group_count) const {
+  if (group_count != 1 || filter_tensor_proto.dims_size() != 4 ||
+      filter_tensor_proto.dims(2) != 3 || filter_tensor_proto.dims(3) != 3) {
+    return false;
+  }
+
+  const auto* dilations_attr = graph_utils::GetNodeAttribute(node, "dilations");
+  if (dilations_attr != nullptr &&
+      (dilations_attr->ints_size() != 2 || dilations_attr->ints(0) != 1 || dilations_attr->ints(1) != 1)) {
+    return false;
+  }
+
+  const auto* strides_attr = graph_utils::GetNodeAttribute(node, "strides");
+  if (strides_attr != nullptr &&
+      (strides_attr->ints_size() != 2 || strides_attr->ints(0) != 1 || strides_attr->ints(1) != 1)) {
+    return false;
+  }
+
+  const auto* auto_pad_attr = graph_utils::GetNodeAttribute(node, "auto_pad");
+  if (auto_pad_attr != nullptr && utils::HasString(*auto_pad_attr)) {
+    const auto& auto_pad = auto_pad_attr->s();
+    if (auto_pad == "SAME_UPPER" || auto_pad == "SAME_LOWER") {
+      return true;
+    }
+
+    if (auto_pad != "NOTSET") {
+      return false;
+    }
+  }
+
+  const auto* pads_attr = graph_utils::GetNodeAttribute(node, "pads");
+  return pads_attr != nullptr && pads_attr->ints_size() == 4 &&
+         pads_attr->ints(0) == 1 && pads_attr->ints(1) == 1 &&
+         pads_attr->ints(2) == 1 && pads_attr->ints(3) == 1;
+}
 
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
   size_t output_edges_count = node.GetOutputEdgesCount();
@@ -350,6 +390,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   bool do_reorder_input = true;
   bool reorder_filter_OIHWBo = false;
+  bool reorder_filter_winograd = false;
   int64_t filter_input_channels = input_channels;
   int64_t nchwc_group_count = group_count;
 
@@ -383,6 +424,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     }
   }
 
+  reorder_filter_winograd = !reorder_filter_OIHWBo && IsWinograd3x3Eligible(node, *conv_W_tensor_proto, group_count);
+
   // Also require that the optional bias tensor be static.
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   if (input_defs.size() >= 3) {
@@ -397,7 +440,9 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   // Check if the filter has already been converted to the target format.
   InlinedHashMap<NodeArg*, NodeArg*>* filters_map;
-  if (reorder_filter_OIHWBo) {
+  if (reorder_filter_winograd) {
+    filters_map = &filters_OIHWBiBoWinograd3x3_;
+  } else if (reorder_filter_OIHWBo) {
     filters_map = &filters_OIHWBo_;
   } else {
     filters_map = &filters_OIHWBiBo_;
@@ -413,13 +458,20 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     const auto conv_W_dims = conv_W.dims();
 
     int64_t reordered_filter_size = nchwc_output_channels * filter_input_channels;
-    for (size_t i = 2; i < 4; i++) {
-      reordered_filter_size *= conv_W_dims[i];
+    if (reorder_filter_winograd) {
+      reordered_filter_size *= 16;
+    } else {
+      for (size_t i = 2; i < 4; i++) {
+        reordered_filter_size *= conv_W_dims[i];
+      }
     }
     InlinedVector<float> reordered_filter(gsl::narrow<size_t>(reordered_filter_size));
 
     // Reorder the weights tensor statically.
-    if (reorder_filter_OIHWBo) {
+    //
+    if (reorder_filter_winograd) {
+      MlasReorderFilterOIHWBiBoWinograd3x3(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
+    } else if (reorder_filter_OIHWBo) {
       MlasReorderFilterOIHWBo(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
     } else {
       MlasReorderFilterOIHWBiBo(conv_W_dims.data(), conv_W.data<float>(), reordered_filter.data());
@@ -434,8 +486,13 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
     nchwc_conv_W_tensor_proto.add_dims(nchwc_output_channels);
     nchwc_conv_W_tensor_proto.add_dims(filter_input_channels);
-    for (size_t i = 2; i < 4; i++) {
-      nchwc_conv_W_tensor_proto.add_dims(conv_W_dims[i]);
+    if (reorder_filter_winograd) {
+      nchwc_conv_W_tensor_proto.add_dims(4);
+      nchwc_conv_W_tensor_proto.add_dims(4);
+    } else {
+      for (size_t i = 2; i < 4; i++) {
+        nchwc_conv_W_tensor_proto.add_dims(conv_W_dims[i]);
+      }
     }
 
     nchwc_conv_W_arg = &graph_utils::AddInitializerWithOrtValue(graph_, nchwc_conv_W_tensor_proto);
@@ -480,6 +537,12 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
+  if (reorder_filter_winograd) {
+    nchwc_node.AddAttribute("winograd_mode", static_cast<int64_t>(1));
+    if (graph_utils::GetNodeAttribute(nchwc_node, "kernel_shape") == nullptr) {
+      nchwc_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    }
+  }
   if (nchwc_group_count != group_count) {
     nchwc_node.AddAttribute("group", nchwc_group_count);
   }
