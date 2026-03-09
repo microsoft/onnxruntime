@@ -881,10 +881,10 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
     // been fused with another activation.
     auto& nchwc_node = nchwc_input->output_node_;
     const bool can_fuse_activation = (node.OpType() == "Relu") ||
-                     (node.OpType() == "Sigmoid") ||
-                     (node.OpType() == "Tanh");
+                                     (node.OpType() == "Sigmoid") ||
+                                     (node.OpType() == "Tanh");
     if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
-      can_fuse_activation &&
+        can_fuse_activation &&
         (nchwc_input->starting_original_uses_ == 1) &&
         (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
       nchwc_node.AddAttribute("activation", node.OpType());
