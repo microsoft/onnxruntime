@@ -459,3 +459,17 @@ static const char* const kOrtEpDynamicOptionsQnnHtpPerformanceMode = "ep.dynamic
 // - "0": Recording of EP graph assignment information is disabled. [DEFAULT]
 // - "1": Recording of EP graph assignment information is enabled.
 static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "session.record_ep_graph_assignment_info";
+
+// An application enables this option to request that EPs create compiled models (i.e., EPContext models) with EPContext
+// nodes that do not store model weights internally. Instead, the weights should be provided by ONNX Runtime as
+// explicit inputs to the EPContext nodes.
+//
+// This option is ignored by an EP if "ep.context_enable" is not set to "1".
+//
+// If the weights are originally stored in an external file, this allows multiple models to share the same
+// external weights file.
+//
+// Option values:
+// - "0": disable. (default)
+// - "1": enable.
+static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";

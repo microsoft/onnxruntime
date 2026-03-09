@@ -262,6 +262,47 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::SignalSemaphore, _In_ OrtExternalResourceImpo
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtInteropAPI::InitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_ const OrtGraphicsInteropConfig* config) {
+  API_IMPL_BEGIN
+  if (ep_device == nullptr || config == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and config must be provided.");
+  }
+
+  auto* factory = ep_device->ep_factory;
+  if (factory == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not have an associated factory.");
+  }
+
+  if (factory->InitGraphicsInterop == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support graphics interop.");
+  }
+
+  return factory->InitGraphicsInterop(ep_device->GetMutableFactory(), ep_device, config);
+
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtInteropAPI::DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device) {
+  API_IMPL_BEGIN
+  if (ep_device == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device must be provided.");
+  }
+
+  auto* factory = ep_device->ep_factory;
+  if (factory == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not have an associated factory.");
+  }
+
+  if (factory->DeinitGraphicsInterop == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support graphics interop.");
+  }
+
+  return factory->DeinitGraphicsInterop(ep_device->GetMutableFactory(), ep_device);
+
+  API_IMPL_END
+}
+
 #else  // defined(ORT_MINIMAL_BUILD)
 
 ORT_API_STATUS_IMPL(OrtInteropAPI::CreateExternalResourceImporterForDevice, _In_ const OrtEpDevice* ep_device,
@@ -356,6 +397,19 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::SignalSemaphore, _In_ OrtExternalResourceImpo
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtInteropAPI::InitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* /*ep_device*/,
+                    _In_ const OrtGraphicsInteropConfig* /*config*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InitGraphicsInteropForEpDevice is not supported in this build");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtInteropAPI::DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* /*ep_device*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "DeinitGraphicsInteropForEpDevice is not supported in this build");
+  API_IMPL_END
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 static constexpr OrtInteropApi ort_interop_api = {
@@ -375,11 +429,16 @@ static constexpr OrtInteropApi ort_interop_api = {
     &OrtInteropAPI::WaitSemaphore,
     &OrtInteropAPI::SignalSemaphore,
     // End of Version 24 - DO NOT MODIFY ABOVE
+    &OrtInteropAPI::InitGraphicsInteropForEpDevice,
+    &OrtInteropAPI::DeinitGraphicsInteropForEpDevice,
+    // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
 // Checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
 static_assert(offsetof(OrtInteropApi, SignalSemaphore) / sizeof(void*) == 10,
               "Size of version 24 Api cannot change");  // initial version in ORT 1.24
+static_assert(offsetof(OrtInteropApi, DeinitGraphicsInteropForEpDevice) / sizeof(void*) == 12,
+              "Graphics interop functions at slots 11 and 12");
 
 ORT_API(const OrtInteropApi*, OrtInteropAPI::GetInteropApi) {
   return &ort_interop_api;

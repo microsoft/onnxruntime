@@ -140,9 +140,6 @@ option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
-option(onnxruntime_USE_ARMNN "Build with ArmNN support" OFF)
-option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu operator for the ArmNN EP" ON)
-option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch Normalization operator for the ArmNN EP" ON)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
@@ -255,6 +252,15 @@ cmake_dependent_option(onnxruntime_ENABLE_DLPACK "Enable dlpack" ON "onnxruntime
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
 option(onnxruntime_FORCE_GENERIC_ALGORITHMS "Disable optimized arch-specific algorithms. Use only for testing and debugging generic algorithms." OFF)
+
+# DX interop feature option
+option(onnxruntime_USE_DX_INTEROP "Build with the DX Interop feature for graphics API synchronization." OFF)
+
+if (onnxruntime_USE_DX_INTEROP)
+  add_compile_definitions(USE_DX_INTEROP=1)
+else()
+  add_compile_definitions(USE_DX_INTEROP=0)
+endif()
 
 option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is compatible with TensorRT EP interface" OFF)
 option(onnxruntime_USE_NV_INTERFACE "Build ONNXRuntime shared lib which is compatible with NV EP interface" OFF)
@@ -737,21 +743,6 @@ if (onnxruntime_USE_CUDA)
     set(onnxruntime_USE_FPA_INTB_GEMM OFF)
   endif()
 
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
-    message( STATUS "Turn off flash attention since CUDA compiler version < 11.6")
-    set(onnxruntime_USE_FLASH_ATTENTION OFF)
-    set(onnxruntime_USE_LEAN_ATTENTION OFF)
-    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
-  elseif(WIN32 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
-    message( STATUS "Flash-Attention unsupported in Windows with CUDA compiler version < 12.0")
-    set(onnxruntime_USE_FLASH_ATTENTION OFF)
-  endif()
-
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
-    message( STATUS "FpA IntB Gemm unsupported for CUDA compiler version < 12.0")
-    set(onnxruntime_USE_FPA_INTB_GEMM OFF)
-  endif()
-
   if (WIN32)
     message( STATUS "Lean Attention unsupported in Windows")
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
@@ -943,10 +934,6 @@ if (onnxruntime_USE_MIGRAPHX_INTERFACE AND (NOT onnxruntime_USE_MIGRAPHX))
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_MIGRAPHX_PROVIDER_INTERFACE=1)
 endif()
 
-if (onnxruntime_USE_ARMNN)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ARMNN=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
-endif()
 if (onnxruntime_USE_COREML)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_COREML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
@@ -1328,37 +1315,6 @@ if (onnxruntime_USE_ACL)
 
 endif()
 
-# ArmNN
-if (onnxruntime_USE_ARMNN)
-  if (NOT onnxruntime_ARMNN_RELU_USE_CPU)
-    add_definitions(-DRELU_ARMNN=1)
-  endif()
-  if (NOT onnxruntime_ARMNN_BN_USE_CPU)
-    add_definitions(-DBN_ARMNN=1)
-  endif()
-
-  if (NOT onnxruntime_USE_ACL AND NOT ${onnxruntime_ACL_LIBS} STREQUAL "")
-    add_library(arm_compute SHARED IMPORTED)
-    set_target_properties(arm_compute PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute.so")
-
-    add_library(arm_compute_graph SHARED IMPORTED)
-    set_target_properties(arm_compute_graph PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ACL_LIBS}/libarm_compute_graph.so")
-  endif()
-
-  if (NOT ${onnxruntime_ARMNN_LIBS} STREQUAL "")
-    add_library(armnn SHARED IMPORTED)
-    set_target_properties(armnn PROPERTIES
-        IMPORTED_NO_SONAME 1
-        IMPORTED_LOCATION "${onnxruntime_ARMNN_LIBS}/libarmnn.so")
-  endif()
-
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn arm_compute arm_compute_graph)
-endif()
-
 if (onnxruntime_USE_DNNL)
   include(dnnl)
   add_compile_definitions(DNNL_OPENMP)
@@ -1487,12 +1443,11 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
 
-  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8)
-    add_definitions("-DENABLE_BF16")
-    message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_BF16 flag")
-    add_definitions("-DENABLE_FP8")
-    message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_FP8 flag")
-  endif()
+  # Note: The minimum required CUDA version is greater than 11.8.
+  add_definitions("-DENABLE_BF16")
+  message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_BF16 flag")
+  add_definitions("-DENABLE_FP8")
+  message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_FP8 flag")
 
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     add_definitions("-DENABLE_FP4")
