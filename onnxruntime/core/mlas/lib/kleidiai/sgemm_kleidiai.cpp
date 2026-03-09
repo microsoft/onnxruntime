@@ -5,8 +5,12 @@
 //
 
 #include <vector>
+#include <algorithm>
 #include <cstring>
 #include <cstddef>
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 
 #include "mlas.h"
 
@@ -31,6 +35,9 @@ static thread_local KaiTlsBuffers g_kai_tls;
 const KaiF32SgemmKernel& sgemm_gemm = GetKleidiAISGemmUKernel();
 const KaiF32SgemvKernel& sgemm_gemv = GetKleidiAISGemvUKernel();
 
+// Avoid vector setup overhead on tiny outputs.
+constexpr size_t kAlphaBetaNeonMinElements = 32;
+
 
 // Helpers for GEMV
 /*++
@@ -54,6 +61,55 @@ static inline void ApplyAlphaBetaStrided(const float* src, size_t num_elements, 
         std::memcpy(dst, src, num_elements * sizeof(float));
         return;
     }
+
+#if defined(__ARM_NEON)
+    // Contiguous-only vectorized path with strict correctness guards.
+    if (dst_stride == 1 && num_elements >= kAlphaBetaNeonMinElements) {
+        size_t i = 0;
+        if (alpha == 1.0f && beta == 0.0f) {
+            for (; i + 4 <= num_elements; i += 4) {
+                vst1q_f32(dst + i, vld1q_f32(src + i));
+            }
+        } else if (alpha == 1.0f) {
+            const float32x4_t vbeta = vdupq_n_f32(beta);
+            for (; i + 4 <= num_elements; i += 4) {
+                const float32x4_t vab = vld1q_f32(src + i);
+                const float32x4_t vc = vld1q_f32(dst + i);
+                vst1q_f32(dst + i, vmlaq_f32(vab, vbeta, vc));
+            }
+        } else if (beta == 0.0f) {
+            const float32x4_t valpha = vdupq_n_f32(alpha);
+            for (; i + 4 <= num_elements; i += 4) {
+                const float32x4_t vab = vld1q_f32(src + i);
+                vst1q_f32(dst + i, vmulq_f32(valpha, vab));
+            }
+        } else {
+            const float32x4_t valpha = vdupq_n_f32(alpha);
+            const float32x4_t vbeta = vdupq_n_f32(beta);
+            for (; i + 4 <= num_elements; i += 4) {
+                const float32x4_t vab = vld1q_f32(src + i);
+                const float32x4_t vc = vld1q_f32(dst + i);
+                vst1q_f32(dst + i, vmlaq_f32(vmulq_f32(valpha, vab), vbeta, vc));
+            }
+        }
+
+        for (; i < num_elements; ++i) {
+            const float ab = src[i];
+            const float c_orig = dst[i];
+            if (alpha == 1.0f && beta == 0.0f) {
+                dst[i] = ab;
+            } else if (alpha == 1.0f) {
+                dst[i] = ab + beta * c_orig;
+            } else if (beta == 0.0f) {
+                dst[i] = alpha * ab;
+            } else {
+                dst[i] = alpha * ab + beta * c_orig;
+            }
+        }
+        return;
+    }
+#endif
+
     for (size_t i = 0; i < num_elements; ++i) {
         const float ab = src[i];
         float& d = dst[i * dst_stride];
@@ -90,10 +146,16 @@ Notes:
 static inline void ApplyAlphaBeta2D(const float* src, size_t rows, size_t cols,
                                     float alpha, float beta,
                                     float* dst, size_t ldc) {
-    if (alpha == 1.0f && beta == 0.0f && ldc == cols && rows != 0 && cols != 0) {
-        std::memcpy(dst, src, rows * cols * sizeof(float));
+    if (rows == 0 || cols == 0) {
         return;
     }
+
+    if (ldc == cols) {
+        // Contiguous destination: flatten so we can hit the contiguous SIMD path.
+        ApplyAlphaBetaStrided(src, rows * cols, alpha, beta, dst, 1, /*allow_memcpy*/ true);
+        return;
+    }
+
     for (size_t i = 0; i < rows; ++i) {
         const float* src_row = src + i * cols;
         float* dst_row = dst + i * ldc;
