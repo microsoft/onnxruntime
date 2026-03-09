@@ -11,6 +11,8 @@
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
+
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
     : OrtEpFactory{},
       ApiPtrs(apis),
@@ -210,10 +212,15 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
   std::string ep_context_enable;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.context_enable", "0", ep_context_enable));
+  std::string weightless_ep_context_nodes_enable;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
+                                                 ep_context_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
+                                                 "0", weightless_ep_context_nodes_enable));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
+  config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
   auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger);
 

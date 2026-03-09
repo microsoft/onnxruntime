@@ -10,7 +10,7 @@ namespace webgpu {
 
 template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(bool enable_int64) {
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
   KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Unsqueeze>(info);
@@ -45,7 +45,7 @@ KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(bool enable_int64) {
 
 template <int SinceVersion>
 KernelCreateInfo CreateUnsqueezeKernelInfo(bool enable_int64) {
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
   KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Unsqueeze>(info);
