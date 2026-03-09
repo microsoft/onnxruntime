@@ -539,18 +539,20 @@ Status TensorProtoWithExternalDataToTensorProto(
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
 /// <summary>
-/// Validates if the external data path is under the model directory.
+/// Validates that the external data path given by `location` is not an absolute path and is under the model directory.
 /// The model directory is derived from model_path.parent_path().
-/// If the model is a symlink, it checks against both the logical model directory
-/// and the real/canonical directory of the model.
-/// If model_path is empty (model loaded from bytes), the function ensures that `location` is not
-/// an absolute path, does not contain ".." components that escape the current working directory, and
-/// resolves symlinks to verify the target stays within the current working directory.
+///
+/// If the model itself is a symlink, this function checks against both the directory containing the symlink
+/// and the real/canonical directory of the model after resolving all symlinks.
+///
+/// The model_path can be empty if the model is loaded from bytes and the application did not explicitly
+/// specify a directory for external data via the session config entry
+/// `kOrtSessionOptionsModelExternalInitializersFileFolderPath`. In this case (empty model_path), the model directory
+/// is set to the current working directory. Thus, `location` must be contained by the current working directory.
 /// </summary>
 /// <param name="model_path">Path to the model file. If empty, the model was loaded from bytes.</param>
 /// <param name="location">Location string retrieved from TensorProto external data</param>
-/// <returns>The function will fail if the resolved full path is not under the logical model directory
-///          nor the real directory of the model path</returns>
+/// <returns>The function will fail if the resolved `location` path is not under the model directory</returns>
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                                 const std::filesystem::path& location);
 

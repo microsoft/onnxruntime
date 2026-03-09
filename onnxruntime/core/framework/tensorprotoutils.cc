@@ -357,34 +357,16 @@ static Status WeaklyCanonicalPath(const std::filesystem::path& path, std::filesy
   return Status::OK();
 }
 
-// Checks whether `child` is under `base` by comparing path components.
-static bool IsUnderDirectory(const std::filesystem::path& base, const std::filesystem::path& child) {
-  auto [base_end, child_it] = std::mismatch(base.begin(), base.end(), child.begin(), child.end());
-  return base_end == base.end();
+// Checks whether `path` has the given path prefix.
+static bool HasPathComponentPrefix(const std::filesystem::path& prefix, const std::filesystem::path& path) {
+  auto [prefix_end, path_it] = std::mismatch(prefix.begin(), prefix.end(), path.begin(), path.end());
+  return prefix_end == prefix.end();
 }
 
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                                 const std::filesystem::path& location) {
   // Reject absolute paths
   ORT_RETURN_IF(location.is_absolute(), "Absolute paths not allowed for external data location");
-
-#if defined(__wasm__)
-  if (model_path.empty()) {
-    // On WASM, filesystem utilities are not expected to always be fully supported.
-    // So, we only do a lexical check: reject ".." components that would escape the working directory.
-    auto norm_location = location.lexically_normal();
-    for (const auto& path_component : norm_location) {
-      if (path_component == ORT_TSTR("..")) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data path: ", location,
-                               " (model loaded from bytes) escapes working directory");
-      }
-    }
-    return Status::OK();
-  }
-
-  // If there's a model_path on WASM, then there may be a virtual filesystem and we fallthrough
-  // to the logic below that uses std::filesystem utilities.
-#endif
 
   // Determine the anchor directory: use model directory if provided, otherwise the current working directory.
   std::filesystem::path anchor_dir = model_path.parent_path();
@@ -401,19 +383,21 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   std::filesystem::path resolved;
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(anchor_canonical / location, resolved));
 
-  if (IsUnderDirectory(anchor_canonical, resolved)) {
+  if (HasPathComponentPrefix(anchor_canonical, resolved)) {
     return Status::OK();
   }
 
-  // Fall back to checking against the canonical model directory.
+  // The model file itself may be a symlink. Therefore, check against the real/canonical directory of the model
+  // after resolving all symlinks.
+  //
   // This supports symlinked models (e.g., Hugging Face Hub local cache) where the canonical
-  // parent of the model file differs from the logical parent directory.
+  // parent of the model file differs from the parent directory of the symlinked model file.
   if (!model_path.empty()) {
     std::filesystem::path real_model_path;
     ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
-    auto real_model_dir = real_model_path.parent_path();
+    auto real_model_dir = real_model_path.parent_path();  // empty if model_path is a bare file (e.g., model.onnx)
 
-    if (!real_model_dir.empty() && IsUnderDirectory(real_model_dir, resolved)) {
+    if (!real_model_dir.empty() && HasPathComponentPrefix(real_model_dir, resolved)) {
       return Status::OK();
     }
 
