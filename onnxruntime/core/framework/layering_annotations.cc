@@ -165,15 +165,19 @@ bool TryParseIndex(const std::string& str, uint32_t& index) {
   return true;
 }
 
+// Sentinel value representing an unknown/unavailable device type.
+// Used when an OrtEpDevice has neither hardware info nor memory info,
+// so we cannot determine the actual device type.
+constexpr OrtDevice::DeviceType kDeviceTypeUnknown = static_cast<OrtDevice::DeviceType>(-1);
+
 // Normalized view of an EP's device properties used by the matching logic.
 // All fields are non-owning references or value types.
 struct EpDeviceView {
   std::string_view ep_name;
-  OrtDevice::DeviceType device_type;  // OrtDevice::CPU, GPU, NPU, FPGA, etc.
+  OrtDevice::DeviceType device_type;  // OrtDevice::CPU, GPU, NPU, FPGA, or kDeviceTypeUnknown
   uint32_t vendor_id;
   OrtDevice::DeviceId device_id;
   std::string_view vendor_string;  // from OrtHardwareDevice::vendor (empty if unavailable)
-  bool has_hardware_info;          // true if hardware device info was available
 };
 
 bool MatchEpDevice(const EpDeviceView& ep,
@@ -214,8 +218,11 @@ bool MatchEpDevice(const EpDeviceView& ep,
     }
     return false;
   }
-  // "accelerator"
+  // "accelerator" (not cpu)
   if (CaseInsensitiveCompare(target_type_str, "accelerator")) {
+    // Match if the EP is not a known CPU provider and its device type
+    // is not definitively CPU. Unknown device type (no HW/mem info)
+    // is treated as a potential accelerator.
     return ep.ep_name != kCpuExecutionProvider && ep.device_type != OrtDevice::CPU;
   }
   // "npu"
@@ -258,10 +265,11 @@ std::optional<std::string> EpLayeringMatcher::Match(gsl::span<const OrtEpDevice*
     if (!ep_device_ptr) continue;
     const OrtEpDevice& ep_device = *ep_device_ptr;
 
-    // Build normalized view from OrtEpDevice
-    // For the OrtEpDevice overload, device type comes from either the hardware device
-    // or the memory info, with hardware device taking priority.
-    OrtDevice::DeviceType device_type = OrtDevice::CPU;  // default
+    // Build normalized view from OrtEpDevice.
+    // Device type comes from either the hardware device or the memory info,
+    // with hardware device taking priority. If neither is available,
+    // device_type is set to kDeviceTypeUnknown.
+    OrtDevice::DeviceType device_type = kDeviceTypeUnknown;
     bool has_hw = ep_device.device != nullptr;
     if (has_hw) {
       // Map OrtHardwareDeviceType to OrtDevice::DeviceType
@@ -272,8 +280,11 @@ std::optional<std::string> EpLayeringMatcher::Match(gsl::span<const OrtEpDevice*
         case OrtHardwareDeviceType_NPU:
           device_type = OrtDevice::NPU;
           break;
-        default:
+        case OrtHardwareDeviceType_CPU:
           device_type = OrtDevice::CPU;
+          break;
+        default:
+          device_type = kDeviceTypeUnknown;
           break;
       }
     } else if (ep_device.device_memory_info) {
@@ -285,8 +296,7 @@ std::optional<std::string> EpLayeringMatcher::Match(gsl::span<const OrtEpDevice*
         device_type,
         has_hw ? ep_device.device->vendor_id : 0u,
         has_hw ? static_cast<OrtDevice::DeviceId>(ep_device.device->device_id) : OrtDevice::DeviceId{},
-        has_hw ? std::string_view(ep_device.device->vendor) : std::string_view{},
-        has_hw};
+        has_hw ? std::string_view(ep_device.device->vendor) : std::string_view{}};
 
     if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
       return std::string(ep_device.ep_name);
@@ -310,8 +320,7 @@ std::optional<std::string> EpLayeringMatcher::Match(const ExecutionProviders& pr
         device.Type(),
         device.Vendor(),
         device.Id(),
-        {},     // no vendor string available from IExecutionProvider
-        true};  // OrtDevice always available
+        {}};  // no vendor string available from IExecutionProvider
 
     if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
       return std::string(ep.Type());
