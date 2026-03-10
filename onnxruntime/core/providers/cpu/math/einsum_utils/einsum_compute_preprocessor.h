@@ -18,7 +18,11 @@
 
 namespace onnxruntime {
 
+#ifdef SHARED_PROVIDER
+struct Tensor;
+#else
 class Tensor;
+#endif
 class TensorShape;
 class Status;
 class IAllocator;
