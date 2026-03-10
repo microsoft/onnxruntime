@@ -305,7 +305,7 @@ TEST(TensorOpTest, TileOverflowRepeats2D) {
   // Second axis: 3 * 6148914691236517206 overflows
   test.AddInput<int64_t>("repeats", {2}, {1, int64_t{6148914691236517206}});
   test.AddOutput<float>("output", {0, 0}, {});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
 // Test overflow detection with large repeat on first axis
