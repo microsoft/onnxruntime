@@ -140,8 +140,10 @@ Arguments:
     ldc   - Leading dimension of C (in elements).
 
 Notes:
-    Uses a memcpy path when alpha==1, beta==0, ldc==cols, and rows/cols are non-zero.
-    Otherwise applies per-row scaling via ApplyAlphaBetaStrided.
+    For contiguous destination tiles (ldc==cols), flattens (rows*cols) and routes
+    through ApplyAlphaBetaStrided to enable contiguous SIMD and memcpy fast paths.
+    For non-contiguous destination tiles, applies per-row scaling via
+    ApplyAlphaBetaStrided.
 --*/
 static inline void ApplyAlphaBeta2D(const float* src, size_t rows, size_t cols,
                                     float alpha, float beta,
@@ -495,14 +497,24 @@ Return Value:
         return true;
     }
 
-    if (Data->alpha == 0.0f || K == 0) {
-        if (BatchSize == 1) {
-            ApplyBetaToC(Data->C, Data->ldc, M, N, Data->beta);
-        } else {
-            // This reduction must be applied to every batch entry.
-            for (size_t batch = 0; batch < BatchSize; ++batch) {
-                ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
-            }
+    if (K == 0) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+        }
+        return true;
+    }
+
+    bool all_alpha_zero = true;
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+        if (Data[batch].alpha != 0.0f) {
+            all_alpha_zero = false;
+            break;
+        }
+    }
+
+    if (all_alpha_zero) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
         }
         return true;
     }
