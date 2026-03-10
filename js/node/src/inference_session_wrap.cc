@@ -60,8 +60,14 @@ InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
 InferenceSessionWrap::~InferenceSessionWrap() {
   // If the ORT singleton has already been destroyed (e.g. during process shutdown when the
   // cleanup hook fires before N-API finalizers run), we must not call into ORT to
-  // release the session — doing so would crash. Intentionally leak in that case.
+  // release owned ORT objects — doing so would crash. Intentionally leak in that case.
   if (!OrtSingletonData::GetOrtObjects()) {
+    for (auto& type_info : inputTypes_) {
+      (void)type_info.release();
+    }
+    for (auto& type_info : outputTypes_) {
+      (void)type_info.release();
+    }
     (void)ioBinding_.release();
     (void)session_.release();
   }
