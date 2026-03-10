@@ -52,9 +52,15 @@ def check_preflight():
         )
         return False
 
-    gh_auth = run_command(["gh", "auth", "status"], silent=True)
-    if not gh_auth:
-        print("Error: GitHub CLI not authenticated. Please run 'gh auth login'.", file=sys.stderr)
+    # gh auth status outputs to stderr, so run_command returns empty stdout even on success.
+    # Use subprocess directly to check the return code.
+    try:
+        auth_result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, check=False)
+        if auth_result.returncode != 0:
+            print("Error: GitHub CLI not authenticated. Please run 'gh auth login'.", file=sys.stderr)
+            return False
+    except FileNotFoundError:
+        print("Error: GitHub CLI (gh) not found.", file=sys.stderr)
         return False
 
     return True

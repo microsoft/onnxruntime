@@ -82,9 +82,9 @@ def escape_markdown_table_cell(text):
     return sanitize_title(text).replace("|", "\\|")
 
 
-def get_existing_pr_numbers(branch):
+def get_existing_pr_numbers(branch, repo=None, log_limit=500):
     """Get the set of PR numbers already present in the target branch."""
-    output = run_command(["git", "log", branch, "--oneline", "-n", "500"], silent=True)
+    output = run_command(["git", "log", branch, "--oneline", "-n", str(log_limit)], silent=True)
     if not output:
         return set()
     pr_numbers = set()
@@ -115,7 +115,10 @@ def get_existing_pr_numbers(branch):
         if is_meta_pr:
             # Query gh to get more details (body/commits) to find squashed sub-PRs
             if pr_num not in pr_cache:
-                gh_out = run_command(["gh", "pr", "view", pr_num, "--json", "title,body,commits"], silent=True)
+                gh_cmd = ["gh", "pr", "view", pr_num, "--json", "title,body,commits"]
+                if repo:
+                    gh_cmd.extend(["--repo", repo])
+                gh_out = run_command(gh_cmd, silent=True)
                 if gh_out:
                     try:
                         pr_cache[pr_num] = json.loads(gh_out)
@@ -145,11 +148,18 @@ def check_missing_dependencies(prs, branch):
     """Check for potential missing dependencies (conflicts)."""
     print("\nChecking for potential missing dependencies (conflicts)...")
 
-    # Collect OIDs being cherry-picked
+    # Collect OIDs being cherry-picked and all their ancestor commits
     cherry_pick_oids = set()
     for pr in prs:
         if pr.get("mergeCommit"):
-            cherry_pick_oids.add(pr["mergeCommit"]["oid"])
+            merge_oid = pr["mergeCommit"]["oid"]
+            cherry_pick_oids.add(merge_oid)
+            # Include ancestor commits of merge commits to avoid false-positive warnings
+            # for PRs that used a regular merge (not squash) strategy
+            ancestor_output = run_command(["git", "log", "--format=%H", merge_oid, "--not", branch], silent=True)
+            if ancestor_output:
+                for ancestor_oid in ancestor_output.strip().splitlines():
+                    cherry_pick_oids.add(ancestor_oid.strip())
 
     conflicting_prs_count = 0
     for pr in prs:
@@ -236,7 +246,7 @@ def main():
     prs.sort(key=lambda x: x["mergedAt"])
 
     # 1.5. Check which PRs are already in the target branch
-    existing_prs = get_existing_pr_numbers(args.branch)
+    existing_prs = get_existing_pr_numbers(args.branch, repo=args.repo)
     if existing_prs:
         print(f"Found {len(existing_prs)} PRs already in branch '{args.branch}'.")
 
