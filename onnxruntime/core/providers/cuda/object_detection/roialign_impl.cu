@@ -111,7 +111,7 @@ __global__ void RoIAlignForward(
     // If the index is out of range, we set the output to 0 for this RoI element.
     if (roi_batch_ind < 0 || roi_batch_ind >= batch_size) {
       top_data[index] = 0;
-      return;
+      continue;
     }
 
     // Do not using rounding; this implementation detail is critical

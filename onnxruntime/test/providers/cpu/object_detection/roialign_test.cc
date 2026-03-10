@@ -868,8 +868,9 @@ TEST(RoiAlignTest, BatchIndicesOutOfRange_CUDA) {
   test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  if (DefaultCudaExecutionProvider()) {
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.push_back(std::move(cuda_ep));
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
@@ -887,8 +888,9 @@ TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
   test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  if (DefaultCudaExecutionProvider()) {
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.push_back(std::move(cuda_ep));
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
