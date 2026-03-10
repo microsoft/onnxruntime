@@ -164,254 +164,159 @@ bool TryParseIndex(const std::string& str, uint32_t& index) {
   index = narrow<uint32_t>(val);
   return true;
 }
+
+// Normalized view of an EP's device properties used by the matching logic.
+// All fields are non-owning references or value types.
+struct EpDeviceView {
+  std::string_view ep_name;
+  OrtDevice::DeviceType device_type;  // OrtDevice::CPU, GPU, NPU, FPGA, etc.
+  uint32_t vendor_id;
+  OrtDevice::DeviceId device_id;
+  std::string_view vendor_string;  // from OrtHardwareDevice::vendor (empty if unavailable)
+  bool has_hardware_info;          // true if hardware device info was available
+};
+
+bool MatchEpDevice(const EpDeviceView& ep,
+                   std::string_view target_type_str,
+                   std::string_view target_specifier,
+                   std::string_view target_full) {
+  // "cpu"
+  if (CaseInsensitiveCompare(target_type_str, "cpu")) {
+    return ep.ep_name == kCpuExecutionProvider ||
+           ep.device_type == OrtDevice::CPU;
+  }
+  // "gpu"
+  if (CaseInsensitiveCompare(target_type_str, "gpu")) {
+    if (target_specifier.empty()) {
+      if (ep.device_type == OrtDevice::GPU) return true;
+      // Heuristic fallback for common GPU EPs if hardware info is missing
+      return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kDmlExecutionProvider;
+    }
+    // "gpu:<vendor>" or "gpu:<index>"
+    if (ep.device_type == OrtDevice::GPU) {
+      uint32_t index = std::numeric_limits<uint32_t>::max();
+      if (TryParseIndex(std::string(target_specifier), index)) {
+        return ep.device_id == static_cast<OrtDevice::DeviceId>(index);
+      }
+      // gpu:<vendor>
+      if (!ep.vendor_string.empty() && CaseInsensitiveCompare(ep.vendor_string, target_specifier)) {
+        return true;
+      }
+      if (CaseInsensitiveCompare(target_specifier, "nvidia") &&
+          ep.vendor_id == OrtDevice::VendorIds::NVIDIA) return true;
+      if (CaseInsensitiveCompare(target_specifier, "amd") &&
+          ep.vendor_id == OrtDevice::VendorIds::AMD) return true;
+      if (CaseInsensitiveCompare(target_specifier, "intel") &&
+          ep.vendor_id == OrtDevice::VendorIds::INTEL) return true;
+      // Heuristic: gpu:nvidia -> CUDA
+      if (CaseInsensitiveCompare(target_specifier, "nvidia") &&
+          ep.ep_name == kCudaExecutionProvider) return true;
+    }
+    return false;
+  }
+  // "accelerator"
+  if (CaseInsensitiveCompare(target_type_str, "accelerator")) {
+    return ep.ep_name != kCpuExecutionProvider && ep.device_type != OrtDevice::CPU;
+  }
+  // "npu"
+  if (CaseInsensitiveCompare(target_type_str, "npu")) {
+    if (ep.device_type == OrtDevice::NPU) return true;
+    return ep.ep_name == kQnnExecutionProvider || ep.ep_name == kVitisAIExecutionProvider;
+  }
+  // "fpga"
+  if (CaseInsensitiveCompare(target_type_str, "fpga")) {
+    return ep.device_type == OrtDevice::FPGA;
+  }
+  // "cuda"
+  if (CaseInsensitiveCompare(target_type_str, "cuda")) {
+    return ep.ep_name == kCudaExecutionProvider;
+  }
+  // "dml"
+  if (CaseInsensitiveCompare(target_type_str, "dml")) {
+    return ep.ep_name == kDmlExecutionProvider;
+  }
+  // Fallback: exact EP name match
+  return ep.ep_name == target_full;
+}
+
+void ParseDeviceTarget(const std::string& target_full,
+                       std::string& target_type_str,
+                       std::string& target_specifier) {
+  const auto colon_pos = target_full.find(':');
+  target_type_str = (colon_pos == std::string::npos) ? target_full : target_full.substr(0, colon_pos);
+  target_specifier = (colon_pos != std::string::npos) ? target_full.substr(colon_pos + 1) : std::string();
+}
+
 }  // namespace
 
 std::optional<std::string> EpLayeringMatcher::Match(gsl::span<const OrtEpDevice* const> ep_devices,
                                                     const LayerAnnotation& rule) {
-  const std::string& target_full = rule.device;
-  const auto colon_pos = target_full.find(':');
-  const std::string target_type_str = (colon_pos == std::string::npos) ? target_full : target_full.substr(0, colon_pos);
-  // vendor or index or uuid, if present
-  std::string target_specifier;
-  if (colon_pos != std::string::npos) {
-    target_specifier = target_full.substr(colon_pos + 1);
-  }
+  std::string target_type_str, target_specifier;
+  ParseDeviceTarget(rule.device, target_type_str, target_specifier);
 
   for (const auto* ep_device_ptr : ep_devices) {
-    if (!ep_device_ptr) {
-      continue;
-    }
+    if (!ep_device_ptr) continue;
     const OrtEpDevice& ep_device = *ep_device_ptr;
 
-    bool matched = false;
-
-    // Helper to check device type from MemInfo if Hardware device logic fails/is absent
-    auto check_mem_device_type = [&](OrtDevice::DeviceType type) -> bool {
-      if (ep_device.device_memory_info) {
-        return ep_device.device_memory_info->device.Type() == type;
+    // Build normalized view from OrtEpDevice
+    // For the OrtEpDevice overload, device type comes from either the hardware device
+    // or the memory info, with hardware device taking priority.
+    OrtDevice::DeviceType device_type = OrtDevice::CPU;  // default
+    bool has_hw = ep_device.device != nullptr;
+    if (has_hw) {
+      // Map OrtHardwareDeviceType to OrtDevice::DeviceType
+      switch (ep_device.device->type) {
+        case OrtHardwareDeviceType_GPU:
+          device_type = OrtDevice::GPU;
+          break;
+        case OrtHardwareDeviceType_NPU:
+          device_type = OrtDevice::NPU;
+          break;
+        default:
+          device_type = OrtDevice::CPU;
+          break;
       }
-      return false;
-    };
-
-    // 1. Exact Name / Alias match
-    // "cpu"
-    if (CaseInsensitiveCompare(target_type_str, "cpu")) {
-      if (ep_device.ep_name == kCpuExecutionProvider) {
-        matched = true;
-      } else if (ep_device.device && ep_device.device->type == OrtHardwareDeviceType_CPU) {
-        matched = true;
-      } else if (check_mem_device_type(OrtDevice::CPU)) {
-        matched = true;
-      }
-    }  // "gpu"
-    else if (CaseInsensitiveCompare(target_type_str, "gpu")) {
-      // If simple "gpu"
-      if (target_specifier.empty()) {
-        if (ep_device.device && ep_device.device->type == OrtHardwareDeviceType_GPU) {
-          matched = true;
-        } else if (check_mem_device_type(OrtDevice::GPU)) {
-          matched = true;
-        }  // Heuristic fallback for common GPU EPs if hardware info is missing. Should we also check for TRT here?
-        else if (ep_device.ep_name == kCudaExecutionProvider || ep_device.ep_name == kDmlExecutionProvider) {
-          matched = true;
-        }
-      } else {
-        // "gpu:<vendor>" or "gpu:<index>"
-        if (ep_device.device && ep_device.device->type == OrtHardwareDeviceType_GPU) {
-          uint32_t index = std::numeric_limits<uint32_t>::max();
-          if (TryParseIndex(target_specifier, index)) {
-            // gpu:<index>
-            if (ep_device.device->device_id == index) {
-              matched = true;
-            }
-          } else {
-            // gpu:<vendor>
-            if (CaseInsensitiveCompare(ep_device.device->vendor, target_specifier)) {
-              matched = true;
-            }
-            // Check against vendor ID
-            else if (CaseInsensitiveCompare(target_specifier, "nvidia") &&
-                     ep_device.device->vendor_id == OrtDevice::VendorIds::NVIDIA) {
-              matched = true;
-            } else if (CaseInsensitiveCompare(target_specifier, "amd") &&
-                       ep_device.device->vendor_id == OrtDevice::VendorIds::AMD) {
-              matched = true;
-            } else if (CaseInsensitiveCompare(target_specifier, "intel") &&
-                       ep_device.device->vendor_id == OrtDevice::VendorIds::INTEL) {
-              matched = true;
-            }
-            // Special shortcuts heuristics: gpu:nvidia -> CUDA
-            else if (CaseInsensitiveCompare(target_specifier, "nvidia") &&
-                     ep_device.ep_name == kCudaExecutionProvider) {
-              matched = true;
-            }
-          }
-        }
-      }
-    }
-    // "accelerator" (not cpu)
-    else if (CaseInsensitiveCompare(target_type_str, "accelerator")) {
-      if (ep_device.ep_name != kCpuExecutionProvider) {
-        // If we don't have HW info, assuming non-CPU EP is an accelerator.
-        // If we do have HW info, check it's not CPU.
-        const bool is_cpu_hw = (ep_device.device && ep_device.device->type == OrtHardwareDeviceType_CPU);
-        const bool is_cpu_mem = check_mem_device_type(OrtDevice::CPU);
-
-        if (!is_cpu_hw && !is_cpu_mem) {
-          matched = true;
-        }
-      }
-    }  // "npu"
-    else if (CaseInsensitiveCompare(target_type_str, "npu")) {
-      if (ep_device.device && ep_device.device->type == OrtHardwareDeviceType_NPU) {
-        matched = true;
-      } else if (ep_device.ep_name == kQnnExecutionProvider || ep_device.ep_name == kVitisAIExecutionProvider) {
-        // Heuristic for known NPU providers if HW device info is missing
-        // XXX: These can run on CPU as well, need to see if there any check that is missing.
-        matched = true;
-      }
-    }
-    // "fpga"
-    else if (CaseInsensitiveCompare(target_type_str, "fpga")) {
-      // No OrtHardwareDeviceType_FPGA currently, rely on OrtDevice::FPGA
-      if (check_mem_device_type(OrtDevice::FPGA)) {
-        matched = true;
-      }
-    }
-    // "cuda"
-    else if (CaseInsensitiveCompare(target_type_str, "cuda")) {
-      if (ep_device.ep_name == kCudaExecutionProvider) {
-        matched = true;
-      }
-    }
-    // "dml"
-    else if (CaseInsensitiveCompare(target_type_str, "dml")) {
-      if (ep_device.ep_name == kDmlExecutionProvider) {
-        matched = true;
-      }
-    }
-    // Fallback: Exact EP name string match (e.g. "MyCustomEP")
-    else if (ep_device.ep_name == target_full) {
-      matched = true;
+    } else if (ep_device.device_memory_info) {
+      device_type = ep_device.device_memory_info->device.Type();
     }
 
-    if (matched) {
-      return ep_device.ep_name;
+    EpDeviceView view{
+        ep_device.ep_name,
+        device_type,
+        has_hw ? ep_device.device->vendor_id : 0u,
+        has_hw ? static_cast<OrtDevice::DeviceId>(ep_device.device->device_id) : OrtDevice::DeviceId{},
+        has_hw ? std::string_view(ep_device.device->vendor) : std::string_view{},
+        has_hw};
+
+    if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
+      return std::string(ep_device.ep_name);
     }
   }
-
   return std::nullopt;
 }
 
-std::optional<std::string> EpLayeringMatcher::Match(const ExecutionProviders& providers, const LayerAnnotation& rule) {
-  const std::string& target_full = rule.device;
-  const auto colon_pos = target_full.find(':');
-  const std::string target_type_str = (colon_pos == std::string::npos) ? target_full : target_full.substr(0, colon_pos);
-  std::string target_specifier;
-  if (colon_pos != std::string::npos) {
-    target_specifier = target_full.substr(colon_pos + 1);
-  }
+std::optional<std::string> EpLayeringMatcher::Match(const ExecutionProviders& providers,
+                                                    const LayerAnnotation& rule) {
+  std::string target_type_str, target_specifier;
+  ParseDeviceTarget(rule.device, target_type_str, target_specifier);
 
   for (const auto& ep_shared_ptr : providers) {
-    if (!ep_shared_ptr) {
-      continue;
-    }
+    if (!ep_shared_ptr) continue;
     const IExecutionProvider& ep = *ep_shared_ptr;
-    const std::string& ep_name = ep.Type();
     const OrtDevice& device = ep.GetDevice();
 
-    bool matched = false;
+    EpDeviceView view{
+        ep.Type(),
+        device.Type(),
+        device.Vendor(),
+        device.Id(),
+        {},     // no vendor string available from IExecutionProvider
+        true};  // OrtDevice always available
 
-    // 1. Exact Name / Alias match
-    // "cpu"
-    if (CaseInsensitiveCompare(target_type_str, "cpu")) {
-      if (ep_name == kCpuExecutionProvider) {
-        matched = true;
-      } else if (device.Type() == OrtDevice::CPU) {
-        matched = true;
-      }
-    }  // "gpu"
-    else if (CaseInsensitiveCompare(target_type_str, "gpu")) {
-      // If simple "gpu"
-      if (target_specifier.empty()) {
-        if (device.Type() == OrtDevice::GPU) {
-          matched = true;
-        }  // Heuristics, XXX: Should we also check for TRT here?
-        else if (ep_name == kCudaExecutionProvider || ep_name == kDmlExecutionProvider) {
-          matched = true;
-        }
-      } else {
-        // "gpu:<vendor>" or "gpu:<index>"
-        if (device.Type() == OrtDevice::GPU) {
-          uint32_t index = std::numeric_limits<uint32_t>::max();
-          if (TryParseIndex(target_specifier, index)) {
-            // gpu:<index>
-            if (device.Id() == static_cast<OrtDevice::DeviceId>(index)) {
-              matched = true;
-            }
-          } else {
-            // gpu:<vendor> checking against Vendor ID
-            if (CaseInsensitiveCompare(target_specifier, "nvidia") &&
-                device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
-              matched = true;
-            } else if (CaseInsensitiveCompare(target_specifier, "amd") &&
-                       device.Vendor() == OrtDevice::VendorIds::AMD) {
-              matched = true;
-            } else if (CaseInsensitiveCompare(target_specifier, "intel") &&
-                       device.Vendor() == OrtDevice::VendorIds::INTEL) {
-              matched = true;
-            }
-            // Special shortcuts heuristics: gpu:nvidia -> CUDA
-            else if (CaseInsensitiveCompare(target_specifier, "nvidia") && ep_name == kCudaExecutionProvider) {
-              matched = true;
-            }
-          }
-        }
-      }
-    }
-    // "accelerator" (not cpu)
-    else if (CaseInsensitiveCompare(target_type_str, "accelerator")) {
-      if (ep_name != kCpuExecutionProvider) {
-        if (device.Type() != OrtDevice::CPU) {
-          matched = true;
-        }
-      }
-    }  // "npu"
-    else if (CaseInsensitiveCompare(target_type_str, "npu")) {
-      if (device.Type() == OrtDevice::NPU) {
-        matched = true;
-      } else if (ep_name == kQnnExecutionProvider || ep_name == kVitisAIExecutionProvider) {
-        matched = true;
-      }
-    }
-    // "fpga"
-    else if (CaseInsensitiveCompare(target_type_str, "fpga")) {
-      if (device.Type() == OrtDevice::FPGA) {
-        matched = true;
-      }
-    }
-    // "cuda"
-    else if (CaseInsensitiveCompare(target_type_str, "cuda")) {
-      if (ep_name == kCudaExecutionProvider) {
-        matched = true;
-      }
-    }
-    // "dml"
-    else if (CaseInsensitiveCompare(target_type_str, "dml")) {
-      if (ep_name == kDmlExecutionProvider) {
-        matched = true;
-      }
-    }
-    // Fallback: Exact EP name string match (e.g. "MyCustomEP")
-    else if (ep_name == target_full) {
-      matched = true;
-    }
-
-    if (matched) {
-      return ep_name;
+    if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
+      return std::string(ep.Type());
     }
   }
-
   return std::nullopt;
 }
 
@@ -688,6 +593,7 @@ void LayeringIndex::MakeNodeUnassigned(const Graph& graph, NodeIndex node_id) {
     }
   }
 }
+
 }  // namespace onnxruntime
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
