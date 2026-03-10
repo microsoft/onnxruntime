@@ -14,6 +14,7 @@
 #include "gtest/gtest.h"
 
 #include "test/util/include/asserts.h"
+#include "test/util/include/test_environment.h"
 
 namespace onnxruntime {
 namespace test {
