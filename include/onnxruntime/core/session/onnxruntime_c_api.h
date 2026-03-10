@@ -7305,6 +7305,25 @@ struct OrtApi {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
+
+  /** \brief Get the device type of the execution provider to which the subgraph was assigned.
+   *
+   * Returns the default device type of the execution provider that claimed this subgraph.
+   * This is the device type the EP registered with (e.g., CPU, GPU, or NPU).
+   *
+   * \note For execution providers that internally manage multiple device types (e.g., OpenVINO in
+   *       HETERO/MULTI/AUTO mode), this returns the EP's default registered device type, which may
+   *       not reflect the specific device used for this particular subgraph at runtime.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
+   * \param[out] out Output parameter set to the device type of the execution provider.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetDeviceType, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Out_ OrtHardwareDeviceType* out);
 };
 
 /*

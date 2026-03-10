@@ -758,6 +758,13 @@ inline std::string EpAssignedSubgraphImpl<T>::GetEpName() const {
 }
 
 template <typename T>
+inline OrtHardwareDeviceType EpAssignedSubgraphImpl<T>::GetDeviceType() const {
+  OrtHardwareDeviceType device_type;
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetDeviceType(this->p_, &device_type));
+  return device_type;
+}
+
+template <typename T>
 inline std::vector<ConstEpAssignedNode> EpAssignedSubgraphImpl<T>::GetNodes() const {
   size_t num_ep_nodes = 0;
   const OrtEpAssignedNode* const* ep_node_ptrs = nullptr;

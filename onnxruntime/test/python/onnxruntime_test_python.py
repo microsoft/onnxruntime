@@ -2008,6 +2008,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(len(ep_subgraphs), 3)
         for ep_subgraph in ep_subgraphs:
             self.assertEqual(ep_subgraph.ep_name, "CPUExecutionProvider")
+            self.assertEqual(ep_subgraph.device_type, "CPU")
             self.assertEqual(len(ep_subgraph.get_nodes()), 1)
 
         # Serialize each node to an identifier (concatenates domain, operator type, and node name)

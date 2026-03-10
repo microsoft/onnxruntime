@@ -1080,6 +1080,40 @@ ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAss
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetDeviceType, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Out_ OrtHardwareDeviceType* out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetDeviceType requires a valid (non-null) `out` output parameter "
+                                 "into which to store the device type.");
+  }
+
+  switch (ep_subgraph->device_type) {
+    case OrtDevice::GPU:
+    case OrtDevice::DML:  // DML is a GPU-class backend (GPU + Microsoft vendor)
+      *out = OrtHardwareDeviceType_GPU;
+      break;
+    case OrtDevice::NPU:
+      *out = OrtHardwareDeviceType_NPU;
+      break;
+    default:
+      // OrtDevice::FPGA and future types map to CPU since
+      // OrtHardwareDeviceType only defines CPU, GPU, and NPU.
+      *out = OrtHardwareDeviceType_CPU;
+      break;
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 struct OrtIoBinding {
   std::unique_ptr<::onnxruntime::IOBinding> binding_;
   explicit OrtIoBinding(std::unique_ptr<::onnxruntime::IOBinding>&& binding) : binding_(std::move(binding)) {}
@@ -4807,6 +4841,7 @@ static constexpr OrtApi ort_api_1_to_25 = {
 
     &OrtApis::RunOptionsEnableProfiling,
     &OrtApis::RunOptionsDisableProfiling,
+    &OrtApis::EpAssignedSubgraph_GetDeviceType,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

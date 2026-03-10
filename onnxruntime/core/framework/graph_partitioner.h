@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/ortdevice.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
@@ -24,7 +25,8 @@ struct ModelGenOptions;
 // an execution provider. Can be used to collect partitioning information.
 using OnPartitionAssignmentFunction = std::function<void(const Graph& graph,
                                                          const ComputeCapability& assigned_subgraph,
-                                                         const std::string& assigned_ep_type)>;
+                                                         const std::string& assigned_ep_type,
+                                                         OrtDevice assigned_ep_device)>;
 
 class GraphPartitioner {
  public:
