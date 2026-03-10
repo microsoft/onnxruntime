@@ -14,6 +14,7 @@
 #include <cuda_bf16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cu_inc/cub.cuh"
 
 namespace onnxruntime {
 namespace cuda {

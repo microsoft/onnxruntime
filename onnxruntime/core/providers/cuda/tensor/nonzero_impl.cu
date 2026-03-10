@@ -5,7 +5,6 @@
 #include <mutex>
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include <cub/cub.cuh>
 
 namespace onnxruntime {
 namespace cuda {

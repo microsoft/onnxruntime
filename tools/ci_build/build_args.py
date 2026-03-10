@@ -751,22 +751,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     vitis_group = parser.add_argument_group("Vitis-AI Execution Provider (Xilinx)")
     vitis_group.add_argument("--use_vitisai", action="store_true", help="Enable Vitis-AI EP.")
 
-    # --- ArmNN ---
-    armnn_group = parser.add_argument_group("ArmNN Execution Provider")
-    armnn_group.add_argument("--use_armnn", action="store_true", help="Enable ArmNN EP.")
-    armnn_group.add_argument("--armnn_relu", action="store_true", help="Use ArmNN Relu implementation.")
-    armnn_group.add_argument("--armnn_bn", action="store_true", help="Use ArmNN BatchNormalization implementation.")
-    armnn_group.add_argument("--armnn_home", help="Path to ArmNN home directory.")
-    armnn_group.add_argument("--armnn_libs", help="Path to ArmNN libraries directory.")
-
     # --- ACL (Arm Compute Library) ---
     acl_group = parser.add_argument_group("ACL Execution Provider")
     acl_group.add_argument("--use_acl", action="store_true", help="Enable ACL EP (ARM architectures).")
     acl_group.add_argument("--acl_home", help="Path to ACL home directory.")
     acl_group.add_argument("--acl_libs", help="Path to ACL libraries directory.")
-    acl_group.add_argument(
-        "--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL/ArmNN)."
-    )
+    acl_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL).")
 
     # --- Qualcomm QMX Library ---
     qmx_group = parser.add_argument_group("QMX kernel library")
@@ -831,6 +821,14 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- Azure ---
     azure_group = parser.add_argument_group("Azure Execution Provider")
     azure_group.add_argument("--use_azure", action="store_true", help="Enable Azure EP.")
+
+    # --- DX Interop Feature ---
+    dx_interop_group = parser.add_argument_group("DirectX Interop Feature")
+    dx_interop_group.add_argument(
+        "--enable_dx_interop",
+        action="store_true",
+        help="Enable DirectX Interop feature for graphics API synchronization.",
+    )
 
 
 def add_other_feature_args(parser: argparse.ArgumentParser) -> None:

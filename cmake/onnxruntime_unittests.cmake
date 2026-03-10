@@ -673,10 +673,6 @@ if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
 
-if(onnxruntime_USE_ARMNN)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
-endif()
-
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
@@ -687,7 +683,6 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
@@ -696,7 +691,7 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
 endif()
-if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
 
@@ -757,7 +752,7 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
