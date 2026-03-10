@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include "core/common/status_code_to_hresult.h"
-
 #ifdef ORT_NO_EXCEPTIONS
 #define ORT_CATCH_RETURN
 #else
@@ -12,7 +9,7 @@
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_CATCH_GENERIC ORT_CATCH(...)
+#define ORT_CATCH_GENERIC ORT_CATCH(...) 
 #else
 #define ORT_CATCH_GENERIC catch(...)
 #endif
@@ -71,7 +68,7 @@
 #ifdef ORT_NO_EXCEPTIONS
 #define ORT_THROW_LAST_ERROR_IF(condition) ORT_ENFORCE(!(condition))
 #else
-#define ORT_THROW_LAST_ERROR_IF(condition) THROW_LAST_ERROR_IF(condition)
+#define ORT_THROW_LAST_ERROR_IF(condition) THROW_LAST_ERROR_IF(condition) 
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
