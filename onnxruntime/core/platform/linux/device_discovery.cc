@@ -9,11 +9,13 @@
 #include <optional>
 #include <regex>
 #include <string_view>
+#include <system_error>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
+#include "core/platform/linux/wsl_device_discovery.h"
 
 namespace fs = std::filesystem;
 
@@ -127,8 +129,7 @@ Status GetPciBusId(const std::filesystem::path& sysfs_path, std::optional<std::s
   if (std::regex_match(pci_bus_id_filename.string(), pci_bus_id_regex)) {
     pci_bus_id = pci_bus_id_filename.string();
   } else {
-    pci_bus_id = {};
-    LOGS_DEFAULT(WARNING) << MakeString("Skipping pci_bus_id for PCI path at \"",
+    pci_bus_id = {};    LOGS_DEFAULT(WARNING) << MakeString("Skipping pci_bus_id for PCI path at \"",
                                         pci_bus_id_path.string(),
                                         "\" because filename \"", pci_bus_id_filename, "\" dit not match expected pattern of ",
                                         regex_pattern);
@@ -187,6 +188,8 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
     ORT_RETURN_IF_ERROR(GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device));
     gpu_devices.emplace_back(std::move(gpu_device));
   }
+
+  ORT_RETURN_IF_ERROR(DetectGpuIfWsl(gpu_devices));
 
   gpu_devices_out = std::move(gpu_devices);
   return Status::OK();
