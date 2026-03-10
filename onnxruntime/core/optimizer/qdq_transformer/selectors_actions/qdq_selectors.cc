@@ -582,7 +582,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  // DQ weight/zero points types are int4/uint4, scales/output types are float or float16
+  // DQ weight/zero points types are 2/4/8-bit int, scales/output types are float or float16
   const auto* weight_arg = dq_nodes[0]->InputDefs()[0];
   const auto* scale_arg = dq_nodes[0]->InputDefs()[1];
   const auto* zero_point_arg = dq_nodes[0]->InputDefs().size() == 3 ? dq_nodes[0]->InputDefs()[2] : nullptr;

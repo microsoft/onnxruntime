@@ -582,6 +582,98 @@ void RunDQMatMulConverted_8bit(const std::vector<int64_t>& input1_shape,
                     add_session_options_fn);
 }
 
+// 2-bit DQ -> MatMul conversion to MatMulNBits(bits=2)
+//  Input1
+//    |      DQ(int2/uint2)
+//     \    /
+//     MatMul
+//       |      DQ(int2/uint2)
+//        \    /
+//        MatMul
+//          |
+//        output
+template <typename T, bool use_zp>
+typename std::enable_if<std::is_same_v<T, Int2x4> || std::is_same_v<T, UInt2x4>, void>::type
+RunDQMatMulConverted_2bit(const std::vector<int64_t>& input1_shape,
+                          const std::vector<int64_t>& weight1_shape,
+                          const std::vector<int64_t>& weight2_shape,
+                          const int64_t axis,
+                          const int64_t block_size,
+                          int64_t accuracy_level) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    NodeAttributes attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), attrs);
+    auto scale1_shape = std::vector<int64_t>{weight1_shape};
+    auto scale2_shape = std::vector<int64_t>{weight2_shape};
+    scale1_shape[axis] = (scale1_shape[axis] + block_size - 1) / block_size;
+    scale2_shape[axis] = (scale2_shape[axis] + block_size - 1) / block_size;
+
+    auto* weight1_arg = builder.MakeInitializer(weight1_shape,
+                                                T(T::min_val, T::min_val, T::min_val, T::min_val),
+                                                T(T::max_val, T::max_val, T::max_val, T::max_val));
+    auto* weight2_arg = builder.MakeInitializer(weight2_shape,
+                                                T(T::min_val, T::min_val, T::min_val, T::min_val),
+                                                T(T::max_val, T::max_val, T::max_val, T::max_val));
+    auto* dq1_output = builder.MakeIntermediate();
+    auto* dq2_output = builder.MakeIntermediate();
+    auto* matmul1_output = builder.MakeIntermediate();
+
+    auto* scales1_arg = builder.MakeInitializer(scale1_shape, 8.0f, 12.0f);
+    auto* scales2_arg = builder.MakeInitializer(scale2_shape, 8.0f, 12.0f);
+    if constexpr (use_zp) {
+      auto* zp1_arg = builder.MakeInitializer(scale1_shape, T(0, 0, 0, 0), T(1, 1, 1, 1));
+      auto* zp2_arg = builder.MakeInitializer(scale2_shape, T(0, 0, 0, 0), T(1, 1, 1, 1));
+      builder.AddNode("DequantizeLinear", {weight1_arg, scales1_arg, zp1_arg}, {dq1_output}, "", &attrs);
+      builder.AddNode("DequantizeLinear", {weight2_arg, scales2_arg, zp2_arg}, {dq2_output}, "", &attrs);
+    } else {
+      builder.AddNode("DequantizeLinear", {weight1_arg, scales1_arg}, {dq1_output}, "", &attrs);
+      builder.AddNode("DequantizeLinear", {weight2_arg, scales2_arg}, {dq2_output}, "", &attrs);
+    }
+
+    builder.AddNode("MatMul", {input_arg, dq1_output}, {matmul1_output});
+    builder.AddNode("MatMul", {matmul1_output, dq2_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    EXPECT_EQ(op_to_count["MatMul"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 2);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn{};
+  if (accuracy_level >= 0) {
+    add_session_options_fn = [accuracy_level](SessionOptions& sess_opts) {
+      std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                            std::to_string(accuracy_level).c_str());
+    };
+  }
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    25 /*opset_version*/,
+                    1e-4 /*per_sample_tolerance*/,
+                    1e-4 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits_2bit) {
+  // 2-bit int2/uint2 DQ weights should be fused to MatMulNBits(bits=2)
+  RunDQMatMulConverted_2bit<Int2x4, true>({12, 32}, {32, 16}, {16, 12}, 0, 16, 0);
+  RunDQMatMulConverted_2bit<Int2x4, false>({12, 32}, {32, 16}, {16, 12}, 0, 16, 0);
+  RunDQMatMulConverted_2bit<UInt2x4, true>({12, 32}, {32, 16}, {16, 12}, 0, 16, 0);
+  RunDQMatMulConverted_2bit<UInt2x4, false>({12, 32}, {32, 16}, {16, 12}, 0, 16, 0);
+}
+
 TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits_8bit) {
   // 8-bit int8/uint8 DQ weights should be fused to MatMulNBits(bits=8)
   RunDQMatMulConverted_8bit<int8_t, true>({12, 32}, {32, 16}, {16, 12}, 0, 16, 0);

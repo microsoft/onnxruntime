@@ -297,7 +297,7 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
                                 int64_t qdq_matmulnbits_accuracy_level,
                                 concurrency::ThreadPool* intra_op_thread_pool) {
   // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
-  // DQ's weight is int4/uint4. DQ's scale is float/float16.
+  // DQ's weight is 2/4/8-bit int (int2/uint2, int4/uint4, int8/uint8). DQ's scale is float/float16.
   // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
   const std::string action_name{"DQMatMulToMatMulNBits"};
 
