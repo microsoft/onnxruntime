@@ -70,12 +70,14 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
   const int half_rotary_embedding_dim = rotary_embedding_dim / 2;
   int position_id = 0;
   if (position_ids_format == 0) {
-    int64_t pos = position_ids[0] + static_cast<int64_t>(s);
-    if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
+    // Validate base without overflow: base must be in [0, max_sequence_length - sequence_length].
+    int64_t base_pos = position_ids[0];
+    int64_t max_valid_base = static_cast<int64_t>(max_sequence_length) - static_cast<int64_t>(sequence_length);
+    if (base_pos < 0 || base_pos > max_valid_base) {
       output_data[i] = use_smem ? smem[i] : input_data[i];
       return;
     }
-    position_id = static_cast<int>(pos);
+    position_id = static_cast<int>(base_pos) + s;
   } else if (position_ids_format == 1) {
     int64_t pos = position_ids[b * sequence_length + s];
     if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {

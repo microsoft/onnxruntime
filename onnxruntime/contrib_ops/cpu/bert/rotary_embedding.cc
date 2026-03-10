@@ -61,9 +61,11 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
 
   // Validate position_ids values are within cos/sin cache bounds
   if (position_ids_format == 0) {
-    // Format 0: single offset, effective positions are [position_ids[0], position_ids[0] + sequence_length - 1]
+    // Format 0: single offset, effective positions are [base_pos, base_pos + sequence_length - 1].
+    // Check without overflow: base_pos must be in [0, max_sequence_length - sequence_length].
     int64_t base_pos = position_ids[0];
-    if (base_pos < 0 || base_pos + sequence_length - 1 >= static_cast<int64_t>(max_sequence_length)) {
+    int64_t max_valid_base = static_cast<int64_t>(max_sequence_length) - static_cast<int64_t>(sequence_length);
+    if (base_pos < 0 || base_pos > max_valid_base) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "position_ids base value ", base_pos,
                              " with sequence_length ", sequence_length,
