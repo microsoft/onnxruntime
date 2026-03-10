@@ -28,7 +28,6 @@ jobs:
       BuildArch: x64
       BuildConfig: $(BuildConfig)
       MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
-      WithCache: true
       Today: $(Today)
 
   - task: NodeTool@0

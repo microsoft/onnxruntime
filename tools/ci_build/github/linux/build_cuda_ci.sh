@@ -38,7 +38,7 @@ fi
 
 if [ -x "$(command -v ccache)" ]; then
     ccache -s;
-    #BUILD_ARGS+=("--use_cache")
+    BUILD_ARGS+=("--use_cache")
 fi
 if [ -f /opt/python/cp312-cp312/bin/python3 ]; then
     PATH=/opt/python/cp312-cp312/bin:$PATH python tools/ci_build/build.py "${BUILD_ARGS[@]}"

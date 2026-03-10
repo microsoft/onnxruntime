@@ -2,9 +2,9 @@ parameters:
 - name: WithCache
   displayName: Build with Cache
   type: boolean
-  default: false
+  default: true
 
-# if WithCahe is false, the following parameters are not used.
+# if `WithCache` is false, the following parameters are not used.
 - name: Today
   type: string
   default: ""
