@@ -49,7 +49,7 @@ std::filesystem::path ResolveInternalTestPath(const std::filesystem::path& path)
   }
 
   static const std::filesystem::path kSourceTestRoot =
-      std::filesystem::path{ORT_TSTR_ON_MACRO(__FILE__)}.parent_path().parent_path().parent_path();
+      std::filesystem::path{ORT_TSTR_ON_MACRO(__FILE__)}.parent_path().parent_path();
   return kSourceTestRoot / path;
 }
 

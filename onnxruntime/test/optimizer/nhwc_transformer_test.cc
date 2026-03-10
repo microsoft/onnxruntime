@@ -224,7 +224,7 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
                     TransformerLevel::Level3);
 }
 
-TEST(NhwcTransformerTests, ConvDepthwiseFloat) {
+TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwc) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
     auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);

@@ -199,10 +199,10 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const Tensor* W = context->Input<Tensor>(1);
   const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
   const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last_));
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[channels_last_ ? 3 : 1];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last_));
 
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
