@@ -20,9 +20,25 @@ constexpr bool Is16BitIntType(int32_t data_type) {
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
 }
 
+constexpr bool Is2BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT2) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT2);
+}
+
 constexpr bool Is4BitIntType(int32_t data_type) {
   return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4) ||
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4);
+}
+
+constexpr bool Is8BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8);
+}
+
+// Returns true if the data type is a sub-byte or byte quantized integer type
+// suitable for MatMulNBits fusion (2, 4, or 8 bit).
+constexpr bool IsNBitsIntType(int32_t data_type) {
+  return Is2BitIntType(data_type) || Is4BitIntType(data_type) || Is8BitIntType(data_type);
 }
 
 // adjust for an optional input/output that has an entry but does not exist
@@ -577,7 +593,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  if (!Is4BitIntType(dt_weight)) {
+  if (!IsNBitsIntType(dt_weight)) {
     return false;
   }
 
@@ -625,6 +641,133 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
   }
 
   return true;
+}
+
+std::optional<NodesToOptimizeIndices>
+DQCastMatMulToMatMulNBitsSelector::Select(const GraphViewer& graph_viewer, const Node& node) const {
+  // Check EP compatibility
+  const std::string_view node_ep = node.GetExecutionProviderType();
+  if (!compatible_providers_.empty() &&
+      std::find(compatible_providers_.begin(), compatible_providers_.end(), node_ep) == compatible_providers_.end()) {
+    return std::nullopt;
+  }
+
+  const auto& graph = graph_viewer.GetGraph();
+
+  // node must be MatMul
+  if (node.OpType() != "MatMul") {
+    return std::nullopt;
+  }
+
+  if (node.InputDefs().size() < 2) {
+    return std::nullopt;
+  }
+
+  // Check input B: must be Cast(fp16->fp32)
+  const Node* cast_b = graph_viewer.GetProducerNode(node.InputDefs()[1]->Name());
+  if (!cast_b || cast_b->OpType() != "Cast") {
+    return std::nullopt;
+  }
+
+  const auto& cast_b_attrs = cast_b->GetAttributes();
+  auto to_iter = cast_b_attrs.find("to");
+  if (to_iter == cast_b_attrs.end() ||
+      to_iter->second.i() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+    return std::nullopt;
+  }
+
+  // Cast B input must be fp16
+  if (!cast_b->InputDefs()[0]->TypeAsProto() ||
+      cast_b->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() !=
+          ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+    return std::nullopt;
+  }
+
+  // Cast B must have exactly 1 output edge (to MatMul) and not be a graph output
+  if (!optimizer_utils::CheckOutputEdges(graph, *cast_b, 1)) {
+    return std::nullopt;
+  }
+
+  // Cast B's input must come from a DQ node
+  const Node* dq_node = graph_viewer.GetProducerNode(cast_b->InputDefs()[0]->Name());
+  if (!dq_node || dq_node->OpType() != QDQ::DQOpName) {
+    return std::nullopt;
+  }
+
+  // DQ must have exactly 1 output edge (to Cast B) and not be a graph output
+  if (!optimizer_utils::CheckOutputEdges(graph, *dq_node, 1)) {
+    return std::nullopt;
+  }
+
+  // Validate DQ the same way as DQMatMulNodeGroupSelector::Check:
+  // DQ weight type must be 2/4/8-bit int
+  const auto* weight_arg = dq_node->InputDefs()[0];
+  const auto* scale_arg = dq_node->InputDefs()[1];
+  const auto* zero_point_arg = dq_node->InputDefs().size() == 3 ? dq_node->InputDefs()[2] : nullptr;
+  int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_scales = scale_arg->TypeAsProto()->tensor_type().elem_type();
+
+  // DQ output type is fp16 (validated by Cast B input check above)
+  // DQ scales must be float or float16
+  if (dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
+      dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+    return std::nullopt;
+  }
+
+  if (!IsNBitsIntType(dt_weight)) {
+    return std::nullopt;
+  }
+
+  // DQ is blockwise quantized along axis 0
+  const auto& dq_attrs = dq_node->GetAttributes();
+  if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
+    return std::nullopt;
+  }
+
+  const auto a_iter = dq_attrs.find("block_size");
+  if (a_iter == dq_attrs.end()) {
+    return std::nullopt;
+  }
+
+  auto block_size = a_iter->second.i();
+  if (block_size < 16 || ((block_size - 1) & block_size)) {
+    return std::nullopt;
+  }
+
+  // weight, scale and zero points must be constants
+  const auto* weight_tensor_proto = graph.GetConstantInitializer(weight_arg->Name(), true);
+  const auto* scale_tensor_proto = graph.GetConstantInitializer(scale_arg->Name(), true);
+  const auto* zp_tensor_proto = zero_point_arg ? graph.GetConstantInitializer(zero_point_arg->Name(), true) : nullptr;
+
+  if (!weight_tensor_proto || !scale_tensor_proto) {
+    return std::nullopt;
+  }
+
+  if (zero_point_arg && !zp_tensor_proto) {
+    return std::nullopt;
+  }
+
+  // weight, scale and zero points must have rank 2
+  if (weight_tensor_proto->dims_size() != 2 || scale_tensor_proto->dims_size() != 2 ||
+      (zp_tensor_proto && zp_tensor_proto->dims_size() != 2)) {
+    return std::nullopt;
+  }
+
+  // check weight, scale and zero points shapes
+  if ((weight_tensor_proto->dims()[0] + block_size - 1) / block_size != scale_tensor_proto->dims()[0] ||
+      weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
+      (zp_tensor_proto && (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
+                           zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
+    return std::nullopt;
+  }
+
+  // Build selection
+  NodesToOptimizeIndicesBuilder builder;
+  builder.input_nodes.push_back(dq_node->Index());
+  builder.input_nodes.push_back(cast_b->Index());
+  builder.target_node = node.Index();
+
+  return builder.Build();
 }
 
 bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,

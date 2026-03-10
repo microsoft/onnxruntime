@@ -316,6 +316,25 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
 #endif
+
+  // DQ -> Cast(fp16->fp32) -> MatMul pattern.
+  // Handles FP16 models where Cast nodes are inserted between DQ and MatMul.
+  const std::string cast_action_name{"DQCastMatMulToMatMulNBits"};
+
+  std::unique_ptr<Action> cast_action =
+      std::make_unique<QDQ::DQCastMatMulToMatMulNBitsAction>(qdq_matmulnbits_accuracy_level,
+                                                             intra_op_thread_pool);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<NodeSelector> cast_selector =
+      std::make_unique<QDQ::DQCastMatMulToMatMulNBitsSelector>(providers);
+  qdq_selector_action_registry.RegisterSelectorAndAction(cast_action_name,
+                                                         {{"MatMul", {}}},
+                                                         std::move(cast_selector),
+                                                         std::move(cast_action));
+#else
+  qdq_selector_action_registry.RegisterAction(cast_action_name, std::move(cast_action));
+#endif
 }
 
 void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
