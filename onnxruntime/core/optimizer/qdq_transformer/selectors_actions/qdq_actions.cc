@@ -416,39 +416,32 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   auto transpose = [&](auto* scale_data, auto* scale_dst_data) {
     using ScaleType = std::remove_pointer_t<decltype(scale_data)>;
     bool is_signed = IsDQWeightSigned(dt_weight);
-    auto call = [&]<int qbits, bool signed_quant>() {
-      MlasQDQTransposeBlockwiseQuantized<ScaleType, qbits, signed_quant>(
-          weight_src.DataAsByteSpan().data(),
-          scale_data,
-          zp_src ? zp_src->DataAsByteSpan().data() : nullptr,
-          weight_dst.MutableData<uint8_t>(),
-          scale_dst_data,
-          zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr,
-          true,
-          static_cast<int>(K),
-          static_cast<int>(N),
-          static_cast<int>(block_size),
-          intra_op_thread_pool_);
-    };
+    const uint8_t* src_w = weight_src.DataAsByteSpan().data();
+    const uint8_t* src_zp = zp_src ? zp_src->DataAsByteSpan().data() : nullptr;
+    uint8_t* dst_w = weight_dst.MutableData<uint8_t>();
+    uint8_t* dst_zp = zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr;
+    int K_int = static_cast<int>(K);
+    int N_int = static_cast<int>(N);
+    int bs_int = static_cast<int>(block_size);
 
     // Dispatch based on bits and signedness. Template parameters must be compile-time constants.
     if (bits == 2) {
       if (is_signed) {
-        call.template operator()<2, true>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       } else {
-        call.template operator()<2, false>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       }
     } else if (bits == 4) {
       if (is_signed) {
-        call.template operator()<4, true>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       } else {
-        call.template operator()<4, false>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       }
     } else {
       if (is_signed) {
-        call.template operator()<8, true>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       } else {
-        call.template operator()<8, false>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       }
     }
   };
@@ -558,38 +551,31 @@ Status DQCastMatMulToMatMulNBitsAction::Run(Graph& graph, const NodesToOptimize&
   auto transpose = [&](auto* scale_data, auto* scale_dst_data) {
     using ScaleType = std::remove_pointer_t<decltype(scale_data)>;
     bool is_signed = IsDQWeightSigned(dt_weight);
-    auto call = [&]<int qbits, bool signed_quant>() {
-      MlasQDQTransposeBlockwiseQuantized<ScaleType, qbits, signed_quant>(
-          weight_src.DataAsByteSpan().data(),
-          scale_data,
-          zp_src ? zp_src->DataAsByteSpan().data() : nullptr,
-          weight_dst.MutableData<uint8_t>(),
-          scale_dst_data,
-          zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr,
-          true,
-          static_cast<int>(K),
-          static_cast<int>(N),
-          static_cast<int>(block_size),
-          intra_op_thread_pool_);
-    };
+    const uint8_t* src_w = weight_src.DataAsByteSpan().data();
+    const uint8_t* src_zp = zp_src ? zp_src->DataAsByteSpan().data() : nullptr;
+    uint8_t* dst_w = weight_dst.MutableData<uint8_t>();
+    uint8_t* dst_zp = zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr;
+    int K_int = static_cast<int>(K);
+    int N_int = static_cast<int>(N);
+    int bs_int = static_cast<int>(block_size);
 
     if (bits == 2) {
       if (is_signed) {
-        call.template operator()<2, true>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       } else {
-        call.template operator()<2, false>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       }
     } else if (bits == 4) {
       if (is_signed) {
-        call.template operator()<4, true>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       } else {
-        call.template operator()<4, false>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       }
     } else {
       if (is_signed) {
-        call.template operator()<8, true>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       } else {
-        call.template operator()<8, false>();
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
       }
     }
   };
