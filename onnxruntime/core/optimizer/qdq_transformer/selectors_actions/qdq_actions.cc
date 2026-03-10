@@ -41,6 +41,126 @@ bool IsDQWeightSigned(int32_t dt_weight) {
          dt_weight == TensorProto::INT4 ||
          dt_weight == TensorProto::INT8;
 }
+
+// Holds transposed weight/scale/zp tensors and their TensorProtos for MatMulNBits.
+// Used by both DQMatMulToMatMulNBitsAction and DQCastMatMulToMatMulNBitsAction.
+struct TransposedQuantizedTensors {
+  Tensor weight;
+  Tensor scale;
+  std::optional<Tensor> zero_point;
+
+  ONNX_NAMESPACE::TensorProto weight_proto;
+  ONNX_NAMESPACE::TensorProto scale_proto;
+  std::optional<ONNX_NAMESPACE::TensorProto> zero_point_proto;
+};
+
+// Transpose DQ weight/scale/zp tensors from column-wise layout to MatMulNBits layout via MLAS.
+// default_zp_name_prefix: prefix for auto-generated zero-point name when unsigned type has no explicit zp.
+Status TransposeDQWeightsForMatMulNBits(
+    Graph& graph,
+    const Node& dq_node,
+    const std::string& default_zp_name_prefix,
+    concurrency::ThreadPool* intra_op_thread_pool,
+    TransposedQuantizedTensors& result) {
+  const auto* weight_arg = dq_node.InputDefs()[0];
+  const auto* scale_arg = dq_node.InputDefs()[1];
+  const auto* zp_arg = dq_node.InputDefs().size() > 2 ? dq_node.InputDefs()[2] : nullptr;
+  const auto& attrs = dq_node.GetAttributes();
+
+  const ONNX_NAMESPACE::TensorProto* weight_tensor_proto = nullptr;
+  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(weight_arg->Name(), weight_tensor_proto),
+                    "Missing required weight: ", weight_arg->Name(), " for node: ", dq_node.Name());
+  const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
+  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(scale_arg->Name(), scale_tensor_proto),
+                    "Missing required scale: ", scale_arg->Name(), " for node: ", dq_node.Name());
+  const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
+  if (zp_arg) {
+    graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto);
+  }
+
+  auto K = weight_arg->Shape()->dim(0).dim_value();
+  auto N = weight_arg->Shape()->dim(1).dim_value();
+  auto block_size = attrs.at("block_size").i();
+  int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
+  auto bits = DQWeightBits(dt_weight);
+  auto quant_num = (K + block_size - 1) / block_size;
+  auto blob_bytes = (block_size * bits + 7) / 8;
+
+  Initializer weight_src(graph, *weight_tensor_proto, graph.ModelPath());
+  Initializer scale_src(graph, *scale_tensor_proto, graph.ModelPath());
+  auto uint8_type = DataTypeImpl::TensorTypeFromONNXEnum(ONNX_NAMESPACE::TensorProto_DataType_UINT8)->GetElementType();
+  auto scale_type = DataTypeImpl::TensorTypeFromONNXEnum(scale_src.data_type())->GetElementType();
+
+  std::optional<Initializer> zp_src;
+  auto cpu_allocator = CPUAllocator::DefaultInstance();
+
+  auto weight_dst_name = graph.GenerateNodeArgName(weight_arg->Name() + "_T");
+  result.weight = Tensor(uint8_type, TensorShape{N, quant_num, blob_bytes}, cpu_allocator);
+
+  auto scale_dst_name = graph.GenerateNodeArgName(scale_arg->Name() + "_T");
+  auto scale_size = (TensorShape{N, quant_num}).Size();
+  result.scale = Tensor(scale_type, TensorShape{scale_size}, cpu_allocator);
+
+  std::string zp_dst_name;
+  auto zp_size = (TensorShape{N, (quant_num * bits + 7) / 8}).Size();
+
+  if (zp_tensor_proto) {
+    zp_src.emplace(graph, *zp_tensor_proto, graph.ModelPath());
+    zp_dst_name = graph.GenerateNodeArgName(zp_arg->Name() + "_T");
+    result.zero_point = Tensor(uint8_type, TensorShape{zp_size}, cpu_allocator);
+  } else if (!IsDQWeightSigned(dt_weight)) {
+    zp_dst_name = graph.GenerateNodeArgName(default_zp_name_prefix + "_zero_point_T");
+    result.zero_point = Tensor(uint8_type, TensorShape{zp_size}, cpu_allocator);
+    memset(result.zero_point->MutableDataRaw(), 0, result.zero_point->SizeInBytes());
+  }
+
+  // Dispatch MLAS transpose based on scale type, bits, and signedness.
+  auto transpose = [&](auto* scale_data, auto* scale_dst_data) {
+    using ScaleType = std::remove_pointer_t<decltype(scale_data)>;
+    bool is_signed = IsDQWeightSigned(dt_weight);
+    const uint8_t* src_w = weight_src.DataAsByteSpan().data();
+    const uint8_t* src_zp = zp_src ? zp_src->DataAsByteSpan().data() : nullptr;
+    uint8_t* dst_w = result.weight.MutableData<uint8_t>();
+    uint8_t* dst_zp = result.zero_point ? result.zero_point->MutableData<uint8_t>() : nullptr;
+    int K_int = static_cast<int>(K);
+    int N_int = static_cast<int>(N);
+    int bs_int = static_cast<int>(block_size);
+
+    if (bits == 2) {
+      if (is_signed) {
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool);
+      } else {
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool);
+      }
+    } else if (bits == 4) {
+      if (is_signed) {
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool);
+      } else {
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool);
+      }
+    } else {
+      if (is_signed) {
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool);
+      } else {
+        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool);
+      }
+    }
+  };
+
+  if (scale_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    transpose(scale_src.data<float>(), result.scale.MutableData<float>());
+  } else {
+    transpose(scale_src.data<MLFloat16>(), result.scale.MutableData<MLFloat16>());
+  }
+
+  result.weight_proto = utils::TensorToTensorProto(result.weight, weight_dst_name, true);
+  result.scale_proto = utils::TensorToTensorProto(result.scale, scale_dst_name, true);
+  if (result.zero_point) {
+    result.zero_point_proto.emplace(utils::TensorToTensorProto(*result.zero_point, zp_dst_name, true));
+  }
+
+  return Status::OK();
+}
 }  // namespace
 
 namespace {
@@ -346,129 +466,20 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                                                    const NodesToOptimize& selected_nodes,
                                                    Node& replacement_node) const {
   const auto* dq_node = selected_nodes.Input(0);
-  const auto* weight_arg = dq_node->InputDefs()[0];
-  const auto* scale_arg = dq_node->InputDefs()[1];
-  const auto* zp_arg = dq_node->InputDefs().size() > 2 ? dq_node->InputDefs()[2] : nullptr;
-  const auto& attrs = dq_node->GetAttributes();
 
-  const ONNX_NAMESPACE::TensorProto* weight_tensor_proto = nullptr;
-  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(weight_arg->Name(), weight_tensor_proto),
-                    "Missing required weight: ", weight_arg->Name(), " for node: ", dq_node->Name());
-
-  const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
-  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(scale_arg->Name(), scale_tensor_proto),
-                    "Missing required scale: ", scale_arg->Name(), " for node: ", dq_node->Name());
-  const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
-  if (zp_arg) {
-    // zero point is optional, one can have a NodeArg for a missing optional
-    // if the name is an empty string, and the below would not return ptr to a proto.
-    graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto);
-  }
-
-  auto K = weight_arg->Shape()->dim(0).dim_value();
-  auto N = weight_arg->Shape()->dim(1).dim_value();
-  auto block_size = attrs.at("block_size").i();
-  int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
-  auto bits = DQWeightBits(dt_weight);
-  auto quant_num = (K + block_size - 1) / block_size;
-  auto blob_bytes = (block_size * bits + 7) / 8;
-
-  // Unfortunately iterating the source data is complicated, the data maybe in
-  // external file, a raw buffer, or a repeated field depending on the data
-  // type.  UnpackTensor() already contains some of these logic and is closest
-  // to what we need. But it does not handle external data.
-  Initializer weight_src(graph, *weight_tensor_proto, graph.ModelPath());
-  Initializer scale_src(graph, *scale_tensor_proto, graph.ModelPath());
-  auto uint8_type = DataTypeImpl::TensorTypeFromONNXEnum(ONNX_NAMESPACE::TensorProto_DataType_UINT8)->GetElementType();
-  auto scale_type = DataTypeImpl::TensorTypeFromONNXEnum(scale_src.data_type())->GetElementType();
-
-  std::optional<Initializer> zp_src;
-  auto cpu_allocator = CPUAllocator::DefaultInstance();
-  auto weight_dst_name = graph.GenerateNodeArgName(weight_arg->Name() + "_T");
-  auto weight_dst = Tensor(uint8_type,
-                           TensorShape{N, quant_num, blob_bytes},
-                           cpu_allocator);
-  auto scale_dst_name = graph.GenerateNodeArgName(scale_arg->Name() + "_T");
-  auto scale_size = (TensorShape{N, quant_num}).Size();
-  auto scale_dst = Tensor(scale_type,
-                          TensorShape{scale_size},
-                          cpu_allocator);
-  std::string zp_dst_name;
-  std::optional<Tensor> zp_dst;
-  auto zp_size = (TensorShape{N, (quant_num * bits + 7) / 8}).Size();  // packed zp bytes per column
-
-  if (zp_tensor_proto) {
-    zp_src.emplace(graph, *zp_tensor_proto, graph.ModelPath());
-    zp_dst_name = graph.GenerateNodeArgName(zp_arg->Name() + "_T");
-    zp_dst = Tensor(uint8_type,
-                    TensorShape{zp_size},
-                    cpu_allocator);
-  } else if (!IsDQWeightSigned(dt_weight)) {
-    // Unsigned quant types without explicit zero points need a default zero-point buffer of 0.
-    zp_dst_name = graph.GenerateNodeArgName("fused_DQ_MatMul_zero_point_T");
-    zp_dst = Tensor(uint8_type,
-                    TensorShape{zp_size},
-                    cpu_allocator);
-    memset(zp_dst->MutableDataRaw(), 0, zp_dst->SizeInBytes());
-  }
-
-  // Helper lambda to dispatch the MLAS transpose for a given scale type.
-  auto transpose = [&](auto* scale_data, auto* scale_dst_data) {
-    using ScaleType = std::remove_pointer_t<decltype(scale_data)>;
-    bool is_signed = IsDQWeightSigned(dt_weight);
-    const uint8_t* src_w = weight_src.DataAsByteSpan().data();
-    const uint8_t* src_zp = zp_src ? zp_src->DataAsByteSpan().data() : nullptr;
-    uint8_t* dst_w = weight_dst.MutableData<uint8_t>();
-    uint8_t* dst_zp = zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr;
-    int K_int = static_cast<int>(K);
-    int N_int = static_cast<int>(N);
-    int bs_int = static_cast<int>(block_size);
-
-    // Dispatch based on bits and signedness. Template parameters must be compile-time constants.
-    if (bits == 2) {
-      if (is_signed) {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      } else {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      }
-    } else if (bits == 4) {
-      if (is_signed) {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      } else {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      }
-    } else {
-      if (is_signed) {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      } else {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      }
-    }
-  };
-
-  if (scale_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    transpose(scale_src.data<float>(), scale_dst.MutableData<float>());
-  } else {
-    transpose(scale_src.data<MLFloat16>(), scale_dst.MutableData<MLFloat16>());
-  }
-
-  auto weight_T_tp = utils::TensorToTensorProto(weight_dst, weight_dst_name, true);
-  auto scale_T_tp = utils::TensorToTensorProto(scale_dst, scale_dst_name, true);
-  std::optional<ONNX_NAMESPACE::TensorProto> zp_T_tp;
-
-  if (zp_dst) {
-    zp_T_tp.emplace(utils::TensorToTensorProto(*zp_dst, zp_dst_name, true));
-  }
+  TransposedQuantizedTensors transposed;
+  ORT_RETURN_IF_ERROR(TransposeDQWeightsForMatMulNBits(
+      graph, *dq_node, "fused_DQ_MatMul", intra_op_thread_pool_, transposed));
 
   auto& input_defs = replacement_node.MutableInputDefs();
-  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, weight_T_tp, std::move(weight_dst)));
+  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, transposed.weight_proto, std::move(transposed.weight)));
   replacement_node.MutableInputArgsCount().push_back(1);
 
-  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, scale_T_tp, std::move(scale_dst)));
+  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, transposed.scale_proto, std::move(transposed.scale)));
   replacement_node.MutableInputArgsCount().push_back(1);
 
-  if (zp_T_tp) {
-    input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, zp_T_tp.value(), std::move(*zp_dst)));
+  if (transposed.zero_point_proto) {
+    input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, *transposed.zero_point_proto, std::move(*transposed.zero_point)));
     replacement_node.MutableInputArgsCount().push_back(1);
   }
 
@@ -492,99 +503,10 @@ Status DQCastMatMulToMatMulNBitsAction::Run(Graph& graph, const NodesToOptimize&
   auto* cast_b_node = selected_nodes.Input(1);
   auto& matmul_node = selected_nodes.Target();
 
-  // --- Get DQ weight/scale/zp info ---
-  const auto* weight_arg = dq_node->InputDefs()[0];
-  const auto* scale_arg = dq_node->InputDefs()[1];
-  const auto* zp_arg = dq_node->InputDefs().size() > 2 ? dq_node->InputDefs()[2] : nullptr;
-  const auto& dq_attrs = dq_node->GetAttributes();
-
-  const ONNX_NAMESPACE::TensorProto* weight_tensor_proto = nullptr;
-  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(weight_arg->Name(), weight_tensor_proto),
-                    "Missing required weight: ", weight_arg->Name());
-  const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
-  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(scale_arg->Name(), scale_tensor_proto),
-                    "Missing required scale: ", scale_arg->Name());
-  const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
-  if (zp_arg) {
-    graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto);
-  }
-
-  auto K = weight_arg->Shape()->dim(0).dim_value();
-  auto N = weight_arg->Shape()->dim(1).dim_value();
-  auto block_size = dq_attrs.at("block_size").i();
-  int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
-  auto bits = DQWeightBits(dt_weight);
-  auto quant_num = (K + block_size - 1) / block_size;
-  auto blob_bytes = (block_size * bits + 7) / 8;
-
-  // --- Transpose weights/scales/zp via MLAS ---
-  Initializer weight_src(graph, *weight_tensor_proto, graph.ModelPath());
-  Initializer scale_src(graph, *scale_tensor_proto, graph.ModelPath());
-
-  auto cpu_allocator = CPUAllocator::DefaultInstance();
-  auto uint8_type = DataTypeImpl::TensorTypeFromONNXEnum(ONNX_NAMESPACE::TensorProto_DataType_UINT8)->GetElementType();
-
-  auto weight_dst_name = graph.GenerateNodeArgName(weight_arg->Name() + "_T");
-  auto weight_dst = Tensor(uint8_type, TensorShape{N, quant_num, blob_bytes}, cpu_allocator);
-
-  auto orig_scale_type = DataTypeImpl::TensorTypeFromONNXEnum(scale_src.data_type())->GetElementType();
-  auto scale_dst_name = graph.GenerateNodeArgName(scale_arg->Name() + "_T");
-  auto scale_size = (TensorShape{N, quant_num}).Size();
-  auto scale_dst = Tensor(orig_scale_type, TensorShape{scale_size}, cpu_allocator);
-
-  std::string zp_dst_name;
-  std::optional<Tensor> zp_dst;
-  std::optional<Initializer> zp_src;
-  auto zp_size = (TensorShape{N, (quant_num * bits + 7) / 8}).Size();
-
-  if (zp_tensor_proto) {
-    zp_src.emplace(graph, *zp_tensor_proto, graph.ModelPath());
-    zp_dst_name = graph.GenerateNodeArgName(zp_arg->Name() + "_T");
-    zp_dst = Tensor(uint8_type, TensorShape{zp_size}, cpu_allocator);
-  } else if (!IsDQWeightSigned(dt_weight)) {
-    zp_dst_name = graph.GenerateNodeArgName("fused_DQ_Cast_MatMul_zero_point_T");
-    zp_dst = Tensor(uint8_type, TensorShape{zp_size}, cpu_allocator);
-    memset(zp_dst->MutableDataRaw(), 0, zp_dst->SizeInBytes());
-  }
-
-  // MLAS transpose dispatch
-  auto transpose = [&](auto* scale_data, auto* scale_dst_data) {
-    using ScaleType = std::remove_pointer_t<decltype(scale_data)>;
-    bool is_signed = IsDQWeightSigned(dt_weight);
-    const uint8_t* src_w = weight_src.DataAsByteSpan().data();
-    const uint8_t* src_zp = zp_src ? zp_src->DataAsByteSpan().data() : nullptr;
-    uint8_t* dst_w = weight_dst.MutableData<uint8_t>();
-    uint8_t* dst_zp = zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr;
-    int K_int = static_cast<int>(K);
-    int N_int = static_cast<int>(N);
-    int bs_int = static_cast<int>(block_size);
-
-    if (bits == 2) {
-      if (is_signed) {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      } else {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 2, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      }
-    } else if (bits == 4) {
-      if (is_signed) {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      } else {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 4, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      }
-    } else {
-      if (is_signed) {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, true>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      } else {
-        MlasQDQTransposeBlockwiseQuantized<ScaleType, 8, false>(src_w, scale_data, src_zp, dst_w, scale_dst_data, dst_zp, true, K_int, N_int, bs_int, intra_op_thread_pool_);
-      }
-    }
-  };
-
-  if (scale_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    transpose(scale_src.data<float>(), scale_dst.MutableData<float>());
-  } else {
-    transpose(scale_src.data<MLFloat16>(), scale_dst.MutableData<MLFloat16>());
-  }
+  // --- Transpose DQ weights/scales/zp via shared helper ---
+  TransposedQuantizedTensors transposed;
+  ORT_RETURN_IF_ERROR(TransposeDQWeightsForMatMulNBits(
+      graph, *dq_node, "fused_DQ_Cast_MatMul", intra_op_thread_pool_, transposed));
 
   // MatMulNBits operates in the DQ scale dtype.
   // Always insert Cast on input A (to DQ dtype) and Cast on output (DQ dtype to MatMul output dtype).
@@ -595,13 +517,13 @@ Status DQCastMatMulToMatMulNBitsAction::Run(Graph& graph, const NodesToOptimize&
   // Determine MatMul output element type (e.g., fp32)
   int32_t matmul_output_dtype = matmul_node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  // Prepare tensor protos for initializers
-  auto weight_T_tp = utils::TensorToTensorProto(weight_dst, weight_dst_name, true);
-  auto scale_T_tp = utils::TensorToTensorProto(scale_dst, scale_dst_name, true);
-  std::optional<ONNX_NAMESPACE::TensorProto> zp_T_tp;
-  if (zp_dst) {
-    zp_T_tp.emplace(utils::TensorToTensorProto(*zp_dst, zp_dst_name, true));
-  }
+  const auto& dq_attrs = dq_node->GetAttributes();
+  const auto* weight_arg = dq_node->InputDefs()[0];
+  auto K = weight_arg->Shape()->dim(0).dim_value();
+  auto N = weight_arg->Shape()->dim(1).dim_value();
+  auto block_size = dq_attrs.at("block_size").i();
+  int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
+  auto bits = DQWeightBits(dt_weight);
 
   // --- Create fp16 NodeArg for MatMulNBits input A ---
   NodeArg* matmul_input_a = matmul_node.MutableInputDefs()[0];
@@ -646,14 +568,14 @@ Status DQCastMatMulToMatMulNBitsAction::Run(Graph& graph, const NodesToOptimize&
 
   // Add transposed weight, scale, zp to inputs
   auto& input_defs = new_node.MutableInputDefs();
-  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, weight_T_tp, std::move(weight_dst)));
+  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, transposed.weight_proto, std::move(transposed.weight)));
   new_node.MutableInputArgsCount().push_back(1);
 
-  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, scale_T_tp, std::move(scale_dst)));
+  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, transposed.scale_proto, std::move(transposed.scale)));
   new_node.MutableInputArgsCount().push_back(1);
 
-  if (zp_T_tp) {
-    input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, zp_T_tp.value(), std::move(*zp_dst)));
+  if (transposed.zero_point_proto) {
+    input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, *transposed.zero_point_proto, std::move(*transposed.zero_point)));
     new_node.MutableInputArgsCount().push_back(1);
   }
 
