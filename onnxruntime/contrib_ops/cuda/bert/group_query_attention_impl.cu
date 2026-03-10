@@ -29,7 +29,6 @@ limitations under the License.
 #include <cuda_fp16.h>
 
 #include <cassert>
-#include <cub/cub.cuh>
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
