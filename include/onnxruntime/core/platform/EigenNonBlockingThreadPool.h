@@ -559,9 +559,10 @@ class RunQueue {
 
   bool RevokeWithTag(Tag tag, unsigned w_idx
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-                     , void** out_enqueue_data = nullptr
+                     ,
+                     void** out_enqueue_data = nullptr
 #endif
-                     ) {
+  ) {
     bool revoked = false;
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
@@ -1169,7 +1170,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         UpdatePreferredWorker(preferred_workers, par_idx);
         worker_fn(par_idx);
         ps.tasks_finished++;
-      }, enqueue_data);
+      },
+                     enqueue_data);
 #else
       Work work_item([worker_fn, par_idx, &preferred_workers, &ps, this]() {
         UpdatePreferredWorker(preferred_workers, par_idx);

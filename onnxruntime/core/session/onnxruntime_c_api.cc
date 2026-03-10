@@ -4279,7 +4279,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* o
   ORT_UNUSED_PARAMETER(on_abandon);
   ORT_UNUSED_PARAMETER(user_context);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
-      "SetPerSessionThreadPoolCallbacks requires ORT built with --session_threadpool_callbacks");
+                               "SetPerSessionThreadPoolCallbacks requires ORT built with --session_threadpool_callbacks");
 #endif
   API_IMPL_END
 }

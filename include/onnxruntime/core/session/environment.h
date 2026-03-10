@@ -207,10 +207,10 @@ class Environment {
    * Must be called before creating any sessions that should use the callbacks.
    */
   Status SetPerSessionWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
-                                        OrtThreadPoolWorkStartFn on_start,
-                                        OrtThreadPoolWorkStopFn on_stop,
-                                        OrtThreadPoolWorkAbandonFn on_abandon,
-                                        void* user_context);
+                                    OrtThreadPoolWorkStartFn on_start,
+                                    OrtThreadPoolWorkStopFn on_stop,
+                                    OrtThreadPoolWorkAbandonFn on_abandon,
+                                    void* user_context);
 #endif
 
   ~Environment();

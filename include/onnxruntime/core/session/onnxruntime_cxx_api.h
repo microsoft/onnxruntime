@@ -1296,10 +1296,10 @@ struct Env : detail::Base<OrtEnv> {
   /// Only affects sessions created after this call. Does not affect global thread pools.
   /// Requires ORT built with --session_threadpool_callbacks.
   Env& SetPerSessionThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
-                                     OrtThreadPoolWorkStartFn on_start,
-                                     OrtThreadPoolWorkStopFn on_stop,
-                                     OrtThreadPoolWorkAbandonFn on_abandon,
-                                     void* user_context);
+                                        OrtThreadPoolWorkStartFn on_start,
+                                        OrtThreadPoolWorkStopFn on_stop,
+                                        OrtThreadPoolWorkAbandonFn on_abandon,
+                                        void* user_context);
 };
 
 /** \brief Custom Op Domain

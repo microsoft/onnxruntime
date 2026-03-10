@@ -967,7 +967,7 @@ typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_ha
  * \param[in] user_context The user-provided context passed when configuring callbacks
  * \return Callback-specific data that will be passed to OnStartWork and OnStopWork. May return NULL.
  */
-typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context) NO_EXCEPTION;
+typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context)NO_EXCEPTION;
 
 /** \brief Thread pool work start callback
  *
@@ -1001,7 +1001,7 @@ typedef void (*OrtThreadPoolWorkAbandonFn)(_In_opt_ void* user_context, _In_opt_
 #else
 // Typedefs must exist unconditionally because the OrtApi struct references them.
 // The implementation returns ORT_NOT_IMPLEMENTED when the flag is not defined.
-typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context) NO_EXCEPTION;
+typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context)NO_EXCEPTION;
 typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 typedef void (*OrtThreadPoolWorkAbandonFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
