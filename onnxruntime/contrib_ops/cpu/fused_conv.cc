@@ -26,6 +26,7 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FusedConvFloat);
 
+#ifdef USE_KLEIDIAI
 ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     NhwcFusedConv,
     1,
@@ -36,6 +37,7 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
         .MayInplace(3, 0)
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FusedConvFloat);
+#endif
 
 }  // namespace contrib
 }  // namespace onnxruntime
