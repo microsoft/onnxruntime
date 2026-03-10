@@ -27,7 +27,6 @@ MlasWinogradGetThreadedScratchBuffer(
     size_t FloatCount
     );
 
-#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
 void
 MlasWinogradTransformInputBlockF2x2_3x3Avx512(
     const float* InputChannelBlock,
@@ -61,4 +60,3 @@ MlasWinogradAccumulateOutputBlocksAvx512(
     float* Accumulator1,
     size_t OutputBlockCountThisIteration
     );
-#endif

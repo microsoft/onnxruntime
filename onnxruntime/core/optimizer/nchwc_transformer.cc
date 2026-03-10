@@ -219,7 +219,7 @@ bool NchwcTransformerImpl::IsWinograd3x3Eligible(const Node& node,
   padding[2] = pads_attr->ints(2);
   padding[3] = pads_attr->ints(3);
 
-  return MlasNchwcSupportsWinograd(allow_winograd_, static_cast<size_t>(conv_W_tensor_proto.dims(1)),
+  return MlasNchwcSupportsWinograd(allow_winograd_, static_cast<size_t>(filter_tensor_proto.dims(1)),
                                    static_cast<size_t>(group_count),
                                    kernel_shape, dilation_shape, padding, stride_shape);
 }
