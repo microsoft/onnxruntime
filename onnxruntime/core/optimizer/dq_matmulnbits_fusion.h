@@ -13,14 +13,10 @@ namespace onnxruntime {
 
 // Fuses DequantizeLinear chains back into a single MatMulNBits contrib op.
 //
-// Supported patterns (weight types: UINT2, INT2, UINT4, INT4, UINT8):
-//   Pattern 1: DQ(3D, axis=2) -> Reshape(2D) -> Transpose([1,0])
+// Supported patterns:
+//   Pattern 1: DQ(3D, UINT4, axis=2) -> Reshape(2D) -> Transpose([1,0])
 //              -> [optional Cast] -> MatMul/Gemm => MatMulNBits
-//   Pattern 2: DQ(2D, axis=0) -> [optional Cast] -> MatMul/Gemm => MatMulNBits
-//
-// FP16 Cast handling: Cast nodes on input A (FP16→FP32), the weight path
-// (FP16→FP32), and output (FP32→FP16) are absorbed into the fusion so that
-// MatMulNBits operates directly on FP16 inputs/outputs.
+//   Pattern 2: DQ(2D, UINT4, axis=0) -> MatMul/Gemm => MatMulNBits
 //
 // These patterns are produced when a quantized model goes through external
 // toolchains that lower MatMulNBits to DQ + reshape/transpose + MatMul
