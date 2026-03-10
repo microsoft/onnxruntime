@@ -614,7 +614,7 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI)
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
@@ -632,6 +632,15 @@ Return Value:
         }
 #endif
     }
+#if defined(MLAS_USE_SVE)
+    else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
+        this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+        this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
+        this->MlasConvOverride = ArmKleidiAI::MlasConv;
+    }
+#endif
 #endif
 
 #if defined(MLAS_USE_SVE)

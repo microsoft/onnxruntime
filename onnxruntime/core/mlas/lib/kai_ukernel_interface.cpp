@@ -20,6 +20,12 @@
 //   GEMV
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p8x1biasf32_6x8x4_neon_mla.h"
 
+// SVE kernels
+//   IMATMUL
+#include "kai/ukernels/matmul/imatmul_clamp_f32_f32_f32p/kai_imatmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla.h"
+//   GEMM
+#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla.h"
+
 // SME kernels
 //   GEMM/QGEMM
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.h"
@@ -246,7 +252,6 @@ const KaiDynamicQGemmKernel qgemm_gemm_sme =
 const KaiDynamicQGemmKernel qgemm_gemm_sme2 =
     KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa);
 
-
 #if defined(ENABLE_QMX_KERNELS)
 
 const KaiDynamicQGemmKernel qgemm_gemm_qmx =
@@ -288,7 +293,11 @@ const KaiF32SgemvKernel sgemm_gemv_sme2 =
         kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla}
     };
 
+const KaiF32SveIMatmulKernel imatmul_sve = 
+    KAI_WRAP_UKERNEL_RUN_IMATMUL_6_NO_LHS_PACKED_OFFSET(imatmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla);
 
+const KaiF32SveKernel sgemm_gemm_sve = 
+    KAI_WRAP_UKERNEL_RUN_MATMUL_10_LHS_OFFSET(matmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla);
 
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
@@ -371,4 +380,12 @@ const KaiDynamicQGemmKernel& GetKleidiAIQGemmUKernel() {
 const KaiBF16SBgemmKernel& GetKleidiAISBGemmUKernel() {
     // Currently only SME2 variant exists for bfloat16/SBGEMM kernel
     return sbgemm_gemm_sme2;
+}
+
+const KaiF32SveIMatmulKernel GetKleidiAISveImatmulUKernel() {
+    return imatmul_sve;
+}
+
+const KaiF32SveKernel GetKleidiAISveSGemmUKernel(){
+    return sgemm_gemm_sve;
 }
