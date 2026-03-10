@@ -201,8 +201,8 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   InlinedVector<const Node*> filtered_in_nodes;
 #endif
   // Helper to create a GraphViewer that filters nodes based on layering_index if present.
-  auto create_graph_viewer = [&](std::unique_ptr<IndexedSubGraph>& sub_graph_holder,
-                                 std::unique_ptr<GraphViewer>& viewer) -> Status {
+  auto create_graph_viewer = [&](std::unique_ptr<IndexedSubGraph>& out_sub_graph,
+                                 std::unique_ptr<GraphViewer>& out_viewer) -> Status {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     if (params.layering_index) {
       assigned_filtered_in_nodes.clear();
@@ -231,15 +231,16 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
           filtered_in_nodes.push_back(&node);
         }
       }
-      ORT_RETURN_IF_ERROR(graph_utils::CreateFilteredIndexedGraph(filtered_in_nodes, graph, sub_graph_holder));
-      viewer = std::make_unique<GraphViewer>(graph, *sub_graph_holder);
+      ORT_RETURN_IF_ERROR(graph_utils::CreateFilteredIndexedGraph(filtered_in_nodes, graph, out_sub_graph));
+      out_viewer = std::make_unique<GraphViewer>(graph, *out_sub_graph);
       return Status::OK();
     }
+#else
+    ORT_UNUSED_PARAMETER(out_sub_graph);
 #endif
-    viewer = std::make_unique<GraphViewer>(graph);
+    out_viewer = std::make_unique<GraphViewer>(graph);
     return Status::OK();
   };
-
   // Helper to un-assign nodes that were assigned to this EP but not claimed by updated capabilities.
   auto reset_assignment_unclaimed_nodes = [&]() {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
