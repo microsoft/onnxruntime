@@ -24,8 +24,8 @@ Requirements:
 
 import argparse
 import json
+import os
 import sys
-from collections import defaultdict
 
 from cherry_pick_utils import (
     check_preflight,
@@ -70,6 +70,16 @@ def get_changed_files(oid):
     if output:
         return output.strip().splitlines()
     return []
+
+
+def sanitize_title(title):
+    """Normalize PR titles for single-line text output."""
+    return title.replace("\n", " ").strip()
+
+
+def escape_markdown_table_cell(text):
+    """Escape markdown table delimiters in cell content."""
+    return sanitize_title(text).replace("|", "\\|")
 
 
 def get_existing_pr_numbers(branch):
@@ -118,11 +128,11 @@ def get_existing_pr_numbers(branch):
             if details:
                 # Collect sub-PRs from title, body, and commits
                 extracted_nums = []
-                extracted_nums.extend(extract_pr_numbers(details.get("title", "")))
-                extracted_nums.extend(extract_pr_numbers(details.get("body", "")))
+                extracted_nums.extend(extract_pr_numbers(details.get("title", ""), strict=True))
+                extracted_nums.extend(extract_pr_numbers(details.get("body", ""), strict=True))
 
                 for commit in details.get("commits", []):
-                    extracted_nums.extend(extract_pr_numbers(commit.get("messageHeadline", "")))
+                    extracted_nums.extend(extract_pr_numbers(commit.get("messageHeadline", ""), strict=True))
 
                 for num in set(extracted_nums):
                     if num != pr_num_int:
@@ -155,8 +165,8 @@ def check_missing_dependencies(prs, branch):
 
         # For each file, find commits that modified it between the target branch and the cherry-picked commit.
         # Deduplicate warnings: group affected files by missing commit.
-        # missing_commits maps: missing_commit_oid -> (title, [list of affected files])
-        missing_commits = defaultdict(lambda: ("", []))
+        # missing_commits maps: missing_commit_oid -> {"title": ..., "files": [...]}
+        missing_commits = {}
 
         for filepath in files:
             # git log <cherry-pick-commit> --not <target-branch> -- <file>
@@ -173,19 +183,18 @@ def check_missing_dependencies(prs, branch):
                 if c == oid:
                     continue
                 if c not in cherry_pick_oids:
-                    existing_title, existing_files = missing_commits[c]
-                    if not existing_title:
-                        existing_title = title
-                    existing_files.append(filepath)
-                    missing_commits[c] = (existing_title, existing_files)
+                    entry = missing_commits.setdefault(c, {"title": title, "files": []})
+                    if not entry["title"]:
+                        entry["title"] = title
+                    entry["files"].append(filepath)
 
         # Print deduplicated warnings
         if missing_commits:
             conflicting_prs_count += 1
-            for missing_oid, (title, affected_files) in missing_commits.items():
-                files_str = ", ".join(affected_files)
+            for missing_oid, entry in missing_commits.items():
+                files_str = ", ".join(entry["files"])
                 print(
-                    f"WARNING: PR #{number} ({oid}) modifies files that were also changed by commit {missing_oid} ({title}), "
+                    f"WARNING: PR #{number} ({oid}) modifies files that were also changed by commit {missing_oid} ({entry['title']}), "
                     f"which is not in the cherry-pick list. This may indicate missing related changes. Affected files: {files_str}"
                 )
 
@@ -205,7 +214,11 @@ def main():
     parser.add_argument(
         "--branch", default="HEAD", help="Target branch to compare against for dependency checks (default: HEAD)"
     )
-    parser.add_argument("--limit", type=int, default=200, help="Wait limitation for PR fetching (default: 200)")
+    parser.add_argument("--limit", type=int, default=200, help="Maximum number of PRs to fetch (default: 200)")
+    parser.add_argument(
+        "--md-output",
+        help="Output markdown file path for the PR description (default: next to --output)",
+    )
     args = parser.parse_args()
 
     # Preflight Check
@@ -227,12 +240,28 @@ def main():
     if existing_prs:
         print(f"Found {len(existing_prs)} PRs already in branch '{args.branch}'.")
 
+    cherry_pick_prs = []
+    skipped_count = 0
+    for pr in prs:
+        number = pr["number"]
+        safe_title = sanitize_title(pr["title"])
+
+        if not pr.get("mergeCommit"):
+            print(f"Warning: PR #{number} has no merge commit OID. Skipping.", file=sys.stderr)
+            continue
+
+        if number in existing_prs:
+            print(f"Skipping PR #{number} (already in branch '{args.branch}'): {safe_title}")
+            skipped_count += 1
+            continue
+
+        cherry_pick_prs.append(pr)
+
     # Determine output format based on file extension
     is_shell = args.output.endswith(".sh")
 
     # 2. Write Output Script
-    commit_count = 0
-    skipped_count = 0
+    commit_count = len(cherry_pick_prs)
     with open(args.output, "w", encoding="utf-8") as f:
         if is_shell:
             f.write("#!/bin/bash\n")
@@ -244,41 +273,27 @@ def main():
             f.write(f"rem Cherry-pick {args.label} commits\n")
             f.write("rem Sorted by merge time (oldest first)\n\n")
 
-        for pr in prs:
+        for pr in cherry_pick_prs:
             number = pr["number"]
-            title = pr["title"]
-            safe_title = title.replace("\n", " ")
-
-            if not pr.get("mergeCommit"):
-                print(f"Warning: PR #{number} has no merge commit OID. Skipping.", file=sys.stderr)
-                continue
-
-            if number in existing_prs:
-                print(f"Skipping PR #{number} (already in branch '{args.branch}'): {safe_title}")
-                skipped_count += 1
-                continue
+            safe_title = sanitize_title(pr["title"])
 
             oid = pr["mergeCommit"]["oid"]
             comment = "#" if is_shell else "rem"
             f.write(f"{comment} PR {number}: {safe_title}\n")
             f.write(f"git cherry-pick {oid}\n\n")
-            commit_count += 1
 
     print(f"Generated {args.output} with {commit_count} commits ({skipped_count} skipped, already in branch).")
 
     # 3. Write PR Description Markdown (table format)
-    md_output = "cherry_pick_pr_description.md"
+    output_dir = os.path.dirname(args.output)
+    md_output = args.md_output or os.path.join(output_dir, "cherry_pick_pr_description.md")
     with open(md_output, "w", encoding="utf-8") as f:
         f.write("This cherry-picks the following commits for the release:\n\n")
         f.write("| Commit ID | PR Number | Commit Title |\n")
         f.write("|-----------|-----------|-------------|\n")
-        for pr in prs:
-            if not pr.get("mergeCommit"):
-                continue
+        for pr in cherry_pick_prs:
             number = pr["number"]
-            if number in existing_prs:
-                continue
-            title = pr["title"].replace("\n", " ")
+            title = escape_markdown_table_cell(pr["title"])
             oid = pr["mergeCommit"]["oid"]
             short_oid = oid[:10]
             f.write(f"| {short_oid} | #{number} | {title} |\n")
@@ -286,7 +301,7 @@ def main():
     print(f"Generated {md_output} with {commit_count} commits.")
 
     # 4. Dependency Check
-    check_missing_dependencies(prs, args.branch)
+    check_missing_dependencies(cherry_pick_prs, args.branch)
 
 
 if __name__ == "__main__":
