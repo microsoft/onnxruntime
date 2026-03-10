@@ -16,7 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "snchwc_winograd.h"
+#include "intrinsics/avx512/snchwc_winograd.h"
 
 //
 // Define the base thread context for NCWHc convolution or pooling operations.
