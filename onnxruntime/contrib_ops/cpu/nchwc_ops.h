@@ -45,6 +45,7 @@ class NchwcConv final : public OpKernel {
  public:
   NchwcConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+    kernel_shape_specified_ = info.GetAttrs("kernel_shape", kernel_shape_).IsOK();
     auto status = info.GetAttr<int64_t>("winograd_mode", &winograd_mode_);
     if (!status.IsOK()) {
       winograd_mode_ = 0;
@@ -60,6 +61,8 @@ class NchwcConv final : public OpKernel {
 
  private:
   ConvAttributes conv_attrs_;
+  TensorShapeVector kernel_shape_;
+  bool kernel_shape_specified_{false};
 
   MLAS_ACTIVATION activation_;
   int64_t winograd_mode_{0};

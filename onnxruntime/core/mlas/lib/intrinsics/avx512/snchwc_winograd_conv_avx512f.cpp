@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    snchwc_winograd.cpp
+    snchwc_winograd_conv_avx512f.cpp
 
 Abstract:
 
@@ -15,7 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "snchwc_winograd.h"
+#include "snchwc_winograd_conv_avx512f.h"
 
 thread_local std::unique_ptr<float[]> MlasWinogradThreadedScratchBuffer;
 thread_local size_t MlasWinogradThreadedScratchBufferSize = 0;
@@ -154,9 +154,13 @@ MlasWinogradAccumulateOutputBlocksAvx512(
     size_t InputChannels,
     const float* Filter0,
     const float* Filter1,
+    const float* Filter2,
+    const float* Filter3,
     const float* TransformedInput,
     float* Accumulator0,
     float* Accumulator1,
+    float* Accumulator2,
+    float* Accumulator3,
     size_t OutputBlockCountThisIteration
     )
 {
@@ -165,12 +169,20 @@ MlasWinogradAccumulateOutputBlocksAvx512(
     for (size_t k = 0; k < MLAS_WINOGRAD_TRANSFORM_COUNT; k++) {
         __m512 Acc0 = _mm512_setzero_ps();
         __m512 Acc1 = _mm512_setzero_ps();
+        __m512 Acc2 = _mm512_setzero_ps();
+        __m512 Acc3 = _mm512_setzero_ps();
 
         for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
             const float* InputTransform = TransformedInput + (ic / BlockSize) * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize + k * BlockSize;
             const float* FilterTransform0 = Filter0 + ic * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize + k * BlockSize * BlockSize;
             const float* FilterTransform1 = OutputBlockCountThisIteration > 1
                 ? Filter1 + ic * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize + k * BlockSize * BlockSize
+                : nullptr;
+            const float* FilterTransform2 = OutputBlockCountThisIteration > 2
+                ? Filter2 + ic * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize + k * BlockSize * BlockSize
+                : nullptr;
+            const float* FilterTransform3 = OutputBlockCountThisIteration > 3
+                ? Filter3 + ic * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize + k * BlockSize * BlockSize
                 : nullptr;
 
             for (size_t bi = 0; bi < BlockSize; bi++) {
@@ -179,12 +191,24 @@ MlasWinogradAccumulateOutputBlocksAvx512(
                 if (OutputBlockCountThisIteration > 1) {
                     Acc1 = _mm512_fmadd_ps(InputValue, _mm512_loadu_ps(FilterTransform1 + bi * BlockSize), Acc1);
                 }
+                if (OutputBlockCountThisIteration > 2) {
+                    Acc2 = _mm512_fmadd_ps(InputValue, _mm512_loadu_ps(FilterTransform2 + bi * BlockSize), Acc2);
+                }
+                if (OutputBlockCountThisIteration > 3) {
+                    Acc3 = _mm512_fmadd_ps(InputValue, _mm512_loadu_ps(FilterTransform3 + bi * BlockSize), Acc3);
+                }
             }
         }
 
         _mm512_storeu_ps(Accumulator0 + k * BlockSize, Acc0);
         if (OutputBlockCountThisIteration > 1) {
             _mm512_storeu_ps(Accumulator1 + k * BlockSize, Acc1);
+        }
+        if (OutputBlockCountThisIteration > 2) {
+            _mm512_storeu_ps(Accumulator2 + k * BlockSize, Acc2);
+        }
+        if (OutputBlockCountThisIteration > 3) {
+            _mm512_storeu_ps(Accumulator3 + k * BlockSize, Acc3);
         }
     }
 }

@@ -271,7 +271,7 @@ static const char* const kDebugLayoutTransformation = "session.debug_layout_tran
 // Option values:
 // - "0": Disable Winograd selection in the NCHWc transformer. [DEFAULT]
 // - "1": Enable Winograd selection in the NCHWc transformer.
-static const char* const kOrtSessionOptionsConfigNchwcEnableWinograd = "session.nchwc.enable_winograd";
+static const char* const kOrtSessionOptionsConfigNchwcEnableWinograd = "mlas.enable_winograd";
 
 // Graph nodes that are not supported by the execution providers (EPs) explicitly added to the session are
 // assigned (i.e., "fallback") to the CPU EP by default.

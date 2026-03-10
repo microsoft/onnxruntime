@@ -169,11 +169,21 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
 
   TensorShapeVector kernel_shape;
   if (use_winograd) {
-    if (!conv_attrs_.kernel_shape_specified) {
+    if (!kernel_shape_specified_) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Winograd NCHWc Conv requires an explicit 2D kernel_shape attribute.");
     }
-    ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
+    kernel_shape = kernel_shape_;
+
+    if (kernel_shape.size() != 2) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Winograd NCHWc Conv requires an explicit 2D kernel_shape attribute.");
+    }
+
+    if (W_shape.NumDimensions() != 4 || W_shape[2] != 4 || W_shape[3] != 4) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Winograd NCHWc Conv requires Winograd-transformed weights with shape [M, C/group, 4, 4].");
+    }
   } else {
     ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
   }

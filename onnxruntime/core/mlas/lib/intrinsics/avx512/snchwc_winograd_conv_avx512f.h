@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    snchwc_winograd.h
+    snchwc_winograd_conv_avx512f.h
 
 Abstract:
 
@@ -55,8 +55,12 @@ MlasWinogradAccumulateOutputBlocksAvx512(
     size_t InputChannels,
     const float* Filter0,
     const float* Filter1,
+    const float* Filter2,
+    const float* Filter3,
     const float* TransformedInput,
     float* Accumulator0,
     float* Accumulator1,
+    float* Accumulator2,
+    float* Accumulator3,
     size_t OutputBlockCountThisIteration
     );

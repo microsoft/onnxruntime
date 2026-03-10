@@ -16,7 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "intrinsics/avx512/snchwc_winograd.h"
+#include "intrinsics/avx512/snchwc_winograd_conv_avx512f.h"
 
 //
 // Define the base thread context for NCWHc convolution or pooling operations.
@@ -52,6 +52,7 @@ struct MLAS_NCHWC_CONV_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     const float* Bias;
     const MLAS_ACTIVATION* Activation;
     float* Output;
+    const float* WinogradTransformedInput;
     size_t GroupCount;
     bool UseWinograd;
     bool ZeroMode;
@@ -654,44 +655,118 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::DefaultFilterSetSize;
 
 #if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
+void
+MlasNchwcTransformWinogradInputTiles(
+    const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock,
+    float* TransformedInputTiles
+    )
+{
+    const size_t InputChannels = WorkBlock->InputChannels;
+    const size_t InputHeight = WorkBlock->InputShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex];
+    const size_t InputWidth = WorkBlock->InputShape[MLAS_NCHWC_NN_ALGORITHM::WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
+    const size_t OutputHeight = WorkBlock->OutputShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex];
+    const size_t OutputWidth = WorkBlock->OutputShape[MLAS_NCHWC_NN_ALGORITHM::WidthShapeIndex];
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+    const size_t InputBlockCount = InputChannels / BlockSize;
+    const size_t TileRows = (OutputHeight + MLAS_WINOGRAD_TILE_SIZE - 1) / MLAS_WINOGRAD_TILE_SIZE;
+    const size_t TileCols = (OutputWidth + MLAS_WINOGRAD_TILE_SIZE - 1) / MLAS_WINOGRAD_TILE_SIZE;
+
+    for (size_t TileRow = 0; TileRow < TileRows; TileRow++) {
+        for (size_t TileCol = 0; TileCol < TileCols; TileCol++) {
+            const size_t TileIndex = TileRow * TileCols + TileCol;
+            const size_t TileOutputY = TileRow * MLAS_WINOGRAD_TILE_SIZE;
+            const size_t TileOutputX = TileCol * MLAS_WINOGRAD_TILE_SIZE;
+            float* TransformedInput = TransformedInputTiles + TileIndex * InputBlockCount * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
+
+            for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
+                const float* InputChannelBlock = WorkBlock->Input + ic * InputSize;
+                float* TransformedInputBlock = TransformedInput + (ic / BlockSize) * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
+
+                MlasWinogradTransformInputBlockF2x2_3x3Avx512(
+                    InputChannelBlock, InputHeight, InputWidth, TileOutputY, TileOutputX, TransformedInputBlock);
+            }
+        }
+    }
+}
+
 struct MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 {
+    static constexpr size_t OutputBlockSetSize = 4;
+
     const size_t TileRows;
     const size_t TileCols;
     const size_t TileCount;
     const size_t OutputBlockCount;
+    const size_t OutputBlockSetCount;
 
     MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
         MLAS_NCHWC_CONV_ALGORITHM(WorkBlock),
         TileRows((OutputHeight + MLAS_WINOGRAD_TILE_SIZE - 1) / MLAS_WINOGRAD_TILE_SIZE),
         TileCols((OutputWidth + MLAS_WINOGRAD_TILE_SIZE - 1) / MLAS_WINOGRAD_TILE_SIZE),
         TileCount(TileRows * TileCols),
-        OutputBlockCount(OutputChannels / BlockSize)
+        OutputBlockCount(OutputChannels / BlockSize),
+        OutputBlockSetCount((OutputBlockCount + OutputBlockSetSize - 1) / OutputBlockSetSize)
     {
     }
 
     void Execute(ptrdiff_t Index)
     {
-        const size_t TotalWork = BatchCount * GroupCount * TileCount;
+        const size_t TileWork = BatchCount * GroupCount * TileCount;
+        const bool PartitionOutputBlocks = TileWork < size_t(WorkBlock->tids) && OutputBlockSetCount > 1;
+        const size_t TotalWork = PartitionOutputBlocks ? TileWork * OutputBlockSetCount : TileWork;
         size_t WorkIndex;
         size_t WorkRemaining;
 
         MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
 
         while (WorkRemaining > 0) {
-            const size_t TileIndex = WorkIndex % TileCount;
-            const size_t BatchGroup = WorkIndex / TileCount;
-            const size_t Group = BatchGroup % GroupCount;
-            const size_t Batch = BatchGroup / GroupCount;
+            if (PartitionOutputBlocks) {
+                const size_t TileOutputBlockSet = WorkIndex % (TileCount * OutputBlockSetCount);
+                const size_t TileIndex = TileOutputBlockSet / OutputBlockSetCount;
+                const size_t OutputBlock = (TileOutputBlockSet % OutputBlockSetCount) * OutputBlockSetSize;
+                const size_t BatchGroup = WorkIndex / (TileCount * OutputBlockSetCount);
+                const size_t Group = BatchGroup % GroupCount;
+                const size_t Batch = BatchGroup / GroupCount;
 
-            ExecuteTile(Batch, Group, TileIndex / TileCols, TileIndex % TileCols);
+                ExecuteTileOutputBlocks(Batch, Group, TileIndex / TileCols, TileIndex % TileCols, OutputBlock);
+            } else {
+                const size_t TileIndex = WorkIndex % TileCount;
+                const size_t BatchGroup = WorkIndex / TileCount;
+                const size_t Group = BatchGroup % GroupCount;
+                const size_t Batch = BatchGroup / GroupCount;
+
+                ExecuteTile(Batch, Group, TileIndex / TileCols, TileIndex % TileCols);
+            }
 
             WorkIndex += 1;
             WorkRemaining -= 1;
         }
     }
 
-    void ExecuteTile(size_t Batch, size_t Group, size_t TileRow, size_t TileCol)
+    void TransformTileInput(
+        const float* InputGroup,
+        size_t TileOutputY,
+        size_t TileOutputX,
+        float* TransformedInput
+        )
+    {
+        for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
+            const float* InputChannelBlock = InputGroup + ic * InputSize;
+            float* TransformedInputBlock = TransformedInput + (ic / BlockSize) * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
+
+            MlasWinogradTransformInputBlockF2x2_3x3Avx512(
+                InputChannelBlock, InputHeight, InputWidth, TileOutputY, TileOutputX, TransformedInputBlock);
+        }
+    }
+
+    void ExecuteTileOutputBlocks(
+        size_t Batch,
+        size_t Group,
+        size_t TileRow,
+        size_t TileCol,
+        size_t OutputBlock
+        )
     {
         const size_t TileOutputY = TileRow * MLAS_WINOGRAD_TILE_SIZE;
         const size_t TileOutputX = TileCol * MLAS_WINOGRAD_TILE_SIZE;
@@ -702,54 +777,85 @@ struct MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         const float* FilterGroup = WorkBlock->Filter + Group * OutputChannels * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT;
 
         const size_t InputBlockCount = InputChannels / BlockSize;
-        float* TransformedInput = MlasWinogradGetThreadedScratchBuffer(InputBlockCount * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize);
+        const float* TransformedInput;
         alignas(64) float TransformedOutput0[MLAS_WINOGRAD_TRANSFORM_COUNT * 16];
         alignas(64) float TransformedOutput1[MLAS_WINOGRAD_TRANSFORM_COUNT * 16];
+        alignas(64) float TransformedOutput2[MLAS_WINOGRAD_TRANSFORM_COUNT * 16];
+        alignas(64) float TransformedOutput3[MLAS_WINOGRAD_TRANSFORM_COUNT * 16];
 
-        for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
-            const float* InputChannelBlock = InputGroup + ic * InputSize;
-            float* TransformedInputBlock = TransformedInput + (ic / BlockSize) * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
-
-            MlasWinogradTransformInputBlockF2x2_3x3Avx512(
-                InputChannelBlock, InputHeight, InputWidth, TileOutputY, TileOutputX, TransformedInputBlock);
+        if (WorkBlock->WinogradTransformedInput != nullptr) {
+            const size_t TileIndex = TileRow * TileCols + TileCol;
+            TransformedInput = WorkBlock->WinogradTransformedInput + TileIndex * InputBlockCount * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
+        } else {
+            float* TransformedInputScratch = MlasWinogradGetThreadedScratchBuffer(InputBlockCount * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize);
+            TransformTileInput(InputGroup, TileOutputY, TileOutputX, TransformedInputScratch);
+            TransformedInput = TransformedInputScratch;
         }
 
-        for (size_t OutputBlock = 0; OutputBlock < OutputBlockCount; ) {
-            const size_t OutputBlockCountThisIteration = std::min<size_t>(OutputBlockCount - OutputBlock, 2);
+        const size_t OutputBlockCountThisIteration = std::min<size_t>(OutputBlockCount - OutputBlock, OutputBlockSetSize);
 
-            const float* FilterOutputBlock0 = FilterGroup + OutputBlock * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
-            const float* FilterOutputBlock1 = OutputBlockCountThisIteration > 1
-                ? FilterGroup + (OutputBlock + 1) * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize
-                : nullptr;
+        const float* FilterOutputBlock0 = FilterGroup + OutputBlock * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize;
+        const float* FilterOutputBlock1 = OutputBlockCountThisIteration > 1
+            ? FilterGroup + (OutputBlock + 1) * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize
+            : nullptr;
+        const float* FilterOutputBlock2 = OutputBlockCountThisIteration > 2
+            ? FilterGroup + (OutputBlock + 2) * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize
+            : nullptr;
+        const float* FilterOutputBlock3 = OutputBlockCountThisIteration > 3
+            ? FilterGroup + (OutputBlock + 3) * InputChannels * MLAS_WINOGRAD_TRANSFORM_COUNT * BlockSize
+            : nullptr;
 
-            MlasWinogradAccumulateOutputBlocksAvx512(
-                InputChannels,
-                FilterOutputBlock0,
-                FilterOutputBlock1,
-                TransformedInput,
-                TransformedOutput0,
-                TransformedOutput1,
-                OutputBlockCountThisIteration);
+        MlasWinogradAccumulateOutputBlocksAvx512(
+            InputChannels,
+            FilterOutputBlock0,
+            FilterOutputBlock1,
+            FilterOutputBlock2,
+            FilterOutputBlock3,
+            TransformedInput,
+            TransformedOutput0,
+            TransformedOutput1,
+            TransformedOutput2,
+            TransformedOutput3,
+            OutputBlockCountThisIteration);
 
-            for (size_t OutputBlockOffset = 0; OutputBlockOffset < OutputBlockCountThisIteration; OutputBlockOffset++) {
-                const float* BiasBlock = Bias != nullptr ? WorkBlock->Bias + Group * OutputChannels + (OutputBlock + OutputBlockOffset) * BlockSize : nullptr;
-                float* OutputBlockBase = WorkBlock->Output + (Batch * GroupCount + Group) * OutputChannels * OutputSize +
-                    (OutputBlock + OutputBlockOffset) * BlockSize * OutputSize;
-                const float* TransformedOutput = (OutputBlockOffset == 0) ? TransformedOutput0 : TransformedOutput1;
-
-                MlasWinogradTransformOutputBlockF2x2_3x3Avx512(
-                    TransformedOutput, BiasBlock, OutputBlockBase, OutputWidth,
-                    TileOutputY, TileOutputX, ValidRows, ValidCols, ZeroMode);
-
-                if (ActivationKind != MlasIdentityActivation) {
-                    for (size_t oy = 0; oy < ValidRows; oy++) {
-                        float* OutputRow = OutputBlockBase + ((TileOutputY + oy) * OutputWidth + TileOutputX) * BlockSize;
-                        MlasActivation(Activation, OutputRow, nullptr, 1, BlockSize * ValidCols, BlockSize * OutputSize);
-                    }
-                }
+        for (size_t OutputBlockOffset = 0; OutputBlockOffset < OutputBlockCountThisIteration; OutputBlockOffset++) {
+            const float* BiasBlock = Bias != nullptr ? WorkBlock->Bias + Group * OutputChannels + (OutputBlock + OutputBlockOffset) * BlockSize : nullptr;
+            float* OutputBlockBase = WorkBlock->Output + (Batch * GroupCount + Group) * OutputChannels * OutputSize +
+                (OutputBlock + OutputBlockOffset) * BlockSize * OutputSize;
+            const float* TransformedOutput;
+            switch (OutputBlockOffset) {
+                case 0:
+                    TransformedOutput = TransformedOutput0;
+                    break;
+                case 1:
+                    TransformedOutput = TransformedOutput1;
+                    break;
+                case 2:
+                    TransformedOutput = TransformedOutput2;
+                    break;
+                default:
+                    TransformedOutput = TransformedOutput3;
+                    break;
             }
 
-            OutputBlock += OutputBlockCountThisIteration;
+            MlasWinogradTransformOutputBlockF2x2_3x3Avx512(
+                TransformedOutput, BiasBlock, OutputBlockBase, OutputWidth,
+                TileOutputY, TileOutputX, ValidRows, ValidCols, ZeroMode);
+
+            if (ActivationKind != MlasIdentityActivation) {
+                for (size_t oy = 0; oy < ValidRows; oy++) {
+                    float* OutputRow = OutputBlockBase + ((TileOutputY + oy) * OutputWidth + TileOutputX) * BlockSize;
+                    MlasActivation(Activation, OutputRow, nullptr, 1, BlockSize * ValidCols, BlockSize * OutputSize);
+                }
+            }
+        }
+    }
+
+    void ExecuteTile(size_t Batch, size_t Group, size_t TileRow, size_t TileCol)
+    {
+        for (size_t OutputBlock = 0; OutputBlock < OutputBlockCount; ) {
+            ExecuteTileOutputBlocks(Batch, Group, TileRow, TileCol, OutputBlock);
+            OutputBlock += OutputBlockSetSize;
         }
     }
 };
@@ -1474,6 +1580,7 @@ Return Value:
 
     WorkBlock.Input = Input;
     WorkBlock.Output = Output;
+    WorkBlock.WinogradTransformedInput = nullptr;
     WorkBlock.GroupCount = GroupCount;
     WorkBlock.Filter = Filter;
     WorkBlock.Bias = Bias;
@@ -1501,19 +1608,40 @@ Return Value:
     // reorder the filter tensor in the expected format for the given algorithm.
     //
 
+    WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
+
     MLAS_THREADED_ROUTINE* ThreadedRoutine;
+    std::unique_ptr<float[]> WinogradTransformedInputBuffer;
 
 
-#if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
     // If UseWinograd is set, then the caller must have already transformed the
     // filter into the Winograd-friendly layout. That is the valid contract for
     // this entry point, and the dispatch logic here assumes that contract has
     // been satisfied.
     if (WorkBlock.UseWinograd) {
+        constexpr size_t MaxPretransformedInputBytes = 4 * 1024 * 1024;
+
+        const size_t TileRows = (WorkBlock.OutputShape[0] + MLAS_WINOGRAD_TILE_SIZE - 1) / MLAS_WINOGRAD_TILE_SIZE;
+        const size_t TileCols = (WorkBlock.OutputShape[1] + MLAS_WINOGRAD_TILE_SIZE - 1) / MLAS_WINOGRAD_TILE_SIZE;
+        const size_t TileCount = TileRows * TileCols;
+        const size_t OutputBlockCount = WorkBlock.OutputChannels / MlasNchwcGetBlockSize();
+        const size_t InputBlockCount = WorkBlock.InputChannels / MlasNchwcGetBlockSize();
+        const size_t PretransformedInputFloatCount = TileCount * InputBlockCount * MLAS_WINOGRAD_TRANSFORM_COUNT * MlasNchwcGetBlockSize();
+        const size_t PretransformedInputBytes = PretransformedInputFloatCount * sizeof(float);
+
+        const bool UsePretransformedWinogradInput =
+            WorkBlock.BatchCount == 1 && WorkBlock.GroupCount == 1 &&
+            TileCount > 0 && TileCount < size_t(WorkBlock.tids) && OutputBlockCount > 1 &&
+            PretransformedInputBytes <= MaxPretransformedInputBytes;
+
+        if (UsePretransformedWinogradInput) {
+            WinogradTransformedInputBuffer = std::make_unique<float[]>(PretransformedInputFloatCount);
+            MlasNchwcTransformWinogradInputTiles(&WorkBlock, WinogradTransformedInputBuffer.get());
+            WorkBlock.WinogradTransformedInput = WinogradTransformedInputBuffer.get();
+        }
+
         ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM>;
-    } else
-#endif
-    if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
+    } else if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
         if (WorkBlock.KernelShape[0] == 1 && WorkBlock.KernelShape[1] == 1 &&
             WorkBlock.Padding[0] == 0 && WorkBlock.Padding[1] == 0 &&
             WorkBlock.Padding[2] == 0 && WorkBlock.Padding[3] == 0) {
@@ -1530,8 +1658,6 @@ Return Value:
     //
     // Schedule the operation across a set of worker threads.
     //
-
-    WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
 
     MlasExecuteThreaded(ThreadedRoutine, &WorkBlock, WorkBlock.tids, ThreadPool);
 }

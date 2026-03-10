@@ -63,6 +63,7 @@ target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_q4.h
   ${MLAS_INC_DIR}/mlas_qnbit.h
   ${MLAS_INC_DIR}/mlas.h
+  ${MLAS_SRC_DIR}/intrinsics/avx512/snchwc_winograd_conv_avx512f.h
 )
 
 if (NOT onnxruntime_ORT_MINIMAL_BUILD)
@@ -760,7 +761,7 @@ endif()
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/TransKernelAvx512F.S
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
-          ${MLAS_SRC_DIR}/intrinsics/avx512/snchwc_winograd.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx512/snchwc_winograd_conv_avx512f.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
 
