@@ -135,7 +135,6 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
   const dim3 block(tpb);
   const dim3 grid(sequence_length, batch_size, num_heads);
 
-  assert(head_size <= max_threads_per_block);
   RotaryEmbeddingBSNH<<<grid, block, 0, stream>>>(output, input, cos_cache, sin_cache, position_ids, sequence_length,
                                                   num_heads, head_size, rotary_embedding_dim, position_ids_format,
                                                   interleaved, in_strides, out_strides);

@@ -29,8 +29,10 @@ namespace cuda {
 //      giving the number of tokens already in cache BEFORE appending new ones)
 //
 // Note: Mask validity (right-padding convention, contiguous True/False)
-//   is checked asynchronously via CUDA_KERNEL_ASSERT inside the kernel. Invalid masks will
-//   trigger a device-side assertion failure.
+//   is checked via CUDA_KERNEL_ASSERT inside the kernel (debug builds only).
+//   In release builds, non-contiguous masks produce safe-but-possibly-wrong output:
+//   seqlens_k is computed as the count of leading True values (up to the first False),
+//   ignoring any True values that appear after the first False.
 Status LaunchConvertMaskToFlashSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,
