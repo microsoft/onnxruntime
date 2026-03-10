@@ -1268,7 +1268,7 @@ class FusionRotaryEmbeddings(Fusion):
         rotary_emb_node.domain = "com.microsoft"
         return rotary_emb_node
 
-    def create_cos_sin_cache_from_on_the_fly_rope(self, cos_path, sin_path):
+    def create_cos_sin_cache_from_on_the_fly_rope(self, cos_path):
         """Generate cos/sin caches from on-the-fly RoPE computation (e.g. Qwen3).
 
         In on-the-fly RoPE, cos and sin are computed from inv_freq at runtime:
@@ -1295,12 +1295,15 @@ class FusionRotaryEmbeddings(Fusion):
             logger.debug("fuse_rotary_embeddings: failed to find position_ids in on-the-fly RoPE")
             return None, None, None
 
-        # Trace inv_freq: go through Cast/Expand/Where/Unsqueeze nodes to find the weight
+        # Trace inv_freq: go through Cast/Expand/Where/Unsqueeze nodes to find the weight.
+        # Where has 3 inputs [condition, x, y] — inv_freq flows through input[1] (true branch).
+        # All other ops use input[0] for the data path.
         inv_freq_input_name = matmul_node.input[0]
         inv_freq_node = self.model.get_parent(matmul_node, 0, output_name_to_node=None)
         while inv_freq_node is not None and inv_freq_node.op_type in ("Cast", "Expand", "Where", "Unsqueeze"):
-            inv_freq_input_name = inv_freq_node.input[0]
-            inv_freq_node = self.model.get_parent(inv_freq_node, 0, output_name_to_node=None)
+            parent_idx = 1 if inv_freq_node.op_type == "Where" else 0
+            inv_freq_input_name = inv_freq_node.input[parent_idx]
+            inv_freq_node = self.model.get_parent(inv_freq_node, parent_idx, output_name_to_node=None)
 
         inv_freq_name = inv_freq_node.output[0] if inv_freq_node is not None else inv_freq_input_name
         inv_freq_tensor = self.model.get_initializer(inv_freq_name)
@@ -1348,21 +1351,11 @@ class FusionRotaryEmbeddings(Fusion):
         sin_cache_name = "sin_cache"
 
         if self.model.get_initializer(cos_cache_name) is None:
-            cos_cache_tensor = helper.make_tensor(
-                name=cos_cache_name,
-                data_type=TensorProto.FLOAT,
-                dims=list(cos_cache_data.shape),
-                vals=cos_cache_data.flatten().tolist(),
-            )
+            cos_cache_tensor = numpy_helper.from_array(cos_cache_data.astype(np.float32), name=cos_cache_name)
             self.model.add_initializer(cos_cache_tensor, self.this_graph_name)
 
         if self.model.get_initializer(sin_cache_name) is None:
-            sin_cache_tensor = helper.make_tensor(
-                name=sin_cache_name,
-                data_type=TensorProto.FLOAT,
-                dims=list(sin_cache_data.shape),
-                vals=sin_cache_data.flatten().tolist(),
-            )
+            sin_cache_tensor = numpy_helper.from_array(sin_cache_data.astype(np.float32), name=sin_cache_name)
             self.model.add_initializer(sin_cache_tensor, self.this_graph_name)
 
         return cos_cache_name, sin_cache_name, position_ids
@@ -1669,7 +1662,7 @@ class FusionRotaryEmbeddings(Fusion):
                 # MatMul has two inputs: one from inv_freq (expanded), one from position_ids (cast)
                 # The Concat(freqs, freqs) before Cos/Sin doubles the frequencies
                 # cos_cache and sin_cache need to be generated from inv_freq
-                cos_cache, sin_cache, position_ids = self.create_cos_sin_cache_from_on_the_fly_rope(cos_path, sin_path)
+                cos_cache, sin_cache, position_ids = self.create_cos_sin_cache_from_on_the_fly_rope(cos_path)
                 if cos_cache is None:
                     logger.debug("fuse_rotary_embeddings: failed to create cos/sin cache from on-the-fly RoPE")
                     return

@@ -149,7 +149,7 @@ def _rotate_half_initializers(prefix):
     ]
 
 
-def _on_the_fly_rope_nodes(prefix, head_dim, max_seq_len=32, include_expand=False):
+def _on_the_fly_rope_nodes(prefix, head_dim, include_expand=False):
     """Build the on-the-fly RoPE computation: MatMul(inv_freq, positions) → Cos/Sin → Mul(scaling).
 
     This matches Qwen3's RoPE pattern:
