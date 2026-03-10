@@ -338,21 +338,6 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       node->SetAttributeInt("channels_last", 1);
     }
 
-    if (node->OpType() == "Conv" || node->OpType() == "FusedConv") {
-      const auto group_opt = node->GetAttributeInt("group");
-      if (group_opt.has_value() && group_opt.value() != 1) {
-        continue;
-      }
-
-      const auto dilations_opt = node->GetAttributeInts("dilations");
-      if (dilations_opt.has_value()) {
-        const auto& dilations = dilations_opt.value();
-        if ((dilations.size() >= 1 && dilations[0] != 1) ||
-            (dilations.size() >= 2 && dilations[1] != 1)) {
-          continue;
-        }
-      }
-    }
 
     size_t rank = shape->dim_size();
     std::vector<int64_t> input_perm = ChannelFirstToLastPerm(rank);

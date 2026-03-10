@@ -214,12 +214,19 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
     const auto& target = runtimeState.selected_nodes.Target();
     const auto* channels_last_attr = graph_utils::GetNodeAttribute(target, "channels_last");
     const bool channels_last = channels_last_attr != nullptr && channels_last_attr->i() != 0;
+    const std::string& op_type = target.OpType();
 
-    if (target.OpType() == "Conv") {
-      return channels_last ? "NhwcFusedConv" : "FusedConv";
+    // If channels_last is set, use NHWC fused convolution regardless of original op type.
+    if (channels_last) {
+      return "NhwcFusedConv";
     }
 
-    return "NhwcFusedConv";
+    // Without channels_last, convert Conv to FusedConv, and leave other op types unchanged.
+    if (op_type == "Conv") {
+      return "FusedConv";
+    }
+
+    return op_type;
   }
 
   std::string Domain(const RuntimeState&) const override { return kMSDomain; }
