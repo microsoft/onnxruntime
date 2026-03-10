@@ -1413,7 +1413,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(graph),
       std::cref(check_load_cancellation_fn),
       std::cref(on_partition_assignment_fn_),
-  };
+      layering_index};
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
