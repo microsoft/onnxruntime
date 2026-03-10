@@ -45,7 +45,6 @@ static int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vecto
   return num_profile;
 }
 
-
 /*
  * Get cache by name
  *
@@ -68,7 +67,6 @@ static std::string GetComputeCapability(const cudaDeviceProp& prop) {
   const std::string compute_capability = std::to_string(prop.major * 10 + prop.minor);
   return compute_capability;
 }
-
 
 /**
  * <summary>
