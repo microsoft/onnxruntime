@@ -215,8 +215,8 @@ Status DetectGpuPciPaths(const fs::path& sysfs_pci_devices_path,
     //   Sub-class 0x00 = VGA compatible controller
     //   Sub-class 0x02 = 3D controller (common for NVIDIA data center/compute GPUs)
     // Reference: PCI Code and ID Assignment Specification
-    //   https://pcisig.com/sites/default/files/files/PCI_Code-ID_r_1_12__v9_Jan_2020.pdf
-    //   See Appendix D, base class 03h.
+    //   https://pcisig.com/pci-code-and-id-assignment-specification-agreement
+    //   See section on base class 03h.
     const uint8_t base_class = static_cast<uint8_t>((pci_class >> 16) & 0xFF);
     const uint8_t sub_class = static_cast<uint8_t>((pci_class >> 8) & 0xFF);
     if (base_class != 0x03 || (sub_class != 0x00 && sub_class != 0x02)) {
