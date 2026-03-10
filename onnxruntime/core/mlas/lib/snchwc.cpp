@@ -878,16 +878,24 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         const size_t BatchCount = WorkBlock->BatchCount;
         const size_t GroupCount = WorkBlock->GroupCount;
         const size_t OutputHeight = WorkBlock->OutputShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex];
+        const size_t OutputWidth = WorkBlock->OutputShape[MLAS_NCHWC_NN_ALGORITHM::WidthShapeIndex];
+        const size_t StrideHeight = WorkBlock->StrideShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex];
+        const size_t StrideWidth = WorkBlock->StrideShape[MLAS_NCHWC_NN_ALGORITHM::WidthShapeIndex];
         const size_t ThreadCount = std::max<size_t>(WorkBlock->tids, 1);
 
         constexpr size_t MaxFilterTileBytes = 64 * 1024;
         constexpr size_t MinWorkUnitsPerThread = 2;
         constexpr size_t MaximumInputChannelBatch = 128;
+        constexpr size_t OutputWorkUnit = 16;
 
         const size_t EffectiveInputChannels =
             std::min(InputChannels, MaximumInputChannelBatch);
+        const size_t OutputWorkPerFilterSet =
+            (StrideHeight == 1 && StrideWidth == 1)
+                ? std::max<size_t>((WorkBlock->OutputSize + OutputWorkUnit - 1) / OutputWorkUnit, 1)
+                : std::max<size_t>(OutputHeight * ((OutputWidth + OutputWorkUnit - 1) / OutputWorkUnit), 1);
 
-        for (size_t CandidateFilterSetSize : { size_t(16), size_t(12), size_t(8), DefaultFilterSetSize }) {
+        for (size_t CandidateFilterSetSize : { size_t(32), size_t(16), size_t(12), size_t(8), DefaultFilterSetSize }) {
 
             const size_t FilterTileBytes = CandidateFilterSetSize * BlockSize * EffectiveInputChannels * sizeof(float);
             if (FilterTileBytes > MaxFilterTileBytes) {
@@ -897,7 +905,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             const size_t FilterSetCount =
                 (OutputChannels + (BlockSize * CandidateFilterSetSize) - 1) / (BlockSize * CandidateFilterSetSize);
 
-            const size_t TotalWork = BatchCount * GroupCount * FilterSetCount * std::max<size_t>(OutputHeight, 1);
+            const size_t TotalWork = BatchCount * GroupCount * FilterSetCount * OutputWorkPerFilterSet;
             if (TotalWork < (ThreadCount * MinWorkUnitsPerThread)) {
                 continue;
             }
