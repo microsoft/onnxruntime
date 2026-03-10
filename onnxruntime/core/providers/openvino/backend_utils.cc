@@ -15,7 +15,6 @@
 #include "core/providers/openvino/backend_utils.h"
 #include "core/providers/openvino/ov_interface.h"
 
-
 using Exception = ov::Exception;
 
 namespace onnxruntime {
@@ -31,12 +30,9 @@ bool IsDebugEnabled() {
   return false;
 }
 
-bool IsPerfCountEnabled() {
-  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_PERF_COUNT");
-  if (!env_name.empty()) {
-    return true;
-  }
-  return false;
+std::string IsPerfCountEnabled() {
+  std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_PERF_COUNT");
+  return env_name;
 }
 
 bool IsCILogEnabled() {
@@ -233,12 +229,9 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
 }
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName) {
-  int64_t totalTime = 0;
+                            std::ostream& stream) {
   // Print performance counts
-  stream << std::endl
-         << "performance counts:" << std::endl
-         << std::endl;
+  stream << "Layer Name, Status, Layer Type, Real Time (us), Exec Type" << std::endl;
 
   for (const auto& it : performanceMap) {
     std::string toPrint(it.node_name);
@@ -248,36 +241,32 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
       toPrint = it.node_name.substr(0, maxLayerName - 4);
       toPrint += "...";
     }
-    stream << std::setw(maxLayerName) << std::left << toPrint;
+    stream << toPrint << ",";
+
     switch (it.status) {
       case OVProfilingInfo::Status::EXECUTED:
-        stream << std::setw(15) << std::left << "EXECUTED";
+        stream << "EXECUTED"
+               << ",";
         break;
       case OVProfilingInfo::Status::NOT_RUN:
-        stream << std::setw(15) << std::left << "NOT_RUN";
+        stream << "NOT_RUN"
+               << ",";
         break;
       case OVProfilingInfo::Status::OPTIMIZED_OUT:
-        stream << std::setw(15) << std::left << "OPTIMIZED_OUT";
+        stream << "OPTIMIZED_OUT"
+               << ",";
         break;
     }
-    stream << std::setw(30) << std::left << "layerType: " + std::string(it.node_type) + " ";
-    stream << std::setw(20) << std::left << "realTime: " + std::to_string(it.real_time.count());
-    stream << std::setw(20) << std::left << "cpu: " + std::to_string(it.cpu_time.count());
-    stream << " execType: " << it.exec_type << std::endl;
-    if (it.real_time.count() > 0) {
-      totalTime += it.real_time.count();
-    }
+    stream << std::string(it.node_type) << ",";
+    stream << it.real_time.count() << ",";
+    stream << std::string(it.exec_type) << std::endl;
   }
-  stream << std::setw(20) << "Total time: " + std::to_string(totalTime) << " microseconds" << std::endl;
-  std::cout << std::endl;
-  std::cout << "Full device name: " << deviceName << std::endl;
-  std::cout << std::endl;
 }
 
-void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
+void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream) {
   auto performanceMap = request->GetInfReq().get_profiling_info();
-  if(!performanceMap.empty()) {
-    printPerformanceCounts(performanceMap, stream, std::move(deviceName));
+  if (!performanceMap.empty()) {
+    printPerformanceCounts(performanceMap, stream);
   }
 }
 

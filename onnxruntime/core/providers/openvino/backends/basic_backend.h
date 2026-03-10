@@ -145,7 +145,7 @@ class BasicBackend : public IBackend {
                SharedContext& shared_context,
                ptr_stream_t& model_stream);
 
-  void Infer(OrtKernelContext* context) const override;
+  void Infer(OrtKernelContext* context) override;
   ~BasicBackend() override = default;
   ov::CompiledModel GetOVCompiledModel() override {
     return exe_network_.Get();

@@ -17,6 +17,8 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
+#include "core/providers/openvino/exceptions.h"
+#include <filesystem>
 
 namespace onnxruntime {
 
@@ -320,7 +322,7 @@ void BasicBackend::ReorderKVCache(const std::vector<int32_t>& src_indices, const
   });
 }
 
-void BasicBackend::Infer(OrtKernelContext* ctx) const {
+void BasicBackend::Infer(OrtKernelContext* ctx) {
   Ort::KernelContext context(ctx);
 
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
@@ -422,15 +424,31 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
   }
 
   // Print performance counts before releasing the infer_request for thread safety
-  if (openvino_ep::backend_utils::IsPerfCountEnabled()) {
-    std::string& hw_target = session_context_.device_type;
-    std::string filename = subgraph_context_.subgraph_name + "_perf_count.txt";
-    std::ofstream out(filename);
-    if (out.is_open()) {
-      printPerformanceCounts(infer_request, out, hw_target);
-      out.close();
-    } else {
-      printPerformanceCounts(infer_request, std::cout, hw_target);
+  std::string perf_count = openvino_ep::backend_utils::IsPerfCountEnabled();
+  if (!perf_count.empty()) {
+    bool is_profiling_enabled = false;
+    try {
+      is_profiling_enabled = GetOVCompiledModel().get_property(ov::enable_profiling);
+    } catch (const ov::Exception& e) {
+      LOGS_DEFAULT(INFO) << log_tag << e.what();
+    }
+    if (is_profiling_enabled) {
+      std::filesystem::path dir = perf_count;
+      std::error_code ec;
+      std::filesystem::create_directory(dir, ec);
+      if (ec) {
+        LOGS_DEFAULT(INFO) << log_tag << ec.message();
+        return;
+      } else {
+        std::string filestring = subgraph_context_.subgraph_name.substr(std::string("OpenVINOExecutionProvider_OpenVINO-EP").length()) + "_perf_count.csv";
+        std::filesystem::path filename(session_context_.GetModelPath().stem().string() + filestring);
+        filename = dir / filename;
+        std::ofstream out(filename);
+        if (out.is_open()) {
+          printPerformanceCounts(infer_request, out);
+          out.close();
+        }
+      }
     }
   }
 }
