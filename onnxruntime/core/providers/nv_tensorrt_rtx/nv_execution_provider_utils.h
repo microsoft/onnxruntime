@@ -702,7 +702,7 @@ static bool checkTrtTensorIsDynamic(nvinfer1::ITensor* tensor) {
 }
 
 struct ScopedContext {
-  explicit ScopedContext(int device_id) {
+  explicit ScopedContext(int device_id) : pushed_(true) {
     CUcontext cu_context = 0;
     CU_CALL_THROW(cuCtxGetCurrent(&cu_context));
     if (!cu_context) {
@@ -715,11 +715,22 @@ struct ScopedContext {
     CU_CALL_THROW(cuCtxPushCurrent(cu_context));
   }
 
+  /** \brief Push an existing context (e.g. CIG context); pop on destruction. */
+  explicit ScopedContext(CUcontext ctx) : pushed_(ctx != nullptr) {
+    if (ctx != nullptr) {
+      CU_CALL_THROW(cuCtxPushCurrent(ctx));
+    }
+  }
+
   ScopedContext(const ScopedContext&) = delete;
 
   ~ScopedContext() {
-    // Destructor must not throw. Perform a best-effort pop of the current context.
-    cuCtxPopCurrent(nullptr);
+    if (pushed_) {
+      cuCtxPopCurrent(nullptr);
+    }
   }
+
+ private:
+  bool pushed_ = true;
 };
 }  // namespace onnxruntime
