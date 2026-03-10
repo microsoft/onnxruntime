@@ -101,10 +101,10 @@ struct PluginEpMetaDefNameFunctor {
                                       const std::string& prefix)
       : generator_(generator), graph_viewer_(graph_viewer), prefix_(prefix) {}
 
-  std::string operator()() {
+  std::string operator()() const {
     uint64_t model_hash = 0;
     int id = generator_.GenerateId(graph_viewer_, model_hash);
-    return MakeString(prefix_, "_", model_hash, "_", id);
+    return MakeString(prefix_, "_", graph_viewer_.Name(), "_", model_hash, "_", id);
   }
 
   const ModelMetadefIdGenerator& generator_;
