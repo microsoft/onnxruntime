@@ -25,9 +25,6 @@ class Einsum final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  Status DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
-                       AllocatorPtr allocator, concurrency::ThreadPool* tp) const;
-
   std::string equation_;
   std::unique_ptr<EinsumEquationPreprocessor> einsum_equation_preprocessor_;
   const CUDAExecutionProvider* cuda_ep_;

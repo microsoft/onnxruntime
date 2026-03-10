@@ -98,6 +98,14 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
 // This helps decide if we need to apply (and pay the cost) of a Transpose
 inline bool IsTransposeRequired(size_t input_rank, const gsl::span<const size_t>& permutation) {
+  ORT_ENFORCE(input_rank == permutation.size(), "The rank of the input must match permutation size for Transpose");
+
+  // No transpose required for scalars
+  if (input_rank == 0) {
+    return false;
+  }
+
+  // Weeds out cases where permutation is something like [0, 1, 2] for a 3D input and so on
   bool is_transpose_required = false;
   for (size_t i = 0; i < input_rank; ++i) {
     if (permutation[i] != i) {

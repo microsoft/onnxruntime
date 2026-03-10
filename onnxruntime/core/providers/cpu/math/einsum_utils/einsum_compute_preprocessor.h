@@ -341,7 +341,7 @@ class EinsumComputePreprocessor final {
       num_subscript_indices_ += num_of_ellipsis_dims_;
 
       // We are going to assign the broadcasted dims outermost subscript indices (i.e.) 0 -> num_of_ellipsis_dims_ - 1
-      // as most likely bradcasted dims will be batch dimensions (i.e.) outermost dimensions and hence we don't have to pay
+      // as most likely broadcasted dims will be batch dimensions (i.e.) outermost dimensions and hence we don't have to pay
       // transposing while "homogenizing" the input
 
       // Hence offset all subscript indices by num_of_ellipsis_dims_

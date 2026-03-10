@@ -26,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
 Status Einsum::ComputeInternal(OpKernelContext* context) const {
   int num_inputs = context->InputCount();
   if (num_inputs == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Einsum op: There must be atleast one input");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Einsum op: at least one input is required.");
   }
 
   std::vector<const Tensor*> inputs;
@@ -91,10 +91,9 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
 
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Einsum op: An implemented data type was encountered.");
+                           "Einsum op: Unsupported/unimplemented data type encountered: ",
+                           first_input_tensor->DataType());
   }
-
-  return Status::OK();
 }
 
 }  // namespace cuda
