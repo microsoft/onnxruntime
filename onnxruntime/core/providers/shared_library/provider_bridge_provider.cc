@@ -627,10 +627,6 @@ Status EinsumTypedComputeProcessor<MLFloat16>::Run() {
       device_data_copy_func_, device_zero_buffer_func_, device_create_tensor_func_);
 }
 
-template class EinsumTypedComputeProcessor<float>;
-template class EinsumTypedComputeProcessor<double>;
-template class EinsumTypedComputeProcessor<MLFloat16>;
-
 void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
                                             InlinedVector<float>& scales) const {
   g_host_cpu.UpsampleBase__AdjustOutputSizeAsPolicy(this, output_dims, input_dims, scales);

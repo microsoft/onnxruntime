@@ -24,7 +24,6 @@ struct Tensor;
 class Tensor;
 #endif
 class TensorShape;
-class Status;
 class IAllocator;
 using AllocatorPtr = std::shared_ptr<IAllocator>;
 

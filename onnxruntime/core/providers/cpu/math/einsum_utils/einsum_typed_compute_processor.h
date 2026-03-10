@@ -21,7 +21,6 @@ class Tensor;
 class OpKernelContext;
 #endif
 class TensorShape;
-class Status;
 class IAllocator;
 using AllocatorPtr = std::shared_ptr<IAllocator>;
 namespace concurrency {
