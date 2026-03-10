@@ -194,6 +194,13 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
     strides.resize(kernel_shape.size(), 1);
   }
 
+  if (use_winograd) {
+    ORT_RETURN_IF_NOT(MlasNchwcSupportsWinograd(true, static_cast<size_t>(X_shape[1]),
+                                                static_cast<size_t>(conv_attrs_.group),
+                                                kernel_shape.data(), dilations.data(), pads.data(), strides.data()),
+                      "Winograd NCHWc Conv is not supported for the current configuration.");
+  }
+
   TensorShapeVector Y_dims;
   Y_dims.insert(Y_dims.begin(), {X_shape[0], W_shape[0]});
   TensorShape input_shape = X->Shape().Slice(2);

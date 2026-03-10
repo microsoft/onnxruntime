@@ -1276,6 +1276,9 @@ MlasNchwcGetBlockSize(
 bool
 MLASCALL
 MlasNchwcSupportsWinograd(
+    bool UseWinograd,
+    size_t InputChannels,
+    size_t GroupCount,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
     const int64_t* Padding,

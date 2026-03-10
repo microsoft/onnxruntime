@@ -17,29 +17,6 @@ Abstract:
 #include "mlasi.h"
 #include "snchwc_winograd.h"
 
-bool
-MlasNchwcIsWinograd3x3Supported(
-    bool UseWinograd,
-    size_t GroupCount,
-    const size_t KernelShape[2],
-    const size_t DilationShape[2],
-    const size_t Padding[4],
-    const size_t StrideShape[2],
-    size_t InputChannels,
-    size_t BlockSize
-    )
-{
-    const int64_t KernelShapeInt64[2] = {static_cast<int64_t>(KernelShape[0]), static_cast<int64_t>(KernelShape[1])};
-    const int64_t DilationShapeInt64[2] = {static_cast<int64_t>(DilationShape[0]), static_cast<int64_t>(DilationShape[1])};
-    const int64_t PaddingInt64[4] = {static_cast<int64_t>(Padding[0]), static_cast<int64_t>(Padding[1]),
-                                     static_cast<int64_t>(Padding[2]), static_cast<int64_t>(Padding[3])};
-    const int64_t StrideShapeInt64[2] = {static_cast<int64_t>(StrideShape[0]), static_cast<int64_t>(StrideShape[1])};
-
-    return MlasNchwcSupportsWinograd(KernelShapeInt64, DilationShapeInt64, PaddingInt64, StrideShapeInt64) &&
-           UseWinograd && GroupCount == 1 &&
-           InputChannels >= BlockSize;
-}
-
 thread_local std::unique_ptr<float[]> MlasWinogradThreadedScratchBuffer;
 thread_local size_t MlasWinogradThreadedScratchBufferSize = 0;
 

@@ -172,8 +172,7 @@ class NchwcTransformerImpl {
 bool NchwcTransformerImpl::IsWinograd3x3Eligible(const Node& node,
                                                  const ONNX_NAMESPACE::TensorProto& filter_tensor_proto,
                                                  int64_t group_count) const {
-  if (group_count != 1 || filter_tensor_proto.dims_size() != 4 ||
-      filter_tensor_proto.dims(2) != 3 || filter_tensor_proto.dims(3) != 3) {
+  if (filter_tensor_proto.dims_size() != 4) {
     return false;
   }
 
@@ -205,14 +204,6 @@ bool NchwcTransformerImpl::IsWinograd3x3Eligible(const Node& node,
   const auto* auto_pad_attr = graph_utils::GetNodeAttribute(node, "auto_pad");
   if (auto_pad_attr != nullptr && utils::HasString(*auto_pad_attr)) {
     const auto& auto_pad = auto_pad_attr->s();
-    if (auto_pad == "SAME_UPPER" || auto_pad == "SAME_LOWER") {
-      padding[0] = 1;
-      padding[1] = 1;
-      padding[2] = 1;
-      padding[3] = 1;
-      return MlasNchwcSupportsWinograd(kernel_shape, dilation_shape, padding, stride_shape);
-    }
-
     if (auto_pad != "NOTSET") {
       return false;
     }
@@ -228,7 +219,9 @@ bool NchwcTransformerImpl::IsWinograd3x3Eligible(const Node& node,
   padding[2] = pads_attr->ints(2);
   padding[3] = pads_attr->ints(3);
 
-  return MlasNchwcSupportsWinograd(kernel_shape, dilation_shape, padding, stride_shape);
+  return MlasNchwcSupportsWinograd(allow_winograd_, static_cast<size_t>(conv_W_tensor_proto.dims(1)),
+                                   static_cast<size_t>(group_count),
+                                   kernel_shape, dilation_shape, padding, stride_shape);
 }
 
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {

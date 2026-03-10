@@ -22,18 +22,6 @@ inline constexpr size_t MLAS_WINOGRAD_TILE_SIZE = 2;
 inline constexpr size_t MLAS_WINOGRAD_TRANSFORM_SIZE = 4;
 inline constexpr size_t MLAS_WINOGRAD_TRANSFORM_COUNT = MLAS_WINOGRAD_TRANSFORM_SIZE * MLAS_WINOGRAD_TRANSFORM_SIZE;
 
-bool
-MlasNchwcIsWinograd3x3Supported(
-    bool UseWinograd,
-    size_t GroupCount,
-    const size_t KernelShape[2],
-    const size_t DilationShape[2],
-    const size_t Padding[4],
-    const size_t StrideShape[2],
-    size_t InputChannels,
-    size_t BlockSize
-    );
-
 float*
 MlasWinogradGetThreadedScratchBuffer(
     size_t FloatCount

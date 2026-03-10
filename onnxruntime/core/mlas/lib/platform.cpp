@@ -835,25 +835,21 @@ Return Value:
 bool
 MLASCALL
 MlasNchwcSupportsWinograd(
+    bool UseWinograd,
+    size_t InputChannels,
+    size_t GroupCount,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
     const int64_t* Padding,
     const int64_t* StrideShape
     )
 {
-#if defined(MLAS_TARGET_AMD64_IX86)
-    return GetMlasPlatform().Avx512Supported_ &&
+    return UseWinograd && InputChannels >= MlasNchwcGetBlockSize() && GroupCount == 1 &&
+           GetMlasPlatform().Avx512Supported_ &&
            KernelShape != nullptr && KernelShape[0] == 3 && KernelShape[1] == 3 &&
            DilationShape != nullptr && DilationShape[0] == 1 && DilationShape[1] == 1 &&
            Padding != nullptr && Padding[0] == 1 && Padding[1] == 1 && Padding[2] == 1 && Padding[3] == 1 &&
            StrideShape != nullptr && StrideShape[0] == 1 && StrideShape[1] == 1;
-#else
-    MLAS_UNREFERENCED_PARAMETER(KernelShape);
-    MLAS_UNREFERENCED_PARAMETER(DilationShape);
-    MLAS_UNREFERENCED_PARAMETER(Padding);
-    MLAS_UNREFERENCED_PARAMETER(StrideShape);
-    return false;
-#endif
 }
 
 #ifdef MLAS_TARGET_AMD64_IX86

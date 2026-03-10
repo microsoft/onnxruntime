@@ -1505,15 +1505,11 @@ Return Value:
 
 
 #if defined(MLAS_TARGET_AMD64) && (defined(_MSC_VER) || defined(__AVX512F__))
-    if (MlasNchwcIsWinograd3x3Supported(
-            WorkBlock.UseWinograd,
-            WorkBlock.GroupCount,
-            WorkBlock.KernelShape,
-            WorkBlock.DilationShape,
-            WorkBlock.Padding,
-            WorkBlock.StrideShape,
-            WorkBlock.InputChannels,
-            MlasNchwcGetBlockSize())) {
+    // If UseWinograd is set, then the caller must have already transformed the
+    // filter into the Winograd-friendly layout. That is the valid contract for
+    // this entry point, and the dispatch logic here assumes that contract has
+    // been satisfied.
+    if (WorkBlock.UseWinograd) {
         ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_WINOGRAD_ALGORITHM>;
     } else
 #endif
