@@ -391,7 +391,6 @@ Status LayeringIndex::Create(const Graph& graph,
   return Status::OK();
 }
 
-// Process top to bottom-up assign layering indices to nodes
 void LayeringIndex::ProcessGraph(const Graph& graph, std::optional<size_t> parent_layer_id) {
   // 3. Create entry for this graph instance
   bool was_updated = false;
