@@ -57,12 +57,13 @@ __global__ void RotaryEmbeddingBSNH(T* output,                    // BxSxNxH
   // position_ids_format == 1 means position_ids is a 2D array of size (batch_size, sequence_length)
   int b_s_index = b * sequence_length + s;
   if (position_ids_format != 0) {
-    b_s_index = static_cast<int>(position_ids[b_s_index]);
-    if (b_s_index < 0 || b_s_index >= max_sequence_length) {
+    int64_t pos = position_ids[b_s_index];
+    if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
       // OOB position id — can't propagate error from GPU, so pass through input unchanged.
       output_data[i] = input_data[i];
       return;
     }
+    b_s_index = static_cast<int>(pos);
   }
   cache_offset = b_s_index * half_rotary_embedding_dim;
   const T* cos_data = cos_cache + cache_offset;

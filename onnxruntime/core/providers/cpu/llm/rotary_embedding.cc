@@ -52,8 +52,8 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   // Validate position_ids values are within cos/sin cache bounds
   if (position_ids_format != 0) {
     for (int i = 0; i < batch_size * sequence_length; ++i) {
-      int pos = static_cast<int>(position_ids[i]);
-      if (pos < 0 || pos >= max_sequence_length) {
+      int64_t pos = position_ids[i];
+      if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "position_ids value ", pos, " at index ", i,
                                " is out of range [0, ", max_sequence_length, ")");
