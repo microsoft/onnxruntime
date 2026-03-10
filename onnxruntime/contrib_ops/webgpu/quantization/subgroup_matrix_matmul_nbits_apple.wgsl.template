@@ -36,10 +36,14 @@
 const tile_cols = 64;
 const tile_rows = 4 * m_dim;    // 4 subgroups (128 threads / 32 subgroup size) * m_dim
 const tile_k = 32;
-const subtile_cols = 4 * n_dim;  // 4 col-blocks of n_dim each
-const subtile_rows = 2 * m_dim;  // 2 row-blocks of m_dim each
+const subtile_cols = tile_cols / 2;   // 2 subtile columns
+const subtile_rows = tile_rows / 2;   // 2 subtile rows
 const quantization_block_size = 32;
 alias compute_precision = component_type;
+
+// loadSHMA thread distribution — generalized for any tile_rows
+const a_cols_per_thread = tile_k * tile_rows / 128;
+const a_threads_per_row = tile_k / a_cols_per_thread;
 
 var<workgroup> tile_A: array<compute_precision, tile_rows * tile_k>;
 var<workgroup> tile_B: array<compute_precision, tile_cols * tile_k>;
@@ -50,10 +54,10 @@ fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
     if (a_global >= uniforms.M) {
         return;
     }
-    // Each call loads 8 columns, starting at col.
-    var col = c_idx * 8;
-    // 128 threads need to load 32 x 32. 4 threads per row or 8 col per thread.
-    for (var col_offset:u32 = 0; col_offset < 8; col_offset++) {
+    // Each call loads a_cols_per_thread columns, starting at col.
+    var col = c_idx * a_cols_per_thread;
+    // 128 threads load tile_rows x tile_k. a_threads_per_row threads per row.
+    for (var col_offset:u32 = 0; col_offset < a_cols_per_thread; col_offset++) {
        tile_A[row * tile_k + col + col_offset] = compute_precision(a.getByOffset(a_global * uniforms.K + k_idx + col + col_offset));
     }
 }
@@ -142,26 +146,29 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
 }
 #endif
 
-fn storeOutput(offset:u32, row: u32, col:u32, src_slot:u32, row_limit:i32) {
-  if (row_limit > 0 && row < u32(row_limit)) {
-    let col2 = col + 1;
+fn storeOutput(offset:u32, base_row: u32, row_stride: u32, col:u32, src_slot:u32, row_limit:i32) {
+  let col2 = col + 1;
 #if has_bias
 #if has_weight_idx_indirect
-    let col_base = offset % uniforms.N + weight_index_indirect[uniforms.weight_idx] * uniforms.N;
+  let col_base = offset % uniforms.N + weight_index_indirect[uniforms.weight_idx] * uniforms.N;
 #else
-    let col_base = offset % uniforms.N + uniforms.weight_idx * uniforms.N;
+  let col_base = offset % uniforms.N + uniforms.weight_idx * uniforms.N;
 #endif
-
-    for (var blk: u32 = 0; blk < subtile_cols / n_dim; blk++) {
-        output.setByOffset(offset + row * uniforms.N + col + blk * n_dim, output_element_t(scratch[src_slot][blk][row * n_dim + col]) + bias[col_base + col + blk * n_dim]);
-        output.setByOffset(offset + row * uniforms.N + col2 + blk * n_dim, output_element_t(scratch[src_slot][blk][row * n_dim + col2]) + bias[col_base + col2 + blk * n_dim]);
-    }
+#endif
+  for (var row = base_row; row < m_dim; row += row_stride) {
+    if (row_limit > 0 && row < u32(row_limit)) {
+#if has_bias
+      for (var blk: u32 = 0; blk < subtile_cols / n_dim; blk++) {
+          output.setByOffset(offset + row * uniforms.N + col + blk * n_dim, output_element_t(scratch[src_slot][blk][row * n_dim + col]) + bias[col_base + col + blk * n_dim]);
+          output.setByOffset(offset + row * uniforms.N + col2 + blk * n_dim, output_element_t(scratch[src_slot][blk][row * n_dim + col2]) + bias[col_base + col2 + blk * n_dim]);
+      }
 #else
-    for (var blk: u32 = 0; blk < subtile_cols / n_dim; blk++) {
-        output.setByOffset(offset + row * uniforms.N + col + blk * n_dim, output_element_t(scratch[src_slot][blk][row * n_dim + col]));
-        output.setByOffset(offset + row * uniforms.N + col2 + blk * n_dim, output_element_t(scratch[src_slot][blk][row * n_dim + col2]));
-    }
+      for (var blk: u32 = 0; blk < subtile_cols / n_dim; blk++) {
+          output.setByOffset(offset + row * uniforms.N + col + blk * n_dim, output_element_t(scratch[src_slot][blk][row * n_dim + col]));
+          output.setByOffset(offset + row * uniforms.N + col2 + blk * n_dim, output_element_t(scratch[src_slot][blk][row * n_dim + col2]));
+      }
 #endif
+    }
   }
 }
 
@@ -177,15 +184,19 @@ $MAIN {
 
   var matC00: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
   var matC01: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
+#if n_dim <= 8
   var matC02: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
   var matC03: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
+#endif
   var matC10: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
   var matC11: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
+#if n_dim <= 8
   var matC12: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
   var matC13: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
+#endif
   for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
       // Load Phase
-      loadSHMA(a_global_base, kidx, local_idx/4, local_idx%4);
+      loadSHMA(a_global_base, kidx, local_idx/a_threads_per_row, local_idx%a_threads_per_row);
       loadSHMB(b_global_base, kidx, local_idx/2, local_idx%2);
       workgroupBarrier();
 
@@ -201,20 +212,26 @@ $MAIN {
           var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
           var matB0: subgroup_matrix_right<component_type, n_dim, k_dim> = subgroupMatrixLoad<subgroup_matrix_right<component_type, n_dim, k_dim>>(&tile_B, matrix_b_offset, true, tile_k);
           var matB1: subgroup_matrix_right<component_type, n_dim, k_dim> = subgroupMatrixLoad<subgroup_matrix_right<component_type, n_dim, k_dim>>(&tile_B, matrix_b_offset + n_dim * tile_k, true, tile_k);
+#if n_dim <= 8
           var matB2: subgroup_matrix_right<component_type, n_dim, k_dim> = subgroupMatrixLoad<subgroup_matrix_right<component_type, n_dim, k_dim>>(&tile_B, matrix_b_offset + 2 * n_dim * tile_k, true, tile_k);
           var matB3: subgroup_matrix_right<component_type, n_dim, k_dim> = subgroupMatrixLoad<subgroup_matrix_right<component_type, n_dim, k_dim>>(&tile_B, matrix_b_offset + 3 * n_dim * tile_k, true, tile_k);
+#endif
 
           // Compute Phase
           // Syntax: subgroupMatrixMultiplyAccumulate left, right, accumulate -> accumulate
           matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
           matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
+#if n_dim <= 8
           matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
           matC03 = subgroupMatrixMultiplyAccumulate(matA0, matB3, matC03);
+#endif
 
           matC10 = subgroupMatrixMultiplyAccumulate(matA1, matB0, matC10);
           matC11 = subgroupMatrixMultiplyAccumulate(matA1, matB1, matC11);
+#if n_dim <= 8
           matC12 = subgroupMatrixMultiplyAccumulate(matA1, matB2, matC12);
           matC13 = subgroupMatrixMultiplyAccumulate(matA1, matB3, matC13);
+#endif
       }
       workgroupBarrier();
   }
@@ -223,23 +240,28 @@ $MAIN {
   // Write out top block
   subgroupMatrixStore(&scratch[subtile_id][0], 0, matC00, false, n_dim);
   subgroupMatrixStore(&scratch[subtile_id][1], 0, matC01, false, n_dim);
+#if n_dim <= 8
   subgroupMatrixStore(&scratch[subtile_id][2], 0, matC02, false, n_dim);
   subgroupMatrixStore(&scratch[subtile_id][3], 0, matC03, false, n_dim);
+#endif
   workgroupBarrier();
-  let row = u32(sg_id / (n_dim / 2));
+  let base_row = u32(sg_id / (n_dim / 2));
   var col = u32(sg_id % (n_dim / 2)) * 2;
+  let row_stride = sg_size / (n_dim / 2);
   var matrix_c_offset = (a_global_base+base_A) * uniforms.N + b_global_base + base_B;
   var row_limit:i32 = i32(uniforms.M) - i32(a_global_base + base_A);
-  storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+  storeOutput(matrix_c_offset, base_row, row_stride, col, subtile_id, row_limit);
   workgroupBarrier();
 
   // Write out bottom block
   subgroupMatrixStore(&scratch[subtile_id][0], 0, matC10, false, n_dim);
   subgroupMatrixStore(&scratch[subtile_id][1], 0, matC11, false, n_dim);
+#if n_dim <= 8
   subgroupMatrixStore(&scratch[subtile_id][2], 0, matC12, false, n_dim);
   subgroupMatrixStore(&scratch[subtile_id][3], 0, matC13, false, n_dim);
+#endif
   workgroupBarrier();
   matrix_c_offset = matrix_c_offset + m_dim * uniforms.N;
   row_limit = i32(uniforms.M) - i32(a_global_base + base_A + m_dim);
-  storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+  storeOutput(matrix_c_offset, base_row, row_stride, col, subtile_id, row_limit);
 }  // MAIN

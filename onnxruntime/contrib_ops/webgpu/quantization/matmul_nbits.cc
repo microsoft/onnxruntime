@@ -224,7 +224,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 #if !defined(__wasm__)
   SubgroupMatrixConfig subgroup_matrix_config{};
   // apple|intel|nvidia - Experimental dawn support for subgroup matrix matmul.
-  if (M >= kMinMForTileOptimization && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"} || context.AdapterInfo().vendor == std::string_view{"nvidia"}) &&
+  if (M >= kMinMForTileOptimization &&
       CanApplySubgroupMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, subgroup_matrix_config)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config, context, y, weight_index, weight_index_indirect);
   }
