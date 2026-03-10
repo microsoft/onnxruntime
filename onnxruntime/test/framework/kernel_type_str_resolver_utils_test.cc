@@ -52,7 +52,7 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#if defined(USE_KLEIDIAI) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromFusedConvSchema) {
   SchemaRegistryManager schema_registry;
   const auto* fused_conv_schema = schema_registry.GetSchema("FusedConv", 1, kMSDomain);
