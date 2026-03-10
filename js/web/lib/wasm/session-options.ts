@@ -70,6 +70,41 @@ const appendEpOption = (epOptions: Array<[number, number]>, key: string, value: 
   epOptions.push([keyDataOffset, valueDataOffset]);
 };
 
+const serializeWebNNFreeDimensionBounds = (
+  bounds: InferenceSession.WebNNContextOptions['freeDimensionBounds'],
+): string => {
+  if (!bounds) {
+    return '';
+  }
+
+  const serializedEntries: string[] = [];
+  for (const [name, bound] of Object.entries(bounds)) {
+    if (!name) {
+      throw new Error('WebNN freeDimensionBounds dimension name must not be empty.');
+    }
+    if (name.includes(':') || name.includes(';')) {
+      throw new Error(`WebNN freeDimensionBounds dimension name must not include ':' or ';': ${name}`);
+    }
+
+    const minSize = bound?.minSize ?? 1;
+    const maxSize = bound?.maxSize;
+
+    if (!Number.isInteger(minSize) || minSize < 1) {
+      throw new Error(`WebNN freeDimensionBounds minSize must be an integer >= 1 for dimension: ${name}`);
+    }
+    if (!Number.isInteger(maxSize) || maxSize < 1) {
+      throw new Error(`WebNN freeDimensionBounds maxSize must be an integer >= 1 for dimension: ${name}`);
+    }
+    if (maxSize < minSize) {
+      throw new Error(`WebNN freeDimensionBounds maxSize must be >= minSize for dimension: ${name}`);
+    }
+
+    serializedEntries.push(`${name}:${minSize}:${maxSize}`);
+  }
+
+  return serializedEntries.join(';');
+};
+
 const setExecutionProviders = async (
   sessionOptionsHandle: number,
   sessionOptions: InferenceSession.SessionOptions,
@@ -88,8 +123,15 @@ const setExecutionProviders = async (
           const webnnOptions = ep as InferenceSession.WebNNExecutionProviderOption;
           // const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
           const deviceType = (webnnOptions as InferenceSession.WebNNContextOptions)?.deviceType;
+          const freeDimensionBounds = (webnnOptions as InferenceSession.WebNNContextOptions)?.freeDimensionBounds;
           if (deviceType) {
             appendSessionConfig(sessionOptionsHandle, 'deviceType', deviceType, allocs);
+          }
+          if (freeDimensionBounds) {
+            const serializedBounds = serializeWebNNFreeDimensionBounds(freeDimensionBounds);
+            if (serializedBounds) {
+              appendEpOption(epOptions, 'FreeDimensionBounds', serializedBounds, allocs);
+            }
           }
         }
         break;

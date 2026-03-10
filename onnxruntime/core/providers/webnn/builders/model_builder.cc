@@ -20,12 +20,14 @@ namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
                            const emscripten::val& context, const WebnnDeviceType wnn_device_type,
-                           const emscripten::val& wnn_limits)
+                           const emscripten::val& wnn_limits,
+                           const FreeDimensionBounds& free_dimension_bounds)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
       wnn_device_type_(wnn_device_type),
-      wnn_limits_(wnn_limits) {
+      wnn_limits_(wnn_limits),
+      free_dimension_bounds_(free_dimension_bounds) {
   // Create WebNN MLGraphBuilder for each ModelBuilder, because MLGraphBuilder.build()
   // is only allowed to be called once.
   wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(context);
@@ -271,11 +273,22 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         shape_array.call<void>("push", dim_value);
       } else {
         // Dynamic dimension: create an object {name, maxSize} for WebNN.
+        const auto dim_name = dim.dim_param();
+        const auto it = free_dimension_bounds_.find(dim_name);
+        ORT_RETURN_IF(it == free_dimension_bounds_.end(),
+                      "Missing FreeDimensionBounds for dynamic dimension: ", dim_name,
+                      ". Provide WebNN EP option FreeDimensionBounds entry with maxSize.");
+
+        const int32_t min_size = it->second.min_size;
+        const int32_t max_size = it->second.max_size;
+        ORT_RETURN_IF(min_size <= 0 || max_size <= 0 || max_size < min_size,
+                      "Invalid FreeDimensionBounds for dynamic dimension: ", dim_name,
+                      ". Require 1 <= minSize <= maxSize.");
+
         emscripten::val dim_obj = emscripten::val::object();
-        dim_obj.set("name", emscripten::val(dim.dim_param()));
-        // WebNN requires maxSize. Use a default value since ONNX doesn't provide this information.
-        // TODO: Allow configuring maxSize via session options or dimension overrides.
-        dim_obj.set("maxSize", 128);
+        dim_obj.set("name", emscripten::val(dim_name));
+        dim_obj.set("minSize", min_size);
+        dim_obj.set("maxSize", max_size);
         shape_array.call<void>("push", dim_obj);
       }
     }

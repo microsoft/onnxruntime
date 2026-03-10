@@ -250,6 +250,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #if defined(USE_WEBNN)
       std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
       provider_options["deviceType"] = deviceType;
+
+      if (provider_options.find("FreeDimensionBounds") == provider_options.end()) {
+        std::string free_dimension_bounds = options->value.config_options.GetConfigOrDefault("FreeDimensionBounds", "");
+        if (!free_dimension_bounds.empty()) {
+          provider_options["FreeDimensionBounds"] = free_dimension_bounds;
+        }
+      }
+
       options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
 #else
       status = create_not_supported_status();

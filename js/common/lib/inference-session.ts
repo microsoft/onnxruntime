@@ -289,10 +289,16 @@ export declare namespace InferenceSession {
    *
    * @see https://www.w3.org/TR/webnn/#dictdef-mlcontextoptions
    */
+  export interface FreeDimensionBound {
+    minSize?: number;
+    maxSize: number;
+  }
+
   export interface WebNNContextOptions {
     deviceType?: 'cpu' | 'gpu' | 'npu';
     numThreads?: number;
     powerPreference?: 'default' | 'low-power' | 'high-performance';
+    freeDimensionBounds?: { readonly [dimensionName: string]: FreeDimensionBound };
   }
 
   /**

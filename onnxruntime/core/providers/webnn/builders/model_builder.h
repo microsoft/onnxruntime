@@ -23,7 +23,8 @@ class IOpBuilder;
 class ModelBuilder {
  public:
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger, const emscripten::val& context,
-               const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits);
+               const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits,
+               const FreeDimensionBounds& free_dimension_bounds);
   ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
@@ -75,6 +76,7 @@ class ModelBuilder {
   bool is_int64_supported_ = false;
   WebnnDeviceType wnn_device_type_;
   emscripten::val wnn_limits_ = emscripten::val::undefined();
+  FreeDimensionBounds free_dimension_bounds_;
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
