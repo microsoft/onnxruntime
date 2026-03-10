@@ -2885,7 +2885,7 @@ struct KernelInfoImpl : Base<T> {
     return val;
   }
 
-  template <typename R>  // R is only implemented for std::vector<float>, std::vector<int64_t>, and std::vector<std::string>
+  template <typename R>  // R is only implemented for float, int64_t, and string
   std::vector<R> GetAttributes(const char* name) const {
     std::vector<R> result;
     attr_utils::GetAttrs(this->p_, name, result);

@@ -3077,18 +3077,19 @@ inline void attr_utils::GetAttrs(const OrtKernelInfo* p, const char* name, std::
 
   Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_string(p, name, allocator, &out, &size));
 
-  auto deletor = detail::AllocatedFree(allocator);
-  std::unique_ptr<void, decltype(deletor)> array_guard(out, deletor);
-  auto strings_deletor = [&deletor, size](char** values) {
+  auto deleter = detail::AllocatedFree(allocator);
+  std::unique_ptr<void, decltype(deleter)> array_guard(out, deleter);
+  auto strings_deleter = [&deleter, size](char** values) {
     for (size_t i = 0; i < size; ++i) {
-      deletor(values[i]);
+      if (values[i] != nullptr) {
+        deleter(values[i]);
+      }
     }
   };
-  std::unique_ptr<char*, decltype(strings_deletor)> strings_guard(out, strings_deletor);
+  std::unique_ptr<char*, decltype(strings_deleter)> strings_guard(out, strings_deleter);
 
   std::vector<std::string> strings;
   strings.reserve(size);
-  strings_guard.release();
   for (size_t i = 0; i < size; ++i) {
     strings.emplace_back(out[i]);
   }

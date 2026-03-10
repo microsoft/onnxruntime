@@ -7243,11 +7243,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
 
-  /// @}
-  /// \name OrtKernelInfo
-  /// Custom operator APIs.
-  /// @{
-
   /** \brief Fetch an array of strings stored as an attribute in the graph node
    *
    * If `out` is nullptr, the value of `size` is set to the true size of the attribute

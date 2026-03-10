@@ -547,6 +547,20 @@ static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, s
   return Status::OK();
 }
 
+static char* DuplicateStringToAllocatorMemory(const std::string& value, OrtAllocator* allocator) {
+  SafeInt<size_t> allocation_size(value.size());
+  allocation_size += 1;
+
+  char* duplicated_value = static_cast<char*>(allocator->Alloc(allocator, allocation_size));
+  if (duplicated_value == nullptr) {
+    return nullptr;
+  }
+
+  std::memcpy(duplicated_value, value.data(), value.size());
+  duplicated_value[value.size()] = '\0';
+  return duplicated_value;
+}
+
 static Status CopyStringDataFromVectorToMemory(const std::vector<std::string>& values, OrtAllocator* allocator, char*** out, size_t* size) {
   *size = values.size();
 
@@ -555,9 +569,9 @@ static Status CopyStringDataFromVectorToMemory(const std::vector<std::string>& v
   }
 
   ORT_RETURN_IF_NOT(allocator != nullptr, "allocator must not be null when out is provided");
+  *out = nullptr;
 
   if (values.empty()) {
-    *out = nullptr;
     return Status::OK();
   }
 
@@ -566,22 +580,25 @@ static Status CopyStringDataFromVectorToMemory(const std::vector<std::string>& v
   };
   SafeInt<size_t> alloc_count(values.size());
   char** array = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
+  ORT_RETURN_IF_NOT(array != nullptr, "Failed to allocate string attribute pointer array");
   std::unique_ptr<void, decltype(free_with_allocator)> array_guard(array, free_with_allocator);
 
-  std::vector<char*> string_values(values.size(), nullptr);
-  try {
-    for (size_t i = 0; i < values.size(); ++i) {
-      string_values[i] = onnxruntime::StrDup(values[i], allocator);
-      array[i] = string_values[i];
-    }
-  } catch (...) {
-    for (char* value : string_values) {
-      if (value != nullptr) {
-        allocator->Free(allocator, value);
+  size_t allocated_string_count = 0;
+  for (size_t i = 0; i < values.size(); ++i) {
+    char* duplicated_value = DuplicateStringToAllocatorMemory(values[i], allocator);
+    if (duplicated_value == nullptr) {
+      for (size_t j = 0; j < allocated_string_count; ++j) {
+        if (array[j] != nullptr) {
+          allocator->Free(allocator, array[j]);
+        }
       }
+
+      return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL,
+                    "Failed to allocate string attribute array");
     }
 
-    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Failed to allocate string attribute array");
+    array[i] = duplicated_value;
+    ++allocated_string_count;
   }
 
   *out = array;

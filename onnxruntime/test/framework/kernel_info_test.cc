@@ -102,8 +102,6 @@ static void VerifyKernelInfoStringArrayAttribute(const std::vector<std::string>&
   ort_api.ReleaseStatus(status);
 }
 
-class KernelInfoApiTest : public testing::TestWithParam<int> {};
-
 TEST(KernelInfoTests, KernelInfoGetAttributeArrayString) {
   VerifyKernelInfoStringArrayAttribute({"alpha", "beta", "gamma"});
 }
