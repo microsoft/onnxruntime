@@ -5,6 +5,7 @@
 
 #include "core/graph/constants.h"
 #include "core/common/narrow.h"
+#include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
 #include "core/framework/layering_annotations.h"
 #include "core/framework/ortmemoryinfo.h"
@@ -12,7 +13,6 @@
 #include "core/framework/execution_providers.h"
 #include "core/graph/graph.h"
 
-#include <cstdlib>
 #include <limits>
 
 namespace onnxruntime {
@@ -150,19 +150,8 @@ bool CaseInsensitiveCompare(std::string_view a, std::string_view b) {
 }
 
 bool TryParseIndex(const std::string& str, uint32_t& index) {
-  if (str.empty() || str[0] == '-') return false;
-  char* end = nullptr;
-  const char* ptr = str.c_str();
-  errno = 0;
-  unsigned long val = std::strtoul(ptr, &end, 10);
-  if (errno != 0 || end != ptr + str.size()) {
-    return false;
-  }
-  if (val > std::numeric_limits<uint32_t>::max()) {
-    return false;
-  }
-  index = narrow<uint32_t>(val);
-  return true;
+  if (str.empty()) return false;
+  return TryParseStringWithClassicLocale(str, index);
 }
 
 // Sentinel value representing an unknown/unavailable device type.
