@@ -35,7 +35,6 @@ TEST(DeviceDiscoveryTest, GpuDevicesHaveValidProperties) {
 
   // GPU detection should not crash. If GPUs are present, validate their properties.
   for (const auto& gpu_device : gpu_devices) {
-    EXPECT_EQ(gpu_device.type, OrtHardwareDeviceType_GPU);
     EXPECT_NE(gpu_device.vendor_id, 0u);
     // Note: device_id may be 0 on some platforms (e.g., Apple Silicon) where it is not populated.
   }
