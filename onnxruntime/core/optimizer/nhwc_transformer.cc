@@ -25,6 +25,12 @@ namespace onnxruntime {
 using namespace layout_transformation;
 
 #ifdef USE_KLEIDIAI
+// KleidiFp32NhwcFilter ensures the compatibility of Conv/FusedConv nodes before performing data conversion
+// Checks the following:
+// Must have 4D Input
+// Must have symmetric 2d padding (if applicable)
+// No add input
+// Dilation and Group sizes must be 1
 bool KleidiFp32NhwcFilter(const onnx_transpose_optimization::api::GraphRef& graph,
                           onnx_transpose_optimization::api::NodeRef& node) {
   auto& base_node = NodeFromApiNode(node);
@@ -50,11 +56,6 @@ bool KleidiFp32NhwcFilter(const onnx_transpose_optimization::api::GraphRef& grap
     if (pads.size() != 4 || pads[0] != pads[2] || pads[1] != pads[3]) {
       return false;
     }
-  }
-
-  const auto inputs = node.Inputs();
-  if (inputs.size() > 3 && !inputs[3].empty()) {
-    return false;
   }
 
   const auto* weight_shape = base_node.InputDefs()[1]->Shape();

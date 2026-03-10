@@ -24,8 +24,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#define WIDEN2(x) L##x
-#define WIDEN(x) WIDEN2(x)
 
 using namespace ONNX_NAMESPACE;
 
@@ -38,17 +36,21 @@ std::filesystem::path ResolveTestPath(const std::filesystem::path& path) {
   }
 
   std::filesystem::path workspace_candidate = std::filesystem::current_path() / path;
-  if (std::filesystem::exists(workspace_candidate)) {
+  std::error_code ec;
+  if (std::filesystem::exists(workspace_candidate, ec) && !ec) {
     return workspace_candidate;
   }
 
   static const std::filesystem::path kSourceTestRoot =
-      std::filesystem::path{WIDEN(__FILE__)}.parent_path().parent_path();
+      std::filesystem::path{ORT_TSTR_ON_MACRO(__FILE__)}.parent_path().parent_path();
   std::filesystem::path source_candidate = kSourceTestRoot / path;
-  if (std::filesystem::exists(source_candidate)) {
+  ec.clear();
+  if (std::filesystem::exists(source_candidate, ec) && !ec) {
     return source_candidate;
   }
 
+  // Keep the original relative-to-workdir intent so the downstream file-open
+  // error points to the path we actually tried first.
   return workspace_candidate;
 }
 }  // namespace
@@ -241,24 +243,12 @@ static void CompareSessionMetadata(const InferenceSessionWrapper& session_object
 
 static void SaveAndCompareModels(const PathString& orig_file,
                                  const PathString& ort_file,
-                                 TransformerLevel optimization_level = TransformerLevel::Level3) {
+                                 TransformerLevel optimization_level = TransformerLevel::Level3,
+                                 bool compare_saved_model = true) {
   std::filesystem::path orig_path = ResolveTestPath(std::filesystem::path{orig_file});
   std::filesystem::path ort_path = ResolveTestPath(std::filesystem::path{ort_file});
   if (ort_path.has_parent_path()) {
     std::filesystem::create_directories(ort_path.parent_path());
-  }
-
-  const bool orig_is_ort_format = orig_path.extension() == ORT_TSTR(".ort");
-  if (orig_is_ort_format) {
-    SessionOptions so;
-    so.session_logid = "SerializeToOrtFormat";
-    so.optimized_model_filepath = ort_path.native();
-    so.graph_optimization_level = optimization_level;
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
-    InferenceSessionWrapper session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.Load(orig_path.native()));
-    ASSERT_STATUS_OK(session_object.Initialize());
-    return;
   }
 
   SessionOptions so;
@@ -284,6 +274,10 @@ static void SaveAndCompareModels(const PathString& orig_file,
   InferenceSessionWrapper session_object2{so2, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.Load(ort_path.native()));
   ASSERT_STATUS_OK(session_object2.Initialize());
+
+  if (!compare_saved_model) {
+    return;
+  }
 
   CompareSessionMetadata(session_object, session_object2);
   CompareGraphAndSessionState(session_object, session_object2);
@@ -410,7 +404,9 @@ void TestOrtModelUpdate(const PathString& onnx_file,
   // ort_file_v4 is ORT format model using v4 where we used kernel hashes instead of constraints
 
   // update v4 model and save as v5. do not run optimizations in order to preserve the model as-is.
-  SaveAndCompareModels(ort_file_v4, generated_ort_file_v5, TransformerLevel::Default);
+  // Loading a v4 ORT model updates it as part of deserialization, so the in-memory graph/session state is not
+  // expected to match a separately reloaded v5 model exactly. Just validate that we can save and reload it.
+  SaveAndCompareModels(ort_file_v4, generated_ort_file_v5, TransformerLevel::Default, false);
 
   // run the original, v4 and v5 models and check the output is the same
   OrtModelTestInfo test_info;
