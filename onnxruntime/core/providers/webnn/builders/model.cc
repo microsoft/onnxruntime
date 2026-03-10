@@ -156,14 +156,60 @@ onnxruntime::common::Status Model::Compute(const InlinedHashMap<std::string, Onn
 
 onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                             const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
+  auto object = emscripten::val::global("Object");
+  InlinedHashSet<std::string> graph_inputs;
+  InlinedHashSet<std::string> graph_outputs;
+
+  {
+    emscripten::val graph_input_descs = wnn_graph_.call<emscripten::val>("inputs");
+    emscripten::val graph_input_names = object.call<emscripten::val>("keys", graph_input_descs);
+    const uint32_t graph_input_count = graph_input_names["length"].as<uint32_t>();
+    for (uint32_t i = 0; i < graph_input_count; ++i) {
+      graph_inputs.insert(graph_input_names[i].as<std::string>());
+    }
+  }
+
+  {
+    emscripten::val graph_output_descs = wnn_graph_.call<emscripten::val>("outputs");
+    emscripten::val graph_output_names = object.call<emscripten::val>("keys", graph_output_descs);
+    const uint32_t graph_output_count = graph_output_names["length"].as<uint32_t>();
+    for (uint32_t i = 0; i < graph_output_count; ++i) {
+      graph_outputs.insert(graph_output_names[i].as<std::string>());
+    }
+  }
+
+  for (const auto& graph_input : graph_inputs) {
+    if (inputs.find(graph_input) == inputs.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Missing required WebNN dispatch input: ", graph_input);
+    }
+  }
+
+  for (const auto& graph_output : graph_outputs) {
+    if (outputs.find(graph_output) == outputs.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Missing required WebNN dispatch output: ", graph_output);
+    }
+  }
+
+  wnn_inputs_ = emscripten::val::object();
+  wnn_outputs_ = emscripten::val::object();
+
   auto webnnEnsureTensor = emscripten::val::module_property("webnnEnsureTensor");
   auto promises = emscripten::val::array();
+  std::vector<std::string> bound_input_names;
+  std::vector<std::string> bound_output_names;
   bool trace = emscripten::val::module_property("webnnEnableTraceEvent").as<bool>();
   emscripten::val console = emscripten::val::global("console");
   if (trace) {
     console.call<void>("time", emscripten::val("ORT::Dispatch::webnnEnsureTensor"));
   }
-  for (const auto& [_, tensor] : inputs) {
+  for (const auto& [name, tensor] : inputs) {
+    if (graph_inputs.find(name) == graph_inputs.end()) {
+      LOGS(logger_, VERBOSE) << "Skip extra dispatch input not used by WebNN graph: " << name;
+      continue;
+    }
+
     emscripten::val shape = emscripten::val::array();
     for (const auto& dim : tensor.tensor_info.shape) {
       uint32_t dim_val = SafeInt<uint32_t>(dim);
@@ -171,8 +217,14 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
     }
     auto ml_tensor = webnnEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
     promises.call<void>("push", ml_tensor);
+    bound_input_names.push_back(name);
   }
-  for (const auto& [_, tensor] : outputs) {
+  for (const auto& [name, tensor] : outputs) {
+    if (graph_outputs.find(name) == graph_outputs.end()) {
+      LOGS(logger_, VERBOSE) << "Skip extra dispatch output not used by WebNN graph: " << name;
+      continue;
+    }
+
     emscripten::val shape = emscripten::val::array();
     for (const auto& dim : tensor.tensor_info.shape) {
       uint32_t dim_val = SafeInt<uint32_t>(dim);
@@ -180,15 +232,16 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
     }
     auto ml_tensor = webnnEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
     promises.call<void>("push", ml_tensor);
+    bound_output_names.push_back(name);
   }
   if (trace) {
     console.call<void>("timeEnd", emscripten::val("ORT::Dispatch::webnnEnsureTensor"));
   }
   auto ml_tensors = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();
-  for (const auto& [name, _] : inputs) {
+  for (const auto& name : bound_input_names) {
     wnn_inputs_.set(name, ml_tensors.call<emscripten::val>("shift"));
   }
-  for (const auto& [name, _] : outputs) {
+  for (const auto& name : bound_output_names) {
     wnn_outputs_.set(name, ml_tensors.call<emscripten::val>("shift"));
   }
   wnn_context_.call<void>("dispatch", wnn_graph_, wnn_inputs_, wnn_outputs_);

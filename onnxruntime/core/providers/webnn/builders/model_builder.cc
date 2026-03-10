@@ -247,7 +247,6 @@ Status ModelBuilder::RegisterInitializers() {
 Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_input) {
   const auto& name = node_arg.Name();
   const std::string input_output_type = is_input ? "input" : "output";
-  constexpr int32_t kDefaultDynamicDimensionMaxSize = 128;
 
   if (is_input) {
     // Input should not be an initializer.
@@ -276,7 +275,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         dim_obj.set("name", emscripten::val(dim.dim_param()));
         // WebNN requires maxSize. Use a default value since ONNX doesn't provide this information.
         // TODO: Allow configuring maxSize via session options or dimension overrides.
-        dim_obj.set("maxSize", kDefaultDynamicDimensionMaxSize);
+        dim_obj.set("maxSize", 128);
         shape_array.call<void>("push", dim_obj);
       }
     }
@@ -356,8 +355,8 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   const auto* shape_proto = node_arg.Shape();
   if (shape_proto) {
     for (const auto& dim : shape_proto->dim()) {
-      // For dynamic dimensions, store the default max size to avoid zero-sized runtime tensors.
-      shape.push_back(dim.has_dim_value() ? dim.dim_value() : kDefaultDynamicDimensionMaxSize);
+      // For dynamic dimensions, store 0 since actual shape is determined at runtime.
+      shape.push_back(dim.has_dim_value() ? dim.dim_value() : 0);
     }
   }
   input_output_info_.emplace(name, OnnxTensorInfo{data_type, shape});
@@ -398,6 +397,16 @@ Status ModelBuilder::RegisterModelOutputs() {
 
 Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   ORT_RETURN_IF_ERROR(Initialize());
+
+  LOGS(logger_, INFO) << "[WebNN] Creating graph with " << input_names_.size() << " input(s) and "
+                      << output_names_.size() << " output(s).";
+  for (const auto& input_name : input_names_) {
+    LOGS(logger_, INFO) << "[WebNN] Graph input: " << input_name;
+  }
+  for (const auto& output_name : output_names_) {
+    LOGS(logger_, INFO) << "[WebNN] Graph output: " << output_name;
+  }
+
   emscripten::val named_operands = emscripten::val::object();
   for (auto& name : output_names_) {
     emscripten::val wnn_output = wnn_operands_.at(name);
