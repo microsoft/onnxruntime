@@ -369,6 +369,8 @@ Status Attention<T>::RunFlashAttention(
     // Step 3: Fused concat: past_key + new_key → present_key (and same for values).
     // One kernel copies past data from [0, past_seq) and new data from BSNH layout
     // into present buffer at [past_seq, past_seq + kv_seq), all in BNSH.
+    // Note: is_bsnh=false means past/present cache layout is BNSH. New tokens
+    // (k_new_bsnh/v_new_bsnh) are always read as BSNH by the kernel (hardcoded strides).
     ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<CudaT>(
         parameters.batch_size,
         parameters.kv_num_heads,
