@@ -856,6 +856,11 @@ TEST(RoiAlignTest, BatchIndicesNegative) {
 }
 
 TEST(RoiAlignTest, BatchIndicesOutOfRange_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
   OpTester test("RoiAlign", 10);
   test.AddAttribute<int64_t>("output_height", 2);
   test.AddAttribute<int64_t>("output_width", 2);
@@ -868,14 +873,16 @@ TEST(RoiAlignTest, BatchIndicesOutOfRange_CUDA) {
   test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (cuda_ep) {
-    execution_providers.push_back(std::move(cuda_ep));
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-  }
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
   OpTester test("RoiAlign", 10);
   test.AddAttribute<int64_t>("output_height", 2);
   test.AddAttribute<int64_t>("output_width", 2);
@@ -888,11 +895,8 @@ TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
   test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (cuda_ep) {
-    execution_providers.push_back(std::move(cuda_ep));
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-  }
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 }  // namespace test
 }  // namespace onnxruntime
