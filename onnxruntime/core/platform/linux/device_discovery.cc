@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/device_discovery.h"
-#include "core/platform/linux/device_discovery_linux.h"
+#include "core/platform/linux/pci_device_discovery.h"
 
 #include <filesystem>
 #include <fstream>
