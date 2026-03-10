@@ -1337,6 +1337,16 @@ class FusionRotaryEmbeddings(Fusion):
                         scaling_value = float(scaling_const)
                 break
 
+        cos_cache_name = "cos_cache"
+        sin_cache_name = "sin_cache"
+
+        # If both caches already exist as initializers (from a previous layer's fusion), reuse them.
+        if (
+            self.model.get_initializer(cos_cache_name) is not None
+            and self.model.get_initializer(sin_cache_name) is not None
+        ):
+            return cos_cache_name, sin_cache_name, position_ids
+
         # Generate cos/sin caches: cos_cache[pos, :] = cos(pos * inv_freq) * scaling
         # The RotaryEmbedding op expects cos_cache of shape (max_seq_len, head_size/2).
         # Use 131072 to cover most LLM contexts (Qwen3 default is 32768; many models go up to 128k).
@@ -1347,16 +1357,11 @@ class FusionRotaryEmbeddings(Fusion):
         cos_cache_data = np.cos(freqs) * scaling_value
         sin_cache_data = np.sin(freqs) * scaling_value
 
-        cos_cache_name = "cos_cache"
-        sin_cache_name = "sin_cache"
+        cos_cache_tensor = numpy_helper.from_array(cos_cache_data.astype(np.float32), name=cos_cache_name)
+        self.model.add_initializer(cos_cache_tensor, self.this_graph_name)
 
-        if self.model.get_initializer(cos_cache_name) is None:
-            cos_cache_tensor = numpy_helper.from_array(cos_cache_data.astype(np.float32), name=cos_cache_name)
-            self.model.add_initializer(cos_cache_tensor, self.this_graph_name)
-
-        if self.model.get_initializer(sin_cache_name) is None:
-            sin_cache_tensor = numpy_helper.from_array(sin_cache_data.astype(np.float32), name=sin_cache_name)
-            self.model.add_initializer(sin_cache_tensor, self.this_graph_name)
+        sin_cache_tensor = numpy_helper.from_array(sin_cache_data.astype(np.float32), name=sin_cache_name)
+        self.model.add_initializer(sin_cache_tensor, self.this_graph_name)
 
         return cos_cache_name, sin_cache_name, position_ids
 
@@ -1755,13 +1760,14 @@ class FusionRotaryEmbeddings(Fusion):
                 # Transpose, Mul_scaling) are used across all layers and will be pruned
                 # automatically when all consumers are removed.
                 # Per-layer nodes are everything before the Mul(scaling) or Cos/Sin node.
+                # Guard with single-consumer check so shared nodes are not prematurely removed.
                 for i, path_node in enumerate(sin_path):
                     if path_node.op_type in ("Mul", "Sin") and path_node != sin_path[0]:
-                        self.add_nodes_to_remove(sin_path[:i])
+                        self.add_nodes_to_remove([n for n in sin_path[:i] if len(self.model.get_children(n)) <= 1])
                         break
                 for i, path_node in enumerate(cos_path):
                     if path_node.op_type in ("Mul", "Cos") and path_node != cos_path[0]:
-                        self.add_nodes_to_remove(cos_path[:i])
+                        self.add_nodes_to_remove([n for n in cos_path[:i] if len(self.model.get_children(n)) <= 1])
                         break
             else:
                 self.add_nodes_to_remove(sin_path)
