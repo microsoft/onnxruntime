@@ -121,20 +121,11 @@ TEST_F(PciDeviceDiscoveryTest, SkipsDevicesWithMissingClassFile) {
 }
 
 TEST_F(PciDeviceDiscoveryTest, GetGpuDeviceFromPciReadsVendorAndDevice) {
-  // Only create the files that GetGpuDeviceFromPci actually reads (vendor and device).
-  auto device_dir = temp_dir_ / "0000:65:00.0";
-  fs::create_directories(device_dir);
-  {
-    std::ofstream f(device_dir / "vendor");
-    f << "0x10de";
-  }
-  {
-    std::ofstream f(device_dir / "device");
-    f << "0x20b5";
-  }
+  // Create a fake NVIDIA GPU PCI device
+  CreateFakePciDevice(temp_dir_ / "0000:65:00.0", "0x030200", "0x10de", "0x20b5");
 
   pci_device_discovery::GpuPciPathInfo path_info;
-  path_info.path = device_dir;
+  path_info.path = temp_dir_ / "0000:65:00.0";
   path_info.pci_bus_id = "0000:65:00.0";
 
   OrtHardwareDevice gpu_device{};
@@ -152,20 +143,11 @@ TEST_F(PciDeviceDiscoveryTest, GetGpuDeviceFromPciReadsVendorAndDevice) {
 }
 
 TEST_F(PciDeviceDiscoveryTest, GetGpuDeviceFromPciNonNvidiaVendor) {
-  // Only create the files that GetGpuDeviceFromPci actually reads (vendor and device).
-  auto device_dir = temp_dir_ / "0000:03:00.0";
-  fs::create_directories(device_dir);
-  {
-    std::ofstream f(device_dir / "vendor");
-    f << "0x1002";
-  }
-  {
-    std::ofstream f(device_dir / "device");
-    f << "0x731f";
-  }
+  // Create a fake AMD GPU PCI device
+  CreateFakePciDevice(temp_dir_ / "0000:03:00.0", "0x030000", "0x1002", "0x731f");
 
   pci_device_discovery::GpuPciPathInfo path_info;
-  path_info.path = device_dir;
+  path_info.path = temp_dir_ / "0000:03:00.0";
   path_info.pci_bus_id = "0000:03:00.0";
 
   OrtHardwareDevice gpu_device{};
