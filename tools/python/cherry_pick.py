@@ -66,7 +66,7 @@ def get_merged_prs(repo, label, limit=200):
 
 def get_changed_files(oid):
     """Get list of files changed in a commit."""
-    output = run_command(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", oid], silent=True)
+    output = run_command(["git", "diff-tree", "--no-commit-id", "--name-only", "-m", "-r", oid], silent=True)
     if output:
         return output.strip().splitlines()
     return []
