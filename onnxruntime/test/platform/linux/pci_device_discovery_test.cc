@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "test/util/include/asserts.h"
 #include "gtest/gtest.h"
 
 namespace fs = std::filesystem;
@@ -54,8 +55,7 @@ TEST_F(PciDeviceDiscoveryTest, DetectsNvidiaVgaController) {
   CreateFakePciDevice(temp_dir_ / "0000:01:00.0", "0x030000", "0x10de", "0x2204");
 
   std::vector<pci_device_discovery::GpuPciPathInfo> gpu_paths;
-  auto status = pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths));
   ASSERT_EQ(gpu_paths.size(), 1u);
   EXPECT_EQ(gpu_paths[0].pci_bus_id, "0000:01:00.0");
 }
@@ -65,8 +65,7 @@ TEST_F(PciDeviceDiscoveryTest, DetectsNvidia3DController) {
   CreateFakePciDevice(temp_dir_ / "0000:65:00.0", "0x030200", "0x10de", "0x20b5");
 
   std::vector<pci_device_discovery::GpuPciPathInfo> gpu_paths;
-  auto status = pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths));
   ASSERT_EQ(gpu_paths.size(), 1u);
   EXPECT_EQ(gpu_paths[0].pci_bus_id, "0000:65:00.0");
 }
@@ -80,23 +79,20 @@ TEST_F(PciDeviceDiscoveryTest, FiltersOutNonGpuDevices) {
   CreateFakePciDevice(temp_dir_ / "0000:01:00.0", "0x030000", "0x10de", "0x2204");
 
   std::vector<pci_device_discovery::GpuPciPathInfo> gpu_paths;
-  auto status = pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths));
   ASSERT_EQ(gpu_paths.size(), 1u);
   EXPECT_EQ(gpu_paths[0].pci_bus_id, "0000:01:00.0");
 }
 
 TEST_F(PciDeviceDiscoveryTest, ReturnsEmptyForNonexistentPath) {
   std::vector<pci_device_discovery::GpuPciPathInfo> gpu_paths;
-  auto status = pci_device_discovery::DetectGpuPciPaths(temp_dir_ / "nonexistent", gpu_paths);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::DetectGpuPciPaths(temp_dir_ / "nonexistent", gpu_paths));
   EXPECT_TRUE(gpu_paths.empty());
 }
 
 TEST_F(PciDeviceDiscoveryTest, ReturnsEmptyForEmptyDirectory) {
   std::vector<pci_device_discovery::GpuPciPathInfo> gpu_paths;
-  auto status = pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths));
   EXPECT_TRUE(gpu_paths.empty());
 }
 
@@ -106,8 +102,7 @@ TEST_F(PciDeviceDiscoveryTest, DetectsMultipleGpus) {
   CreateFakePciDevice(temp_dir_ / "0000:41:00.0", "0x030200", "0x10de", "0x20b5");
 
   std::vector<pci_device_discovery::GpuPciPathInfo> gpu_paths;
-  auto status = pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths));
   EXPECT_EQ(gpu_paths.size(), 2u);
 }
 
@@ -121,30 +116,35 @@ TEST_F(PciDeviceDiscoveryTest, SkipsDevicesWithMissingClassFile) {
   }
 
   std::vector<pci_device_discovery::GpuPciPathInfo> gpu_paths;
-  auto status = pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::DetectGpuPciPaths(temp_dir_, gpu_paths));
   EXPECT_TRUE(gpu_paths.empty());
 }
 
 TEST_F(PciDeviceDiscoveryTest, GetGpuDeviceFromPciReadsVendorAndDevice) {
-  // Create a fake NVIDIA GPU PCI device
-  CreateFakePciDevice(temp_dir_ / "0000:65:00.0", "0x030200", "0x10de", "0x20b5");
+  // Only create the files that GetGpuDeviceFromPci actually reads (vendor and device).
+  auto device_dir = temp_dir_ / "0000:65:00.0";
+  fs::create_directories(device_dir);
+  {
+    std::ofstream f(device_dir / "vendor");
+    f << "0x10de";
+  }
+  {
+    std::ofstream f(device_dir / "device");
+    f << "0x20b5";
+  }
 
   pci_device_discovery::GpuPciPathInfo path_info;
-  path_info.path = temp_dir_ / "0000:65:00.0";
+  path_info.path = device_dir;
   path_info.pci_bus_id = "0000:65:00.0";
 
   OrtHardwareDevice gpu_device{};
-  auto status = pci_device_discovery::GetGpuDeviceFromPci(path_info, 0, gpu_device);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::GetGpuDeviceFromPci(path_info, gpu_device));
 
   EXPECT_EQ(gpu_device.type, OrtHardwareDeviceType_GPU);
   EXPECT_EQ(gpu_device.vendor_id, 0x10deu);
   EXPECT_EQ(gpu_device.device_id, 0x20b5u);
 
   const auto& entries = gpu_device.metadata.Entries();
-  EXPECT_NE(entries.find("card_idx"), entries.end());
-  EXPECT_EQ(entries.at("card_idx"), "0");
   EXPECT_NE(entries.find("pci_bus_id"), entries.end());
   EXPECT_EQ(entries.at("pci_bus_id"), "0000:65:00.0");
   EXPECT_NE(entries.find("Discrete"), entries.end());
@@ -152,23 +152,30 @@ TEST_F(PciDeviceDiscoveryTest, GetGpuDeviceFromPciReadsVendorAndDevice) {
 }
 
 TEST_F(PciDeviceDiscoveryTest, GetGpuDeviceFromPciNonNvidiaVendor) {
-  // Create a fake AMD GPU PCI device
-  CreateFakePciDevice(temp_dir_ / "0000:03:00.0", "0x030000", "0x1002", "0x731f");
+  // Only create the files that GetGpuDeviceFromPci actually reads (vendor and device).
+  auto device_dir = temp_dir_ / "0000:03:00.0";
+  fs::create_directories(device_dir);
+  {
+    std::ofstream f(device_dir / "vendor");
+    f << "0x1002";
+  }
+  {
+    std::ofstream f(device_dir / "device");
+    f << "0x731f";
+  }
 
   pci_device_discovery::GpuPciPathInfo path_info;
-  path_info.path = temp_dir_ / "0000:03:00.0";
+  path_info.path = device_dir;
   path_info.pci_bus_id = "0000:03:00.0";
 
   OrtHardwareDevice gpu_device{};
-  auto status = pci_device_discovery::GetGpuDeviceFromPci(path_info, 2, gpu_device);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(pci_device_discovery::GetGpuDeviceFromPci(path_info, gpu_device));
 
   EXPECT_EQ(gpu_device.type, OrtHardwareDeviceType_GPU);
   EXPECT_EQ(gpu_device.vendor_id, 0x1002u);
   EXPECT_EQ(gpu_device.device_id, 0x731fu);
 
   const auto& entries = gpu_device.metadata.Entries();
-  EXPECT_EQ(entries.at("card_idx"), "2");
   // Non-NVIDIA vendor should not have the Discrete metadata entry
   EXPECT_EQ(entries.find("Discrete"), entries.end());
 }

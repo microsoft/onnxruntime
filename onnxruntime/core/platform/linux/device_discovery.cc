@@ -214,6 +214,9 @@ Status DetectGpuPciPaths(const fs::path& sysfs_pci_devices_path,
     //   Base class 0x03 = Display controller
     //   Sub-class 0x00 = VGA compatible controller
     //   Sub-class 0x02 = 3D controller (common for NVIDIA data center/compute GPUs)
+    // Reference: PCI Code and ID Assignment Specification
+    //   https://pcisig.com/sites/default/files/files/PCI_Code-ID_r_1_12__v9_Jan_2020.pdf
+    //   See Appendix D, base class 03h.
     const uint8_t base_class = static_cast<uint8_t>((pci_class >> 16) & 0xFF);
     const uint8_t sub_class = static_cast<uint8_t>((pci_class >> 8) & 0xFF);
     if (base_class != 0x03 || (sub_class != 0x00 && sub_class != 0x02)) {
@@ -230,7 +233,7 @@ Status DetectGpuPciPaths(const fs::path& sysfs_pci_devices_path,
   return Status::OK();
 }
 
-Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, size_t device_idx, OrtHardwareDevice& gpu_device_out) {
+Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, OrtHardwareDevice& gpu_device_out) {
   OrtHardwareDevice gpu_device{};
   const auto& pci_path = path_info.path;
 
@@ -245,9 +248,6 @@ Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, size_t device_idx, O
   gpu_device.device_id = device_id;
 
   // metadata
-  // Use "card_idx" key for consistency with DRM-based detection, using device enumeration order.
-  gpu_device.metadata.Add("card_idx", MakeString(device_idx));
-
   if (const auto is_gpu_discrete = IsGpuDiscrete(vendor_id, device_id);
       is_gpu_discrete.has_value()) {
     gpu_device.metadata.Add("Discrete", (*is_gpu_discrete ? "1" : "0"));
@@ -295,9 +295,9 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
 
     gpu_devices.reserve(gpu_pci_path_infos.size());
 
-    for (size_t i = 0; i < gpu_pci_path_infos.size(); ++i) {
+    for (const auto& gpu_pci_path_info : gpu_pci_path_infos) {
       OrtHardwareDevice gpu_device{};
-      ORT_RETURN_IF_ERROR(pci_device_discovery::GetGpuDeviceFromPci(gpu_pci_path_infos[i], i, gpu_device));
+      ORT_RETURN_IF_ERROR(pci_device_discovery::GetGpuDeviceFromPci(gpu_pci_path_info, gpu_device));
       gpu_devices.emplace_back(std::move(gpu_device));
     }
   }

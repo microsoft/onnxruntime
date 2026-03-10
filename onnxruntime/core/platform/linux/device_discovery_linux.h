@@ -26,7 +26,7 @@ Status DetectGpuPciPaths(const std::filesystem::path& sysfs_pci_devices_path,
                          std::vector<GpuPciPathInfo>& gpu_pci_paths_out);
 
 // Reads vendor/device IDs and populates an OrtHardwareDevice from a PCI device sysfs path.
-Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, size_t device_idx,
+Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info,
                            OrtHardwareDevice& gpu_device_out);
 
 }  // namespace pci_device_discovery
