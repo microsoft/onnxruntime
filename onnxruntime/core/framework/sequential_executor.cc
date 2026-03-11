@@ -954,7 +954,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                              fetch_mlvalue_idxs,
                              fetches,
                              fetch_allocators,
-          v                           logger,
+                             logger,
                              single_thread_mode);
 #endif
 #ifdef ENABLE_TRAINING
