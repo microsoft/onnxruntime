@@ -6,13 +6,13 @@ Licensed under the MIT License.
 
 Module Name:
 
-    PackAKernelPOWER10.S
+    SgemmKernelPackA.S
 
 Abstract:
 
-    This module implements the kernel for Packing of A the single precision matrix.
+    This module implements the POWER10 kernel for packing matrix A for single precision SGEMM.
 
-    This implementation uses AVX instructions.
+    This implementation targets power10 using VSX instructions.
 
 --*/
 /*++

@@ -20,7 +20,7 @@ Abstract:
 
 #include "SgemmKernelpower.h"
 extern "C" void
-PackAKernelPOWER10(__vector float* D, const float* A, size_t lda, size_t k, int RowCount);
+PackAKernelPOWER10(__vector float* D, const float* A, size_t lda, size_t k, size_t RowCount);
 struct MlasSgemmBroadcastAElementsMMA
 {
     template<size_t RowCount, size_t Row>
@@ -662,7 +662,6 @@ Return Value:
 
     MLAS_FLOAT32X4* PackA =
         reinterpret_cast<MLAS_FLOAT32X4*>(alloca(sizeof(MLAS_FLOAT32X4) * index));
-    memset(PackA, 0, sizeof(MLAS_FLOAT32X4) * index);
     MLAS_FLOAT32X4 AlphaBroadcast = MlasBroadcastFloat32x4(alpha);
 
     if (CountM >= 8) {
@@ -670,7 +669,7 @@ Return Value:
         MlasSgemmPackA<8>(PackA, A, lda, CountK);
 #else
         if (CountK >= 16 && !(CountK % 16)) {
-            PackAKernelPOWER10(PackA, A, lda, CountK, CountM);
+            PackAKernelPOWER10(PackA, A, lda, CountK, 8);
         } else {
             MlasSgemmPackA<8>(PackA, A, lda, CountK);
         }
@@ -678,11 +677,12 @@ Return Value:
 
         RowsHandled = MlasSgemmMMAProcessCount<4>(PackA, B, C, 8, CountK, CountN, ldc, AlphaBroadcast, ZeroMode);
     } else if (CountM >= 4) {
+        memset(PackA + CountK, 0, sizeof(MLAS_FLOAT32X4) * CountK);
 #ifdef _AIX
         MlasSgemmPackA<4>(PackA, A, lda, CountK);
 #else
         if (CountK >= 16 && !(CountK % 16)) {
-            PackAKernelPOWER10(PackA, A, lda, CountK, CountM);
+            PackAKernelPOWER10(PackA, A, lda, CountK, 4);
         } else {
             MlasSgemmPackA<4>(PackA, A, lda, CountK);
         }
