@@ -11,8 +11,6 @@
 
 namespace {
 
-using UnaryKernel = MLAS_COMPUTE_UNARY_FLOAT_KERNEL;
-
 bool IsAvx512Available() {
   return GetMlasPlatform().Avx512Supported_;
 }
@@ -38,58 +36,6 @@ bool UnaryOutputsMatch(float actual, float expected, float absolute_tolerance, f
 
   const float scale = std::max(std::fabs(actual), std::fabs(expected));
   return scale > 0.0f && diff <= scale * relative_tolerance;
-}
-
-std::vector<float> GetLogisticSpecialValues() {
-  const float lower = -18.0f;
-  const float upper = 18.0f;
-  return {
-      std::numeric_limits<float>::quiet_NaN(),
-      std::numeric_limits<float>::infinity(),
-      -std::numeric_limits<float>::infinity(),
-      0.0f,
-      -0.0f,
-      lower,
-      std::nextafter(lower, -std::numeric_limits<float>::infinity()),
-      std::nextafter(lower, std::numeric_limits<float>::infinity()),
-      upper,
-      std::nextafter(upper, -std::numeric_limits<float>::infinity()),
-      std::nextafter(upper, std::numeric_limits<float>::infinity()),
-      -1.0f,
-      1.0f,
-      -8.0f,
-      8.0f,
-      -20.0f,
-      20.0f,
-  };
-}
-
-std::vector<float> GetErfSpecialValues() {
-  const float split = 0.921875f;
-  const float upper_abs = 3.925f;
-  return {
-      std::numeric_limits<float>::quiet_NaN(),
-      std::numeric_limits<float>::infinity(),
-      -std::numeric_limits<float>::infinity(),
-      0.0f,
-      -0.0f,
-      split,
-      std::nextafter(split, -std::numeric_limits<float>::infinity()),
-      std::nextafter(split, std::numeric_limits<float>::infinity()),
-      -split,
-      std::nextafter(-split, -std::numeric_limits<float>::infinity()),
-      std::nextafter(-split, std::numeric_limits<float>::infinity()),
-      upper_abs,
-      std::nextafter(upper_abs, -std::numeric_limits<float>::infinity()),
-      std::nextafter(upper_abs, std::numeric_limits<float>::infinity()),
-      -upper_abs,
-      std::nextafter(-upper_abs, -std::numeric_limits<float>::infinity()),
-      std::nextafter(-upper_abs, std::numeric_limits<float>::infinity()),
-      -1.0f,
-      1.0f,
-      -6.0f,
-      6.0f,
-  };
 }
 
 std::vector<float> GetGeluSpecialValues() {
@@ -162,57 +108,6 @@ void FillInput(float* input, size_t n, float minimum_value, float maximum_value,
   const size_t special_count = std::min(n, special_values.size());
   for (size_t i = 0; i < special_count; ++i) {
     input[i] = special_values[i];
-  }
-}
-
-void CompareUnaryKernelAgainstGeneric(const char* kernel_name,
-                                      UnaryKernel* generic_kernel,
-                                      UnaryKernel* fma3_kernel,
-                                      UnaryKernel* avx512_kernel,
-                                      float minimum_value,
-                                      float maximum_value,
-                                      float absolute_tolerance,
-                                      float relative_tolerance,
-                                      bool check_signed_zero,
-                                      const std::vector<float>& special_values,
-                                      const std::vector<size_t>& sizes,
-                                      size_t iterations,
-                                      MatrixGuardBuffer<float>& input_buffer,
-                                      MatrixGuardBuffer<float>& generic_output_buffer,
-                                      MatrixGuardBuffer<float>& fma3_output_buffer,
-                                      MatrixGuardBuffer<float>& avx512_output_buffer) {
-  for (size_t size : sizes) {
-    for (size_t iteration = 0; iteration < iterations; ++iteration) {
-      float* input = input_buffer.GetBuffer(size);
-      float* generic_output = generic_output_buffer.GetBuffer(size);
-      float* fma3_output = fma3_output_buffer.GetBuffer(size);
-      float* avx512_output = avx512_output_buffer.GetBuffer(size);
-
-      FillInput(input, size, minimum_value, maximum_value, special_values,
-                static_cast<uint32_t>(size * 131u + iteration * 977u));
-
-      generic_kernel(input, generic_output, size);
-      fma3_kernel(input, fma3_output, size);
-      avx512_kernel(input, avx512_output, size);
-
-      for (size_t i = 0; i < size; ++i) {
-        ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], generic_output[i], absolute_tolerance, relative_tolerance,
-                                      check_signed_zero))
-            << kernel_name << " mismatch at index " << i << " of " << size
-            << ", input=" << input[i]
-            << ", avx512=" << avx512_output[i]
-            << ", generic=" << generic_output[i]
-            << ", abs_diff=" << std::fabs(avx512_output[i] - generic_output[i]);
-
-        ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], fma3_output[i], absolute_tolerance, relative_tolerance,
-                                      check_signed_zero))
-            << kernel_name << " FMA3 mismatch at index " << i << " of " << size
-            << ", input=" << input[i]
-            << ", avx512=" << avx512_output[i]
-            << ", fma3=" << fma3_output[i]
-            << ", abs_diff=" << std::fabs(avx512_output[i] - fma3_output[i]);
-      }
-    }
   }
 }
 
