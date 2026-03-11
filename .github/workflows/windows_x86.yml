@@ -105,8 +105,6 @@ jobs:
             throw "x86 dotnet must appear before x64 dotnet on PATH. Found $x86DotnetExe after $x64DotnetExe."
           }
 
-          where dotnet
-
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@v2
         with:
