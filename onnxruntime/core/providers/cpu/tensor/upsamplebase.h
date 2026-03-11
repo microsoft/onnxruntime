@@ -272,14 +272,9 @@ class UpsampleBase {
           rank = x_shape->dim_size();
         }
       } else {
-        int is_const;
-        auto tensor = info.GetKernelInfo().GetTensorConstantInput(0, &is_const);
-        if (is_const) {
-          auto type_and_shape_info = tensor.GetTensorTypeAndShapeInfo();
-          if (type_and_shape_info.HasShape()) {
-            rank = static_cast<int64_t>(type_and_shape_info.GetShape().size());
-          }
-        }
+        auto type_info = info.GetKernelInfo().GetInputTypeInfo(0);
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        rank = static_cast<int64_t>(tensor_info.GetDimensionsCount());
       }
       if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
         ORT_THROW_IF_ERROR(ParseScalesData(scale, scales_, rank));
