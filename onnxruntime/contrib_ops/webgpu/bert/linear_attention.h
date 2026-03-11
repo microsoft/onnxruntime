@@ -82,7 +82,7 @@ class LinearAttentionChunkIntraProgram final : public Program<LinearAttentionChu
       {"scale", ProgramUniformVariableDataType::Float32});
 
  private:
-  LinearAttentionUpdateRule update_rule_;
+  [[maybe_unused]] LinearAttentionUpdateRule update_rule_;
   bool has_decay_;
   bool has_beta_;
 };
@@ -110,7 +110,36 @@ class LinearAttentionChunkInterProgram final : public Program<LinearAttentionChu
       {"scale", ProgramUniformVariableDataType::Float32});
 
  private:
-  LinearAttentionUpdateRule update_rule_;
+  [[maybe_unused]] LinearAttentionUpdateRule update_rule_;
+  bool has_decay_;
+  [[maybe_unused]] bool has_beta_;
+  bool has_initial_state_;
+};
+
+// Program for full sequential computation (used for delta/gated_delta update rules)
+// Delta rules have non-linear state updates (S^T k term), so chunk-parallel decomposition
+// doesn't produce correct results. This program processes the full sequence sequentially.
+class LinearAttentionFullSequentialProgram final : public Program<LinearAttentionFullSequentialProgram> {
+ public:
+  LinearAttentionFullSequentialProgram(LinearAttentionUpdateRule update_rule, bool has_decay, bool has_beta, bool has_initial_state)
+      : Program{"LinearAttentionFullSequential"},
+        update_rule_(update_rule),
+        has_decay_(has_decay),
+        has_beta_(has_beta),
+        has_initial_state_(has_initial_state) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"head_dim_k", ProgramUniformVariableDataType::Uint32},
+      {"head_dim_v", ProgramUniformVariableDataType::Uint32},
+      {"scale", ProgramUniformVariableDataType::Float32});
+
+ private:
+  [[maybe_unused]] LinearAttentionUpdateRule update_rule_;
   bool has_decay_;
   bool has_beta_;
   bool has_initial_state_;

@@ -112,6 +112,112 @@ void LinearAttentionRecurrentReference(
   }
 }
 
+// Reference implementation for linear attention chunk parallel (full sequence)
+// This is the sequential version that processes one step at a time.
+void LinearAttentionChunkParallelReference(
+    const std::vector<float>& query,
+    const std::vector<float>& key,
+    const std::vector<float>& value,
+    const std::vector<float>* initial_state,
+    const std::vector<float>* decay,
+    const std::vector<float>* beta,
+    std::vector<float>& output,
+    std::vector<float>& final_state,
+    int batch_size,
+    int num_heads,
+    int seq_length,
+    int head_dim_k,
+    int head_dim_v,
+    const std::string& update_rule,
+    float scale) {
+  if (scale == 0.0f) {
+    scale = 1.0f / std::sqrt(static_cast<float>(head_dim_k));
+  }
+
+  output.resize(batch_size * num_heads * seq_length * head_dim_v);
+  final_state.resize(batch_size * num_heads * head_dim_k * head_dim_v);
+
+  int state_size = head_dim_k * head_dim_v;
+
+  for (int b = 0; b < batch_size; ++b) {
+    for (int h = 0; h < num_heads; ++h) {
+      int bh = b * num_heads + h;
+
+      // Initialize state
+      std::vector<float> state(state_size, 0.0f);
+      if (initial_state != nullptr) {
+        int init_base = bh * state_size;
+        for (int i = 0; i < state_size; ++i) {
+          state[i] = (*initial_state)[init_base + i];
+        }
+      }
+
+      // Process each timestep sequentially
+      for (int t = 0; t < seq_length; ++t) {
+        int qk_base = (bh * seq_length + t) * head_dim_k;
+        int v_base = (bh * seq_length + t) * head_dim_v;
+
+        // 1. Apply decay if gated or gated_delta
+        if (update_rule == "gated" || update_rule == "gated_delta") {
+          for (int ki = 0; ki < head_dim_k; ++ki) {
+            float g = (*decay)[qk_base + ki];
+            float exp_g = std::exp(g);
+            for (int vi = 0; vi < head_dim_v; ++vi) {
+              state[ki * head_dim_v + vi] *= exp_g;
+            }
+          }
+        }
+
+        // 2. Update state
+        if (update_rule == "linear" || update_rule == "gated") {
+          // S += k ⊗ v
+          for (int ki = 0; ki < head_dim_k; ++ki) {
+            float k_val = key[qk_base + ki];
+            for (int vi = 0; vi < head_dim_v; ++vi) {
+              float v_val = value[v_base + vi];
+              state[ki * head_dim_v + vi] += k_val * v_val;
+            }
+          }
+        } else if (update_rule == "delta" || update_rule == "gated_delta") {
+          // Compute retrieved = S^T @ k
+          std::vector<float> retrieved(head_dim_v, 0.0f);
+          for (int vi = 0; vi < head_dim_v; ++vi) {
+            for (int ki = 0; ki < head_dim_k; ++ki) {
+              retrieved[vi] += state[ki * head_dim_v + vi] * key[qk_base + ki];
+            }
+          }
+
+          float beta_val = (*beta)[bh * seq_length + t];
+          for (int ki = 0; ki < head_dim_k; ++ki) {
+            float k_val = key[qk_base + ki];
+            for (int vi = 0; vi < head_dim_v; ++vi) {
+              float v_val = value[v_base + vi];
+              float delta_val = beta_val * (v_val - retrieved[vi]);
+              state[ki * head_dim_v + vi] += k_val * delta_val;
+            }
+          }
+        }
+
+        // 3. Compute output = scale * q^T @ S
+        int out_base = (bh * seq_length + t) * head_dim_v;
+        for (int vi = 0; vi < head_dim_v; ++vi) {
+          float out_val = 0.0f;
+          for (int ki = 0; ki < head_dim_k; ++ki) {
+            out_val += query[qk_base + ki] * state[ki * head_dim_v + vi];
+          }
+          output[out_base + vi] = out_val * scale;
+        }
+      }
+
+      // Copy final state
+      int final_base = bh * state_size;
+      for (int i = 0; i < state_size; ++i) {
+        final_state[final_base + i] = state[i];
+      }
+    }
+  }
+}
+
 }  // anonymous namespace
 
 static void RunLinearAttentionRecurrentTest(
@@ -464,6 +570,16 @@ static void RunLinearAttentionChunkParallelTest(
   std::vector<int64_t> beta_shape = {batch_size, num_heads, seq_length, 1};
   std::vector<int64_t> output_shape = {batch_size, num_heads, seq_length, head_dim_v};
 
+  // Compute reference expected output
+  std::vector<float> expected_output;
+  std::vector<float> expected_state;
+  LinearAttentionChunkParallelReference(
+      query_data, key_data, value_data,
+      initial_state_data, decay_data, beta_data,
+      expected_output, expected_state,
+      batch_size, num_heads, seq_length, head_dim_k, head_dim_v,
+      update_rule, scale);
+
   std::string op_type = "LinearAttentionChunkParallel";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 
@@ -506,10 +622,8 @@ static void RunLinearAttentionChunkParallelTest(
         test.AddOptionalInputEdge<float>();
       }
 
-      // We just check that the output has the right shape and doesn't crash
-      // Full numerical verification is complex due to chunk parallel algorithm
-      test.AddOutput<float>("output", output_shape, std::vector<float>(batch_size * num_heads * seq_length * head_dim_v, 0.0f), false);
-      test.AddOutput<float>("final_state", state_shape, std::vector<float>(batch_size * num_heads * head_dim_k * head_dim_v, 0.0f), false);
+      test.AddOutput<float>("output", output_shape, expected_output);
+      test.AddOutput<float>("final_state", state_shape, expected_state);
     } else {
       test.AddInput<MLFloat16>("query", query_shape, ToFloat16(query_data));
       test.AddInput<MLFloat16>("key", key_shape, ToFloat16(key_data));
@@ -533,9 +647,12 @@ static void RunLinearAttentionChunkParallelTest(
         test.AddOptionalInputEdge<MLFloat16>();
       }
 
-      test.AddOutput<MLFloat16>("output", output_shape, std::vector<MLFloat16>(batch_size * num_heads * seq_length * head_dim_v), false);
-      test.AddOutput<MLFloat16>("final_state", state_shape, std::vector<MLFloat16>(batch_size * num_heads * head_dim_k * head_dim_v), false);
+      test.AddOutput<MLFloat16>("output", output_shape, ToFloat16(expected_output));
+      test.AddOutput<MLFloat16>("final_state", state_shape, ToFloat16(expected_state));
     }
+
+    test.SetOutputAbsErr("output", 0.01f);
+    test.SetOutputAbsErr("final_state", 0.01f);
 
     std::vector<std::unique_ptr<IExecutionProvider>> test_execution_providers;
     test_execution_providers.push_back(std::move(ep));

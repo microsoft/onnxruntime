@@ -591,6 +591,116 @@ Status LinearAttentionChunkInterProgram::GenerateShaderCode(ShaderHelper& shader
   return Status::OK();
 }
 
+Status LinearAttentionFullSequentialProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  // Full sequential computation for delta/gated_delta update rules.
+  // These rules have state updates that depend on the current state (S^T k term),
+  // making chunk-parallel decomposition incorrect.
+  shader.AddInput("query", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("key", ShaderUsage::UseUniform);
+  shader.AddInput("value", ShaderUsage::UseUniform);
+
+  if (has_initial_state_) {
+    shader.AddInput("initial_state", ShaderUsage::UseUniform);
+  }
+  if (has_decay_) {
+    shader.AddInput("decay", ShaderUsage::UseUniform);
+  }
+  if (has_beta_) {
+    shader.AddInput("beta", ShaderUsage::UseUniform);
+  }
+
+  shader.AddOutput("output", ShaderUsage::UseUniform);
+  shader.AddOutput("final_state", ShaderUsage::UseUniform);
+
+  shader.MainFunctionBody() << R"SHADER(
+  let batch_idx = workgroup_id.x;
+  let head_idx = workgroup_id.y;
+
+  if (batch_idx >= uniforms.batch_size || head_idx >= uniforms.num_heads) {
+    return;
+  }
+
+  let dk = uniforms.head_dim_k;
+  let dv = uniforms.head_dim_v;
+  let seq_len = uniforms.sequence_length;
+  let scale_val = query_element_t(select(1.0 / sqrt(f32(dk)), uniforms.scale, uniforms.scale != 0.0));
+  let bh = batch_idx * uniforms.num_heads + head_idx;
+  let state_size = dk * dv;
+
+  // Initialize state array (supports up to 32x32 head dimensions)
+  var state: array<query_element_t, 1024>;
+  for (var i = 0u; i < state_size; i = i + 1u) {
+    state[i] = query_element_t(0.0);
+  }
+)SHADER";
+
+  if (has_initial_state_) {
+    shader.MainFunctionBody() << R"SHADER(
+  // Load initial state
+  let init_base = bh * state_size;
+  for (var i = 0u; i < state_size; i = i + 1u) {
+    state[i] = query_element_t(initial_state[init_base + i]);
+  }
+)SHADER";
+  }
+
+  shader.MainFunctionBody() << R"SHADER(
+  // Process each timestep sequentially
+  for (var t = 0u; t < seq_len; t = t + 1u) {
+    let qk_base = (bh * seq_len + t) * dk;
+    let v_base = (bh * seq_len + t) * dv;
+)SHADER";
+
+  if (has_decay_) {
+    shader.MainFunctionBody() << R"SHADER(
+    // Apply decay: state *= exp(decay)
+    for (var ki = 0u; ki < dk; ki = ki + 1u) {
+      let exp_g = query_element_t(exp(decay[qk_base + ki]));
+      for (var vi = 0u; vi < dv; vi = vi + 1u) {
+        state[ki * dv + vi] = state[ki * dv + vi] * exp_g;
+      }
+    }
+)SHADER";
+  }
+
+  shader.MainFunctionBody() << R"SHADER(
+    // Delta update: S += beta * k \u2297 (v - S^T k)
+    let beta_val = query_element_t(beta[bh * seq_len + t]);
+    for (var vi = 0u; vi < dv; vi = vi + 1u) {
+      // Compute retrieved = S^T @ k for this v dimension
+      var retrieved = query_element_t(0.0);
+      for (var ki = 0u; ki < dk; ki = ki + 1u) {
+        retrieved = retrieved + state[ki * dv + vi] * query_element_t(key[qk_base + ki]);
+      }
+      let v_val = query_element_t(value[v_base + vi]);
+      let delta_val = beta_val * (v_val - retrieved);
+
+      for (var ki = 0u; ki < dk; ki = ki + 1u) {
+        state[ki * dv + vi] = state[ki * dv + vi] + query_element_t(key[qk_base + ki]) * delta_val;
+      }
+    }
+
+    // Compute output: o = scale * q^T @ state
+    let out_base = (bh * seq_len + t) * dv;
+    for (var vi = 0u; vi < dv; vi = vi + 1u) {
+      var out_val = query_element_t(0.0);
+      for (var ki = 0u; ki < dk; ki = ki + 1u) {
+        out_val = out_val + query_element_t(query[qk_base + ki]) * state[ki * dv + vi];
+      }
+      output[out_base + vi] = out_val * scale_val;
+    }
+  }
+
+  // Write final state
+  let final_base = bh * state_size;
+  for (var i = 0u; i < state_size; i = i + 1u) {
+    final_state[final_base + i] = state[i];
+  }
+)SHADER";
+
+  return Status::OK();
+}
+
 Status LinearAttentionChunkParallel::ComputeInternal(ComputeContext& context) const {
   const auto* query = context.Input<Tensor>(0);
   const auto* key = context.Input<Tensor>(1);
@@ -632,6 +742,42 @@ Status LinearAttentionChunkParallel::ComputeInternal(ComputeContext& context) co
   auto* output = context.Output(0, output_shape);
   auto* final_state = context.Output(1, state_shape);
 
+  // For delta/gated_delta rules, use sequential computation.
+  // Chunk-parallel decomposition doesn't work because state updates depend on the
+  // running state through the S^T k term, making chunks non-independent.
+  if (update_rule_ == LinearAttentionUpdateRule::Delta || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
+    LinearAttentionFullSequentialProgram program{update_rule_, has_decay, has_beta, has_initial_state};
+
+    program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
+                       {key, ProgramTensorMetadataDependency::TypeAndRank},
+                       {value, ProgramTensorMetadataDependency::TypeAndRank}});
+
+    if (has_initial_state) {
+      program.AddInput({initial_state, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    if (has_decay) {
+      program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    if (has_beta) {
+      program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+
+    program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank},
+                        {final_state, ProgramTensorMetadataDependency::TypeAndRank}});
+
+    program.SetDispatchGroupSize(batch_size, num_heads, 1)
+        .SetWorkgroupSize(1, 1, 1)
+        .AddUniformVariables({{batch_size},
+                              {num_heads},
+                              {seq_length},
+                              {head_dim_k},
+                              {head_dim_v},
+                              {scale_}});
+
+    return context.RunProgram(program);
+  }
+
+  // Linear/Gated rules: Use two-phase chunk-parallel approach
   // Allocate intermediate tensors for chunk computation
   TensorShape chunk_states_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads),
                                   static_cast<int64_t>(num_chunks), static_cast<int64_t>(head_dim_k),
