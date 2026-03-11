@@ -86,8 +86,13 @@ jobs:
           )
 
           $env:PATH = ($reorderedPathEntries -join ';')
-          Add-Content -Path $env:GITHUB_PATH -Value $x86DotnetDir
 
+          # Only add the x86 dotnet directory to GITHUB_PATH if it is not already on PATH (after normalization)
+          $normalizedX86DotnetDir = $x86DotnetDir.TrimEnd('\')
+          $normalizedPathEntries = $pathEntries | ForEach-Object { $_.TrimEnd('\') }
+          if (-not ($normalizedPathEntries -contains $normalizedX86DotnetDir)) {
+            Add-Content -Path $env:GITHUB_PATH -Value $x86DotnetDir
+          }
           $dotnetPaths = @(Get-Command dotnet -All | Select-Object -ExpandProperty Source -Unique)
           Write-Host 'Resolved dotnet executables:'
           $dotnetPaths | ForEach-Object { Write-Host $_ }
