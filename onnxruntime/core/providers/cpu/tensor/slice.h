@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <algorithm>
+#include <iterator>
+
 #include "core/common/narrow.h"
 
 #ifndef SHARED_PROVIDER
@@ -202,8 +205,11 @@ class SliceBase {
     }
   }
 
+  // Tag-dispatched constructor for CUDA provider / CUDA plugin builds.
+  struct CudaProviderTag {};
+
   template <typename KernelInfoType>
-  SliceBase(const KernelInfoType& info, bool dynamic, int)
+  SliceBase(const KernelInfoType& info, bool dynamic, CudaProviderTag)
       : dynamic_(dynamic) {
     if (!dynamic) {
       auto has_starts = info.GetAttrs("starts", attr_starts_).IsOK();

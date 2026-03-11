@@ -43,17 +43,14 @@ class ScatterND final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-  static
 #ifdef SHARED_PROVIDER
-      Status
-      ValidateShapes(const TensorShape& input_shape,
-                     const TensorShape& indice_shape,
-                     const TensorShape& update_shape);
+  static Status ValidateShapes(const TensorShape& input_shape,
+                               const TensorShape& indice_shape,
+                               const TensorShape& update_shape);
 #else
-      inline Status
-      ValidateShapes(const TensorShape& input_shape,
-                     const TensorShape& indice_shape,
-                     const TensorShape& update_shape) {
+  static inline Status ValidateShapes(const TensorShape& input_shape,
+                                      const TensorShape& indice_shape,
+                                      const TensorShape& update_shape) {
     auto input_rank = input_shape.NumDimensions();
     auto indice_rank = indice_shape.NumDimensions();
     auto update_rank = update_shape.NumDimensions();

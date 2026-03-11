@@ -23,7 +23,7 @@ Status Impl(cudaStream_t stream,
 template <bool dynamic>
 class Slice : public CudaKernel, public SliceBase {
  public:
-  explicit Slice(const OpKernelInfo& info) : CudaKernel(info), SliceBase(info, dynamic, 0) {}
+  explicit Slice(const OpKernelInfo& info) : CudaKernel(info), SliceBase(info, dynamic, CudaProviderTag{}) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
