@@ -447,23 +447,35 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
 
   std::vector<WGPUBuffer> bind_buffers;
+  std::vector<uint64_t> bind_buffers_byte_offsets;
   std::vector<uint32_t> bind_buffers_segments;
   bind_buffers.reserve(total_buffer_count);
+  bind_buffers_byte_offsets.reserve(total_buffer_count);
   bind_buffers_segments.reserve(total_buffer_count);
   for (size_t i = 0; i < inputs.size(); i++) {
-    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(inputs[i].tensor->DataRaw())));
+    // For WebGPU tensors, DataRaw() returns (char*)wgpu_handle + byte_offset_.
+    // Recover the base WGPUBuffer handle and keep the byte offset separate so it
+    // can be applied as the binding offset in the bind group entry.
+    const ptrdiff_t tensor_byte_offset = inputs[i].tensor->ByteOffset();
+    void* raw = const_cast<void*>(inputs[i].tensor->DataRaw());
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(static_cast<char*>(raw) - tensor_byte_offset));
+    bind_buffers_byte_offsets.push_back(static_cast<uint64_t>(tensor_byte_offset));
     bind_buffers_segments.push_back(inputs_segments[i]);
   }
   for (size_t i = 0; i < outputs.size(); i++) {
-    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(outputs[i].tensor->MutableDataRaw()));
+    const ptrdiff_t tensor_byte_offset = outputs[i].tensor->ByteOffset();
+    void* raw = outputs[i].tensor->MutableDataRaw();
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(static_cast<char*>(raw) - tensor_byte_offset));
+    bind_buffers_byte_offsets.push_back(static_cast<uint64_t>(tensor_byte_offset));
     bind_buffers_segments.push_back(outputs_segments[i]);
   }
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
-    bind_buffers_segments.push_back(1);  // uniform buffer defaults to 1 segment
+    bind_buffers_byte_offsets.push_back(0);  // uniform buffer has no byte offset
+    bind_buffers_segments.push_back(1);      // uniform buffer defaults to 1 segment
   }
 
-  LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_segments, *program_artifact, x, y, z, program.IndirectDispatchTensor());
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_byte_offsets, bind_buffers_segments, *program_artifact, x, y, z, program.IndirectDispatchTensor());
   if (uniform_buffer) {
     buffer_mgr.Release(uniform_buffer);
   }
@@ -766,6 +778,7 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
 
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                                           const std::vector<WGPUBuffer>& bind_buffers,
+                                          const std::vector<uint64_t>& bind_buffers_byte_offsets,
                                           const std::vector<uint32_t>& bind_buffers_segments,
                                           const ProgramArtifact& program_artifact,
                                           uint32_t x, uint32_t y, uint32_t z,
@@ -776,13 +789,15 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   const uint64_t kMaxBufferSize = device_limits_.maxStorageBufferBindingSize;
   for (size_t buffer_idx = 0; buffer_idx < bind_buffers.size(); ++buffer_idx) {
     WGPUBuffer buffer = bind_buffers[buffer_idx];
+    const uint64_t tensor_byte_offset = bind_buffers_byte_offsets[buffer_idx];
     const uint32_t total_segments = bind_buffers_segments[buffer_idx];
     // `total_segments` we used is calculated by tensor size, not actual buffer size. Because for bucketed buffer,
     // the actual buffer size may be larger than the tensor size, an extreme case is that tensor size = 127MB, buffer size = 256MB,
     // maxStorageBufferBindingSize = 128MB, in this case we only need to bind 1 segment instead of 2 segments because
     // there is no data for the second segment.
+    // When a tensor is a sub-buffer view, segments begin at tensor_byte_offset within the buffer.
     if (total_segments > 1) {
-      uint64_t offset = 0;
+      uint64_t offset = tensor_byte_offset;  // start segments at the tensor's byte offset
       uint64_t buffer_size = wgpuBufferGetSize(buffer);
       for (uint32_t segment = 0; segment < total_segments; ++segment) {
         uint64_t segment_size = std::min(kMaxBufferSize, buffer_size - offset);
@@ -790,7 +805,7 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
         offset += segment_size;
       }
     } else {
-      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+      bind_group_entries.push_back({nullptr, entry_index++, buffer, tensor_byte_offset, WGPU_WHOLE_SIZE, nullptr, nullptr});
     }
   }
 
@@ -823,7 +838,8 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
 
     if (indirect_dispatch_tensor != nullptr) {
-      // Use indirect dispatch
+      // Indirect buffers are always allocated internally by the WebGPU EP buffer manager
+      // and never have a non-zero ByteOffset(), so DataRaw() directly yields the WGPUBuffer.
       WGPUBuffer indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
       compute_pass_encoder.DispatchWorkgroupsIndirect(indirect_buffer, 0);
     } else {
@@ -876,7 +892,6 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
 
     if (command.indirect_buffer != nullptr) {
-      // Use indirect dispatch
       compute_pass_encoder.DispatchWorkgroupsIndirect(command.indirect_buffer, 0);
     } else {
       // Use direct dispatch

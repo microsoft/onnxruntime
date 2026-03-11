@@ -138,6 +138,7 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
     }
 
     if (!device_tensors.empty()) {
+      // Test original CopyTensors (backward compatible)
       ASSERT_CXX_ORTSTATUS_OK(ort_env->CopyTensors(cpu_tensors, device_tensors, stream));
 
       // Stream support is still a work in progress.
@@ -186,6 +187,127 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
   ort_env->UnregisterExecutionProviderLibrary(ep_registration_name);
 }
 #endif  // USE_CUDA
+
+// -----------------------------------------------------------------------------
+// Tests for Value::CreateTensor overloads with a byte/element offset.
+//
+// The new overloads allow creating a tensor that is a zero-copy view into a
+// sub-region of an existing buffer. This is useful for, e.g., preparing a
+// partial copy via CopyTensors:
+//
+//   auto src_view = Ort::Value::CreateTensor<float>(info, buffer.data(),
+//                       /*element_count=*/N, /*element_offset=*/start,
+//                       shape.data(), shape.size());
+//   ort_env->CopyTensors({src_view}, {dst_tensor}, stream);
+// -----------------------------------------------------------------------------
+
+// Test the typed template overload (element-based offset).
+TEST(CreateTensorWithOffsetTest, TypedTemplateElementOffset) {
+  // Buffer: [0, 1, 2, 3, 4, 5, 6, 7]
+  std::vector<float> buffer = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+
+  Ort::AllocatorWithDefaultOptions cpu_alloc;
+  const OrtMemoryInfo* cpu_info = cpu_alloc.GetInfo();
+
+  // Create a tensor view over elements [4..7] of the buffer.
+  constexpr std::array<int64_t, 1> shape = {4};
+  auto tensor = Ort::Value::CreateTensor<float>(
+      cpu_info, buffer.data(),
+      /*p_data_element_count=*/4,
+      /*p_data_element_offset=*/4,
+      shape.data(), shape.size());
+
+  ASSERT_TRUE(tensor.IsTensor());
+  const float* data = tensor.GetTensorData<float>();
+
+  // The tensor data should point to buffer[4].
+  EXPECT_EQ(data, buffer.data() + 4) << "Tensor data pointer should point to buffer[4]";
+
+  EXPECT_EQ(data[0], 4.f);
+  EXPECT_EQ(data[1], 5.f);
+  EXPECT_EQ(data[2], 6.f);
+  EXPECT_EQ(data[3], 7.f);
+}
+
+// Test the void* overload (byte-based offset).
+TEST(CreateTensorWithOffsetTest, VoidStarByteOffset) {
+  std::vector<int32_t> buffer = {10, 20, 30, 40, 50, 60};
+
+  Ort::AllocatorWithDefaultOptions cpu_alloc;
+  const OrtMemoryInfo* cpu_info = cpu_alloc.GetInfo();
+
+  // View elements [2..4] (byte offset = 2 * sizeof(int32_t) = 8).
+  constexpr std::array<int64_t, 1> shape = {3};
+  const size_t byte_offset = 2 * sizeof(int32_t);
+  const size_t view_byte_count = 3 * sizeof(int32_t);
+
+  auto tensor = Ort::Value::CreateTensor(
+      cpu_info, static_cast<void*>(buffer.data()),
+      view_byte_count, byte_offset,
+      shape.data(), shape.size(),
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
+
+  ASSERT_TRUE(tensor.IsTensor());
+  const int32_t* data = tensor.GetTensorData<int32_t>();
+
+  EXPECT_EQ(data, buffer.data() + 2) << "Tensor data pointer should point to buffer[2]";
+
+  EXPECT_EQ(data[0], 30);
+  EXPECT_EQ(data[1], 40);
+  EXPECT_EQ(data[2], 50);
+}
+
+// Test that a zero offset produces the same result as no-offset CreateTensor.
+TEST(CreateTensorWithOffsetTest, ZeroOffsetMatchesNoOffset) {
+  std::vector<double> buffer = {1.1, 2.2, 3.3};
+
+  Ort::AllocatorWithDefaultOptions cpu_alloc;
+  const OrtMemoryInfo* cpu_info = cpu_alloc.GetInfo();
+  constexpr std::array<int64_t, 1> shape = {3};
+
+  auto t_no_offset = Ort::Value::CreateTensor<double>(
+      cpu_info, buffer.data(), 3, shape.data(), shape.size());
+
+  auto t_zero_offset = Ort::Value::CreateTensor<double>(
+      cpu_info, buffer.data(), 3, /*element_offset=*/0, shape.data(), shape.size());
+
+  EXPECT_EQ(t_no_offset.GetTensorData<double>(), t_zero_offset.GetTensorData<double>());
+}
+
+// Test the intended usage pattern: use CreateTensor-with-offset together with
+// CopyTensors to copy a sub-region of a source tensor into a destination.
+// (CPU -> CPU copy via the default CPU data transfer.)
+TEST(CreateTensorWithOffsetTest, UsageWithCopyTensors) {
+  // Source buffer: [0, 1, 2, 3, 4, 5, 6, 7]
+  std::vector<float> src_buffer = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+  std::vector<float> dst_buffer(4, -1.f);
+
+  Ort::AllocatorWithDefaultOptions cpu_alloc;
+  const OrtMemoryInfo* cpu_info = cpu_alloc.GetInfo();
+
+  // Create a view over src[4..7].
+  constexpr std::array<int64_t, 1> shape = {4};
+  auto src_view = Ort::Value::CreateTensor<float>(
+      cpu_info, src_buffer.data(),
+      /*element_count=*/4, /*element_offset=*/4,
+      shape.data(), shape.size());
+
+  // Create a full destination tensor.
+  auto dst = Ort::Value::CreateTensor<float>(
+      cpu_info, dst_buffer.data(), 4, shape.data(), shape.size());
+
+  // Copy src view -> dst using the standard CopyTensors API.
+  // Ort::Value is move-only, so we can't use brace-init to construct a vector from lvalues.
+  std::vector<Ort::Value> copy_src, copy_dst;
+  copy_src.push_back(std::move(src_view));
+  copy_dst.push_back(std::move(dst));
+  ASSERT_CXX_ORTSTATUS_OK(ort_env->CopyTensors(copy_src, copy_dst, /*stream=*/nullptr));
+
+  EXPECT_EQ(dst_buffer[0], 4.f);
+  EXPECT_EQ(dst_buffer[1], 5.f);
+  EXPECT_EQ(dst_buffer[2], 6.f);
+  EXPECT_EQ(dst_buffer[3], 7.f);
+}
 
 }  // namespace test
 }  // namespace onnxruntime
