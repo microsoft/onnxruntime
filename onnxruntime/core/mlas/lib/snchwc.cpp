@@ -954,11 +954,11 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             const float* input = Input + BlockSize * (ph * StrideHeight * InputWidth);
             const float* filter = Filter;
             float* output = Output + BlockSize * ph * OutputWidth;
-            const size_t MaximumInputChannelBatch =
-                SelectPointwiseInputChannelBatch(WorkBlock, OutputThisIteration);
 
             size_t InputChannelBatch = 0;
             for (size_t ic = 0; ic < InputChannels; ) {
+                constexpr size_t MaximumInputChannelBatch = 128;
+
                 InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
 
                 unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);

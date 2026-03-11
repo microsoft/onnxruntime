@@ -35,6 +35,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/eltwise.h
   ${MLAS_SRC_DIR}/eltwise.cpp
   ${MLAS_SRC_DIR}/erf.cpp
+  ${MLAS_SRC_DIR}/gelu.cpp
+  ${MLAS_SRC_DIR}/silu.cpp
   ${MLAS_SRC_DIR}/compute.cpp
   ${MLAS_SRC_DIR}/dequantize.cpp
   ${MLAS_SRC_DIR}/quantize.cpp
@@ -201,6 +203,13 @@ function(setup_mlas_source_for_windows)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    set(mlas_platform_srcs_avx512
+      ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+    )
+    set_source_files_properties(${mlas_platform_srcs_avx512} PROPERTIES COMPILE_FLAGS "/arch:AVX512")
+
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
@@ -212,6 +221,8 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
@@ -755,9 +766,11 @@ endif()
           ${MLAS_SRC_DIR}/x86_64/SoftmaxKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/TransKernelAvx512F.S
+          ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
+        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f -mfma")
 
         set(mlas_platform_srcs_avx512core
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx512Core.S
