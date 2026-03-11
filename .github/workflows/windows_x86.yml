@@ -65,7 +65,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Use .NET 8.x
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.x'
         env:
@@ -105,15 +105,12 @@ jobs:
             throw "x86 dotnet must appear before x64 dotnet on PATH. Found $x86DotnetExe after $x64DotnetExe."
           }
 
+          where dotnet
+
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@v2
         with:
           nuget-version: '6.x'
-
-      - name: Prefer x86 dotnet on PATH
-        shell: pwsh
-        run: |
-          where dotnet
 
       - name: NuGet restore
         shell: cmd
