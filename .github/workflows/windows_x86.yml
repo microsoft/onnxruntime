@@ -110,9 +110,10 @@ jobs:
         with:
           nuget-version: '6.x'
 
-      - pwsh: |
+      - name: Prefer x86 dotnet on PATH
+        shell: pwsh
+        run: |
           where dotnet
-
 
       - name: NuGet restore
         shell: cmd
