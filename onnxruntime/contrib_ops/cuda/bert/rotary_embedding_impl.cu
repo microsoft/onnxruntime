@@ -73,6 +73,11 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
     // Validate base without overflow: base must be in [0, max_sequence_length - sequence_length].
     int64_t base_pos = position_ids[0];
     int64_t max_valid_base = static_cast<int64_t>(max_sequence_length) - static_cast<int64_t>(sequence_length);
+#if !defined(NDEBUG)
+    if (i == 0) {
+      CUDA_KERNEL_ASSERT(base_pos >= 0 && base_pos <= max_valid_base);
+    }
+#endif
     if (base_pos < 0 || base_pos > max_valid_base) {
       output_data[i] = use_smem ? smem[i] : input_data[i];
       return;
@@ -80,6 +85,11 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
     position_id = static_cast<int>(base_pos) + s;
   } else if (position_ids_format == 1) {
     int64_t pos = position_ids[b * sequence_length + s];
+#if !defined(NDEBUG)
+    if (i == 0) {
+      CUDA_KERNEL_ASSERT(pos >= 0 && pos < static_cast<int64_t>(max_sequence_length));
+    }
+#endif
     if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
       output_data[i] = use_smem ? smem[i] : input_data[i];
       return;

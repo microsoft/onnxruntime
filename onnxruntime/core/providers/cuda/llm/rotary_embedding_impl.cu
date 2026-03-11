@@ -58,6 +58,11 @@ __global__ void RotaryEmbeddingBSNH(T* output,                    // BxSxNxH
   int b_s_index = b * sequence_length + s;
   if (position_ids_format != 0) {
     int64_t pos = position_ids[b_s_index];
+#if !defined(NDEBUG)
+    if (i == 0) {
+      CUDA_KERNEL_ASSERT(pos >= 0 && pos < static_cast<int64_t>(max_sequence_length));
+    }
+#endif
     if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
       // OOB position id — can't propagate error from GPU, so pass through input unchanged.
       output_data[i] = input_data[i];
