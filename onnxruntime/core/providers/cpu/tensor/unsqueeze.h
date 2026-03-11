@@ -19,7 +19,36 @@ class UnsqueezeBase {
     Tensor* output_tensor = nullptr;
   };
 
+#ifdef SHARED_PROVIDER
   Status PrepareCompute(OpKernelContext* context, Prepare& p) const;
+#else
+  template <typename KernelContextType>
+  inline Status PrepareCompute(KernelContextType* ctx, Prepare& p) const {
+    const auto* X = ctx->template Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr);
+    auto& input_tensor = *X;
+
+    TensorShapeVector axes;
+    size_t num_inputs = ctx->InputCount();
+    if (num_inputs == 2) {
+      const Tensor* axes_tensor = ctx->template Input<Tensor>(1);
+      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 ||
+                      axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a scalar or a 1-D tensor.");
+      auto data_span = axes_tensor->template DataAsSpan<int64_t>();
+      axes.assign(data_span.begin(), data_span.end());
+    } else {
+      axes.assign(axes_.begin(), axes_.end());
+    }
+
+    auto output_shape = ComputeOutputShape(input_tensor.Shape(), axes);
+    p.input_tensor = &input_tensor;
+    p.output_tensor = ctx->Output(0, TensorShape(std::move(output_shape)));
+    return Status::OK();
+  }
+#endif
+
   static TensorShapeVector ComputeOutputShape(
       const TensorShape& input_shape,
       const TensorShapeVector& axes) {
