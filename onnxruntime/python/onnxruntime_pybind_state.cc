@@ -1554,15 +1554,12 @@ void addGlobalMethods(py::module& m) {
       "get_compatibility_info_from_model",
       [](const std::basic_string<ORTCHAR_T>& model_path, const std::string& ep_type) -> py::object {
         Ort::AllocatorWithDefaultOptions allocator;
-        char* compat_info = nullptr;
-        Ort::ThrowOnError(Ort::GetApi().GetCompatibilityInfoFromModel(
-            model_path.c_str(), ep_type.c_str(), allocator, &compat_info));
-        if (compat_info == nullptr) {
+        Ort::AllocatedStringPtr compat_info = Ort::GetCompatibilityInfoFromModelAllocated(
+            model_path.c_str(), ep_type.c_str(), allocator);
+        if (compat_info.get() == nullptr) {
           return py::none();
         }
-        py::str result(compat_info);
-        allocator.Free(compat_info);
-        return result;
+        return py::str(compat_info.get());
       },
       R"pbdoc(Extract EP compatibility info from a precompiled model file.
 
@@ -1579,26 +1576,23 @@ Returns:
 
   m.def(
       "get_compatibility_info_from_model_bytes",
-      [](const py::bytes& model_data, const std::string& ep_type) -> py::object {
-        const char* data_ptr = PyBytes_AS_STRING(model_data.ptr());
-        Py_ssize_t data_len = PyBytes_GET_SIZE(model_data.ptr());
+      [](const py::buffer& model_data, const std::string& ep_type) -> py::object {
+        py::buffer_info info = model_data.request();
         Ort::AllocatorWithDefaultOptions allocator;
-        char* compat_info = nullptr;
-        Ort::ThrowOnError(Ort::GetApi().GetCompatibilityInfoFromModelBytes(
-            data_ptr, static_cast<size_t>(data_len), ep_type.c_str(), allocator, &compat_info));
-        if (compat_info == nullptr) {
+        Ort::AllocatedStringPtr compat_info = Ort::GetCompatibilityInfoFromModelBytesAllocated(
+            info.ptr, static_cast<size_t>(info.size * info.itemsize), ep_type.c_str(), allocator);
+        if (compat_info.get() == nullptr) {
           return py::none();
         }
-        py::str result(compat_info);
-        allocator.Free(compat_info);
-        return result;
+        return py::str(compat_info.get());
       },
       R"pbdoc(Extract EP compatibility info from precompiled model bytes in memory.
 
-Same as get_compatibility_info_from_model but reads from a bytes object instead of a file.
+Same as get_compatibility_info_from_model but reads from a buffer instead of a file.
+Accepts bytes, bytearray, memoryview, or any object supporting the buffer protocol.
 
 Args:
-    model_data: The model data as bytes.
+    model_data: The model data as a buffer (bytes, bytearray, memoryview, etc.).
     ep_type: The execution provider type string (e.g. "CPUExecutionProvider").
 
 Returns:

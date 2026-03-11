@@ -103,6 +103,36 @@ public class EpCompatibilityTests
     }
 
     [Fact]
+    public void GetCompatibilityInfoFromModel_WithMetadata()
+    {
+        const string epType = "TestCompatEP";
+        const string expectedCompatInfo = "test_compat_v1.0_driver_123";
+
+        byte[] modelData = CreateModelWithCompatibilityMetadata(
+            new Dictionary<string, string> { { epType, expectedCompatInfo } });
+
+        string tempModelPath = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            System.IO.Path.GetRandomFileName() + ".onnx");
+
+        System.IO.File.WriteAllBytes(tempModelPath, modelData);
+
+        try
+        {
+            string result = ortEnvInstance.GetCompatibilityInfoFromModel(tempModelPath, epType);
+            Assert.NotNull(result);
+            Assert.Equal(expectedCompatInfo, result);
+        }
+        finally
+        {
+            if (System.IO.File.Exists(tempModelPath))
+            {
+                System.IO.File.Delete(tempModelPath);
+            }
+        }
+    }
+
+    [Fact]
     public void GetCompatibilityInfoFromModelBytes_InvalidModelData()
     {
         byte[] invalidData = System.Text.Encoding.UTF8.GetBytes("this is not a valid ONNX model");
