@@ -1751,6 +1751,72 @@ Returns:
 )pbdoc");
 
   m.def(
+      "get_hardware_devices",
+      []() -> std::vector<const OrtHardwareDevice*> {
+#if !defined(ORT_MINIMAL_BUILD)
+        const OrtEnv* ort_env = GetOrtEnv();
+        size_t num_devices = 0;
+        Ort::ThrowOnError(Ort::GetApi().GetNumHardwareDevices(ort_env, &num_devices));
+        std::vector<const OrtHardwareDevice*> devices(num_devices);
+        if (num_devices > 0) {
+          Ort::ThrowOnError(Ort::GetApi().GetHardwareDevices(ort_env, devices.data(), num_devices));
+        }
+        return devices;
+#else
+        ORT_THROW("OrtHardwareDevices are not supported in this build");
+#endif
+      },
+      R"pbdoc(Get the list of available hardware devices.)pbdoc",
+      py::return_value_policy::reference);
+
+  m.def(
+      "get_hardware_device_ep_incompatibility_details",
+      [](const std::string& ep_name,
+         const OrtHardwareDevice* hw) -> py::dict {
+#if !defined(ORT_MINIMAL_BUILD)
+        const OrtEnv* ort_env = GetOrtEnv();
+        OrtDeviceEpIncompatibilityDetails* details = nullptr;
+        Ort::ThrowOnError(Ort::GetApi().GetHardwareDeviceEpIncompatibilityDetails(
+            ort_env, ep_name.c_str(), hw, &details));
+
+        // Extract details into a Python dictionary
+        uint32_t reasons_bitmask = 0;
+        Ort::ThrowOnError(Ort::GetApi().DeviceEpIncompatibilityDetails_GetReasonsBitmask(details, &reasons_bitmask));
+
+        const char* notes = nullptr;
+        Ort::ThrowOnError(Ort::GetApi().DeviceEpIncompatibilityDetails_GetNotes(details, &notes));
+        std::string notes_copy = notes ? notes : "";
+
+        int32_t error_code = 0;
+        Ort::ThrowOnError(Ort::GetApi().DeviceEpIncompatibilityDetails_GetErrorCode(details, &error_code));
+
+        // Release the details object before building Python objects
+        Ort::GetApi().ReleaseDeviceEpIncompatibilityDetails(details);
+
+        py::dict result;
+        result["reasons_bitmask"] = reasons_bitmask;
+        if (notes) {
+          result["notes"] = py::str(notes_copy);
+        } else {
+          result["notes"] = py::none();
+        }
+        result["error_code"] = error_code;
+        return result;
+#else
+        ORT_UNUSED_PARAMETER(ep_name);
+        ORT_UNUSED_PARAMETER(hw);
+        ORT_THROW("GetHardwareDeviceEpIncompatibilityDetails is not supported in this build");
+#endif
+      },
+      R"pbdoc(Check for known incompatibility issues between hardware device and a specific execution provider.
+
+Returns a dictionary with:
+  - reasons_bitmask: Bitmask of OrtDeviceEpIncompatibilityReason values (0 = no known incompatibility)
+  - notes: Optional human-readable notes about the incompatibility
+  - error_code: EP-specific error code (0 = no error code set)
+)pbdoc");
+
+  m.def(
       "copy_tensors",
       [](const std::vector<const OrtValue*>& src, const std::vector<OrtValue*>& dest, py::object& py_arg) {
         const OrtEnv* ort_env = GetOrtEnv();
@@ -1941,6 +2007,13 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("EP_SUPPORTED_OPTIMAL", OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL)
       .value("EP_SUPPORTED_PREFER_RECOMPILATION", OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION)
       .value("EP_UNSUPPORTED", OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+
+  py::enum_<OrtDeviceEpIncompatibilityReason>(m, "OrtDeviceEpIncompatibilityReason")
+      .value("NONE", OrtDeviceEpIncompatibility_NONE)
+      .value("DRIVER_INCOMPATIBLE", OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE)
+      .value("DEVICE_INCOMPATIBLE", OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE)
+      .value("MISSING_DEPENDENCY", OrtDeviceEpIncompatibility_MISSING_DEPENDENCY)
+      .value("UNKNOWN", OrtDeviceEpIncompatibility_UNKNOWN);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)
