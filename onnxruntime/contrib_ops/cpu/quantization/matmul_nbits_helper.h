@@ -68,10 +68,10 @@ Status CheckInputs(const T* /*activation*/,
   ASSERT_TENSOR_SHAPE_2(group_index, make_shape(k), make_shape(k_blocks * block_size));
 
   // Validate group_index values are within valid range [0, k_blocks)
-  if (group_index != nullptr) {
+  if (group_index != nullptr && group_index->Location().device.Type() == OrtDevice::CPU) {
     auto g_idx_data = group_index->template Data<int32_t>();
-    auto g_idx_size = group_index->Shape().Size();
-    for (int64_t i = 0; i < g_idx_size; ++i) {
+    auto g_idx_size = static_cast<size_t>(group_index->Shape().Size());
+    for (size_t i = 0; i < g_idx_size; ++i) {
       if (g_idx_data[i] < 0 || g_idx_data[i] >= k_blocks) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "group_index value at index ", i, " is ", g_idx_data[i],
