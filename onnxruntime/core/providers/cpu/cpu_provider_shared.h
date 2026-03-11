@@ -18,6 +18,8 @@ struct WhisperBeamSearchParameters;
 }  // namespace transformers
 }  // namespace contrib
 
+struct MLFloat16;
+
 class GatherBase__Prepare;
 class ConcatBase_InlinedTensorsVector;
 class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareForComputeMetadata
@@ -25,6 +27,31 @@ class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Pr
 class contrib__AdamWOptimizerBase__Prepare;
 class contrib__SGDOptimizerV2Base__Prepare;
 class UpsampleBase;
+class EinsumComputePreprocessor;
+
+namespace EinsumOp {
+namespace DeviceHelpers {
+using DataCopy = std::function<Status(const Tensor& input, Tensor& output, void* einsum_cuda_assets)>;
+using CreateTensor = std::function<std::unique_ptr<Tensor>(const DataTypeImpl* type, const TensorShape& shape, AllocatorPtr allocator)>;
+using ZeroBuffer = std::function<Status(Tensor& input, void* einsum_cuda_assets)>;
+using Transpose = std::function<Status(const gsl::span<const size_t>& permutation, const Tensor& input,
+                                       Tensor& output, const TensorShape* input_shape_override,
+                                       void* einsum_cuda_assets)>;
+
+template <typename T>
+using MatMul = std::function<Status(const T* input_1_data, const T* input_2_data, T* output_data,
+                                    size_t left_stride, size_t right_stride, size_t output_stride,
+                                    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+                                    const void* mlas_backend_config,
+                                    void* einsum_cuda_assets)>;
+
+template <typename T>
+using ReduceSum = std::function<std::unique_ptr<Tensor>(const Tensor& input, gsl::span<const int64_t> reduce_axes,
+                                                        bool keep_dims, AllocatorPtr allocator,
+                                                        const TensorShape* input_shape_override,
+                                                        concurrency::ThreadPool* tp, void* einsum_cuda_assets)>;
+}  // namespace DeviceHelpers
+}  // namespace EinsumOp
 
 using PadsVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize * 2>;
 
@@ -100,30 +127,6 @@ struct ProviderHostCPU {
 
   virtual Status Einsum__Compute(const Einsum* p, OpKernelContext* context) = 0;
 
-  // EinsumComputePreprocessor
-  virtual void EinsumComputePreprocessor__operator_delete(EinsumComputePreprocessor* p) = 0;
-  virtual std::unique_ptr<EinsumComputePreprocessor> EinsumComputePreprocessor__Create(EinsumEquationPreprocessor& equation_preprocessor,
-                                                                                       const std::vector<const Tensor*>& inputs,
-                                                                                       AllocatorPtr allocator,
-                                                                                       void* einsum_cuda_assets) = 0;
-
-  virtual Status EinsumComputePreprocessor__Run(EinsumComputePreprocessor* p) = 0;
-  virtual void EinsumComputePreprocessor__SetDeviceHelpers(EinsumComputePreprocessor* p, const EinsumOp::DeviceHelpers::Diagonal& diagonal_func, const EinsumOp::DeviceHelpers::Transpose& transpose_func) = 0;
-
-  // EinsumTypedComputeProcessor
-  virtual void EinsumTypedComputeProcessor__operator_delete(EinsumTypedComputeProcessor<float>* p) = 0;
-  virtual void EinsumTypedComputeProcessor__operator_delete(EinsumTypedComputeProcessor<double>* p) = 0;
-  virtual void EinsumTypedComputeProcessor__operator_delete(EinsumTypedComputeProcessor<MLFloat16>* p) = 0;
-  virtual std::unique_ptr<EinsumTypedComputeProcessor<float>> EinsumTypedComputeProcessor_float__Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, const void* mlas_backend_config, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) = 0;
-  virtual std::unique_ptr<EinsumTypedComputeProcessor<double>> EinsumTypedComputeProcessor_double__Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, const void* mlas_backend_config, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) = 0;
-  virtual std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProcessor_MLFloat16__Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, const void* mlas_backend_config, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) = 0;
-  virtual void EinsumTypedComputeProcessor__SetDeviceHelpers(EinsumTypedComputeProcessor<float>* p, const EinsumOp::DeviceHelpers::Transpose& device_transpose_func, const EinsumOp::DeviceHelpers::MatMul<float>& device_matmul_func, const EinsumOp::DeviceHelpers::ReduceSum<float>& device_reduce_sum_func, const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func, const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func) = 0;
-  virtual void EinsumTypedComputeProcessor__SetDeviceHelpers(EinsumTypedComputeProcessor<double>* p, const EinsumOp::DeviceHelpers::Transpose& device_transpose_func, const EinsumOp::DeviceHelpers::MatMul<double>& device_matmul_func, const EinsumOp::DeviceHelpers::ReduceSum<double>& device_reduce_sum_func, const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func, const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func) = 0;
-  virtual void EinsumTypedComputeProcessor__SetDeviceHelpers(EinsumTypedComputeProcessor<MLFloat16>* p, const EinsumOp::DeviceHelpers::Transpose& device_transpose_func, const EinsumOp::DeviceHelpers::MatMul<MLFloat16>& device_matmul_func, const EinsumOp::DeviceHelpers::ReduceSum<MLFloat16>& device_reduce_sum_func, const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func, const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func) = 0;
-  virtual Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<float>* p) = 0;
-  virtual Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<double>* p) = 0;
-  virtual Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) = 0;
-
   // If
   virtual void If__Init(If* p, const OpKernelInfo& info) = 0;
   virtual Status If__Compute(const If* p, OpKernelContext* ctx) = 0;
@@ -144,6 +147,36 @@ struct ProviderHostCPU {
   virtual void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
                                                       gsl::span<const int64_t> input_dims,
                                                       InlinedVector<float>& scales) const = 0;
+
+  virtual Status EinsumTypedComputeProcessor_float_Compute(
+      OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp,
+      const void* mlas_backend_config, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets,
+      const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
+      const EinsumOp::DeviceHelpers::MatMul<float>& device_matmul_func,
+      const EinsumOp::DeviceHelpers::ReduceSum<float>& device_reduce_sum_func,
+      const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
+      const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func,
+      const EinsumOp::DeviceHelpers::CreateTensor& device_create_tensor_func) = 0;
+
+  virtual Status EinsumTypedComputeProcessor_double_Compute(
+      OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp,
+      const void* mlas_backend_config, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets,
+      const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
+      const EinsumOp::DeviceHelpers::MatMul<double>& device_matmul_func,
+      const EinsumOp::DeviceHelpers::ReduceSum<double>& device_reduce_sum_func,
+      const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
+      const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func,
+      const EinsumOp::DeviceHelpers::CreateTensor& device_create_tensor_func) = 0;
+
+  virtual Status EinsumTypedComputeProcessor_MLFloat16_Compute(
+      OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp,
+      const void* mlas_backend_config, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets,
+      const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
+      const EinsumOp::DeviceHelpers::MatMul<MLFloat16>& device_matmul_func,
+      const EinsumOp::DeviceHelpers::ReduceSum<MLFloat16>& device_reduce_sum_func,
+      const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
+      const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func,
+      const EinsumOp::DeviceHelpers::CreateTensor& device_create_tensor_func) = 0;
 #ifndef DISABLE_CONTRIB_OPS
   virtual Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) = 0;
   virtual Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) = 0;
@@ -274,38 +307,6 @@ inline Status ValidateInputs(const Tensor* depth, const Tensor* values) { return
 inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
                                  int64_t& prefix_dim_size, int64_t& suffix_dim_size,
                                  TensorShapeVector& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
-
-struct EinsumComputePreprocessor {
-  static void operator delete(void* p) { g_host_cpu.EinsumComputePreprocessor__operator_delete(reinterpret_cast<EinsumComputePreprocessor*>(p)); }
-  static std::unique_ptr<EinsumComputePreprocessor> Create(EinsumEquationPreprocessor& equation_preprocessor,
-                                                           const std::vector<const Tensor*>& inputs,
-                                                           AllocatorPtr allocator,
-                                                           void* einsum_cuda_assets) { return g_host_cpu.EinsumComputePreprocessor__Create(equation_preprocessor, inputs, allocator, einsum_cuda_assets); }
-
-  Status Run() { return g_host_cpu.EinsumComputePreprocessor__Run(this); }
-
-  void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Diagonal& diagonal_func, const EinsumOp::DeviceHelpers::Transpose& transpose_func) { return g_host_cpu.EinsumComputePreprocessor__SetDeviceHelpers(this, diagonal_func, transpose_func); }
-};
-
-template <typename T>
-struct EinsumTypedComputeProcessor {
-  static void operator delete(void* p) { g_host_cpu.EinsumTypedComputeProcessor__operator_delete(reinterpret_cast<EinsumTypedComputeProcessor*>(p)); }
-  static std::unique_ptr<EinsumTypedComputeProcessor> Create(OpKernelContext* context, AllocatorPtr allocator,
-                                                             concurrency::ThreadPool* tp,
-                                                             const void* mlas_backend_config,
-                                                             EinsumComputePreprocessor& einsum_compute_preprocessor,
-                                                             void* einsum_cuda_assets);
-
-  void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
-                        const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
-                        const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
-                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
-                        const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func) {
-    g_host_cpu.EinsumTypedComputeProcessor__SetDeviceHelpers(this, device_transpose_func, device_matmul_func, device_reduce_sum_func, device_data_copy_func, device_zero_buffer_func);
-  }
-
-  Status Run() { return g_host_cpu.EinsumTypedComputeProcessor__Run(this); }
-};
 
 #ifdef ENABLE_TRAINING_OPS
 namespace contrib {
