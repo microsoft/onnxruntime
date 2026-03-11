@@ -879,7 +879,7 @@ def parse_arguments() -> argparse.Namespace:
 
     parser = Parser(
         description="ONNXRuntime CI build driver.",
-        usage="""
+        usage=f"""
         Default behavior is --update --build --test for native architecture builds.
         Default behavior is --update --build for cross-compiled builds.
 
@@ -888,6 +888,9 @@ def parse_arguments() -> argparse.Namespace:
         The Test phase will run all unit tests, and optionally the ONNX tests.
 
         Use the individual flags (--update, --build, --test) to only run specific stages.
+
+        Arguments can also be passed in a file prefixed with '@'.
+        E.g., `{sys.argv[0]} @arguments.txt`.
         """,
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )
