@@ -310,7 +310,8 @@ class MlasComputeSiluAvx512Test : public MlasTestBase {
 
   void ExecuteLong() override {
     ExecuteCommon({1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255,
-                   511, 512, 513, 1023, 1024, 1025, 4095}, 8);
+                   511, 512, 513, 1023, 1024, 1025, 4095},
+                  8);
   }
 };
 
