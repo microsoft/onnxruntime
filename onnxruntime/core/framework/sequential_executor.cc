@@ -94,6 +94,71 @@ enum class NodeTimingCaptureGroupBy {
   OpType,
 };
 
+bool TryGetConvKernelShapeFromAttributes(const Node& node, int64_t& kernel_h, int64_t& kernel_w) {
+  const auto& attributes = node.GetAttributes();
+  const auto attr_it = attributes.find("kernel_shape");
+  if (attr_it == attributes.end()) {
+    return false;
+  }
+
+  const auto& kernel_shape = attr_it->second;
+  if (kernel_shape.type() != ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS ||
+      kernel_shape.ints_size() < 2) {
+    return false;
+  }
+
+  kernel_h = kernel_shape.ints(0);
+  kernel_w = kernel_shape.ints(1);
+  return true;
+}
+
+bool TryGetConvKernelShapeFromWeights(const Node& node, int64_t& kernel_h, int64_t& kernel_w) {
+  const auto input_defs = node.InputDefs();
+  if (input_defs.size() < 2 || input_defs[1] == nullptr || !input_defs[1]->Exists()) {
+    return false;
+  }
+
+  const auto* weight_shape = input_defs[1]->Shape();
+  if (weight_shape == nullptr || weight_shape->dim_size() < 4) {
+    return false;
+  }
+
+  const auto& kernel_h_dim = weight_shape->dim(weight_shape->dim_size() - 2);
+  const auto& kernel_w_dim = weight_shape->dim(weight_shape->dim_size() - 1);
+
+  if (!kernel_h_dim.has_dim_value() || !kernel_w_dim.has_dim_value()) {
+    return false;
+  }
+
+  kernel_h = kernel_h_dim.dim_value();
+  kernel_w = kernel_w_dim.dim_value();
+  return true;
+}
+
+std::string GetTargetedLatencyCaptureKey(const Node& node) {
+  const auto& op_type = node.OpType();
+
+  if (op_type == "QuickGelu") {
+    return "quick_gelu_alone";
+  }
+
+  if (op_type == "Conv" || op_type == "FusedConv" || op_type == "NhwcFusedConv") {
+    int64_t kernel_h = 0;
+    int64_t kernel_w = 0;
+    const bool found_kernel_shape = TryGetConvKernelShapeFromAttributes(node, kernel_h, kernel_w) ||
+                                    ((op_type == "Conv" || op_type == "FusedConv") &&
+                                     TryGetConvKernelShapeFromWeights(node, kernel_h, kernel_w));
+
+    if (found_kernel_shape) {
+      return MakeString("conv_", kernel_h, "x", kernel_w);
+    }
+
+    return "conv_unknown_shape";
+  }
+
+  return "other_ops";
+}
+
 NodeTimingCaptureGroupBy NodeTimingCaptureGroupByFromConfig(const SessionState& session_state) {
   auto group_by =
       session_state.GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigNodeTimingCaptureGroupBy,
@@ -345,6 +410,19 @@ class SessionScope {
     stats.max_latency_us = std::max(stats.max_latency_us, latency_us);
   }
 
+  void RecordTargetedOpLatency(const std::string& key, uint64_t latency_us) {
+    if (!enable_node_timing_capture_ || key.empty()) {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(op_latency_stats_mutex_);
+    auto& stats = targeted_op_latency_stats_[key];
+    stats.count += 1;
+    stats.total_latency_us += latency_us;
+    stats.min_latency_us = std::min(stats.min_latency_us, latency_us);
+    stats.max_latency_us = std::max(stats.max_latency_us, latency_us);
+  }
+
   void StopProfilingIfEnabled(profiling::EventCategory category,
                               const std::string& event_name,
                               const TimePoint& start_time,
@@ -435,6 +513,43 @@ class SessionScope {
                             << " min_us=" << stats.min_latency_us
                             << " max_us=" << stats.max_latency_us;
     }
+
+    InlinedVector<std::pair<std::string, OpLatencyStats>> targeted_stats;
+    uint64_t total_targeted_latency_us = 0;
+    uint64_t total_targeted_invocations = 0;
+
+    {
+      std::lock_guard<std::mutex> lock(op_latency_stats_mutex_);
+      targeted_stats.reserve(targeted_op_latency_stats_.size());
+      for (const auto& kvp : targeted_op_latency_stats_) {
+        targeted_stats.push_back(kvp);
+        total_targeted_latency_us += kvp.second.total_latency_us;
+        total_targeted_invocations += kvp.second.count;
+      }
+    }
+
+    std::sort(targeted_stats.begin(), targeted_stats.end(),
+              [](const auto& left, const auto& right) {
+                return left.second.total_latency_us > right.second.total_latency_us;
+              });
+
+    LOGS(logger, WARNING) << "[Latency] Targeted kernel latency summary: categories="
+                          << targeted_stats.size()
+                          << ", kernel_invocations=" << total_targeted_invocations
+                          << ", total_kernel_time_us=" << total_targeted_latency_us;
+
+    for (const auto& entry : targeted_stats) {
+      const auto& category = entry.first;
+      const auto& stats = entry.second;
+      const uint64_t avg_latency_us = stats.count == 0 ? 0 : (stats.total_latency_us / stats.count);
+      const uint64_t min_latency_us = stats.count == 0 ? 0 : stats.min_latency_us;
+      LOGS(logger, WARNING) << "[Latency] category=" << category
+                            << " count=" << stats.count
+                            << " total_us=" << stats.total_latency_us
+                            << " avg_us=" << avg_latency_us
+                            << " min_us=" << min_latency_us
+                            << " max_us=" << stats.max_latency_us;
+    }
   }
 
   const bool enable_node_timing_capture_;
@@ -444,6 +559,7 @@ class SessionScope {
   TimePoint session_start_;
   mutable std::mutex op_latency_stats_mutex_;
   InlinedHashMap<std::string, OpLatencyStats> op_latency_stats_;
+  InlinedHashMap<std::string, OpLatencyStats> targeted_op_latency_stats_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
 #endif
@@ -503,6 +619,7 @@ class KernelScope {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
       op_latency_key_ = session_scope_.GetNodeTimingCaptureKey(node);
+      targeted_op_latency_key_ = GetTargetedLatencyCaptureKey(node);
       wall_clock_begin_time_ = std::chrono::steady_clock::now();
     }
 
@@ -563,6 +680,8 @@ class KernelScope {
       if (latency_us > 0) {
         session_scope_.RecordOpLatency(op_latency_key_,
                                        static_cast<uint64_t>(latency_us));
+        session_scope_.RecordTargetedOpLatency(targeted_op_latency_key_,
+                                               static_cast<uint64_t>(latency_us));
       }
     }
 
@@ -623,6 +742,7 @@ class KernelScope {
   const SessionState& session_state_;
   std::string node_name_;
   std::string op_latency_key_;
+  std::string targeted_op_latency_key_;
   OpKernelContextInternal& kernel_context_;
   const OpKernel& kernel_;
 
@@ -834,12 +954,12 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                              fetch_mlvalue_idxs,
                              fetches,
                              fetch_allocators,
-                             logger,
+          v                           logger,
                              single_thread_mode);
 #endif
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
-    auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
+    auto* node_to_ex  ecute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
     ctx.SetNodeToExecute(node_to_execute);
   }
 #else

@@ -286,6 +286,8 @@ Return Value:
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ErfKernelRoutine = MlasErfKernel;
+    this->GeluKernelRoutine = MlasGeluKernel;
+    this->SiluKernelRoutine = MlasSiluKernel;
     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
     this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
@@ -471,6 +473,9 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx512F;
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
+                    this->GeluKernelRoutine = MlasGeluKernelAvx512F;
+                    this->GeluErfMinimaxKernelRoutine = MlasGeluKernelAvx512FMinimaxApprox;
+                    this->SiluKernelRoutine = MlasSiluKernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
