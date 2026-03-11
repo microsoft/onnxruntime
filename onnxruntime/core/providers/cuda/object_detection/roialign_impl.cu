@@ -110,6 +110,7 @@ __global__ void RoIAlignForward(
     // Validate batch_indices values are within [0, batch_size).
     // If the index is out of range, we set the output to 0 for this RoI element.
     if (roi_batch_ind < 0 || roi_batch_ind >= batch_size) {
+      CUDA_KERNEL_ASSERT(false && "batch_indices values are out of range");
       top_data[index] = 0;
       continue;
     }
