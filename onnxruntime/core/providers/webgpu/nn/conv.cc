@@ -235,7 +235,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
-      return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
+      std::optional<bool> applied_is_channels_last;
+      if (has_bias) {
+        applied_is_channels_last = is_channels_last;
+      }
+      return ComputeMatMul(&context, activation_, matmul_inputs, output, applied_is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
     }
   }
   // Transpose weights when necessary

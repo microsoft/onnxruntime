@@ -26,8 +26,10 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
+  // `is_channels_last_` must be set when `bias` is used, and won't be set when `bias` is not used.
+  const bool has_bias = is_channels_last_.has_value();
   const ShaderVariableHelper* bias = nullptr;
-  if (has_bias_) {
+  if (has_bias) {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
@@ -65,12 +67,15 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
   }
 
   // Handle bias with `MatMulWriteFnSourceForGemm() or MatMulWriteFnSourceForMatMul()`.
-  // const uint32_t bias_components = output_components_;
   if (is_gemm_) {
     MatMulWriteFnSourceForGemm(shader, output, bias, bias_is_scalar_);
   } else {
     // Currently we only support `is_channels_last` to be true and no activation.
-    MatMulWriteFnSourceForMatMul(shader, output, bias, /*activation_snippet*/ "", /*is_channels_last*/ true);
+    std::optional<bool> is_channels_last;
+    if (has_bias_) {
+      is_channels_last = true;
+    }
+    MatMulWriteFnSourceForMatMul(shader, output, bias, /*activation_snippet*/ "", is_channels_last);
   }
 
   shader.MainFunctionBody() << "  let output_components = " << output_components_ << ";\n";
