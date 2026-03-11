@@ -770,7 +770,7 @@ endif()
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f -mfma")
+        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f -mavx512dq -mfma")
 
         set(mlas_platform_srcs_avx512core
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx512Core.S
