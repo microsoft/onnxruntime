@@ -68,7 +68,7 @@ class MlasSBGemmTest : public MlasTestBase {
     }
     void* PackedB = BufferBPacked.GetBuffer(PackedBSize);
     if (std::is_same<BType, float>::value) {
-      MlasSBGemmConvertPackB(TransA, TransB, true, N, K, (const float*)B, ldb, PackedB, nullptr);
+      MlasSBGemmConvertPackB(TransA, TransB, BIsfp32, N, K, (const float*)B, ldb, PackedB, nullptr);
     } else {
     }
     return PackedB;

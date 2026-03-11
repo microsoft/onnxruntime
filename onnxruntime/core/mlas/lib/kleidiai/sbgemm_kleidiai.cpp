@@ -377,7 +377,7 @@ Return Value:
         const size_t lhs_packed_offset = sbgemm_gemm.ukernel.get_lhs_packed_offset(MIdx * m_step, K);
 
         const std::byte* A_base = LhsPackedData + LhsPackedStride * BIdx;
-        auto ATile = reinterpret_cast<const float*>(A_base + lhs_packed_offset);
+        auto ATile = reinterpret_cast<const void*>(A_base + lhs_packed_offset);
 
         auto TileSizeM = (MIdx + 1) * m_step > M ? (M - MIdx * m_step) : m_step;
         auto TileSizeN = (NIdx + 1) * n_step > N ? (N - NIdx * n_step) : n_step;
@@ -413,7 +413,6 @@ Return Value:
             g_kai_tls_sbgemm.output_tile.resize(tile_elems);
             out_tile = g_kai_tls_sbgemm.output_tile.data();
             out_row_stride_bytes = TileSizeN * sizeof(float);
-            std::fill_n(out_tile, tile_elems, 0.0f);
         }
 
         KLEIDIAI_KERNEL_LOG(sbgemm_gemm.name
