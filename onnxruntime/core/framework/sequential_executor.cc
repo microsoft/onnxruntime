@@ -959,7 +959,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #endif
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
-    auto* node_to_ex  ecute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
+    auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
     ctx.SetNodeToExecute(node_to_execute);
   }
 #else
