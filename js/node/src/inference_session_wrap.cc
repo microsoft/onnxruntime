@@ -277,6 +277,9 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
+  this->inputTypes_.clear();
+  this->outputTypes_.clear();
+
   this->ioBinding_.reset(nullptr);
   this->session_.reset(nullptr);
 
