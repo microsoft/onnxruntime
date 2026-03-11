@@ -50,10 +50,6 @@ if (MSVC)
   #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
 
-  # Enable the standards-conforming preprocessor.
-  add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/Zc:preprocessor>"
-                      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
-
   # Prevents CMake from injecting '#pragma system_header', which results in warnings being disabled in projects that
   # use precompiled headers.
   set(CMAKE_PCH_PROLOGUE "")
