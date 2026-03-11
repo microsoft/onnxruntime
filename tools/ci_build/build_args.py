@@ -871,9 +871,11 @@ def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments for the ONNX Runtime build."""
 
     class Parser(argparse.ArgumentParser):
-        # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:  # Use list[str] for Python 3.9+
-            return shlex.split(arg_line)
+        # override argument file line parsing behavior
+        # - allow multiple arguments per line and handle quotes
+        # - allow comments starting with '#'
+        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
+            return shlex.split(arg_line, comments=True)
 
     parser = Parser(
         description="ONNXRuntime CI build driver.",
