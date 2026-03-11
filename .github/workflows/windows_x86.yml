@@ -65,7 +65,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Use .NET 8.x
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.x'
         env:
