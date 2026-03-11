@@ -27,7 +27,8 @@ inline Status ComputeOutputShapeForAttention(
     TensorShape& y_shape,
     TensorShape& present_key_shape,
     TensorShape& present_value_shape,
-    TensorShape& output_qk_shape) {
+    TensorShape& output_qk_shape,
+    bool skip_nonpad_data_validation = false) {
   ORT_ENFORCE(Q != nullptr && K != nullptr && V != nullptr,
               "Q, K, and V inputs must not be null");
   int q_dims = onnxruntime::narrow<int>(Q->Shape().NumDimensions());
@@ -90,6 +91,13 @@ inline Status ComputeOutputShapeForAttention(
 
     parameters.transpose_output = true;  // whether to transpose the input/output with permutation (0, 2, 1, 3)
     parameters.q_sequence_length = onnxruntime::narrow<int>(Q->Shape()[1]);
+
+    // Validate mask second-to-last dim matches q_sequence_length (same check as 4D path).
+    // For 2D mask [A, B]: A must equal q_seq. For 3D mask [A, B, C]: B must equal q_seq.
+    ORT_ENFORCE(attn_mask == nullptr ||
+                    attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 2] == Q->Shape()[1],
+                "inconsistent q_sequence_length (between attn_mask and Q)");
+
     parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[2]) / parameters.q_num_heads;
     parameters.kv_sequence_length = onnxruntime::narrow<int>(K->Shape()[1]);
     parameters.v_head_size = onnxruntime::narrow<int>(V->Shape()[2]) / parameters.kv_num_heads;
@@ -115,11 +123,14 @@ inline Status ComputeOutputShapeForAttention(
     parameters.has_nonpad_kv_seqlen = true;
     parameters.nonpad_kv_seqlen_data = nonpad_kv_seqlen->Data<int64_t>();
     // Validate each value is in [0, total_sequence_length].
-    for (int i = 0; i < parameters.batch_size; ++i) {
-      ORT_ENFORCE(parameters.nonpad_kv_seqlen_data[i] >= 0 &&
-                      parameters.nonpad_kv_seqlen_data[i] <= parameters.total_sequence_length,
-                  "nonpad_kv_seqlen[", i, "] = ", parameters.nonpad_kv_seqlen_data[i],
-                  " is out of range [0, ", parameters.total_sequence_length, "]");
+    // Skip when data is on GPU (CUDA path sets skip_nonpad_data_validation=true).
+    if (!skip_nonpad_data_validation) {
+      for (int i = 0; i < parameters.batch_size; ++i) {
+        ORT_ENFORCE(parameters.nonpad_kv_seqlen_data[i] >= 0 &&
+                        parameters.nonpad_kv_seqlen_data[i] <= parameters.total_sequence_length,
+                    "nonpad_kv_seqlen[", i, "] = ", parameters.nonpad_kv_seqlen_data[i],
+                    " is out of range [0, ", parameters.total_sequence_length, "]");
+      }
     }
   } else {
     parameters.has_nonpad_kv_seqlen = false;
@@ -127,6 +138,11 @@ inline Status ComputeOutputShapeForAttention(
   }
 
   ORT_ENFORCE(parameters.q_num_heads % parameters.kv_num_heads == 0, "q_num_heads must be a multiple of kv_num_heads. This is required for grouped/multi-query and multi-headed attention.");
+  // TODO: The ONNX spec allows attn_mask last dim to be shorter than total_sequence_length,
+  // with positions beyond the mask padded with -inf. Currently we enforce exact match.
+  // To support: change == to <=, allocate padded buffer, fill remainder with -inf.
+  // See ONNX spec: 'The last dimension can also be shorter than total_sequence_length
+  // and will be padded to total_sequence_length with negative infinity.'
   ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.total_sequence_length,
               "inconsistent total_sequence_length (between attn_mask and past_key and past_value)");
   ORT_ENFORCE(attn_mask == nullptr ||

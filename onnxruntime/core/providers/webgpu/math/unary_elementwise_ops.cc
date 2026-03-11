@@ -291,5 +291,31 @@ WEBGPU_ELEMENTWISE_KERNEL(LeakyRelu, 16, WebGpuSupportedFloatTypes())
 WEBGPU_LU_IMPL(ThresholdedRelu, "select(vec4<x_element_t>(0), a, a > vec4<x_element_t>(uniforms.attr))", "", 1.0f)
 WEBGPU_ELEMENTWISE_KERNEL(ThresholdedRelu, 10, WebGpuSupportedFloatTypes())
 
+// For large a, softplus(a) = log(1 + exp(a)) ≈ a. Use a threshold to return a directly,
+// avoiding unnecessary exp/log computation and potential overflow.
+// PyTorch uses threshold=20 for float32. For float16, exp overflows at ~11.09 so use 11.
+class Softplus final : public UnaryElementwise {
+ public:
+  Softplus(const OpKernelInfo& info)
+      : UnaryElementwise{info, "Softplus",
+                         "select("
+                         "select(log(1.0 + exp(a)), a + log(1.0 + exp(-a)), a > x_value_t(0)),"
+                         "a,"
+                         "a > x_value_t(x_element_t(uniforms.attr))"
+                         ")",
+                         "",
+                         ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias} {}
+
+  Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
+    const auto* input_tensor = context.Input<Tensor>(0);
+    float threshold = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? 11.0f : 20.0f;
+    program.AddUniformVariables({threshold});
+    return Status::OK();
+  }
+};
+
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Softplus, 1, 21, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Softplus, 22, WebGpuSupportedFloatTypes())
+
 }  // namespace webgpu
 }  // namespace onnxruntime

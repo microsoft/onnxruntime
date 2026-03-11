@@ -178,15 +178,20 @@ bool IsTileMemcpy(const TensorShape& input_shape,
 
 Status Tile::Compute(OpKernelContext* ctx) const {
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the first one is empty");
+  if (tensor_pointer == nullptr)
+    return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the first one is empty");
+
   const Tensor& input_tensor = *tensor_pointer;
   const auto& input_shape = input_tensor.Shape();
   const size_t input_rank = input_shape.NumDimensions();
   tensor_pointer = ctx->Input<Tensor>(1);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the second one is empty");
+  if (tensor_pointer == nullptr)
+    return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the second one is empty");
+
   const Tensor& repeats_tensor = *tensor_pointer;
   if (repeats_tensor.Shape().NumDimensions() != 1)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must be 1 dimensional");
+
   if (size_t(repeats_tensor.Shape().Size()) != input_rank)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must have the same length as the 'input' tensor");
 
@@ -194,7 +199,11 @@ Status Tile::Compute(OpKernelContext* ctx) const {
   const auto* repeats = repeats_tensor.Data<int64_t>();
   auto output_dims = input_shape.AsShapeVector();
   for (size_t axis = 0; axis < input_rank; axis++) {
-    output_dims[axis] *= repeats[axis];
+    if (repeats[axis] < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile repeat value must be non-negative, got: ", repeats[axis]);
+    }
+    output_dims[axis] = SafeInt<int64_t>(output_dims[axis]) * repeats[axis];
   }
 
   TensorShape output_shape(output_dims);
