@@ -277,46 +277,6 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 using PadsVector = PadBase::PadsVector;
 
-Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
-  switch (mode) {
-    case Mode::Constant: {
-      // default behavior is fine
-      break;
-    }
-    case Mode::Edge: {
-      // match numpy behavior of failing if mode is 'edge' and there's an attempt to pad a dimension with value of 0
-      for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
-        if (input_shape[i] == 0 && output_shape[i] > 0) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:",
-                                 input_shape);
-        }
-      }
-      break;
-    }
-    case Mode::Reflect: {
-      // match numpy behavior of failing if mode is 'reflect' and there's an attempt to pad a dimension with value of 0
-      for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
-        if (input_shape[i] == 0 && output_shape[i] > 0) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:",
-                                 input_shape);
-        }
-      }
-      break;
-    }
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode of ", static_cast<int>(mode));
-  }
-
-  return Status::OK();
-}
-
-void PadBase::ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
-                          PadsVector& pads) {
-  ComputePadsImpl(ctx, data_rank, pads_data, pads);
-}
-
 // Flatten no padding inner most Axis, so one memcpy cover multiple Axis.
 // For example, for a shape of [1,224,224,3] with padding [0,3,3,0,0,3,3,0], can be flatten as
 // [1,224,224*3] with padding [0,3,3*3,0,3,3*3].

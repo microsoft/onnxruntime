@@ -46,10 +46,11 @@ ONNX_OPERATOR_KERNEL_EX(ScatterND,
                             .MayInplace(0, 0),
                         ScatterNDWithAtomicReduction);
 
+template <typename KernelContextType>
 static Status InitiliazeElementCountsAndInputDimsSpanOrGpu(int64_t last_index_dimension, const TensorShape& input_shape,
                                                            ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
                                                            CudaKernel::CudaAsyncBuffer<int64_t>& element_counts_and_input_dims_gpu,
-                                                           onnxruntime::OpKernelContext* context) {
+                                                           KernelContextType* context) {
   TensorPitches input_strides(input_shape);
 
   if (last_index_dimension < 6) {
