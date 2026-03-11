@@ -31,6 +31,8 @@ else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
+RUN dnf install -y ccache \
+    && dnf clean all
 
 
 ENV LANG=en_US.UTF-8
