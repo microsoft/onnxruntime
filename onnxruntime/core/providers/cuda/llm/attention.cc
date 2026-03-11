@@ -371,6 +371,8 @@ Status Attention<T>::RunFlashAttention(
     // into present buffer at [past_seq, past_seq + kv_seq), all in BNSH.
     // Note: is_bsnh=false means past/present cache layout is BNSH. New tokens
     // (k_new_bsnh/v_new_bsnh) are always read as BSNH by the kernel (hardcoded strides).
+    // The kernel also zeros tail positions [past_seq + kv_seq, total_seq) for clean
+    // present_key/value output (relevant when bool mask creates variable-length batches).
     ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<CudaT>(
         parameters.batch_size,
         parameters.kv_num_heads,

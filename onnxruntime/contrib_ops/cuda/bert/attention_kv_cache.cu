@@ -530,6 +530,8 @@ __global__ void ConcatNewToPastKVFused(const int new_seqlen,
       RotaryDispatcher<T, ElementT>::apply(val, cos_cache, sin_cache, rotary_dim, h, pos_id, interleaved, new_key, in_offset - h);
     }
     present_ptr[out_offset] = val;
+  } else {
+    present_ptr[out_offset] = T{};  // Zero tail for clean output
   }
 }
 
@@ -600,6 +602,8 @@ __global__ void ConcatNewToPastKVFusedLarge(const int new_seqlen,
         RotaryDispatcher<T, ElementT>::apply(val, cos_cache, sin_cache, rotary_dim, h, pos_id, interleaved, new_key, in_offset - h);
       }
       present_ptr[out_offset] = val;
+    } else {
+      present_ptr[out_offset] = T{};  // Zero tail for clean output
     }
   }
 }

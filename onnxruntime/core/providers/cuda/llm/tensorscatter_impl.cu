@@ -29,10 +29,11 @@ __global__ void _TensorScatterKernel(
   int64_t batch_idx = prefix_idx / prefix_stride_for_batch;
   int64_t wi = (write_indices != nullptr) ? write_indices[batch_idx] : 0;
   CUDA_KERNEL_ASSERT(wi >= 0);
-  wi = max(wi, static_cast<int64_t>(0));  // Clamp for release safety (CUDA_KERNEL_ASSERT is debug-only)
+  wi = max(wi, static_cast<int64_t>(0));  // Clamp negative for release safety (CUDA_KERNEL_ASSERT is debug-only)
+  wi = min(wi, max_seq_len);              // Prevent int64 overflow in wi + seq_idx below
   int64_t cache_pos;
   if (circular) {
-    cache_pos = (wi + seq_idx) % max_seq_len;
+    cache_pos = ((wi + seq_idx) % max_seq_len + max_seq_len) % max_seq_len;  // Non-negative modulo
   } else {
     cache_pos = wi + seq_idx;
     CUDA_KERNEL_ASSERT(cache_pos < max_seq_len);

@@ -705,9 +705,31 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
       std::fill_n(y.begin() + h * v_head_size, v_head_size, y_per_head[h]);
   }
 
-  // Placeholder present buffers (position 3 may be uninitialized — validated with huge tolerance).
-  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
-  std::vector<float> present_value(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
+  // Expected present_key/value after LaunchConcatNewToPastKV with partial mask.
+  // Bool mask [T,T,T,F] → 3 leading trues → past_seqlens = 3 - kv_seq(1) = 2.
+  // Concat copies: past[0:2) → present[0:2), new K/V → present[2], zeros → present[3].
+  // Layout: BNSH [1, 2, 4, 64].
+  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size);
+  {
+    // past_key[0:2) = 0.5, new key = 0.5, tail = 0.0
+    for (int h = 0; h < kv_num_heads; ++h) {
+      int head_offset = h * total_sequence_length * head_size;
+      std::fill_n(present_key.begin() + head_offset + 0 * head_size, head_size, 0.5f);  // past pos 0
+      std::fill_n(present_key.begin() + head_offset + 1 * head_size, head_size, 0.5f);  // past pos 1
+      std::fill_n(present_key.begin() + head_offset + 2 * head_size, head_size, 0.5f);  // new key
+      std::fill_n(present_key.begin() + head_offset + 3 * head_size, head_size, 0.0f);  // tail (zeroed)
+    }
+  }
+  std::vector<float> present_value(batch_size * kv_num_heads * total_sequence_length * v_head_size);
+  {
+    // Head 0: past_v = [0.1, 0.2], new_v = 0.4, tail = 0.0
+    // Head 1: past_v = [0.5, 0.6], new_v = 0.8, tail = 0.0
+    float pv_expected[2][4] = {{0.1f, 0.2f, 0.4f, 0.0f}, {0.5f, 0.6f, 0.8f, 0.0f}};
+    for (int h = 0; h < kv_num_heads; ++h)
+      for (int s = 0; s < total_sequence_length; ++s)
+        std::fill_n(present_value.begin() + (h * total_sequence_length + s) * v_head_size,
+                    v_head_size, pv_expected[h][s]);
+  }
 
   OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
   test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
@@ -720,9 +742,9 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
   test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, v_head_size},
                             ToFloat16(y), false, 0, 3e-3f);
   test.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                            ToFloat16(present_key), false, 0, 1e10f);
+                            ToFloat16(present_key), false, 0, 3e-3f);
   test.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, v_head_size},
-                            ToFloat16(present_value), false, 0, 1e10f);
+                            ToFloat16(present_value), false, 0, 3e-3f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());

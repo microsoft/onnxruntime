@@ -74,8 +74,9 @@ Status TensorScatter::ComputeInternal(OpKernelContext* context) const {
     write_indices = write_indices_tensor->Data<int64_t>();
     // write_indices values are validated in the CUDA kernel:
     // - CUDA_KERNEL_ASSERT checks bounds in debug builds
-    // - In-kernel clamping ensures memory-safe output (prevents out-of-bounds access)
-    //   in release builds; clamped values may redirect invalid updates onto valid cache positions
+    // - In-kernel clamping provides memory-safe behavior for typical invalid indices;
+    //   extreme values (near int64 overflow) are also handled via pre-clamp
+    // - Clamped values may redirect invalid updates onto valid cache positions
     // No host-side sync to preserve CUDA graph compatibility.
   }
 
