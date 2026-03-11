@@ -530,18 +530,43 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
   # Job 7: Extended minimal build with NNAPI EP for Android(arm64-v8a) and skip tests.
+  # NOTE: Keeping this as direct docker run due to custom volume mounts needed for Android SDK/NDK
   build_extended_minimal_android:
     name: 7. Build Extended Minimal (Android NNAPI)
+    needs: build_full_ort # Depends on Job 1 for test data
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=build_extended_minimal_android-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           submodules: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+      - name: Download Test Data Artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: test_data
+          path: ${{ runner.temp }}/.test_data/
+
+      - name: Get Docker Image using Action
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
@@ -549,18 +574,43 @@ jobs:
           ndk-version: 28.0.13004108
           # Use default android-sdk-root if not specified
 
-      - name: Run Build 7
+      - name: Run Build 7 (Using docker run)
         shell: bash
         run: |
-          python3 ./tools/ci_build/build.py \
-              --build_dir ./build.extended_minimal.nnapi \
+          # Create the target dir for build output inside the runner's temp dir first
+          mkdir -p ${{ runner.temp }}/7
+
+          # Ensure ANDROID_NDK_HOME is available and get its real path
+          if [ -z "$ANDROID_NDK_HOME" ]; then
+            echo "ANDROID_NDK_HOME is not set."
+            exit 1
+          fi
+          NDK_HOME_REALPATH=$(realpath $ANDROID_NDK_HOME)
+
+          # Ensure ANDROID_HOME is available
+          if [ -z "$ANDROID_HOME" ]; then
+            echo "ANDROID_HOME is not set. Using default /usr/local/lib/android/sdk"
+            export ANDROID_HOME=/usr/local/lib/android/sdk
+          fi
+
+          docker run --rm \
+            --volume ${{ env.BUILD_SOURCES_DIRECTORY }}:/onnxruntime_src \
+            --volume ${{ runner.temp }}:/build \
+            --volume $ANDROID_HOME:/android_home \
+            --volume $NDK_HOME_REALPATH:/ndk_home \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+            -e NIGHTLY_BUILD=1 -e RUNNER_TEMP=/build \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt \
+            && python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/7 \
               --cmake_generator Ninja \
               --config MinSizeRel \
               --skip_submodule_sync \
               --parallel --use_binskim_compliant_compile_flags \
               --android \
-              --android_sdk_path "$ANDROID_HOME" \
-              --android_ndk_path "$ANDROID_NDK_HOME" \
+              --android_sdk_path /android_home \
+              --android_ndk_path /ndk_home \
               --android_abi=arm64-v8a \
               --android_api=29 \
               --use_nnapi \
@@ -568,5 +618,5 @@ jobs:
               --build_shared_lib \
               --disable_ml_ops \
               --disable_exceptions \
-              --skip_tests
+              --skip_tests"
         working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}
