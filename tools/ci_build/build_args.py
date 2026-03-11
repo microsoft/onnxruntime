@@ -889,8 +889,9 @@ def parse_arguments() -> argparse.Namespace:
 
         Use the individual flags (--update, --build, --test) to only run specific stages.
 
-        Arguments can also be passed in a file prefixed with '@'.
+        Arguments can also be passed in an argument file prefixed with '@'.
         E.g., `{sys.argv[0]} @arguments.txt`.
+        Argument files may contain comments starting with '#'. They will be ignored.
         """,
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )
