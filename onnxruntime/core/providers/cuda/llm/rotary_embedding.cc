@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cpu/llm/rotary_embedding_helper.h"
 #include "core/providers/cuda/llm/rotary_embedding.h"
 #include "core/providers/cuda/llm/rotary_embedding_impl.h"
@@ -64,8 +65,10 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  // Launch rotary embedding kernel
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  // Launch rotary embedding kernel.
+  // OrtToCudaType maps BFloat16 → __nv_bfloat16 (native HW arithmetic on SM80+),
+  // unlike ToCudaType which maps BFloat16 → BFloat16 (arithmetic via float promotion).
+  typedef typename OrtToCudaType<T>::type CudaT;
   auto& device_prop = GetDeviceProp();
 
   // Handle optional position_ids - pass nullptr if position_ids is null

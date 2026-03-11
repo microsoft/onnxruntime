@@ -10,6 +10,7 @@ Kernel implementation for rotary embeddings.
 #include "core/providers/cuda/llm/rotary_embedding_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 
 using namespace onnxruntime::cuda;
 
@@ -160,6 +161,15 @@ template Status LaunchRotaryEmbeddingKernel<half>(cudaStream_t stream, half* out
 template Status LaunchRotaryEmbeddingKernel<BFloat16>(
     cudaStream_t stream, BFloat16* output, const BFloat16* input, const int64_t* position_ids,
     const BFloat16* cos_cache, const BFloat16* sin_cache, const int batch_size, const int sequence_length,
+    const int num_heads, const int head_size, const int rotary_embedding_dim, const int max_sequence_length,
+    const int position_ids_format, const bool interleaved, const int max_threads_per_block,
+    const bool is_input_bnsh_format);
+
+// Native CUDA type instantiation: OrtToCudaType<BFloat16>::type = __nv_bfloat16.
+// Used when rotary_embedding.cc dispatches via OrtToCudaType for native HW arithmetic on SM80+.
+template Status LaunchRotaryEmbeddingKernel<__nv_bfloat16>(
+    cudaStream_t stream, __nv_bfloat16* output, const __nv_bfloat16* input, const int64_t* position_ids,
+    const __nv_bfloat16* cos_cache, const __nv_bfloat16* sin_cache, const int batch_size, const int sequence_length,
     const int num_heads, const int head_size, const int rotary_embedding_dim, const int max_sequence_length,
     const int position_ids_format, const bool interleaved, const int max_threads_per_block,
     const bool is_input_bnsh_format);

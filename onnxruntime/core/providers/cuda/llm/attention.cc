@@ -312,6 +312,11 @@ Status Attention<T>::RunFlashAttention(
     ORT_ENFORCE(present_key != nullptr && present_value != nullptr,
                 "present_key/value outputs are required when past_key is provided.");
 
+    // TODO(titaiwang): Consolidate preprocessing (RoPE, mask conversion, KV cache concat) into a
+    // single fused kernel like GQA's LaunchUnpackRoPEAppend. Current decode path uses 4-6 kernel
+    // launches; a fused approach would reduce to ~2, saving ~21μs launch overhead and ~256KB
+    // intermediate buffer traffic per decode step.
+
     // Concat past + new KV directly into present buffers using a single fused kernel.
     // This replaces the old pattern of memset + strided cudaMemcpy2DAsync + Flash's
     // internal Append_KV, eliminating ~67MB of redundant memory writes per decode step.
@@ -371,8 +376,10 @@ Status Attention<T>::RunFlashAttention(
     // into present buffer at [past_seq, past_seq + kv_seq), all in BNSH.
     // Note: is_bsnh=false means past/present cache layout is BNSH. New tokens
     // (k_new_bsnh/v_new_bsnh) are always read as BSNH by the kernel (hardcoded strides).
-    // The kernel also zeros tail positions [past_seq + kv_seq, total_seq) for clean
-    // present_key/value output (relevant when bool mask creates variable-length batches).
+    // NOTE: Trailing positions in present_key/present_value beyond total_sequence_length are
+    // intentionally left uninitialized. Flash Attention respects seqlens_k boundaries and never
+    // reads beyond total_sequence_length, so zero-filling would be wasted I/O — especially costly
+    // when max_sequence_length is large (e.g., 200K) but current total length is small (e.g., 512).
     ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<CudaT>(
         parameters.batch_size,
         parameters.kv_num_heads,
