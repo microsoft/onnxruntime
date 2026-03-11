@@ -1322,9 +1322,11 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
 #if !defined(ORT_MINIMAL_BUILD)
 static std::unique_ptr<OrtEpAssignedSubgraph> CreateEpAssignedSubgraph(const Graph& graph,
                                                                        const ComputeCapability& capability,
-                                                                       const std::string& ep_name) {
+                                                                       const std::string& ep_name,
+                                                                       OrtDevice::DeviceType device_type) {
   auto assigned_subgraph = std::make_unique<OrtEpAssignedSubgraph>();
   assigned_subgraph->ep_name = ep_name;
+  assigned_subgraph->device_type = device_type;
 
   gsl::span<NodeIndex> node_indices = capability.sub_graph->nodes;
 
@@ -1365,10 +1367,11 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
   if (record_ep_graph_assignment) {
     on_partition_assignment_fn = [this](const Graph& graph, const ComputeCapability& compute_capability,
-                                        const std::string& ep_name) {
+                                        const std::string& ep_name, OrtDevice ep_device) {
       std::unique_ptr<OrtEpAssignedSubgraph> assigned_subgraph = CreateEpAssignedSubgraph(graph,
                                                                                           compute_capability,
-                                                                                          ep_name);
+                                                                                          ep_name,
+                                                                                          ep_device.Type());
 
       this->ep_graph_assignment_info_.push_back(assigned_subgraph.get());
       this->ep_graph_assignment_info_storage_.push_back(std::move(assigned_subgraph));

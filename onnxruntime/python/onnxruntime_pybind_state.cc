@@ -1929,7 +1929,22 @@ execution provider)pbdoc");
             return ep_subgraph->nodes;
           },
           py::return_value_policy::reference_internal,
-          R"pbdoc(List of nodes in the subgraph.)pbdoc");
+          R"pbdoc(List of nodes in the subgraph.)pbdoc")
+      .def_property_readonly(
+          "device_type",
+          [](const OrtEpAssignedSubgraph* ep_subgraph) -> std::string {
+            switch (ep_subgraph->device_type) {
+              case OrtDevice::GPU:
+              case OrtDevice::DML:  // DML is a GPU-class backend
+                return "GPU";
+              case OrtDevice::NPU:
+                return "NPU";
+              default:
+                return "CPU";
+            }
+          },
+          R"pbdoc(The default device type of the execution provider (e.g., "CPU", "GPU", "NPU").
+For EPs that internally manage multiple device types, this is the EP's registered default device.)pbdoc");
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.

@@ -346,6 +346,8 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
       std::string ep_name = ep_subgraph.GetEpName();
       ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name || ep_name == kCpuExecutionProvider);
 
+      OrtHardwareDeviceType device_type = ep_subgraph.GetDeviceType();
+
       const std::vector<Ort::ConstEpAssignedNode> ep_nodes = ep_subgraph.GetNodes();
 
       ASSERT_GE(ep_nodes.size(), 1);  // All of these subgraphs just have one node.
@@ -357,10 +359,12 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
 
       // Check that CPU EP has the Adds and that the example EP has the Mul.
       if (ep_name == kCpuExecutionProvider) {
+        ASSERT_EQ(device_type, OrtHardwareDeviceType_CPU);
         ASSERT_EQ(op_type, "Add");
         ASSERT_TRUE(node_name == "add_0" || node_name == "add_1");
       } else {
         ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name);
+        ASSERT_EQ(device_type, OrtHardwareDeviceType_GPU);  // Example plugin EP uses GPU device type
         ASSERT_EQ(op_type, "Mul");
         ASSERT_EQ(node_name, "mul_0");
       }

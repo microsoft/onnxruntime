@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "core/common/common.h"
+#include "core/framework/ortdevice.h"
 
 /// <summary>
 /// Contains information about a node assigned to an EP. This is the definition of an opaque struct in the C API.
@@ -28,6 +29,7 @@ struct OrtEpAssignedSubgraph {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEpAssignedSubgraph);
 
   std::string ep_name;
+  OrtDevice::DeviceType device_type = OrtDevice::CPU;
   std::vector<std::unique_ptr<OrtEpAssignedNode>> nodes_storage;
   std::vector<const OrtEpAssignedNode*> nodes;
 };
