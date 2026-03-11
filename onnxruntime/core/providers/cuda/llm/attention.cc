@@ -1086,7 +1086,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   //   Flash: cannot handle this combo (no bias param when seqlens_k is used) → excluded.
   //   MEA:   supports both (custom_right_padding for seqlens + additive attn_bias for mask).
   //   Unfused: nonpad → attention_bias; mask composed additively when both present.
+#if USE_FLASH_ATTENTION || USE_MEMORY_EFFICIENT_ATTENTION
   const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
+#endif
 
   // Early-reject features not supported by any CUDA kernel path.
   // TODO(titaiwang): Support softcap and softmax_precision on CUDA kernels.

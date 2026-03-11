@@ -10,7 +10,6 @@ Kernel implementation for rotary embeddings.
 #include "core/providers/cuda/llm/rotary_embedding_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include <cuda_fp16.h>
-#include <cuda_bf16.h>
 
 using namespace onnxruntime::cuda;
 
