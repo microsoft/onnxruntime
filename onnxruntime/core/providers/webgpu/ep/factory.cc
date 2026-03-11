@@ -49,9 +49,9 @@ Factory::Factory() : OrtEpFactory{},
   CreateEp = CreateEpImpl;
   ReleaseEp = ReleaseEpImpl;
 
-  CreateAllocator = CreateAllocatorImpl;        // TODO
-  ReleaseAllocator = ReleaseAllocatorImpl;      // TODO
-  CreateDataTransfer = CreateDataTransferImpl;  // TODO
+  CreateAllocator = CreateAllocatorImpl;
+  ReleaseAllocator = ReleaseAllocatorImpl;
+  CreateDataTransfer = CreateDataTransferImpl;
 }
 
 // Static C API implementations
