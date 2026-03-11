@@ -5,32 +5,28 @@
 
 #include "core/platform/threadpool.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cpu/math/einsum.h"
-#include "einsum_utils/einsum_auxiliary_ops.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_typed_compute_processor.h"
+#include "einsum_utils/einsum_auxiliary_ops.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-class Einsum final : public onnxruntime::Einsum {
+class Einsum final : public CudaKernel {
  public:
-  Einsum(const OpKernelInfo& info) : onnxruntime::Einsum(info) {
-    // We need to cast away the const as PerThreadCublasHandle() is currently a non-const method
-    // TODO: Clean up the CUDAExecutionProvider interface to avoid this
+  explicit Einsum(const OpKernelInfo& info) : CudaKernel(info) {
+    ORT_ENFORCE(info.GetAttr<std::string>("equation", &equation_).IsOK(),
+                "Missing 'equation' attribute");
+    einsum_equation_preprocessor_ = std::make_unique<EinsumEquationPreprocessor>(equation_);
     cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
   }
 
-  Status Compute(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  Status DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
-                       AllocatorPtr allocator, concurrency::ThreadPool* tp) const override;
-
-  // Members of Einsum CUDA kernel
-  using onnxruntime::Einsum::einsum_equation_preprocessor_;
-  using onnxruntime::Einsum::equation_;
-
-  // We need to access to the CUDA EP instance to get the cublas/cudnn handles
+  std::string equation_;
+  std::unique_ptr<EinsumEquationPreprocessor> einsum_equation_preprocessor_;
   const CUDAExecutionProvider* cuda_ep_;
 };
 
