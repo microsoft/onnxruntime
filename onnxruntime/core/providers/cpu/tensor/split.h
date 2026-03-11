@@ -46,7 +46,7 @@ class SplitBase {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid num_outputs value of ", num_outputs_,
                                ". Size of dimension being split is ", split_dim_size);
       }
-      int32_t size = onnxruntime::narrow<int32_t>(std::ceil(float(split_dim_size) / num_outputs));
+      int32_t size = onnxruntime::narrow<int32_t>(std::ceil(static_cast<float>(split_dim_size) / num_outputs));
       int32_t remainder = split_dim_size % size;
       split_sizes = std::vector<int64_t>(num_outputs, size);
       if (remainder) {

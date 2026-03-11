@@ -47,7 +47,7 @@ ONNX_OPERATOR_KERNEL_EX(ScatterND,
                         ScatterNDWithAtomicReduction);
 
 template <typename KernelContextType>
-static Status InitiliazeElementCountsAndInputDimsSpanOrGpu(int64_t last_index_dimension, const TensorShape& input_shape,
+static Status InitializeElementCountsAndInputDimsSpanOrGpu(int64_t last_index_dimension, const TensorShape& input_shape,
                                                            ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
                                                            CudaKernel::CudaAsyncBuffer<int64_t>& element_counts_and_input_dims_gpu,
                                                            KernelContextType* context) {
@@ -108,7 +108,7 @@ Status ScatterNDDisjointAndNoReduction::ComputeInternal(OpKernelContext* context
   // To avoid multiple GPU data transfers, we combine this into one array and send it through
   ElementCountsAndInputDimsSpanOrGpu element_counts_and_input_dims;
   CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this);
-  ORT_RETURN_IF_ERROR(InitiliazeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
+  ORT_RETURN_IF_ERROR(InitializeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
                                                                    element_counts_and_input_dims,
                                                                    element_counts_and_input_dims_gpu,
                                                                    context));
@@ -160,7 +160,7 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
   auto last_index_dimension = indices_shape[indices_shape.NumDimensions() - 1];
   ElementCountsAndInputDimsSpanOrGpu element_counts_and_input_dims;
   CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this);
-  ORT_RETURN_IF_ERROR(InitiliazeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
+  ORT_RETURN_IF_ERROR(InitializeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
                                                                    element_counts_and_input_dims,
                                                                    element_counts_and_input_dims_gpu,
                                                                    context));
