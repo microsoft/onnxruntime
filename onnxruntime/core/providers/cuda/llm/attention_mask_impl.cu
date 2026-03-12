@@ -78,7 +78,7 @@ __global__ void ConvertMaskToSeqlensKernel(
   }
 
   // Find the first False (where padding starts)
-  // All elements before this should be True, all after should be False
+  // All elements before first False must be True, all after must be False (right-padding convention)
   int seq_len;
   if (!mask_row[0]) {
     // Entire row is padding (all-false mask)
@@ -286,7 +286,7 @@ template Status LaunchConvertNonpadKvSeqlenToAttentionBias<__nv_bfloat16>(
 
 // Add an addend bias into an existing bias buffer using cyclic broadcasting.
 // Used to compose nonpad_kv_seqlen bias [B, q, t] with an attn_mask bias that
-// may be smaller (e.g. 2D [q, t] broadcasts over batch).
+// is smaller or equal (e.g. 2D [q, t] cyclic-broadcasts over batch dimension).
 template <typename T>
 __global__ void AddBiasInPlaceKernel(
     T* __restrict__ bias,

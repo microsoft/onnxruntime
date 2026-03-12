@@ -319,11 +319,11 @@ Status Attention<T>::RunFlashAttention(
 
     // Concat past + new KV directly into present buffers using a single fused kernel.
     // This replaces the old pattern of memset + strided cudaMemcpy2DAsync + Flash's
-    // internal Append_KV, eliminating ~67MB of redundant memory writes per decode step.
+    // internal Append_KV, eliminating redundant memory writes per decode step (proportional to B×H×total_seq×head_size).
     // LaunchConcatNewToPastKV reads past (BNSH) and new (BSNH), writes present (BNSH).
     // OrtToCudaType maps BFloat16 → __nv_bfloat16 (native HW arithmetic on SM80+),
     // consistent with GQA's early native-type conversion pattern.
-    using CudaT = typename OrtToCudaType<T>::type;
+    using NativeCudaT = typename OrtToCudaType<T>::type;
 
     // Step 1: Compute per-batch past sequence lengths for the concat kernel.
     // The concat kernel needs past_seq_lens to know where past data ends and new begins.
@@ -378,11 +378,12 @@ Status Attention<T>::RunFlashAttention(
     // into present buffer at [past_seq, past_seq + kv_seq), all in BNSH.
     // Note: is_bsnh=false means past/present cache layout is BNSH. New tokens
     // (k_new_bsnh/v_new_bsnh) are always read as BSNH by the kernel (hardcoded strides).
-    // NOTE: Trailing positions in present_key/present_value beyond total_sequence_length are
-    // intentionally left uninitialized. Flash Attention respects seqlens_k boundaries and never
-    // reads beyond total_sequence_length, so zero-filling would be wasted I/O — especially costly
-    // when max_sequence_length is large (e.g., 200K) but current total length is small (e.g., 512).
-    ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<CudaT>(
+    // NOTE: When bool masks produce variable per-batch past_seq_lens, positions in the range
+    // [past_seq_lens[b] + kv_sequence_length, total_sequence_length) for each batch b are left
+    // uninitialized by the concat kernel. Flash Attention reads only up to seqlens_k[b] positions
+    // per batch, so these values are never accessed. In the no-mask case (uniform past_seq_lens),
+    // every position in the present buffer is written.
+    ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<NativeCudaT>(
         parameters.batch_size,
         parameters.kv_num_heads,
         parameters.head_size,
@@ -392,12 +393,12 @@ Status Attention<T>::RunFlashAttention(
         /*is_bsnh=*/false,
         past_seqlens_buffer.get(),
         /*total_seq_lens=*/nullptr,
-        reinterpret_cast<const CudaT*>(past_key->Data<T>()),
-        reinterpret_cast<const CudaT*>(past_value->Data<T>()),
-        reinterpret_cast<const CudaT*>(k_new_bsnh),
-        reinterpret_cast<const CudaT*>(v_new_bsnh),
-        reinterpret_cast<CudaT*>(present_key->MutableData<T>()),
-        reinterpret_cast<CudaT*>(present_value->MutableData<T>()),
+        reinterpret_cast<const NativeCudaT*>(past_key->Data<T>()),
+        reinterpret_cast<const NativeCudaT*>(past_value->Data<T>()),
+        reinterpret_cast<const NativeCudaT*>(k_new_bsnh),
+        reinterpret_cast<const NativeCudaT*>(v_new_bsnh),
+        reinterpret_cast<NativeCudaT*>(present_key->MutableData<T>()),
+        reinterpret_cast<NativeCudaT*>(present_value->MutableData<T>()),
         cuda_stream,
         device_prop.maxThreadsPerBlock,
         /*past_only=*/false));
@@ -832,7 +833,7 @@ Status Attention<T>::RunUnfusedAttention(
     Tensor* Y, Tensor* present_key, Tensor* present_value,
     Tensor* output_qk,
     const attention_helper::AttentionParameters& parameters) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  using CudaT = typename ToCudaType<T>::MappedType;
   auto& device_prop = GetDeviceProp();
   auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
 
