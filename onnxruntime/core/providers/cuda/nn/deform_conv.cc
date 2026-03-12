@@ -315,12 +315,21 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      DeformConv<T>);
+      DeformConv<T>)
 
-REGISTER_DEFORMCONV_KERNEL_TYPED(float)
-REGISTER_DEFORMCONV_KERNEL_TYPED(double)
-REGISTER_DEFORMCONV_KERNEL_TYPED(MLFloat16)
-REGISTER_DEFORMCONV_KERNEL_TYPED(BFloat16)
+REGISTER_DEFORMCONV_KERNEL_TYPED(float);
+REGISTER_DEFORMCONV_KERNEL_TYPED(double);
+REGISTER_DEFORMCONV_KERNEL_TYPED(MLFloat16);
+
+// BFloat16 only for opset 22; opset 19-21 do not support BFloat16.
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    DeformConv,
+    kOnnxDomain,
+    22,
+    BFloat16,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
+    DeformConv<BFloat16>);
 
 #undef REGISTER_DEFORMCONV_KERNEL_TYPED
 
