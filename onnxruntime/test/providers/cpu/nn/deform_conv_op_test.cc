@@ -158,6 +158,8 @@ void RunMinimalBilinearTest(int opset = 19, int min_cuda_arch = 0, bool omit_bia
   if (min_cuda_arch > 0 && !HasCudaEnvironment(min_cuda_arch)) {
     return;
   }
+#else
+  (void)min_cuda_arch;
 #endif
   DeformConvTestParams p = {};
   p.batch_sz = 1;

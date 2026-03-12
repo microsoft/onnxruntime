@@ -32,6 +32,10 @@ inline int GetGridSize(size_t n, size_t threads_per_block) {
 }
 
 // Bilinear interpolation at (h, w). Returns 0 if out of bounds (ONNX spec).
+// Indices h_low, w_low, h_high, w_high use int (not int64_t) to reduce register pressure in the
+// hot path and improve occupancy. Limitation: height and width must not exceed INT_MAX; otherwise
+// the cast from floor(h)/floor(w) to int may overflow and produce incorrect sampling. This is
+// acceptable for typical deformable convolution use (spatial dimensions are far below INT_MAX).
 template <typename T>
 __device__ __inline__ T BilinearInterpolate(
     const T* in,
@@ -88,6 +92,7 @@ __device__ __inline__ half BilinearInterpolate(
   if (h <= -1.0f || h >= height || w <= -1.0f || w >= width) {
     return __float2half(0.0f);
   }
+  // int for indices to save registers; see limitation in BilinearInterpolate<T> above.
   int h_low = static_cast<int>(floorf(h));
   int w_low = static_cast<int>(floorf(w));
   int h_high = h_low + 1;
@@ -116,6 +121,7 @@ __device__ __inline__ BFloat16 BilinearInterpolate(
   if (h <= -1.0f || h >= height || w <= -1.0f || w >= width) {
     return BFloat16(0.0f);
   }
+  // int for indices to save registers; see limitation in BilinearInterpolate<T> above.
   int h_low = static_cast<int>(floorf(h));
   int w_low = static_cast<int>(floorf(w));
   int h_high = h_low + 1;
