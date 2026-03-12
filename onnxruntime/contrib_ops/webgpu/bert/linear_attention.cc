@@ -263,11 +263,8 @@ ONNX_OPERATOR_KERNEL_EX(
     LinearAttentionChunkParallel);
 
 LinearAttentionChunkParallel::LinearAttentionChunkParallel(const OpKernelInfo& info)
-    : WebGpuKernel(info) {
-  std::string update_rule_str = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
-  update_rule_ = ParseUpdateRule(update_rule_str);
+    : LinearAttentionRecurrent(info) {
   chunk_size_ = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
-  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 }
 
 Status LinearAttentionChunkIntraProgram::GenerateShaderCode(ShaderHelper& shader) const {

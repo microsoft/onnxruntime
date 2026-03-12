@@ -50,14 +50,15 @@ class LinearAttentionRecurrentProgram final : public Program<LinearAttentionRecu
 };
 
 // Kernel for LinearAttentionRecurrent
-class LinearAttentionRecurrent final : public WebGpuKernel {
+class LinearAttentionRecurrent : public WebGpuKernel {
  public:
   LinearAttentionRecurrent(const OpKernelInfo& info);
   Status ComputeInternal(ComputeContext& context) const override;
 
- private:
+ protected:
   LinearAttentionUpdateRule update_rule_;
   float scale_;
+  int64_t chunk_size_;
 };
 
 // Program for intra-chunk attention computation
@@ -146,15 +147,9 @@ class LinearAttentionFullSequentialProgram final : public Program<LinearAttentio
 };
 
 // Kernel for LinearAttentionChunkParallel
-class LinearAttentionChunkParallel final : public WebGpuKernel {
+class LinearAttentionChunkParallel final : public LinearAttentionRecurrent {
  public:
   LinearAttentionChunkParallel(const OpKernelInfo& info);
-  Status ComputeInternal(ComputeContext& context) const override;
-
- private:
-  LinearAttentionUpdateRule update_rule_;
-  int64_t chunk_size_;
-  float scale_;
 };
 
 }  // namespace webgpu
