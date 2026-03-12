@@ -199,7 +199,7 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
   attr_source->set_s(kNvTensorRTRTXExecutionProvider);
 
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  constexpr int num_attributes = 4;
+  constexpr int num_attributes = 8;
   node_attributes->reserve(num_attributes);
   node_attributes->emplace(MAIN_CONTEXT, *attr_main_context);
   node_attributes->emplace(EMBED_MODE, *attr_embed_mode);
