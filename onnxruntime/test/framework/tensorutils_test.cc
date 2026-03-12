@@ -524,16 +524,28 @@ class PathValidationTest : public ::testing::Test {
     for (const auto& other_dir : other_dirs_) {
       std::filesystem::remove_all(other_dir);
     }
+
+    for (const auto& other_file : other_files_) {
+      std::filesystem::remove(other_file);
+    }
   }
 
+  // Create directory that will be removed during test teardown.
   void CreateDirectories(std::filesystem::path dir) {
     std::filesystem::create_directories(dir);
     other_dirs_.push_back(std::move(dir));
   }
 
+  // Create empty file that will be removed during test teardown.
+  void CreateEmptyFile(std::filesystem::path file_path) {
+    std::ofstream{file_path};
+    other_files_.push_back(file_path);
+  }
+
   std::filesystem::path base_dir_;
   std::filesystem::path outside_dir_;
   std::vector<std::filesystem::path> other_dirs_;
+  std::vector<std::filesystem::path> other_files_;
 };
 
 // Test cases for ValidateExternalDataPath.
@@ -542,31 +554,50 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   std::filesystem::path model_path = base_dir_ / "model.onnx";
   std::filesystem::path cwd = std::filesystem::current_path();
 
+  // Create empty external data files that we'll need for testing.
+  CreateEmptyFile(base_dir_ / "data.bin");
+  CreateDirectories(base_dir_ / "sub");
+  CreateEmptyFile(base_dir_ / "sub" / "data.bin");
+  CreateEmptyFile(cwd / "data.bin");
+  CreateDirectories(cwd / "abc");
+  CreateEmptyFile(cwd / "abc" / "data.bin");
+  CreateEmptyFile(cwd / "data..bin");
+
   // Valid relative path.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "data.bin"));
 
-  // Empty location.
-  // Only validate it is not an absolute path.
-  ASSERT_TRUE(utils::ValidateExternalDataPath(model_path, "").IsOK());
+  // Empty location not allowed.
+  {
+    Status status = utils::ValidateExternalDataPath(model_path, "");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Empty external data path"));
+  }
 
   // Path with ".." that escapes the base directory.
   ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "../data.bin").IsOK());
 
   // Absolute path.
+  {
 #ifdef _WIN32
-  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "C:\\data.bin").IsOK());
-  ASSERT_FALSE(utils::ValidateExternalDataPath("", "C:\\data.bin").IsOK());
+    Status status = utils::ValidateExternalDataPath(model_path, "C:\\data.bin");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+
+    status = utils::ValidateExternalDataPath("", "C:\\data.bin");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
 #else
-  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "/data.bin").IsOK());
-  ASSERT_FALSE(utils::ValidateExternalDataPath("", "/data.bin").IsOK());
+    Status status = utils::ValidateExternalDataPath(model_path, "/data.bin");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+
+    status = utils::ValidateExternalDataPath("", "/data.bin");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
 #endif  // Absolute path.
+  }
 
   // Windows vs Unix path separators.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub/data.bin"));
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub\\data.bin"));
 
   // Model in a directory that does not exist.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin"));
+  ASSERT_FALSE(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin").IsOK());
 
   // Model path is a bare filename (no directory component). parent_path() returns empty,
   // so anchor_dir falls back to "." (current directory). Path traversal should still be blocked
@@ -584,7 +615,6 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   ASSERT_EQ(utils::ValidateExternalDataPath(".\\model.onnx", "../data.bin").IsOK(), is_cwd_root);
 #endif
 
-  CreateDirectories(cwd / "abc");
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./abc/model.onnx", "data.bin"));
 #ifdef _WIN32
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\abc\\model.onnx", "data.bin"));

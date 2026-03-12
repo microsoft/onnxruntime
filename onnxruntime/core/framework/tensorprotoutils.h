@@ -539,10 +539,8 @@ Status TensorProtoWithExternalDataToTensorProto(
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
 /// <summary>
-/// Validates that the given external data path is not an absolute path and is under the model directory
-/// after all symbolic links are resolved.
-///
-/// Does NOT check that the model_path or the external data path actually exist.
+/// Validates that the given external data path is not an absolute path, is under the model directory
+/// (after resolving symlinks), and exists.
 ///
 /// The model path can be empty if the model is loaded from bytes and the application did not specify a directory
 /// for external data files. In this case, the external data path must be contained under the current working
