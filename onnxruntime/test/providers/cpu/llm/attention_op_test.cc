@@ -719,15 +719,36 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
   test.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_sequence_length, head_size}, ToFloat16(past_key));
   test.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_sequence_length, v_head_size}, ToFloat16(past_value));
 
+  // Declare all 3 outputs (required for graph construction). present_key/value use
+  // placeholder expected data — actual validation is done by the custom verifier below.
   test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, v_head_size},
-                            ToFloat16(y), false, 0, 3e-3f);
-  // present_key/value: required outputs but content not validated (uninitialized tail).
-  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
-  std::vector<float> present_value(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
+                            ToFloat16(y));
+  std::vector<float> present_key_placeholder(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
+  std::vector<float> present_value_placeholder(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
   test.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                            ToFloat16(present_key), false, 0, 1e10f);
+                            ToFloat16(present_key_placeholder));
   test.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, v_head_size},
-                            ToFloat16(present_value), false, 0, 1e10f);
+                            ToFloat16(present_value_placeholder));
+
+  // Custom verifier: validate only Y (output 0). present_key/value (outputs 1, 2) may have
+  // uninitialized tail positions (NaN-safe: avoids IEEE 754 NaN!=NaN tolerance failures).
+  auto expected_y_fp16 = ToFloat16(y);
+  test.SetCustomOutputVerifier(
+      [&expected_y_fp16](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+        ASSERT_GE(fetches.size(), 3u) << "Expected 3 outputs, provider: " << provider_type;
+        const auto& y_tensor = fetches[0].Get<Tensor>();
+        auto y_span = y_tensor.DataAsSpan<MLFloat16>();
+        ASSERT_EQ(y_span.size(), expected_y_fp16.size()) << "Y size mismatch, provider: " << provider_type;
+        for (size_t i = 0; i < y_span.size(); ++i) {
+          float actual = y_span[i].ToFloat();
+          float expected = expected_y_fp16[i].ToFloat();
+          ASSERT_NEAR(actual, expected, 3e-3f)
+              << "Y mismatch at index " << i << ": expected=" << expected
+              << " actual=" << actual << ", provider: " << provider_type;
+        }
+        // present_key/value (fetches[1], fetches[2]): intentionally not validated.
+        // Tail positions beyond valid tokens are uninitialized for performance.
+      });
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());

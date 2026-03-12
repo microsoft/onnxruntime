@@ -33,7 +33,7 @@ __global__ void _TensorScatterKernel(
   wi = min(wi, max_seq_len);              // Prevent int64 overflow in wi + seq_idx below
   int64_t cache_pos;
   if (circular) {
-    cache_pos = ((wi + seq_idx) % max_seq_len + max_seq_len) % max_seq_len;  // Non-negative modulo
+    cache_pos = (wi + seq_idx) % max_seq_len;
   } else {
     cache_pos = wi + seq_idx;
     CUDA_KERNEL_ASSERT(cache_pos < max_seq_len);
