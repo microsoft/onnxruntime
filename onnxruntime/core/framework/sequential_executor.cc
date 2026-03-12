@@ -84,8 +84,8 @@ GlobalLatencyAverages& GetGlobalLatencyAverages() {
 }
 
 void RecordGlobalLatencyStat(InlinedHashMap<std::string, AggregateLatencyStats>& stats_map,
-                            const std::string& key,
-                            uint64_t latency_us) {
+                             const std::string& key,
+                             uint64_t latency_us) {
   auto& stats = stats_map[key];
   stats.count += 1;
   stats.total_latency_us += latency_us;
