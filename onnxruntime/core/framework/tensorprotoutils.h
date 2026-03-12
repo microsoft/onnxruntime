@@ -554,6 +554,11 @@ Status TensorProtoWithExternalDataToTensorProto(
 ///
 /// If the model itself is a symlink, this function checks against both the directory containing the symlink
 /// and the real/canonical directory of the model after resolving all symlinks.
+///
+/// On WASM builds, this function skips most validation (except checks for non-empty/non-absolute path) if we are
+/// unable to query the current working directory, as this indicates that the WASM environment does not have
+/// a valid filesystem. If skipped, an ExternalDataLoader will validate the location and contents of the
+/// external data file at the time of access.
 /// </summary>
 /// <param name="model_path">Path to the model file. Can be empty or point to a virtual file.</param>
 /// <param name="external_data_path">External data file path to be validated.

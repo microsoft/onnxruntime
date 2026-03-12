@@ -539,7 +539,7 @@ class PathValidationTest : public ::testing::Test {
   // Create empty file that will be removed during test teardown.
   void CreateEmptyFile(std::filesystem::path file_path) {
     std::ofstream{file_path};
-    other_files_.push_back(file_path);
+    other_files_.push_back(std::move(file_path));
   }
 
   std::filesystem::path base_dir_;
