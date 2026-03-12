@@ -91,7 +91,7 @@ void BM_GeluErfDispatchExact(benchmark::State& state) {
   RunUnaryKernelBenchmark(
       state,
       [](const float* input, float* output, size_t n) {
-        MlasComputeGeluErf(input, output, n, MlasGeluErfModeDefault);
+        MlasComputeGeluErf(input, output, n, MlasGeluErfModeExact);
       },
       -10.0f,
       10.0f);

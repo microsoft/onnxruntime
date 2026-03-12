@@ -60,6 +60,7 @@ MlasComputeGeluErf(
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().GeluKernelRoutine(Input, Output, N);
 #else
+    MLAS_UNREFERENCED_PARAMETER(Mode);
     MlasGeluKernel(Input, Output, N);
 #endif
 }
