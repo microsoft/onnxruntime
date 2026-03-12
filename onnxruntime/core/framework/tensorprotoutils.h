@@ -546,8 +546,8 @@ Status TensorProtoWithExternalDataToTensorProto(
 /// for external data files. In this case, the external data path must be contained under the current working
 /// directory.
 ///
-/// The model path can point to a non-existing file if the model is loaded from bytes and the application specified
-/// a directory for external data files via the session config entry
+/// The model path can point to a non-existing model file if the model is loaded from bytes and the application
+/// specified a directory for external data files via the session config entry
 /// `kOrtSessionOptionsModelExternalInitializersFileFolderPath`. In this case, the model_path is set to
 /// "<kOrtSessionOptionsModelExternalInitializersFileFolderPath> / virtual_model.onnx" and the external data path
 /// must be contained under `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.

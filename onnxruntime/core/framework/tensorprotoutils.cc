@@ -393,7 +393,7 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   ORT_RETURN_IF(external_data_path.empty(), "Empty external data path not allowed");
   ORT_RETURN_IF(external_data_path.is_absolute(), "Absolute path not allowed for external data location");
 
-#if __wasm__
+#if defined(__wasm__)
   std::error_code error_code;
   std::filesystem::current_path(error_code);
   if (error_code) {

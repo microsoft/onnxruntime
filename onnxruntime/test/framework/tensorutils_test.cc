@@ -550,9 +550,9 @@ class PathValidationTest : public ::testing::Test {
 
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
-  // Use a model path whose parent is base_dir_.
   std::filesystem::path model_path = base_dir_ / "model.onnx";
   std::filesystem::path cwd = std::filesystem::current_path();
+  const bool is_cwd_root = cwd == cwd.root_path();
 
   // Create empty external data files that we'll need for testing.
   CreateEmptyFile(base_dir_ / "data.bin");
@@ -604,7 +604,6 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   // if the current working directory is not the filesystem root directory.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("model.onnx", "data.bin"));
 
-  bool is_cwd_root = std::filesystem::weakly_canonical(".") == std::filesystem::weakly_canonical("..");
   ASSERT_EQ(utils::ValidateExternalDataPath("model.onnx", "../data.bin").IsOK(), is_cwd_root);
 
   // Model relative path checks.
