@@ -50,6 +50,10 @@ MlasComputeGeluErf(
     MLAS_GELU_ERF_MODE Mode
     )
 {
+#if !defined(MLAS_TARGET_AMD64)
+    MLAS_UNREFERENCED_PARAMETER(Mode);
+#endif
+
 #if defined(MLAS_TARGET_AMD64)
     if (Mode == MlasGeluErfModeMinimaxApproximation && GetMlasPlatform().GeluErfMinimaxKernelRoutine != nullptr) {
         GetMlasPlatform().GeluErfMinimaxKernelRoutine(Input, Output, N);
@@ -60,7 +64,6 @@ MlasComputeGeluErf(
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().GeluKernelRoutine(Input, Output, N);
 #else
-    MLAS_UNREFERENCED_PARAMETER(Mode);
     MlasGeluKernel(Input, Output, N);
 #endif
 }
