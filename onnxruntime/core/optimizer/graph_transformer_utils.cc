@@ -429,7 +429,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       if (qdq_float_activations) {
         transformers.emplace_back(std::make_unique<QDQFloatActivationsTransformer>(qdq_matmulnbits_accuracy_level,
-                                                                                   intra_op_thread_pool));
+                                                                                   intra_op_thread_pool,
+                                                                                   cpu_execution_provider,
+                                                                                   session_options.config_options));
       }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

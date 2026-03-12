@@ -481,6 +481,54 @@ TEST(QDQFloatActivationsTransformerTests, MatMulNBitsWithActivationRemoval) {
                     nullptr, add_session_options);
 }
 
+// Test: Weight DQ on constant initializer is constant-folded (Sub-pass C)
+// Graph: Input -> Q -> DQ -> Add(DQ(int8 weight constant)) -> Output
+// Expected: Input -> Add(float weight) -> Output (activation Q->DQ removed, weight DQ constant-folded)
+TEST(QDQFloatActivationsTransformerTests, WeightDQConstantFolding) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 4, 8}, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+
+    // Activation Q->DQ on input
+    auto* q_output = builder.MakeIntermediate();
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input_arg, kTestScale, kTestZp, q_output);
+    builder.AddDequantizeLinearNode<uint8_t>(q_output, kTestScale, kTestZp, dq_output);
+
+    // Weight: int8 constant initializer with DQ (per-tensor, not blockwise)
+    auto* weight_init = builder.MakeInitializer<int8_t>({1, 4, 8}, -64, 64);
+    constexpr float weight_scale = 0.01f;
+    constexpr int8_t weight_zp = 0;
+    auto* weight_dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<int8_t>(weight_init, weight_scale, weight_zp, weight_dq_output);
+
+    // Add: activation + weight
+    builder.AddNode("Add", {dq_output, weight_dq_output}, {output_arg});
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // Activation Q->DQ removed (Sub-pass A)
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+    // Weight DQ constant-folded (Sub-pass C)
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  auto add_session_options = [](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQFloatActivations, "1"));
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    kTestTolerance,
+                    0.0f,
+                    nullptr, add_session_options);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

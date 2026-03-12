@@ -8,6 +8,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/constant_folding.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -203,6 +204,18 @@ Status QDQFloatActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Sub-pass C: Constant-fold remaining weight DQ nodes.
+  // After activation Q->DQ removal, weight DQ nodes on constant initializers can be folded
+  // into float tensors so ops run directly on float weights.
+  if (modified) {
+    ConstantFolding constant_folding(cpu_execution_provider_,
+                                     /*skip_dequantize_linear=*/false,
+                                     config_options_);
+    bool cf_modified = false;
+    ORT_RETURN_IF_ERROR(constant_folding.Apply(graph, cf_modified, logger));
+    modified |= cf_modified;
+  }
 
   return Status::OK();
 }
