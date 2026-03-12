@@ -11,6 +11,7 @@
 #include "core/optimizer/matmul_nbits_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
+#include "core/optimizer/qdq_transformer/qdq_float_activations_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -313,6 +314,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       const bool enable_quant_qdq_cleanup =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+      const bool qdq_float_activations =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQFloatActivations, "0") == "1";
 #if !defined(DISABLE_CONTRIB_OPS)
       const bool qdq_is_int8_allowed =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
@@ -363,7 +366,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  SatApplyContextVariant{},
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool));
+                                                                                 intra_op_thread_pool,
+                                                                                 qdq_float_activations));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
@@ -422,6 +426,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
+
+      if (qdq_float_activations) {
+        transformers.emplace_back(std::make_unique<QDQFloatActivationsTransformer>(qdq_matmulnbits_accuracy_level,
+                                                                                   intra_op_thread_pool));
+      }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
