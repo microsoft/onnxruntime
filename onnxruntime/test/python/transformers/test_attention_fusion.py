@@ -361,9 +361,7 @@ class TestFusion(unittest.TestCase):
     def test_qwen3_normalization_fusion(self):
         """Test Qwen3 decoder layer optimization.
 
-        Verifies that the optimizer fuses:
-          - RMSNorm patterns into SimplifiedLayerNormalization (pre-attn, Q-norm, K-norm)
-          - Add + RMSNorm into SkipSimplifiedLayerNormalization (residual connection)
+        Verifies that the optimizer fuses RMSNorm patterns into SimplifiedLayerNormalization.
         """
         hidden_size = 64
         num_heads = 8
@@ -392,20 +390,13 @@ class TestFusion(unittest.TestCase):
 
         nodes = optimized_model.model.graph.node
         sln_count = sum(1 for n in nodes if n.op_type == "SimplifiedLayerNormalization")
-        ssln_count = sum(1 for n in nodes if n.op_type == "SkipSimplifiedLayerNormalization")
 
-        # 4 RMSNorm patterns: pre-attn, Q-norm, K-norm, post-attn.
-        # Fallback for SkipLayerNormalization is disabled, so post-attn RMSNorm does not fuse.
-        # All 4 stay as SimplifiedLayerNormalization.
+        # 4 RMSNorm patterns all fuse into SimplifiedLayerNormalization:
+        # pre-attn, Q-norm, K-norm, post-attn.
         self.assertEqual(
             sln_count,
             4,
-            f"Expected 4 SimplifiedLayerNormalization (pre-attn + Q-norm + K-norm + post-attn), got {sln_count}",
-        )
-        self.assertEqual(
-            ssln_count,
-            0,
-            f"Expected 0 SkipSimplifiedLayerNormalization (residual + post-attn RMSNorm failed to fuse), got {ssln_count}",
+            f"Expected 4 SimplifiedLayerNormalization, got {sln_count}",
         )
 
     def test_qwen3_rotary_embedding_fusion(self):
@@ -444,7 +435,6 @@ class TestFusion(unittest.TestCase):
         nodes = optimized_model.model.graph.node
         rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
         sln_count = sum(1 for n in nodes if n.op_type == "SimplifiedLayerNormalization")
-        ssln_count = sum(1 for n in nodes if n.op_type == "SkipSimplifiedLayerNormalization")
 
         self.assertEqual(
             rope_count,
@@ -453,13 +443,8 @@ class TestFusion(unittest.TestCase):
         )
         self.assertEqual(
             sln_count,
-            3,
-            f"Expected 3 SimplifiedLayerNormalization (pre-attn + Q-norm + K-norm), got {sln_count}",
-        )
-        self.assertEqual(
-            ssln_count,
-            1,
-            f"Expected 1 SkipSimplifiedLayerNormalization (residual + post-attn RMSNorm), got {ssln_count}",
+            4,
+            f"Expected 4 SimplifiedLayerNormalization, got {sln_count}",
         )
 
     def test_qwen3_rotary_embedding_fusion_with_expand(self):
