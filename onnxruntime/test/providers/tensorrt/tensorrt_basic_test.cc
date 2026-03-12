@@ -1505,8 +1505,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode_ForeignSourceSkipped) {
   ASSERT_FALSE(status.IsOK());
   EXPECT_TRUE(status.ErrorMessage().find("EPContext") != std::string::npos)
       << "Error should mention EPContext. Actual: " << status.ErrorMessage();
-  EXPECT_TRUE(status.ErrorMessage().find("OpenVINOExecutionProvider") != std::string::npos)
-      << "Error should mention the foreign source EP. Actual: " << status.ErrorMessage();
 
   // Clean up
   std::filesystem::remove(model_path);

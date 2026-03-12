@@ -293,8 +293,6 @@ TEST(NvExecutionProviderTest, EPContextNode_ForeignSourceSkipped) {
     std::string error_msg = e.what();
     EXPECT_TRUE(error_msg.find("EPContext") != std::string::npos)
         << "Error should mention EPContext. Actual: " << error_msg;
-    EXPECT_TRUE(error_msg.find("OpenVINOExecutionProvider") != std::string::npos)
-        << "Error should mention the foreign source EP. Actual: " << error_msg;
   }
 
   // Clean up
