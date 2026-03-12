@@ -65,6 +65,70 @@ namespace onnxruntime {
 
 namespace {
 
+struct AggregateLatencyStats {
+  uint64_t count{0};
+  uint64_t total_latency_us{0};
+  uint64_t min_latency_us{std::numeric_limits<uint64_t>::max()};
+  uint64_t max_latency_us{0};
+};
+
+struct GlobalLatencyAverages {
+  std::mutex mutex;
+  InlinedHashMap<std::string, AggregateLatencyStats> op_latency_stats;
+  InlinedHashMap<std::string, AggregateLatencyStats> targeted_op_latency_stats;
+};
+
+GlobalLatencyAverages& GetGlobalLatencyAverages() {
+  static GlobalLatencyAverages averages;
+  return averages;
+}
+
+void RecordGlobalLatencyStat(InlinedHashMap<std::string, AggregateLatencyStats>& stats_map,
+                            const std::string& key,
+                            uint64_t latency_us) {
+  auto& stats = stats_map[key];
+  stats.count += 1;
+  stats.total_latency_us += latency_us;
+  stats.min_latency_us = std::min(stats.min_latency_us, latency_us);
+  stats.max_latency_us = std::max(stats.max_latency_us, latency_us);
+}
+
+void RecordGlobalOpLatency(const std::string& key, uint64_t latency_us) {
+  auto& averages = GetGlobalLatencyAverages();
+  std::lock_guard<std::mutex> lock(averages.mutex);
+  RecordGlobalLatencyStat(averages.op_latency_stats, key, latency_us);
+}
+
+void RecordGlobalTargetedOpLatency(const std::string& key, uint64_t latency_us) {
+  auto& averages = GetGlobalLatencyAverages();
+  std::lock_guard<std::mutex> lock(averages.mutex);
+  RecordGlobalLatencyStat(averages.targeted_op_latency_stats, key, latency_us);
+}
+
+bool TryGetGlobalOpLatencyStats(const std::string& key, AggregateLatencyStats& stats) {
+  auto& averages = GetGlobalLatencyAverages();
+  std::lock_guard<std::mutex> lock(averages.mutex);
+  const auto it = averages.op_latency_stats.find(key);
+  if (it == averages.op_latency_stats.end()) {
+    return false;
+  }
+
+  stats = it->second;
+  return true;
+}
+
+bool TryGetGlobalTargetedOpLatencyStats(const std::string& key, AggregateLatencyStats& stats) {
+  auto& averages = GetGlobalLatencyAverages();
+  std::lock_guard<std::mutex> lock(averages.mutex);
+  const auto it = averages.targeted_op_latency_stats.find(key);
+  if (it == averages.targeted_op_latency_stats.end()) {
+    return false;
+  }
+
+  stats = it->second;
+  return true;
+}
+
 bool IsFlagValueEnabled(std::string value) {
   if (value.empty()) {
     return false;
@@ -408,6 +472,8 @@ class SessionScope {
     stats.total_latency_us += latency_us;
     stats.min_latency_us = std::min(stats.min_latency_us, latency_us);
     stats.max_latency_us = std::max(stats.max_latency_us, latency_us);
+
+    RecordGlobalOpLatency(key, latency_us);
   }
 
   void RecordTargetedOpLatency(const std::string& key, uint64_t latency_us) {
@@ -421,6 +487,8 @@ class SessionScope {
     stats.total_latency_us += latency_us;
     stats.min_latency_us = std::min(stats.min_latency_us, latency_us);
     stats.max_latency_us = std::max(stats.max_latency_us, latency_us);
+
+    RecordGlobalTargetedOpLatency(key, latency_us);
   }
 
   void StopProfilingIfEnabled(profiling::EventCategory category,
@@ -506,10 +574,17 @@ class SessionScope {
       const auto& key = entry.first;
       const auto& stats = entry.second;
       const uint64_t avg_latency_us = stats.count == 0 ? 0 : (stats.total_latency_us / stats.count);
+      AggregateLatencyStats global_stats;
+      const bool have_global_stats = TryGetGlobalOpLatencyStats(key, global_stats);
+      const uint64_t all_runs_avg_latency_us = !have_global_stats || global_stats.count == 0
+                                                   ? 0
+                                                   : (global_stats.total_latency_us / global_stats.count);
       LOGS(logger, WARNING) << "[Latency] " << key_label << "=" << key
                             << " count=" << stats.count
                             << " total_us=" << stats.total_latency_us
                             << " avg_us=" << avg_latency_us
+                            << " all_runs_count=" << (have_global_stats ? global_stats.count : 0)
+                            << " all_runs_avg_us=" << all_runs_avg_latency_us
                             << " min_us=" << stats.min_latency_us
                             << " max_us=" << stats.max_latency_us;
     }
@@ -543,10 +618,17 @@ class SessionScope {
       const auto& stats = entry.second;
       const uint64_t avg_latency_us = stats.count == 0 ? 0 : (stats.total_latency_us / stats.count);
       const uint64_t min_latency_us = stats.count == 0 ? 0 : stats.min_latency_us;
+      AggregateLatencyStats global_stats;
+      const bool have_global_stats = TryGetGlobalTargetedOpLatencyStats(category, global_stats);
+      const uint64_t all_runs_avg_latency_us = !have_global_stats || global_stats.count == 0
+                                                   ? 0
+                                                   : (global_stats.total_latency_us / global_stats.count);
       LOGS(logger, WARNING) << "[Latency] category=" << category
                             << " count=" << stats.count
                             << " total_us=" << stats.total_latency_us
                             << " avg_us=" << avg_latency_us
+                            << " all_runs_count=" << (have_global_stats ? global_stats.count : 0)
+                            << " all_runs_avg_us=" << all_runs_avg_latency_us
                             << " min_us=" << min_latency_us
                             << " max_us=" << stats.max_latency_us;
     }
