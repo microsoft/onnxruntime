@@ -1087,5 +1087,137 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_NoPosIds_SmallData_LlamaMS
            interleaved);
 }
 
+// Test that position_ids exceeding max_sequence_length is rejected (CPU).
+TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_ExceedsMaxSeqLen) {
+  int batch_size = 1;
+  int sequence_length = 1;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(hidden_size, 1.0f));
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+  // position_id = 2048 exceeds max_sequence_length = 8
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {2048});
+
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "position_ids value 2048 at index 0 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
+// Test that negative position_ids values are rejected (CPU).
+TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_Negative) {
+  int batch_size = 1;
+  int sequence_length = 1;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(hidden_size, 1.0f));
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+  // position_id = -1 is negative
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {-1});
+
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "position_ids value -1 at index 0 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
+// Test that out-of-bounds position_ids in a batch are rejected (CPU).
+TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_InBatch) {
+  int batch_size = 2;
+  int sequence_length = 2;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(batch_size * sequence_length * hidden_size, 1.0f));
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+  // Second batch has position_id = 100 which exceeds max_sequence_length = 8
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {0, 1, 2, 100});
+
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "position_ids value 100 at index 3 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
+// Test that out-of-bounds position_ids on CUDA pass through input unchanged.
+TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_CUDA_Passthrough) {
+  int batch_size = 1;
+  int sequence_length = 1;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  if (!HasCudaEnvironment(0)) {
+    return;  // Skip when CUDA is not available.
+  }
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+
+  std::vector<float> input_data(hidden_size);
+  for (int i = 0; i < hidden_size; ++i) {
+    input_data[i] = static_cast<float>(i + 1);
+  }
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+  // position_id = 2048 exceeds max_sequence_length = 8 — CUDA should pass through input unchanged.
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {2048});
+
+  // Output should equal input when position_id is OOB (pass-through).
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size}, input_data);
+  test.SetOutputAbsErr("output", 0.0f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -107,6 +107,20 @@ struct DQMatMulToMatMulNBitsAction : public ReplaceWithNew {
   concurrency::ThreadPool* intra_op_thread_pool_;
 };
 
+// Used together with DQCastMatMulToMatMulNBitsSelector.
+// Handles DQ -> Cast(fp16->fp32) -> MatMul fusion to MatMulNBits,
+// including optional Cast on input A and output type alignment.
+struct DQCastMatMulToMatMulNBitsAction : public Action {
+  DQCastMatMulToMatMulNBitsAction(int64_t accuracy_level,
+                                  concurrency::ThreadPool* intra_op_thread_pool);
+
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+
+ private:
+  int64_t accuracy_level_;
+  concurrency::ThreadPool* intra_op_thread_pool_;
+};
+
 struct GemmReplaceWithQuant : public Action {
   GemmReplaceWithQuant();
 
