@@ -82,3 +82,37 @@ index a6a8a83..153da87 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/defs/tensor/old.cc b/onnx/defs/tensor/old.cc
+index c2ba43b7c..c0f229c6e 100644
+--- a/onnx/defs/tensor/old.cc
++++ b/onnx/defs/tensor/old.cc
+@@ -2632,6 +2632,16 @@ ONNX_OPERATOR_SET_SCHEMA(
+ 
+             const auto input_dim_value = input_dim.dim_value();
+ 
++            // empty dimension: output is always 0 regardless of starts/ends/steps
++            if (input_dim_value == 0) {
++              ctx.getOutputType(0)
++                  ->mutable_tensor_type()
++                  ->mutable_shape()
++                  ->mutable_dim(static_cast<int>(axis))
++                  ->set_dim_value(0);
++              continue;
++            }
++
+             // process step
+             auto step = steps[axis_index];
+             if (step == 0) {
+@@ -6315,6 +6325,12 @@ ONNX_OPERATOR_SET_SCHEMA(
+ 
+             const auto input_dim_value = input_dim.dim_value();
+ 
++            // empty dimension: output is always 0 regardless of starts/ends/steps
++            if (input_dim_value == 0) {
++              ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape()->mutable_dim(axis)->set_dim_value(0);
++              continue;
++            }
++
+             // process step
+             auto step = steps[axis_index];
+             if (step == 0) {
