@@ -114,6 +114,11 @@ extends:
         steps:
         - checkout: self
 
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
         - script: |
             set -euo pipefail
             python3 --version
