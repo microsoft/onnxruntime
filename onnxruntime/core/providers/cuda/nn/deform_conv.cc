@@ -78,6 +78,8 @@ size_t GetDeformConvEffectiveMaxTempBytes(size_t total_global_mem) {
 // Returns how many images to process in parallel per batch chunk for DeformConv.
 // Chooses the largest divisor of batch size N that fits in the temp budget and does not
 // exceed kMaxParallelImgs, so that batch dimension is split evenly (no remainder).
+// Note: if N is prime and N > target_parallel_imgs, the greatest divisor <= target_parallel_imgs is 1,
+// so batching is effectively disabled (single-image chunks).
 //
 // Formulas:
 //   kernel_size = kH * kW
