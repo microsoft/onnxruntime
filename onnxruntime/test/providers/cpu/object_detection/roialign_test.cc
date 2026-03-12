@@ -856,6 +856,9 @@ TEST(RoiAlignTest, BatchIndicesNegative) {
 }
 
 TEST(RoiAlignTest, BatchIndicesOutOfRange_CUDA) {
+#if !defined(NDEBUG)
+  GTEST_SKIP() << "Skipping in Debug builds because CUDA device-side asserts poison the CUDA context.";
+#else
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (cuda_ep.get() == nullptr) {
     GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
@@ -875,9 +878,13 @@ TEST(RoiAlignTest, BatchIndicesOutOfRange_CUDA) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#endif
 }
 
 TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
+#if !defined(NDEBUG)
+  GTEST_SKIP() << "Skipping in Debug builds because CUDA device-side asserts poison the CUDA context.";
+#else
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (cuda_ep.get() == nullptr) {
     GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
@@ -897,6 +904,7 @@ TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#endif
 }
 }  // namespace test
 }  // namespace onnxruntime
