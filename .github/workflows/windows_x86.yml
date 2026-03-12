@@ -65,11 +65,50 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Use .NET 8.x
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.x'
         env:
           PROCESSOR_ARCHITECTURE: x86 # x86 .NET
+
+      - name: Prefer x86 dotnet on PATH
+        shell: pwsh
+        run: |
+          $x86DotnetDir = 'C:\Program Files (x86)\dotnet'
+          $x64DotnetDir = 'C:\Program Files\dotnet'
+          $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+          Write-Host "Machine PATH: $machinePath"
+
+          $pathEntries = @($env:PATH -split ';' | Where-Object { $_ })
+          $reorderedPathEntries = @(
+            $x86DotnetDir
+            $pathEntries | Where-Object { $_ -ne $x86DotnetDir }
+          )
+
+          $env:PATH = ($reorderedPathEntries -join ';')
+
+          # Only add the x86 dotnet directory to GITHUB_PATH if it is not already on PATH (after normalization)
+          $normalizedX86DotnetDir = $x86DotnetDir.TrimEnd('\')
+          $normalizedPathEntries = $pathEntries | ForEach-Object { $_.TrimEnd('\') }
+          if (-not ($normalizedPathEntries -contains $normalizedX86DotnetDir)) {
+            Add-Content -Path $env:GITHUB_PATH -Value $x86DotnetDir
+          }
+          $dotnetPaths = @(Get-Command dotnet -All | Select-Object -ExpandProperty Source -Unique)
+          Write-Host 'Resolved dotnet executables:'
+          $dotnetPaths | ForEach-Object { Write-Host $_ }
+
+          $x86DotnetExe = "$x86DotnetDir\dotnet.exe"
+          $x64DotnetExe = "$x64DotnetDir\dotnet.exe"
+          $x86Index = $dotnetPaths.IndexOf($x86DotnetExe)
+          $x64Index = $dotnetPaths.IndexOf($x64DotnetExe)
+
+          if ($x86Index -lt 0) {
+            throw "Expected x86 dotnet executable was not found: $x86DotnetExe"
+          }
+
+          if ($x64Index -ge 0 -and $x86Index -gt $x64Index) {
+            throw "x86 dotnet must appear before x64 dotnet on PATH. Found $x86DotnetExe after $x64DotnetExe."
+          }
 
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@v2
