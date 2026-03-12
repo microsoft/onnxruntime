@@ -487,6 +487,8 @@ template Status DeformConvAddBiasImpl<BFloat16>(cudaStream_t, BFloat16*, const B
                                          reinterpret_cast<const CUDA_T*>(B), N, M, out_h, out_w);                   \
   }
 
+// BFloat16 is not delegated: ORT's BFloat16 is the same type used in device code (ToCudaType<BFloat16> in
+// cuda_common.h), so the explicit instantiations above (INST_DeformConvIm2ColImpl(BFloat16), etc.) suffice.
 DELEGATE_DEFORM_CONV_IMPL(MLFloat16, half)
 
 }  // namespace cuda
