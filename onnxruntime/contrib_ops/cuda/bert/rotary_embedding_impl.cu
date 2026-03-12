@@ -25,7 +25,8 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
                                     const int64_t* position_ids,       // (1) or BxS
                                     const int* past_sequence_lengths,  // (B) for format 2
                                     const int sequence_length, const int num_heads, const int head_size,
-                                    const int rotary_embedding_dim, const int position_ids_format,
+                                    const int rotary_embedding_dim, const int max_sequence_length,
+                                    const int position_ids_format,
                                     const bool interleaved,
                                     int4 in_strides, int4 out_strides  // strides in bnsh coord, h is always contiguous
 ) {
@@ -69,9 +70,31 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
   const int half_rotary_embedding_dim = rotary_embedding_dim / 2;
   int position_id = 0;
   if (position_ids_format == 0) {
-    position_id = static_cast<int>(position_ids[0]) + s;
+    // Validate base without overflow: base must be in [0, max_sequence_length - sequence_length].
+    int64_t base_pos = position_ids[0];
+    int64_t max_valid_base = static_cast<int64_t>(max_sequence_length) - static_cast<int64_t>(sequence_length);
+#if !defined(NDEBUG)
+    if (i == 0) {
+      CUDA_KERNEL_ASSERT(base_pos >= 0 && base_pos <= max_valid_base);
+    }
+#endif
+    if (base_pos < 0 || base_pos > max_valid_base) {
+      output_data[i] = use_smem ? smem[i] : input_data[i];
+      return;
+    }
+    position_id = static_cast<int>(base_pos) + s;
   } else if (position_ids_format == 1) {
-    position_id = static_cast<int>(position_ids[b * sequence_length + s]);
+    int64_t pos = position_ids[b * sequence_length + s];
+#if !defined(NDEBUG)
+    if (i == 0) {
+      CUDA_KERNEL_ASSERT(pos >= 0 && pos < static_cast<int64_t>(max_sequence_length));
+    }
+#endif
+    if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
+      output_data[i] = use_smem ? smem[i] : input_data[i];
+      return;
+    }
+    position_id = static_cast<int>(pos);
   } else if (position_ids_format == 2) {
     // format 2: past_sequence_length + s
     // used for Decoding (past_sequence_length = seqlens_k[b]) or First Prompt (past=0 if nullptr)
@@ -139,7 +162,7 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
                                    const int* past_sequence_lengths,
                                    const T* cos_cache, const T* sin_cache, const int batch_size,
                                    const int sequence_length, const int num_heads, const int head_size,
-                                   const int rotary_embedding_dim, const int /*max_sequence_length*/,
+                                   const int rotary_embedding_dim, const int max_sequence_length,
                                    const int position_ids_format, const bool interleaved,
                                    const int max_threads_per_block,
                                    int4 in_strides, int4 out_strides  // strides in bnsh coord
@@ -164,13 +187,13 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
     size_t smem_size = head_size * sizeof(T);
     RotaryEmbeddingBSNH<T, true><<<grid, block, smem_size, stream>>>(
         output, input, cos_cache, sin_cache, position_ids, past_sequence_lengths, sequence_length,
-        num_heads, head_size, rotary_embedding_dim, position_ids_format,
+        num_heads, head_size, rotary_embedding_dim, max_sequence_length, position_ids_format,
         interleaved, in_strides, out_strides);
   } else {
     // Separate buffers: no shared memory needed
     RotaryEmbeddingBSNH<T, false><<<grid, block, 0, stream>>>(
         output, input, cos_cache, sin_cache, position_ids, past_sequence_lengths, sequence_length,
-        num_heads, head_size, rotary_embedding_dim, position_ids_format,
+        num_heads, head_size, rotary_embedding_dim, max_sequence_length, position_ids_format,
         interleaved, in_strides, out_strides);
   }
 

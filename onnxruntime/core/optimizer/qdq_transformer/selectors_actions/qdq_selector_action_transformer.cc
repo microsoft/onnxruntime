@@ -297,7 +297,7 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
                                 int64_t qdq_matmulnbits_accuracy_level,
                                 concurrency::ThreadPool* intra_op_thread_pool) {
   // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
-  // DQ's weight is int4/uint4. DQ's scale is float/float16.
+  // DQ's weight is 2/4/8-bit int (int2/uint2, int4/uint4, int8/uint8). DQ's scale is float/float16.
   // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
   const std::string action_name{"DQMatMulToMatMulNBits"};
 
@@ -315,6 +315,25 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
 
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+
+  // DQ -> Cast(fp16->fp32) -> MatMul pattern.
+  // Handles FP16 models where Cast nodes are inserted between DQ and MatMul.
+  const std::string cast_action_name{"DQCastMatMulToMatMulNBits"};
+
+  std::unique_ptr<Action> cast_action =
+      std::make_unique<QDQ::DQCastMatMulToMatMulNBitsAction>(qdq_matmulnbits_accuracy_level,
+                                                             intra_op_thread_pool);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<NodeSelector> cast_selector =
+      std::make_unique<QDQ::DQCastMatMulToMatMulNBitsSelector>(providers);
+  qdq_selector_action_registry.RegisterSelectorAndAction(cast_action_name,
+                                                         {{"MatMul", {}}},
+                                                         std::move(cast_selector),
+                                                         std::move(cast_action));
+#else
+  qdq_selector_action_registry.RegisterAction(cast_action_name, std::move(cast_action));
 #endif
 }
 
