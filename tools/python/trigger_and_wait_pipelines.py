@@ -53,6 +53,7 @@ class PipelineConfig:
     project: str = DEFAULT_PROJECT
     template_parameters: dict[str, Any] = field(default_factory=dict)
     variables: dict[str, str] = field(default_factory=dict)
+    supports_pre_release: bool = False
 
 
 @dataclass
@@ -91,6 +92,7 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
             "IsReleaseBuild": True,
             "NugetPackageSuffix": "NONE",
         },
+        supports_pre_release=True,
     ),
     PipelineConfig(
         id=2138,
@@ -100,6 +102,7 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
             "IsReleaseBuild": True,
             "NugetPackageSuffix": "NONE",
         },
+        supports_pre_release=True,
     ),
     PipelineConfig(
         id=1299,
@@ -123,6 +126,7 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
         template_parameters={
             "IsReleaseBuild": True,
         },
+        supports_pre_release=True,
     ),
     PipelineConfig(
         id=1994,
@@ -132,6 +136,7 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
             "DoEsrp": True,
             "IsReleaseBuild": True,
         },
+        supports_pre_release=True,
     ),
     PipelineConfig(
         id=1080,
@@ -162,7 +167,7 @@ _PIPELINE_KEY_TO_ID: dict[str, int] = {cfg.key: cfg.id for cfg in PIPELINE_REGIS
 def get_token() -> str:
     token = os.environ.get("SYSTEM_ACCESSTOKEN", "").strip()
     if not token:
-        logger.error("SYSTEM_ACCESSTOKEN environment variable is not set.")
+        logger.error("##[error]SYSTEM_ACCESSTOKEN environment variable is not set.")
         sys.exit(1)
     return token
 
@@ -198,9 +203,9 @@ def trigger_pipeline(config: PipelineConfig, branch: str, token: str) -> Trigger
         logger.info("Triggered run %d: %s", run_id, web_url)
         return TriggeredRun(config=config, run_id=run_id, web_url=web_url)
     except requests.exceptions.RequestException as e:
-        logger.error("Failed to trigger '%s': %s", config.name, e)
+        logger.error("##[error]Failed to trigger '%s': %s", config.name, e)
         if hasattr(e, "response") and e.response is not None:
-            logger.error("Response: %s", e.response.text)
+            logger.error("##[error]Response: %s", e.response.text)
         return None
 
 
@@ -218,17 +223,17 @@ def get_run_status(run: TriggeredRun, token: str) -> TriggeredRun:
         try:
             run.state = BuildState(status_str)
         except ValueError:
-            logger.warning("Unknown build state '%s' for run %d ('%s'), defaulting to UNKNOWN.", status_str, run.run_id, run.config.name)
+            logger.warning("##[warning]Unknown build state '%s' for run %d ('%s'), defaulting to UNKNOWN.", status_str, run.run_id, run.config.name)
             run.state = BuildState.UNKNOWN
 
         try:
             run.result = BuildResult(result_str)
         except ValueError:
-            logger.warning("Unknown build result '%s' for run %d ('%s'), defaulting to NONE.", result_str, run.run_id, run.config.name)
+            logger.warning("##[warning]Unknown build result '%s' for run %d ('%s'), defaulting to NONE.", result_str, run.run_id, run.config.name)
             run.result = BuildResult.NONE
 
     except requests.exceptions.RequestException as e:
-        logger.warning("Failed to get status of run %d ('%s'): %s", run.run_id, run.config.name, e)
+        logger.warning("##[warning]Failed to get status of run %d ('%s'): %s", run.run_id, run.config.name, e)
 
     return run
 
@@ -301,7 +306,7 @@ def publish_run_status(
             run.result.value,
         )
     except Exception as e:
-        logger.warning("Failed to publish to Kusto for run %d: %s", run.run_id, e)
+        logger.warning("##[warning]Failed to publish to Kusto for run %d: %s", run.run_id, e)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -331,6 +336,19 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="KEY=True|False",
         help="Enable/disable a pipeline by its registry key. Can be repeated.",
     )
+    parser.add_argument(
+        "--pre-release-suffix-string",
+        type=str,
+        choices=["alpha", "beta", "rc", "none"],
+        default=None,
+        help="Pre-release version suffix (alpha, beta, rc, none). Applied to pipelines that support it.",
+    )
+    parser.add_argument(
+        "--pre-release-suffix-number",
+        type=int,
+        default=0,
+        help="Pre-release version suffix number. 0 means no number suffix (e.g. -rc vs -rc.1).",
+    )
     return parser
 
 
@@ -338,12 +356,12 @@ def _parse_enable_flags(raw: list[str]) -> dict[int, bool]:
     result: dict[int, bool] = {}
     for item in raw:
         if "=" not in item:
-            logger.warning("Ignoring malformed --enable-pipeline value: %s", item)
+            logger.warning("##[warning]Ignoring malformed --enable-pipeline value: %s", item)
             continue
         key, val = item.split("=", 1)
         key = key.strip()
         if key not in _PIPELINE_KEY_TO_ID:
-            logger.warning("Unknown pipeline key: %s", key)
+            logger.warning("##[warning]Unknown pipeline key: %s", key)
             continue
         result[_PIPELINE_KEY_TO_ID[key]] = val.strip().lower() == "true"
     return result
@@ -357,7 +375,7 @@ def _read_enable_flags_from_env() -> dict[int, bool]:
             continue
         pipeline_key = key[len(prefix) :].lower()
         if pipeline_key not in _PIPELINE_KEY_TO_ID:
-            logger.warning("Unknown ENABLE_ env var: %s", key)
+            logger.warning("##[warning]Unknown ENABLE_ env var: %s", key)
             continue
         result[_PIPELINE_KEY_TO_ID[pipeline_key]] = value.strip().lower() == "true"
     return result
@@ -383,6 +401,12 @@ def main() -> int:
     if enable_flags:
         configs = [cfg for cfg in configs if enable_flags.get(cfg.id, True)]
 
+    if args.pre_release_suffix_string:
+        for cfg in configs:
+            if cfg.supports_pre_release:
+                cfg.template_parameters["PreReleaseVersionSuffixString"] = args.pre_release_suffix_string
+                cfg.template_parameters["PreReleaseVersionSuffixNumber"] = args.pre_release_suffix_number
+
     logger.info("Branch    : %s", branch)
     logger.info("Pipelines : %d", len(configs))
 
@@ -405,7 +429,7 @@ def main() -> int:
             )
             publish_run_status(test_run, branch, kusto_client)
         else:
-            logger.warning("Kusto client could not be created — check configuration.")
+            logger.warning("##[warning]Kusto client could not be created — check configuration.")
         return 0
 
     token = get_token()
@@ -418,10 +442,10 @@ def main() -> int:
             triggered.append(run)
             publish_run_status(run, branch, kusto_client)
         else:
-            logger.error("Failed to trigger '%s'", cfg.name)
+            logger.error("##[error]Failed to trigger '%s'", cfg.name)
 
     if not triggered:
-        logger.error("All pipeline triggers failed.")
+        logger.error("##[error]All pipeline triggers failed.")
         return 1
 
     pending = list(triggered)
@@ -443,11 +467,14 @@ def main() -> int:
     logger.info("=" * 60)
     for run in triggered:
         status = "PASS" if run.result == BuildResult.SUCCEEDED else "FAIL"
-        logger.info("[%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url)
+        if run.result == BuildResult.SUCCEEDED:
+            logger.info("[%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url)
+        else:
+            logger.error("##[error][%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url)
     logger.info("=" * 60)
 
     if any_failed:
-        logger.error("RESULT: FAILED")
+        logger.error("##[error]RESULT: FAILED")
         return 1
 
     logger.info("RESULT: SUCCESS")
