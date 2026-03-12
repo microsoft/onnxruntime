@@ -34,8 +34,8 @@ inline Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& ax
   if (!axis_tensor)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor must be provided to the CumSum op");
 
-  if (!IsScalarOr1ElementVector(axis_tensor))
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor must be a scalar or 1-element vector");
+  if (axis_tensor->Shape().NumDimensions() > 1)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be 0D or 1D");
 
   if (axis_tensor->IsDataType<int32_t>()) {
     axis_out = static_cast<int64_t>(axis_tensor->Data<int32_t>()[0]);

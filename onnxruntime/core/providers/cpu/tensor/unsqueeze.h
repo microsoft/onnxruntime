@@ -42,9 +42,30 @@ class UnsqueezeBase {
       axes.assign(axes_.begin(), axes_.end());
     }
 
-    auto output_shape = ComputeOutputShape(input_tensor.Shape(), axes);
+    TensorShapeVector output_dims(axes.size() + input_tensor.Shape().NumDimensions(), 0);
+
+    for (int64_t axis : axes) {
+      axis = HandleNegativeAxis(axis, onnxruntime::narrow<int64_t>(output_dims.size()));
+      if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'axes' has an out of range axis");
+      if (output_dims[onnxruntime::narrow<size_t>(axis)] != 0)
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'axes' has a duplicate axis");
+      output_dims[onnxruntime::narrow<size_t>(axis)] = 1;
+    }
+
+    {
+      auto begin = input_tensor.Shape().GetDims().begin();
+      for (auto& axis_size : output_dims) {
+        if (axis_size == 0)
+          axis_size = *begin++;
+      }
+      assert(begin == input_tensor.Shape().GetDims().end());
+    }
+
+    TensorShape output_shape(output_dims);
+    p.output_tensor = ctx->Output(0, output_shape);
+    ORT_ENFORCE(nullptr != p.output_tensor);
     p.input_tensor = &input_tensor;
-    p.output_tensor = ctx->Output(0, TensorShape(std::move(output_shape)));
     return Status::OK();
   }
 #endif
