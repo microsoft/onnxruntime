@@ -491,7 +491,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 #endif
 
   if (qnn_context_embed_mode_ && enable_file_mapped_weights_) {
-    enable_file_mapped_weights = false;
+    enable_file_mapped_weights_ = false;
     LOGS_DEFAULT(WARNING) << "File mapped weights feature is incompatible with embedded EP contexts. Feature will be disabled by default.";
   }
 
