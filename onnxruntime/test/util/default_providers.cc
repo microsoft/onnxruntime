@@ -280,20 +280,30 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
 #if defined(USE_WEBGPU)
   ConfigOptions config_options{};
+
+  // Helper to strip the EP prefix from config entry keys when building as a plugin EP.
+  // The full key is like "ep.webgpuexecutionprovider.storageBufferCacheMode", and the
+  // config entry expects just "storageBufferCacheMode" in the EP API build.
+  // Returns a pointer into the original string, so the result is valid as long as the input is.
+  auto strip_ep_prefix = [](const char* full_key) -> const char* {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  // used to remove the EP prefix from the config entry keys
-  size_t config_entry_key_offset = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider).length();
+    std::string_view key{full_key};
+    std::string_view prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
+    ORT_ENFORCE(key.length() >= prefix.length() && key.substr(0, prefix.length()) == prefix,
+                "Config key \"", key, "\" does not start with expected prefix \"", prefix, "\"");
+    return full_key + prefix.length();
 #else
-  size_t config_entry_key_offset = 0;
+    return full_key;
 #endif
+  };
 
   // Disable storage buffer cache
-  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode + config_entry_key_offset,
+  ORT_ENFORCE(config_options.AddConfigEntry(strip_ep_prefix(webgpu::options::kStorageBufferCacheMode),
                                             webgpu::options::kBufferCacheMode_Disabled)
                   .IsOK());
   if (!is_nhwc) {
     // Enable NCHW support
-    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout + config_entry_key_offset,
+    ORT_ENFORCE(config_options.AddConfigEntry(strip_ep_prefix(webgpu::options::kPreferredLayout),
                                               webgpu::options::kPreferredLayout_NCHW)
                     .IsOK());
   }
