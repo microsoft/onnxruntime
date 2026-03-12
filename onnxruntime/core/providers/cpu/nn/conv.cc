@@ -244,15 +244,44 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   if (channels_last_) {
     ORT_RETURN_IF_NOT(kernel_rank == 2, "Conv with channels_last layout currently supports 2D kernels.");
-    ORT_RETURN_IF_NOT(dilations[0] == 1 && dilations[1] == 1, "Conv with channels_last layout currently supports dilation == 1.");
   }
 
   const bool wants_channels_last = channels_last_;
   const bool sum_present = Sum != nullptr;
+  std::array<size_t, 2> input_shape_size_t{};
+  std::array<size_t, 2> kernel_shape_size_t{};
+  std::array<size_t, 2> dilations_size_t{};
+  std::array<size_t, 4> pads_size_t{};
+  std::array<size_t, 2> strides_size_t{};
+  if (wants_channels_last) {
+    ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "Nhwc Conv fast-path expects 2D input shape.");
+    for (size_t i = 0; i < 2; ++i) {
+      input_shape_size_t[i] = narrow<size_t>(input_shape[i]);
+      kernel_shape_size_t[i] = narrow<size_t>(kernel_shape[i]);
+      dilations_size_t[i] = narrow<size_t>(dilations[i]);
+      strides_size_t[i] = narrow<size_t>(strides[i]);
+      pads_size_t[i] = narrow<size_t>(pads[i]);
+      pads_size_t[i + 2] = narrow<size_t>(pads[i + 2]);
+    }
+  }
   const bool nhwc_fastpath =
-      wants_channels_last && kernel_rank == 2 && conv_attrs_.group == 1 &&
-      dilations[0] == 1 && dilations[1] == 1 && !sum_present;
+      wants_channels_last && !sum_present &&
+      MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+          kernel_rank,
+          narrow<size_t>(N),
+          narrow<size_t>(conv_attrs_.group),
+          input_shape_size_t.data(),
+          kernel_shape_size_t.data(),
+          dilations_size_t.data(),
+          pads_size_t.data(),
+          strides_size_t.data(),
+          narrow<size_t>(M / conv_attrs_.group),
+          /*Beta*/ 0.0f);
   const bool manual_sum = wants_channels_last && !nhwc_fastpath && sum_present;
+  MLAS_ACTIVATION pre_sum_activation = activation_;
+  if (manual_sum) {
+    pre_sum_activation.ActivationKind = MlasIdentityActivation;
+  }
 
   std::vector<float> sum_manual_buffer;
   const float* sum_manual_data = nullptr;
@@ -290,7 +319,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     strides.data(),
                     output_shape.GetDims().data(),
                     narrow<size_t>(M / conv_attrs_.group),
-                    &activation_,
+                    manual_sum ? &pre_sum_activation : &activation_,
                     &WorkingBufferSize,
                     nhwc_fastpath,
                     nhwc_fastpath ? 0.0f : Beta,
@@ -342,15 +371,27 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     if (wants_channels_last && !nhwc_fastpath) {
       const auto& y_dims = Y->Shape().GetDims();
       ORT_RETURN_IF_NOT(y_dims.size() == 4, "Nhwc fallback expects 4D output.");
+      if (manual_sum) {
+        const SafeInt<size_t> output_elements = SafeInt<size_t>(Y->Shape().Size());
+        float* sum_nchw = static_cast<float*>(alloc->Alloc(sizeof(float) * output_elements));
+        BufferUniquePtr sum_nchw_buffer(sum_nchw, BufferDeleter(alloc));
+        ConvertNHWCToNCHW(sum_manual_data,
+                          sum_nchw,
+                          y_dims[0], y_dims[3], y_dims[1], y_dims[2]);
+
+        auto output_span = gsl::make_span(output_compute, static_cast<size_t>(output_elements));
+        auto sum_span = gsl::make_span(sum_nchw, static_cast<size_t>(output_elements));
+        for (size_t i = 0; i < output_span.size(); ++i) {
+          output_span[i] += sum_span[i];
+        }
+
+        MlasActivation(&activation_, output_compute, nullptr, narrow<size_t>(M),
+                       narrow<size_t>(output_shape.Size()), narrow<size_t>(output_shape.Size()));
+      }
+
       ConvertNCHWToNHWC(output_compute,
                         Ydata.data(),
                         y_dims[0], y_dims[3], y_dims[1], y_dims[2]);
-      if (manual_sum) {
-        auto y_span = gsl::make_span(Ydata.data(), Ydata.size());
-        for (size_t i = 0; i < y_span.size(); ++i) {
-          y_span[i] += sum_manual_data[i];
-        }
-      }
     }
   } else {
     const int64_t input_image_size = input_shape.Size();

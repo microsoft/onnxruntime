@@ -27,13 +27,17 @@ const KaiF32IMatmulKernel& imatmul_conv = GetKleidiAIF32IMatmulUKernel();
 // Right-hand-side (weights) cache key
 struct RhsCacheKey {
     size_t co, ci, kh, kw, dilationh, dilationw;
+    bool has_bias;
     size_t weights_hash;
+    size_t bias_hash;
 
     bool operator==(const RhsCacheKey& other) const {
         return co == other.co && ci == other.ci &&
                kh == other.kh && kw == other.kw &&
                dilationh == other.dilationh && dilationw == other.dilationw &&
-               weights_hash == other.weights_hash;
+               has_bias == other.has_bias &&
+               weights_hash == other.weights_hash &&
+               bias_hash == other.bias_hash;
     }
 };
 
@@ -44,12 +48,14 @@ struct LhsCacheKey {
     size_t padding, sh, sw;
     size_t kh, kw;
     size_t dilationh, dilationw;
+    size_t data_hash;
 
     bool operator==(const LhsCacheKey& other) const {
         return ci == other.ci && ih == other.ih && iw == other.iw &&
                padding == other.padding && sh == other.sh && sw == other.sw &&
                kh == other.kh && kw == other.kw &&
-               dilationh == other.dilationh && dilationw == other.dilationw;
+               dilationh == other.dilationh && dilationw == other.dilationw &&
+               data_hash == other.data_hash;
     }
 };
 
@@ -57,7 +63,12 @@ struct LhsCacheKey {
 // Based on Knuth's multiplicative hashing method
 constexpr size_t HASH_GOLDEN_RATIO_CONST = 0x9e3779b9;
 
-size_t HashWeights(const float* data, size_t count = 16) {
+size_t HashTensorPrefix(const float* data, size_t element_count, size_t prefix_count = 16) {
+    if (data == nullptr || element_count == 0 || prefix_count == 0) {
+        return 0;
+    }
+
+    const size_t count = std::min(element_count, prefix_count);
     size_t h = 0;
     for (size_t i = 0; i < count; ++i) {
         h ^= std::hash<float>()(data[i]) + HASH_GOLDEN_RATIO_CONST + (h << 6) + (h >> 2);
@@ -79,14 +90,17 @@ namespace std {
                 (std::hash<size_t>()(k.kh) << 3) ^
                 (std::hash<size_t>()(k.kw) << 4) ^
                 (std::hash<size_t>()(k.dilationh) << 5) ^
-                (std::hash<size_t>()(k.dilationw) << 6);
+                (std::hash<size_t>()(k.dilationw) << 6) ^
+                (std::hash<bool>()(k.has_bias) << 7) ^
+                (std::hash<size_t>()(k.bias_hash) << 8);
         }
     };
 
     template<>
     struct hash<LhsCacheKey> {
         size_t operator()(const LhsCacheKey& k) const {
-            return (std::hash<size_t>()(k.ci) << 1) ^
+            return k.data_hash ^
+                (std::hash<size_t>()(k.ci) << 1) ^
                 (std::hash<size_t>()(k.ih) << 2) ^
                 (std::hash<size_t>()(k.iw) << 3) ^
                 (std::hash<size_t>()(k.padding) << 4) ^
@@ -100,42 +114,6 @@ namespace std {
     };
 
 }
-
-namespace {
-
-using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
-
-thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
-thread_local const float* last_pad_ptr = nullptr;
-
-size_t LhsPtrsCacheEntryCount() {
-    size_t count = 0;
-    for (const auto& cache_group : lhs_ptrs_cache_by_pad) {
-        count += cache_group.second.size();
-    }
-    return count;
-}
-
-void ClearLhsPtrsCache() {
-    lhs_ptrs_cache_by_pad.clear();
-    last_pad_ptr = nullptr;
-}
-
-}  // namespace
-
-#if defined(MLAS_ENABLE_TEST_HOOKS)
-size_t
-MLASCALL
-ArmKleidiAI::MlasConvLhsCacheEntryCountForTest() {
-    return LhsPtrsCacheEntryCount();
-}
-
-void
-MLASCALL
-ArmKleidiAI::MlasConvClearLhsCacheForTest() {
-    ClearLhsPtrsCache();
-}
-#endif
 
 
 static constexpr size_t ComputeKernelSize(const size_t D, const size_t K) {
@@ -184,29 +162,21 @@ static size_t ComputeMlasWorkingBufferSize(const size_t co,
 }
 
 static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
-
-    //functional checks - logically can the conv be performed
-    if ((Parameters->Dimensions != 2) ||
-        (Parameters->BatchCount != 1) ||
-        (Parameters->Beta != 0.f) ||
-        (Parameters->Padding[0] != Parameters->Padding[1]) ||
-        (Parameters->Padding[0] != Parameters->Padding[2]) ||
-        (Parameters->Padding[0] != Parameters->Padding[3]) ||
-        (ComputeConvOutSize(Parameters->InputShape[0],
-                            ComputeKernelSize(Parameters->DilationShape[0],Parameters->KernelShape[0]),
-                            Parameters->Padding[0], Parameters->StrideShape[0]) *
-         ComputeConvOutSize(Parameters->InputShape[1],
-                            ComputeKernelSize(Parameters->DilationShape[1],Parameters->KernelShape[1]),
-                            Parameters->Padding[1], Parameters->StrideShape[1]) == 0)) {
-        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on functional checks.");
+    if (!MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+            Parameters->Dimensions,
+            Parameters->BatchCount,
+            Parameters->GroupCount,
+            Parameters->InputShape,
+            Parameters->KernelShape,
+            Parameters->DilationShape,
+            Parameters->Padding,
+            Parameters->StrideShape,
+            Parameters->FilterCount,
+            Parameters->Beta)) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on shared capability checks.");
         return false;
     }
 
-    auto N = Parameters->FilterCount;
-    if (N == 1 || Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
-        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on optimization checks.");
-        return false;
-    }
     return true;
 }
 
@@ -374,7 +344,11 @@ static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(const size_t co, const
     // Cache of prepacked kai rhs weights and biases. thread_local to prevent interference from parallel sessions.
     thread_local std::unordered_map<RhsCacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
 
-    RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, HashWeights(weights) };
+    // The packed RHS buffer includes both weights and bias, so both must participate in the cache key.
+    const size_t weights_hash = HashTensorPrefix(weights, co * ci * kh * kw);
+    const bool has_bias = bias != nullptr;
+    const size_t bias_hash = has_bias ? HashTensorPrefix(bias, co) : 0;
+    RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, has_bias, weights_hash, bias_hash };
 
     auto found = rhs_cache.find(key);
     if (found != rhs_cache.end()) {
@@ -532,19 +506,23 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
     // Entries include pointers to the pad buffer for out-of-bounds pixels, so we must not reuse entries after the
     // pad buffer is reallocated. To avoid clearing the entire cache, we group caches by pad buffer identity and
     // invalidate only the old group when the pad buffer moves.
+    using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
+    thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
+
     // If pad_ptr moved (vector reallocation), drop only the old group to avoid accumulating unreachable entries.
+    thread_local const float* last_pad_ptr = nullptr;
     const float* cur_pad_ptr = pad_ptr.data();
     if (last_pad_ptr != nullptr && last_pad_ptr != cur_pad_ptr) {
         lhs_ptrs_cache_by_pad.erase(last_pad_ptr);
     }
     last_pad_ptr = cur_pad_ptr;
 
-    // LhsPtrFill stores geometry offsets only; the current input base is supplied when packing.
     LhsCacheKey key = {
         ci, ih, iw,
         padding, sh, sw,
         kh, kw,
-        1, 1
+        1, 1,
+        HashTensorPrefix(in, ci * ih * iw)
     };
 
     auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];

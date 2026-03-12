@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <vector>
@@ -25,14 +26,10 @@ namespace onnxruntime {
 using namespace layout_transformation;
 
 #ifdef USE_KLEIDIAI
-// KleidiFp32NhwcFilter ensures the compatibility of Conv/FusedConv nodes before performing data conversion
-// Checks the following:
-// Must have 4D Input
-// Must have symmetric 2d padding (if applicable)
-// No add input
-// Dilation and Group sizes must be 1
-bool KleidiFp32NhwcFilter(const onnx_transpose_optimization::api::GraphRef& graph,
-                          onnx_transpose_optimization::api::NodeRef& node) {
+// Float NHWC Conv wrappers are only safe for 4D tensors today because the runtime fallback path
+// only converts between NHWC and NCHW for 2D convolutions.
+bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& graph,
+                            onnx_transpose_optimization::api::NodeRef& node) {
   auto& base_node = NodeFromApiNode(node);
 
   ORT_UNUSED_PARAMETER(graph);
@@ -45,45 +42,8 @@ bool KleidiFp32NhwcFilter(const onnx_transpose_optimization::api::GraphRef& grap
     return false;
   }
 
-  const auto& batch_dim = input_shape->dim(0);
-  if (!utils::HasDimValue(batch_dim) || batch_dim.dim_value() != 1) {
-    return false;
-  }
-
-  const auto pads_attr = node.GetAttributeInts("pads");
-  if (pads_attr.has_value()) {
-    const auto& pads = pads_attr.value();
-    if (pads.size() != 4 || pads[0] != pads[2] || pads[1] != pads[3]) {
-      return false;
-    }
-  }
-
   const auto* weight_shape = base_node.InputDefs()[1]->Shape();
   if (weight_shape == nullptr || weight_shape->dim_size() != 4) {
-    return false;
-  }
-
-  const auto& filter_dim = weight_shape->dim(0);
-  const auto& kernel_h_dim = weight_shape->dim(2);
-  const auto& kernel_w_dim = weight_shape->dim(3);
-
-  if (!utils::HasDimValue(filter_dim) || filter_dim.dim_value() <= 1 ||
-      !utils::HasDimValue(kernel_h_dim) || kernel_h_dim.dim_value() < 3 ||
-      !utils::HasDimValue(kernel_w_dim) || kernel_w_dim.dim_value() < 3) {
-    return false;
-  }
-
-  const auto dilations_opt = node.GetAttributeInts("dilations");
-  if (dilations_opt.has_value()) {
-    const auto& dilations = dilations_opt.value();
-    if ((dilations.size() >= 1 && dilations[0] != 1) ||
-        (dilations.size() >= 2 && dilations[1] != 1)) {
-      return false;
-    }
-  }
-
-  const auto group_opt = node.GetAttributeInt("group");
-  if (group_opt.has_value() && group_opt.value() != 1) {
     return false;
   }
 
@@ -228,7 +188,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
       kernel_create_info = nullptr;
 
       const auto filter = [](const api::GraphRef& graph, api::NodeRef& node) {
-        return KleidiFp32NhwcFilter(graph, node);
+        return FloatNhwcWrapperFilter(graph, node);
       };
 
       conv_table_.emplace(
@@ -338,7 +298,6 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (transform->has_channels_last_attrib_) {
       node->SetAttributeInt("channels_last", 1);
     }
-
 
     size_t rank = shape->dim_size();
     std::vector<int64_t> input_perm = ChannelFirstToLastPerm(rank);
