@@ -295,13 +295,9 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
                   "First dimension (num_rois) of batch_indices and rois don't match");
   }
 
-  // Validate batch_indices values are within [0, batch_size).
-  // Only check when the tensor data is accessible from the host (CPU).
-  // For GPU tensors (e.g. CUDA EP), Data<T>() returns a device pointer
-  // that cannot be safely dereferenced on the host. A device-side bounds
-  // check for the CUDA path would require passing batch_size into the
-  // CUDA kernel — tracked as a follow-up.
   if (batch_indices_ptr->Location().device.Type() == OrtDevice::CPU) {
+    // Validate batch_indices values are within [0, batch_size) when the tensor
+    // data is accessible from the host (CPU).
     const int64_t batch_size = X_ptr->Shape()[0];
     const int64_t num_rois = batch_indices_dims[0];
 
