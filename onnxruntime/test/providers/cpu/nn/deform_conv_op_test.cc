@@ -95,7 +95,8 @@ void RunDeformConvTest(const DeformConvTestParams& params,
                        const std::vector<float>& expected_Y,
                        int opset = 19,
                        decltype(DeformConvTestTraits<T>::DefaultRtol()) rtol = DeformConvTestTraits<T>::DefaultRtol(),
-                       decltype(DeformConvTestTraits<T>::DefaultAtol()) atol = DeformConvTestTraits<T>::DefaultAtol()) {
+                       decltype(DeformConvTestTraits<T>::DefaultAtol()) atol = DeformConvTestTraits<T>::DefaultAtol(),
+                       bool omit_bias = false) {
   const int64_t kH = params.kernel_shape[0];
   const int64_t kW = params.kernel_shape[1];
   // ONNX pads format: [pad_top, pad_left, pad_bottom, pad_right] = [pad[0], pad[1], pad[2], pad[3]]
@@ -124,13 +125,17 @@ void RunDeformConvTest(const DeformConvTestParams& params,
   auto X_t = DeformConvTestTraits<T>::Convert(X);
   auto W_t = DeformConvTestTraits<T>::Convert(W);
   auto offset_t = DeformConvTestTraits<T>::Convert(offset);
-  auto B_t = DeformConvTestTraits<T>::Convert(B);
   auto expected_Y_t = DeformConvTestTraits<T>::Convert(expected_Y);
 
   test.AddInput<T>("X", X_shape, X_t);
   test.AddInput<T>("W", W_shape, W_t);
   test.AddInput<T>("offset", offset_shape, offset_t);
-  test.AddInput<T>("B", {params.n_out_channels}, B_t);
+  if (omit_bias) {
+    test.AddOptionalInputEdge<T>();
+  } else {
+    auto B_t = DeformConvTestTraits<T>::Convert(B);
+    test.AddInput<T>("B", {params.n_out_channels}, B_t);
+  }
   if (mask != nullptr) {
     const std::vector<int64_t> mask_shape = {params.batch_sz, params.n_offset_grps * kH * kW, out_h, out_w};
     test.AddInput<T>("mask", mask_shape, DeformConvTestTraits<T>::Convert(*mask));
@@ -145,11 +150,15 @@ void RunDeformConvTest(const DeformConvTestParams& params,
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", DeformConvTestTraits<T>::ExcludedProviders());
 }
 
-}  // namespace
-
-// Minimal case: 1x1 kernel, 2x2 input, one output position with fractional offset (bilinear).
+// MinimalBilinear test: 1x1 kernel, 2x2 input, one output position with fractional offset (bilinear).
 // At (0,0) offset (0.5, 0.5) samples center of [1,2;3,4] -> 2.5.
-TEST(DeformConvTest, MinimalBilinear) {
+template <typename T>
+void RunMinimalBilinearTest(int opset = 19, int min_cuda_arch = 0, bool omit_bias = false) {
+#if defined(USE_CUDA)
+  if (min_cuda_arch > 0 && !HasCudaEnvironment(min_cuda_arch)) {
+    return;
+  }
+#endif
   DeformConvTestParams p = {};
   p.batch_sz = 1;
   p.n_in_channels = 1;
@@ -162,117 +171,50 @@ TEST(DeformConvTest, MinimalBilinear) {
   p.dilation = {1, 1};
   p.in_h = 2;
   p.in_w = 2;
-
-  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};  // NCHW
+  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
   std::vector<float> W = {1.f};
   // offset shape [N, 2*kH*kW, out_h, out_w] = [1, 2, 2, 2]: ch0=offset_h, ch1=offset_w (for kernel pt 0)
   // Layout: offset[n,c,oh,ow]. Flattened (NCHW): [ch0@00, ch0@01, ch0@10, ch0@11, ch1@00, ch1@01, ch1@10, ch1@11]
   // (0,0): (0.5, 0.5)->center of [1,2;3,4]->2.5; (0,1): (0,-1)->(0,0)->1; (1,0): (0,0)->3; (1,1): (0,0)->4
-  std::vector<float> offset = {
-      0.5f, 0.f, 0.f, 0.f,
-      0.5f, -1.0f, 0.f, 0.f};
+  std::vector<float> offset = {0.5f, 0.f, 0.f, 0.f, 0.5f, -1.0f, 0.f, 0.f};
   std::vector<float> B = {0.f};
-  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};  // (1,1,2,2)
+  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
   std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
+  if (omit_bias) {
+    RunDeformConvTest<T>(p, X, W, offset, {} /* B unused */, &mask, expected_Y, opset,
+                         DeformConvTestTraits<T>::DefaultRtol(), DeformConvTestTraits<T>::DefaultAtol(), true);
+  } else {
+    RunDeformConvTest<T>(p, X, W, offset, B, &mask, expected_Y, opset,
+                         DeformConvTestTraits<T>::DefaultRtol(), DeformConvTestTraits<T>::DefaultAtol(), false);
+  }
+}
+}  // namespace
 
-  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+// Minimal case: 1x1 kernel, 2x2 input, one output position with fractional offset (bilinear).
+TEST(DeformConvTest, MinimalBilinear) {
+  RunMinimalBilinearTest<float>();
 }
 
-// Minimal case FP16: Same as MinimalBilinear but in FP16.
-// Validates CUDA FP16 implementation (specifically coordinate precision logic).
-// DeformConv FP16 is CUDA-only; skip when CUDA is not available (e.g., Linux x64/arm64 CPU-only builds).
+// Optional bias omitted: same as MinimalBilinear but B is not provided; output must match B=0.
+TEST(DeformConvTest, OptionalBiasOmitted) {
+  RunMinimalBilinearTest<float>(19, 0, true);
+}
+
+// Minimal case FP16: Same as MinimalBilinear but in FP16 (CUDA-only).
 #if defined(USE_CUDA)
 TEST(DeformConvTest, MinimalBilinearFP16) {
-  int min_cuda_architecture = 530;  // FP16 requires SM 5.3+
-  if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "DeformConv FP16: CUDA not available, skipping.";
-    return;
-  }
-
-  DeformConvTestParams p = {};
-  p.batch_sz = 1;
-  p.n_in_channels = 1;
-  p.n_out_channels = 1;
-  p.n_weight_grps = 1;
-  p.n_offset_grps = 1;
-  p.kernel_shape = {1, 1};
-  p.stride = {1, 1};
-  p.pad = {0, 0, 0, 0};
-  p.dilation = {1, 1};
-  p.in_h = 2;
-  p.in_w = 2;
-
-  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
-  std::vector<float> W = {1.f};
-  std::vector<float> offset = {
-      0.5f, 0.f, 0.f, 0.f,
-      0.5f, -1.0f, 0.f, 0.f};
-  std::vector<float> B = {0.f};
-  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
-  std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
-
-  RunDeformConvTest<MLFloat16>(p, X, W, offset, B, &mask, expected_Y);
+  RunMinimalBilinearTest<MLFloat16>(19, 530);
 }
 
-// Minimal case BFloat16: Same as MinimalBilinear but in BFloat16 (CUDA BFloat16 coordinate precision).
+// Minimal case BFloat16: Same as MinimalBilinear but in BFloat16 (CUDA-only, opset 22).
 TEST(DeformConvTest, MinimalBilinearBFloat16) {
-  int min_cuda_architecture = 800;
-  if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
-    return;
-  }
-
-  DeformConvTestParams p = {};
-  p.batch_sz = 1;
-  p.n_in_channels = 1;
-  p.n_out_channels = 1;
-  p.n_weight_grps = 1;
-  p.n_offset_grps = 1;
-  p.kernel_shape = {1, 1};
-  p.stride = {1, 1};
-  p.pad = {0, 0, 0, 0};
-  p.dilation = {1, 1};
-  p.in_h = 2;
-  p.in_w = 2;
-
-  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
-  std::vector<float> W = {1.f};
-  std::vector<float> offset = {
-      0.5f, 0.f, 0.f, 0.f,
-      0.5f, -1.0f, 0.f, 0.f};
-  std::vector<float> B = {0.f};
-  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
-  std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
-
-  RunDeformConvTest<BFloat16>(p, X, W, offset, B, &mask, expected_Y, 22);
+  RunMinimalBilinearTest<BFloat16>(22, 800);
 }
 #endif  // defined(USE_CUDA)
 
 // Minimal case Double (FP64): Same as MinimalBilinear in double precision.
 TEST(DeformConvTest, MinimalBilinearDouble) {
-  DeformConvTestParams p = {};
-  p.batch_sz = 1;
-  p.n_in_channels = 1;
-  p.n_out_channels = 1;
-  p.n_weight_grps = 1;
-  p.n_offset_grps = 1;
-  p.kernel_shape = {1, 1};
-  p.stride = {1, 1};
-  p.pad = {0, 0, 0, 0};
-  p.dilation = {1, 1};
-  p.in_h = 2;
-  p.in_w = 2;
-
-  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
-  std::vector<float> W = {1.f};
-  std::vector<float> offset = {
-      0.5f, 0.f, 0.f, 0.f,
-      0.5f, -1.0f, 0.f, 0.f};
-  std::vector<float> B = {0.f};
-  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
-  std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
-
-  RunDeformConvTest<double>(p, X, W, offset, B, &mask, expected_Y);
+  RunMinimalBilinearTest<double>();
 }
 
 // Forward with mask and bias FP16 (CUDA-only; skip when CUDA not available).
