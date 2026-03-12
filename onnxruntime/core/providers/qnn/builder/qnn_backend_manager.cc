@@ -445,6 +445,7 @@ void QnnLogging(const char* format,
                 QnnLog_Level_t level,
                 uint64_t timestamp,
                 va_list argument_parameter) {
+  ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
   if (!::onnxruntime::logging::LoggingManager::HasDefaultLogger()) {
@@ -455,7 +456,7 @@ void QnnLogging(const char* format,
 
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
   // Map QNN log level to ORT severity
-  logging::Severity severity = QnnBackendManager::MapQNNLogLevelToOrtSeverity(level);
+  const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
   if (logger.OutputIsEnabled(severity, data_type)) {
