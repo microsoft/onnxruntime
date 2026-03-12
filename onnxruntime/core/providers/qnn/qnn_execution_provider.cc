@@ -490,6 +490,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                         << "Feature will be disabled by default";
 #endif
 
+  if (qnn_context_embed_mode_ && enable_file_mapped_weights_) {
+    enable_file_mapped_weights = false;
+    LOGS_DEFAULT(WARNING) << "File mapped weights feature is incompatible with embedded EP contexts. Feature will be disabled by default.";
+  }
+
   static const std::string QNN_DEVICE_ID = "device_id";
   auto dev_id_pos = provider_options_map.find(QNN_DEVICE_ID);
   if (dev_id_pos != provider_options_map.end()) {
