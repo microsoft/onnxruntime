@@ -1367,7 +1367,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   void* bin_buffer = nullptr;
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-  if (file_mapped_weights_enabled_) {
+  // A nonzero buffer length implies an embedded context
+  if (file_mapped_weights_enabled_ && buffer_length == 0) {
     ORT_RETURN_IF(!file_mapper_, "Attemping to use File Mapping feature but file_mapper_ is uninitialized");
 
     ORT_RETURN_IF_ERROR(GetFileSizeIfValid(context_bin_filepath, buffer_length));
