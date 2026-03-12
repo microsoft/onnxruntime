@@ -1541,5 +1541,42 @@ TEST(TensorrtExecutionProviderTest, EPContextNode_NvRtxSourceSkipped) {
   std::filesystem::remove(model_path);
 }
 
+/*
+ * Test: Classic TensorRT EP should still claim an EPContext node that has NO
+ * "source" attribute (backward compatibility with legacy context models).
+ *
+ * Expected: The EP claims the node. It may fail later during engine
+ * deserialization (since context data is synthetic), but the error must NOT
+ * be "is not compatible with any execution provider", which would indicate
+ * the node was not claimed at all.
+ */
+TEST(TensorrtExecutionProviderTest, EPContextNode_NoSourceAttribute_BackwardCompat) {
+  std::string model_path_str = "ep_context_no_source_trt.onnx";
+  PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, "", /*include_source_attr=*/false);
+
+  SessionOptions so;
+  so.session_logid = "EPContextNode_NoSourceAttribute_BackwardCompat";
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  auto status = session.Load(model_path);
+  ASSERT_TRUE(status.IsOK());
+
+  // The EP should claim the node. It may fail during engine deserialization
+  // (since context data is synthetic), but the error must NOT be the
+  // "not compatible" error that indicates no EP claimed the node.
+  status = session.Initialize();
+  if (!status.IsOK()) {
+    EXPECT_TRUE(status.ErrorMessage().find("is not compatible with any execution provider") == std::string::npos)
+        << "Legacy EPContext node without source should still be claimed by EP. Error: " << status.ErrorMessage();
+  }
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

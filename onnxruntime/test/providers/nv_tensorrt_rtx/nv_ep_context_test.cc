@@ -326,5 +326,38 @@ TEST(NvExecutionProviderTest, EPContextNode_ClassicTrtSourceSkipped) {
   std::filesystem::remove(model_path);
 }
 
+/*
+ * Test: NvTensorRTRTX EP should still claim an EPContext node that has NO
+ * "source" attribute (backward compatibility with legacy context models).
+ *
+ * Expected: The EP claims the node. It may fail later during engine
+ * deserialization (since context data is synthetic), but the error must NOT
+ * be "is not compatible with any execution provider", which would indicate
+ * the node was not claimed at all.
+ */
+TEST(NvExecutionProviderTest, EPContextNode_NoSourceAttribute_BackwardCompat) {
+  PathString model_path = path_utils::MakePathString("ep_context_no_source_nv.onnx");
+  CreateSyntheticEPContextModel(model_path, "", /*include_source_attr=*/false);
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> option_map;
+  auto ep = AppendTrtEtxEP(session_options, option_map);
+
+  try {
+    Ort::Session session(*ort_env, model_path.c_str(), session_options);
+    // If session creation succeeds, backward compatibility is working.
+  } catch (const Ort::Exception& e) {
+    std::string error_msg = e.what();
+    // The node should have been claimed by the EP. Any failure should be
+    // EP-internal (e.g., bad engine data), NOT the "not compatible" error
+    // that indicates no EP claimed the node.
+    EXPECT_TRUE(error_msg.find("is not compatible with any execution provider") == std::string::npos)
+        << "Legacy EPContext node without source should still be claimed by EP. Error: " << error_msg;
+  }
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
