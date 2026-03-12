@@ -158,14 +158,19 @@ Status QDQFloatActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
     GraphViewer updated_viewer(graph);
     const auto& updated_topology = updated_viewer.GetNodesInTopologicalOrder();
 
-    std::vector<const char*> cpu_ep = {kCpuExecutionProvider};
-    QDQ::DQMatMulToMatMulNBitsSelector dq_matmul_selector(cpu_ep);
-    QDQ::DQCastMatMulToMatMulNBitsSelector dq_cast_matmul_selector(cpu_ep);
+    // Use the same EP list as DQMatMulToMatMulNBitsRules in QDQSelectorActionTransformer.
+    std::vector<const char*> compatible_eps = {kCpuExecutionProvider, kCudaExecutionProvider,
+                                               kDmlExecutionProvider};
+    QDQ::DQMatMulToMatMulNBitsSelector dq_matmul_selector(compatible_eps);
+    QDQ::DQCastMatMulToMatMulNBitsSelector dq_cast_matmul_selector(compatible_eps);
     QDQ::DQMatMulToMatMulNBitsAction dq_matmul_action(qdq_matmulnbits_accuracy_level_,
                                                       intra_op_thread_pool_);
     QDQ::DQCastMatMulToMatMulNBitsAction dq_cast_matmul_action(qdq_matmulnbits_accuracy_level_,
                                                                intra_op_thread_pool_);
 
+    // Safe to iterate a snapshot of node indices while mutating: removed nodes return nullptr
+    // (skipped below), and new MatMulNBits nodes aren't in the original list. The selectors only
+    // inspect node neighbors, not the viewer's cached topological order.
     for (auto node_index : updated_topology) {
       auto* node_ptr = graph.GetNode(node_index);
       if (node_ptr == nullptr || node_ptr->OpType() != "MatMul") {

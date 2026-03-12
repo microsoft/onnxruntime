@@ -22,7 +22,8 @@ It works best when DropQDQNodesRules/SplitQDQRules are skipped (via session.qdq_
 so that data-movement ops keep their Q/DQ wrappers, making all Q->DQ pairs directly adjacent.
 
 Sub-passes:
-  A) Remove all adjacent Q->DQ pairs where all of Q's consumers are DQ nodes with matching scale/zp.
+  A) Remove all adjacent Q->DQ pairs where all of Q's consumers are DQ nodes with matching scale/zp,
+     and each such DQ has exactly one output edge (unless that edge goes directly to a graph output).
   B) Fuse newly eligible DQ(blockwise)->MatMul patterns into MatMulNBits.
   C) Constant-fold remaining weight DQ nodes on constant initializers into float tensors.
 */

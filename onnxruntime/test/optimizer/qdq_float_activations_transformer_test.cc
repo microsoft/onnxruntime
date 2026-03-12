@@ -164,9 +164,10 @@ TEST(QDQFloatActivationsTransformerTests, OptionDisabledNoRemoval) {
   auto check_graph = [](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_to_count["Relu"], 1);
-    // Without the option, our transformer doesn't run. Q/DQ may still be present
-    // (QDQFinalCleanupTransformer removes them in the default pipeline, but that's fine).
-    // Just verify the option-gated path doesn't fire by default.
+    // Without kOrtSessionOptionsQDQFloatActivations, our transformer doesn't run.
+    // With enable_quant_qdq_cleanup defaulting to "0", Q->DQ nodes should remain.
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
   };
 
   TransformerTester(build_test_case,
