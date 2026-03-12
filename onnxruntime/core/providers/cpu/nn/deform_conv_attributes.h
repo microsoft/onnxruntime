@@ -79,6 +79,10 @@ inline Status DeformConvValidateAndParse(
     const TensorShape& offset_shape,
     const TensorShape* mask_shape,
     DeformConvParams& params) {
+  ORT_RETURN_IF_NOT(X_shape.NumDimensions() == 4, "Input X must be 4D (N, C, H, W).");
+  ORT_RETURN_IF_NOT(W_shape.NumDimensions() == 4, "Weight must be 4D.");
+  ORT_RETURN_IF_NOT(offset_shape.NumDimensions() == 4, "Offset must be 4D.");
+
   // Parse input shapes
   params.N = X_shape[0];
   params.C = X_shape[1];
@@ -115,10 +119,9 @@ inline Status DeformConvValidateAndParse(
 
   params.out_h = (params.H + params.pad_h + params.pad_h_end - params.dilation_h * (params.kH - 1) - 1) / params.stride_h + 1;
   params.out_w = (params.W_in + params.pad_w + params.pad_w_end - params.dilation_w * (params.kW - 1) - 1) / params.stride_w + 1;
+  ORT_RETURN_IF_NOT(params.out_h >= 0 && params.out_w >= 0, "Computed output spatial size must be non-negative.");
 
   // Validate tensor shapes
-  ORT_RETURN_IF_NOT(W_shape.NumDimensions() == 4, "Weight must be 4D.");
-  ORT_RETURN_IF_NOT(offset_shape.NumDimensions() == 4, "Offset must be 4D.");
   ORT_RETURN_IF_NOT(offset_shape[0] == params.N, "Offset batch size must match input batch size.");
   ORT_RETURN_IF_NOT(
       offset_shape[1] == params.offset_group * 2 * params.kH * params.kW,
