@@ -3,10 +3,12 @@
 
 #pragma once
 
+#include <array>
 #include <vector>
 #include "core/common/common.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
+#include "core/providers/common.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #endif
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -293,7 +295,7 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     const auto& past_dims = past->Shape().GetDims();
     if (past_dims[3] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "when past_present_share_buffer, past tensor sequence must not smaller than total_sequqnce_length ");
+                             "when past_present_share_buffer, past tensor sequence must not smaller than total_sequence_length ");
     }
   }
 
