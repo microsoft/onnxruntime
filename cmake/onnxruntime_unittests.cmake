@@ -1045,7 +1045,7 @@ endfunction()
 # Set environment variables for plugin EP tests when run via CTest.
 function(onnxruntime_set_plugin_ep_test_environment target)
   if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
-    set(ORT_PLUGIN_EP_JSON_CONFIG "{\"ep_library_registration_name\": \"WebGPU_PluginEP\", \"ep_library_path\": \"onnxruntime_providers_webgpu.dll\", \"selected_ep_name\": \"WebGpuExecutionProvider\"}")
+    set(ORT_PLUGIN_EP_JSON_CONFIG "{\"ep_library_registration_name\": \"WebGPU_PluginEP\", \"ep_library_path\": \"$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>\", \"selected_ep_name\": \"WebGpuExecutionProvider\"}")
     set_tests_properties(${target} PROPERTIES
       ENVIRONMENT "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON=${ORT_PLUGIN_EP_JSON_CONFIG}"
     )
