@@ -4402,6 +4402,141 @@ TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   ASSERT_TRUE(op_to_count["Slice"] == 0);
 }
 
+// Verifies that ConcatSliceElimination correctly defaults axes to {0} and steps to {1}
+// when Slice nodes omit the optional axes/steps inputs (opset >= 10).
+// Before the fix, GetSliceInfo returned empty axes/steps vectors leading to undefined behavior.
+// After the fix, the defaults allow the fusion to succeed deterministically.
+TEST_F(GraphTransformationTests, ConcatSliceElimination_OpsetGte10_MissingAxesAndSteps) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // Three 1-D constant initializer inputs to Concat, each of size 2.
+    auto* init0 = builder.MakeInitializer<float>({2}, {1.0f, 2.0f});
+    auto* init1 = builder.MakeInitializer<float>({2}, {3.0f, 4.0f});
+    auto* init2 = builder.MakeInitializer<float>({2}, {5.0f, 6.0f});
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto& concat_node = builder.AddNode("Concat", {init0, init1, init2}, {concat_out});
+    concat_node.AddAttribute("axis", int64_t{0});
+
+    // Three Slice nodes with only starts and ends - axes and steps intentionally omitted.
+    // Per ONNX spec, missing axes defaults to [0,...,ndim-1] and missing steps defaults to [1,...,1].
+    auto* starts0 = builder.MakeInitializer<int64_t>({1}, {int64_t{0}});
+    auto* ends0 = builder.MakeInitializer<int64_t>({1}, {int64_t{2}});
+    auto* slice0_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {concat_out, starts0, ends0}, {slice0_out});
+
+    auto* starts1 = builder.MakeInitializer<int64_t>({1}, {int64_t{2}});
+    auto* ends1 = builder.MakeInitializer<int64_t>({1}, {int64_t{4}});
+    auto* slice1_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {concat_out, starts1, ends1}, {slice1_out});
+
+    auto* starts2 = builder.MakeInitializer<int64_t>({1}, {int64_t{4}});
+    auto* ends2 = builder.MakeInitializer<int64_t>({1}, {int64_t{6}});
+    auto* slice2_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {concat_out, starts2, ends2}, {slice2_out});
+
+    // Consumer Add nodes: Slice output at input index 1, matching the optimizer's
+    // hardcoded ReplaceNodeInput(..., 1, ...) on line 267.
+    auto* lhs0 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* add0_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs0, slice0_out}, {add0_out});
+
+    auto* lhs1 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* add1_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs1, slice1_out}, {add1_out});
+
+    auto* lhs2 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* add2_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs2, slice2_out}, {add2_out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 3);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    // With the fix, axes defaults to {0} and steps defaults to {1}, so the
+    // fusion pattern matches and Concat + all Slices are eliminated.
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<ConcatSliceElimination>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Same test for opset v1, where axes is an optional attribute on the Slice node.
+// When the "axes" attribute is absent, GetSliceInfo must default axes to {0}.
+TEST_F(GraphTransformationTests, ConcatSliceElimination_OpsetV1_MissingAxesAttribute) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* init0 = builder.MakeInitializer<float>({2}, {1.0f, 2.0f});
+    auto* init1 = builder.MakeInitializer<float>({2}, {3.0f, 4.0f});
+    auto* init2 = builder.MakeInitializer<float>({2}, {5.0f, 6.0f});
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto& concat_node = builder.AddNode("Concat", {init0, init1, init2}, {concat_out});
+    concat_node.AddAttribute("axis", int64_t{0});
+
+    // Opset v1 Slice: starts/ends are attributes, axes attribute intentionally omitted.
+    auto* slice0_out = builder.MakeIntermediate();
+    auto& slice0 = builder.AddNode("Slice", {concat_out}, {slice0_out});
+    slice0.AddAttribute("starts", std::vector<int64_t>{0});
+    slice0.AddAttribute("ends", std::vector<int64_t>{2});
+    // No "axes" attribute - triggers the vulnerable path.
+
+    auto* slice1_out = builder.MakeIntermediate();
+    auto& slice1 = builder.AddNode("Slice", {concat_out}, {slice1_out});
+    slice1.AddAttribute("starts", std::vector<int64_t>{2});
+    slice1.AddAttribute("ends", std::vector<int64_t>{4});
+
+    auto* slice2_out = builder.MakeIntermediate();
+    auto& slice2 = builder.AddNode("Slice", {concat_out}, {slice2_out});
+    slice2.AddAttribute("starts", std::vector<int64_t>{4});
+    slice2.AddAttribute("ends", std::vector<int64_t>{6});
+
+    auto* lhs0 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* add0_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs0, slice0_out}, {add0_out});
+
+    auto* lhs1 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* add1_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs1, slice1_out}, {add1_out});
+
+    auto* lhs2 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* add2_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs2, slice2_out}, {add2_out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 3);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  // Opset 1: Concat v4 requires opset >= 4, but the model opset must be 1 for Slice v1.
+  // Using opset 4 which gives Concat v4 and Slice v1.
+  auto transformer = std::make_unique<ConcatSliceElimination>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 4, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, ExpandElimination) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "expand_elimination.onnx";
   std::shared_ptr<Model> model;
