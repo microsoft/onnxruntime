@@ -7305,6 +7305,28 @@ struct OrtApi {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
+
+  /** \brief Fetch an array of strings stored as an attribute in the graph node
+   *
+   * If `out` is nullptr, the value of `size` is set to the true size of the attribute
+   * array and a success status is returned.
+   *
+   * Otherwise, the strings and pointer array are allocated using `allocator`.
+   * The caller must free each string and the pointer array with `allocator`.
+   * If the attribute array is empty, `*out` is set to nullptr and `*size` is set to 0.
+   *
+   * \param[in] info instance
+   * \param[in] name name of the attribute to be parsed
+   * \param[in] allocator allocator used to allocate the returned string array and strings
+   * \param[out] out pointer to the returned array of null-terminated UTF-8 strings
+   * \param[out] size actual size of attribute array
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size);
 };
 
 /*
