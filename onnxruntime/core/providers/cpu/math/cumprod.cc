@@ -10,8 +10,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
 
-using namespace onnxruntime;
-
 namespace onnxruntime {
 
 namespace cumprod_op {
@@ -104,27 +102,21 @@ CumProd<T>::CumProd(const OpKernelInfo& info) : OpKernel(info), exclusive_(), re
   int64_t exclusive = 0;
   auto status = info.GetAttr("exclusive", &exclusive);
   if (status.IsOK()) {
-    if (exclusive == 1 || exclusive == 0) {
-      exclusive_ = exclusive;
-    } else {
-      ORT_ENFORCE(false, "attribute exclusive can only be 0 or 1");
-    }
+    ORT_ENFORCE(exclusive == 0 || exclusive == 1, "exclusive attribute must be 0 or 1, got: ", exclusive);
+    exclusive_ = exclusive;
   }
   int64_t reverse = 0;
   status = info.GetAttr("reverse", &reverse);
   if (status.IsOK()) {
-    if (reverse == 1 || reverse == 0) {
-      reverse_ = reverse;
-    } else {
-      ORT_ENFORCE(false, "attribute reverse can only be 0 or 1");
-    }
+    ORT_ENFORCE(reverse == 0 || reverse == 1, "reverse attribute must be 0 or 1, got: ", reverse);
+    reverse_ = reverse;
   }
 }
 
 template <typename T>
 Status CumProd<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
-  size_t rank = input->Shape().NumDimensions();
+  int64_t rank = static_cast<int64_t>(input->Shape().NumDimensions());
   if (rank == 0)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot apply CumProd operator on a scalar");
 
@@ -221,4 +213,4 @@ Status CumProd<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-};  // namespace onnxruntime
+}  // namespace onnxruntime

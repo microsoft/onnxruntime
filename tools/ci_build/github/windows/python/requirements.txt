@@ -14,4 +14,4 @@ jinja2
 markupsafe
 semver
 packaging
-onnx==1.21.0rc1
+onnx==1.21.0rc2
