@@ -148,10 +148,10 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
       kernel_create_info = nullptr;
       conv_table_.emplace(
           OpIdInfo("QLinearConv", kOnnxDomain, api::DataType::INT8),
-          OpTransformInfo{qconv_int8.op_type_, qconv_int8.domain_, qconv_int8.version_, true});
+          OpTransformInfo{qconv_int8.op_type_, qconv_int8.domain_, qconv_int8.version_, true, false});
       conv_table_.emplace(
           OpIdInfo("QLinearConv", kMSDomain, api::DataType::INT8),
-          OpTransformInfo{qconv_int8.op_type_, qconv_int8.domain_, qconv_int8.version_, true});
+          OpTransformInfo{qconv_int8.op_type_, qconv_int8.domain_, qconv_int8.version_, true, false});
     }
   }
 
@@ -167,10 +167,10 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
       kernel_create_info = nullptr;
       conv_table_.emplace(
           OpIdInfo("QLinearConv", kOnnxDomain, api::DataType::UINT8),
-          OpTransformInfo{qconv_uint8.op_type_, qconv_uint8.domain_, qconv_uint8.version_, true});
+          OpTransformInfo{qconv_uint8.op_type_, qconv_uint8.domain_, qconv_uint8.version_, true, false});
       conv_table_.emplace(
           OpIdInfo("QLinearConv", kMSDomain, api::DataType::UINT8),
-          OpTransformInfo{qconv_uint8.op_type_, qconv_uint8.domain_, qconv_uint8.version_, true});
+          OpTransformInfo{qconv_uint8.op_type_, qconv_uint8.domain_, qconv_uint8.version_, true, false});
     }
   }
 
@@ -205,10 +205,10 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
 
       conv_table_.emplace(
           OpIdInfo("Conv", kOnnxDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, filter});
+          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, false, filter});
       conv_table_.emplace(
           OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, filter});
+          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, false, filter});
     }
   }
 
@@ -233,10 +233,10 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
 
       conv_table_.emplace(
           OpIdInfo("Conv", kOnnxDomain, api::DataType::FLOAT),
-          OpTransformInfo{nhwc_conv_fp32.op_type_, nhwc_conv_fp32.domain_, nhwc_conv_fp32.version_, false, filter});
+          OpTransformInfo{nhwc_conv_fp32.op_type_, nhwc_conv_fp32.domain_, nhwc_conv_fp32.version_, false, true, filter});
       conv_table_.emplace(
           OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT),
-          OpTransformInfo{nhwc_conv_fp32.op_type_, nhwc_conv_fp32.domain_, nhwc_conv_fp32.version_, false, filter});
+          OpTransformInfo{nhwc_conv_fp32.op_type_, nhwc_conv_fp32.domain_, nhwc_conv_fp32.version_, false, true, filter});
     }
   }
 #endif
@@ -254,7 +254,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
       kernel_create_info = nullptr;
       conv_table_.emplace(
           OpIdInfo("MaxPool", kOnnxDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_maxpool_fp16.op_type_, nhwc_maxpool_fp16.domain_, nhwc_maxpool_fp16.version_, false});
+          OpTransformInfo{nhwc_maxpool_fp16.op_type_, nhwc_maxpool_fp16.domain_, nhwc_maxpool_fp16.version_, false, false});
     }
   }
 
@@ -271,7 +271,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
       kernel_create_info = nullptr;
       conv_table_.emplace(
           OpIdInfo("AveragePool", kOnnxDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_avgpool_fp16.op_type_, nhwc_avgpool_fp16.domain_, nhwc_avgpool_fp16.version_, false});
+          OpTransformInfo{nhwc_avgpool_fp16.op_type_, nhwc_avgpool_fp16.domain_, nhwc_avgpool_fp16.version_, false, false});
     }
   }
 
@@ -288,7 +288,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
       kernel_create_info = nullptr;
       conv_table_.emplace(
           OpIdInfo("GlobalAveragePool", kOnnxDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_gavgpool_fp16.op_type_, nhwc_gavgpool_fp16.domain_, nhwc_gavgpool_fp16.version_, false});
+          OpTransformInfo{nhwc_gavgpool_fp16.op_type_, nhwc_gavgpool_fp16.domain_, nhwc_gavgpool_fp16.version_, false, false});
     }
   }
 };
@@ -348,10 +348,9 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!inputs.empty()) {
       input_perms[0] = &input_perm;
     }
-    // Optional Sum (Z) input for FusedConv variants resides at index 3. When present,
-    // it must be converted to NHWC alongside the activation tensor.
-    const bool has_fused_sum_input = (node->Domain() == kMSDomain && node->OpType() == "FusedConv");
-    if (has_fused_sum_input && inputs.size() > 3 && !inputs[3].empty()) {
+    // Some transformed operators require the optional fused Sum (Z) input at index 3
+    // to be converted alongside the activation tensor.
+    if (transform->transpose_fused_sum_input_ && inputs.size() > 3 && !inputs[3].empty()) {
       input_perms[3] = &input_perm;
     }
 

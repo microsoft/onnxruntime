@@ -62,6 +62,7 @@ struct OpTransformInfo {
   const std::string domain_;
   const int version_;
   const bool has_channels_last_attrib_;
+  const bool transpose_fused_sum_input_;
   const FilterFn filter_{nullptr};
 };
 
