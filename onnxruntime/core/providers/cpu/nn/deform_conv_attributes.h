@@ -77,6 +77,7 @@ inline Status DeformConvValidateAndParse(
     const TensorShape& X_shape,
     const TensorShape& W_shape,
     const TensorShape& offset_shape,
+    const TensorShape* B_shape,
     const TensorShape* mask_shape,
     DeformConvParams& params) {
   ORT_RETURN_IF_NOT(X_shape.NumDimensions() == 4, "Input X must be 4D (N, C, H, W).");
@@ -131,6 +132,11 @@ inline Status DeformConvValidateAndParse(
   ORT_RETURN_IF_NOT(params.C % params.offset_group == 0, "Input channels must be divisible by offset_group.");
   ORT_RETURN_IF_NOT(params.C == W_shape[1] * params.group, "Input channels must match weight in channels * group.");
   ORT_RETURN_IF_NOT(params.M % params.group == 0, "Output channels must be divisible by group.");
+
+  if (B_shape != nullptr) {
+    ORT_RETURN_IF_NOT(B_shape->NumDimensions() == 1, "Bias B must be 1D.");
+    ORT_RETURN_IF_NOT((*B_shape)[0] == params.M, "Bias B must have shape [M] (M = number of output channels).");
+  }
 
   // Validate mask if present
   if (params.use_mask) {
