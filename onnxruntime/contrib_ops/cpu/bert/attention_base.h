@@ -6,10 +6,10 @@
 #include <array>
 #include <vector>
 #include "core/common/common.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
-#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #endif
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
@@ -50,9 +50,8 @@ class AttentionBase {
 #endif
 
  protected:
-#ifndef SHARED_PROVIDER
+  // Keep the class layout identical in SHARED_PROVIDER and non-SHARED_PROVIDER builds.
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
-#endif
 
   template <typename KernelInfoType>
   AttentionBase(const KernelInfoType& info, bool require_same_hidden_size) {
