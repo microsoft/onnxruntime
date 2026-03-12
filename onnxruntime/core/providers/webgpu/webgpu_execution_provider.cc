@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
+#include <mutex>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -840,12 +841,14 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
 #if defined(ORT_USE_EP_API_ADAPTERS)
 
 namespace {
+std::mutex g_kernel_registry_mutex;
 std::shared_ptr<KernelRegistry> g_kernel_registry;
 std::shared_ptr<KernelRegistry> g_graph_capture_kernel_registry;
 std::shared_ptr<KernelRegistry> g_int64_kernel_registry;
 }  // namespace
 
 void CleanupKernelRegistries() {
+  std::lock_guard<std::mutex> lock(g_kernel_registry_mutex);
   g_kernel_registry.reset();
   g_graph_capture_kernel_registry.reset();
   g_int64_kernel_registry.reset();
@@ -866,6 +869,7 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
     static std::shared_ptr<KernelRegistry> registry = RegisterKernels(true, true);
     return registry;
 #else
+    std::lock_guard<std::mutex> lock(g_kernel_registry_mutex);
     if (g_graph_capture_kernel_registry == nullptr) {
       g_graph_capture_kernel_registry = RegisterKernels(true, true);
     }
@@ -873,6 +877,7 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
 #endif
   } else if (enable_int64) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
+    std::lock_guard<std::mutex> lock(g_kernel_registry_mutex);
     if (g_int64_kernel_registry == nullptr) {
       g_int64_kernel_registry = RegisterKernels(false, true);
     }
@@ -883,6 +888,7 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
 #endif
   } else {
 #if defined(ORT_USE_EP_API_ADAPTERS)
+    std::lock_guard<std::mutex> lock(g_kernel_registry_mutex);
     if (g_kernel_registry == nullptr) {
       g_kernel_registry = RegisterKernels(false, false);
     }
