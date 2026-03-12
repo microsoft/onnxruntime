@@ -288,7 +288,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       : ort_api{ort_api_in},
         ep_api{*ort_api_in.GetEpApi()},
         data_transfer_{nullptr},
-        context_id_{context_id},  // Always use context 0 for Environment's data transfer
+        context_id_{context_id},
         init_mutex_{} {
     ort_version_supported = ORT_API_VERSION;
     CanCopy = CanCopyImpl;          // OrtDataTransferImpl::CanCopy callback

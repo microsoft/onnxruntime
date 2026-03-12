@@ -3,7 +3,6 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-// #include "core/providers/cpu/tensor/shape_op.h"
 
 namespace onnxruntime {
 namespace webgpu {
