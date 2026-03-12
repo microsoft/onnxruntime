@@ -593,17 +593,17 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   }
 
   // Windows vs Unix path separators.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub/data.bin"));
+#ifdef _WIN32
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub\\data.bin"));
+#else
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub/data.bin"));
+#endif
 
   // Model in a directory that does not exist.
   ASSERT_FALSE(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin").IsOK());
 
-  // Model path is a bare filename (no directory component). parent_path() returns empty,
-  // so anchor_dir falls back to "." (current directory). Path traversal should still be blocked
-  // if the current working directory is not the filesystem root directory.
+  // Model path is a bare filename (no directory component).
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("model.onnx", "data.bin"));
-
   ASSERT_EQ(utils::ValidateExternalDataPath("model.onnx", "../data.bin").IsOK(), is_cwd_root);
 
   // Model relative path checks.
