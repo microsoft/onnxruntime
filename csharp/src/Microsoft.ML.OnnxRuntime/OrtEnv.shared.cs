@@ -535,7 +535,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// check if a precompiled model is compatible with the current system.
         /// </remarks>
         /// <param name="modelPath">Path to the ONNX model file.</param>
-        /// <param name="epType">The execution provider type string (e.g. "CPUExecutionProvider").</param>
+        /// <param name="epType">The execution provider type string. Use <see cref="OrtEpDevice.EpName"/> to get this value.</param>
         /// <returns>The compatibility info string, or null if no compatibility info exists for the specified EP.</returns>
         /// <exception cref="ArgumentException">If modelPath or epType is null or empty.</exception>
         /// <exception cref="OnnxRuntimeException">If the model file cannot be read or parsed.</exception>
@@ -568,7 +568,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Useful when precompiled models are loaded from encrypted storage, network, or other non-file sources.
         /// </remarks>
         /// <param name="modelData">The model data bytes.</param>
-        /// <param name="epType">The execution provider type string (e.g. "CPUExecutionProvider").</param>
+        /// <param name="epType">The execution provider type string. Use <see cref="OrtEpDevice.EpName"/> to get this value.</param>
         /// <returns>The compatibility info string, or null if no compatibility info exists for the specified EP.</returns>
         /// <exception cref="ArgumentException">If modelData is null/empty or epType is null or empty.</exception>
         /// <exception cref="OnnxRuntimeException">If the model data cannot be parsed.</exception>
