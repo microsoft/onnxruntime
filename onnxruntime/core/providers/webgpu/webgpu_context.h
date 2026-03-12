@@ -95,7 +95,15 @@ struct WebGpuContextConfig {
       webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
 #endif  // !NDEBUG
   };
-  bool preserve_device{false};
+  // For WASM builds, preserve device by default to support create->release->create pattern
+  // Device creation is expensive in browsers (adapter enumeration) and most web apps reuse devices
+  bool preserve_device{
+#ifdef __EMSCRIPTEN__
+      true   // Default ON for web builds
+#else
+      false  // Default OFF for native builds
+#endif
+  };
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
