@@ -461,6 +461,11 @@ if(WIN32)
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
 endif()
 
+if(LINUX)
+  list(APPEND onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/platform/linux/*.cc" )
+endif()
+
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
   if(onnxruntime_USE_CUDA)
