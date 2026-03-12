@@ -357,22 +357,6 @@ static Status WeaklyCanonicalPath(const std::filesystem::path& path, std::filesy
   return Status::OK();
 }
 
-// Wraps std::filesystem::absolute with error_code handling.
-static Status AbsolutePath(const std::filesystem::path& path, std::filesystem::path& result) {
-  std::error_code ec;
-  result = std::filesystem::absolute(path, ec);
-  ORT_RETURN_IF(ec, "Failed to get absolute path for: ", path, " - ", ec.message());
-  return Status::OK();
-}
-
-// Wraps std::filesystem::current_path with error_code handling.
-static Status GetCurrentPath(std::filesystem::path& result) {
-  std::error_code ec;
-  result = std::filesystem::current_path(ec);
-  ORT_RETURN_IF(ec, "Failed to get the current path: ", ec.message());
-  return Status::OK();
-}
-
 // Wraps std::filesystem::exists with error_code handling.
 static Status PathExists(const std::filesystem::path& path, bool& exists) {
   std::error_code ec;
@@ -389,9 +373,10 @@ static bool HasPathComponentPrefix(const std::filesystem::path& prefix, const st
 
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                                 const std::filesystem::path& external_data_path) {
-  // Reject empty or absolute external data paths
   ORT_RETURN_IF(external_data_path.empty(), "Empty external data path not allowed");
-  ORT_RETURN_IF(external_data_path.is_absolute(), "Absolute path not allowed for external data location");
+
+  // Note: Use !root_path().empty() to reject paths like '/some/path` even on Windows.
+  ORT_RETURN_IF(!external_data_path.root_path().empty(), "Absolute path not allowed for external data location");
 
 #if defined(__wasm__)
   std::error_code error_code;
@@ -406,15 +391,9 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
 
   // Determine the model directory: use model file's parent directory if provided,
   // otherwise use the current working directory.
-  std::filesystem::path model_dir;
-  std::filesystem::path model_path_abs;
-
-  if (model_path.empty()) {
-    ORT_RETURN_IF_ERROR(GetCurrentPath(model_dir));
-  } else {
-    ORT_RETURN_IF_ERROR(AbsolutePath(model_path, model_path_abs));
-    model_dir = model_path_abs.parent_path();
-  }
+  std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
+                                        ? std::filesystem::path{"."}
+                                        : model_path.parent_path();
 
   // Resolve the model directory and the external data path to their weakly canonical forms, which
   // resolves symlinks but does not require that the paths actually exist yet.
@@ -437,24 +416,28 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   //
   // This supports symlinked models (e.g., Hugging Face Hub local cache) where the canonical
   // parent of the model file differs from the parent directory of the symlinked model file.
-  if (!model_path_abs.empty()) {
+  if (!model_path.empty()) {
     std::filesystem::path real_model_path;
-    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path_abs, real_model_path));
+    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
     auto real_model_dir = real_model_path.parent_path();
 
-    // Check that the external data path is contained by the real model directory.
-    // If it is, check if the external data file actually exists.
-    if (HasPathComponentPrefix(real_model_dir, external_data_path_canonical)) {
-      bool path_exists = false;
-      ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
-      ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_path_canonical);
-      return Status::OK();
-    }
+    // Note: real_model_dir is empty in the case where `model_path` is a bare file that does not exist
+    // (e.g., model_no_exist.onnx). In this case, there's no point in checking further.
+    if (!real_model_dir.empty()) {
+      // Check that the external data path is contained by the real model directory.
+      // If it is, check if the external data file actually exists.
+      if (HasPathComponentPrefix(real_model_dir, external_data_path_canonical)) {
+        bool path_exists = false;
+        ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
+        ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_path_canonical);
+        return Status::OK();
+      }
 
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "External data path: ", external_data_path, " (resolved path: ",
-                           external_data_path_canonical, ") escapes both model directory: ", model_dir,
-                           " and real model directory: ", real_model_dir);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "External data path: ", external_data_path, " (resolved path: ",
+                             external_data_path_canonical, ") escapes both model directory: ", model_dir,
+                             " and real model directory: ", real_model_dir);
+    }
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

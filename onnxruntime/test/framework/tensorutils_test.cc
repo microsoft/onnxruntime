@@ -577,27 +577,28 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
 
   // Absolute path.
   {
+    Status status;
 #ifdef _WIN32
-    Status status = utils::ValidateExternalDataPath(model_path, "C:\\data.bin");
+    status = utils::ValidateExternalDataPath(model_path, "C:\\data.bin");
     ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
 
     status = utils::ValidateExternalDataPath("", "C:\\data.bin");
     ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
-#else
-    Status status = utils::ValidateExternalDataPath(model_path, "/data.bin");
+#endif  // Absolute path.
+
+    // Paths starting from / should be rejected even on Windows.
+    status = utils::ValidateExternalDataPath(model_path, "/data.bin");
     ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
 
     status = utils::ValidateExternalDataPath("", "/data.bin");
     ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
-#endif  // Absolute path.
   }
 
   // Windows vs Unix path separators.
 #ifdef _WIN32
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub\\data.bin"));
-#else
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub/data.bin"));
 #endif
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub/data.bin"));
 
   // Model in a directory that does not exist.
   ASSERT_FALSE(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin").IsOK());
