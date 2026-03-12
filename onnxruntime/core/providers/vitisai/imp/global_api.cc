@@ -45,7 +45,7 @@ using namespace onnxruntime;
 /// @brief Gets the path of directory containing the dynamic library that contains the address.
 /// @param address An address of a function or variable in the dynamic library.
 /// @return The path of the directory containing the dynamic library, or an empty string if the path cannot be determined.
-static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* address) {
+[[maybe_unused]] static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* address) {
 #ifdef _WIN32
   HMODULE moduleHandle;
   if (!::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
