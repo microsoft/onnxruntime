@@ -122,7 +122,14 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   const auto* mask = context->Input<Tensor>(4);
 
   DeformConvParams params;
-  ORT_RETURN_IF_ERROR(DeformConvValidateAndParse(attrs_, X->Shape(), W->Shape(), offset->Shape(), mask ? &mask->Shape() : nullptr, params));
+  ORT_RETURN_IF_ERROR(DeformConvValidateAndParse(
+      attrs_,
+      X->Shape(),
+      W->Shape(),
+      offset->Shape(),
+      B ? &B->Shape() : nullptr,
+      mask ? &mask->Shape() : nullptr,
+      params));
 
   const int64_t N = params.N;
   const int64_t C = params.C;
