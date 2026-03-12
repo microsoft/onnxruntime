@@ -12,6 +12,7 @@
 #endif
 #include "./vai_assert.h"
 
+#include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/error_code_helper.h"
 #include "core/providers/shared/common.h"
@@ -233,12 +234,13 @@ void change_status_with_error(void* status_ptr, int error_code, const char* erro
 
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
     const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options) {
-  auto model_path = graph_viewer.ModelPath();
+  const auto model_path_string = onnxruntime::ToUTF8String(graph_viewer.ModelPath().native());
+
   auto vaip_execution_provider_deletor = s_library_vitisaiep.vaip_execution_provider_deletor;
   if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_v4) {
     Status status = Status::OK();
     auto status_ptr = reinterpret_cast<void*>(&status);
-    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v4(model_path.u8string(), graph_viewer.GetGraph(), options, status_ptr, change_status_with_error, logger), vaip_execution_provider_deletor);
+    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v4(model_path_string, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error, logger), vaip_execution_provider_deletor);
     if (!status.IsOK()) {
       ORT_THROW(status);
     }
@@ -246,7 +248,7 @@ vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> c
   } else if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3) {
     Status status = Status::OK();
     auto status_ptr = reinterpret_cast<void*>(&status);
-    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3(model_path.u8string(), graph_viewer.GetGraph(), options, status_ptr, change_status_with_error), vaip_execution_provider_deletor);
+    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3(model_path_string, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error), vaip_execution_provider_deletor);
     if (!status.IsOK()) {
       ORT_THROW(status);
     }
@@ -254,13 +256,13 @@ vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> c
   } else if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling) {
     Status status = Status::OK();
     auto status_ptr = reinterpret_cast<void*>(&status);
-    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling(model_path.u8string(), graph_viewer.GetGraph(), options, status_ptr, change_status_with_error), vaip_execution_provider_deletor);
+    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_with_error_handling(model_path_string, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error), vaip_execution_provider_deletor);
     if (!status.IsOK()) {
       ORT_THROW(status);
     }
     return ret;
   } else {
-    return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path.u8string(), graph_viewer.GetGraph(), options), vaip_execution_provider_deletor);
+    return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path_string, graph_viewer.GetGraph(), options), vaip_execution_provider_deletor);
   }
 }
 
