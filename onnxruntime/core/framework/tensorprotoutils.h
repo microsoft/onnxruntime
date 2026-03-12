@@ -539,22 +539,30 @@ Status TensorProtoWithExternalDataToTensorProto(
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
 /// <summary>
-/// Validates that the external data path given by `location` is not an absolute path and is under the model directory.
-/// The model directory is derived from model_path.parent_path().
+/// Validates that the given external data path is not an absolute path and is under the model directory
+/// after all symbolic links are resolved.
+///
+/// Does NOT check that the model_path or the external data path actually exist.
+///
+/// The model path can be empty if the model is loaded from bytes and the application did not specify a directory
+/// for external data files. In this case, the external data path must be contained under the current working
+/// directory.
+///
+/// The model path can point to a non-existing file if the model is loaded from bytes and the application specified
+/// a directory for external data files via the session config entry
+/// `kOrtSessionOptionsModelExternalInitializersFileFolderPath`. In this case, the model_path is set to
+/// "<kOrtSessionOptionsModelExternalInitializersFileFolderPath> / virtual_model.onnx" and the external data path
+/// must be contained under `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
 ///
 /// If the model itself is a symlink, this function checks against both the directory containing the symlink
 /// and the real/canonical directory of the model after resolving all symlinks.
-///
-/// The model_path can be empty if the model is loaded from bytes and the application did not explicitly
-/// specify a directory for external data via the session config entry
-/// `kOrtSessionOptionsModelExternalInitializersFileFolderPath`. In this case (empty model_path), the model directory
-/// is set to the current working directory. Thus, `location` must be contained by the current working directory.
 /// </summary>
-/// <param name="model_path">Path to the model file. If empty, the model was loaded from bytes.</param>
-/// <param name="location">Location string retrieved from TensorProto external data</param>
-/// <returns>The function will fail if the resolved `location` path is not under the model directory</returns>
+/// <param name="model_path">Path to the model file. Can be empty or point to a virtual file.</param>
+/// <param name="external_data_path">External data file path to be validated.
+/// Retrieved from TensorProto external data info</param>
+/// <returns>The function will fail if the resolved `external_data_path` path is not under the model directory</returns>
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
-                                const std::filesystem::path& location);
+                                const std::filesystem::path& external_data_path);
 
 #endif  // !defined(SHARED_PROVIDER)
 

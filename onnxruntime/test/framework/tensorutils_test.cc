@@ -526,8 +526,9 @@ class PathValidationTest : public ::testing::Test {
     }
   }
 
-  void AddDirToCleanUp(std::filesystem::path other_dir) {
-    other_dirs_.push_back(std::move(other_dir));
+  void CreateDirectories(std::filesystem::path dir) {
+    std::filesystem::create_directories(dir);
+    other_dirs_.push_back(std::move(dir));
   }
 
   std::filesystem::path base_dir_;
@@ -538,7 +539,8 @@ class PathValidationTest : public ::testing::Test {
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
   // Use a model path whose parent is base_dir_.
-  auto model_path = base_dir_ / "model.onnx";
+  std::filesystem::path model_path = base_dir_ / "model.onnx";
+  std::filesystem::path cwd = std::filesystem::current_path();
 
   // Valid relative path.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "data.bin"));
@@ -577,10 +579,14 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   // Model relative path checks.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./model.onnx", "data.bin"));
   ASSERT_EQ(utils::ValidateExternalDataPath("./model.onnx", "../data.bin").IsOK(), is_cwd_root);
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./abc/model.onnx", "data.bin"));
 #ifdef _WIN32
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\model.onnx", "data.bin"));
   ASSERT_EQ(utils::ValidateExternalDataPath(".\\model.onnx", "../data.bin").IsOK(), is_cwd_root);
+#endif
+
+  CreateDirectories(cwd / "abc");
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./abc/model.onnx", "data.bin"));
+#ifdef _WIN32
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\abc\\model.onnx", "data.bin"));
 #endif
 
@@ -646,8 +652,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkInsi
   try {
     std::filesystem::path cwd = std::filesystem::current_path();
     std::filesystem::path sub_dir = cwd / "symlink_test_subdir";
-    std::filesystem::create_directories(sub_dir);
-    AddDirToCleanUp(sub_dir);
+    CreateDirectories(sub_dir);
 
     std::filesystem::path target = sub_dir / "target_inside.bin";
     std::filesystem::path symlink = sub_dir / "link_inside.bin";
@@ -668,8 +673,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
   try {
     std::filesystem::path cwd = std::filesystem::current_path();
     std::filesystem::path sub_dir = cwd / "symlink_test_subdir2";
-    std::filesystem::create_directories(sub_dir);
-    AddDirToCleanUp(sub_dir);
+    CreateDirectories(sub_dir);
 
     // Check if we can actually make a file outside of the current working directory (i.e., in a temp dir).
     // This is only possible if the current working directory is NOT the same as the temp directory.
