@@ -236,8 +236,143 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwc) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
+#if defined(USE_KLEIDIAI)
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+#else
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
     EXPECT_EQ(op_to_count["Transpose"], 0);
+#endif
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+#if defined(USE_KLEIDIAI)
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+#else
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+#endif
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* bias_arg = builder.MakeInitializer<float>({16}, -0.5f, 0.5f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+#if defined(USE_KLEIDIAI)
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+#else
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+#endif
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, FusedConvWithSumFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* bias_arg = builder.MakeInitializer<float>({16}, -0.5f, 0.5f);
+    auto* sum_arg = builder.MakeInput<float>({1, 16, 5, 5}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+#if defined(USE_KLEIDIAI)
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 3);
+#else
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+#endif
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvAutoPadFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 6, 6}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("auto_pad", "SAME_UPPER");
+    conv_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+#if defined(USE_KLEIDIAI)
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+#else
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+#endif
   };
 
   TransformerTester(build_test_case,

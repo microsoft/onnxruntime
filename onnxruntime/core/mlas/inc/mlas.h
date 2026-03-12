@@ -933,6 +933,20 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
 
+bool
+MLASCALL
+MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
+
 void
 MLASCALL
 MlasConv(
