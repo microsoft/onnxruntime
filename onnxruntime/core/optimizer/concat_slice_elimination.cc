@@ -235,7 +235,7 @@ bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph,
     InlinedVector<int64_t> starts, ends, axes, steps;
     if (!GetSliceInfo(graph, *slice, logger, starts, ends, axes, steps)) return false;
     // This check must come before any axes/steps indexing
-    // The code already enforces starts.size() == ends.size() (both opset 1 and >=0)
+    // The code already enforces starts.size() == ends.size() (opset >=10)
     // Other starts sizes are valid for the Slice operator,
     // but they are intentionally out of scope for this specific fusion.
     // FuseConcatSliceSubgraph() is a very narrow, pattern-based optimization, not a general Slice normalizer.

@@ -4836,17 +4836,15 @@ TEST_F(GraphTransformationTests, ConcatSliceElimination_OpsetGte10_MissingAxesAn
     auto* slice2_out = builder.MakeIntermediate();
     builder.AddNode("Slice", {concat_out, starts2, ends2}, {slice2_out});
 
-    // Consumer Add nodes: Slice output at input index 1, matching the optimizer's
-    // hardcoded ReplaceNodeInput(..., 1, ...) on line 267.
-    auto* lhs0 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* lhs0 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
     auto* add0_out = builder.MakeOutput();
     builder.AddNode("Add", {lhs0, slice0_out}, {add0_out});
 
-    auto* lhs1 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* lhs1 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
     auto* add1_out = builder.MakeOutput();
     builder.AddNode("Add", {lhs1, slice1_out}, {add1_out});
 
-    auto* lhs2 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* lhs2 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
     auto* add2_out = builder.MakeOutput();
     builder.AddNode("Add", {lhs2, slice2_out}, {add2_out});
   };
@@ -4903,15 +4901,15 @@ TEST_F(GraphTransformationTests, ConcatSliceElimination_OpsetV1_MissingAxesAttri
     slice2.AddAttribute("starts", std::vector<int64_t>{4});
     slice2.AddAttribute("ends", std::vector<int64_t>{6});
 
-    auto* lhs0 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* lhs0 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
     auto* add0_out = builder.MakeOutput();
     builder.AddNode("Add", {lhs0, slice0_out}, {add0_out});
 
-    auto* lhs1 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* lhs1 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
     auto* add1_out = builder.MakeOutput();
     builder.AddNode("Add", {lhs1, slice1_out}, {add1_out});
 
-    auto* lhs2 = builder.MakeInput<float>({{2}}, {0.0f, 0.0f});
+    auto* lhs2 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
     auto* add2_out = builder.MakeOutput();
     builder.AddNode("Add", {lhs2, slice2_out}, {add2_out});
   };
@@ -4932,8 +4930,10 @@ TEST_F(GraphTransformationTests, ConcatSliceElimination_OpsetV1_MissingAxesAttri
     return Status::OK();
   };
 
-  // Opset 1: Concat v4 requires opset >= 4, but the model opset must be 1 for Slice v1.
-  // Using opset 4 which gives Concat v4 and Slice v1.
+  // Choose an opset < 10 to use the attribute-based Slice (v1-style)
+  // while also meeting Concat's opset requirements.
+  // Opset 4 satisfies this by providing Concat v4 and
+  // attribute-based Slice.
   auto transformer = std::make_unique<ConcatSliceElimination>();
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 4, *logger_, std::move(transformer),
                                         TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
