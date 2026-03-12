@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 """
 Generate expected outputs for DeformConv tests using torchvision.ops.deform_conv2d.
 Run with: .venv/bin/python onnxruntime/test/providers/cpu/nn/deform_conv_expected_gen.py
@@ -13,7 +15,7 @@ import torch
 import torchvision.ops
 
 
-def _pair(x):
+def _pair(x: int | tuple[int, int]) -> tuple[int, int]:
     if isinstance(x, int):
         return (x, x)
     return x
@@ -34,9 +36,9 @@ def run_case(
     n_offset_grps: int,
     kernel_h: int,
     kernel_w: int,
-    stride: tuple,
-    pad: tuple,
-    dilation: tuple,
+    stride: tuple[int, int] | int,
+    pad: tuple[int, int] | int,
+    dilation: tuple[int, int] | int,
     in_h: int,
     in_w: int,
     seed: int = 42,
