@@ -129,16 +129,35 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   if (has_position_ids) {
     position_ids = model_builder.GetOperand(input_defs[9]->Name());
   } else {
-    // If position_ids is not provided, treat seqlens_k as the per-batch position offset [B, 1].
-    //
-    // Runtime contract for inference caller:
-    //   - Prefill (S > 1): provide seqlens_k = 0 (or desired start position), so
-    //     rotary positions become [0..S-1] (or [start..start+S-1]).
-    //   - Decode  (S = 1): provide current token position in seqlens_k, so
-    //     rotary position becomes [seqlens_k].
-    //
-    // This removes static graph branching on sequence_length while preserving
-    // prefill/decode semantics through runtime input values.
+    // If position_ids is not provided, derive it from seqlens_k as the per-batch position offset.
+    // The model computes seqlens_k = reduceSum(attention_mask) - 1 = past_seq_len + (S - 1).
+    // We subtract (S - 1) to recover past_sequence_length, which serves as the position offset:
+    //   - Prefill (S = L):  offset = (L-1) - (L-1) = 0  → positions [0..S-1]
+    //   - Decode  (S = 1):  offset = seqlens_k - 0 = seqlens_k → position [seqlens_k]
+
+    // Compute S-1 dynamically from query sequence_length.
+    emscripten::val pos_one_constant = model_builder.CreateOrGetConstant<int>(
+        ONNX_NAMESPACE::TensorProto_DataType_INT32, 1, {1});
+    emscripten::val pos_s_shape = emscripten::val::array();
+    pos_s_shape.call<void>("push", query_input["shape"][1]);
+    emscripten::val pos_opts = emscripten::val::object();
+    pos_opts.set("label", node.Name() + "_/GQA/pos/seq_ones");
+    emscripten::val pos_seq_ones = model_builder.GetBuilder().call<emscripten::val>(
+        "expand", pos_one_constant, pos_s_shape, pos_opts);
+    emscripten::val pos_reduce_opts = emscripten::val::object();
+    pos_reduce_opts.set("keepDimensions", false);
+    pos_reduce_opts.set("label", node.Name() + "_/GQA/pos/seq_length");
+    emscripten::val pos_seq_length = model_builder.GetBuilder().call<emscripten::val>(
+        "reduceSum", pos_seq_ones, pos_reduce_opts);
+    pos_opts.set("label", node.Name() + "_/GQA/pos/s_minus_1");
+    emscripten::val pos_s_minus_1 = model_builder.GetBuilder().call<emscripten::val>(
+        "sub", pos_seq_length, pos_one_constant, pos_opts);
+
+    // Correct seqlens_k by subtracting (S-1) to get past_sequence_length as position offset.
+    pos_opts.set("label", node.Name() + "_/GQA/pos/corrected_seqlens_k");
+    emscripten::val corrected_seqlens_k = model_builder.GetBuilder().call<emscripten::val>(
+        "sub", seqlens_k_input, pos_s_minus_1, pos_opts);
+
     emscripten::val reshape_options = emscripten::val::object();
     reshape_options.set("label", node.Name() + "_/GQA/seqlens_k_reshape_for_position");
 
@@ -146,7 +165,7 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
     seqlens_k_shape.call<void>("push", query_input["shape"][0]);
     seqlens_k_shape.call<void>("push", 1);
     emscripten::val reshaped_seqlens_k = model_builder.GetBuilder().call<emscripten::val>(
-        "reshape", seqlens_k_input, seqlens_k_shape, reshape_options);
+        "reshape", corrected_seqlens_k, seqlens_k_shape, reshape_options);
 
     // seqlens_k is INT32, but position_ids_range in ApplyRotaryEmbedding may be INT64
     // if int64 is supported. We need to cast to match the expected type.
@@ -321,15 +340,29 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
     // Build scatter_pos_for_scatter as [B, 1, 1] from seqlens_k.
     //
     // NOTE [Prefill/Decode behavior]:
-    // The previous implementation used a static `if_prefill` constant and `where()` to choose
-    // between offset 0 (prefill) and `seqlens_k` (decode).
+    // The model computes seqlens_k = reduceSum(attention_mask) - 1, which equals
+    // past_sequence_length + (S - 1), where S is the current input sequence_length.
+    // To get the correct scatter offset (past_sequence_length), we subtract (S - 1):
+    //   - Prefill (S = L):  offset = (L-1) - (L-1) = 0
+    //   - Decode  (S = 1):  offset = seqlens_k - 0 = seqlens_k
     //
-    // In the dynamic-shape implementation we remove that static branch and always use `seqlens_k`
-    // as the scatter offset source:
-    //   - Prefill: inference code should provide `seqlens_k = 0` (or the desired start offset).
-    //   - Decode:  inference code should provide current sequence position in `seqlens_k`.
-    //
-    // This keeps the graph shape-dynamic while preserving stage semantics via runtime input values.
+    // This keeps the graph shape-dynamic while preserving prefill/decode semantics.
+
+    // Compute S-1 dynamically as a scalar INT32 tensor.
+    emscripten::val seq_ones_shape = emscripten::val::array();
+    seq_ones_shape.call<void>("push", key_for_scatter["shape"][1]);
+    common_options.set("label", node.Name() + "_/GQA/scatter/seq_ones");
+    emscripten::val seq_ones = model_builder.GetBuilder().call<emscripten::val>(
+      "expand", value_one_constant, seq_ones_shape, common_options);
+    emscripten::val seq_reduce_options = emscripten::val::object();
+    seq_reduce_options.set("keepDimensions", false);
+    seq_reduce_options.set("label", node.Name() + "_/GQA/scatter/seq_length");
+    emscripten::val seq_length_scalar = model_builder.GetBuilder().call<emscripten::val>(
+      "reduceSum", seq_ones, seq_reduce_options);
+    common_options.set("label", node.Name() + "_/GQA/scatter/s_minus_1");
+    emscripten::val s_minus_1 = model_builder.GetBuilder().call<emscripten::val>(
+      "sub", seq_length_scalar, value_one_constant, common_options);
+
     emscripten::val scatter_pos_reshape_shape = emscripten::val::array();
     scatter_pos_reshape_shape.call<void>("push", key_for_scatter["shape"][0]);
     scatter_pos_reshape_shape.call<void>("push", 1);
@@ -337,6 +370,11 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
     common_options.set("label", node.Name() + "_/GQA/scatter/scatter_pos_reshape");
     emscripten::val scatter_pos_for_scatter = model_builder.GetBuilder().call<emscripten::val>(
       "reshape", seqlens_k_input, scatter_pos_reshape_shape, common_options);
+
+    // Correct scatter offset: seqlens_k - (S - 1) = past_sequence_length
+    common_options.set("label", node.Name() + "_/GQA/scatter/scatter_pos_fix");
+    scatter_pos_for_scatter = model_builder.GetBuilder().call<emscripten::val>(
+      "sub", scatter_pos_for_scatter, s_minus_1, common_options);
 
     emscripten::val bsk_shape = emscripten::val::array();
     bsk_shape.call<void>("push", key_for_scatter["shape"][0]);
@@ -555,6 +593,11 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
   gather_offset_options.set("axis", 0);
   emscripten::val scatter_pos_for_mask = model_builder.GetBuilder().call<emscripten::val>(
       "gather", seqlens_k_input, first_index_constant, gather_offset_options);
+
+  // Correct mask offset: seqlens_k[0] - (S - 1) = past_sequence_length
+  common_options.set("label", node.Name() + "_/GQA/attn_mask/scatter_pos_fix");
+  scatter_pos_for_mask = model_builder.GetBuilder().call<emscripten::val>(
+      "sub", scatter_pos_for_mask, s_minus_1, common_options);
 
   common_options.set("label", node.Name() + "_/GQA/attn_mask/add");
   emscripten::val pre_neq_right = model_builder.GetBuilder().call<emscripten::val>(
