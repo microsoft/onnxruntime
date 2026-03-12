@@ -116,3 +116,20 @@ index c2ba43b7c..c0f229c6e 100644
              // process step
              auto step = steps[axis_index];
              if (step == 0) {
+diff --git a/onnx/defs/tensor/defs.cc b/onnx/defs/tensor/defs.cc
+index 4e0c5f913..a7cd6171a 100644
+--- a/onnx/defs/tensor/defs.cc
++++ b/onnx/defs/tensor/defs.cc
+@@ -794,6 +794,12 @@ static void processSliceInputs(const int64_t input_rank, int64_t& start, int64_
+   if (step == 0) {
+     fail_shape_inference("'step' cannot be 0 for Slice");
+   }
++  // empty dimension: start=0, end=0 so caller computes output_dim=0
++  if (input_rank == 0) {
++    start = 0;
++    end = 0;
++    return;
++  }
+   // process start
+   if (start < 0)
+     start += input_rank;
