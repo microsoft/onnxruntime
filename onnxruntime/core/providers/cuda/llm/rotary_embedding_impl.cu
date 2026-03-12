@@ -126,7 +126,7 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
   // of head_size, so the entire head must fit in a single thread block.
   ORT_ENFORCE(head_size <= max_threads_per_block, "Rotary embedding dim must be <= max_threads_per_block");
   // strides in canonical bnsh coord, h is always contiguous (dim_stride == 1)
-  ORT_ENFORCE(in_strides.w == 1 && out_strides.w == 1, "head dim must contiguous");
+  ORT_ENFORCE(in_strides.w == 1 && out_strides.w == 1, "head dim must be contiguous");
 
   int tpb = (head_size + 31) / 32 * 32;
 

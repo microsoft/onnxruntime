@@ -707,7 +707,7 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
 
   // Skip present_key/value validation: trailing positions beyond valid tokens are
   // intentionally uninitialized for performance (Flash respects seqlens_k bounds).
-  // Other tests (AllTrueMask, FirstDecode) verify present_key/value for fully-valid cases.
+  // Other tests (AllTrueMask, UnfusedPrompt) verify present_key/value for fully-valid cases.
   // We must still declare these outputs (required when past_key is provided), but use
   // placeholder values — the op validates shapes, not content, for optional outputs.
 
@@ -730,24 +730,68 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
   test.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, v_head_size},
                             ToFloat16(present_value_placeholder));
 
-  // Custom verifier: validate only Y (output 0). present_key/value (outputs 1, 2) may have
-  // uninitialized tail positions (NaN-safe: avoids IEEE 754 NaN!=NaN tolerance failures).
+  // Custom verifier: validate Y and present_key/value prefix (NaN-safe for uninitialized tail).
+  // With mask [T,T,T,F] and seqlen_offset=-1: past_seqlens=2, valid positions=[0,3), position 3 uninitialized.
   auto expected_y_fp16 = ToFloat16(y);
+  const int valid_seq_positions = 3;  // past_seqlens(2) + kv_sequence_length(1)
   test.SetCustomOutputVerifier(
-      [&expected_y_fp16](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+      [&expected_y_fp16, &past_key, &past_value, &k, &v,
+       kv_num_heads, total_sequence_length, head_size, v_head_size,
+       past_sequence_length, kv_sequence_length, valid_seq_positions](
+          const std::vector<OrtValue>& fetches, const std::string& provider_type) {
         ASSERT_GE(fetches.size(), 3u) << "Expected 3 outputs, provider: " << provider_type;
+
+        // Validate Y (output 0).
         const auto& y_tensor = fetches[0].Get<Tensor>();
         auto y_span = y_tensor.DataAsSpan<MLFloat16>();
         ASSERT_EQ(y_span.size(), expected_y_fp16.size()) << "Y size mismatch, provider: " << provider_type;
         for (size_t i = 0; i < y_span.size(); ++i) {
-          float actual = y_span[i].ToFloat();
-          float expected = expected_y_fp16[i].ToFloat();
-          ASSERT_NEAR(actual, expected, 3e-3f)
-              << "Y mismatch at index " << i << ": expected=" << expected
-              << " actual=" << actual << ", provider: " << provider_type;
+          ASSERT_NEAR(y_span[i].ToFloat(), expected_y_fp16[i].ToFloat(), 3e-3f)
+              << "Y mismatch at " << i << ", provider: " << provider_type;
         }
-        // present_key/value (fetches[1], fetches[2]): intentionally not validated.
-        // Tail positions beyond valid tokens are uninitialized for performance.
+
+        // Validate present_key prefix (output 1): positions [0, valid_seq_positions) in BNSH layout.
+        // past_seqlens=2 rows from past_key, then 1 row from k. Position 3 is uninitialized (skip).
+        const int past_seqlens = valid_seq_positions - kv_sequence_length;  // = 2
+        {
+          auto pk_span = fetches[1].Get<Tensor>().DataAsSpan<MLFloat16>();
+          for (int h = 0; h < kv_num_heads; ++h) {
+            int present_h = h * total_sequence_length * head_size;
+            int past_h = h * past_sequence_length * head_size;
+            // Check past rows [0, past_seqlens)
+            for (int s = 0; s < past_seqlens; ++s)
+              for (int d = 0; d < head_size; ++d)
+                ASSERT_NEAR(pk_span[present_h + s * head_size + d].ToFloat(),
+                            past_key[past_h + s * head_size + d], 1e-3f)
+                    << "present_key past mismatch h=" << h << " s=" << s << " d=" << d;
+            // Check new key row at position past_seqlens
+            int k_h = h * kv_sequence_length * head_size;
+            for (int d = 0; d < head_size; ++d)
+              ASSERT_NEAR(pk_span[present_h + past_seqlens * head_size + d].ToFloat(),
+                          k[k_h + d], 1e-3f)
+                  << "present_key new-key mismatch h=" << h << " d=" << d;
+          }
+        }
+
+        // Validate present_value prefix (output 2): same structure with v_head_size.
+        {
+          auto pv_span = fetches[2].Get<Tensor>().DataAsSpan<MLFloat16>();
+          for (int h = 0; h < kv_num_heads; ++h) {
+            int present_h = h * total_sequence_length * v_head_size;
+            int past_h = h * past_sequence_length * v_head_size;
+            for (int s = 0; s < past_seqlens; ++s)
+              for (int d = 0; d < v_head_size; ++d)
+                ASSERT_NEAR(pv_span[present_h + s * v_head_size + d].ToFloat(),
+                            past_value[past_h + s * v_head_size + d], 1e-3f)
+                    << "present_value past mismatch h=" << h << " s=" << s << " d=" << d;
+            int v_h = h * kv_sequence_length * v_head_size;
+            for (int d = 0; d < v_head_size; ++d)
+              ASSERT_NEAR(pv_span[present_h + past_seqlens * v_head_size + d].ToFloat(),
+                          v[v_h + d], 1e-3f)
+                  << "present_value new-value mismatch h=" << h << " d=" << d;
+          }
+        }
+        // Position 3 (index [h, 3, :]) intentionally not validated — uninitialized for performance.
       });
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -755,9 +799,10 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// Flash decode path with fp16, bool mask, and past_sequence_length=0 (first decode step).
-// Tests edge case where past_key/past_value are empty tensors.
-TEST(AttentionTest, Attention4DAttnMaskBoolFirstDecodeFloat16) {
+// MEA/unfused prompt path with fp16 and bool mask (single token, no past KV cache).
+// past_key/past_value are absent (None); with bool mask and no past_key, CUDA routes to
+// MEA/unfused (not Flash — flash_eligible requires past_key != nullptr with bool mask).
+TEST(AttentionTest, Attention4DAttnMaskBoolUnfusedPromptFloat16) {
   int batch_size = 1;
   int q_num_heads = 2;
   int q_sequence_length = 1;
