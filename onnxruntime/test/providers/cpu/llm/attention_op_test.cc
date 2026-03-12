@@ -705,12 +705,11 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
       std::fill_n(y.begin() + h * v_head_size, v_head_size, y_per_head[h]);
   }
 
-  // Present key/value buffers. Tail positions beyond valid tokens (past + new) are
-  // intentionally not zero-initialized by the kernel for performance — Flash attention
-  // only reads within seqlens_k bounds, and downstream consumers use seqlens_k to
-  // determine valid positions. We use a large tolerance to skip validation of tail values.
-  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
-  std::vector<float> present_value(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
+  // Skip present_key/value validation: trailing positions beyond valid tokens are
+  // intentionally uninitialized for performance (Flash respects seqlens_k bounds).
+  // Other tests (AllTrueMask, FirstDecode) verify present_key/value for fully-valid cases.
+  // We must still declare these outputs (required when past_key is provided), but use
+  // placeholder values — the op validates shapes, not content, for optional outputs.
 
   OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
   test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
@@ -722,6 +721,9 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
 
   test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, v_head_size},
                             ToFloat16(y), false, 0, 3e-3f);
+  // present_key/value: required outputs but content not validated (uninitialized tail).
+  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
+  std::vector<float> present_value(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
   test.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
                             ToFloat16(present_key), false, 0, 1e10f);
   test.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, v_head_size},

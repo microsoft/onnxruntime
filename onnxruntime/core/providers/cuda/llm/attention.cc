@@ -321,7 +321,9 @@ Status Attention<T>::RunFlashAttention(
     // This replaces the old pattern of memset + strided cudaMemcpy2DAsync + Flash's
     // internal Append_KV, eliminating ~67MB of redundant memory writes per decode step.
     // LaunchConcatNewToPastKV reads past (BNSH) and new (BSNH), writes present (BNSH).
-    using CudaT = typename ToCudaType<T>::MappedType;
+    // OrtToCudaType maps BFloat16 → __nv_bfloat16 (native HW arithmetic on SM80+),
+    // consistent with GQA's early native-type conversion pattern.
+    using CudaT = typename OrtToCudaType<T>::type;
 
     // Step 1: Compute per-batch past sequence lengths for the concat kernel.
     // The concat kernel needs past_seq_lens to know where past data ends and new begins.
