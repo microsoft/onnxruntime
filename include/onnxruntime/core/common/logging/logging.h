@@ -58,12 +58,20 @@ namespace logging {
 // This class wraps `std::chrono::system_clock::time_point` and provides `operator<<`.
 // It is a workaround for the inconsistent availability of `std::chrono::operator<<` for
 // `std::chrono::system_clock::time_point`.
-// When all builds support `std::chrono::operator<<`, we can simplify to this:
+// TODO When all builds support `std::chrono::operator<<`, we can simply use `std::chrono::system_clock::time_point`:
 //   `using Timestamp = std::chrono::system_clock::time_point;`
 class Timestamp {
  public:
   using TimePoint = std::chrono::system_clock::time_point;
+
+  // This constructor is intentionally not `explicit` to allow implicit conversion from
+  // `std::chrono::system_clock::time_point`, a.k.a., `TimePoint`.
+  // The hope is that eventually we can replace the `Timestamp` class with an alias to `TimePoint`.
   Timestamp(const TimePoint& time_point) noexcept : time_point_{time_point} {}
+
+  // Partial implementation of `std::chrono::system_clock::time_point` interface.
+
+  using duration = TimePoint::duration;
 
   friend std::ostream& operator<<(std::ostream& os, const Timestamp& time_stamp) {
     return time_stamp.WriteToStream(os);
@@ -382,7 +390,7 @@ inline Timestamp LoggingManager::GetTimestamp() const noexcept {
   static const Epochs& epochs = GetEpochs();
 
   const auto high_res_now = std::chrono::high_resolution_clock::now();
-  return std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+  return std::chrono::time_point_cast<Timestamp::duration>(
       epochs.system + (high_res_now - epochs.high_res) + epochs.localtime_offset_from_utc);
 }
 
