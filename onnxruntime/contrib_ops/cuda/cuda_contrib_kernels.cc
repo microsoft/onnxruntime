@@ -89,8 +89,10 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedMultiHeadAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedMultiHeadAttention);
+#if !defined(DISABLE_GENERATION_OPS)
 class CUDA_MS_OP_CLASS_NAME(1, BeamSearch);
 class CUDA_MS_OP_CLASS_NAME(1, WhisperBeamSearch);
+#endif
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ConvTransposeWithDynamicPads);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, Crop);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, Crop);
@@ -115,6 +117,10 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_int8_t, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_uint8_t, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_uint8_t, GroupQueryAttention);
 #endif
+#ifdef USE_FP8_KV_CACHE
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, GroupQueryAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention);
+#endif
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention);
@@ -123,7 +129,9 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int64_t, DynamicSlice);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, EmbedLayerNormalization);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EmbedLayerNormalization);
+#if !defined(DISABLE_GENERATION_OPS)
 class CUDA_MS_OP_CLASS_NAME(1, GreedySearch);
+#endif
 class CUDA_MS_OP_CLASS_NAME(1, GroupNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, NhwcConv);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, NhwcConv);
@@ -139,7 +147,9 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding);
+#if !defined(DISABLE_GENERATION_OPS)
 class CUDA_MS_OP_CLASS_NAME(1, Sampling);
+#endif
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, ScaledTanh);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, ScaledTanh);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledTanh);
@@ -336,8 +346,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedMultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedMultiHeadAttention)>,
+#if !defined(DISABLE_GENERATION_OPS)
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BeamSearch)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, WhisperBeamSearch)>,
+#endif
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ConvTransposeWithDynamicPads)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, Crop)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, Crop)>,
@@ -362,6 +374,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_uint8_t, GroupQueryAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_uint8_t, GroupQueryAttention)>,
 #endif
+#ifdef USE_FP8_KV_CACHE
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, GroupQueryAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention)>,
+#endif
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention)>,
@@ -370,7 +386,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int64_t, DynamicSlice)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, EmbedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EmbedLayerNormalization)>,
+#if !defined(DISABLE_GENERATION_OPS)
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, GreedySearch)>,
+#endif
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, GroupNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, NhwcConv)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, NhwcConv)>,
@@ -386,7 +404,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding)>,
+#if !defined(DISABLE_GENERATION_OPS)
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Sampling)>,
+#endif
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, ScaledTanh)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, ScaledTanh)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledTanh)>,

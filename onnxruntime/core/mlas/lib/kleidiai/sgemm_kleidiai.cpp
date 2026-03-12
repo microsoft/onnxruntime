@@ -1,24 +1,22 @@
 //
-// SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2025-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 //
 // SPDX-License-Identifier: MIT
 //
 
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p16vlx1b_1x16vl_sme2_mla.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p8x1biasf32_6x8x4_neon_mla.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.h"
+#include <vector>
+#include <cstring>
+#include <cstddef>
+
+#include "mlas.h"
+
+#include "mlasi_kleidiai.h"
+
+#include "kai_ukernel_interface.h"
+
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.h"
-#include "mlas.h"
-#include "mlasi_kleidiai.h"
-#include "kai_ukernel_interface.h"
-
-#if defined(ENABLE_QMX_KERNELS)
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa.h"
-#endif // ENABLE_QMX_KERNELS
 
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffers {
@@ -30,8 +28,8 @@ struct KaiTlsBuffers {
 };
 static thread_local KaiTlsBuffers g_kai_tls;
 
-const kai_matmul_clamp_f32_f32p_f32p_ukernel& sgemm_gemm = GetKleidiAISGemmUKernel();
-const kai_matmul_clamp_f32_f32_f32p_ukernel& sgemm_gemv = GetKleidiAISGemvUKernel();
+const KaiF32SgemmKernel& sgemm_gemm = GetKleidiAISGemmUKernel();
+const KaiF32SgemvKernel& sgemm_gemv = GetKleidiAISGemvUKernel();
 
 
 // Helpers for GEMV
@@ -213,7 +211,7 @@ ArmKleidiAI::MlasGemvBatch(
             g_kai_tls.output_tile.resize(rhs_shape);
 
             // Run specialized 1xN-by-K kernel
-            sgemm_gemv.run_matmul(
+            sgemm_gemv.ukernel.run_matmul(
                 1,                                          // Value of 1 for M == 1 and this value represents N when N == 1 case
                 rhs_shape,                                  // Value of N for M == 1 and this value is M when N == 1
                 K,                                          // K
@@ -336,9 +334,9 @@ Return Value:
 
     if (TransA == CblasNoTrans) {
 
-        const size_t nr = sgemm_gemm.get_nr();
-        const size_t kr = sgemm_gemm.get_kr();
-        const size_t sr = sgemm_gemm.get_sr();
+        const size_t nr = sgemm_gemm.ukernel.get_nr();
+        const size_t kr = sgemm_gemm.ukernel.get_kr();
+        const size_t sr = sgemm_gemm.ukernel.get_sr();
 
         // Ensure size and zero the used span.
         g_kai_tls.bias_zero.resize(N, 0.0f);
@@ -443,17 +441,17 @@ Return Value:
         }
     }
 
-    size_t m_step = sgemm_gemm.get_m_step();
-    size_t n_step = sgemm_gemm.get_n_step();
+    size_t m_step = sgemm_gemm.ukernel.get_m_step();
+    size_t n_step = sgemm_gemm.ukernel.get_n_step();
 
     if ((M < m_step || N < n_step) && !Data->BIsPacked) {
         // Fallback to MLAS
         return false;
     }
 
-    const size_t mr = sgemm_gemm.get_mr();
-    const size_t kr = sgemm_gemm.get_kr();
-    const size_t sr = sgemm_gemm.get_sr();
+    const size_t mr = sgemm_gemm.ukernel.get_mr();
+    const size_t kr = sgemm_gemm.ukernel.get_kr();
+    const size_t sr = sgemm_gemm.ukernel.get_sr();
 
     size_t LhsPackedStride = 0;
     std::byte* LhsPackedData = nullptr;
@@ -547,7 +545,7 @@ Return Value:
         ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
 
         // Get rhs tile, B
-        const size_t rhs_packed_offset = sgemm_gemm.get_rhs_packed_offset(NIdx * n_step, K);
+        const size_t rhs_packed_offset = sgemm_gemm.ukernel.get_rhs_packed_offset(NIdx * n_step, K);
 
         const std::byte* B_base = Data[0].BIsPacked
             ? reinterpret_cast<const std::byte*>(Data[BIdx].B)
@@ -555,7 +553,7 @@ Return Value:
         auto BTile = reinterpret_cast<const void*>(B_base + rhs_packed_offset);
 
         // Get lhs tile, A
-        const size_t lhs_packed_offset = sgemm_gemm.get_lhs_packed_offset(MIdx * m_step, K);
+        const size_t lhs_packed_offset = sgemm_gemm.ukernel.get_lhs_packed_offset(MIdx * m_step, K);
 
         const std::byte* A_base = LhsPackedData + LhsPackedStride * BIdx;
         auto ATile = reinterpret_cast<const float*>(A_base + lhs_packed_offset);
@@ -569,48 +567,50 @@ Return Value:
             MIdx * m_step * Data[BIdx].ldc * sizeof(float) +
             NIdx * n_step * sizeof(float)
         );
-        // Allocate temporary buffer for raw A*B result (TLS reusable buffer)
-        size_t tile_elems = TileSizeM * TileSizeN;
-
-        // resize the tile to the required size
-        g_kai_tls.output_tile.resize(tile_elems);
-
-        float* temp_tile = g_kai_tls.output_tile.data();
-
-        sgemm_gemm.run_matmul(
-            TileSizeM,
-            TileSizeN,
-            K,
-            ATile, BTile, temp_tile,
-            TileSizeN * sizeof(float), sizeof(float),
-            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-        );
 
         // Final output tile pointer
         float* dst_tile = reinterpret_cast<float*>(CTile);
 
-            // quick copy of data in cases where we are not scaling or accumulating anything
-            // with bounds checking on tile sizing to ensure the data fits in the memory block
-            bool can_memcpy = (
-                Data[BIdx].alpha == 1.0f &&
-                Data[BIdx].beta == 0.0f &&
-                Data[BIdx].ldc == TileSizeN &&
-                MIdx * m_step + TileSizeM <= M &&
-                NIdx * n_step + TileSizeN <= N &&
-                TileSizeM != 0 &&
-                TileSizeN != 0);
+        const float alpha = Data[BIdx].alpha;
+        const float beta = Data[BIdx].beta;
+        const size_t ldc = Data[BIdx].ldc;
 
-            if (can_memcpy) {
-                std::memcpy(dst_tile, temp_tile, TileSizeM * TileSizeN * sizeof(float));
-                return;
-            }
+        // Select output destination and strides once, then run_matmul exactly once.
+        const bool direct_to_c = (
+            alpha == 1.0f &&
+            beta == 0.0f);
 
-            float alpha = Data[BIdx].alpha;
-            float beta = Data[BIdx].beta;
-            size_t ldc = Data[BIdx].ldc;
+        float* out_tile = nullptr;
+        size_t out_row_stride_bytes = 0;
 
-            ApplyAlphaBeta2D(temp_tile, TileSizeM, TileSizeN, alpha, beta, dst_tile, ldc);
+        if (direct_to_c) {
+            out_tile = dst_tile;
+            out_row_stride_bytes = ldc * sizeof(float);
+        } else {
+            // Compute into a temporary buffer for raw A*B result (TLS reusable buffer)
+            const size_t tile_elems = TileSizeM * TileSizeN;
+            g_kai_tls.output_tile.resize(tile_elems);
+            out_tile = g_kai_tls.output_tile.data();
+            out_row_stride_bytes = TileSizeN * sizeof(float);
+        }
+
+        KLEIDIAI_KERNEL_LOG(sgemm_gemm.name
+                            << " M=" << TileSizeM << " N=" << TileSizeN << " K=" << K);
+        sgemm_gemm.ukernel.run_matmul(
+            TileSizeM,
+            TileSizeN,
+            K,
+            ATile, BTile, out_tile,
+            out_row_stride_bytes, sizeof(float),
+            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+        );
+
+        if (direct_to_c) {
             return;
-        });
-        return true;
+        }
+
+        ApplyAlphaBeta2D(out_tile, TileSizeM, TileSizeN, alpha, beta, dst_tile, ldc);
+        return;
+    });
+    return true;
 }

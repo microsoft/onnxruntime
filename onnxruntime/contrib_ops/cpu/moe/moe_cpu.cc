@@ -524,10 +524,10 @@ Status MoE<float>::ComputeGEMM(const float* A, const float* B, float* C,
 
   if (transpose_B) {
     params.ldb = static_cast<size_t>(K);
-    MlasGemm(CblasNoTrans, CblasTrans, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), params, nullptr);
+    MlasGemm(CblasNoTrans, CblasTrans, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), params, nullptr, &mlas_backend_kernel_selector_config_);
   } else {
     params.ldb = static_cast<size_t>(N);
-    MlasGemm(CblasNoTrans, CblasNoTrans, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), params, nullptr);
+    MlasGemm(CblasNoTrans, CblasNoTrans, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), params, nullptr, &mlas_backend_kernel_selector_config_);
   }
 
   return Status::OK();

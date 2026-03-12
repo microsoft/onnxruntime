@@ -1015,6 +1015,38 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_pytorch_half_pixel) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: results mismatch
 }
 
+TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_CudaRegression) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 2.0f, 2.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
+
+  constexpr int64_t N = 1, C = 1, D = 3, H = 4, W = 5;
+  std::vector<float> X(static_cast<size_t>(N * C * D * H * W), 1.0f);
+
+  test.AddInput<float>("X", {N, C, D, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {5}, scales);
+
+  constexpr int64_t out_D = D * 2;
+  constexpr int64_t out_H = H * 2;
+  constexpr int64_t out_W = W * 2;
+  std::vector<float> Y(static_cast<size_t>(N * C * out_D * out_H * out_W), 1.0f);
+
+  test.AddOutput<float>("Y", {N, C, out_D, out_H, out_W}, Y);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
   // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {

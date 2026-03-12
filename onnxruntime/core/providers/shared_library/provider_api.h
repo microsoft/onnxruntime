@@ -222,9 +222,6 @@ class TensorShape;
 struct Prepare;
 struct PrepareContext;
 enum class Mode : int;
-struct EinsumComputePreprocessor;
-template <typename T>
-struct EinsumTypedComputeProcessor;
 struct SessionOptions;
 
 namespace contrib {
@@ -253,7 +250,6 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 }  // namespace onnxruntime
 
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
 #include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/external_data_loader.h"
@@ -451,11 +447,6 @@ inline Status GetTensorProtoWithDataIfInMemory(
 
 inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return g_host->Utils__HasExternalDataInMemory(ten_proto);
-}
-
-inline Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                       const std::filesystem::path& location) {
-  return g_host->Utils__ValidateExternalDataPath(base_dir, location);
 }
 
 }  // namespace utils

@@ -146,12 +146,12 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
     lstm::UniDirectionalLstm<InputT> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_,
                                         Direction::kForward, input_forget_, bias_1, peephole_weights_1, initial_hidden_1,
                                         initial_cell_1, activation_funcs_.Entries()[0], activation_funcs_.Entries()[1],
-                                        activation_funcs_.Entries()[2], clip_, thread_pool);
+                                        activation_funcs_.Entries()[2], clip_, thread_pool, &mlas_backend_kernel_selector_config_);
 
     lstm::UniDirectionalLstm<InputT> bw(alloc, logger, seq_length, batch_size, input_size, hidden_size_,
                                         Direction::kReverse, input_forget_, bias_2, peephole_weights_2, initial_hidden_2,
                                         initial_cell_2, activation_funcs_.Entries()[3], activation_funcs_.Entries()[4],
-                                        activation_funcs_.Entries()[5], clip_, thread_pool);
+                                        activation_funcs_.Entries()[5], clip_, thread_pool, &mlas_backend_kernel_selector_config_);
 
     fw.Compute(input, sequence_lens_span, num_directions_, W_1, R_1, output_1,
                hidden_output_1, last_cell_1);
@@ -161,7 +161,7 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
     lstm::UniDirectionalLstm<InputT> fw(alloc, logger, seq_length, batch_size, input_size, hidden_size_, direction_,
                                         input_forget_, bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
                                         activation_funcs_.Entries()[0], activation_funcs_.Entries()[1],
-                                        activation_funcs_.Entries()[2], clip_, thread_pool);
+                                        activation_funcs_.Entries()[2], clip_, thread_pool, &mlas_backend_kernel_selector_config_);
 
     fw.Compute(input, sequence_lens_span, num_directions_, W_1, R_1, output_1,
                hidden_output_1, last_cell_1);

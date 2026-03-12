@@ -8,6 +8,7 @@
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 template <typename T>
@@ -43,6 +44,8 @@ class RNN : public OpKernel {
 
     ORT_ENFORCE(layout_ == 0,
                 "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -70,6 +73,9 @@ class RNN : public OpKernel {
 
   // added since opset 14. Default value 0 matches the behavior prior to opset14
   int64_t layout_;
+
+  // MLAS backend kernel selector config
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime

@@ -1295,11 +1295,6 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::utils::HasExternalDataInMemory(ten_proto);
   }
 
-  Status Utils__ValidateExternalDataPath(const std::filesystem::path& base_path,
-                                         const std::filesystem::path& location) override {
-    return onnxruntime::utils::ValidateExternalDataPath(base_path, location);
-  }
-
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,

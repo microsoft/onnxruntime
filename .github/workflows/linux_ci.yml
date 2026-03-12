@@ -68,6 +68,21 @@ jobs:
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  build-linux-x64-release-py314:
+    name: Build Linux x64 Release (Python 3.14)
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
+      docker_image_repo: onnxruntimecpubuildpythonx64
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
+      job_identifier: build-linux-x64-release-py314
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   orttraining-linux-ci-pipeline:
     name: Build Linux x64 Release with training
     uses: ./.github/workflows/reusable_linux_build.yml
@@ -109,7 +124,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/Dockerfile
       docker_image_repo: onnxruntimecpubuildpythonaarch64
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
-      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
+      python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: build-linux-arm64-release
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

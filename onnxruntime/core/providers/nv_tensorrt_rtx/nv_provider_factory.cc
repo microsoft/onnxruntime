@@ -4,6 +4,11 @@
 
 #include <string.h>
 #include <atomic>
+#include <cerrno>
+#include <cstdint>
+#include <cstdlib>
+#include <mutex>
+#include <unordered_map>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -13,6 +18,11 @@
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_custom_ops.h"
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
+
+// D3D12 headers for graphics interop on Windows
+#if defined(_WIN32) && USE_DX_INTEROP
+#include <d3d12.h>
+#endif
 
 #include "onnx_ctx_model_helper.h"
 #include "nv_provider_factory.h"
@@ -62,7 +72,7 @@ struct NvProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
   std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
-                                                     const OrtLogger& session_logger);
+                                                     const OrtLogger& session_logger) override;
 
  private:
   NvExecutionProviderInfo info_;
@@ -110,7 +120,7 @@ struct Nv_Provider : Provider {
     return std::make_shared<NvProviderFactory>(info);
   }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) override {
     if (param == nullptr) {
       LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL options to CreateExecutionProviderFactory()";
       return nullptr;
@@ -1011,6 +1021,11 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     IsStreamAware = IsStreamAwareImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
     ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
+
+    // Graphics interop support (added in ORT 1.25)
+    InitGraphicsInterop = InitGraphicsInteropImpl;
+    DeinitGraphicsInterop = DeinitGraphicsInteropImpl;
+
     CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
     ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
   }
@@ -1085,9 +1100,10 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
         continue;
       }
 
-      // Ensure the LUID is 8 bytes and reinterpret it directly as a uint64_t for comparison.
+      // Copy LUID into uint64_t to avoid unaligned read and strict aliasing (luid is a byte array).
       static_assert(sizeof(prop.luid) == sizeof(uint64_t), "cudaDeviceProp::luid should be 8 bytes");
-      uint64_t current_luid = *reinterpret_cast<const uint64_t*>(prop.luid);
+      uint64_t current_luid;
+      memcpy(&current_luid, prop.luid, sizeof(current_luid));
 
       if (current_luid == target_luid) {
         // Ampere architecture or newer is required.
@@ -1214,9 +1230,23 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
     cudaStream_t stream = nullptr;
-    ScopedContext ctx(device_id);
+    CUcontext cig_context = factory.GetCigContext(device_id);
 
-    CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    try {
+      // Push context so stream is created on it; pop on scope exit to restore thread's prior context.
+      if (cig_context != nullptr) {
+        ScopedContext scoped(cig_context);
+        CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+      } else {
+        ScopedContext scoped(device_id);
+        CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+      }
+    } catch (const std::exception& e) {
+      return onnxruntime::CreateStatus(ORT_FAIL, e.what());
+    } catch (...) {
+      return onnxruntime::CreateStatus(ORT_FAIL,
+                                       "[NvTensorRTRTX EP] Failed to set context current for stream creation.");
+    }
 
     const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
 
@@ -1377,6 +1407,210 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     }
   }
 
+  // Initialize graphics interop for a device. Creates a CIG (CUDA Interop Graphics) context
+  // bound to the provided graphics command queue/device.
+  // This follows Scott's suggestion to pass in everything required so we don't end up with multiple
+  // init function signatures, and the factory stores the queue to utilize in stream creation.
+  static OrtStatus* ORT_API_CALL InitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                         const OrtEpDevice* ep_device,
+                                                         const OrtGraphicsInteropConfig* config) noexcept {
+    if (ep_device == nullptr) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: ep_device is null");
+    }
+    if (config == nullptr) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: config is null");
+    }
+    if (config->version != ORT_API_VERSION) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: config version does not match ORT_API_VERSION");
+    }
+
+    auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    // Extract device_id from OrtEpDevice options
+    const OrtKeyValuePairs* ep_options = factory.ort_api.EpDevice_EpOptions(ep_device);
+    const char* device_id_str = factory.ort_api.GetKeyValue(ep_options, "device_id");
+    if (device_id_str == nullptr) {
+      return onnxruntime::CreateStatus(ORT_FAIL,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: device_id not found in ep_device options");
+    }
+    char* parse_end = nullptr;
+    errno = 0;
+    long device_id_long = strtol(device_id_str, &parse_end, 10);
+    if (parse_end == device_id_str || *parse_end != '\0' || errno == ERANGE ||
+        device_id_long < static_cast<long>(INT32_MIN) || device_id_long > static_cast<long>(INT32_MAX)) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: invalid device_id in ep_device options");
+    }
+    int32_t device_id = static_cast<int32_t>(device_id_long);
+
+    // Validate graphics API
+    if (config->graphics_api == ORT_GRAPHICS_API_NONE) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] InitGraphicsInterop: graphics_api cannot be NONE");
+    }
+
+    // Initialize CUDA driver API
+    CUresult cu_result = cuInit(0);
+    if (cu_result != CUDA_SUCCESS) {
+      const char* error_str = nullptr;
+      cuGetErrorString(cu_result, &error_str);
+      std::string error_msg = "[NvTensorRTRTX EP] Failed to initialize CUDA driver API: ";
+      error_msg += error_str ? error_str : "unknown error";
+      return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+    }
+
+    // Get CUDA device properties to retrieve LUID
+    cudaDeviceProp cuda_prop;
+    cudaError_t cuda_err = cudaGetDeviceProperties(&cuda_prop, device_id);
+    if (cuda_err != cudaSuccess) {
+      std::string error_msg = "[NvTensorRTRTX EP] Failed to get CUDA device properties: ";
+      error_msg += cudaGetErrorString(cuda_err);
+      return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+    }
+
+    // Create CIG context based on graphics API type
+    CUcontext cig_context = nullptr;
+
+    if (config->graphics_api == ORT_GRAPHICS_API_D3D12) {
+#if defined(_WIN32) && USE_DX_INTEROP
+      // command_queue is optional (performance optimization for GPU-side sync). Without it, skip CIG context.
+      if (config->command_queue == nullptr) {
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] InitGraphicsInterop: command_queue not passed; skipping graphics interop context (streams will use default context).";
+        return nullptr;  // Success; Interop API still works, streams will use default context
+      }
+
+      ID3D12CommandQueue* d3d12_queue = reinterpret_cast<ID3D12CommandQueue*>(config->command_queue);
+
+      // Get device from command queue (no separate device param; avoids mismatch)
+      ID3D12Device* d3d12_device = nullptr;
+      HRESULT hr = d3d12_queue->GetDevice(IID_PPV_ARGS(&d3d12_device));
+      if (FAILED(hr) || d3d12_device == nullptr) {
+        return onnxruntime::CreateStatus(ORT_FAIL,
+                                         "[NvTensorRTRTX EP] InitGraphicsInterop: failed to get D3D12 device from command queue");
+      }
+
+      // Get LUID from CUDA device (OrtEpDevice identifies the GPU via device_id)
+      if (cuda_prop.luidDeviceNodeMask == 0) {
+        d3d12_device->Release();
+        return onnxruntime::CreateStatus(ORT_FAIL,
+                                         "[NvTensorRTRTX EP] CUDA device does not have a valid LUID");
+      }
+      uint64_t cuda_luid;
+      memcpy(&cuda_luid, cuda_prop.luid, sizeof(cuda_luid));
+
+      // Ensure graphics device from command queue and OrtEpDevice GPU are logically the same
+      LUID d3d12_luid = d3d12_device->GetAdapterLuid();
+      uint64_t d3d12_luid_64 = (static_cast<uint64_t>(d3d12_luid.HighPart) << 32) | d3d12_luid.LowPart;
+      d3d12_device->Release();
+
+      if (d3d12_luid_64 != cuda_luid) {
+        return onnxruntime::CreateStatus(ORT_FAIL,
+                                         "[NvTensorRTRTX EP] D3D12 device LUID does not match CUDA device LUID");
+      }
+
+      // Create CIG context bound to D3D12 command queue
+
+      CUctxCigParam cig_param = {CIG_DATA_TYPE_D3D12_COMMAND_QUEUE, d3d12_queue};
+      CUctxCreateParams ctx_params = {nullptr, 0, &cig_param};
+
+      cu_result = cuCtxCreate_v4(&cig_context, &ctx_params, 0, device_id);
+      if (cu_result != CUDA_SUCCESS) {
+        const char* error_str = nullptr;
+        cuGetErrorString(cu_result, &error_str);
+        std::string error_msg = "[NvTensorRTRTX EP] Failed to create CIG context for D3D12: ";
+        error_msg += error_str ? error_str : "unknown error";
+        return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+      }
+#else
+      return onnxruntime::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                       "[NvTensorRTRTX EP] D3D12 CIG context creation not supported on this platform");
+#endif
+    } else if (config->graphics_api == ORT_GRAPHICS_API_VULKAN) {
+      // TODO: Add Vulkan CIG context support if needed
+      return onnxruntime::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                       "[NvTensorRTRTX EP] Vulkan CIG context not yet implemented");
+    } else {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] Unsupported graphics API for CIG context");
+    }
+
+    // Store the CIG context for this device
+    {
+      std::lock_guard<std::mutex> lock(factory.cig_contexts_mutex_);
+      factory.cig_contexts_[device_id] = cig_context;
+    }
+
+    return nullptr;
+  }
+
+  // Deinitialize graphics interop for a device. Destroys the CIG context (cuCtxDestroy) and removes
+  // it from the map. Callers must release dependent resources (OrtSyncStream, semaphore, importer)
+  // before calling Deinit so the context is not in use.
+  static OrtStatus* ORT_API_CALL DeinitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                           const OrtEpDevice* ep_device) noexcept {
+    if (ep_device == nullptr) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] DeinitGraphicsInterop: ep_device is null");
+    }
+
+    auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    // Extract device_id from OrtEpDevice options
+    const OrtKeyValuePairs* ep_options = factory.ort_api.EpDevice_EpOptions(ep_device);
+    const char* device_id_str = factory.ort_api.GetKeyValue(ep_options, "device_id");
+    if (device_id_str == nullptr) {
+      return onnxruntime::CreateStatus(ORT_FAIL,
+                                       "[NvTensorRTRTX EP] DeinitGraphicsInterop: device_id not found in ep_device options");
+    }
+    char* parse_end = nullptr;
+    errno = 0;
+    long device_id_long = strtol(device_id_str, &parse_end, 10);
+    if (parse_end == device_id_str || *parse_end != '\0' || errno == ERANGE ||
+        device_id_long < static_cast<long>(INT32_MIN) || device_id_long > static_cast<long>(INT32_MAX)) {
+      return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "[NvTensorRTRTX EP] DeinitGraphicsInterop: invalid device_id in ep_device options");
+    }
+    int32_t device_id = static_cast<int32_t>(device_id_long);
+
+    CUcontext cig_context = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(factory.cig_contexts_mutex_);
+      auto it = factory.cig_contexts_.find(device_id);
+      if (it != factory.cig_contexts_.end()) {
+        cig_context = it->second;
+        factory.cig_contexts_.erase(it);
+      }
+    }
+
+    // Destroy the CIG context. Callers must release dependent resources (OrtSyncStream,
+    // external semaphore/importer, etc.) before Deinit so the context is not in use.
+    if (cig_context != nullptr) {
+      CUresult cu_result = cuCtxDestroy(cig_context);
+      if (cu_result != CUDA_SUCCESS) {
+        const char* error_str = nullptr;
+        cuGetErrorString(cu_result, &error_str);
+        std::string error_msg = "[NvTensorRTRTX EP] DeinitGraphicsInterop: cuCtxDestroy failed: ";
+        error_msg += error_str ? error_str : "unknown error";
+        return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+      }
+    }
+
+    return nullptr;
+  }
+
+  // Get the CIG CUDA context for a device (for use in stream creation)
+  CUcontext GetCigContext(int32_t device_id) const {
+    std::lock_guard<std::mutex> lock(cig_contexts_mutex_);
+    auto it = cig_contexts_.find(device_id);
+    if (it != cig_contexts_.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+
   OrtStatus* CreateMemoryInfoForDevices(int num_devices) {
     gpu_memory_infos.reserve(num_devices);
     host_accessible_memory_infos.reserve(num_devices);
@@ -1420,6 +1654,12 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
   // we use a shared instance for the OrtDataTransferImpl instead of creating a new one on every call to
   NvTrtRtxDataTransferImpl data_transfer_impl;
+
+  // CIG contexts per device (keyed by device_id).
+  // Threading: InitGraphicsInteropImpl, DeinitGraphicsInteropImpl, and CreateSyncStreamForDeviceImpl
+  // (via GetCigContext) may be called from different threads. All access is guarded by cig_contexts_mutex_.
+  mutable std::mutex cig_contexts_mutex_;
+  std::unordered_map<int, CUcontext> cig_contexts_;
 
   NvTensorRtRtxEpFactory(const NvTensorRtRtxEpFactory&) = delete;
   NvTensorRtRtxEpFactory& operator=(const NvTensorRtRtxEpFactory&) = delete;

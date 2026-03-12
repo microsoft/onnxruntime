@@ -83,6 +83,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     IOBinding,  # noqa: F401
     ModelCompiler,  # noqa: F401
     OrtDevice,  # noqa: F401
+    OrtDeviceVendorId,  # noqa: F401
     OrtValue,  # noqa: F401
     SparseTensor,  # noqa: F401
     copy_tensors,  # noqa: F401

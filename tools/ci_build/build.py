@@ -184,8 +184,6 @@ def use_dev_mode(args):
         return False
     if args.use_acl:
         return False
-    if args.use_armnn:
-        return False
     if is_macOS() and (args.ios or args.visionos or args.tvos):
         return False
     if args.use_qnn:
@@ -244,8 +242,6 @@ def generate_vcpkg_install_options(build_dir, args):
     vcpkg_install_options = ["--x-feature=tests"]
     if args.use_acl:
         vcpkg_install_options.append("--x-feature=acl-ep")
-    if args.use_armnn:
-        vcpkg_install_options.append("--x-feature=armnn-ep")
     if args.use_azure:
         vcpkg_install_options.append("--x-feature=azure-ep")
     if args.use_cann:
@@ -349,8 +345,6 @@ def generate_build_tree(
     migraphx_home,
     acl_home,
     acl_libs,
-    armnn_home,
-    armnn_libs,
     qnn_home,
     snpe_root,
     cann_home,
@@ -373,6 +367,7 @@ def generate_build_tree(
     disable_float4_types = args.android or ("float4" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
+    disable_string_type = "string" in types_to_disable
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
@@ -454,6 +449,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
+        "-Donnxruntime_DISABLE_GENERATION_OPS=" + ("ON" if args.disable_generation_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI="
         + ("ON" if args.disable_rtti or (args.minimal_build is not None and not args.enable_pybind) else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
@@ -472,9 +468,6 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
-        "-Donnxruntime_USE_ARMNN=" + ("ON" if args.use_armnn else "OFF"),
-        "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
-        "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
@@ -513,6 +506,7 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_FLOAT4_TYPES=" + ("ON" if disable_float4_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
+        "-Donnxruntime_DISABLE_STRING_TYPE=" + ("ON" if disable_string_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
     if args.minimal_build is not None:
@@ -763,12 +757,6 @@ def generate_build_tree(
     if acl_libs and os.path.exists(acl_libs):
         cmake_args += ["-Donnxruntime_ACL_LIBS=" + acl_libs]
 
-    if armnn_home and os.path.exists(armnn_home):
-        cmake_args += ["-Donnxruntime_ARMNN_HOME=" + armnn_home]
-
-    if armnn_libs and os.path.exists(armnn_libs):
-        cmake_args += ["-Donnxruntime_ARMNN_LIBS=" + armnn_libs]
-
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
@@ -881,11 +869,9 @@ def generate_build_tree(
                 raise BuildError(
                     "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
                 )
-    elif args.use_webgpu == "static_lib":
-        cmake_args += ["-Donnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=ON"]
-    else:
-        # Shared library build
-        cmake_args += ["-Donnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=OFF"]
+    elif args.use_webgpu == "shared_lib":
+        # Shared library build (plugin EP)
+        cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
 
@@ -1052,6 +1038,9 @@ def generate_build_tree(
 
         cmake_args += [f"-Donnxruntime_PREBUILT_PYTORCH_PATH={os.path.dirname(torch.__file__)}"]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
+
+    if args.enable_dx_interop:
+        cmake_args += ["-Donnxruntime_USE_DX_INTEROP=ON"]
 
     if args.use_azure:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
@@ -1350,15 +1339,9 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         build_tool_args = []
         if num_parallel_jobs != 0:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
-                # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
-                # not maxing out CL_MPCount
-                # Start by having one less than num_parallel_jobs (default is num logical cores),
-                # limited to a range of 1..15
-                # that gives maxcpucount projects building using up to 15 cl.exe instances each
                 build_tool_args += [
                     f"/maxcpucount:{num_parallel_jobs}",
-                    # one less than num_parallel_jobs, at least 1, up to 15
-                    f"/p:CL_MPCount={min(max(num_parallel_jobs - 1, 1), 15)}",
+                    f"/p:CL_MPCount={num_parallel_jobs}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
                 ]
@@ -1759,7 +1742,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
                 run_subprocess(
-                    [sys.executable, "-m", "pip", "install", "torch==2.8.0", "torchvision==0.23.0", *extra],
+                    [sys.executable, "-m", "pip", "install", "torch==2.10.0", "torchvision==0.25.0", *extra],
                     cwd=cwd,
                     dll_path=dll_path,
                     python_path=python_path,
@@ -1816,6 +1799,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
+                log.info("Testing Symlink ONNX Model and External Data")
+                run_subprocess([sys.executable, "onnxruntime_test_python_symlink_data.py"], cwd=cwd, dll_path=dll_path)
+
                 # Disable python onnx tests for TensorRT and CANN EP, because many tests are
                 # not supported yet.
                 if args.use_tensorrt or args.use_cann:
@@ -1833,11 +1819,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
                     )
 
-                    # onnx package does not support python 3.14 yet so skip the transformers tests for python 3.14.
-                    # we can remove this check when onnx package supports python 3.14.
                     if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (
                         3,
-                        14,
+                        15,
                     ):
                         import google.protobuf  # noqa: PLC0415
                         import numpy  # noqa: PLC0415
@@ -1941,7 +1925,6 @@ def build_python_wheel(
     use_openvino,
     use_vitisai,
     use_acl,
-    use_armnn,
     use_dml,
     use_webgpu,
     use_cann,
@@ -1991,8 +1974,6 @@ def build_python_wheel(
             args.append("--use_vitisai")
         elif use_acl:
             args.append("--use_acl")
-        elif use_armnn:
-            args.append("--use_armnn")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
         elif use_webgpu:
@@ -2407,9 +2388,6 @@ def main():
     acl_home = args.acl_home
     acl_libs = args.acl_libs
 
-    armnn_home = args.armnn_home
-    armnn_libs = args.armnn_libs
-
     qnn_home = ""
     if args.use_qnn:
         qnn_home = args.qnn_home
@@ -2559,8 +2537,6 @@ def main():
             migraphx_home,
             acl_home,
             acl_libs,
-            armnn_home,
-            armnn_libs,
             qnn_home,
             snpe_root,
             cann_home,
@@ -2619,7 +2595,6 @@ def main():
                 args.use_openvino,
                 args.use_vitisai,
                 args.use_acl,
-                args.use_armnn,
                 args.use_dml,
                 args.use_webgpu,
                 args.use_cann,

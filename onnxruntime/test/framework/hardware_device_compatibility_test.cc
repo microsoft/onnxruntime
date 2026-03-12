@@ -186,7 +186,7 @@ TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, CpuEp_ReturnsEmptyDetail
   ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetErrorCode(details, &error_code));
   EXPECT_EQ(error_code, 0);
 
-  const char* notes = reinterpret_cast<const char*>(0xDEADBEEF);  // Initialize to non-null
+  const char* notes = "...";  // Initialize to non-null to verify it gets set
   ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetNotes(details, &notes));
   EXPECT_TRUE(notes == nullptr || strlen(notes) == 0);
 

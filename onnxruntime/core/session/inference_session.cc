@@ -38,6 +38,7 @@
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
@@ -736,6 +737,25 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 InferenceSession::~InferenceSession() {
+  // Flush any remaining RuntimePerf counters
+  ORT_TRY {
+    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+    if (telemetry_.total_runs_since_last_ > 0) {
+      Env::Default().GetTelemetryProvider().LogRuntimePerf(session_id_,
+                                                           telemetry_.total_runs_since_last_,
+                                                           telemetry_.total_run_duration_since_last_,
+                                                           telemetry_.duration_per_batch_size_);
+    }
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS(*session_logger_, ERROR) << "Error during telemetry flush: " << e.what();
+    });
+  }
+  ORT_CATCH(...) {
+    LOGS(*session_logger_, ERROR) << "Unknown error during telemetry flush";
+  }
+
   if (session_options_.enable_profiling) {
     ORT_TRY {
       EndProfiling();
@@ -975,7 +995,10 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
+  const Env& env = Env::Default();
   ORT_TRY {
+    env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+
     std::lock_guard<std::mutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
@@ -1010,6 +1033,8 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
+
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status);
 
   return status;
 }
@@ -1647,6 +1672,9 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+
   std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
@@ -1766,6 +1794,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
 
   is_model_loaded_ = true;
+
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, Status::OK());
 
   return Status::OK();
 }
@@ -2278,6 +2308,16 @@ common::Status InferenceSession::Initialize() {
         return Status::OK();
       };
 
+      // Enable DQ->MatMulNBits fusion if NvTensorRTRTX EP is registered.
+      if (execution_providers_.Get(onnxruntime::kNvTensorRTRTXExecutionProvider) != nullptr) {
+        if (session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsEnableDQMatMulNBitsFusion, "") == "") {
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              session_options_.config_options.AddConfigEntry(
+                  kOrtSessionOptionsEnableDQMatMulNBitsFusion, "1"));
+        }
+      }
+
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
                                                                session_options_.graph_optimization_level,
@@ -2616,6 +2656,12 @@ common::Status InferenceSession::Initialize() {
         status = end_status;
       }
     }
+  }
+
+  // Log session creation end telemetry
+  {
+    const Env& init_env = Env::Default();
+    init_env.GetTelemetryProvider().LogSessionCreationEnd(session_id_, status);
   }
 
   return status;
@@ -3202,24 +3248,31 @@ Status InferenceSession::Run(const RunOptions& run_options,
     break;
   }
 
-  // time to send telemetry?
-  {
-    // Adding lock_guard here to ensure that telemetry updates are thread-safe.
-    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
-    ++telemetry_.total_runs_since_last_;
-    telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
-    telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
+  // Only include successful inferences in batch since failed inferences can skew the metric
+  if (retval.IsOK()) {
+    // time to send telemetry?
+    {
+      // Adding lock_guard here to ensure that telemetry updates are thread-safe.
+      std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+      ++telemetry_.total_runs_since_last_;
+      telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+      telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
-      // send the telemetry
-      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                                telemetry_.total_run_duration_since_last_,
-                                                telemetry_.duration_per_batch_size_);
-      // reset counters
-      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-      telemetry_.total_runs_since_last_ = 0;
-      telemetry_.total_run_duration_since_last_ = 0;
-      telemetry_.duration_per_batch_size_.clear();
+      // Emit RuntimePerf on scheduled interval
+      if ((TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_)) {
+        env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                                  telemetry_.total_run_duration_since_last_,
+                                                  telemetry_.duration_per_batch_size_);
+        // reset counters
+        telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+        telemetry_.total_runs_since_last_ = 0;
+        telemetry_.total_run_duration_since_last_ = 0;
+        telemetry_.duration_per_batch_size_.clear();
+
+        // Double the interval, capping at kRuntimePerfMaxInterval
+        telemetry_.runtime_perf_interval_ = std::min(telemetry_.runtime_perf_interval_ * 2,
+                                                     Telemetry::kRuntimePerfMaxInterval);
+      }
     }
   }
 
