@@ -375,7 +375,6 @@ def _read_enable_flags_from_env() -> dict[int, bool]:
             continue
         pipeline_key = key[len(prefix) :].lower()
         if pipeline_key not in _PIPELINE_KEY_TO_ID:
-            logger.warning("##[warning]Unknown ENABLE_ env var: %s", key)
             continue
         result[_PIPELINE_KEY_TO_ID[pipeline_key]] = value.strip().lower() == "true"
     return result
