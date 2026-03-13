@@ -8,9 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cstddef>
-#if defined(__ARM_NEON)
 #include <arm_neon.h>
-#endif
 
 #include "mlas.h"
 
@@ -62,7 +60,6 @@ static inline void ApplyAlphaBetaStrided(const float* src, size_t num_elements, 
         return;
     }
 
-#if defined(__ARM_NEON)
     // Contiguous-only vectorized path with strict correctness guards.
     if (dst_stride == 1 && num_elements >= kAlphaBetaNeonMinElements) {
         size_t i = 0;
@@ -108,7 +105,6 @@ static inline void ApplyAlphaBetaStrided(const float* src, size_t num_elements, 
         }
         return;
     }
-#endif
 
     for (size_t i = 0; i < num_elements; ++i) {
         const float ab = src[i];
