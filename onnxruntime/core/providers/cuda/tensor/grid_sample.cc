@@ -51,7 +51,6 @@ template <typename T, bool IsNHWC>
 GridSample<T, IsNHWC>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
   opset_start_version_ = info.node().SinceVersion();
 
-  std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
   std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
   align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
 
