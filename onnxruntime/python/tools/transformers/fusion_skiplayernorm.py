@@ -110,8 +110,9 @@ class FusionSkipLayerNormalization(Fusion):
                     )
                     return
             else:
-                logger.debug("skip SkipLayerNormalization fusion since symbolic shape inference failed")
-                return
+                # Shape inference failed. Use default skip_index=1 (no broadcasting) since both
+                # Add inputs have already been verified as non-initializer dynamic tensors above.
+                logger.debug("symbolic shape inference failed, using default skip_index for SkipLayerNormalization")
 
         gather_path = self.model.match_parent_path(add, ["Gather"], [None])
         if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:
