@@ -15,42 +15,50 @@
 namespace onnxruntime {
 
 namespace {
-
-// Bilinear interpolation at fractional coordinates (h, w).
-// Returns 0 if (h,w) is out of bounds; otherwise computes weighted average of the four
-// nearest integer grid points. Standard implementation for deformable convolution sampling.
+// Bilinear interpolation at (h, w). Out-of-bounds samples return 0 (ONNX spec).
+// Indices use int (not int64_t) to reduce register pressure and improve occupancy in the hot path.
+// Limitation: height and width must not exceed INT_MAX, or casting floor(h)/floor(w) to int may overflow.
+// Acceptable in practice: deformable convolution spatial dimensions are typically well below INT_MAX.
 template <typename T>
-T BilinearInterpolate(const T* in, int64_t height, int64_t width, T h, T w) {
-  // Early exit for clearly out-of-bounds (skip floor() for OOB case).
+T BilinearInterpolate(const T* in, int height, int width, T h, T w) {
+  // [Optimization 1]: Early exit for clearly out-of-bounds (skip floor() for OOB case).
   if (h <= static_cast<T>(-1) || h >= height || w <= static_cast<T>(-1) || w >= width) {
     return static_cast<T>(0);
   }
 
-  const int64_t h_low = static_cast<int64_t>(std::floor(h));
-  const int64_t w_low = static_cast<int64_t>(std::floor(w));
-  const int64_t h_high = h_low + 1;
-  const int64_t w_high = w_low + 1;
+  // [Optimization 2]: Keep floor result in T; cast to int only for indices. Avoids float->int->float in lh/lw.
+  const T h_floor = std::floor(h);
+  const T w_floor = std::floor(w);
+  const int h_low = static_cast<int>(h_floor);
+  const int w_low = static_cast<int>(w_floor);
+  const int h_high = h_low + 1;
+  const int w_high = w_low + 1;
+
+  const T lh = h - h_floor;
+  const T lw = w - w_floor;
+  const T hh = static_cast<T>(1) - lh;
+  const T hw = static_cast<T>(1) - lw;
 
   // Fast path: all 4 corners in bounds (h in [0, height-1), w in [0, width-1)).
   // Most sampling points in deformable conv fall here; avoids 4 per-corner branches.
-  if (h_low >= 0 && h_high < height && w_low >= 0 && w_high < width) {
-    const T lh = h - static_cast<T>(h_low);
-    const T lw = w - static_cast<T>(w_low);
-    const T hh = static_cast<T>(1) - lh;
-    const T hw = static_cast<T>(1) - lw;
-    return hh * hw * in[h_low * width + w_low] + hh * lw * in[h_low * width + w_high] +
-           lh * hw * in[h_high * width + w_low] + lh * lw * in[h_high * width + w_high];
+  // [Optimization 3]: Use unsigned comparison to avoid branch on negative height/width.
+  if (static_cast<unsigned>(h_low) < static_cast<unsigned>(height - 1) &&
+      static_cast<unsigned>(w_low) < static_cast<unsigned>(width - 1)) {
+    const int base_low = h_low * width;
+    const int base_high = h_high * width;
+    return hh * hw * in[base_low + w_low] +
+           hh * lw * in[base_low + w_high] +
+           lh * hw * in[base_high + w_low] +
+           lh * lw * in[base_high + w_high];
   }
 
   // Slow path: near boundary (one or more of the 4 corners may be out of bounds).
-  const T lh = h - static_cast<T>(h_low);
-  const T lw = w - static_cast<T>(w_low);
-  const T hh = static_cast<T>(1) - lh;
-  const T hw = static_cast<T>(1) - lw;
-  const T v1 = (h_low >= 0 && w_low >= 0) ? in[h_low * width + w_low] : static_cast<T>(0);
-  const T v2 = (h_low >= 0 && w_high < width) ? in[h_low * width + w_high] : static_cast<T>(0);
-  const T v3 = (h_high < height && w_low >= 0) ? in[h_high * width + w_low] : static_cast<T>(0);
-  const T v4 = (h_high < height && w_high < width) ? in[h_high * width + w_high] : static_cast<T>(0);
+  const int base_low = h_low * width;
+  const int base_high = h_high * width;
+  const T v1 = (h_low >= 0 && w_low >= 0) ? in[base_low + w_low] : static_cast<T>(0);
+  const T v2 = (h_low >= 0 && w_high < width) ? in[base_low + w_high] : static_cast<T>(0);
+  const T v3 = (h_high < height && w_low >= 0) ? in[base_high + w_low] : static_cast<T>(0);
+  const T v4 = (h_high < height && w_high < width) ? in[base_high + w_high] : static_cast<T>(0);
   return hh * hw * v1 + hh * lw * v2 + lh * hw * v3 + lh * lw * v4;
 }
 
@@ -63,7 +71,7 @@ void DeformableIm2col(
     const T* data_im,                        // Input image [C, H, W]
     const T* data_offset,                    // Offset [offset_groups * 2 * kH * kW, H_out, W_out]
     const T* data_mask,                      // Mask [offset_groups * kH * kW, H_out, W_out] (nullptr when UseMask=false)
-    int64_t height, int64_t width,           // Input spatial dimensions
+    int height, int width,                   // Input spatial dimensions (validated H*W <= INT_MAX)
     int64_t kernel_h, int64_t kernel_w,      // Kernel dimensions
     int64_t pad_h, int64_t pad_w,            // Padding (begin) for H and W
     int64_t stride_h, int64_t stride_w,      // Stride for H and W
@@ -93,7 +101,7 @@ void DeformableIm2col(
 
           // Output row: one (channel, kernel_pos) across all spatial locations.
           T* col_ptr = data_col + static_cast<int64_t>(idx) * output_size;
-          const T* im_ptr = data_im + c_im * height * width;
+          const T* im_ptr = data_im + c_im * static_cast<int64_t>(height) * width;
 
           // Offset tensor layout: [offset_grp, 2*kH*kW, H_out, W_out] flattened.
           // For (i,j) we use channel indices 2*(i*kW+j) and 2*(i*kW+j)+1 for offset_h, offset_w.
@@ -229,14 +237,14 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
     if (use_mask) {
       DeformableIm2col<T, true>(
           X_curr, offset_curr, mask_curr,
-          H, W_in, kH, kW,
+          static_cast<int>(H), static_cast<int>(W_in), kH, kW,
           pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
           C, offset_group, out_h, out_w,
           col_buffer_ptr, thread_pool);
     } else {
       DeformableIm2col<T, false>(
           X_curr, offset_curr, nullptr,
-          H, W_in, kH, kW,
+          static_cast<int>(H), static_cast<int>(W_in), kH, kW,
           pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
           C, offset_group, out_h, out_w,
           col_buffer_ptr, thread_pool);

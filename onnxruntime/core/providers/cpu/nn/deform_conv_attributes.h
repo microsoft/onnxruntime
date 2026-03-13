@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <climits>
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor_shape.h"
@@ -121,6 +123,11 @@ inline Status DeformConvValidateAndParse(
   params.out_h = (params.H + params.pad_h + params.pad_h_end - params.dilation_h * (params.kH - 1) - 1) / params.stride_h + 1;
   params.out_w = (params.W_in + params.pad_w + params.pad_w_end - params.dilation_w * (params.kW - 1) - 1) / params.stride_w + 1;
   ORT_RETURN_IF_NOT(params.out_h >= 0 && params.out_w >= 0, "Computed output spatial size must be non-negative.");
+
+  // CPU BilinearInterpolate uses int for indices (for performance optimization); W <= INT_MAX / (H+1) covers all index math.
+  ORT_RETURN_IF_NOT(params.H >= 0 && params.W_in >= 0, "Input spatial dimensions H and W must be non-negative.");
+  ORT_RETURN_IF_NOT(params.W_in <= static_cast<int64_t>(INT_MAX) / (params.H + 1),
+                    "Input (H+1)*W must not exceed INT_MAX (for performance optimization).");
 
   // Validate tensor shapes
   ORT_RETURN_IF_NOT(offset_shape[0] == params.N, "Offset batch size must match input batch size.");
