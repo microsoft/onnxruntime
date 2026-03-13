@@ -81,7 +81,9 @@ fn write_output(batch : u32, m : u32, n : u32, value : output_element_t) {
 
 const TILE_M_SIZE : u32 = tile_m;
 const TILE_N_SIZE : u32 = tile_n;
+// In dimension K, the tile consists of 16 scalars, requiring `16 / vec_size` vector loads.
 const TILE_K_VEC_SIZE : u32 = 16 / vec_size;
+// In dimensions M and N, since a workgroup has 64 threads, it advances by `64 / TILE_K_VEC_SIZE`.
 const ADVANCE_DIM = 64 / TILE_K_VEC_SIZE;
 
 var<workgroup> src_tile : array<array<src_value_t, TILE_M_SIZE>, TILE_K_VEC_SIZE>;
