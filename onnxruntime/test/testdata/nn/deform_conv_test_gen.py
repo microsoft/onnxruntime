@@ -24,7 +24,7 @@ Outputs:
 from pathlib import Path
 
 import numpy as np
-import onnx
+from onnx import TensorProto, checker, helper, save
 
 try:
     import onnxruntime as ort
@@ -32,7 +32,6 @@ except ImportError:
     ort = None
 import torch
 import torchvision.ops
-from onnx import TensorProto, helper
 
 # Config: groups=2, offset_group=2, 2x2 kernel (from deform_conv_expected_gen Case 3)
 BATCH = 1
@@ -114,7 +113,7 @@ def _build_onnx_model():
     )
 
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 19)])
-    onnx.checker.check_model(model)
+    checker.check_model(model)
     return model
 
 
@@ -157,7 +156,7 @@ def main():
 
     print("Building ONNX model...")
     model = _build_onnx_model()
-    onnx.save(model, str(model_path))
+    save(model, str(model_path))
     print(f"  Saved {model_path}")
 
     np.savez(str(data_path), **data)
