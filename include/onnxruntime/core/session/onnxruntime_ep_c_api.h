@@ -23,6 +23,7 @@ ORT_RUNTIME_CLASS(NodeComputeContext);
 ORT_RUNTIME_CLASS(DataTransferImpl);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
+ORT_RUNTIME_CLASS(EpProfilerImpl);
 
 ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
 
@@ -421,6 +422,144 @@ struct OrtExternalResourceImporterImpl {
    * \since Version 1.24.
    */
   ORT_API_T(void, Release, _In_ OrtExternalResourceImporterImpl* this_ptr);
+};
+
+/** \brief The event category for profiling events reported by an execution provider.
+ *
+ * \since Version 1.25.
+ */
+typedef enum {
+  OrtEpProfilingEventCategory_SESSION = 0,  ///< Session-level event
+  OrtEpProfilingEventCategory_NODE = 1,     ///< Node-level event
+  OrtEpProfilingEventCategory_KERNEL = 2,   ///< Kernel-level event
+  OrtEpProfilingEventCategory_API = 3,      ///< API-level event
+} OrtEpProfilingEventCategory;
+
+/** \brief A profiling event reported by an execution provider.
+ *
+ * The event data (strings, key-value arrays) must remain valid until
+ * \c OrtEpProfilerImpl::ReleaseProfilingEvents is called.
+ *
+ * \since Version 1.25.
+ */
+typedef struct OrtEpProfilingEvent {
+  OrtEpProfilingEventCategory category;  ///< Event category.
+  int32_t process_id;                    ///< Process ID.
+  int32_t thread_id;                     ///< Thread ID.
+  const char* event_name;               ///< Null-terminated event name. EP-owned.
+  int64_t timestamp_us;                  ///< Timestamp in microseconds.
+  int64_t duration_us;                   ///< Duration in microseconds.
+  const char* const* arg_keys;          ///< Array of null-terminated argument key strings. EP-owned.
+                                         ///< Can be NULL if num_args is 0.
+  const char* const* arg_values;        ///< Array of null-terminated argument value strings. EP-owned.
+                                         ///< Can be NULL if num_args is 0.
+  size_t num_args;                       ///< Number of key-value argument pairs.
+} OrtEpProfilingEvent;
+
+/** \brief Struct that an EP implements for profiling support.
+ *
+ * An execution provider optionally implements this struct to participate in ONNX Runtime's profiling system.
+ * The EP creates and returns an instance of this struct via \c OrtEp::GetProfiler.
+ *
+ * ORT calls the function pointers at appropriate times during profiling:
+ * - \c StartProfiling when profiling begins.
+ * - \c Start before each op execution.
+ * - \c Stop after each op execution.
+ * - \c EndProfiling when profiling ends, to collect captured events.
+ *
+ * \since Version 1.25.
+ */
+struct OrtEpProfilerImpl {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION.
+
+  /** \brief Release the OrtEpProfilerImpl instance.
+   *
+   * Called by ORT when the profiler is no longer needed.
+   * The implementation should release any resources held by the instance.
+   *
+   * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
+   *
+   * \note Implementation of this function is required.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(void, Release, _In_ OrtEpProfilerImpl* this_ptr);
+
+  /** \brief Called when profiling starts.
+   *
+   * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
+   * \param[in] profiling_start_time_ns The profiling start time in nanoseconds since epoch
+   *                                    (from std::chrono::high_resolution_clock).
+   * \return True if profiling was successfully started, false otherwise.
+   *
+   * \note Implementation of this function is required.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(bool, StartProfiling, _In_ OrtEpProfilerImpl* this_ptr,
+            _In_ int64_t profiling_start_time_ns);
+
+  /** \brief Called when profiling ends.
+   *
+   * The EP should return all captured profiling events since the last StartProfiling call.
+   * The returned events and their string data must remain valid until ReleaseProfilingEvents is called.
+   *
+   * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
+   * \param[in] start_time_ns The profiling start time in nanoseconds since epoch
+   *                          (from std::chrono::high_resolution_clock).
+   * \param[out] events Output parameter set to an array of OrtEpProfilingEvent instances.
+   *                    Set to NULL if there are no events.
+   * \param[out] num_events Output parameter set to the number of events in the array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is required.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(EndProfiling, _In_ OrtEpProfilerImpl* this_ptr,
+                  _In_ int64_t start_time_ns,
+                  _Outptr_result_maybenull_ OrtEpProfilingEvent** events,
+                  _Out_ size_t* num_events);
+
+  /** \brief Release profiling events returned by EndProfiling.
+   *
+   * Called by ORT after it has finished processing the events returned by EndProfiling.
+   * The implementation should release the event array and any associated string data.
+   *
+   * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
+   * \param[in] events The event array returned by EndProfiling.
+   * \param[in] num_events The number of events in the array.
+   *
+   * \note Implementation of this function is required.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(void, ReleaseProfilingEvents, _In_ OrtEpProfilerImpl* this_ptr,
+            _In_reads_(num_events) OrtEpProfilingEvent* events,
+            _In_ size_t num_events);
+
+  /** \brief Called before an operator starts execution.
+   *
+   * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
+   * \param[in] id An identifier for the operator execution.
+   *
+   * \note Implementation of this function is optional. If set to NULL, it is not called.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(void, Start, _In_ OrtEpProfilerImpl* this_ptr, _In_ uint64_t id);
+
+  /** \brief Called after an operator finishes execution.
+   *
+   * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
+   * \param[in] id An identifier for the operator execution.
+   *
+   * \note Implementation of this function is optional. If set to NULL, it is not called.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(void, Stop, _In_ OrtEpProfilerImpl* this_ptr, _In_ uint64_t id);
 };
 
 struct OrtNodeFusionOptions;
@@ -1741,6 +1880,24 @@ struct OrtEp {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(IsConcurrentRunSupported, _In_ OrtEp* this_ptr, _Outptr_ bool* is_supported);
+
+  /** \brief Gets the execution provider's profiler, if any.
+   *
+   * A profiler allows the EP to participate in ONNX Runtime's profiling system by reporting
+   * profiling events during model execution.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] profiler Output parameter set to a new OrtEpProfilerImpl instance owned by ORT.
+   *                      Set to NULL if the EP does not support profiling.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not support profiling.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(GetProfiler, _In_ OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ OrtEpProfilerImpl** profiler);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

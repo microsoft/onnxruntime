@@ -779,4 +779,104 @@ const OrtEp* PluginExecutionProvider::GetOrtEp() const {
   return ort_ep_.get();
 }
 
+//
+// PluginEpProfiler - wraps OrtEpProfilerImpl from a plugin EP into the C++ profiling::EpProfiler interface
+//
+
+namespace {
+
+class PluginEpProfiler final : public profiling::EpProfiler {
+ public:
+  explicit PluginEpProfiler(OrtEpProfilerImpl& profiler_impl) : profiler_impl_{&profiler_impl} {}
+
+  ~PluginEpProfiler() override {
+    if (profiler_impl_ != nullptr) {
+      profiler_impl_->Release(profiler_impl_);
+    }
+  }
+
+  PluginEpProfiler(const PluginEpProfiler&) = delete;
+  PluginEpProfiler& operator=(const PluginEpProfiler&) = delete;
+
+  bool StartProfiling(TimePoint profiling_start_time) override {
+    int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                     profiling_start_time.time_since_epoch())
+                     .count();
+    return profiler_impl_->StartProfiling(profiler_impl_, ns);
+  }
+
+  void EndProfiling(TimePoint start_time, profiling::Events& events) override {
+    int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                     start_time.time_since_epoch())
+                     .count();
+
+    OrtEpProfilingEvent* c_events = nullptr;
+    size_t num_events = 0;
+    OrtStatus* status = profiler_impl_->EndProfiling(profiler_impl_, ns, &c_events, &num_events);
+    if (status != nullptr) {
+      // Log error but don't throw — profiling failures shouldn't break execution.
+      OrtApis::ReleaseStatus(status);
+      return;
+    }
+
+    if (c_events != nullptr && num_events > 0) {
+      events.reserve(events.size() + num_events);
+      for (size_t i = 0; i < num_events; ++i) {
+        const OrtEpProfilingEvent& c_event = c_events[i];
+
+        InlinedHashMap<std::string, std::string> args;
+        if (c_event.arg_keys != nullptr && c_event.arg_values != nullptr) {
+          args.reserve(c_event.num_args);
+          for (size_t j = 0; j < c_event.num_args; ++j) {
+            args[c_event.arg_keys[j]] = c_event.arg_values[j];
+          }
+        }
+
+        events.emplace_back(
+            static_cast<profiling::EventCategory>(c_event.category),
+            static_cast<int>(c_event.process_id),
+            static_cast<int>(c_event.thread_id),
+            std::string(c_event.event_name ? c_event.event_name : ""),
+            static_cast<long long>(c_event.timestamp_us),
+            static_cast<long long>(c_event.duration_us),
+            std::move(args));
+      }
+
+      profiler_impl_->ReleaseProfilingEvents(profiler_impl_, c_events, num_events);
+    }
+  }
+
+  void Start(uint64_t id) override {
+    if (profiler_impl_->Start != nullptr) {
+      profiler_impl_->Start(profiler_impl_, id);
+    }
+  }
+
+  void Stop(uint64_t id) override {
+    if (profiler_impl_->Stop != nullptr) {
+      profiler_impl_->Stop(profiler_impl_, id);
+    }
+  }
+
+ private:
+  OrtEpProfilerImpl* profiler_impl_;
+};
+
+}  // namespace
+
+std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
+  if (ort_ep_->ort_version_supported < 25 || ort_ep_->GetProfiler == nullptr) {
+    return {};
+  }
+
+  OrtEpProfilerImpl* profiler_impl = nullptr;
+  ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetProfiler(ort_ep_.get(), &profiler_impl)));
+
+  if (profiler_impl == nullptr) {
+    return {};
+  }
+
+  return std::make_unique<PluginEpProfiler>(*profiler_impl);
+}
+
 }  // namespace onnxruntime

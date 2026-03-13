@@ -135,6 +135,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   const OrtEp* GetOrtEp() const override;
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
  private:
   struct FusedNodeState {
     FusedNodeState() = default;
