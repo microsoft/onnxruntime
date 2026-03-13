@@ -461,6 +461,27 @@ class DQMatMulToMatMulNBitsSelector : public BaseSelector {
       : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(), compatible_providers) {}
 };
 
+// Convert "DQ -> Cast(fp16->fp32) -> MatMul" to "MatMulNBits".
+// Handles Cast(fp16->fp32) between DQ and MatMul on input B, and optionally on input A.
+// Selection layout:
+//   input_nodes[0] = DQ node
+//   input_nodes[1] = Cast on input B (between DQ and MatMul)
+//   target_node = MatMul
+//   output_nodes = {}
+class DQCastMatMulToMatMulNBitsSelector : public NodeSelector {
+ public:
+  explicit DQCastMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {})
+      : compatible_providers_(compatible_providers.begin(), compatible_providers.end()) {}
+
+  DQCastMatMulToMatMulNBitsSelector(DQCastMatMulToMatMulNBitsSelector&& rhs) noexcept
+      : compatible_providers_(std::move(rhs.compatible_providers_)) {}
+
+  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
+
+ private:
+  std::vector<std::string> compatible_providers_;
+};
+
 // Input: DQ nodes for A, B and optional C
 // Output: optional Q node for Y
 class GemmSelector : public BaseSelector {

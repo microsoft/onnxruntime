@@ -14,6 +14,7 @@
 #include <cuda_bf16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cu_inc/cub.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -683,10 +684,8 @@ inline __host__ __device__ INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 }
 
 struct GridDim {
-  enum : CUDA_LONG {
-    maxThreadsPerBlock = 256,  // max threads per block
-    maxElementsPerThread = 4,  // max element processed per thread
-  };
+  static constexpr CUDA_LONG maxThreadsPerBlock = 256;  // max threads per block
+  static constexpr CUDA_LONG maxElementsPerThread = 4;  // max element processed per thread
 };
 
 // aligned vector generates vectorized load/store on CUDA
