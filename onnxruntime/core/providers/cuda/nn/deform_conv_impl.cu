@@ -31,48 +31,6 @@ inline int GetGridSize(size_t n, size_t threads_per_block) {
   return static_cast<int>(std::min(blocks_needed, static_cast<size_t>(std::numeric_limits<int>::max())));
 }
 
-// Bilinear interpolation at (h, w). Returns 0 if out of bounds (ONNX spec).
-// Indices h_low, w_low, h_high, w_high use int (not int64_t) to reduce register pressure in the
-// hot path and improve occupancy. Limitation: height and width must not exceed INT_MAX; otherwise
-// the cast from floor(h)/floor(w) to int may overflow and produce incorrect sampling. This is
-// acceptable for typical deformable convolution use (spatial dimensions are far below INT_MAX).
-template <typename T>
-__device__ __inline__ T BilinearInterpolate(
-    const T* in,
-    int64_t height,
-    int64_t width,
-    T h,
-    T w) {
-  if (h <= static_cast<T>(-1) || h >= height || w <= static_cast<T>(-1) || w >= width) {
-    return static_cast<T>(0);
-  }
-  int h_low = static_cast<int>(_Floor(h));
-  int w_low = static_cast<int>(_Floor(w));
-  int h_high = h_low + 1;
-  int w_high = w_low + 1;
-
-  T lh = h - static_cast<T>(h_low);
-  T lw = w - static_cast<T>(w_low);
-  T hh = static_cast<T>(1) - lh;
-  T hw = static_cast<T>(1) - lw;
-
-  T v1 = (h_low >= 0 && w_low >= 0) ? __ldg(in + h_low * width + w_low) : static_cast<T>(0);
-  T v2 = (h_low >= 0 && w_high < width) ? __ldg(in + h_low * width + w_high) : static_cast<T>(0);
-  T v3 = (h_high < height && w_low >= 0) ? __ldg(in + h_high * width + w_low) : static_cast<T>(0);
-  T v4 = (h_high < height && w_high < width) ? __ldg(in + h_high * width + w_high) : static_cast<T>(0);
-
-  T w1 = hh * hw, w2 = hh * lw, w3 = lh * hw, w4 = lh * lw;
-  return w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4;
-}
-
-// FP16/BF16: coordinate and weight math in float to avoid precision loss.
-template <typename T>
-struct DeformConvUseFloatCoords : std::false_type {};
-template <>
-struct DeformConvUseFloatCoords<half> : std::true_type {};
-template <>
-struct DeformConvUseFloatCoords<BFloat16> : std::true_type {};
-
 // __ldg has no overload for BFloat16*; use 16-bit load + FromBits. Other types use __ldg directly.
 template <typename T>
 __device__ __inline__ T DeformConvLdg(const T* p) {
@@ -83,62 +41,116 @@ __device__ __inline__ BFloat16 DeformConvLdg<BFloat16>(const BFloat16* p) {
   return BFloat16::FromBits(__ldg(reinterpret_cast<const uint16_t*>(p)));
 }
 
-__device__ __inline__ half BilinearInterpolate(
-    const half* in,
-    int64_t height,
-    int64_t width,
-    float h,
-    float w) {
-  if (h <= -1.0f || h >= height || w <= -1.0f || w >= width) {
+// Traits for bilinear interpolation math:
+// - ComputeT: type used for coordinate/weight math (float for half/BFloat16, T otherwise)
+// - Load:     load one element and convert to ComputeT
+// - ToResult: convert ComputeT result back to T
+// - Zero:     zero value of T
+template <typename T>
+struct DeformConvBilinearTraits {
+  using ComputeT = T;
+
+  __device__ static __inline__ ComputeT Load(const T* p) {
+    return __ldg(p);
+  }
+
+  __device__ static __inline__ T ToResult(ComputeT v) {
+    return v;
+  }
+
+  __device__ static __inline__ T Zero() {
+    return static_cast<T>(0);
+  }
+};
+
+template <>
+struct DeformConvBilinearTraits<half> {
+  using ComputeT = float;
+
+  __device__ static __inline__ ComputeT Load(const half* p) {
+    return __half2float(__ldg(p));
+  }
+
+  __device__ static __inline__ half ToResult(ComputeT v) {
+    return __float2half(v);
+  }
+
+  __device__ static __inline__ half Zero() {
     return __float2half(0.0f);
   }
-  // int for indices to save registers; see limitation in BilinearInterpolate<T> above.
-  int h_low = static_cast<int>(floorf(h));
-  int w_low = static_cast<int>(floorf(w));
-  int h_high = h_low + 1;
-  int w_high = w_low + 1;
+};
 
-  float lh = h - static_cast<float>(h_low);
-  float lw = w - static_cast<float>(w_low);
-  float hh = 1.0f - lh;
-  float hw = 1.0f - lw;
+template <>
+struct DeformConvBilinearTraits<BFloat16> {
+  using ComputeT = float;
 
-  float v1 = (h_low >= 0 && w_low >= 0) ? __half2float(__ldg(in + h_low * width + w_low)) : 0.0f;
-  float v2 = (h_low >= 0 && w_high < width) ? __half2float(__ldg(in + h_low * width + w_high)) : 0.0f;
-  float v3 = (h_high < height && w_low >= 0) ? __half2float(__ldg(in + h_high * width + w_low)) : 0.0f;
-  float v4 = (h_high < height && w_high < width) ? __half2float(__ldg(in + h_high * width + w_high)) : 0.0f;
+  __device__ static __inline__ ComputeT Load(const BFloat16* p) {
+    return static_cast<float>(DeformConvLdg(p));
+  }
 
-  float w1 = hh * hw, w2 = hh * lw, w3 = lh * hw, w4 = lh * lw;
-  return __float2half(w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4);
-}
+  __device__ static __inline__ BFloat16 ToResult(ComputeT v) {
+    return BFloat16(v);
+  }
 
-__device__ __inline__ BFloat16 BilinearInterpolate(
-    const BFloat16* in,
-    int64_t height,
-    int64_t width,
-    float h,
-    float w) {
-  if (h <= -1.0f || h >= height || w <= -1.0f || w >= width) {
+  __device__ static __inline__ BFloat16 Zero() {
     return BFloat16(0.0f);
   }
-  // int for indices to save registers; see limitation in BilinearInterpolate<T> above.
-  int h_low = static_cast<int>(floorf(h));
-  int w_low = static_cast<int>(floorf(w));
+};
+
+// Bilinear interpolation at (h, w). Returns 0 if out of bounds (ONNX spec).
+// Indices h_low, w_low, h_high, w_high use int (not int64_t) to reduce register pressure and
+// improve occupancy in the hot path. Limitation: (H+1)*W must not exceed INT_MAX; this is
+// validated on the host side in DeformConvValidateAndParse to guarantee index math in int
+// does not overflow. For half/BFloat16, coordinate and weight math use float via
+// DeformConvBilinearTraits to avoid precision loss. We keep floor() results in CoordT and
+// cast to int only for indices (h_low/w_low), which avoids unnecessary CoordT->int->CoordT
+// round trips when computing lh/lw/hh/hw.
+template <typename T>
+__device__ __inline__ T BilinearInterpolate(
+    const T* in,
+    int height,
+    int width,
+    typename DeformConvBilinearTraits<T>::ComputeT h,
+    typename DeformConvBilinearTraits<T>::ComputeT w) {
+  using Traits = DeformConvBilinearTraits<T>;
+  using CoordT = typename Traits::ComputeT;
+
+  // [Optimization 1]: Early exit for clearly out-of-bounds (skip floor() for OOB case).
+  if (h <= static_cast<CoordT>(-1) || h >= height || w <= static_cast<CoordT>(-1) || w >= width) {
+    return Traits::Zero();
+  }
+
+  // [Optimization 2]: Keep floor result in T; cast to int only for indices. Avoids float->int->float in lh/lw.
+  CoordT h_floor = _Floor(h);
+  CoordT w_floor = _Floor(w);
+  int h_low = static_cast<int>(h_floor);
+  int w_low = static_cast<int>(w_floor);
   int h_high = h_low + 1;
   int w_high = w_low + 1;
 
-  float lh = h - static_cast<float>(h_low);
-  float lw = w - static_cast<float>(w_low);
-  float hh = 1.0f - lh;
-  float hw = 1.0f - lw;
+  CoordT lh = h - h_floor;
+  CoordT lw = w - w_floor;
+  CoordT hh = static_cast<CoordT>(1) - lh;
+  CoordT hw = static_cast<CoordT>(1) - lw;
 
-  float v1 = (h_low >= 0 && w_low >= 0) ? static_cast<float>(DeformConvLdg(in + h_low * width + w_low)) : 0.0f;
-  float v2 = (h_low >= 0 && w_high < width) ? static_cast<float>(DeformConvLdg(in + h_low * width + w_high)) : 0.0f;
-  float v3 = (h_high < height && w_low >= 0) ? static_cast<float>(DeformConvLdg(in + h_high * width + w_low)) : 0.0f;
-  float v4 = (h_high < height && w_high < width) ? static_cast<float>(DeformConvLdg(in + h_high * width + w_high)) : 0.0f;
+  // [Optimization 3]: Avoid a second multiply for base_high.
+  // Original code computed both bases as:
+  //   base_low  = h_low  * width;
+  //   base_high = h_high * width;
+  // Since h_high = h_low + 1, we can rewrite base_high as base_low + width and
+  // save one integer multiply in the hot path:
+  //   base_low  = h_low  * width;
+  //   base_high = base_low + width;
+  int base_low = h_low * width;
+  int base_high = base_low + width;
 
-  float w1 = hh * hw, w2 = hh * lw, w3 = lh * hw, w4 = lh * lw;
-  return BFloat16(w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4);
+  CoordT v1 = (h_low >= 0 && w_low >= 0) ? Traits::Load(in + base_low + w_low) : static_cast<CoordT>(0);
+  CoordT v2 = (h_low >= 0 && w_high < width) ? Traits::Load(in + base_low + w_high) : static_cast<CoordT>(0);
+  CoordT v3 = (h_high < height && w_low >= 0) ? Traits::Load(in + base_high + w_low) : static_cast<CoordT>(0);
+  CoordT v4 = (h_high < height && w_high < width) ? Traits::Load(in + base_high + w_high) : static_cast<CoordT>(0);
+
+  CoordT w1 = hh * hw, w2 = hh * lw, w3 = lh * hw, w4 = lh * lw;
+  return Traits::ToResult(w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4);
 }
 
 // kH/kW = -1 means dynamic (runtime); >= 0 means compile-time constant for loop unrolling.
@@ -179,7 +191,7 @@ __global__ void DeformableIm2ColKernel(
   // The stride for data_col is (parallel_imgs * out_h * out_w)
   const int64_t col_stride = parallel_imgs * out_size;
 
-  using CoordT = typename std::conditional<DeformConvUseFloatCoords<T>::value, float, T>::type;
+  using CoordT = typename DeformConvBilinearTraits<T>::ComputeT;
 
   for (IndexT index = blockIdx.x * blockDim.x + threadIdx.x; index < num_kernels; index += blockDim.x * gridDim.x) {
     IndexT val = index;
@@ -251,7 +263,12 @@ __global__ void DeformableIm2ColKernel(
       const CoordT h_im = base_h_im + static_cast<CoordT>(i * dilation_h) + offset_h;
       const CoordT w_im = base_w_im + static_cast<CoordT>(j * dilation_w) + offset_w;
 
-      T val = BilinearInterpolate(input_ptr, height, width, h_im, w_im);
+      // height/width are validated on host (DeformConvValidateAndParse) so int is safe here.
+      T val = BilinearInterpolate(input_ptr,
+                                  static_cast<int>(height),
+                                  static_cast<int>(width),
+                                  h_im,
+                                  w_im);
 
       // Match CPU path: always interpolate then apply mask to keep branch-free hot loop.
       data_col_ptr_base[kernel_idx * col_stride] = val * mask_val;
