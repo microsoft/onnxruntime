@@ -1601,8 +1601,12 @@ class TestInferenceSession(unittest.TestCase):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         self.assertEqual(cpu_device.device_id(), 0)
         self.assertEqual(cpu_device.device_type(), 0)
-        self.assertEqual(cpu_device.device_vendor_id(), 0)
+        self.assertEqual(cpu_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NONE)
         self.assertEqual(cpu_device.device_mem_type(), 0)
+
+        cuda_device = onnxrt.OrtDevice.make("cuda", 0)
+        self.assertEqual(cuda_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NVIDIA)
+        self.assertEqual(onnxrt.OrtDeviceVendorId.NVIDIA, 0x10DE)
 
     def test_ort_memory_info(self):
         cpu_memory_info = onnxrt.OrtMemoryInfo(

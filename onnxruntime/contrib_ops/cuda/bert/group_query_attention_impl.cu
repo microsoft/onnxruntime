@@ -29,7 +29,6 @@ limitations under the License.
 #include <cuda_fp16.h>
 
 #include <cassert>
-#include <cub/cub.cuh>
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
@@ -1146,6 +1145,24 @@ template Status QkvToContext<__nv_bfloat16, __nv_fp8_e4m3>(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<__nv_bfloat16, __nv_fp8_e4m3>& data);
 #endif
+
+// Explicit instantiations for cross-TU usage by core/providers/cuda/llm/attention.cc
+template Status LaunchUngroup<__half>(
+    const GroupQueryAttentionParameters& parameters,
+    float2* k_buff, float2* v_buff,
+    const float2* k_og, const float2* v_og,
+    const int buff_seqlen, const int og_seqlen,
+    const bool is_bsnh,
+    cudaStream_t stream,
+    const int max_threads_per_block);
+template Status LaunchUngroup<__nv_bfloat16>(
+    const GroupQueryAttentionParameters& parameters,
+    float2* k_buff, float2* v_buff,
+    const float2* k_og, const float2* v_og,
+    const int buff_seqlen, const int og_seqlen,
+    const bool is_bsnh,
+    cudaStream_t stream,
+    const int max_threads_per_block);
 
 template Status LaunchUnpackQKV<half, LAYOUT_BNSH>(const half* packed_qkv, half* unpacked_q, half* unpacked_k, half* unpacked_v, const int num_heads, const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size, cudaStream_t stream, const int max_threads_per_block);
 template Status LaunchUnpackQKV<__nv_bfloat16, LAYOUT_BNSH>(const __nv_bfloat16* packed_qkv, __nv_bfloat16* unpacked_q, __nv_bfloat16* unpacked_k, __nv_bfloat16* unpacked_v, const int num_heads, const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size, cudaStream_t stream, const int max_threads_per_block);

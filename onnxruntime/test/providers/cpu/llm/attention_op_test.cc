@@ -481,6 +481,527 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
   );
 }
 
+// Regression test: all-false bool mask in decode mode (past_sequence_length > 0).
+// Before the fix: seq_len=0 + negative seqlen_offset produced negative seqlens_k → UB/crash.
+// After the fix: clamped to max(0, ...) → uniform softmax → mean of V values.
+TEST(AttentionTest, Attention4DAttnMaskBoolAllFalseDecodeWithPast) {
+  int batch_size = 1;
+  int q_num_heads = 2;
+  int q_sequence_length = 1;  // decode: single token
+  int head_size = 8;
+  int kv_sequence_length = 1;  // appending 1 new token
+  int kv_num_heads = 2;
+  int v_head_size = 8;
+  int past_sequence_length = 3;  // 3 tokens in cache → total_seq = 4
+
+  // Q: [1, 2, 1, 8] — values don't matter for uniform softmax test
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.5f);
+
+  // K: [1, 2, 1, 8]
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.5f);
+
+  // V: [1, 2, 1, 8] — new token values (will be concatenated with past_value)
+  std::vector<float> v = {
+      // head 0
+      0.4f, 0.4f, 0.4f, 0.4f, 0.4f, 0.4f, 0.4f, 0.4f,
+      // head 1
+      0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f};
+
+  // past_key: [1, 2, 3, 8]
+  std::vector<float> past_key(batch_size * kv_num_heads * past_sequence_length * head_size, 0.5f);
+
+  // past_value: [1, 2, 3, 8] — distinct per-row values so mean is meaningful
+  std::vector<float> past_value = {
+      // head 0: 3 past positions
+      0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f,
+      0.2f, 0.2f, 0.2f, 0.2f, 0.2f, 0.2f, 0.2f, 0.2f,
+      0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f,
+      // head 1: 3 past positions
+      0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f,
+      0.6f, 0.6f, 0.6f, 0.6f, 0.6f, 0.6f, 0.6f, 0.6f,
+      0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f};
+
+  // Bool mask: [1, 4] — all false (every position masked)
+  std::initializer_list<bool> m = {false, false, false, false};
+
+  // present_key = concat(past_key, k) along seq dim → [1, 2, 4, 8]
+  // past_key is all 0.5, new k is all 0.5 → present_key is all 0.5
+  int total_sequence_length = past_sequence_length + kv_sequence_length;
+  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size, 0.5f);
+
+  // present_value = concat(past_value, v) along seq dim → [1, 2, 4, 8]
+  std::vector<float> present_value = {
+      // head 0: past rows (0.1, 0.2, 0.3) + new row (0.4)
+      0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f,
+      0.2f, 0.2f, 0.2f, 0.2f, 0.2f, 0.2f, 0.2f, 0.2f,
+      0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f,
+      0.4f, 0.4f, 0.4f, 0.4f, 0.4f, 0.4f, 0.4f, 0.4f,
+      // head 1: past rows (0.5, 0.6, 0.7) + new row (0.8)
+      0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f,
+      0.6f, 0.6f, 0.6f, 0.6f, 0.6f, 0.6f, 0.6f, 0.6f,
+      0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f,
+      0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f};
+
+  // With all-false mask, softmax produces uniform weights: 1/4 per position.
+  // Output = mean of V rows (past_value concat new_v):
+  //   head 0: mean(0.1, 0.2, 0.3, 0.4) = 0.25
+  //   head 1: mean(0.5, 0.6, 0.7, 0.8) = 0.65
+  std::vector<float> y = {
+      // head 0
+      0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f,
+      // head 1
+      0.65f, 0.65f, 0.65f, 0.65f, 0.65f, 0.65f, 0.65f, 0.65f};
+
+  ASSERT_EQ(q.size(), batch_size * q_num_heads * q_sequence_length * head_size);
+  ASSERT_EQ(k.size(), batch_size * kv_num_heads * kv_sequence_length * head_size);
+  ASSERT_EQ(v.size(), batch_size * kv_num_heads * kv_sequence_length * v_head_size);
+  ASSERT_EQ(m.size(), q_sequence_length * total_sequence_length);
+  ASSERT_EQ(past_key.size(), batch_size * kv_num_heads * past_sequence_length * head_size);
+  ASSERT_EQ(past_value.size(), batch_size * kv_num_heads * past_sequence_length * v_head_size);
+  ASSERT_EQ(present_key.size(), batch_size * kv_num_heads * total_sequence_length * head_size);
+  ASSERT_EQ(present_value.size(), batch_size * kv_num_heads * total_sequence_length * v_head_size);
+  ASSERT_EQ(y.size(), batch_size * q_num_heads * q_sequence_length * v_head_size);
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), m, past_key, past_value,
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,
+            y, present_key, present_value, std::vector<float>(),
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
+  );
+}
+
+// Flash decode path with fp16 and all-true bool attention mask.
+// Exercises LaunchConcatNewToPastKV + mha_fwd_kvcache(k_new=nullptr) with mask.
+// head_size=64 is Flash-eligible. Uniform keys make output analytically verifiable:
+// all attention scores are equal, so softmax is uniform over all positions.
+TEST(AttentionTest, Attention4DAttnMaskBoolDecodeWithPastFloat16) {
+  int batch_size = 1;
+  int q_num_heads = 2;
+  int q_sequence_length = 1;   // decode: single token
+  int head_size = 64;          // Flash-eligible
+  int kv_sequence_length = 1;  // appending 1 new token
+  int kv_num_heads = 2;
+  int v_head_size = 64;  // must equal head_size for Flash
+  int past_sequence_length = 3;
+  int total_sequence_length = past_sequence_length + kv_sequence_length;  // 4
+
+  // Uniform Q, K, past_key → equal attention scores → softmax is uniform (1/4 each).
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.5f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.5f);
+  std::vector<float> past_key(batch_size * kv_num_heads * past_sequence_length * head_size, 0.5f);
+
+  // V: [1, 2, 1, 64] — new token values per head
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * v_head_size);
+  {
+    float v_new[] = {0.4f, 0.8f};
+    for (int h = 0; h < kv_num_heads; ++h)
+      std::fill_n(v.begin() + h * v_head_size, v_head_size, v_new[h]);
+  }
+
+  // past_value: [1, 2, 3, 64] — distinct per-row values so Y is analytically computable
+  std::vector<float> past_value(batch_size * kv_num_heads * past_sequence_length * v_head_size);
+  {
+    float pv[2][3] = {{0.1f, 0.2f, 0.3f}, {0.5f, 0.6f, 0.7f}};
+    for (int h = 0; h < kv_num_heads; ++h)
+      for (int s = 0; s < past_sequence_length; ++s)
+        std::fill_n(past_value.begin() + (h * past_sequence_length + s) * v_head_size,
+                    v_head_size, pv[h][s]);
+  }
+
+  // Bool mask: [1, 4] — all positions valid
+  std::initializer_list<bool> m = {true, true, true, true};
+
+  // present_key = concat(past_key, k) → all 0.5
+  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size, 0.5f);
+
+  // present_value = concat(past_value, v) → [1, 2, 4, 64]
+  std::vector<float> present_value(batch_size * kv_num_heads * total_sequence_length * v_head_size);
+  for (int h = 0; h < kv_num_heads; ++h) {
+    int pv_off = h * past_sequence_length * v_head_size;
+    int v_off = h * kv_sequence_length * v_head_size;
+    int out_off = h * total_sequence_length * v_head_size;
+    std::copy_n(past_value.begin() + pv_off, past_sequence_length * v_head_size,
+                present_value.begin() + out_off);
+    std::copy_n(v.begin() + v_off, kv_sequence_length * v_head_size,
+                present_value.begin() + out_off + past_sequence_length * v_head_size);
+  }
+
+  // Y: all-true mask → uniform 1/4 over all 4 positions
+  //   head 0: mean(0.1, 0.2, 0.3, 0.4) = 0.25
+  //   head 1: mean(0.5, 0.6, 0.7, 0.8) = 0.65
+  std::vector<float> y(batch_size * q_num_heads * q_sequence_length * v_head_size);
+  {
+    float y_per_head[] = {0.25f, 0.65f};
+    for (int h = 0; h < q_num_heads; ++h)
+      std::fill_n(y.begin() + h * v_head_size, v_head_size, y_per_head[h]);
+  }
+
+  ASSERT_EQ(q.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size));
+  ASSERT_EQ(k.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size));
+  ASSERT_EQ(v.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  ASSERT_EQ(m.size(), static_cast<size_t>(q_sequence_length * total_sequence_length));
+  ASSERT_EQ(past_key.size(), static_cast<size_t>(batch_size * kv_num_heads * past_sequence_length * head_size));
+  ASSERT_EQ(past_value.size(), static_cast<size_t>(batch_size * kv_num_heads * past_sequence_length * v_head_size));
+  ASSERT_EQ(present_key.size(), static_cast<size_t>(batch_size * kv_num_heads * total_sequence_length * head_size));
+  ASSERT_EQ(present_value.size(), static_cast<size_t>(batch_size * kv_num_heads * total_sequence_length * v_head_size));
+  ASSERT_EQ(y.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size));
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), m, past_key, past_value,
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,
+            y, present_key, present_value, std::vector<float>(),
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
+  );
+}
+
+// Flash decode path with fp16 and partial bool mask (CUDA-only, direct OpTester).
+// mask [T,T,T,F] → Flash counts 3 leading trues, past_seqlens=2, new token at position 2.
+// Flash attends to [past[0], past[1], new_token] → Y = mean of those 3.
+// Uses direct OpTester for per-output tolerance: present_key/value position 3 may be
+// uninitialized (concat kernel only fills past_seqlens+1 positions).
+// CUDA-only because Flash's seqlens_k mask semantics differ from CPU's element-wise mask.
+TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
+  if (!HasCudaEnvironment(530)) {
+    return;  // fp16 requires SM 5.3+
+  }
+
+  int batch_size = 1;
+  int q_num_heads = 2;
+  int q_sequence_length = 1;
+  int head_size = 64;
+  int kv_sequence_length = 1;
+  int kv_num_heads = 2;
+  int v_head_size = 64;
+  int past_sequence_length = 3;
+  int total_sequence_length = past_sequence_length + kv_sequence_length;
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.5f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.5f);
+  std::vector<float> past_key(batch_size * kv_num_heads * past_sequence_length * head_size, 0.5f);
+
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * v_head_size);
+  {
+    float v_new[] = {0.4f, 0.8f};
+    for (int h = 0; h < kv_num_heads; ++h)
+      std::fill_n(v.begin() + h * v_head_size, v_head_size, v_new[h]);
+  }
+
+  std::vector<float> past_value(batch_size * kv_num_heads * past_sequence_length * v_head_size);
+  {
+    float pv[2][3] = {{0.1f, 0.2f, 0.3f}, {0.5f, 0.6f, 0.7f}};
+    for (int h = 0; h < kv_num_heads; ++h)
+      for (int s = 0; s < past_sequence_length; ++s)
+        std::fill_n(past_value.begin() + (h * past_sequence_length + s) * v_head_size,
+                    v_head_size, pv[h][s]);
+  }
+
+  // Y: uniform 1/3 over [past_v[0], past_v[1], v_new]
+  //   head 0: (0.1 + 0.2 + 0.4) / 3 = 7/30
+  //   head 1: (0.5 + 0.6 + 0.8) / 3 = 19/30
+  std::vector<float> y(batch_size * q_num_heads * q_sequence_length * v_head_size);
+  {
+    float y_per_head[] = {7.0f / 30.0f, 19.0f / 30.0f};
+    for (int h = 0; h < q_num_heads; ++h)
+      std::fill_n(y.begin() + h * v_head_size, v_head_size, y_per_head[h]);
+  }
+
+  // Skip present_key/value validation: trailing positions beyond valid tokens are
+  // intentionally uninitialized for performance (Flash respects seqlens_k bounds).
+  // Other tests (AllTrueMask, UnfusedPrompt) verify present_key/value for fully-valid cases.
+  // We must still declare these outputs (required when past_key is provided), but use
+  // placeholder values — the op validates shapes, not content, for optional outputs.
+
+  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, v_head_size}, ToFloat16(v));
+  test.AddInput<bool>("attn_mask", {q_sequence_length, total_sequence_length}, {true, true, true, false});
+  test.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_sequence_length, head_size}, ToFloat16(past_key));
+  test.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_sequence_length, v_head_size}, ToFloat16(past_value));
+
+  // Declare all 3 outputs (required for graph construction). present_key/value use
+  // placeholder expected data — actual validation is done by the custom verifier below.
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, v_head_size},
+                            ToFloat16(y));
+  std::vector<float> present_key_placeholder(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
+  std::vector<float> present_value_placeholder(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
+  test.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            ToFloat16(present_key_placeholder));
+  test.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, v_head_size},
+                            ToFloat16(present_value_placeholder));
+
+  // Custom verifier: validate Y and present_key/value prefix (NaN-safe for uninitialized tail).
+  // With mask [T,T,T,F] and seqlen_offset=-1: past_seqlens=2, valid positions=[0,3), position 3 uninitialized.
+  auto expected_y_fp16 = ToFloat16(y);
+  const int valid_seq_positions = 3;  // past_seqlens(2) + kv_sequence_length(1)
+  test.SetCustomOutputVerifier(
+      [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+        ASSERT_GE(fetches.size(), 3u) << "Expected 3 outputs, provider: " << provider_type;
+
+        // Validate Y (output 0).
+        const auto& y_tensor = fetches[0].Get<Tensor>();
+        auto y_span = y_tensor.DataAsSpan<MLFloat16>();
+        ASSERT_EQ(y_span.size(), expected_y_fp16.size()) << "Y size mismatch, provider: " << provider_type;
+        for (size_t i = 0; i < y_span.size(); ++i) {
+          ASSERT_NEAR(y_span[i].ToFloat(), expected_y_fp16[i].ToFloat(), 3e-3f)
+              << "Y mismatch at " << i << ", provider: " << provider_type;
+        }
+
+        // Validate present_key prefix (output 1): positions [0, valid_seq_positions) in BNSH layout.
+        // past_seqlens=2 rows from past_key, then 1 row from k. Position 3 is uninitialized (skip).
+        const int past_seqlens = valid_seq_positions - kv_sequence_length;  // = 2
+        {
+          auto pk_span = fetches[1].Get<Tensor>().DataAsSpan<MLFloat16>();
+          for (int h = 0; h < kv_num_heads; ++h) {
+            int present_h = h * total_sequence_length * head_size;
+            int past_h = h * past_sequence_length * head_size;
+            // Check past rows [0, past_seqlens)
+            for (int s = 0; s < past_seqlens; ++s)
+              for (int d = 0; d < head_size; ++d)
+                ASSERT_NEAR(pk_span[present_h + s * head_size + d].ToFloat(),
+                            past_key[past_h + s * head_size + d], 1e-3f)
+                    << "present_key past mismatch h=" << h << " s=" << s << " d=" << d;
+            // Check new key row at position past_seqlens
+            int k_h = h * kv_sequence_length * head_size;
+            for (int d = 0; d < head_size; ++d)
+              ASSERT_NEAR(pk_span[present_h + past_seqlens * head_size + d].ToFloat(),
+                          k[k_h + d], 1e-3f)
+                  << "present_key new-key mismatch h=" << h << " d=" << d;
+          }
+        }
+
+        // Validate present_value prefix (output 2): same structure with v_head_size.
+        {
+          auto pv_span = fetches[2].Get<Tensor>().DataAsSpan<MLFloat16>();
+          for (int h = 0; h < kv_num_heads; ++h) {
+            int present_h = h * total_sequence_length * v_head_size;
+            int past_h = h * past_sequence_length * v_head_size;
+            for (int s = 0; s < past_seqlens; ++s)
+              for (int d = 0; d < v_head_size; ++d)
+                ASSERT_NEAR(pv_span[present_h + s * v_head_size + d].ToFloat(),
+                            past_value[past_h + s * v_head_size + d], 1e-3f)
+                    << "present_value past mismatch h=" << h << " s=" << s << " d=" << d;
+            int v_h = h * kv_sequence_length * v_head_size;
+            for (int d = 0; d < v_head_size; ++d)
+              ASSERT_NEAR(pv_span[present_h + past_seqlens * v_head_size + d].ToFloat(),
+                          v[v_h + d], 1e-3f)
+                  << "present_value new-value mismatch h=" << h << " d=" << d;
+          }
+        }
+        // Position 3 (index [h, 3, :]) intentionally not validated — uninitialized for performance.
+      });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Multi-batch Flash decode with per-batch partial bool masks (CUDA-only, direct OpTester).
+// batch_size=2 with different masks: batch 0 has 3 leading trues (past_seqlens=2),
+// batch 1 has 6 leading trues (past_seqlens=5). Tests LaunchConcatNewToPastKV with
+// variable per-batch past_seq_lens and validates present_key/value per-batch.
+TEST(AttentionTest, FlashAttention_Decode_PartialMask_MultiBatch_Float16) {
+  if (!HasCudaEnvironment(530)) {
+    return;  // fp16 requires SM 5.3+
+  }
+
+  int batch_size = 2;
+  int q_num_heads = 2;
+  int q_sequence_length = 1;
+  int head_size = 64;
+  int kv_sequence_length = 1;
+  int kv_num_heads = 2;
+  int v_head_size = 64;
+  int past_sequence_length = 5;
+  int total_sequence_length = past_sequence_length + kv_sequence_length;  // 6
+
+  // Uniform Q and K → equal attention scores → softmax is uniform.
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.5f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.5f);
+  std::vector<float> past_key(batch_size * kv_num_heads * past_sequence_length * head_size, 0.5f);
+
+  // V: [2, 2, 1, 64] — new token values per batch per head.
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * v_head_size);
+  {
+    float v_new[2][2] = {{0.4f, 0.8f}, {0.6f, 1.0f}};
+    for (int b = 0; b < batch_size; ++b)
+      for (int h = 0; h < kv_num_heads; ++h)
+        std::fill_n(v.begin() + (b * kv_num_heads + h) * v_head_size, v_head_size, v_new[b][h]);
+  }
+
+  // past_value: [2, 2, 5, 64] — distinct per-row values.
+  // Batch 0: only positions 0,1 are valid past (mask has 3 leading trues, past_seqlens=2).
+  // Batch 1: all 5 positions are valid past (mask has 6 leading trues, past_seqlens=5).
+  std::vector<float> past_value(batch_size * kv_num_heads * past_sequence_length * v_head_size);
+  {
+    float pv[2][2][5] = {
+        {{0.1f, 0.2f, 0.0f, 0.0f, 0.0f}, {0.5f, 0.6f, 0.0f, 0.0f, 0.0f}},  // batch 0
+        {{0.1f, 0.2f, 0.3f, 0.4f, 0.5f}, {0.5f, 0.6f, 0.7f, 0.8f, 0.9f}}   // batch 1
+    };
+    for (int b = 0; b < batch_size; ++b)
+      for (int h = 0; h < kv_num_heads; ++h)
+        for (int s = 0; s < past_sequence_length; ++s)
+          std::fill_n(past_value.begin() +
+                          ((b * kv_num_heads + h) * past_sequence_length + s) * v_head_size,
+                      v_head_size, pv[b][h][s]);
+  }
+
+  // 4D bool mask: [2, 1, 1, 6] — per-batch varying masks.
+  // Batch 0: [T,T,T,F,F,F] → 3 leading trues → past_seqlens=2
+  // Batch 1: [T,T,T,T,T,T] → 6 leading trues → past_seqlens=5
+  // Note: use bool array instead of vector<bool> (which is bit-packed and lacks .data()).
+  const bool mask[] = {
+      true, true, true, false, false, false,  // batch 0
+      true, true, true, true, true, true      // batch 1
+  };
+
+  // Y: uniform attention over valid positions.
+  // Batch 0 (3 valid): head 0: mean(0.1, 0.2, 0.4) = 7/30, head 1: mean(0.5, 0.6, 0.8) = 19/30
+  // Batch 1 (6 valid): head 0: mean(0.1..0.5, 0.6) = 0.35, head 1: mean(0.5..0.9, 1.0) = 0.75
+  std::vector<float> y(batch_size * q_num_heads * q_sequence_length * v_head_size);
+  {
+    float y_per_bh[2][2] = {
+        {7.0f / 30.0f, 19.0f / 30.0f},  // batch 0
+        {0.35f, 0.75f}                  // batch 1
+    };
+    for (int b = 0; b < batch_size; ++b)
+      for (int h = 0; h < q_num_heads; ++h)
+        std::fill_n(y.begin() + (b * q_num_heads + h) * v_head_size, v_head_size, y_per_bh[b][h]);
+  }
+
+  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, v_head_size}, ToFloat16(v));
+  test.AddInput<bool>("attn_mask", {batch_size, 1, q_sequence_length, total_sequence_length},
+                      mask, batch_size * total_sequence_length);
+  test.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                           ToFloat16(past_key));
+  test.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_sequence_length, v_head_size},
+                           ToFloat16(past_value));
+
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, v_head_size},
+                            ToFloat16(y));
+  std::vector<float> present_key_placeholder(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
+  std::vector<float> present_value_placeholder(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
+  test.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            ToFloat16(present_key_placeholder));
+  test.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, v_head_size},
+                            ToFloat16(present_value_placeholder));
+
+  // Per-batch valid positions: batch 0 = 3 (past_seqlens=2 + kv_seq=1), batch 1 = 6 (all).
+  const int valid_positions[] = {3, 6};
+
+  test.SetCustomOutputVerifier(
+      [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+        ASSERT_GE(fetches.size(), 3u) << "Expected 3 outputs, provider: " << provider_type;
+
+        // Validate Y (output 0).
+        auto expected_y_fp16 = ToFloat16(y);
+        auto y_span = fetches[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+        ASSERT_EQ(y_span.size(), expected_y_fp16.size()) << "Y size mismatch, provider: " << provider_type;
+        for (size_t i = 0; i < y_span.size(); ++i) {
+          ASSERT_NEAR(y_span[i].ToFloat(), expected_y_fp16[i].ToFloat(), 3e-3f)
+              << "Y mismatch at " << i << ", provider: " << provider_type;
+        }
+
+        // Validate present_key prefix per batch (output 1).
+        {
+          auto pk_span = fetches[1].Get<Tensor>().DataAsSpan<MLFloat16>();
+          for (int b = 0; b < batch_size; ++b) {
+            int past_seqlens = valid_positions[b] - kv_sequence_length;
+            for (int h = 0; h < kv_num_heads; ++h) {
+              int present_bh = (b * kv_num_heads + h) * total_sequence_length * head_size;
+              int past_bh = (b * kv_num_heads + h) * past_sequence_length * head_size;
+              // Check past rows [0, past_seqlens)
+              for (int s = 0; s < past_seqlens; ++s)
+                for (int d = 0; d < head_size; ++d)
+                  ASSERT_NEAR(pk_span[present_bh + s * head_size + d].ToFloat(),
+                              past_key[past_bh + s * head_size + d], 1e-3f)
+                      << "present_key past mismatch b=" << b << " h=" << h << " s=" << s << " d=" << d;
+              // Check new key at position past_seqlens
+              int k_bh = (b * kv_num_heads + h) * kv_sequence_length * head_size;
+              for (int d = 0; d < head_size; ++d)
+                ASSERT_NEAR(pk_span[present_bh + past_seqlens * head_size + d].ToFloat(),
+                            k[k_bh + d], 1e-3f)
+                    << "present_key new-key mismatch b=" << b << " h=" << h << " d=" << d;
+            }
+          }
+        }
+
+        // Validate present_value prefix per batch (output 2).
+        {
+          auto pv_span = fetches[2].Get<Tensor>().DataAsSpan<MLFloat16>();
+          for (int b = 0; b < batch_size; ++b) {
+            int past_seqlens = valid_positions[b] - kv_sequence_length;
+            for (int h = 0; h < kv_num_heads; ++h) {
+              int present_bh = (b * kv_num_heads + h) * total_sequence_length * v_head_size;
+              int past_bh = (b * kv_num_heads + h) * past_sequence_length * v_head_size;
+              for (int s = 0; s < past_seqlens; ++s)
+                for (int d = 0; d < v_head_size; ++d)
+                  ASSERT_NEAR(pv_span[present_bh + s * v_head_size + d].ToFloat(),
+                              past_value[past_bh + s * v_head_size + d], 1e-3f)
+                      << "present_value past mismatch b=" << b << " h=" << h << " s=" << s << " d=" << d;
+              int v_bh = (b * kv_num_heads + h) * kv_sequence_length * v_head_size;
+              for (int d = 0; d < v_head_size; ++d)
+                ASSERT_NEAR(pv_span[present_bh + past_seqlens * v_head_size + d].ToFloat(),
+                            v[v_bh + d], 1e-3f)
+                    << "present_value new-value mismatch b=" << b << " h=" << h << " d=" << d;
+            }
+          }
+        }
+        // Uninitialized tail positions beyond valid_positions[b] per batch intentionally not validated.
+      });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// MEA/unfused prompt path with fp16 and bool mask (single token, no past KV cache).
+// past_key/past_value are absent (None); with bool mask and no past_key, CUDA routes to
+// MEA/unfused (not Flash — flash_eligible requires past_key != nullptr with bool mask).
+TEST(AttentionTest, Attention4DAttnMaskBoolUnfusedPromptFloat16) {
+  int batch_size = 1;
+  int q_num_heads = 2;
+  int q_sequence_length = 1;
+  int head_size = 64;
+  int kv_sequence_length = 1;
+  int kv_num_heads = 2;
+  int v_head_size = 64;
+  int past_sequence_length = 0;
+  int total_sequence_length = past_sequence_length + kv_sequence_length;
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.5f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.5f);
+
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * v_head_size);
+  {
+    float v_val[] = {0.4f, 0.8f};
+    for (int h = 0; h < kv_num_heads; ++h)
+      std::fill_n(v.begin() + h * v_head_size, v_head_size, v_val[h]);
+  }
+
+  std::vector<float> past_key;
+  std::vector<float> past_value;
+  std::initializer_list<bool> m = {true};
+  std::vector<float> present_key = k;
+  std::vector<float> present_value = v;
+  std::vector<float> y = v;  // single position, softmax = 1.0
+
+  ASSERT_EQ(q.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size));
+  ASSERT_EQ(k.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size));
+  ASSERT_EQ(v.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  ASSERT_EQ(m.size(), static_cast<size_t>(q_sequence_length * total_sequence_length));
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), m, past_key, past_value,
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,
+            y, present_key, present_value, std::vector<float>(),
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
+  );
+}
+
 TEST(AttentionTest, Attention4DDefaultFloat16) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 3;           // Q.shape[1]
@@ -1532,10 +2053,141 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
+  if (HasCudaEnvironment(0)) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// Edge case: nonpad_kv_seqlen = total_sequence_length (no positions masked).
+// Edge case: nonpad_kv_seqlen=0 exercised on CUDA Flash/MEA path with fp16 and GQA.
+// This verifies the val >= 0 assertion in ConvertNonpadKvSeqlenToFlashSeqlensKKernel
+// and ConvertNonpadKvSeqlenToAttentionBiasKernel.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked_FP16_GQA) {
+  if (!HasCudaEnvironment(530)) {
+    return;  // fp16 requires SM 5.3+
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  // batch=2: batch 0 is fully masked (nonpad=0), batch 1 has 2 valid positions (nonpad=2).
+  // GQA: q_num_heads=4, kv_num_heads=2 → triggers Flash/MEA GQA path.
+  // 4D BNSH: [B, N, S, H]
+  int batch_size = 2;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 1;
+  int kv_sequence_length = 4;
+  int head_size = 64;
+
+  int q_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  int k_elements = batch_size * kv_num_heads * kv_sequence_length * head_size;
+  int v_elements = k_elements;
+
+  // Use constant values for predictable uniform-softmax results.
+  std::vector<float> q(q_elements, 1.0f);
+  std::vector<float> k(k_elements, 1.0f);
+  // V: each row = row_index * 0.1 for distinct values across positions.
+  std::vector<float> v(v_elements);
+  for (int b = 0; b < batch_size; b++) {
+    for (int n = 0; n < kv_num_heads; n++) {
+      for (int s = 0; s < kv_sequence_length; s++) {
+        float val = static_cast<float>(s + 1) * 0.1f;
+        for (int h = 0; h < head_size; h++) {
+          v[(b * kv_num_heads * kv_sequence_length + n * kv_sequence_length + s) * head_size + h] = val;
+        }
+      }
+    }
+  }
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<MLFloat16>();
+  // batch 0: nonpad=0 (all masked), batch 1: nonpad=2 (first 2 of 4 positions valid)
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {batch_size}, {0, 2});
+
+  // Expected output shape: [B, q_num_heads, q_seq, head_size]
+  // Batch 0 (all masked, nonpad=0): Flash/MEA returns zeros for fully-masked sequences.
+  // Batch 1 (2 valid): softmax over positions 0..1 (equal K, so uniform)
+  //   mean of first 2 rows = (0.1 + 0.2) / 2 = 0.15 for each head dim
+  int y_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  std::vector<float> expected_y(y_elements, 0.0f);  // batch 0 = zeros
+  for (int n = 0; n < q_num_heads; n++) {
+    for (int h = 0; h < head_size; h++) {
+      expected_y[(1 * q_num_heads + n) * head_size + h] = 0.15f;  // batch 1
+    }
+  }
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                            ToFloat16(expected_y), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();
+  test.AddOptionalOutputEdge<MLFloat16>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Regression test: BFloat16 must route to Flash Attention on SM80+.
+// BFloat16 is a 2-byte type so disable_flash_attention_ should be false,
+// allowing Flash to handle GQA natively via kv_num_heads.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_BF16_Flash) {
+  if (!HasCudaEnvironment(800)) {
+    return;  // BFloat16 requires SM 8.0+
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 1;
+  int kv_sequence_length = 4;
+  int head_size = 64;
+
+  int q_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  int k_elements = batch_size * kv_num_heads * kv_sequence_length * head_size;
+
+  std::vector<float> q(q_elements, 1.0f);
+  std::vector<float> k(k_elements, 1.0f);
+  std::vector<float> v(k_elements);
+  for (int n = 0; n < kv_num_heads; n++) {
+    for (int s = 0; s < kv_sequence_length; s++) {
+      float val = static_cast<float>(s + 1) * 0.1f;
+      for (int h = 0; h < head_size; h++) {
+        v[(n * kv_sequence_length + s) * head_size + h] = val;
+      }
+    }
+  }
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<BFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, FloatsToBFloat16s(q));
+  test.AddInput<BFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, FloatsToBFloat16s(k));
+  test.AddInput<BFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, FloatsToBFloat16s(v));
+  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<BFloat16>();
+  test.AddOptionalInputEdge<BFloat16>();
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {batch_size}, {2});
+
+  // 2 valid positions: uniform softmax → mean of V[0] and V[1] = (0.1 + 0.2) / 2 = 0.15
+  int y_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  std::vector<float> expected_y(y_elements, 0.15f);
+  test.AddOutput<BFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                           FloatsToBFloat16s(expected_y), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<BFloat16>();
+  test.AddOptionalOutputEdge<BFloat16>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(AttentionTest, Attention_NonPadKVSeqLen_NoneMasked) {
   OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
 
@@ -1618,6 +2270,103 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_ExceedsTotalSeqLen) {
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "nonpad_kv_seqlen[0] = 5 is out of range",
            {}, nullptr, &execution_providers);
+}
+
+// Test combined nonpad_kv_seqlen + bool attn_mask.
+// Both masks should compose additively: nonpad_kv_seqlen masks positions >= valid_len,
+// and attn_mask further masks positions within the valid range.
+// Previously this combination crashed with ORT_ENFORCE; now it falls back to MEA gracefully.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_WithBoolAttnMask) {
+  // batch_size=1, q_num_heads=1, kv_num_heads=1
+  // q_seq_len=1, kv_seq_len=4, head_size=2
+  // nonpad_kv_seqlen=[3] => positions 0,1,2 valid by padding
+  // attn_mask=[true, false, true, true] => position 1 masked by attn_mask
+  // Combined: only positions 0 and 2 are effective
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {1, 1, 1, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  // Q and K designed for uniform attention scores on valid positions
+  std::vector<float> q = {1.0f, 1.0f};
+  std::vector<float> k(8, 1.0f);
+  // V: [10, 20], [30, 40], [50, 60], [70, 80]
+  std::vector<float> v = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  // 2D bool mask [1, 4]: position 1 is false (masked out)
+  test.AddInput<bool>("attn_mask", {1, 4}, {true, false, true, true});
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {3});
+
+  // nonpad masks position 3 (>= valid_len=3), attn_mask masks position 1
+  // Active positions: 0 and 2, with uniform attention scores
+  // Output = mean(V[0], V[2]) = [(10+50)/2, (20+60)/2] = [30.0, 40.0]
+  std::vector<float> expected_y = {30.0f, 40.0f};
+  test.AddOutput<float>("Y", {1, 1, 1, 2}, expected_y, false, 0, 1e-3f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  if (HasCudaEnvironment(0)) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test combined nonpad_kv_seqlen + float attn_mask with multi-batch.
+// Verifies additive composition works with float attention bias values.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
+  // batch_size=2, q_num_heads=1, kv_num_heads=1
+  // q_seq_len=1, kv_seq_len=4, head_size=2
+  // nonpad_kv_seqlen=[3, 2] => batch 0 has 3 valid, batch 1 has 2 valid
+  // 2D float attn_mask [1, 4] = [0, -inf, 0, 0] => masks position 1 for all batches
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {2, 1, 1, 2};
+  std::vector<int64_t> k_shape = {2, 1, 4, 2};
+  std::vector<int64_t> v_shape = {2, 1, 4, 2};
+
+  std::vector<float> q = {1.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<float> k(16, 1.0f);
+  // Batch 0 V: [1,1], [2,2], [3,3], [99,99]
+  // Batch 1 V: [5,5], [6,6], [99,99], [99,99]
+  std::vector<float> v = {
+      1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 99.0f, 99.0f,   // batch 0
+      5.0f, 5.0f, 6.0f, 6.0f, 99.0f, 99.0f, 99.0f, 99.0f  // batch 1
+  };
+
+  float neg_inf = -std::numeric_limits<float>::infinity();
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  // 2D float mask [1, 4]: position 1 gets -inf
+  test.AddInput<float>("attn_mask", {1, 4}, {0.0f, neg_inf, 0.0f, 0.0f});
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {3, 2});
+
+  // Batch 0: nonpad masks pos 3, attn_mask masks pos 1 → active: 0,2
+  //   Output = mean(V[0], V[2]) = [(1+3)/2, (1+3)/2] = [2.0, 2.0]
+  // Batch 1: nonpad masks pos 2,3, attn_mask masks pos 1 → active: 0 only
+  //   Output = V[0] = [5.0, 5.0]
+  std::vector<float> expected_y = {2.0f, 2.0f, 5.0f, 5.0f};
+  test.AddOutput<float>("Y", {2, 1, 1, 2}, expected_y, false, 0, 1e-3f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  if (HasCudaEnvironment(0)) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

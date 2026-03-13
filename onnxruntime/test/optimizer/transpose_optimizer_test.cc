@@ -4501,6 +4501,51 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151_NegativeDQAxis) {
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
 
+// Regression test for a division-by-zero in Permute1DConstant when a Transpose node carries an empty perm
+// attribute (rank-0 / scalar tensor). perm.size() == 0 caused a divide-by-zero before the fix.
+// Verifies that session initialization completes without crashing when the optimizer encounters this graph.
+TEST(TransposeOptimizerTests, RegressionTest_Permute1DConstantEmptyPerm) {
+  // Graph: scalar_input → Transpose(perm=[]) → Pad(pads const, shape=[0]) → output
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 13;  // opset 13: Pad accepts pads as a named input
+  Model model("RegressionTest_Permute1DConstantEmptyPerm", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  // Rank-0 scalar float input
+  auto* scalar_input = MakeInput<float>(builder, std::vector<int64_t>{}, std::vector<int64_t>{}, 0.0f, 1.0f);
+
+  // Transpose with empty perm — valid ONNX identity on a scalar
+  auto* transpose_out = builder.MakeIntermediate();
+  auto& transpose_node = builder.AddNode("Transpose", {scalar_input}, {transpose_out});
+  transpose_node.AddAttribute("perm", std::vector<int64_t>{});
+
+  // Pad: empty pads for a rank-0 input
+  auto* pads_init = builder.MakeInitializer<int64_t>({0}, std::vector<int64_t>{});
+  auto* pad_out = builder.MakeOutput();
+  builder.AddNode("Pad", {transpose_out, pads_init}, {pad_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Serialize to an in-memory buffer so we can load it into a session
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  // Run with Level1 optimizations (transpose optimizer is active at Level1)
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Level1;
+  so.session_logid = "TransposeOptimizerTests.RegressionTest_Permute1DConstantEmptyPerm";
+
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+
+  // The critical property is that Initialize() completes successfully without crashing.
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
 // These tests use the internal testing EP with static kernels which requires a full build and contrib ops,
 // and the NHWC Conv which requires contrib ops
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)

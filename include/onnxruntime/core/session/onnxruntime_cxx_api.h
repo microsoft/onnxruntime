@@ -2868,6 +2868,7 @@ void GetAttr(const OrtKernelInfo* p, const char* name, int64_t&);
 void GetAttr(const OrtKernelInfo* p, const char* name, std::string&);
 void GetAttrs(const OrtKernelInfo* p, const char* name, std::vector<float>&);
 void GetAttrs(const OrtKernelInfo* p, const char* name, std::vector<int64_t>&);
+void GetAttrs(const OrtKernelInfo* p, const char* name, std::vector<std::string>&);
 }  // namespace attr_utils
 
 template <typename T>
@@ -2884,7 +2885,7 @@ struct KernelInfoImpl : Base<T> {
     return val;
   }
 
-  template <typename R>  // R is only implemented for std::vector<float>, std::vector<int64_t>
+  template <typename R>  // R is only implemented for float, int64_t, and string
   std::vector<R> GetAttributes(const char* name) const {
     std::vector<R> result;
     attr_utils::GetAttrs(this->p_, name, result);

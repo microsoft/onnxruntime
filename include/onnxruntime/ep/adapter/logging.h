@@ -34,6 +34,13 @@ struct Logger {
                        message);
   }
 
+ private:
+  Ort::Logger logger_;
+};
+
+class LoggingManager final {
+ public:
+  static bool HasDefaultLogger() { return nullptr != instance_; }
   static const Logger& DefaultLogger() { return *instance_; }
   static void CreateDefaultLogger(const OrtLogger* logger) {
     instance_ = new Logger(logger);
@@ -44,7 +51,6 @@ struct Logger {
   }
 
  private:
-  Ort::Logger logger_;
   inline static Logger* instance_ = nullptr;
 };
 
@@ -104,7 +110,7 @@ inline detail::LoggerCapture CreateMessageCapture(
 // Undefine and redefine logging macros
 #undef LOGS_DEFAULT_CATEGORY
 #define LOGS_DEFAULT_CATEGORY(severity, category) \
-  LOGS_CATEGORY(::onnxruntime::ep::adapter::Logger::DefaultLogger(), severity, category)
+  LOGS_CATEGORY(::onnxruntime::ep::adapter::LoggingManager::DefaultLogger(), severity, category)
 
 #undef CREATE_MESSAGE
 #define CREATE_MESSAGE(logger, severity, category, datatype) \

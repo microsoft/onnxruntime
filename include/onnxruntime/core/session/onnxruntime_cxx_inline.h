@@ -3063,6 +3063,39 @@ inline void attr_utils::GetAttrs(const OrtKernelInfo* p, const char* name, std::
   Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_int64(p, name, out.data(), &size));
   out.swap(result);
 }
+
+inline void attr_utils::GetAttrs(const OrtKernelInfo* p, const char* name, std::vector<std::string>& result) {
+  AllocatorWithDefaultOptions allocator;
+  char** out = nullptr;
+  size_t size = 0;
+
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_string(p, name, allocator, nullptr, &size));
+  if (size == 0) {
+    result.clear();
+    return;
+  }
+
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_string(p, name, allocator, &out, &size));
+
+  auto deleter = detail::AllocatedFree(allocator);
+  std::unique_ptr<void, decltype(deleter)> array_guard(out, deleter);
+  auto strings_deleter = [&deleter, size](char** values) {
+    for (size_t i = 0; i < size; ++i) {
+      if (values[i] != nullptr) {
+        deleter(values[i]);
+      }
+    }
+  };
+  std::unique_ptr<char*, decltype(strings_deleter)> strings_guard(out, strings_deleter);
+
+  std::vector<std::string> strings;
+  strings.reserve(size);
+  for (size_t i = 0; i < size; ++i) {
+    strings.emplace_back(out[i]);
+  }
+
+  strings.swap(result);
+}
 }  // namespace detail
 
 inline KernelInfo::KernelInfo(OrtKernelInfo* info) : detail::KernelInfoImpl<OrtKernelInfo>{info} {}

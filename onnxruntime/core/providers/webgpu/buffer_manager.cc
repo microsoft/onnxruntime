@@ -221,6 +221,9 @@ class BucketCacheManager : public IBufferCacheManager {
         wgpuBufferRelease(buffer);
       }
     }
+    for (auto& buffer_info : pending_buffers_) {
+      wgpuBufferRelease(buffer_info.first);
+    }
   }
 
  protected:

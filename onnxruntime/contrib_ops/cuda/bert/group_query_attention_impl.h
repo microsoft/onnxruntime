@@ -122,6 +122,16 @@ struct GQABufferRequirements {
   }
 };
 
+template <typename T>
+// Also used by ONNX Attention (core/providers/cuda/llm/attention.cc) for GQA head expansion in MEA path.
+Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
+                     float2* k_buff, float2* v_buff,
+                     const float2* k_og, const float2* v_og,
+                     const int buff_seqlen, const int og_seqlen,
+                     const bool is_bsnh,
+                     cudaStream_t stream,
+                     const int max_threads_per_block);
+
 Status LaunchGetSequenceLengths(
     const int* total_seq_lens_minus_one,
     int* past_seq_lens,
