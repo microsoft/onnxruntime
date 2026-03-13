@@ -2217,6 +2217,90 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* CausalConv1DWithState_ver1_doc = R"DOC(
+Depthwise causal 1D convolution with carry state for incremental decoding.
+
+Used by Gated DeltaNet (Qwen3.5) and Mamba (Jamba, FalconMamba) as a preprocessing step.
+Replaces the 3-op pattern (Concat + Conv + Slice) with a single fused operation.
+
+The convolution is causal (looks only at current and past positions) and depthwise
+(each channel is convolved independently with its own kernel).
+
+Input layout is channels-first: (batch_size, channels, length).
+Weight layout: (channels, 1, kernel_size) for depthwise convolution.
+Conv state carries the last (kernel_size - 1) input values for incremental decode.
+
+The optional activation attribute supports fused SiLU/Swish activation.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    CausalConv1DWithState, 1,
+    OpSchema()
+        .SetDoc(CausalConv1DWithState_ver1_doc)
+        .Attr("activation",
+              "Fused activation function. One of: 'silu', 'swish', 'none'. "
+              "Default is 'silu'.",
+              AttributeProto::STRING,
+              std::string("silu"))
+        .Attr("group",
+              "group for convolution. Default is 1, which means normal convolution. When group equals to input channels, it becomes depthwise convolution.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Input(0,
+               "input",
+               "Input tensor with shape (batch_size, channels, length). Channels-first layout.",
+               "T")
+        .Input(1,
+               "weight",
+               "Depthwise convolution weights with shape (channels, 1, kernel_size).",
+               "T")
+        .Input(2,
+               "bias",
+               "Optional bias with shape (channels).",
+               "T",
+               OpSchema::Optional)
+        .Input(3,
+               "conv_state",
+               "Carry state from previous step with shape (batch_size, channels, kernel_size - 1). "
+               "If not provided, padding is zero.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Convolution output with shape (batch_size, channels, length).",
+                "T")
+        .Output(1,
+                "present_state",
+                "Updated carry state with shape (batch_size, channels, kernel_size - 1). "
+                "Contains the last (kernel_size - 1) values from the virtual input.",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+
+          // Output 0: same shape as input (batch_size, channels, length)
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          // Output 1: (batch_size, channels, kernel_size - 1)
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+            auto& input_shape = getInputShape(ctx, 0);
+            auto& weight_shape = getInputShape(ctx, 1);
+            TensorShapeProto state_shape;
+            *state_shape.add_dim() = input_shape.dim(0);   // batch_size
+            *state_shape.add_dim() = input_shape.dim(1);   // channels
+            // kernel_size - 1
+            if (weight_shape.dim(2).has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(weight_shape.dim(2).dim_value() - 1);
+            } else {
+              state_shape.add_dim();  // unknown
+            }
+            updateOutputShape(ctx, 1, state_shape);
+          }
+        }));
+
 constexpr const char* LinearAttentionRecurrent_ver1_doc = R"DOC(
 Linear Attention Recurrent operator for single-token decode step.
 

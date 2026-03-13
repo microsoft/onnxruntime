@@ -10,6 +10,14 @@
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 
 /*
+Key design decisions:
+1. Input parsing: Handles both 3D (B, S, hidden) and 4D (B, N, S, H) input formats per the ONNX spec
+2. MHA vs GQA: Detects whether q_num_heads == kv_num_heads (MHA) or q_num_heads > kv_num_heads (GQA) and configures WebgpuAttentionParameters accordingly
+3. Flash attention: Used when available (no output_qk needed, subgroups feature present, no bias)
+4. 3D→BNSH conversion: For 3D inputs, uses TransferBSDToBNSH to convert to the BNSH format expected by the attention kernels
+5. 4D output: Computes in BSD layout (as the shader outputs), then transposes back to BNSH for 4D output format
+6. Attention mask: Reshapes 2D/3D masks to 4D for the shader's broadcasting logic; boolean masks return NOT_SUPPORTED
+
 Remaining failures fall into known limitation categories:
     Boolean masks (2) — not yet supported on WebGPU
     SoftCap (2) — not yet wired through to the shader
