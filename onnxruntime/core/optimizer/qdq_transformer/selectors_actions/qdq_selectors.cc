@@ -10,8 +10,6 @@
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/optimizer/utils.h"
-#include "core/common/logging/logging.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace QDQ {
@@ -573,32 +571,26 @@ static bool ValidateBlockwiseDQForMatMulNBits(const Graph& graph, const Node& dq
 
   if (dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
       dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: scale type=" << dt_scales << " (expected FLOAT=1 or FLOAT16=10)" << std::endl;
     return false;
   }
 
   if (!IsNBitsIntType(dt_weight)) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: weight type=" << dt_weight << " is not an NBits int type" << std::endl;
     return false;
   }
 
   // DQ is blockwise quantized along axis 0, and block_size must be 2's power and >= 16
   const auto& dq_attrs = dq_node.GetAttributes();
   if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: axis=" << (dq_attrs.count("axis") ? dq_attrs.at("axis").i() : -999)
-              << " (expected 0)" << std::endl;
     return false;
   }
 
   const auto a_iter = dq_attrs.find("block_size");
   if (a_iter == dq_attrs.end()) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: block_size attribute not found" << std::endl;
     return false;
   }
 
   auto block_size = a_iter->second.i();
   if (block_size < 16 || ((block_size - 1) & block_size)) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: block_size=" << block_size << " (must be >= 16 and power of 2)" << std::endl;
     return false;
   }
 
@@ -608,22 +600,16 @@ static bool ValidateBlockwiseDQForMatMulNBits(const Graph& graph, const Node& dq
   const auto* zp_tensor_proto = zero_point_arg ? graph.GetConstantInitializer(zero_point_arg->Name(), true) : nullptr;
 
   if (!weight_tensor_proto || !scale_tensor_proto) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: weight_is_constant=" << (weight_tensor_proto != nullptr)
-              << " scale_is_constant=" << (scale_tensor_proto != nullptr) << std::endl;
     return false;
   }
 
   if (zero_point_arg && !zp_tensor_proto) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: zero_point exists but is not a constant initializer" << std::endl;
     return false;
   }
 
   // weight, scale and zero points (if exists) must have the rank 2
   if (weight_tensor_proto->dims_size() != 2 || scale_tensor_proto->dims_size() != 2 ||
       (zp_tensor_proto && zp_tensor_proto->dims_size() != 2)) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: rank check - weight_rank=" << weight_tensor_proto->dims_size()
-              << " scale_rank=" << scale_tensor_proto->dims_size()
-              << " zp_rank=" << (zp_tensor_proto ? zp_tensor_proto->dims_size() : -1) << std::endl;
     return false;
   }
 
@@ -632,19 +618,9 @@ static bool ValidateBlockwiseDQForMatMulNBits(const Graph& graph, const Node& dq
       weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
       (zp_tensor_proto && (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
                            zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
-    std::cerr << "[ValidateBlockwiseDQ] FAIL: shape mismatch - weight=[" << weight_tensor_proto->dims()[0] << "," << weight_tensor_proto->dims()[1]
-              << "] scale=[" << scale_tensor_proto->dims()[0] << "," << scale_tensor_proto->dims()[1]
-              << "] block_size=" << block_size;
-    if (zp_tensor_proto) {
-      std::cerr << " zp=[" << zp_tensor_proto->dims()[0] << "," << zp_tensor_proto->dims()[1] << "]";
-    }
-    std::cerr << std::endl;
     return false;
   }
 
-  std::cerr << "[ValidateBlockwiseDQ] PASS: weight_type=" << dt_weight << " scale_type=" << dt_scales
-            << " block_size=" << block_size << " weight=[" << weight_tensor_proto->dims()[0] << "," << weight_tensor_proto->dims()[1]
-            << "]" << std::endl;
   return true;
 }
 
@@ -652,13 +628,11 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
                                       const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes) const {
   if (redundant_clip_node) {
-    std::cerr << "[DQMatMulNodeGroupSelector] FAIL: redundant_clip_node is not null for MatMul " << node.Name() << std::endl;
     return false;
   }
 
   // Should not have any Q nodes
   if (!q_nodes.empty()) {
-    std::cerr << "[DQMatMulNodeGroupSelector] FAIL: q_nodes not empty (" << q_nodes.size() << ") for MatMul " << node.Name() << std::endl;
     return false;
   }
 
@@ -666,118 +640,15 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
 
   // MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
   if (dq_nodes.size() != 1 || !optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1)) {
-    std::cerr << "[DQMatMulNodeGroupSelector] FAIL: dq_nodes.size()=" << dq_nodes.size()
-              << ", CheckOutputEdges=" << (dq_nodes.size() == 1 ? optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1) : false)
-              << " for MatMul " << node.Name() << std::endl;
     return false;
   }
 
   // DQ must be MatMul's the second input
   if (node.InputDefs()[1] != dq_nodes[0]->OutputDefs()[0]) {
-    std::cerr << "[DQMatMulNodeGroupSelector] FAIL: DQ is not 2nd input of MatMul " << node.Name() << std::endl;
     return false;
   }
 
-  bool validate_result = ValidateBlockwiseDQForMatMulNBits(graph, *dq_nodes[0]);
-  std::cerr << "[DQMatMulNodeGroupSelector] ValidateBlockwiseDQ result=" << validate_result
-            << " for MatMul " << node.Name() << std::endl;
-  return validate_result;
-}
-
-std::optional<NodesToOptimizeIndices>
-DQCastMatMulToMatMulNBitsSelector::Select(const GraphViewer& graph_viewer, const Node& node) const {
-  // Check EP compatibility
-  const std::string_view node_ep = node.GetExecutionProviderType();
-  if (!compatible_providers_.empty() &&
-      std::find(compatible_providers_.begin(), compatible_providers_.end(), node_ep) == compatible_providers_.end()) {
-    std::cerr << "[DQCastMatMulToMatMulNBits] EP check failed for node " << node.Name()
-              << " (ep=" << node_ep << ")" << std::endl;
-    return std::nullopt;
-  }
-
-  const auto& graph = graph_viewer.GetGraph();
-
-  // node must be MatMul
-  if (node.OpType() != "MatMul") {
-    return std::nullopt;
-  }
-
-  std::cerr << "[DQCastMatMulToMatMulNBits] Checking MatMul node: " << node.Name() << std::endl;
-
-  if (node.InputDefs().size() < 2) {
-    std::cerr << "[DQCastMatMulToMatMulNBits] MatMul " << node.Name() << " has < 2 inputs" << std::endl;
-    return std::nullopt;
-  }
-
-  // Check input B: must be Cast(fp16->fp32)
-  const Node* cast_b = graph_viewer.GetProducerNode(node.InputDefs()[1]->Name());
-  if (!cast_b || cast_b->OpType() != "Cast") {
-    std::cerr << "[DQCastMatMulToMatMulNBits] MatMul " << node.Name()
-              << " input B producer is " << (cast_b ? cast_b->OpType() : "null") << ", not Cast" << std::endl;
-    return std::nullopt;
-  }
-
-  const auto& cast_b_attrs = cast_b->GetAttributes();
-  auto to_iter = cast_b_attrs.find("to");
-  if (to_iter == cast_b_attrs.end() ||
-      to_iter->second.i() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-    std::cerr << "[DQCastMatMulToMatMulNBits] Cast B 'to' attr = "
-              << (to_iter != cast_b_attrs.end() ? to_iter->second.i() : -1)
-              << ", expected FLOAT(1)" << std::endl;
-    return std::nullopt;
-  }
-
-  // Cast B input must be fp16
-  if (!cast_b->InputDefs()[0]->TypeAsProto() ||
-      cast_b->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() !=
-          ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-    std::cerr << "[DQCastMatMulToMatMulNBits] Cast B input type = "
-              << (cast_b->InputDefs()[0]->TypeAsProto()
-                      ? cast_b->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type()
-                      : -1)
-              << ", expected FLOAT16(10)" << std::endl;
-    return std::nullopt;
-  }
-
-  // Cast B must have exactly 1 output edge (to MatMul) and not be a graph output
-  if (!optimizer_utils::CheckOutputEdges(graph, *cast_b, 1)) {
-    std::cerr << "[DQCastMatMulToMatMulNBits] Cast B output edges = "
-              << cast_b->GetOutputEdgesCount()
-              << ", graph_output=" << graph.NodeProducesGraphOutput(*cast_b) << std::endl;
-    return std::nullopt;
-  }
-
-  // Cast B's input must come from a DQ node
-  const Node* dq_node = graph_viewer.GetProducerNode(cast_b->InputDefs()[0]->Name());
-  if (!dq_node || dq_node->OpType() != QDQ::DQOpName) {
-    std::cerr << "[DQCastMatMulToMatMulNBits] Cast B input producer is "
-              << (dq_node ? dq_node->OpType() : "null") << ", not DequantizeLinear" << std::endl;
-    return std::nullopt;
-  }
-
-  // DQ must have exactly 1 output edge (to Cast B) and not be a graph output
-  if (!optimizer_utils::CheckOutputEdges(graph, *dq_node, 1)) {
-    std::cerr << "[DQCastMatMulToMatMulNBits] DQ output edges = "
-              << dq_node->GetOutputEdgesCount()
-              << ", graph_output=" << graph.NodeProducesGraphOutput(*dq_node) << std::endl;
-    return std::nullopt;
-  }
-
-  if (!ValidateBlockwiseDQForMatMulNBits(graph, *dq_node)) {
-    std::cerr << "[DQCastMatMulToMatMulNBits] ValidateBlockwiseDQForMatMulNBits failed for DQ "
-              << dq_node->Name() << std::endl;
-    return std::nullopt;
-  }
-
-  std::cerr << "[DQCastMatMulToMatMulNBits] MATCHED MatMul " << node.Name() << std::endl;
-
-  // Build selection
-  NodesToOptimizeIndicesBuilder builder;
-  builder.input_nodes.push_back(dq_node->Index());
-  builder.input_nodes.push_back(cast_b->Index());
-  builder.target_node = node.Index();
-
-  return builder.Build();
+  return ValidateBlockwiseDQForMatMulNBits(graph, *dq_nodes[0]);
 }
 
 bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,

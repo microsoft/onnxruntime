@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <iostream>
 #include <iterator>
 #include <string>
 #include <utility>
@@ -100,41 +99,21 @@ static Status MatchAndProcess(
 
     const auto selector_action_entries =
         selector_action_registry.LookUpByOpTypeAndDomain(node.OpType(), node.Domain());
-    if (node.OpType() == "MatMul") {
-      std::cerr << "[SATFramework:MatchAndProcess] MatMul node '" << node.Name()
-                << "' (idx=" << node.Index() << ") has " << selector_action_entries.size()
-                << " registered selector(s)" << std::endl;
-    }
     std::string key = SelectorActionRegistry::OpVersionsMapKey(node.OpType(), node.Domain());
     for (const auto& entry : selector_action_entries) {
       // check the supported versions if specified
       const auto& versions = entry->ops_and_versions.find(key)->second;
       if (!versions.empty()) {
         if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
-          if (node.OpType() == "MatMul") {
-            std::cerr << "[SATFramework:MatchAndProcess]   Selector '" << entry->name
-                      << "' skipped (version " << node.SinceVersion() << " not in supported list)" << std::endl;
-          }
           continue;
         }
       }
 
-      if (node.OpType() == "MatMul") {
-        std::cerr << "[SATFramework:MatchAndProcess]   Trying selector '" << entry->name << "'" << std::endl;
-      }
       auto selection = entry->selector->Select(graph_viewer, node);
       if (!selection.has_value()) {
-        if (node.OpType() == "MatMul") {
-          std::cerr << "[SATFramework:MatchAndProcess]   Selector '" << entry->name
-                    << "' did NOT match" << std::endl;
-        }
         continue;
       }
 
-      if (node.OpType() == "MatMul") {
-        std::cerr << "[SATFramework:MatchAndProcess]   Selector '" << entry->name
-                  << "' MATCHED. Breaking (first match wins)." << std::endl;
-      }
       node_selection_opt = std::move(selection);
       selector_action_entry_ptr = entry.get();
       break;
@@ -209,19 +188,6 @@ Status SelectorActionTransformer::ApplySelectorsAndActions(
     const SatRuntimeOptimizationSaveContext* save_context) const {
   GraphViewer graph_viewer(graph);
 
-  std::cerr << "[SATFramework:Apply] Transformer '" << Name() << "' running on graph level " << graph_level
-            << " with " << graph_viewer.NumberOfNodes() << " nodes" << std::endl;
-  {
-    const auto& compat_eps = GetCompatibleExecutionProviders();
-    std::cerr << "[SATFramework:Apply] Compatible EPs:";
-    if (compat_eps.empty()) {
-      std::cerr << " (all)";
-    } else {
-      for (const auto& ep : compat_eps) { std::cerr << " " << ep; }
-    }
-    std::cerr << std::endl;
-  }
-
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto* node = graph.GetNode(index);
     if (node == nullptr) {
@@ -233,10 +199,6 @@ Status SelectorActionTransformer::ApplySelectorsAndActions(
     if (graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
       ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger,
                                           Name(), selector_action_registry_, save_context));
-    } else if (node->OpType() == "MatMul") {
-      std::cerr << "[SATFramework:Apply] MatMul node '" << node->Name()
-                << "' SKIPPED: provider '" << node->GetExecutionProviderType()
-                << "' not in compatible list" << std::endl;
     }
   }
 

@@ -8,7 +8,6 @@
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 
-#include <iostream>
 #include "core/mlas/inc/mlas.h"
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
@@ -308,42 +307,20 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
                                                          intra_op_thread_pool);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::vector<const char*> providers = {kCpuExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider};
-  std::cerr << "[DQMatMulToMatMulNBitsRules] Registering DQMatMulToMatMulNBits selector with providers:";
-  for (const auto* p : providers) { std::cerr << " " << p; }
-  std::cerr << std::endl;
+  // Include "" (empty string) to match nodes not yet assigned to an EP.
+  // For FP16 models on CPU EP, FP16 MatMul nodes are not claimed during partitioning
+  // (no FP16 MatMul kernel on CPU), leaving their EP unassigned. The DQ->MatMul fusion
+  // should still apply; the action assigns kCpuExecutionProvider to the resulting
+  // MatMulNBits node (which has both float and float16 CPU kernels).
+  std::vector<const char*> providers = {kCpuExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider, ""};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},
                                                          std::move(selector),
                                                          std::move(action));
-  std::cerr << "[DQMatMulToMatMulNBitsRules] DQMatMulToMatMulNBits registered OK" << std::endl;
 
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
-#endif
-
-  // DQ -> Cast(fp16->fp32) -> MatMul pattern.
-  // Handles FP16 models where Cast nodes are inserted between DQ and MatMul.
-  const std::string cast_action_name{"DQCastMatMulToMatMulNBits"};
-
-  std::unique_ptr<Action> cast_action =
-      std::make_unique<QDQ::DQCastMatMulToMatMulNBitsAction>(qdq_matmulnbits_accuracy_level,
-                                                             intra_op_thread_pool);
-
-#if !defined(ORT_MINIMAL_BUILD)
-  std::cerr << "[DQMatMulToMatMulNBitsRules] Registering DQCastMatMulToMatMulNBits selector with providers:";
-  for (const auto* p : providers) { std::cerr << " " << p; }
-  std::cerr << std::endl;
-  std::unique_ptr<NodeSelector> cast_selector =
-      std::make_unique<QDQ::DQCastMatMulToMatMulNBitsSelector>(providers);
-  qdq_selector_action_registry.RegisterSelectorAndAction(cast_action_name,
-                                                         {{"MatMul", {}}},
-                                                         std::move(cast_selector),
-                                                         std::move(cast_action));
-  std::cerr << "[DQMatMulToMatMulNBitsRules] DQCastMatMulToMatMulNBits registered OK" << std::endl;
-#else
-  qdq_selector_action_registry.RegisterAction(cast_action_name, std::move(cast_action));
 #endif
 }
 
@@ -426,7 +403,9 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
           apply_context,
           // this transformer is compatible with CPU, DML, ACL and CUDA EP.
           // There is further EP control on the rule level.
-          {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider, kCudaExecutionProvider}} {
+          // Also accept nodes with empty EP (unassigned) so that individual selectors
+          // that include "" in their compatible providers can match unassigned nodes.
+          {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider, kCudaExecutionProvider, ""}} {
 }
 
 }  // namespace onnxruntime
