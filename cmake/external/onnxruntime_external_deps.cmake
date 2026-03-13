@@ -752,6 +752,16 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch &&
 
+          # The dawn_device_lost_keepalive.patch contains the following changes:
+          #
+          # - (private) Fix premature ABORT when device.lost fires in callUserCallback
+          #   The device.lost handler was wrapped in callUserCallback without runtimeKeepalivePush/Pop,
+          #   causing maybeExit() to trigger _exit(0) and set ABORT=true when runtimeKeepaliveCounter
+          #   was 0. This silently dropped all subsequent WebGPU callbacks (e.g. requestAdapter),
+          #   breaking session re-creation after device destruction.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_device_lost_keepalive.patch &&
+
           # The dawn_dxc_output_dir.patch contains the following changes:
           #
           # - (private) Fix DXC output directory for RelWithDebInfo and MinSizeRel configs
