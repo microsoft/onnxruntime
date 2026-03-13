@@ -906,5 +906,73 @@ TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 #endif
 }
+
+TEST(RoiAlignTest, Float16_Opset16) {
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 3);
+  test.AddAttribute<int64_t>("output_width", 4);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
+
+  constexpr int N = 1;
+  constexpr int C = 1;
+  constexpr int H = 5;
+  constexpr int W = 5;
+
+  test.AddInput<MLFloat16>("X", {N, C, H, W}, ToFloat16({0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21., 22., 23., 24.}));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 4., 4.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  // Values calculated manually or from a known good run
+  test.AddOutput<MLFloat16>("Y", {1, 1, 3, 4}, ToFloat16({0.6665f, 1.333f, 2.0f, 2.666f, 4.0f, 4.668f, 5.332f, 6.0f, 7.332f, 8.0f, 8.664f, 9.336f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, Float16_Opset22) {
+  OpTester test("RoiAlign", 22);
+  test.AddAttribute<int64_t>("output_height", 3);
+  test.AddAttribute<int64_t>("output_width", 4);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
+
+  constexpr int N = 1;
+  constexpr int C = 1;
+  constexpr int H = 5;
+  constexpr int W = 5;
+
+  test.AddInput<MLFloat16>("X", {N, C, H, W}, ToFloat16({0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21., 22., 23., 24.}));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 4., 4.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 3, 4}, ToFloat16({0.6665f, 1.333f, 2.0f, 2.666f, 4.0f, 4.668f, 5.332f, 6.0f, 7.332f, 8.0f, 8.664f, 9.336f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, BFloat16_Opset22) {
+  OpTester test("RoiAlign", 22);
+  test.AddAttribute<int64_t>("output_height", 3);
+  test.AddAttribute<int64_t>("output_width", 4);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
+
+  constexpr int N = 1;
+  constexpr int C = 1;
+  constexpr int H = 5;
+  constexpr int W = 5;
+
+  test.AddInput<BFloat16>("X", {N, C, H, W}, ToBFloat16({0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21., 22., 23., 24.}));
+  test.AddInput<BFloat16>("rois", {1, 4}, ToBFloat16({0., 0., 4., 4.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<BFloat16>("Y", {1, 1, 3, 4}, ToBFloat16({0.6665f, 1.333f, 2.0f, 2.666f, 4.0f, 4.668f, 5.332f, 6.0f, 7.332f, 8.0f, 8.664f, 9.336f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
