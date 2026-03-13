@@ -427,10 +427,15 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   if (!std::filesystem::is_symlink(model_path, ec)) {
     // Note: is_symlink returns false if file is not a symlink, file does not exist, or an error
     // occurred (e.g., permissions). In any of these cases, we just return an error.
+    std::string fs_error_msg;
+    if (ec) {
+      fs_error_msg = " filesystem::is_symlink error: " + ec.message();
+    }
+
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "External data path for model escapes model directory. ",
                            "External data path: ", external_data_path, " resolved path: ",
-                           external_data_path_canonical, " ", "model directory: ", model_dir);
+                           external_data_path_canonical, " ", "model directory: ", model_dir, fs_error_msg);
   }
 
   std::filesystem::path real_model_path;
