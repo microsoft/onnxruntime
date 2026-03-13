@@ -751,7 +751,7 @@ std::vector<int64_t> ChannelLastToFirstPerm(size_t rank) {
   }
 
   std::vector<int64_t> p(rank);
-  p[0] = 0;
+  p[0] = 0;  // This is usually the batch dimension (hence preserve this position)
   p[1] = rank - 1;
   for (size_t i = 2; i < rank; ++i) {
     p[i] = i - 1;
