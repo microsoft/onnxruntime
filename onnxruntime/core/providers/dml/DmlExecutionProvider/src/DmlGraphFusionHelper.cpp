@@ -3,6 +3,9 @@
 #include "DmlGraphFusionHelper.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 
+#include <chrono>
+#include <cstdio>
+
 using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
@@ -582,10 +585,19 @@ namespace DmlGraphFusionHelper
         ORT_THROW_IF_FAILED(device.As(&device1));
 
         ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator;
+        auto compileGraphStart = std::chrono::steady_clock::now();
         ORT_THROW_IF_FAILED(device1->CompileGraph(
             &dmlGraphDesc,
             executionFlags,
             IID_PPV_ARGS(&compiledExecutionPlanOperator)));
+        auto compileGraphEnd = std::chrono::steady_clock::now();
+        double compileGraphMs = std::chrono::duration<double, std::milli>(compileGraphEnd - compileGraphStart).count();
+        fprintf(stderr, "[DML_TIMING]   CompileGraph internal: %.1fms (nodes=%u, edges: in=%zu, out=%zu, intermediate=%zu)\n",
+            compileGraphMs,
+            dmlGraphDesc.NodeCount,
+            dmlInputEdges.size(),
+            dmlOutputEdges.size(),
+            dmlIntermediateEdges.size());
 
         // UINT32_MAX is currently the maximum number of bytes allowed by D3D12 for the offset of a view over a resource
         if (compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize > UINT32_MAX)

@@ -12,6 +12,9 @@
 #include "MLOperatorAuthorImpl.h"
 #include "DmlGraphFusionHelper.h"
 
+#include <chrono>
+#include <cstdio>
+
 
 namespace Dml
 {
@@ -92,8 +95,15 @@ namespace Dml
             }
         }
 
+        auto applyImplStart = std::chrono::steady_clock::now();
+        uint32_t splitRetryCount = 0;
+        uint32_t totalDmlPartitionsCompiled = 0;
+        double totalBuildGraphDescMs = 0.0;
+        double totalCompileOperatorMs = 0.0;
+
         do
         {
+            splitRetryCount++;
             // Initializers needed by any graph partition
             std::unordered_set<std::string> requiredInitializerMap;
             std::unordered_set<std::string> dynamicCpuInputMap;
@@ -245,6 +255,8 @@ namespace Dml
                     std::unordered_map<uint32_t, uint32_t> serializedGraphInputIndexToSubgraphInputIndex;
                     std::unordered_map<std::string_view, uint32_t> serializedGraphLargeConstantNameToSubgraphInputIndex;
                     std::vector<std::unique_ptr<std::byte[]>> smallConstantData;
+
+                    auto buildDescStart = std::chrono::steady_clock::now();
                     GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
                         isInputsUploadedByDmlEP.data(),
                         isInputsUploadedByDmlEP.size(),
@@ -258,14 +270,27 @@ namespace Dml
                         serializedGraphInputIndexToSubgraphInputIndex,
                         serializedGraphLargeConstantNameToSubgraphInputIndex,
                         smallConstantData);
+                    auto buildDescEnd = std::chrono::steady_clock::now();
+                    double buildDescMs = std::chrono::duration<double, std::milli>(buildDescEnd - buildDescStart).count();
+                    totalBuildGraphDescMs += buildDescMs;
 
-                    // Compile the operator
+                    auto compileStart = std::chrono::steady_clock::now();
                     auto compiledPartition = DmlGraphFusionHelper::TryCreateCompiledOperator(
                         graphDesc,
                         indexedSubGraph,
                         m_providerImpl,
                         &serializedGraphInputIndexToSubgraphInputIndex,
                         &serializedGraphLargeConstantNameToSubgraphInputIndex);
+                    auto compileEnd = std::chrono::steady_clock::now();
+                    double compileMs = std::chrono::duration<double, std::milli>(compileEnd - compileStart).count();
+                    totalCompileOperatorMs += compileMs;
+                    totalDmlPartitionsCompiled++;
+
+                    fprintf(stderr, "[DML_TIMING] Partition %u: nodes=%zu, BuildGraphDesc=%.1fms, CompileOperator=%.1fms\n",
+                        partitionIndex,
+                        indexedSubGraph.nodes.size(),
+                        buildDescMs,
+                        compileMs);
 
                     if (!compiledPartition)
                     {
@@ -295,6 +320,16 @@ namespace Dml
             }
         }
         while (!additionalSplittingNodes.empty());
+
+        auto applyImplEnd = std::chrono::steady_clock::now();
+        double applyImplMs = std::chrono::duration<double, std::milli>(applyImplEnd - applyImplStart).count();
+        fprintf(stderr, "[DML_TIMING] === ApplyImplHelper Summary ===\n");
+        fprintf(stderr, "[DML_TIMING]   Total time: %.1fms (%.1fs)\n", applyImplMs, applyImplMs / 1000.0);
+        fprintf(stderr, "[DML_TIMING]   DML partitions compiled: %u\n", totalDmlPartitionsCompiled);
+        fprintf(stderr, "[DML_TIMING]   Split/retry iterations: %u\n", splitRetryCount);
+        fprintf(stderr, "[DML_TIMING]   Total BuildGraphDesc: %.1fms\n", totalBuildGraphDescMs);
+        fprintf(stderr, "[DML_TIMING]   Total CompileOperator: %.1fms\n", totalCompileOperatorMs);
+        fprintf(stderr, "[DML_TIMING] ============================\n");
 
         uint32_t partitionIndex = 0;
         for (auto&& compiledPartitionInfo : compiledPartitionInfos)

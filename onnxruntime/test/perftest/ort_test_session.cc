@@ -534,6 +534,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       provider_options["enable_graph_capture"] = "false";
     }
     session_options.AppendExecutionProvider("DML", provider_options);
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigDisableDmlGraphFusion, "1");
+    fprintf(stderr, "[DML_CONFIG] Graph fusion disabled (ep.dml.disable_graph_fusion=1)\n");
 #else
     ORT_THROW("DML is not supported in this build\n");
 #endif
