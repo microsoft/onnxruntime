@@ -446,12 +446,12 @@ typedef struct OrtEpProfilingEvent {
   OrtEpProfilingEventCategory category;  ///< Event category.
   int32_t process_id;                    ///< Process ID.
   int32_t thread_id;                     ///< Thread ID.
-  const char* event_name;               ///< Null-terminated event name. EP-owned.
+  const char* event_name;                ///< Null-terminated event name. EP-owned.
   int64_t timestamp_us;                  ///< Timestamp in microseconds.
   int64_t duration_us;                   ///< Duration in microseconds.
-  const char* const* arg_keys;          ///< Array of null-terminated argument key strings. EP-owned.
+  const char* const* arg_keys;           ///< Array of null-terminated argument key strings. EP-owned.
                                          ///< Can be NULL if num_args is 0.
-  const char* const* arg_values;        ///< Array of null-terminated argument value strings. EP-owned.
+  const char* const* arg_values;         ///< Array of null-terminated argument value strings. EP-owned.
                                          ///< Can be NULL if num_args is 0.
   size_t num_args;                       ///< Number of key-value argument pairs.
 } OrtEpProfilingEvent;
