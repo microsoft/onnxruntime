@@ -477,9 +477,7 @@ def main() -> int:
     for run in triggered:
         status = "PASS" if run.result == BuildResult.SUCCEEDED else "FAIL"
         if run.result == BuildResult.SUCCEEDED:
-            logger.info(
-                "[%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url
-            )
+            logger.info("[%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url)
         else:
             logger.error(
                 "##[error][%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url
