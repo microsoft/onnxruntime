@@ -10,6 +10,7 @@
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/optimizer/utils.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace QDQ {
@@ -657,6 +658,8 @@ DQCastMatMulToMatMulNBitsSelector::Select(const GraphViewer& graph_viewer, const
   const std::string_view node_ep = node.GetExecutionProviderType();
   if (!compatible_providers_.empty() &&
       std::find(compatible_providers_.begin(), compatible_providers_.end(), node_ep) == compatible_providers_.end()) {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] EP check failed for node " << node.Name()
+                       << " (ep=" << node_ep << ")";
     return std::nullopt;
   }
 
@@ -668,12 +671,15 @@ DQCastMatMulToMatMulNBitsSelector::Select(const GraphViewer& graph_viewer, const
   }
 
   if (node.InputDefs().size() < 2) {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] MatMul " << node.Name() << " has < 2 inputs";
     return std::nullopt;
   }
 
   // Check input B: must be Cast(fp16->fp32)
   const Node* cast_b = graph_viewer.GetProducerNode(node.InputDefs()[1]->Name());
   if (!cast_b || cast_b->OpType() != "Cast") {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] MatMul " << node.Name()
+                       << " input B producer is " << (cast_b ? cast_b->OpType() : "null") << ", not Cast";
     return std::nullopt;
   }
 
@@ -681,6 +687,9 @@ DQCastMatMulToMatMulNBitsSelector::Select(const GraphViewer& graph_viewer, const
   auto to_iter = cast_b_attrs.find("to");
   if (to_iter == cast_b_attrs.end() ||
       to_iter->second.i() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] Cast B 'to' attr = "
+                       << (to_iter != cast_b_attrs.end() ? to_iter->second.i() : -1)
+                       << ", expected FLOAT(1)";
     return std::nullopt;
   }
 
@@ -688,26 +697,41 @@ DQCastMatMulToMatMulNBitsSelector::Select(const GraphViewer& graph_viewer, const
   if (!cast_b->InputDefs()[0]->TypeAsProto() ||
       cast_b->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() !=
           ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] Cast B input type = "
+                       << (cast_b->InputDefs()[0]->TypeAsProto()
+                               ? cast_b->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type()
+                               : -1)
+                       << ", expected FLOAT16(10)";
     return std::nullopt;
   }
 
   // Cast B must have exactly 1 output edge (to MatMul) and not be a graph output
   if (!optimizer_utils::CheckOutputEdges(graph, *cast_b, 1)) {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] Cast B output edges = "
+                       << cast_b->GetOutputEdgesCount()
+                       << ", graph_output=" << graph.NodeProducesGraphOutput(*cast_b);
     return std::nullopt;
   }
 
   // Cast B's input must come from a DQ node
   const Node* dq_node = graph_viewer.GetProducerNode(cast_b->InputDefs()[0]->Name());
   if (!dq_node || dq_node->OpType() != QDQ::DQOpName) {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] Cast B input producer is "
+                       << (dq_node ? dq_node->OpType() : "null") << ", not DequantizeLinear";
     return std::nullopt;
   }
 
   // DQ must have exactly 1 output edge (to Cast B) and not be a graph output
   if (!optimizer_utils::CheckOutputEdges(graph, *dq_node, 1)) {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] DQ output edges = "
+                       << dq_node->GetOutputEdgesCount()
+                       << ", graph_output=" << graph.NodeProducesGraphOutput(*dq_node);
     return std::nullopt;
   }
 
   if (!ValidateBlockwiseDQForMatMulNBits(graph, *dq_node)) {
+    LOGS_DEFAULT(INFO) << "[DQCastMatMulToMatMulNBits] ValidateBlockwiseDQForMatMulNBits failed for DQ "
+                       << dq_node->Name();
     return std::nullopt;
   }
 
