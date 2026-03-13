@@ -130,15 +130,25 @@ def model_proto_to_file(
     output_dir = output_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    model_size = model.ByteSize()
-    # model size for large models might be negative (overflow?) on Windows
-    # see https://github.com/onnx/onnx/issues/5861
-    if not save_as_external_data and (model_size <= 0 or model_size >= onnx.checker.MAXIMUM_PROTOBUF):
-        save_as_external_data = True
-        logger.debug(
-            "Model is too large to save as a single file but 'save_as_external_data' is False. Saving tensors as"
-            " external data, regardless."
-        )
+    # model size probing may fail for very large models/external data. Only probe when needed.
+    if not save_as_external_data:
+        try:
+            model_size = model.ByteSize()
+        except Exception as e:
+            logger.warning(
+                "Failed to compute model size with ByteSize (%s). Saving tensors as external data.",
+                e,
+            )
+            save_as_external_data = True
+        else:
+            # model size for large models might be negative (overflow?) on Windows
+            # see https://github.com/onnx/onnx/issues/5861
+            if model_size <= 0 or model_size >= onnx.checker.MAXIMUM_PROTOBUF:
+                save_as_external_data = True
+                logger.debug(
+                    "Model is too large to save as a single file but 'save_as_external_data' is False. Saving"
+                    " tensors as external data, regardless."
+                )
 
     if not save_as_external_data:
         # Add olive version to metadata
