@@ -11,7 +11,6 @@
 #include <unordered_map>
 #include <sstream>
 #include <algorithm>
-#include <cstdio>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -26,8 +25,10 @@
 #if defined(_WIN32) && USE_DX_INTEROP
 #include <d3d12.h>
 #endif
-// NVML for driver version checking
+// NVML for driver version checking (optional; see HAVE_NVML in CMake)
+#if defined(HAVE_NVML)
 #include <nvml.h>
+#endif
 
 #include "onnx_ctx_model_helper.h"
 #include "nv_provider_factory.h"
@@ -1267,6 +1268,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
           msg.c_str());
     }
 
+#if defined(HAVE_NVML)
     // Determine minimum driver version based on GPU architecture
     // Note: NVML returns driver version in standard format (e.g., "581.80"), not "R570_00" format
     // So we use standard format for minimum versions
@@ -1287,8 +1289,8 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     nvmlReturn_t nvml_result = nvmlInit_v2();
     if (nvml_result != NVML_SUCCESS) {
       uint32_t reasons = OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE;
-      std::string msg = "Failed to initialize NVML: " + std::string(nvmlErrorString(nvml_result)) + 
-                        ". NVIDIA driver may not be properly installed.";
+      std::string msg = "Failed to initialize NVML (" + std::string(nvmlErrorString(nvml_result)) +
+                         "). NVML may be unavailable due to missing or incompatible NVIDIA driver, insufficient permissions, or runtime/container restrictions.";
       return factory->ep_api.DeviceEpIncompatibilityDetails_SetDetails(
           details,
           reasons,
@@ -1324,6 +1326,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
           0,  // error_code (could store parsed version if needed)
           msg.c_str());
     }
+#endif  // HAVE_NVML
 
     // Device is compatible - details are already initialized with default values by ORT
     return nullptr;
