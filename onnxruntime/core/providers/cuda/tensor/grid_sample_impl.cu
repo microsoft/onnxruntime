@@ -51,7 +51,7 @@ __device__ T GsReflect(T x, float x_min, float x_max) {
 
 template <typename T, bool Layout>
 __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t y, int64_t x,
-                         int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, float border[4]) {
+                         int64_t padding_mode, int64_t C, int64_t H, int64_t W, float border[4]) {
   T pixel = 0.0f;
 
   auto PixelOffset = [bIdx, cIdx, C, H, W](int64_t x, int64_t y) -> int64_t {
@@ -69,8 +69,23 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
     y = max((int64_t)0, min((int64_t)H - 1, (int64_t)y));
     pixel = input_data[PixelOffset(x, y)];
   } else {  // Reflection
-    x = (int64_t)GsReflect<T>(x, border[0], border[2]);
-    y = (int64_t)GsReflect<T>(y, border[1], border[3]);
+    // Handle degenerate size-1 dimensions explicitly to avoid division by zero
+    // in GsReflect when x_min == x_max (range == 0), and clamp reflected
+    // coordinates into valid [0, H/W) ranges.
+    if (W == 1) {
+      x = 0;
+    } else {
+      x = (int64_t)GsReflect<T>(x, border[0], border[2]);
+      x = max((int64_t)0, min((int64_t)W - 1, x));
+    }
+
+    if (H == 1) {
+      y = 0;
+    } else {
+      y = (int64_t)GsReflect<T>(y, border[1], border[3]);
+      y = max((int64_t)0, min((int64_t)H - 1, y));
+    }
+
     pixel = input_data[PixelOffset(x, y)];
   }
   return pixel;
@@ -100,8 +115,8 @@ __device__ T GsBicubicInterpolate(T p[4][4], float x, float y) {
 
 template <typename T, bool Layout>
 __global__ void _GridSampleKernel(
-    const T* input_data,
-    const T* grid_data,
+    const T* __restrict__ input_data,
+    const T* __restrict__ grid_data,
     const int64_t mode,
     const int64_t padding_mode,
     const int64_t align_corners,
@@ -111,7 +126,7 @@ __global__ void _GridSampleKernel(
     const int64_t W_in,
     const int64_t H_out,
     const int64_t W_out,
-    T* output_data) {
+    T* __restrict__ output_data) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * H_out * W_out);
   // extract batch index, channel index, y index, x index for current thread
   int BIdx, yIdx, xIdx, cIdx;
@@ -200,10 +215,10 @@ __global__ void _GridSampleKernel(
     w_lb = w_b * w_l;
     w_rb = w_b * w_r;
 
-    T lt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x1, padding_mode, N, C, H_in, W_in, border);
-    T rt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x2, padding_mode, N, C, H_in, W_in, border);
-    T lb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x1, padding_mode, N, C, H_in, W_in, border);
-    T rb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x2, padding_mode, N, C, H_in, W_in, border);
+    T lt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x1, padding_mode, C, H_in, W_in, border);
+    T rt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x2, padding_mode, C, H_in, W_in, border);
+    T lb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x1, padding_mode, C, H_in, W_in, border);
+    T rb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x2, padding_mode, C, H_in, W_in, border);
     T interpoV = w_lt * lt_v + w_rt * rt_v + w_lb * lb_v + w_rb * rb_v;
     output_data[outIdx] = interpoV;
     return;
@@ -212,7 +227,7 @@ __global__ void _GridSampleKernel(
     int x_n = grid_x_imgSpace;
     int y_n = grid_y_imgSpace;
     output_data[outIdx] =
-        PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
+        PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y_n, x_n, padding_mode, C, H_in, W_in, border);
     return;
   }
   if (mode == 2) {                                                       // bicubic
@@ -222,7 +237,7 @@ __global__ void _GridSampleKernel(
     for (int64_t h = 0; h < 4; h++) {
       for (int64_t w = 0; w < 4; w++) {
         p[h][w] =
-            PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, N, C, H_in, W_in, border);
+            PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, C, H_in, W_in, border);
       }
     }
     T dx = grid_x_imgSpace - x0 - 1;
@@ -263,7 +278,7 @@ SPECIALIZED_IMPL(float, true)   // NHWC
 
 template <typename T, bool Layout>
 __device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t z, int64_t y, int64_t x,
-                           int64_t padding_mode, int64_t N, int64_t C, int64_t D, int64_t H, int64_t W, float border[6]) {
+                           int64_t padding_mode, int64_t C, int64_t D, int64_t H, int64_t W, float border[6]) {
   T pixel = 0.0f;
 
   auto PixelOffset3D = [bIdx, cIdx, C, D, H, W](int64_t z, int64_t y, int64_t x) -> int64_t {
@@ -283,9 +298,29 @@ __device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx, int6
 
     pixel = input_data[PixelOffset3D(z, y, x)];
   } else {  // Reflection
-    z = (int64_t)GsReflect<T>(z, border[0], border[3]);
-    y = (int64_t)GsReflect<T>(y, border[1], border[4]);
-    x = (int64_t)GsReflect<T>(x, border[2], border[5]);
+    // Handle degenerate size-1 dimensions explicitly to avoid division by zero
+    // in GsReflect when x_min == x_max (range == 0), and clamp reflected
+    // coordinates into valid [0, D/H/W) ranges.
+    if (D == 1) {
+      z = 0;
+    } else {
+      z = (int64_t)GsReflect<T>(z, border[0], border[3]);
+      z = max((int64_t)0, min((int64_t)D - 1, z));
+    }
+
+    if (H == 1) {
+      y = 0;
+    } else {
+      y = (int64_t)GsReflect<T>(y, border[1], border[4]);
+      y = max((int64_t)0, min((int64_t)H - 1, y));
+    }
+
+    if (W == 1) {
+      x = 0;
+    } else {
+      x = (int64_t)GsReflect<T>(x, border[2], border[5]);
+      x = max((int64_t)0, min((int64_t)W - 1, x));
+    }
 
     pixel = input_data[PixelOffset3D(z, y, x)];
   }
@@ -433,15 +468,15 @@ __global__ void _GridSampleKernel3D(
     w_lb_back = w_b * w_l * w_back;
     w_rb_back = w_b * w_r * w_back;
 
-    T lt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
-    T rt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
-    T lb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
-    T rb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+    T lt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x1, padding_mode, C, D_in, H_in, W_in, border);
+    T rt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x2, padding_mode, C, D_in, H_in, W_in, border);
+    T lb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x1, padding_mode, C, D_in, H_in, W_in, border);
+    T rb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x2, padding_mode, C, D_in, H_in, W_in, border);
 
-    T lt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
-    T rt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
-    T lb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
-    T rb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+    T lt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x1, padding_mode, C, D_in, H_in, W_in, border);
+    T rt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x2, padding_mode, C, D_in, H_in, W_in, border);
+    T lb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x1, padding_mode, C, D_in, H_in, W_in, border);
+    T rb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x2, padding_mode, C, D_in, H_in, W_in, border);
 
     T interpoV = w_lt_front * lt_front_v + w_rt_front * rt_front_v + w_lb_front * lb_front_v + w_rb_front * rb_front_v +
                  w_lt_back * lt_back_v + w_rt_back * rt_back_v + w_lb_back * lb_back_v + w_rb_back * rb_back_v;
@@ -455,7 +490,7 @@ __global__ void _GridSampleKernel3D(
     int z_n = grid_z_volSpace;
 
     output_data[outIdx] =
-        PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z_n, y_n, x_n, padding_mode, N, C, D_in, H_in, W_in, border);
+        PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z_n, y_n, x_n, padding_mode, C, D_in, H_in, W_in, border);
     return;
   }
   if (mode == 2) {  // cubic
