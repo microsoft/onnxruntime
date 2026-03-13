@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define ADD_VERSIONED_TYPED_ROIALIGN_OP_10(T)                               \
+#define ADD_VERSIONED_TYPED_ROIALIGN_OP_10(T)                            \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                               \
       RoiAlign,                                                          \
       kOnnxDomain,                                                       \
@@ -33,7 +33,7 @@ namespace cuda {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
       RoiAlign<T>);
 
-#define ADD_TYPED_ROIALIGN_OP_22(T)                                         \
+#define ADD_TYPED_ROIALIGN_OP_22(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
       RoiAlign,                                                          \
       kOnnxDomain,                                                       \
@@ -94,9 +94,9 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 #define SPECIALIZED_COMPUTE(T)          \
-  ADD_VERSIONED_TYPED_ROIALIGN_OP_10(T)    \
+  ADD_VERSIONED_TYPED_ROIALIGN_OP_10(T) \
   ADD_VERSIONED_TYPED_ROIALIGN_OP_16(T) \
-  ADD_TYPED_ROIALIGN_OP_22(T)              \
+  ADD_TYPED_ROIALIGN_OP_22(T)           \
   template Status RoiAlign<T>::ComputeInternal(OpKernelContext* ctx) const;
 
 SPECIALIZED_COMPUTE(float)
