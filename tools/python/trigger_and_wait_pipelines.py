@@ -223,13 +223,23 @@ def get_run_status(run: TriggeredRun, token: str) -> TriggeredRun:
         try:
             run.state = BuildState(status_str)
         except ValueError:
-            logger.warning("##[warning]Unknown build state '%s' for run %d ('%s'), defaulting to UNKNOWN.", status_str, run.run_id, run.config.name)
+            logger.warning(
+                "##[warning]Unknown build state '%s' for run %d ('%s'), defaulting to UNKNOWN.",
+                status_str,
+                run.run_id,
+                run.config.name,
+            )
             run.state = BuildState.UNKNOWN
 
         try:
             run.result = BuildResult(result_str)
         except ValueError:
-            logger.warning("##[warning]Unknown build result '%s' for run %d ('%s'), defaulting to NONE.", result_str, run.run_id, run.config.name)
+            logger.warning(
+                "##[warning]Unknown build result '%s' for run %d ('%s'), defaulting to NONE.",
+                result_str,
+                run.run_id,
+                run.config.name,
+            )
             run.result = BuildResult.NONE
 
     except requests.exceptions.RequestException as e:
@@ -467,9 +477,13 @@ def main() -> int:
     for run in triggered:
         status = "PASS" if run.result == BuildResult.SUCCEEDED else "FAIL"
         if run.result == BuildResult.SUCCEEDED:
-            logger.info("[%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url)
+            logger.info(
+                "[%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url
+            )
         else:
-            logger.error("##[error][%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url)
+            logger.error(
+                "##[error][%s] %s (run %d): %s — %s", status, run.config.name, run.run_id, run.result.value, run.web_url
+            )
     logger.info("=" * 60)
 
     if any_failed:
