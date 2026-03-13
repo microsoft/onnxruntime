@@ -72,8 +72,13 @@ Status TensorScatter::ComputeInternal(OpKernelContext* context) const {
                     write_indices_tensor->Shape()[0] == batch_size,
                 "TensorScatter: write_indices must have shape [batch_size]");
     write_indices = write_indices_tensor->Data<int64_t>();
-    // write_indices values (non-negative, in-bounds) are validated asynchronously
-    // inside the CUDA kernel via CUDA_KERNEL_ASSERT to avoid cudaStreamSynchronize.
+    // write_indices values are validated in the CUDA kernel:
+    // - CUDA_KERNEL_ASSERT checks bounds in debug builds
+    // - In-kernel bounds handling ensures memory-safe behavior for all invalid indices:
+    //   circular mode: wi is reduced via modulo (preserving wrap semantics)
+    //   linear mode: wi is clamped to [0, max_seq_len], cache_pos to [0, max_seq_len - 1]
+    // - Invalid indices silently redirect updates to valid cache positions (overwriting correct data)
+    // No host-side sync to preserve CUDA graph compatibility.
   }
 
   // Allocate output with the same shape as past_cache.
