@@ -912,18 +912,38 @@ class PlannerImpl {
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
           OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          // Two cases where we want to override the output location suggested by the kernel def:
+          // 1.
           // Downstream nodes of certain providers may require a CPU accessible location override
           // to make sure the EP does not incur an unnecessary copy.
           // We only do it for CPU based EPs. We are not likely to encounter
           // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
           // However, we still ignore them.
+          //
+          // 2.
+          // MemcpyFromHost node provided by the CPU EP requires special handling.
+          // As per MemcpyFromHost kernel registration uses default memory type for output which means
+          // it uses CPU memory for output as it's run on CPU, but it actually may produce output on
+          // the device specific to its consumer node's EP.
+          // So we need to check the consumer node's EP and set the output device accordingly.
+
           if (output_device.Type() == OrtDevice::CPU) {
             const auto& output_name = node_output->Name();
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
             for (const auto* consumer : consumers) {
               if (consumer != nullptr) {
                 const auto& ep_type = consumer->GetExecutionProviderType();
+
+                if ((pnode->OpType() == "MemcpyFromHost") &&
+                    pnode->GetExecutionProviderType() == kCpuExecutionProvider) {
+                  // Check the consumer node's EP and set the output device accordingly
+                  output_device = execution_providers_.Get(ep_type)
+                                      ->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
+                  break;
+                }
+
                 auto suggested_device = execution_providers_.Get(ep_type)
                                             ->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeCPUInput);
                 if (suggested_device.Type() == OrtDevice::CPU) {
@@ -2097,13 +2117,39 @@ class PlannerImpl {
                   OrtValueIndex output_arg_idx;
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
                   // there are two cases we need notification:
-                  // 1. the consumer is not in the same stream
+                  // 1. the consumer is not in the same stream.
+                  //    There are typically two types of wait functions defined in the Notification
+                  //    class for plugin EPs or other provider-bridge EPs (e.g., CUDA EP and TRT EP):
+                  //      (1) WaitNotificationOnDevice
+                  //      (2) WaitNotificationOnHost
+                  //
+                  //    Note: MemcpyToHost nodes provided by the CPU EP require special handling.
+                  //    If a MemcpyToHost node (running on the host) consumes a tensor produced by
+                  //    a device node, MemcpyToHost must use WaitNotificationOnHost, because the
+                  //    CPU device does not have a stream, which is required by WaitNotificationOnDevice.
+                  //
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumes a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
                   const auto& output_arg_device = AllocPlan(output_arg_idx).location;
-                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device,
-                                                                                        output_arg_device);
+
+                  auto get_wait_handle = [&](const Node& node,
+                                             const OrtDevice& src_device,
+                                             const OrtDevice& dst_device) -> WaitNotificationFn {
+                    if (node.OpType() == "MemcpyToHost" &&
+                        node.GetExecutionProviderType() == kCpuExecutionProvider) {
+                      // The returned wait handle must be host-based rather than device-based,
+                      // because WaitNotificationOnDevice requires a stream. However,
+                      // the MemcpyToHost node provided by the CPU EP performs a blocking
+                      // data transfer and does not use a stream.
+                      return stream_handle_registry.GetWaitHandle(src_device, OrtDevice());
+                    }
+
+                    return stream_handle_registry.GetWaitHandle(src_device, dst_device);
+                  };
+
+                  WaitNotificationFn wait_handle = get_wait_handle(*it, stream_device, output_arg_device);
+
                   if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device.UsesCpuMemory()) &&
                       wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {

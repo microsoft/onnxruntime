@@ -2210,6 +2210,10 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return nullptr;
 }
 
+void TensorrtProviderFactoryCreator::UnloadLibrary() {
+  s_library_tensorrt.Unload();
+}
+
 std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) try {
   return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
 } catch (const std::exception& exception) {
