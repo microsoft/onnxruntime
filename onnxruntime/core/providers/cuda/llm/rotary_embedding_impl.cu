@@ -134,20 +134,17 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
                                    const int max_threads_per_block,
                                    int4 in_strides, int4 out_strides  // strides in bnsh coord
 ) {
-  // Note: Current implementation assumes head_size <= max_threads_per_block
-  // because head_size is currently large for LLaMA-2. For smaller head_size
-  // and num_heads values, we can create a block as `block(num_heads, head_size, 1)`
-  // instead. This will require kernel changes to support.
+  // Note: Requires head_size <= max_threads_per_block (1024). Each thread processes one element
+  // of head_size, so the entire head must fit in a single thread block.
   ORT_ENFORCE(head_size <= max_threads_per_block, "Rotary embedding dim must be <= max_threads_per_block");
   // strides in canonical bnsh coord, h is always contiguous (dim_stride == 1)
-  ORT_ENFORCE(in_strides.w == 1 && out_strides.w == 1, "head dim must contiguous");
+  ORT_ENFORCE(in_strides.w == 1 && out_strides.w == 1, "head dim must be contiguous");
 
   int tpb = (head_size + 31) / 32 * 32;
 
   const dim3 block(tpb);
   const dim3 grid(sequence_length, batch_size, num_heads);
 
-  assert(head_size <= max_threads_per_block);
   RotaryEmbeddingBSNH<<<grid, block, 0, stream>>>(output, input, cos_cache, sin_cache, position_ids, sequence_length,
                                                   num_heads, head_size, rotary_embedding_dim, max_sequence_length,
                                                   position_ids_format, interleaved, in_strides, out_strides);
@@ -170,9 +167,11 @@ template Status LaunchRotaryEmbeddingKernel<half>(cudaStream_t stream, half* out
                                                   const int position_ids_format, const bool interleaved,
                                                   const int max_threads_per_block, const bool is_input_bnsh_format);
 
-template Status LaunchRotaryEmbeddingKernel<BFloat16>(
-    cudaStream_t stream, BFloat16* output, const BFloat16* input, const int64_t* position_ids,
-    const BFloat16* cos_cache, const BFloat16* sin_cache, const int batch_size, const int sequence_length,
+// Native CUDA type instantiation: OrtToCudaType<BFloat16>::type = __nv_bfloat16.
+// Used when rotary_embedding.cc dispatches via OrtToCudaType for native HW arithmetic on SM80+.
+template Status LaunchRotaryEmbeddingKernel<__nv_bfloat16>(
+    cudaStream_t stream, __nv_bfloat16* output, const __nv_bfloat16* input, const int64_t* position_ids,
+    const __nv_bfloat16* cos_cache, const __nv_bfloat16* sin_cache, const int batch_size, const int sequence_length,
     const int num_heads, const int head_size, const int rotary_embedding_dim, const int max_sequence_length,
     const int position_ids_format, const bool interleaved, const int max_threads_per_block,
     const bool is_input_bnsh_format);
