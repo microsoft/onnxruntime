@@ -411,39 +411,45 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
     return Status::OK();
   }
 
+  if (model_path.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "External data path for model loaded from bytes escapes working directory. ",
+                           "External data path: ", external_data_path, " resolved path: ",
+                           external_data_path_canonical, " ", "working directory: ", model_dir);
+  }
+
   // The model file itself may be a symlink. Therefore, check against the real/canonical directory of the model
   // after resolving all symlinks.
   //
   // This supports symlinked models (e.g., Hugging Face Hub local cache) where the canonical
   // parent of the model file differs from the parent directory of the symlinked model file.
-  if (!model_path.empty()) {
-    std::filesystem::path real_model_path;
-    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
-    auto real_model_dir = real_model_path.parent_path();
+  std::error_code ec;
+  if (!std::filesystem::is_symlink(model_path, ec)) {
+    // Note: is_symlink returns false if file is not a symlink, file does not exist, or an error
+    // occurred (e.g., permissions). In any of these cases, we just return an error.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "External data path for model escapes model directory. ",
+                           "External data path: ", external_data_path, " resolved path: ",
+                           external_data_path_canonical, " ", "model directory: ", model_dir);
+  }
 
-    // Note: real_model_dir is empty in the case where `model_path` is a bare file that does not exist
-    // (e.g., model_no_exist.onnx). In this case, there's no point in checking further.
-    if (!real_model_dir.empty()) {
-      // Check that the external data path is contained by the real model directory.
-      // If it is, check if the external data file actually exists.
-      if (HasPathComponentPrefix(real_model_dir, external_data_path_canonical)) {
-        bool path_exists = false;
-        ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
-        ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_path_canonical);
-        return Status::OK();
-      }
+  std::filesystem::path real_model_path;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
+  auto real_model_dir = real_model_path.parent_path();
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "External data path: ", external_data_path, " (resolved path: ",
-                             external_data_path_canonical, ") escapes both model directory: ", model_dir,
-                             " and real model directory: ", real_model_dir);
-    }
+  // Check that the external data path is contained by the real model directory.
+  // If it is, check if the external data file actually exists.
+  if (HasPathComponentPrefix(real_model_dir, external_data_path_canonical)) {
+    bool path_exists = false;
+    ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
+    ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_path_canonical);
+    return Status::OK();
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                         "External data path for model loaded from bytes escapes working directory. ",
-                         "External data path: ", external_data_path, " resolved path: ",
-                         external_data_path_canonical, " ", "working directory: ", model_dir);
+                         "External data path: ", external_data_path, " (resolved path: ",
+                         external_data_path_canonical, ") escapes both model directory: ", model_dir,
+                         " and real model directory: ", real_model_dir);
 }
 
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
