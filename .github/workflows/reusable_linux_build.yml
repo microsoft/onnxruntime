@@ -62,6 +62,16 @@ on:
         description: 'A unique identifier for the job, used for hosted pool tracking'
         required: true
         type: string
+      vcpkg_binary_cache_blob_url:
+        description: 'Azure Blob Storage container URL for vcpkg binary caching (e.g., https://lotusscus.blob.core.windows.net/vcpkg-binary-cache). Uses managed identity for authentication.'
+        required: false
+        type: string
+        default: ''
+      vcpkg_binary_cache_access_mode:
+        description: "Access mode for vcpkg binary cache: 'read' (download only), 'write' (upload only), or 'readwrite'. Defaults to 'read' to prevent cache poisoning."
+        required: false
+        type: string
+        default: 'read'
     secrets:
       GH_TOKEN:
         description: 'GitHub token for accessing actions/packages'
@@ -109,7 +119,9 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'update'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }}
+          extra_build_flags: >-
+            ${{ inputs.extra_build_flags }}
+            ${{ inputs.vcpkg_binary_cache_blob_url != '' && format('--vcpkg_binary_cache_blob_url {0} --vcpkg_binary_cache_access_mode {1}', inputs.vcpkg_binary_cache_blob_url, inputs.vcpkg_binary_cache_access_mode) || '' }}
           python_path_prefix: ${{ inputs.python_path_prefix }}
 
       # ------------- Build Step (Compilation) -------------
@@ -121,7 +133,9 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'build'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }}
+          extra_build_flags: >-
+            ${{ inputs.extra_build_flags }}
+            ${{ inputs.vcpkg_binary_cache_blob_url != '' && format('--vcpkg_binary_cache_blob_url {0} --vcpkg_binary_cache_access_mode {1}', inputs.vcpkg_binary_cache_blob_url, inputs.vcpkg_binary_cache_access_mode) || '' }}
           python_path_prefix: ${{ inputs.python_path_prefix }}
 
       # ------------- Test Step -------------
@@ -134,7 +148,9 @@ jobs:
           build_config: ${{ inputs.build_config }}
           mode: 'test'
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }}
+          extra_build_flags: >-
+            ${{ inputs.extra_build_flags }}
+            ${{ inputs.vcpkg_binary_cache_blob_url != '' && format('--vcpkg_binary_cache_blob_url {0} --vcpkg_binary_cache_access_mode {1}', inputs.vcpkg_binary_cache_blob_url, inputs.vcpkg_binary_cache_access_mode) || '' }}
           python_path_prefix: ${{ inputs.python_path_prefix }}
 
       # ------------- Prepare Artifact Step -------------

@@ -1290,6 +1290,19 @@ def generate_build_tree(
 
                 vcpkg_keep_env_vars += emsdk_vars
 
+            # Configure vcpkg binary caching via Azure Blob Storage using azcopy
+            # with managed identity authentication. The blob URL is passed via
+            # --vcpkg_binary_cache_blob_url. Authentication uses Azure Managed Identity
+            # (MSI) — no SAS tokens or secrets required.
+            if args.vcpkg_binary_cache_blob_url:
+                blob_url = args.vcpkg_binary_cache_blob_url.rstrip("/")
+                access_mode = args.vcpkg_binary_cache_access_mode
+                env["VCPKG_BINARY_SOURCES"] = f"clear;x-azcopy,{blob_url},{access_mode}"
+                env["AZCOPY_AUTO_LOGIN_TYPE"] = "MSI"
+                env["AZCOPY_MSI_CLIENT_ID"] = "63b63039-6328-442f-954b-5a64d124e5b4"
+                vcpkg_keep_env_vars += ["VCPKG_BINARY_SOURCES", "AZCOPY_AUTO_LOGIN_TYPE", "AZCOPY_MSI_CLIENT_ID"]
+                log.info("vcpkg binary caching enabled (mode=%s, Azure Blob via managed identity: %s)", access_mode, blob_url)
+
             #
             # Workaround for vcpkg failed to find the correct path of Python
             #

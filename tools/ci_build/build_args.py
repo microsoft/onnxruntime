@@ -198,6 +198,23 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
+    parser.add_argument(
+        "--vcpkg_binary_cache_blob_url",
+        type=str,
+        default=None,
+        help="Azure Blob Storage container URL for vcpkg binary caching "
+        "(e.g., https://lotusscus.blob.core.windows.net/vcpkg-binary-cache). "
+        "Uses Azure Managed Identity (MSI) for authentication via azcopy.",
+    )
+    parser.add_argument(
+        "--vcpkg_binary_cache_access_mode",
+        type=str,
+        choices=["read", "write", "readwrite"],
+        default="read",
+        help="Access mode for vcpkg binary caching: 'read' (download only), "
+        "'write' (upload only), or 'readwrite' (both). Defaults to 'read' "
+        "to prevent cache poisoning from untrusted builds.",
+    )
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
     parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 

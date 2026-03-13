@@ -48,6 +48,13 @@ RUN dnf install -y --nodocs \
 
 # --- Environment Setup ---
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/runtime/3rdparty/hddl/lib:${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib:${INTEL_OPENVINO_DIR}/runtime/lib/intel64:${INTEL_OPENVINO_DIR}/tools/compile_tool:${INTEL_OPENVINO_DIR}/extras/opencv/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+
+# Install azcopy for vcpkg binary caching via Azure Blob Storage
+RUN curl -sSL https://aka.ms/downloadazcopy-v10-linux -o /tmp/azcopy.tar.gz \
+    && tar -xf /tmp/azcopy.tar.gz --strip-components=1 -C /usr/local/bin --wildcards '*/azcopy' \
+    && chmod +x /usr/local/bin/azcopy \
+    && rm /tmp/azcopy.tar.gz
+
 ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/extras/opencv/cmake
 ENV PATH=${INTEL_OPENVINO_DIR}/runtime/bin/intel64:${PATH}
 ENV TBB_DIR=${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/cmake

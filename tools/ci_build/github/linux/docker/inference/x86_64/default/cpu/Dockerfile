@@ -10,6 +10,12 @@ ENV LC_ALL=en_US.UTF-8
 
 RUN python3 -m pip install flatbuffers
 
+# Install azcopy for vcpkg binary caching via Azure Blob Storage
+RUN curl -sSL https://aka.ms/downloadazcopy-v10-linux -o /tmp/azcopy.tar.gz \
+    && tar -xf /tmp/azcopy.tar.gz --strip-components=1 -C /usr/local/bin --wildcards '*/azcopy' \
+    && chmod +x /usr/local/bin/azcopy \
+    && rm /tmp/azcopy.tar.gz
+
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER

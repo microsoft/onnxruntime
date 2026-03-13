@@ -38,6 +38,11 @@ function GetFile {
 
 cd /tmp/src
 
+echo "Installing azcopy"
+GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/src/azcopy.tar.gz
+tar -xf /tmp/src/azcopy.tar.gz --strip-components=1 -C /usr/local/bin --wildcards '*/azcopy'
+chmod +x /usr/local/bin/azcopy
+
 echo "Installing Node.js"
 GetFile https://nodejs.org/dist/v22.17.1/node-v22.17.1-linux-x64.tar.gz /tmp/src/node-v22.17.1-linux-x64.tar.gz
 tar --strip 1 -xf /tmp/src/node-v22.17.1-linux-x64.tar.gz -C /usr
