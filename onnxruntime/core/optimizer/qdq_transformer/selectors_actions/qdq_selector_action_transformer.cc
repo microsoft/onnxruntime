@@ -7,6 +7,8 @@
 #include <unordered_map>
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+
+#include <iostream>
 #include "core/mlas/inc/mlas.h"
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
@@ -307,11 +309,15 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::vector<const char*> providers = {kCpuExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider};
+  std::cerr << "[DQMatMulToMatMulNBitsRules] Registering DQMatMulToMatMulNBits selector with providers:";
+  for (const auto* p : providers) { std::cerr << " " << p; }
+  std::cerr << std::endl;
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},
                                                          std::move(selector),
                                                          std::move(action));
+  std::cerr << "[DQMatMulToMatMulNBitsRules] DQMatMulToMatMulNBits registered OK" << std::endl;
 
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
@@ -326,12 +332,16 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
                                                              intra_op_thread_pool);
 
 #if !defined(ORT_MINIMAL_BUILD)
+  std::cerr << "[DQMatMulToMatMulNBitsRules] Registering DQCastMatMulToMatMulNBits selector with providers:";
+  for (const auto* p : providers) { std::cerr << " " << p; }
+  std::cerr << std::endl;
   std::unique_ptr<NodeSelector> cast_selector =
       std::make_unique<QDQ::DQCastMatMulToMatMulNBitsSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(cast_action_name,
                                                          {{"MatMul", {}}},
                                                          std::move(cast_selector),
                                                          std::move(cast_action));
+  std::cerr << "[DQMatMulToMatMulNBitsRules] DQCastMatMulToMatMulNBits registered OK" << std::endl;
 #else
   qdq_selector_action_registry.RegisterAction(cast_action_name, std::move(cast_action));
 #endif
