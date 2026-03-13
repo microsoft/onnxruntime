@@ -164,12 +164,17 @@ Status RegisterCudaNhwcKernels(KernelRegistry& kernel_registry) {
 #ifndef DISABLE_CONTRIB_OPS
 namespace onnxruntime::contrib::cuda {
 
-class CUDA_NHWC_OP_TYPED_CLASS_NAME(16, float, GridSample);
+class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(16, 19, float, GridSample);
+class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(20, 21, float, GridSample);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, float, GridSample);
 
 onnxruntime::common::Status RegisterCudaNhwcContribKernels(onnxruntime::KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn nhwc_function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
-      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(16, float, GridSample)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(16, 19, float, GridSample)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(20, 21, float, GridSample)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(22, float, GridSample)>,
+
   };
 
   for (auto& function_table_entry : nhwc_function_table) {
