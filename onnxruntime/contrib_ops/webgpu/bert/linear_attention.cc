@@ -44,6 +44,7 @@ LinearAttentionRecurrent::LinearAttentionRecurrent(const OpKernelInfo& info)
   std::string update_rule_str = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
   update_rule_ = ParseUpdateRule(update_rule_str);
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  chunk_size_ = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
 }
 
 Status LinearAttentionRecurrentProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -187,22 +188,24 @@ Status LinearAttentionRecurrent::ComputeInternal(ComputeContext& context) const 
   const auto* query = context.Input<Tensor>(0);
   const auto* key = context.Input<Tensor>(1);
   const auto* value = context.Input<Tensor>(2);
-  const auto* past_state = context.Input<Tensor>(3);
-  const auto* decay = context.Input<Tensor>(4);  // Optional
-  const auto* beta = context.Input<Tensor>(5);   // Optional
+  const auto* initial_state = context.Input<Tensor>(3);  // past_state for recurrent, initial_state (optional) for chunk-parallel
+  const auto* decay = context.Input<Tensor>(4);           // Optional
+  const auto* beta = context.Input<Tensor>(5);            // Optional
 
   const auto& query_shape = query->Shape();
-  ORT_ENFORCE(query_shape.NumDimensions() == 4, "Query must be 4D: (B, H, 1, d_k)");
+  ORT_ENFORCE(query_shape.NumDimensions() == 4, "Query must be 4D: (B, H, L, d_k)");
 
   const auto batch_size = static_cast<uint32_t>(query_shape[0]);
   const auto num_heads = static_cast<uint32_t>(query_shape[1]);
+  const auto seq_length = static_cast<uint32_t>(query_shape[2]);
   const auto head_dim_k = static_cast<uint32_t>(query_shape[3]);
   const auto head_dim_v = static_cast<uint32_t>(value->Shape()[3]);
 
-  // Validate decay and beta based on update rule
+  bool has_initial_state = (initial_state != nullptr);
   bool has_decay = (decay != nullptr);
   bool has_beta = (beta != nullptr);
 
+  // Validate decay and beta based on update rule
   if (update_rule_ == LinearAttentionUpdateRule::Gated || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
     ORT_ENFORCE(has_decay, "Decay input is required for gated and gated_delta update rules");
   }
@@ -210,43 +213,165 @@ Status LinearAttentionRecurrent::ComputeInternal(ComputeContext& context) const 
     ORT_ENFORCE(has_beta, "Beta input is required for delta and gated_delta update rules");
   }
 
-  // Create output tensors
-  TensorShape output_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads), 1, static_cast<int64_t>(head_dim_v)});
+  // seq_length == 1: single-step recurrent path
+  if (seq_length == 1) {
+    ORT_ENFORCE(has_initial_state, "past_state input is required for single-step recurrent mode");
+
+    TensorShape output_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads), 1, static_cast<int64_t>(head_dim_v)});
+    auto* output = context.Output(0, output_shape);
+    auto* present_state = context.Output(1, initial_state->Shape());
+
+    LinearAttentionRecurrentProgram program{update_rule_, has_decay, has_beta};
+
+    program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
+                       {key, ProgramTensorMetadataDependency::TypeAndRank},
+                       {value, ProgramTensorMetadataDependency::TypeAndRank},
+                       {initial_state, ProgramTensorMetadataDependency::TypeAndRank}});
+
+    if (has_decay) {
+      program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    if (has_beta) {
+      program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+
+    program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank},
+                        {present_state, ProgramTensorMetadataDependency::TypeAndRank}});
+
+    const uint32_t workgroup_size_k = std::min(head_dim_k, 16u);
+    const uint32_t workgroup_size_v = std::min(head_dim_v, 16u);
+
+    program.SetDispatchGroupSize(batch_size, num_heads, 1)
+        .SetWorkgroupSize(workgroup_size_k, workgroup_size_v, 1)
+        .AddUniformVariables({{batch_size},
+                              {num_heads},
+                              {head_dim_k},
+                              {head_dim_v},
+                              {scale_}});
+
+    return context.RunProgram(program);
+  }
+
+  // seq_length > 1: chunk-parallel path
+  const uint32_t chunk_size = static_cast<uint32_t>(chunk_size_);
+  const uint32_t num_chunks = (seq_length + chunk_size - 1) / chunk_size;
+
+  TensorShape output_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads),
+                            static_cast<int64_t>(seq_length), static_cast<int64_t>(head_dim_v)});
+  TensorShape state_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads),
+                           static_cast<int64_t>(head_dim_k), static_cast<int64_t>(head_dim_v)});
+
   auto* output = context.Output(0, output_shape);
-  auto* present_state = context.Output(1, past_state->Shape());
+  auto* final_state = context.Output(1, state_shape);
 
-  // Setup and run the program
-  LinearAttentionRecurrentProgram program{update_rule_, has_decay, has_beta};
+  // For delta/gated_delta rules, use sequential computation.
+  // Chunk-parallel decomposition doesn't work because state updates depend on the
+  // running state through the S^T k term, making chunks non-independent.
+  if (update_rule_ == LinearAttentionUpdateRule::Delta || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
+    LinearAttentionFullSequentialProgram program{update_rule_, has_decay, has_beta, has_initial_state};
 
-  program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
-                     {key, ProgramTensorMetadataDependency::TypeAndRank},
-                     {value, ProgramTensorMetadataDependency::TypeAndRank},
-                     {past_state, ProgramTensorMetadataDependency::TypeAndRank}});
+    program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
+                       {key, ProgramTensorMetadataDependency::TypeAndRank},
+                       {value, ProgramTensorMetadataDependency::TypeAndRank}});
 
-  if (has_decay) {
-    program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    if (has_initial_state) {
+      program.AddInput({initial_state, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    if (has_decay) {
+      program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    if (has_beta) {
+      program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+
+    program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank},
+                        {final_state, ProgramTensorMetadataDependency::TypeAndRank}});
+
+    program.SetDispatchGroupSize(batch_size, num_heads, 1)
+        .SetWorkgroupSize(1, 1, 1)
+        .AddUniformVariables({{batch_size},
+                              {num_heads},
+                              {seq_length},
+                              {head_dim_k},
+                              {head_dim_v},
+                              {scale_}});
+
+    return context.RunProgram(program);
   }
-  if (has_beta) {
-    program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
+
+  // Linear/Gated rules: Use two-phase chunk-parallel approach
+  TensorShape chunk_states_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads),
+                                  static_cast<int64_t>(num_chunks), static_cast<int64_t>(head_dim_k),
+                                  static_cast<int64_t>(head_dim_v)});
+
+  Tensor intra_output_tensor = context.CreateGPUTensor(query->DataType(), output_shape);
+  Tensor chunk_states_tensor = context.CreateGPUTensor(query->DataType(), chunk_states_shape);
+
+  // Step 1: Compute intra-chunk attention and per-chunk states
+  {
+    LinearAttentionChunkIntraProgram intra_program{update_rule_, has_decay, has_beta};
+
+    intra_program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
+                             {key, ProgramTensorMetadataDependency::TypeAndRank},
+                             {value, ProgramTensorMetadataDependency::TypeAndRank}});
+
+    if (has_decay) {
+      intra_program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    if (has_beta) {
+      intra_program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+
+    intra_program.AddOutputs({{&intra_output_tensor, ProgramTensorMetadataDependency::TypeAndRank},
+                              {&chunk_states_tensor, ProgramTensorMetadataDependency::TypeAndRank}});
+
+    intra_program.SetDispatchGroupSize(batch_size, num_heads, num_chunks)
+        .SetWorkgroupSize(64, 1, 1)
+        .AddUniformVariables({{batch_size},
+                              {num_heads},
+                              {seq_length},
+                              {head_dim_k},
+                              {head_dim_v},
+                              {chunk_size},
+                              {num_chunks},
+                              {scale_}});
+
+    ORT_RETURN_IF_ERROR(context.RunProgram(intra_program));
   }
 
-  program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank},
-                      {present_state, ProgramTensorMetadataDependency::TypeAndRank}});
+  // Step 2: Inter-chunk state propagation and final output computation
+  {
+    LinearAttentionChunkInterProgram inter_program{update_rule_, has_decay, has_beta, has_initial_state};
 
-  // Dispatch: one workgroup per (batch, head), with threads for (k, v) elements
-  // Use a fixed workgroup size that can cover typical head dimensions
-  const uint32_t workgroup_size_k = std::min(head_dim_k, 16u);
-  const uint32_t workgroup_size_v = std::min(head_dim_v, 16u);
+    inter_program.AddInputs({{&intra_output_tensor, ProgramTensorMetadataDependency::TypeAndRank},
+                             {&chunk_states_tensor, ProgramTensorMetadataDependency::TypeAndRank},
+                             {query, ProgramTensorMetadataDependency::TypeAndRank}});
 
-  program.SetDispatchGroupSize(batch_size, num_heads, 1)
-      .SetWorkgroupSize(workgroup_size_k, workgroup_size_v, 1)
-      .AddUniformVariables({{batch_size},
-                            {num_heads},
-                            {head_dim_k},
-                            {head_dim_v},
-                            {scale_}});
+    if (has_initial_state) {
+      inter_program.AddInput({initial_state, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    if (has_decay) {
+      inter_program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
+    }
 
-  return context.RunProgram(program);
+    inter_program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank},
+                              {final_state, ProgramTensorMetadataDependency::TypeAndRank}});
+
+    inter_program.SetDispatchGroupSize(batch_size, num_heads, 1)
+        .SetWorkgroupSize(256, 1, 1)
+        .AddUniformVariables({{batch_size},
+                              {num_heads},
+                              {seq_length},
+                              {head_dim_k},
+                              {head_dim_v},
+                              {chunk_size},
+                              {num_chunks},
+                              {scale_}});
+
+    ORT_RETURN_IF_ERROR(context.RunProgram(inter_program));
+  }
+
+  return Status::OK();
 }
 
 // =============================================================================
@@ -264,7 +389,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 LinearAttentionChunkParallel::LinearAttentionChunkParallel(const OpKernelInfo& info)
     : LinearAttentionRecurrent(info) {
-  chunk_size_ = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
 }
 
 Status LinearAttentionChunkIntraProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -694,160 +818,6 @@ Status LinearAttentionFullSequentialProgram::GenerateShaderCode(ShaderHelper& sh
     final_state[final_base + i] = state[i];
   }
 )SHADER";
-
-  return Status::OK();
-}
-
-Status LinearAttentionChunkParallel::ComputeInternal(ComputeContext& context) const {
-  const auto* query = context.Input<Tensor>(0);
-  const auto* key = context.Input<Tensor>(1);
-  const auto* value = context.Input<Tensor>(2);
-  const auto* initial_state = context.Input<Tensor>(3);  // Optional
-  const auto* decay = context.Input<Tensor>(4);           // Optional
-  const auto* beta = context.Input<Tensor>(5);            // Optional
-
-  const auto& query_shape = query->Shape();
-  ORT_ENFORCE(query_shape.NumDimensions() == 4, "Query must be 4D: (B, H, L, d_k)");
-
-  const auto batch_size = static_cast<uint32_t>(query_shape[0]);
-  const auto num_heads = static_cast<uint32_t>(query_shape[1]);
-  const auto seq_length = static_cast<uint32_t>(query_shape[2]);
-  const auto head_dim_k = static_cast<uint32_t>(query_shape[3]);
-  const auto head_dim_v = static_cast<uint32_t>(value->Shape()[3]);
-
-  bool has_initial_state = (initial_state != nullptr);
-  bool has_decay = (decay != nullptr);
-  bool has_beta = (beta != nullptr);
-
-  // Validate inputs based on update rule
-  if (update_rule_ == LinearAttentionUpdateRule::Gated || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
-    ORT_ENFORCE(has_decay, "Decay input is required for gated and gated_delta update rules");
-  }
-  if (update_rule_ == LinearAttentionUpdateRule::Delta || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
-    ORT_ENFORCE(has_beta, "Beta input is required for delta and gated_delta update rules");
-  }
-
-  const uint32_t chunk_size = static_cast<uint32_t>(chunk_size_);
-  const uint32_t num_chunks = (seq_length + chunk_size - 1) / chunk_size;
-
-  // Create output tensors
-  TensorShape output_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads),
-                            static_cast<int64_t>(seq_length), static_cast<int64_t>(head_dim_v)});
-  TensorShape state_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads),
-                           static_cast<int64_t>(head_dim_k), static_cast<int64_t>(head_dim_v)});
-
-  auto* output = context.Output(0, output_shape);
-  auto* final_state = context.Output(1, state_shape);
-
-  // For delta/gated_delta rules, use sequential computation.
-  // Chunk-parallel decomposition doesn't work because state updates depend on the
-  // running state through the S^T k term, making chunks non-independent.
-  if (update_rule_ == LinearAttentionUpdateRule::Delta || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
-    LinearAttentionFullSequentialProgram program{update_rule_, has_decay, has_beta, has_initial_state};
-
-    program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
-                       {key, ProgramTensorMetadataDependency::TypeAndRank},
-                       {value, ProgramTensorMetadataDependency::TypeAndRank}});
-
-    if (has_initial_state) {
-      program.AddInput({initial_state, ProgramTensorMetadataDependency::TypeAndRank});
-    }
-    if (has_decay) {
-      program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
-    }
-    if (has_beta) {
-      program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
-    }
-
-    program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank},
-                        {final_state, ProgramTensorMetadataDependency::TypeAndRank}});
-
-    program.SetDispatchGroupSize(batch_size, num_heads, 1)
-        .SetWorkgroupSize(1, 1, 1)
-        .AddUniformVariables({{batch_size},
-                              {num_heads},
-                              {seq_length},
-                              {head_dim_k},
-                              {head_dim_v},
-                              {scale_}});
-
-    return context.RunProgram(program);
-  }
-
-  // Linear/Gated rules: Use two-phase chunk-parallel approach
-  // Allocate intermediate tensors for chunk computation
-  TensorShape chunk_states_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads),
-                                  static_cast<int64_t>(num_chunks), static_cast<int64_t>(head_dim_k),
-                                  static_cast<int64_t>(head_dim_v)});
-
-  // Allocate temporary tensors - need separate intra_output to avoid aliasing
-  Tensor intra_output_tensor = context.CreateGPUTensor(query->DataType(), output_shape);
-  Tensor chunk_states_tensor = context.CreateGPUTensor(query->DataType(), chunk_states_shape);
-
-  // Step 1: Compute intra-chunk attention and per-chunk states
-  {
-    LinearAttentionChunkIntraProgram intra_program{update_rule_, has_decay, has_beta};
-
-    intra_program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
-                             {key, ProgramTensorMetadataDependency::TypeAndRank},
-                             {value, ProgramTensorMetadataDependency::TypeAndRank}});
-
-    if (has_decay) {
-      intra_program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
-    }
-    if (has_beta) {
-      intra_program.AddInput({beta, ProgramTensorMetadataDependency::TypeAndRank});
-    }
-
-    intra_program.AddOutputs({{&intra_output_tensor, ProgramTensorMetadataDependency::TypeAndRank},
-                              {&chunk_states_tensor, ProgramTensorMetadataDependency::TypeAndRank}});
-
-    intra_program.SetDispatchGroupSize(batch_size, num_heads, num_chunks)
-        .SetWorkgroupSize(64, 1, 1)
-        .AddUniformVariables({{batch_size},
-                              {num_heads},
-                              {seq_length},
-                              {head_dim_k},
-                              {head_dim_v},
-                              {chunk_size},
-                              {num_chunks},
-                              {scale_}});
-
-    ORT_RETURN_IF_ERROR(context.RunProgram(intra_program));
-  }
-
-  // Step 2: Inter-chunk state propagation and final output computation
-  {
-    LinearAttentionChunkInterProgram inter_program{update_rule_, has_decay, has_beta, has_initial_state};
-
-    // Use separate intra_output_tensor as input (read-only) and output (write-only) to avoid aliasing
-    inter_program.AddInputs({{&intra_output_tensor, ProgramTensorMetadataDependency::TypeAndRank},  // intra_output
-                             {&chunk_states_tensor, ProgramTensorMetadataDependency::TypeAndRank},  // chunk_states
-                             {query, ProgramTensorMetadataDependency::TypeAndRank}});
-
-    if (has_initial_state) {
-      inter_program.AddInput({initial_state, ProgramTensorMetadataDependency::TypeAndRank});
-    }
-    if (has_decay) {
-      inter_program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
-    }
-
-    inter_program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank},
-                              {final_state, ProgramTensorMetadataDependency::TypeAndRank}});
-
-    inter_program.SetDispatchGroupSize(batch_size, num_heads, 1)
-        .SetWorkgroupSize(256, 1, 1)
-        .AddUniformVariables({{batch_size},
-                              {num_heads},
-                              {seq_length},
-                              {head_dim_k},
-                              {head_dim_v},
-                              {chunk_size},
-                              {num_chunks},
-                              {scale_}});
-
-    ORT_RETURN_IF_ERROR(context.RunProgram(inter_program));
-  }
 
   return Status::OK();
 }
