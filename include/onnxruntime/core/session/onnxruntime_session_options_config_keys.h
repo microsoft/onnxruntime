@@ -220,17 +220,6 @@ static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dyn
 // Applies only to internal thread-pools
 static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.force_spinning_stop";
 
-// Enable node-name level timing capture in the sequential executor.
-// "0": disable (default)
-// "1": enable
-// When enabled, node-level latency summaries are logged at the end of execution.
-static const char* const kOrtSessionOptionsConfigEnableNodeTimingCapture = "session.enable_node_timing_capture";
-
-// Controls how node timing capture aggregates latency summaries.
-// "op_name" (default): group by node name. Unnamed nodes use "<op_type>_<node_index>".
-// "op_type": group by operator type.
-static const char* const kOrtSessionOptionsConfigNodeTimingCaptureGroupBy = "session.node_timing_capture_group_by";
-
 // "1": all inconsistencies encountered during shape and type inference
 // will result in failures.
 // "0": in some cases warnings will be logged but processing will continue. The default.

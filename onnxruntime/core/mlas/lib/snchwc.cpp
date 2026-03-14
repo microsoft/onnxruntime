@@ -1583,9 +1583,9 @@ Return Value:
     //     }
     // }
 
-    ORT_UNUSED_PARAMETER(IsPointwiseConvolution);
-    ORT_UNUSED_PARAMETER(IsRegularNchwcConvolution);
-    ORT_UNUSED_PARAMETER(IsDepthwiseConvolution);
+    MLAS_UNREFERENCED_PARAMETER(IsPointwiseConvolution);
+    MLAS_UNREFERENCED_PARAMETER(IsRegularNchwcConvolution);
+    MLAS_UNREFERENCED_PARAMETER(IsDepthwiseConvolution);
 
     MlasExecuteThreaded(ThreadedRoutine, &WorkBlock, WorkBlock.tids, ThreadPool);
 }

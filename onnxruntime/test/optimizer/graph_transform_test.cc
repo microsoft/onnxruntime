@@ -4433,7 +4433,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
     builder.AddNode("Slice", {input, starts10, ends10, axes_hw, steps2}, {slice10_out});
     builder.AddNode("Slice", {input, starts11, ends11, axes_hw, steps2}, {slice11_out});
     builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
-      .AddAttribute("axis", static_cast<int64_t>(1));
+        .AddAttribute("axis", static_cast<int64_t>(1));
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
