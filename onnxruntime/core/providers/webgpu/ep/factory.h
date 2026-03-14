@@ -63,17 +63,6 @@ class Factory : public OrtEpFactory {
       const OrtKeyValuePairs* stream_options,
       OrtSyncStreamImpl** stream) noexcept;
 
-  static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfoImpl(
-      OrtEpFactory* this_ptr,
-      const OrtHardwareDevice* const* devices,
-      size_t num_devices,
-      const char* compatibility_info,
-      OrtCompiledModelCompatibility* model_compatibility) noexcept;
-
-  static OrtStatus* ORT_API_CALL SetEnvironmentOptionsImpl(
-      OrtEpFactory* this_ptr,
-      const OrtKeyValuePairs* options) noexcept;
-
   Ep::Config config_;
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;  // used for initializers

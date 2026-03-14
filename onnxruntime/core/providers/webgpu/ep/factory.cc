@@ -52,6 +52,8 @@ Factory::Factory() : OrtEpFactory{},
   CreateAllocator = CreateAllocatorImpl;
   ReleaseAllocator = ReleaseAllocatorImpl;
   CreateDataTransfer = CreateDataTransferImpl;
+
+  IsStreamAware = IsStreamAwareImpl;
 }
 
 // Static C API implementations
@@ -129,17 +131,14 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     }
   }
 
-  try {
-    auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
-    auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
-    static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
-    auto factory = static_cast<Factory*>(this_ptr);
-    *ep = new Ep(std::move(webgpu_ep), *factory, *logger, factory->config_);
-    return nullptr;
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  }
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
+  auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
+  static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
+  auto factory = static_cast<Factory*>(this_ptr);
+  *ep = new Ep(std::move(webgpu_ep), *factory, *logger, factory->config_);
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
@@ -169,13 +168,10 @@ void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtA
 OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
     OrtEpFactory* /*this_ptr*/,
     OrtDataTransferImpl** data_transfer) noexcept {
-  try {
-    *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
-    return nullptr;
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  }
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 bool ORT_API_CALL Factory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
@@ -190,22 +186,6 @@ OrtStatus* ORT_API_CALL Factory::CreateSyncStreamForDeviceImpl(
   *stream = nullptr;
   return Api().ort.CreateStatus(ORT_NOT_IMPLEMENTED,
                                 "CreateSyncStreamForDevice is not implemented for this EP factory.");
-}
-
-OrtStatus* ORT_API_CALL Factory::ValidateCompiledModelCompatibilityInfoImpl(
-    OrtEpFactory* /*this_ptr*/,
-    const OrtHardwareDevice* const* /*devices*/,
-    size_t /*num_devices*/,
-    const char* /*compatibility_info*/,
-    OrtCompiledModelCompatibility* model_compatibility) noexcept {
-  *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
-  return nullptr;
-}
-
-OrtStatus* ORT_API_CALL Factory::SetEnvironmentOptionsImpl(
-    OrtEpFactory* /*this_ptr*/,
-    const OrtKeyValuePairs* /*options*/) noexcept {
-  return nullptr;  // Default implementation does nothing
 }
 
 }  // namespace ep

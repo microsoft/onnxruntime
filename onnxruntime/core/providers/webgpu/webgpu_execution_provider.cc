@@ -864,6 +864,10 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
   //
   // - When building as a shared library, use global variables. The cleanup will be performed
   //   when `ReleaseEpFactory` is called.
+  //
+  // Graph capture mode needs a separate kernel registry because contrib kernel registration
+  // differs based on enable_graph_capture, and enable_int64 is always true when
+  // enable_graph_capture is true.
   if (enable_graph_capture) {
 #if !defined(ORT_USE_EP_API_ADAPTERS)
     static std::shared_ptr<KernelRegistry> registry = RegisterKernels(true, true);
@@ -913,6 +917,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
       enable_graph_capture_{config.enable_graph_capture},
+      // enable_int64_ is always true when enable_graph_capture_ is true
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), false)} {
