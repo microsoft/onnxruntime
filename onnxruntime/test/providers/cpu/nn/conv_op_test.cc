@@ -6,6 +6,7 @@
 #include "gtest/gtest.h"
 #include "test/common/random_generator.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace std;
 namespace onnxruntime {
