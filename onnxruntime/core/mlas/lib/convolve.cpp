@@ -1301,12 +1301,9 @@ Return Value:
 
 #endif
 
-                // case MlasConvAlgorithmDepthwiseWithMultiplier:
-                // {
-                //     MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, Input, filter, Output);
-                //     MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
-                //     break;
-                // }
+                case MlasConvAlgorithmDepthwiseWithMultiplier:
+                    // The specialized depthwise-with-multiplier path is disabled.
+                    // Fall back to the generic segmented path below if this enum is ever selected.
 
                 case MlasConvAlgorithmExpandThenGemmSegmented:
                 {
