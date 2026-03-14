@@ -4471,12 +4471,8 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNode
     auto make_int64_constant = [&](const std::vector<int64_t>& values) -> NodeArg* {
       ONNX_NAMESPACE::TensorProto tensor_proto;
       tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      for (const auto value : values) {
-        tensor_proto.add_dims(1);
-        break;
-      }
       if (!values.empty()) {
-        tensor_proto.set_dims(0, gsl::narrow<int64_t>(values.size()));
+        tensor_proto.add_dims(gsl::narrow<int64_t>(values.size()));
       }
       utils::SetRawDataInTensorProto(tensor_proto,
                                      reinterpret_cast<const char*>(values.data()),

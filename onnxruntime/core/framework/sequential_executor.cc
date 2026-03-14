@@ -676,7 +676,6 @@ class KernelScope {
 
   size_t input_activation_sizes_{};
   size_t input_parameter_sizes_{};
-  size_t total_output_sizes_{};
   std::string input_type_shape_;
 
 #ifdef CONCURRENCY_VISUALIZER
