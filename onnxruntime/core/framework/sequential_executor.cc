@@ -474,9 +474,9 @@ class SessionScope {
                       << " total_kernel_us=" << total_kernel_latency_us
                       << " framework_overhead_us=" << framework_overhead_us;
     LOGS(logger, WARNING) << "[Latency] kernel latency summary by op/shape: unique_entries="
-                      << op_stats.size() << ", kernel_invocations="
-                      << total_tracked_conv_kernel_invocations << ", total_kernel_time_us="
-                      << total_tracked_conv_kernel_latency_us;
+                          << op_stats.size() << ", kernel_invocations="
+                          << total_tracked_conv_kernel_invocations << ", total_kernel_time_us="
+                          << total_tracked_conv_kernel_latency_us;
 
     for (const auto& entry : op_stats) {
       const auto& op_name = entry.op_name;
