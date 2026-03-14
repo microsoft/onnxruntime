@@ -20,7 +20,7 @@ namespace webgpu {
       end,                                                    \
       kWebGpuExecutionProvider,                               \
       (*KernelDefBuilder::Create())                           \
-          .TypeConstraint("T", WebGpuSupportedNumberTypes()), \
+          .TypeConstraint("T", WebGpuSupportedNumberAndInt64Types()), \
       Concat);
 
 #define WEBGPU_CONCAT_KERNEL(version)                         \
@@ -30,7 +30,7 @@ namespace webgpu {
       version,                                                \
       kWebGpuExecutionProvider,                               \
       (*KernelDefBuilder::Create())                           \
-          .TypeConstraint("T", WebGpuSupportedNumberTypes()), \
+          .TypeConstraint("T", WebGpuSupportedNumberAndInt64Types()), \
       Concat);
 
 WEBGPU_CONCAT_VERSIONED_KERNEL(1, 3)
