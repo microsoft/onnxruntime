@@ -195,13 +195,10 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
                            "Pad: invalid mode: ", static_cast<int>(mode_), " with zero effective input extent");
   }
 
-  // Special case for Reflect mode: ensure all extents >= 2 after slicing
+  // Special case for Reflect mode: ensure all extents >= 2 after slicing;
   // otherwise reflection is not possible. Also validate that pads do not
-  // exceed extent - 1 on each side, as required by the ONNX spec.
-  // Special case for Reflect mode: ensure all extents >= 2 after slicing
-  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
-  // implies that this would be wrong as the start and end positions should be distinct
-  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
+  // exceed extent - 1 on each side, as required by the ONNX spec, which
+  // aligns with NumPy behavior where start and end positions must be distinct.
   if (mode_ == Mode::Reflect) {
     for (size_t i = 0; i < dimension_count; ++i) {
       const int64_t extent = effective_input_extents[i];  // length after slicing
