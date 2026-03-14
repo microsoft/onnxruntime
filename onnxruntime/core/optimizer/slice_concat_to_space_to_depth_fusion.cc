@@ -396,6 +396,26 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
     replacement_end = &gather;
   }
 
+  // `FinalizeNodeFusion()` moves all input edges from the first fused node to
+  // the replacement start node by matching input names. Slice nodes in this
+  // pattern may take additional non-data inputs via `Constant` nodes
+  // (starts/ends/axes/steps). Remove those auxiliary input edges from the
+  // first slice so only the shared data input edge is transferred to
+  // `SpaceToDepth`.
+  {
+    auto slice_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*slice_nodes[0]);
+    std::vector<graph_utils::GraphEdge> auxiliary_input_edges;
+    auxiliary_input_edges.reserve(slice_input_edges.size());
+
+    for (const auto& edge : slice_input_edges) {
+      if (edge.arg_name != common_input->Name()) {
+        auxiliary_input_edges.push_back(edge);
+      }
+    }
+
+    graph_utils::GraphEdge::RemoveGraphEdges(graph, auxiliary_input_edges);
+  }
+
   graph_utils::FinalizeNodeFusion(graph,
                                   {std::ref(*slice_nodes[0]), std::ref(*slice_nodes[1]), std::ref(*slice_nodes[2]), std::ref(*slice_nodes[3]), std::ref(concat)},
                                   space_to_depth,
