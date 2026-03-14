@@ -41,7 +41,7 @@ static size_t Conv2dNchwcRegistShortExecute() {
       count += Conv2dShortExecuteTest<MlasNchwcConv2DFilterSetTuningTest<true>>::RegisterSingleTest(
           1, 1, 96, 56, 56, 96, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
       count += Conv2dShortExecuteTest<MlasNchwcConv2DMaxInputChannelTuningTest<true>>::RegisterSingleTest(
-        1, 1, 192, 28, 28, 96, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+          1, 1, 192, 28, 28, 96, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
       count += Conv2dShortExecuteTest<MlasNchwcConv2DMaxInputChannelTuningTest<true>>::RegisterSingleTest(
           1, 1, 384, 14, 14, 96, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
     }
