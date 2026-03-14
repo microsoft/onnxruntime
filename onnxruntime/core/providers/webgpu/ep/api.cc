@@ -39,6 +39,8 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   // Manual init for the C++ API
   onnxruntime::ep::ApiInit(ort_api_base);
 
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+
   if (max_factories < 1) {
     return onnxruntime::ep::Api().ort.CreateStatus(ORT_INVALID_ARGUMENT,
                                                    "Not enough space to return EP factory. Need at least one.");
@@ -54,9 +56,12 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   *num_factories = 1;
 
   return nullptr;
+
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   // STEP.1 - Release the factory
   delete static_cast<onnxruntime::webgpu::ep::Factory*>(factory);
 
@@ -73,6 +78,7 @@ EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
   google::protobuf::ShutdownProtobufLibrary();
 
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 }  // extern "C"

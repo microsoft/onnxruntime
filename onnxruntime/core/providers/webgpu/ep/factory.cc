@@ -81,6 +81,7 @@ OrtStatus* ORT_API_CALL Factory::GetSupportedDevicesImpl(
     OrtEpDevice** ep_devices,
     size_t max_ep_devices,
     size_t* p_num_ep_devices) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto factory = static_cast<Factory*>(this_ptr);
 
   size_t& num_ep_devices = *p_num_ep_devices;
@@ -101,6 +102,7 @@ OrtStatus* ORT_API_CALL Factory::GetSupportedDevicesImpl(
   }
 
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
@@ -111,6 +113,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     const OrtSessionOptions* session_options,
     const OrtLogger* logger,
     OrtEp** ep) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   if (num_devices == 0) {
     return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT, "No hardware devices provided to create WebGPU EP.");
   }
@@ -131,7 +134,6 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     }
   }
 
-  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
   auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
   static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
@@ -150,6 +152,7 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
     const OrtMemoryInfo* memory_info,
     const OrtKeyValuePairs* /*allocator_options*/,
     OrtAllocator** allocator) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto factory = static_cast<Factory*>(this_ptr);
   Ort::ConstMemoryInfo ort_memory_info{memory_info};
   if (ort_memory_info.GetAllocatorType() == OrtReadOnlyAllocator) {
@@ -158,6 +161,7 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
     *allocator = new onnxruntime::ep::adapter::Allocator(memory_info, factory->config_.device_allocator);
   }
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* allocator) noexcept {
@@ -183,9 +187,11 @@ OrtStatus* ORT_API_CALL Factory::CreateSyncStreamForDeviceImpl(
     const OrtMemoryDevice* /*memory_device*/,
     const OrtKeyValuePairs* /*stream_options*/,
     OrtSyncStreamImpl** stream) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   *stream = nullptr;
   return Api().ort.CreateStatus(ORT_NOT_IMPLEMENTED,
                                 "CreateSyncStreamForDevice is not implemented for this EP factory.");
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 }  // namespace ep

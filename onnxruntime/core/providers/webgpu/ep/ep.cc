@@ -25,8 +25,6 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
       factory_{factory},
       logger_{logger},
       config_{config} {
-  ort_version_supported = ORT_API_VERSION;
-
   // Initialize the execution provider's function table
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
@@ -183,11 +181,13 @@ OrtStatus* ORT_API_CALL Ep::GetKernelRegistryImpl(
 
 OrtStatus* ORT_API_CALL Ep::GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
                                                        _Out_ OrtEpDataLayout* preferred_data_layout) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   // Delegate to the underlying WebGPU EP's GetPreferredLayout()
   // DataLayout enum values map 1:1 to OrtEpDataLayout (NCHW=0, NHWC=1)
   auto* ep = static_cast<Ep*>(this_ptr);
   *preferred_data_layout = static_cast<OrtEpDataLayout>(ep->EpImpl()->GetPreferredLayout());
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 OrtStatus* ORT_API_CALL Ep::ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_ptr,
@@ -195,6 +195,7 @@ OrtStatus* ORT_API_CALL Ep::ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_pt
                                                              _In_z_ const char* op_type,
                                                              _In_ OrtEpDataLayout target_data_layout,
                                                              _Outptr_ int* should_convert) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   // DataLayout enum values map 1:1 to OrtEpDataLayout (NCHW=0, NHWC=1)
   auto* ep = static_cast<Ep*>(this_ptr);
   auto result = ep->EpImpl()->ShouldConvertDataLayoutForOp(domain, op_type,
@@ -205,10 +206,12 @@ OrtStatus* ORT_API_CALL Ep::ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_pt
     *should_convert = -1;
   }
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
                                            _In_ const OrtRunOptions* run_options) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   onnxruntime::RunOptions options{};
   // currently only option "gpu_graph_id" is used
   auto graph_annotation_str = Api().ort.GetRunConfigEntry(run_options, kOrtRunOptionsConfigCudaGraphAnnotation);
@@ -226,11 +229,13 @@ OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
                                   status.ErrorMessage().c_str());
   }
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
                                          _In_ const OrtRunOptions* /*run_options*/,
                                          _In_ bool sync_stream) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
   auto status = ep->EpImpl()->OnRunEnd(sync_stream, {});
   if (!status.IsOK()) {
@@ -238,6 +243,7 @@ OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
                                   status.ErrorMessage().c_str());
   }
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 OrtStatus* ORT_API_CALL Ep::IsConcurrentRunSupportedImpl(_In_ OrtEp* /*this_ptr*/, _Out_ bool* is_concurrent_run_supported) noexcept {
@@ -248,6 +254,7 @@ OrtStatus* ORT_API_CALL Ep::IsConcurrentRunSupportedImpl(_In_ OrtEp* /*this_ptr*
 OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
                                                 _In_ const OrtMemoryInfo* memory_info,
                                                 _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
   Ort::ConstMemoryInfo ort_memory_info{memory_info};
   if (ort_memory_info.GetAllocatorType() == OrtReadOnlyAllocator) {
@@ -256,6 +263,7 @@ OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
     *allocator = new onnxruntime::ep::adapter::Allocator(memory_info, ep->config_.device_allocator);
   }
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 }  // namespace ep
