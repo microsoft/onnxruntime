@@ -405,7 +405,6 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // Positive value: explicit block_size (must be power-of-2 and >= 16, e.g., 16, 32, 64, 128).
 // "0" or not provided: use default block_size of 32.
 // "-1": heuristic - largest power-of-2 <= K that minimizes padding.
-// "-2": heuristic - smallest power-of-2 >= K (single quantization block).
 static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qdq_matmulnbits_block_size";
 
 // Enable the DQ->MatMulNBits fusion graph transformer.

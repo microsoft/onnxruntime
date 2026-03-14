@@ -43,7 +43,7 @@ bool IsDQWeightSigned(int32_t dt_weight) {
 }
 
 // Compute the effective block_size for per-tensor/per-channel DQ nodes that lack a block_size attribute.
-// session_block_size: 0 = default (32), positive = explicit, -1 = min-padding heuristic, -2 = max-block heuristic.
+// session_block_size: 0 = default (32), positive = explicit, -1 = min-padding heuristic.
 int64_t ComputeEffectiveBlockSize(int64_t session_block_size, int64_t K) {
   if (session_block_size > 0) {
     // Explicit block_size — must be power-of-2 and >= 16
@@ -65,15 +65,6 @@ int64_t ComputeEffectiveBlockSize(int64_t session_block_size, int64_t K) {
       }
     }
     return best_bs;
-  }
-
-  if (session_block_size == -2) {
-    // Heuristic: smallest power-of-2 >= K (single quantization block), but at least 16
-    int64_t bs = 16;
-    while (bs < K) {
-      bs *= 2;
-    }
-    return bs;
   }
 
   // Default (session_block_size == 0): use 32

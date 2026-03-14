@@ -1190,9 +1190,6 @@ TEST(QDQTransformerTests, DQMatMulWithFloatActivationsToMatMulNBits) {
   RunDQMatMulWithFloatActivations<UInt4x2, true>({12, 96}, {96, 8});
   // N=1 (edge case)
   RunDQMatMulWithFloatActivations<Int4x2, true>({12, 768}, {768, 1});
-
-  // With block_size option = "-2" (single-block heuristic), K evenly divides block_size
-  RunDQMatMulWithFloatActivations<UInt4x2, true>({12, 64}, {64, 8}, "-2");
 }
 
 // Same test but with UINT8 weights (matching real model patterns)
@@ -1256,10 +1253,6 @@ TEST(QDQTransformerTests, DQMatMulUint8WithFloatActivationsToMatMulNBits) {
   RunDQMatMulUint8WithFloatActivations<true>({12, 96}, {96, 8});
   RunDQMatMulUint8WithFloatActivations<true>({12, 768}, {768, 1});
   RunDQMatMulUint8WithFloatActivations<false>({12, 768}, {768, 3072});
-
-  // With block_size=-2 (single-block heuristic)
-  RunDQMatMulUint8WithFloatActivations<true>({12, 96}, {96, 8}, "-2");
-  RunDQMatMulUint8WithFloatActivations<true>({12, 768}, {768, 1}, "-2");
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
