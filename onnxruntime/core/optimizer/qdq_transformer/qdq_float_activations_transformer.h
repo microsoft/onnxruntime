@@ -32,12 +32,14 @@ class QDQFloatActivationsTransformer : public GraphTransformer {
   QDQFloatActivationsTransformer(int64_t qdq_matmulnbits_accuracy_level,
                                  concurrency::ThreadPool* intra_op_thread_pool,
                                  const IExecutionProvider& cpu_execution_provider,
-                                 const ConfigOptions& config_options)
+                                 const ConfigOptions& config_options,
+                                 int64_t qdq_matmulnbits_block_size = 0)
       : GraphTransformer("QDQFloatActivationsTransformer"),
         qdq_matmulnbits_accuracy_level_(qdq_matmulnbits_accuracy_level),
         intra_op_thread_pool_(intra_op_thread_pool),
         cpu_execution_provider_(cpu_execution_provider),
-        config_options_(config_options) {}
+        config_options_(config_options),
+        qdq_matmulnbits_block_size_(qdq_matmulnbits_block_size) {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level,
@@ -47,6 +49,7 @@ class QDQFloatActivationsTransformer : public GraphTransformer {
   concurrency::ThreadPool* intra_op_thread_pool_;
   const IExecutionProvider& cpu_execution_provider_;
   const ConfigOptions& config_options_;
+  int64_t qdq_matmulnbits_block_size_;
 };
 
 }  // namespace onnxruntime

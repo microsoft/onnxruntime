@@ -166,7 +166,8 @@ Status QDQFloatActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
                                                kDmlExecutionProvider, ""};
     QDQ::DQMatMulToMatMulNBitsSelector dq_matmul_selector(compatible_eps);
     QDQ::DQMatMulToMatMulNBitsAction dq_matmul_action(qdq_matmulnbits_accuracy_level_,
-                                                      intra_op_thread_pool_);
+                                                      intra_op_thread_pool_,
+                                                      qdq_matmulnbits_block_size_);
 
     // Safe to iterate a snapshot of node indices while mutating: removed nodes return nullptr
     // (skipped below), and new MatMulNBits nodes aren't in the original list. The selectors only

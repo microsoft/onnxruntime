@@ -558,11 +558,14 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
   }
 }
 
-// Validate that a DQ node has the correct structure for MatMulNBits fusion:
-// - weight type is 2/4/8-bit int, scale type is float or float16
-// - blockwise quantization along axis 0, block_size is power-of-2 and >= 16
-// - weight/scale/zp are constant initializers with rank 2 and consistent shapes
-static bool ValidateBlockwiseDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
+// Validate that a DQ node has the correct structure for MatMulNBits fusion.
+// Supports three quantization granularities:
+// - Blockwise: axis=0, block_size >= 16 and power-of-2, scale/zp rank 2
+// - Per-tensor: scale is scalar (rank 0 or rank 2 with shape [1,1]), no block_size attribute
+// - Per-channel (axis=1): scale is 1D with shape [N], weight is 2D [K,N], no block_size attribute
+// In all cases: weight type is 2/4/8-bit int, scale type is float or float16,
+// weight/scale/zp are constant initializers.
+static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
   const auto* weight_arg = dq_node.InputDefs()[0];
   const auto* scale_arg = dq_node.InputDefs()[1];
   const auto* zero_point_arg = dq_node.InputDefs().size() == 3 ? dq_node.InputDefs()[2] : nullptr;
@@ -575,22 +578,6 @@ static bool ValidateBlockwiseDQForMatMulNBits(const Graph& graph, const Node& dq
   }
 
   if (!IsNBitsIntType(dt_weight)) {
-    return false;
-  }
-
-  // DQ is blockwise quantized along axis 0, and block_size must be 2's power and >= 16
-  const auto& dq_attrs = dq_node.GetAttributes();
-  if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
-    return false;
-  }
-
-  const auto a_iter = dq_attrs.find("block_size");
-  if (a_iter == dq_attrs.end()) {
-    return false;
-  }
-
-  auto block_size = a_iter->second.i();
-  if (block_size < 16 || ((block_size - 1) & block_size)) {
     return false;
   }
 
@@ -607,18 +594,61 @@ static bool ValidateBlockwiseDQForMatMulNBits(const Graph& graph, const Node& dq
     return false;
   }
 
-  // weight, scale and zero points (if exists) must have the rank 2
-  if (weight_tensor_proto->dims_size() != 2 || scale_tensor_proto->dims_size() != 2 ||
-      (zp_tensor_proto && zp_tensor_proto->dims_size() != 2)) {
+  // weight must be rank 2
+  if (weight_tensor_proto->dims_size() != 2) {
     return false;
   }
 
-  // check weight, scale and zero points (if exists) shapes
-  if ((weight_tensor_proto->dims()[0] + block_size - 1) / block_size != scale_tensor_proto->dims()[0] ||
-      weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
-      (zp_tensor_proto && (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
-                           zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
-    return false;
+  const auto& dq_attrs = dq_node.GetAttributes();
+  const auto block_size_iter = dq_attrs.find("block_size");
+  const bool has_block_size = block_size_iter != dq_attrs.end() && block_size_iter->second.i() > 0;
+
+  if (has_block_size) {
+    // --- Blockwise path (existing logic) ---
+    if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
+      return false;
+    }
+
+    auto block_size = block_size_iter->second.i();
+    if (block_size < 16 || ((block_size - 1) & block_size)) {
+      return false;
+    }
+
+    if (scale_tensor_proto->dims_size() != 2 ||
+        (zp_tensor_proto && zp_tensor_proto->dims_size() != 2)) {
+      return false;
+    }
+
+    if ((weight_tensor_proto->dims()[0] + block_size - 1) / block_size != scale_tensor_proto->dims()[0] ||
+        weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
+        (zp_tensor_proto && (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
+                             zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
+      return false;
+    }
+  } else {
+    // --- Per-tensor or per-channel path ---
+    int scale_rank = scale_tensor_proto->dims_size();
+    auto N = weight_tensor_proto->dims()[1];
+
+    if (scale_rank == 0) {
+      // Per-tensor: scalar scale, optional scalar zp
+      if (zp_tensor_proto && zp_tensor_proto->dims_size() != 0) {
+        return false;
+      }
+    } else if (scale_rank == 1 && scale_tensor_proto->dims()[0] == N) {
+      // Per-channel (axis=1): scale shape [N], axis must be 1
+      const auto a_iter = dq_attrs.find("axis");
+      // DQ default axis is 1, so absent axis is OK
+      if (a_iter != dq_attrs.end() && a_iter->second.i() != 1) {
+        return false;
+      }
+      if (zp_tensor_proto && (zp_tensor_proto->dims_size() != 1 || zp_tensor_proto->dims()[0] != N)) {
+        return false;
+      }
+    } else {
+      // Unsupported quantization granularity
+      return false;
+    }
   }
 
   return true;
@@ -648,7 +678,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  return ValidateBlockwiseDQForMatMulNBits(graph, *dq_nodes[0]);
+  return ValidateDQForMatMulNBits(graph, *dq_nodes[0]);
 }
 
 bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,

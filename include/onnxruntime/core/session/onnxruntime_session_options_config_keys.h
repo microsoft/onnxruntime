@@ -400,6 +400,14 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
 
+// Block size used when converting per-tensor or per-axis DQ + MatMul to MatMulNBits.
+// Only applies to DQ nodes without an existing block_size attribute (i.e., per-tensor or per-axis quantization).
+// Positive value: explicit block_size (must be power-of-2 and >= 16, e.g., 16, 32, 64, 128).
+// "0" or not provided: use default block_size of 32.
+// "-1": heuristic - largest power-of-2 <= K that minimizes padding.
+// "-2": heuristic - smallest power-of-2 >= K (single quantization block).
+static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qdq_matmulnbits_block_size";
+
 // Enable the DQ->MatMulNBits fusion graph transformer.
 // "0": disabled (default). "1": enabled.
 // This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
