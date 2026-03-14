@@ -635,6 +635,31 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
     replacement_node.MutableInputArgsCount().push_back(1);
   }
 
+  // If the target was Gemm, strip Gemm-specific attributes from the replacement MatMulNBits node
+  // and wire the bias (if present) to MatMulNBits input 5.
+  const auto& target = selected_nodes.Target();
+  if (target.OpType() == "Gemm") {
+    replacement_node.ClearAttribute("alpha");
+    replacement_node.ClearAttribute("beta");
+    replacement_node.ClearAttribute("transA");
+    replacement_node.ClearAttribute("transB");
+
+    // Wire Gemm bias to MatMulNBits input 5 (bias slot).
+    // The bias can be a direct float tensor or the output of a DQ node.
+    const auto& target_inputs = target.InputDefs();
+    if (target_inputs.size() > 2 && target_inputs[2] && target_inputs[2]->Exists()) {
+      // MatMulNBits input layout: 0:A, 1:B, 2:scales, 3:zp(opt), 4:g_idx(opt), 5:bias(opt)
+      // Pad with empty NodeArgs up to position 5.
+      NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
+      while (input_defs.size() < 5) {
+        input_defs.push_back(&empty_arg);
+        replacement_node.MutableInputArgsCount().push_back(1);
+      }
+      input_defs.push_back(const_cast<NodeArg*>(target_inputs[2]));
+      replacement_node.MutableInputArgsCount().push_back(1);
+    }
+  }
+
   return Status::OK();
 }
 

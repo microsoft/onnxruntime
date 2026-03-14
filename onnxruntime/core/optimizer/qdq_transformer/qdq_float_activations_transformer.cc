@@ -174,7 +174,7 @@ Status QDQFloatActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
     // inspect node neighbors, not the viewer's cached topological order.
     for (auto node_index : updated_topology) {
       auto* node_ptr = graph.GetNode(node_index);
-      if (node_ptr == nullptr || node_ptr->OpType() != "MatMul") {
+      if (node_ptr == nullptr || (node_ptr->OpType() != "MatMul" && node_ptr->OpType() != "Gemm")) {
         continue;
       }
 

@@ -530,6 +530,81 @@ TEST(QDQFloatActivationsTransformerTests, WeightDQConstantFolding) {
                     nullptr, add_session_options);
 }
 
+// Test: Gemm with activation Q->DQ, uint8 weight DQ, and int32 bias DQ
+// Full QDQ quantization commonly use this pattern: all inputs are quantized,
+// with the activation as uint16, weight as uint8, and bias as int32.
+// GemmQDQRules rejects uint16 activations (16-bit not allowed), so the Gemm stays
+// unfused in pass 1. After activation Q->DQ removal (Sub-pass A), the remaining
+// DQ(uint8 weight)->Gemm with DQ(int32 bias) should be fused to MatMulNBits (Sub-pass B).
+// Graph before: Input -> Q(u16) -> DQ(u16) -> Gemm(DQ(u8 weight), DQ(i32 bias)) -> Q(u16) -> DQ(u16) -> Output
+// Expected:     Input -> MatMulNBits(bias) -> Output
+TEST(QDQFloatActivationsTransformerTests, GemmWithInt32BiasDQ) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    constexpr int64_t K = 64;
+    constexpr int64_t N = 32;
+    constexpr float act_scale = 0.00002f;  // uint16 covers [-0.655, 1.311] with zp=32768
+    constexpr uint16_t act_zp = 32768;
+
+    auto* input_arg = builder.MakeInput<float>({1, K}, -0.5f, 0.5f);
+    auto* output_arg = builder.MakeOutput();
+
+    // Input activation Q -> DQ pair using uint16 (removed by Sub-pass A)
+    // uint16 is rejected by GemmQDQRules so Gemm stays unfused in first pass.
+    auto* q_input = builder.MakeIntermediate();
+    auto* dq_act_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint16_t>(input_arg, act_scale, act_zp, q_input);
+    builder.AddDequantizeLinearNode<uint16_t>(q_input, act_scale, act_zp, dq_act_output);
+
+    // Per-channel DQ for uint8 weight (axis=1, scale shape [N])
+    auto* weight_arg = builder.MakeInitializer<uint8_t>({K, N}, static_cast<uint8_t>(0), static_cast<uint8_t>(255));
+    auto* dq_weight_output = builder.MakeIntermediate();
+    std::vector<float> weight_scales(static_cast<size_t>(N), 0.03f);
+    std::vector<uint8_t> weight_zps(static_cast<size_t>(N), static_cast<uint8_t>(128));
+    builder.AddDequantizeLinearNode<uint8_t>(weight_arg, weight_scales, weight_zps, dq_weight_output);
+
+    // Bias DQ: int32 quantized bias -> float (common in QNN quantization)
+    auto* bias_quantized = builder.MakeInitializer<int32_t>({N}, static_cast<int32_t>(-1000), static_cast<int32_t>(1000));
+    auto* bias_dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<int32_t>(bias_quantized, 0.0001f, static_cast<int32_t>(0), bias_dq_output);
+
+    // Gemm with activation, weight, and bias
+    auto* gemm_output = builder.MakeIntermediate();
+    builder.AddNode("Gemm", {dq_act_output, dq_weight_output, bias_dq_output}, {gemm_output});
+
+    // Output activation Q -> DQ pair using uint16 (removed by Sub-pass A)
+    constexpr float output_scale = 0.1f;
+    auto* q_output = builder.MakeIntermediate();
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint16_t>(gemm_output, output_scale, act_zp, q_output);
+    builder.AddDequantizeLinearNode<uint16_t>(q_output, output_scale, act_zp, dq_output);
+
+    builder.AddNode("Identity", {dq_output}, {output_arg});
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // Gemm fused to MatMulNBits, activation Q->DQ pairs removed
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+    EXPECT_EQ(op_to_count["Gemm"], 0);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+    // Bias DQ constant-folded by Sub-pass C (constant int32 initializer)
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+  };
+
+  auto add_session_options = [](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQFloatActivations, "1"));
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    5.0f /*per_sample_tolerance - output Q->DQ rounding error up to scale/2=4*/,
+                    5.0f /*relative_per_sample_tolerance*/,
+                    nullptr, add_session_options);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
