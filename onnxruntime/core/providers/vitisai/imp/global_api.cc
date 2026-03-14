@@ -46,8 +46,8 @@ using namespace onnxruntime;
 /// @brief Gets the path of directory containing the dynamic library that contains the address.
 /// @param address An address of a function or variable in the dynamic library.
 /// @return The path of the directory containing the dynamic library, or an empty string if the path cannot be determined.
-static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* address) {
 #ifdef _WIN32
+static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* address) {
   HMODULE moduleHandle;
   if (!::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                             reinterpret_cast<LPCWSTR>(address), &moduleHandle)) {
@@ -66,11 +66,9 @@ static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* ad
     buffer.resize(requiredSize);
     return {std::move(buffer)};
   }
-#else
-  std::ignore = address;
-#endif
   return {};
 }
+#endif
 
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
