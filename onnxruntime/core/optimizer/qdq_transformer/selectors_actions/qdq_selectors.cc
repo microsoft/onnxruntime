@@ -20,9 +20,25 @@ constexpr bool Is16BitIntType(int32_t data_type) {
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
 }
 
+constexpr bool Is2BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT2) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT2);
+}
+
 constexpr bool Is4BitIntType(int32_t data_type) {
   return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4) ||
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4);
+}
+
+constexpr bool Is8BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8);
+}
+
+// Returns true if the data type is a sub-byte or byte quantized integer type
+// suitable for MatMulNBits fusion (2, 4, or 8 bit).
+constexpr bool IsNBitsIntType(int32_t data_type) {
+  return Is2BitIntType(data_type) || Is4BitIntType(data_type) || Is8BitIntType(data_type);
 }
 
 // adjust for an optional input/output that has an entry but does not exist
@@ -542,47 +558,28 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
   }
 }
 
-bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
-                                      const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
-                                      const std::vector<const Node*>& q_nodes) const {
-  if (redundant_clip_node) {
-    return false;
-  }
-
-  // Should not have any Q nodes
-  if (!q_nodes.empty()) {
-    return false;
-  }
-
-  const auto& graph = graph_viewer.GetGraph();
-
-  // MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
-  if (dq_nodes.size() != 1 || !optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1)) {
-    return false;
-  }
-
-  // DQ must be MatMul's the second input
-  if (node.InputDefs()[1] != dq_nodes[0]->OutputDefs()[0]) {
-    return false;
-  }
-
-  // DQ weight/zero points types are int4/uint4, scales/output types are float or float16
-  const auto* weight_arg = dq_nodes[0]->InputDefs()[0];
-  const auto* scale_arg = dq_nodes[0]->InputDefs()[1];
-  const auto* zero_point_arg = dq_nodes[0]->InputDefs().size() == 3 ? dq_nodes[0]->InputDefs()[2] : nullptr;
+// Validate that a DQ node has the correct structure for MatMulNBits fusion:
+// - weight type is 2/4/8-bit int, scale type is float or float16
+// - blockwise quantization along axis 0, block_size is power-of-2 and >= 16
+// - weight/scale/zp are constant initializers with rank 2 and consistent shapes
+static bool ValidateBlockwiseDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
+  const auto* weight_arg = dq_node.InputDefs()[0];
+  const auto* scale_arg = dq_node.InputDefs()[1];
+  const auto* zero_point_arg = dq_node.InputDefs().size() == 3 ? dq_node.InputDefs()[2] : nullptr;
   int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_scales = scale_arg->TypeAsProto()->tensor_type().elem_type();
+
   if (dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
       dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
     return false;
   }
 
-  if (!Is4BitIntType(dt_weight)) {
+  if (!IsNBitsIntType(dt_weight)) {
     return false;
   }
 
   // DQ is blockwise quantized along axis 0, and block_size must be 2's power and >= 16
-  const auto& dq_attrs = dq_nodes[0]->GetAttributes();
+  const auto& dq_attrs = dq_node.GetAttributes();
   if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
     return false;
   }
@@ -625,6 +622,33 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
   }
 
   return true;
+}
+
+bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                      const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
+                                      const std::vector<const Node*>& q_nodes) const {
+  if (redundant_clip_node) {
+    return false;
+  }
+
+  // Should not have any Q nodes
+  if (!q_nodes.empty()) {
+    return false;
+  }
+
+  const auto& graph = graph_viewer.GetGraph();
+
+  // MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
+  if (dq_nodes.size() != 1 || !optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1)) {
+    return false;
+  }
+
+  // DQ must be MatMul's the second input
+  if (node.InputDefs()[1] != dq_nodes[0]->OutputDefs()[0]) {
+    return false;
+  }
+
+  return ValidateBlockwiseDQForMatMulNBits(graph, *dq_nodes[0]);
 }
 
 bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
