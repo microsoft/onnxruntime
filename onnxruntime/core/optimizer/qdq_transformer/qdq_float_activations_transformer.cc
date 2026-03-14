@@ -155,6 +155,9 @@ Status QDQFloatActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
   // After Q->DQ removal, DQ(blockwise)->MatMul patterns may now be eligible.
   // Re-get topological order since graph was modified.
   if (modified) {
+    // Resolve graph after sub-pass A modifications so selectors/actions see consistent type/shape info.
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+
     GraphViewer updated_viewer(graph);
     const auto& updated_topology = updated_viewer.GetNodesInTopologicalOrder();
 
@@ -196,6 +199,11 @@ Status QDQFloatActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
   // After activation Q->DQ removal, weight DQ nodes on constant initializers can be folded
   // into float tensors so ops run directly on float weights.
   if (modified) {
+    // Resolve graph first: sub-passes A and B may have added new nodes (Identity, MatMulNBits)
+    // whose Op() schemas are not yet set. ConstantFolding calls UpdateShapeInference which
+    // dereferences node.Op() — this would crash on unresolved nodes.
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+
     ConstantFolding constant_folding(cpu_execution_provider_,
                                      /*skip_dequantize_linear=*/false,
                                      config_options_);
