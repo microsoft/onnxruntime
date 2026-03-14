@@ -257,8 +257,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                   session_options.config_options));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
-        transformers.emplace_back(std::make_unique<SliceConcatToSpaceToDepthFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
+          session_options.free_dimension_overrides));
       transformers.emplace_back(std::make_unique<SliceConcatToSpaceToDepthFusion>());
 
       transformers.emplace_back(std::make_unique<GeluFusion>());
