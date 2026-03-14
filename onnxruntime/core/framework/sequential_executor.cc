@@ -444,7 +444,7 @@ class SessionScope {
             kvp.first,
             stats,
             current_run_avg_latency_us,
-          GetOpLatencyMovingAverageTracker().Update(&session_state_, kvp.first, current_run_avg_latency_us)});
+            GetOpLatencyMovingAverageTracker().Update(&session_state_, kvp.first, current_run_avg_latency_us)});
 
         total_tracked_conv_kernel_latency_us += kvp.second.total_latency_us;
         total_tracked_conv_kernel_invocations += kvp.second.count;
