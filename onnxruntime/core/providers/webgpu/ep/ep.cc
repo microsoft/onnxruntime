@@ -68,8 +68,15 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
 
   // For each node, check if we have a registered kernel for it
   for (const auto& node : all_nodes) {
-    if (node.GetEpName() == kWebGpuExecutionProvider) {
+    std::string ep_name = node.GetEpName();
+
+    if (ep_name == kWebGpuExecutionProvider) {
       candidate_nodes.push_back(node);
+      continue;
+    }
+
+    // Reject nodes already assigned to a different (non-CPU) EP
+    if (!ep_name.empty() && ep_name != kCpuExecutionProvider) {
       continue;
     }
 
