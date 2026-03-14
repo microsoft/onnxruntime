@@ -524,6 +524,75 @@ namespace Microsoft.ML.OnnxRuntime
             return (OrtCompiledModelCompatibility)status;
         }
 
+        /// <summary>
+        /// Extract EP compatibility info from a precompiled model file.
+        /// </summary>
+        /// <remarks>
+        /// Parses the model file to extract the compatibility info string for a specific execution provider
+        /// from the model's metadata properties. This is only applicable to models that have been precompiled
+        /// for an EP. Standard ONNX models do not contain this information.
+        /// The compatibility info can then be passed to <see cref="GetModelCompatibilityForEpDevices"/> to
+        /// check if a precompiled model is compatible with the current system.
+        /// </remarks>
+        /// <param name="modelPath">Path to the ONNX model file.</param>
+        /// <param name="epType">The execution provider type string. Use <see cref="OrtEpDevice.EpName"/> to get this value.</param>
+        /// <returns>The compatibility info string, or null if no compatibility info exists for the specified EP.</returns>
+        /// <exception cref="ArgumentException">If modelPath or epType is null or empty.</exception>
+        /// <exception cref="OnnxRuntimeException">If the model file cannot be read or parsed.</exception>
+        public string GetCompatibilityInfoFromModel(string modelPath, string epType)
+        {
+            if (string.IsNullOrEmpty(modelPath))
+                throw new ArgumentException("modelPath must be non-empty", nameof(modelPath));
+            if (string.IsNullOrEmpty(epType))
+                throw new ArgumentException("epType must be non-empty", nameof(epType));
+
+            var allocator = OrtAllocator.DefaultInstance;
+            var pathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(modelPath);
+            var epTypeUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(epType);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetCompatibilityInfoFromModel(
+                    pathBytes, epTypeUtf8, allocator.Pointer, out IntPtr compatInfoPtr));
+
+            if (compatInfoPtr == IntPtr.Zero)
+                return null;
+
+            return NativeOnnxValueHelper.StringFromNativeUtf8(compatInfoPtr, allocator);
+        }
+
+        /// <summary>
+        /// Extract EP compatibility info from precompiled model bytes in memory.
+        /// </summary>
+        /// <remarks>
+        /// Same as <see cref="GetCompatibilityInfoFromModel"/> but reads from a memory buffer instead of a file.
+        /// Useful when precompiled models are loaded from encrypted storage, network, or other non-file sources.
+        /// </remarks>
+        /// <param name="modelData">The model data bytes.</param>
+        /// <param name="epType">The execution provider type string. Use <see cref="OrtEpDevice.EpName"/> to get this value.</param>
+        /// <returns>The compatibility info string, or null if no compatibility info exists for the specified EP.</returns>
+        /// <exception cref="ArgumentException">If modelData is null/empty or epType is null or empty.</exception>
+        /// <exception cref="OnnxRuntimeException">If the model data cannot be parsed.</exception>
+        public string GetCompatibilityInfoFromModelBytes(byte[] modelData, string epType)
+        {
+            if (modelData == null || modelData.Length == 0)
+                throw new ArgumentException("modelData must be non-empty", nameof(modelData));
+            if (string.IsNullOrEmpty(epType))
+                throw new ArgumentException("epType must be non-empty", nameof(epType));
+
+            var allocator = OrtAllocator.DefaultInstance;
+            var epTypeUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(epType);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetCompatibilityInfoFromModelBytes(
+                    modelData, (UIntPtr)modelData.Length, epTypeUtf8,
+                    allocator.Pointer, out IntPtr compatInfoPtr));
+
+            if (compatInfoPtr == IntPtr.Zero)
+                return null;
+
+            return NativeOnnxValueHelper.StringFromNativeUtf8(compatInfoPtr, allocator);
+        }
+
 
         /// <summary>
         /// Get/Set log level property of OrtEnv instance
