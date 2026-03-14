@@ -53,11 +53,13 @@ int64_t ComputeEffectiveBlockSize(int64_t session_block_size, int64_t K) {
   }
 
   if (session_block_size == -1) {
-    // Heuristic: largest power-of-2 <= K that minimizes padding
+    // Heuristic: largest power-of-2 <= min(K, 256) that minimizes padding.
+    // Capped at 256 because CPU EP only supports block_size up to 256 correctly.
     // We want ceil(K / B) * B - K to be minimized (least wasted padding).
+    constexpr int64_t kMaxBlockSize = 256;
     int64_t best_bs = 16;
     int64_t best_padding = (((K + 15) / 16) * 16) - K;
-    for (int64_t bs = 32; bs <= K; bs *= 2) {
+    for (int64_t bs = 32; bs <= std::min(K, kMaxBlockSize); bs *= 2) {
       int64_t padding = (((K + bs - 1) / bs) * bs) - K;
       if (padding <= best_padding) {
         best_padding = padding;
