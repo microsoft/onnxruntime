@@ -380,9 +380,9 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
     }
 
     NodeArg* gather_indices_arg = CreateInt64Initializer(
-      graph,
-      std::vector<int64_t>(gather_indices.begin(), gather_indices.end()),
-      graph.GenerateNodeArgName("space_to_depth_gather_indices"));
+        graph,
+        std::vector<int64_t>(gather_indices.begin(), gather_indices.end()),
+        graph.GenerateNodeArgName("space_to_depth_gather_indices"));
 
     Node& gather = graph.AddNode(graph.GenerateNodeName("Gather"),
                                  "Gather",
