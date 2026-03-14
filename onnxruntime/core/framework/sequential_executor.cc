@@ -452,8 +452,8 @@ class SessionScope {
     }
 
     const uint64_t total_run_latency_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - session_wall_clock_begin_time_)
-                                                                      .count());
+                                                                    std::chrono::steady_clock::now() - session_wall_clock_begin_time_)
+                                                                    .count());
     const uint64_t total_kernel_latency_us = total_kernel_latency_us_.load(std::memory_order_relaxed);
     const uint64_t framework_overhead_us =
         total_run_latency_us > total_kernel_latency_us ? (total_run_latency_us - total_kernel_latency_us) : 0;
