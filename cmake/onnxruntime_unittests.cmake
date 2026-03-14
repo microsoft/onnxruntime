@@ -1786,7 +1786,7 @@ endif()
   endif()
 endif()
 
-if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL)
 
   set(custom_op_src_patterns
     "${TEST_SRC_DIR}/testdata/custom_op_library/*.h"
