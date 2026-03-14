@@ -43,7 +43,7 @@ static size_t Conv2dNchwcRegistShortExecute() {
       count += Conv2dShortExecuteTest<MlasNchwcConv2DMaxInputChannelTuningTest<true>>::RegisterSingleTest(
         1, 1, 192, 28, 28, 96, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
       count += Conv2dShortExecuteTest<MlasNchwcConv2DMaxInputChannelTuningTest<true>>::RegisterSingleTest(
-        1, 1, 384, 14, 14, 96, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+          1, 1, 384, 14, 14, 96, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
     }
 #if defined(__aarch64__) && defined(__linux__)
     if (MlasBf16AccelerationSupported()) {
