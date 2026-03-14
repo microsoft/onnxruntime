@@ -163,9 +163,7 @@ jobs:
       ]
     timeout-minutes: 300
     env:
-      OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
       DocUpdateNeeded: false
@@ -199,24 +197,6 @@ jobs:
         with:
           node-version: "20.x"
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        env:
-          PROCESSOR_ARCHITECTURE: x64
-        with:
-          dotnet-version: "8.x"
-
-      - name: Use Nuget 6.x
-        uses: nuget/setup-nuget@v2
-        with:
-          nuget-version: "6.x"
-
-      - name: NuGet restore
-        run: |
-          nuget restore packages.config -ConfigFile NuGet.config -PackagesDirectory ${{ github.workspace }}\RelWithDebInfo
-        shell: cmd
-        working-directory: ${{ github.workspace }}
-
       - uses: actions/cache@v5
         id: onnx-node-tests-cache
         with:
@@ -244,7 +224,6 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
       - name: Publish artifacts
         uses: actions/upload-artifact@v4
