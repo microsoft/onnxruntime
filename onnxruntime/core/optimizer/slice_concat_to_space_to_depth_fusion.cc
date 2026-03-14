@@ -235,7 +235,7 @@ bool IsSingleConsumerOfConcat(const Graph& graph, const Node& slice, const Node&
 }
 
 bool TryGetPhasePermutation(const std::array<SlicePhase, 4>& actual_phases,
-                           std::array<int64_t, 4>& permutation) {
+                            std::array<int64_t, 4>& permutation) {
   static constexpr std::array<SlicePhase, 4> kCanonicalPhases{{{0, 0}, {0, 1}, {1, 0}, {1, 1}}};
   std::array<bool, 4> used{false, false, false, false};
 
