@@ -28,7 +28,6 @@ class Ep : public onnxruntime::ep::adapter::Ep {
     AllocatorPtr initializer_allocator;
   };
 
-  // Do not use a std::unique_ptr for impl_ because this requires the actual type definition.
   Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogger& logger, const Config& config);
 
   inline const OrtLogger& GetOrtLogger() const noexcept {
