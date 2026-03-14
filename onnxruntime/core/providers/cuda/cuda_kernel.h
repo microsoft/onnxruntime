@@ -73,6 +73,11 @@ class CudaKernel : public OpKernel {
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
+  // Compatibility helper used by kernels that need the underlying ORT stream object.
+  inline onnxruntime::Stream* GetComputeStream(OpKernelContext* ctx) const {
+    return ctx ? ctx->GetComputeStream() : nullptr;
+  }
+
   inline cudaStream_t Stream(OpKernelContext* ctx) const {
     auto* stream = ctx->GetComputeStream();
     return stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;

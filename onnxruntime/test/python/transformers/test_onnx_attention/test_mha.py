@@ -5,20 +5,27 @@
 # --------------------------------------------------------------------------
 
 """
-Tests for ONNX Attention op (opset 23) — MHA path (kv_num_heads == q_num_heads).
+Tests for ONNX Attention op (opset 23+) — MHA path (kv_num_heads == q_num_heads).
 
 The MHA path in attention.cc is exercised when kv_num_heads == q_num_heads.
-It uses the unfused attention kernel and supports:
+On Ampere+ GPUs with fp16/bf16, the dispatch cascade routes to flash attention
+or memory efficient attention first. The unfused kernel handles fp32 and
+cases where flash/MEA are ineligible. Tests below marked "unfused" explicitly
+disable flash and MEA to verify the unfused kernel.
+
+Supports:
   - float32, float16, bfloat16
-  - 3D inputs (BSNH format)
+  - 3D inputs (BSNH format) and 4D inputs (BNSH format)
   - Causal and non-causal attention
   - Self-attention and cross-attention (kv_seq != q_seq)
-  - Additive attention bias (NOT boolean masks)
+  - Additive attention bias (and boolean masks converted to additive bias)
   - Past KV cache
-  - 2D, 3D, 4D additive masks with broadcasting
+  - 2D, 3D, 4D additive/bool masks with broadcasting
 """
 
+import os
 import unittest
+from unittest.mock import patch
 
 import numpy
 import torch
@@ -677,13 +684,12 @@ def parity_check_mha_prompt_with_bool_mask(
             device=device,
         )
 
-    # Create 2D key_padding_mask for reference (per-batch, shape [batch, total_seq])
-    key_padding_mask = create_boolean_mask_from_seqlens(
-        seqlens=effective_seqlens,
-        total_seq_len=config.kv_sequence_length,
-        mask_dims=2,
-        device=device,
-    )
+    # Per-batch key_padding_mask [batch, kv_seq] for reference.
+    # Must NOT use create_boolean_mask_from_seqlens(..., mask_dims=2) here because that
+    # returns [q_seq, total_seq] using only the first batch's seqlen, which is wrong
+    # when effective_seqlens vary per batch (4D mask case).
+    arange_kv = torch.arange(config.kv_sequence_length, device=device).unsqueeze(0)
+    key_padding_mask = arange_kv < effective_seqlens.unsqueeze(1)  # [batch, kv_seq]
 
     # --- PyTorch Reference Path ---
     out_ref, _ = attention_ref(
@@ -918,6 +924,572 @@ class TestONNXAttentionMHABoolMask(unittest.TestCase):
             rtol=rtol["fp16"],
             atol=atol["fp16"],
         )
+
+
+# #################################################################################################
+#  Parity Check with nonpad_kv_seqlen (Opset 24)
+# #################################################################################################
+
+
+def parity_check_mha_prompt_with_nonpad_kv_seqlen(
+    config: AttentionConfig,
+    nonpad_seqlens: torch.Tensor,
+    ep,
+    device,
+    torch_type,
+    ort_type,
+    rtol,
+    atol,
+    std=0.2,
+):
+    """
+    Parity check for ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen.
+
+    nonpad_kv_seqlen tells the op how many KV positions per batch are valid.
+    Positions beyond the valid length are treated as padding and masked out.
+    Cannot be used together with past_key/past_value.
+    """
+    torch.manual_seed(0)
+
+    q = (
+        torch.randn(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    k = (
+        torch.randn(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    v = torch.randn_like(k) * std
+
+    # Zero out padded positions in K, V for proper comparison
+    for b in range(config.batch_size):
+        valid_len = nonpad_seqlens[b].item()
+        if valid_len < config.kv_sequence_length:
+            k[b, valid_len:, :, :] = 0
+            v[b, valid_len:, :, :] = 0
+
+    # Per-batch key_padding_mask [batch, kv_seq] for reference
+    arange_kv = torch.arange(config.kv_sequence_length, device=device).unsqueeze(0)
+    key_padding_mask = arange_kv < nonpad_seqlens.unsqueeze(1).to(device)  # [batch, kv_seq]
+
+    out_ref, _ = attention_ref(
+        q=q,
+        k=k,
+        v=v,
+        key_padding_mask=key_padding_mask,
+        causal=config.is_causal == 1,
+        softcap=config.softcap,
+    )
+
+    # ORT path: use nonpad_kv_seqlen (int64 tensor)
+    nonpad_kv_seqlen_tensor = nonpad_seqlens.to(torch.int64).to(device)
+
+    out, present_k, present_v = attention_prompt_func(
+        q=q,
+        k=k,
+        v=v,
+        config=config,
+        attn_mask=None,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+        nonpad_kv_seqlen=nonpad_kv_seqlen_tensor,
+    )
+
+    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+
+    # When nonpad_kv_seqlen=0 for a batch, all KV positions are masked → softmax yields NaN.
+    # Zero out those batches in both ORT and reference for comparison.
+    for b in range(config.batch_size):
+        if nonpad_seqlens[b].item() == 0:
+            out[b, :, :, :] = 0
+            out_ref[b, :, :, :] = 0
+
+    out_np = out.to(torch.float32).detach().cpu().numpy()
+    out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+    numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
+
+def mha_nonpad_kv_seqlen_test_cases():
+    """
+    Generate test cases for ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen.
+
+    MHA supports partial masking in prompt mode via FlashAttentionForExternalKVCache.
+    Full-length tests verify the no-masking case; partial-length tests verify actual masking.
+    """
+    h = 128
+    sq = 16
+    skv = 16
+    n = 8
+
+    seqlen_scenarios = [
+        (1, [16], "single_batch"),
+        (2, [16, 16], "full_len"),
+        (2, [3, 5], "partial_mask"),
+        (4, [16, 16, 16, 16], "multi_batch"),
+    ]
+
+    for batch_size, seqlens, label in seqlen_scenarios:
+        config = AttentionConfig(
+            batch_size=batch_size,
+            q_sequence_length=sq,
+            kv_sequence_length=skv,
+            past_kv_sequence_length=0,
+            q_num_heads=n,
+            kv_num_heads=n,
+            head_size=h,
+            is_causal=0,
+            has_nonpad_kv_seqlen=True,
+            attn_mask_type="additive",
+        )
+        name = f"b{batch_size}_sq{sq}_skv{skv}_nh{n}_h{h}_{label}"
+        yield name, config, seqlens
+
+    # Causal variation with full length
+    config_c = AttentionConfig(
+        batch_size=2,
+        q_sequence_length=sq,
+        kv_sequence_length=skv,
+        past_kv_sequence_length=0,
+        q_num_heads=n,
+        kv_num_heads=n,
+        head_size=h,
+        is_causal=1,
+        has_nonpad_kv_seqlen=True,
+        attn_mask_type="additive",
+    )
+    yield f"b2_sq{sq}_skv{skv}_nh{n}_h{h}_causal", config_c, [16, 16]
+
+
+def mha_nonpad_kv_seqlen_cpu_test_cases():
+    """CPU-only test cases including zero_seqlen (triggers CUDA_KERNEL_ASSERT in debug builds)."""
+    yield from mha_nonpad_kv_seqlen_test_cases()
+
+    h = 128
+    sq = 16
+    skv = 16
+    n = 8
+    config = AttentionConfig(
+        batch_size=2,
+        q_sequence_length=sq,
+        kv_sequence_length=skv,
+        past_kv_sequence_length=0,
+        q_num_heads=n,
+        kv_num_heads=n,
+        head_size=h,
+        is_causal=0,
+        has_nonpad_kv_seqlen=True,
+        attn_mask_type="additive",
+    )
+    yield f"b2_sq{sq}_skv{skv}_nh{n}_h{h}_zero_seqlen", config, [0, 5]
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping MHA tests.")
+class TestONNXAttentionMHANonpadKVSeqlen(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen on CUDA."""
+
+    @parameterized.expand(mha_nonpad_kv_seqlen_test_cases())
+    def test_mha_nonpad_kv_seqlen_fp16(self, name, config, seqlens):
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
+
+        parity_check_mha_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(mha_nonpad_kv_seqlen_test_cases())
+    def test_mha_nonpad_kv_seqlen_fp32(self, name, config, seqlens):
+        config.kv_cache_type = "float32"
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
+
+        parity_check_mha_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+
+class TestONNXAttentionMHANonpadKVSeqlenCPU(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen on CPU (includes zero_seqlen)."""
+
+    @parameterized.expand(mha_nonpad_kv_seqlen_cpu_test_cases())
+    def test_mha_nonpad_kv_seqlen_cpu(self, name, config, seqlens):
+        config.kv_cache_type = "float32"
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cpu")
+
+        parity_check_mha_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+
+# #################################################################################################
+#  Unfused Kernel Tests
+# #################################################################################################
+
+
+def mha_unfused_test_cases():
+    """
+    Generate test cases that force the unfused attention kernel.
+
+    On Ampere+ GPUs, fp16/bf16 normally route to flash attention. By disabling
+    both flash and MEA, we force the unfused path even for fp16. These tests
+    verify the unfused kernel handles MHA correctly.
+    """
+    cases = [
+        (
+            "prompt_causal",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=16,
+                kv_sequence_length=16,
+                q_num_heads=8,
+                kv_num_heads=8,
+                head_size=64,
+                is_causal=1,
+                attn_mask_type="additive",
+            ),
+        ),
+        (
+            "prompt_noncausal",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=16,
+                kv_sequence_length=16,
+                q_num_heads=8,
+                kv_num_heads=8,
+                head_size=64,
+                is_causal=0,
+                attn_mask_type="additive",
+            ),
+        ),
+        (
+            "decode_causal",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=1,
+                kv_sequence_length=1,
+                past_kv_sequence_length=32,
+                q_num_heads=8,
+                kv_num_heads=8,
+                head_size=64,
+                is_causal=1,
+                attn_mask_type="additive",
+            ),
+        ),
+    ]
+    return cases
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping unfused tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1", "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1"})
+class TestONNXAttentionMHAUnfused(unittest.TestCase):
+    """
+    Test the unfused attention kernel by disabling flash and MEA.
+
+    On Ampere+ GPUs, fp16 normally routes to flash attention. These tests
+    disable both flash and MEA to exercise the unfused path.
+    """
+
+    @parameterized.expand(mha_unfused_test_cases())
+    def test_mha_unfused_fp16(self, name, config):
+        if "decode" in name:
+            parity_check_mha_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=config.is_causal == 1,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+        else:
+            parity_check_mha_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=config.is_causal == 1,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+
+# #################################################################################################
+#  Broadcast Mask (1,1,q,kv) Tests
+# #################################################################################################
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping broadcast mask tests.")
+class TestONNXAttentionMHABroadcastMask(unittest.TestCase):
+    """
+    Test attention with a (1,1,q_seq,kv_seq) mask that broadcasts across batch and heads.
+
+    This is a 4D mask with dim_0=1 (batch) and dim_1=1 (heads), verifying that
+    the broadcast_attn_bias_dim_0 and broadcast_attn_bias_dim_1 flags work correctly.
+    """
+
+    def test_mha_broadcast_mask_additive(self):
+        """Test broadcast additive mask (1,1,q,kv) with MHA on CUDA."""
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=16,
+            kv_sequence_length=16,
+            q_num_heads=8,
+            kv_num_heads=8,
+            head_size=128,
+            is_causal=0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+            broadcast_mask_batch=True,
+            broadcast_mask_heads=True,
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        torch_type = torch.float16
+
+        q = torch.randn(2, 16, 8, 128, device=device, dtype=torch_type) * 0.2
+        k = torch.randn(2, 16, 8, 128, device=device, dtype=torch_type) * 0.2
+        v = torch.randn_like(k) * 0.2
+
+        # Create (1,1,q,kv) additive mask: lower-triangular causal pattern
+        mask_filter = float(torch.finfo(torch_type).min)
+        mask_2d = torch.zeros(16, 16, device=device, dtype=torch_type)
+        for i in range(16):
+            mask_2d[i, i + 1 :] = mask_filter
+        attn_mask = mask_2d.unsqueeze(0).unsqueeze(0)  # (1, 1, 16, 16)
+
+        # Reference: expand to full (B, H, Q, K)
+        attn_bias_ref = attn_mask.expand(2, 8, -1, -1).contiguous()
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_bias_ref, causal=False)
+
+        # ORT path
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
+        out_ort = out_ort.reshape(2, 16, 8, 128)
+
+        out_np = out_ort.float().detach().cpu().numpy()
+        out_ref_np = out_ref.float().detach().cpu().numpy()
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
+# #################################################################################################
+#  2D Mask Broadcast Regression Test
+# #################################################################################################
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping 2D mask broadcast tests.")
+class TestONNXAttentionMHA2DMaskBroadcast(unittest.TestCase):
+    """
+    Regression test for 2D mask [q_seq, total_seq] broadcast correctness.
+
+    Per ONNX spec, a 2D attention mask has shape [q_seq, total_seq] and broadcasts
+    over batch and heads. This test uses batch_size > q_seq with a non-uniform
+    mask (different values per row) to verify correct broadcast behavior.
+
+    The old bug indexed the 2D mask by batch index instead of query position,
+    causing OOB reads when batch_size > q_seq.
+    """
+
+    def test_2d_additive_mask_batch_gt_qseq(self):
+        """2D additive mask [q_seq=2, total_seq=8] with batch=4 — would OOB on old code."""
+        config = AttentionConfig(
+            batch_size=4,
+            q_sequence_length=2,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            has_attn_mask=True,
+            attn_mask_dims=2,
+            attn_mask_type="additive",
+        )
+
+        torch.manual_seed(42)
+        device = "cuda"
+        torch_type = torch.float16
+        mask_filter_value = torch.finfo(torch_type).min
+
+        q = (
+            torch.randn(
+                config.batch_size,
+                config.q_sequence_length,
+                config.q_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.2
+        )
+        k = (
+            torch.randn(
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.2
+        )
+        v = torch.randn_like(k) * 0.2
+
+        # Create a non-uniform 2D causal-style mask [q_seq=2, kv_seq=8]:
+        # Row 0: attend to positions 0-3, mask out 4-7
+        # Row 1: attend to positions 0-5, mask out 6-7
+        attn_mask = torch.zeros(config.q_sequence_length, config.kv_sequence_length, device=device, dtype=torch_type)
+        attn_mask[0, 4:] = mask_filter_value
+        attn_mask[1, 6:] = mask_filter_value
+
+        # Reference: broadcast [2, 8] → [4, 4, 2, 8] (same mask for all batches/heads)
+        attn_bias_ref = attn_mask.unsqueeze(0).unsqueeze(0).expand(config.batch_size, config.q_num_heads, -1, -1)
+
+        # PyTorch reference
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_bias_ref, causal=False)
+
+        # ORT path
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
+        out_ort = out_ort.reshape(config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size)
+
+        out_np = out_ort.float().detach().cpu().numpy()
+        out_ref_np = out_ref.float().detach().cpu().numpy()
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+    def test_2d_bool_mask_batch_gt_qseq(self):
+        """2D bool mask [q_seq=2, total_seq=8] with batch=4 — would OOB on old code."""
+        config = AttentionConfig(
+            batch_size=4,
+            q_sequence_length=2,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            has_attn_mask=True,
+            attn_mask_dims=2,
+            attn_mask_type="bool",
+        )
+
+        torch.manual_seed(42)
+        device = "cuda"
+        torch_type = torch.float16
+
+        q = (
+            torch.randn(
+                config.batch_size,
+                config.q_sequence_length,
+                config.q_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.2
+        )
+        k = (
+            torch.randn(
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.2
+        )
+        v = torch.randn_like(k) * 0.2
+
+        # Create non-uniform 2D bool mask [q_seq=2, kv_seq=8]:
+        # Row 0: True for positions 0-3, False for 4-7
+        # Row 1: True for positions 0-5, False for 6-7
+        attn_mask = torch.ones(config.q_sequence_length, config.kv_sequence_length, device=device, dtype=torch.bool)
+        attn_mask[0, 4:] = False
+        attn_mask[1, 6:] = False
+
+        # Zero out K/V at padded positions (use row 0's pattern since 2D mask broadcasts)
+        # For bool mask, the effective seqlen for all batches comes from row 0 (most restrictive)
+        # Actually for cross-attention with different masking per query, just zero out nothing
+        # The reference uses key_padding_mask for padding, or we can use attn_bias directly
+        mask_filter_value = torch.finfo(torch_type).min
+        attn_bias_ref = torch.where(
+            attn_mask.unsqueeze(0).unsqueeze(0).expand(config.batch_size, config.q_num_heads, -1, -1),
+            torch.tensor(0.0, dtype=torch_type, device=device),
+            torch.tensor(mask_filter_value, dtype=torch_type, device=device),
+        )
+
+        # PyTorch reference with explicit bias
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_bias_ref, causal=False)
+
+        # ORT path
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
+        out_ort = out_ort.reshape(config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size)
+
+        out_np = out_ort.float().detach().cpu().numpy()
+        out_ref_np = out_ref.float().detach().cpu().numpy()
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
 if __name__ == "__main__":

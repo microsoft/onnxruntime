@@ -180,7 +180,7 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
   }
   // TODO: Enable the case for WebGPU once WGSL can support int64.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider, kArmNNExecutionProvider,
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
             kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 

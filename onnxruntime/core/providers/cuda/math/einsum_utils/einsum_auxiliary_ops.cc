@@ -31,6 +31,10 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   return Status::OK();
 }
 
+std::unique_ptr<Tensor> CreateTensor(const DataTypeImpl* type, const TensorShape& shape, AllocatorPtr allocator) {
+  return Tensor::Create(type, shape, std::move(allocator));
+}
+
 // CUDA EP specific Zero buffer helper
 Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(input.MutableDataRaw(), 0, input.SizeInBytes(),
@@ -41,7 +45,7 @@ Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets) {
 // CUDA EP specific Transpose helper
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
-  return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
+  return cuda::Transpose::DoTranspose(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->device_prop_,
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream(),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
                                       permutation, input, output, input_shape_override);
@@ -78,8 +82,8 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
       static_cast<int>(N),
       static_cast<int>(output_stride),
       static_cast<int>(num_batches),
-      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
-      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->UseTF32()));
+      *static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->device_prop_,
+      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->use_tf32_));
 
   return Status::OK();
 }

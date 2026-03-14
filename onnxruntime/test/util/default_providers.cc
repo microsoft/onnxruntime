@@ -210,15 +210,6 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena) {
-#ifdef USE_ARMNN
-  return ArmNNProviderFactoryCreator::Create(enable_arena)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(enable_arena);
-  return nullptr;
-#endif
-}
-
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
@@ -282,7 +273,7 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
   ConfigOptions config_options{};
   // Disable storage buffer cache
   ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
@@ -302,7 +293,7 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
 }
 
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(config_options);
