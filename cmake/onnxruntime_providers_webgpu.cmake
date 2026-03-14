@@ -56,7 +56,7 @@
     endif()
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
 
-    onnxruntime_add_shared_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_shared_library_module(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
         ${REPO_ROOT}/include/onnxruntime/core/session
         onnxruntime_common
