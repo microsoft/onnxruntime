@@ -454,3 +454,13 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // - "0": disable. (default)
 // - "1": enable.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// When set to "1", execution provider cache directory options (e.g. CoreML ModelCacheDirectory,
+// TensorRT trt_engine_cache_path, MIGraphX migraphx_model_cache_dir) are automatically suffixed with
+// the ONNX Runtime version string. This invalidates caches when ORT is updated and avoids crashes
+// from loading outdated EP caches. Set this option before appending execution providers.
+//
+// Option values:
+// - "0": EP cache paths are used as provided. [DEFAULT]
+// - "1": EP cache paths are suffixed with the ORT version (e.g. ".caches" -> ".caches/1.20.0").
+static const char* const kOrtSessionOptionsEpCacheUseOrtVersion = "session.ep_cache_use_ort_version";
