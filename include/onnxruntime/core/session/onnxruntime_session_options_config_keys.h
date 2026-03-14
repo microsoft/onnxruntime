@@ -405,6 +405,18 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 static const char* const kOrtSessionOptionsMlasGeluErfUseMinimaxApproximation =
     "mlas.gelu_erf_use_minimax_approximation";
 
+static const char* const kOrtSessionOptionsMlasEnableNchwcConvMaxInputChannelTuning =
+    "mlas.enable_nchwc_conv_max_input_channel_tuning";
+
+// static const char* const kOrtSessionOptionsMlasEnableNchwcConvThreadCapping =
+//     "mlas.enable_nchwc_conv_thread_capping";
+
+static const char* const kOrtSessionOptionsMlasEnableNchwcConvFilterSetTuning =
+    "mlas.enable_nchwc_conv_filter_set_tuning";
+
+// static const char* const kOrtSessionOptionsMlasEnableDepthwiseWithMultiplierKernel =
+//     "mlas.enable_depthwise_with_multiplier_kernel";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.

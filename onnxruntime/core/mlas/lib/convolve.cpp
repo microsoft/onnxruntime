@@ -892,76 +892,76 @@ Return Value:
 
 #endif
 
-void
-MlasDepthwiseWithMultiplierThreaded(
-    void* Context,
-    ptrdiff_t Index
-    )
-/*++
-
-Routine Description:
-
-    This routine is invoked from a worker thread to execute a segment of a
-    convolution operation.
-
-    If using this, the entire convolution operation is parallelized on the
-    (batch size * group count) parameter and this routine has logic to
-    perform a specific thread's shard of the entire Convolution operation.
-
-Arguments:
-
-    Context - Supplies the pointer to the context for the threaded operation.
-
-    Index - Supplies the current index of the threaded operation.
-
-Return Value:
-
-    None.
-
---*/
-{
-    MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
-
-    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
-    const size_t GroupCount = Parameters->GroupCount;
-    const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
-
-    size_t BatchGroupStart;
-    size_t BatchGroupRemaining;
-
-    MlasPartitionWork(Index, WorkBlock->TargetThreadCount, BatchGroupCount,
-        &BatchGroupStart, &BatchGroupRemaining);
-
-    size_t BatchGroupEnd = BatchGroupStart + BatchGroupRemaining;
-
-    const size_t FilterCount = Parameters->FilterCount;
-    const size_t OutputSize = Parameters->OutputSize;
-    const size_t K = Parameters->K;
-
-    const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
-    const size_t OutputGroupSize = FilterCount * OutputSize;
-    const size_t FilterGroupSize = FilterCount * K;
-
-    const float* input = WorkBlock->Input + BatchGroupStart * InputGroupSize;
-    float* output = WorkBlock->Output + BatchGroupStart * OutputGroupSize;
-
-    for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
-        size_t group = bg % GroupCount;
-
-        const float* filter = WorkBlock->Filter + group * FilterGroupSize;
-        const float* bias = WorkBlock->Bias;
-        if (bias != nullptr) {
-            bias += group * FilterCount;
-        }
-
-        MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, input, filter, output);
-        MlasActivation(Parameters->Activation, output, bias, FilterCount,
-            OutputSize, OutputSize);
-
-        input += InputGroupSize;
-        output += OutputGroupSize;
-    }
-}
+// void
+// MlasDepthwiseWithMultiplierThreaded(
+//     void* Context,
+//     ptrdiff_t Index
+//     )
+// /*++
+//
+// Routine Description:
+//
+//     This routine is invoked from a worker thread to execute a segment of a
+//     convolution operation.
+//
+//     If using this, the entire convolution operation is parallelized on the
+//     (batch size * group count) parameter and this routine has logic to
+//     perform a specific thread's shard of the entire Convolution operation.
+//
+// Arguments:
+//
+//     Context - Supplies the pointer to the context for the threaded operation.
+//
+//     Index - Supplies the current index of the threaded operation.
+//
+// Return Value:
+//
+//     None.
+//
+// --*/
+// {
+//     MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
+//
+//     const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
+//     const size_t GroupCount = Parameters->GroupCount;
+//     const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
+//
+//     size_t BatchGroupStart;
+//     size_t BatchGroupRemaining;
+//
+//     MlasPartitionWork(Index, WorkBlock->TargetThreadCount, BatchGroupCount,
+//         &BatchGroupStart, &BatchGroupRemaining);
+//
+//     size_t BatchGroupEnd = BatchGroupStart + BatchGroupRemaining;
+//
+//     const size_t FilterCount = Parameters->FilterCount;
+//     const size_t OutputSize = Parameters->OutputSize;
+//     const size_t K = Parameters->K;
+//
+//     const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
+//     const size_t OutputGroupSize = FilterCount * OutputSize;
+//     const size_t FilterGroupSize = FilterCount * K;
+//
+//     const float* input = WorkBlock->Input + BatchGroupStart * InputGroupSize;
+//     float* output = WorkBlock->Output + BatchGroupStart * OutputGroupSize;
+//
+//     for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
+//         size_t group = bg % GroupCount;
+//
+//         const float* filter = WorkBlock->Filter + group * FilterGroupSize;
+//         const float* bias = WorkBlock->Bias;
+//         if (bias != nullptr) {
+//             bias += group * FilterCount;
+//         }
+//
+//         MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, input, filter, output);
+//         MlasActivation(Parameters->Activation, output, bias, FilterCount,
+//             OutputSize, OutputSize);
+//
+//         input += InputGroupSize;
+//         output += OutputGroupSize;
+//     }
+// }
 
 inline
 bool
@@ -1205,27 +1205,27 @@ Return Value:
 
 #endif
 
-    if (Algorithm == MlasConvAlgorithmDepthwiseWithMultiplier && ((BatchCount > 1) || (GroupCount > 1))) {
-        const size_t BatchGroupCount = BatchCount * GroupCount;
-        ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
-
-        if (static_cast<size_t>(TargetThreadCount) >= BatchGroupCount) {
-            TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
-        }
-
-        MLAS_CONV_WORK_BLOCK WorkBlock;
-        WorkBlock.Parameters = Parameters;
-        WorkBlock.Input = Input;
-        WorkBlock.Filter = Filter;
-        WorkBlock.Bias = Bias;
-        WorkBlock.WorkingBuffer = nullptr;
-        WorkBlock.Output = Output;
-        WorkBlock.TargetThreadCount = TargetThreadCount;
-
-        MlasExecuteThreaded(MlasDepthwiseWithMultiplierThreaded, &WorkBlock,
-            TargetThreadCount, ThreadPool);
-        return;
-    }
+    // if (Algorithm == MlasConvAlgorithmDepthwiseWithMultiplier && ((BatchCount > 1) || (GroupCount > 1))) {
+    //     const size_t BatchGroupCount = BatchCount * GroupCount;
+    //     ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    //
+    //     if (static_cast<size_t>(TargetThreadCount) >= BatchGroupCount) {
+    //         TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
+    //     }
+    //
+    //     MLAS_CONV_WORK_BLOCK WorkBlock;
+    //     WorkBlock.Parameters = Parameters;
+    //     WorkBlock.Input = Input;
+    //     WorkBlock.Filter = Filter;
+    //     WorkBlock.Bias = Bias;
+    //     WorkBlock.WorkingBuffer = nullptr;
+    //     WorkBlock.Output = Output;
+    //     WorkBlock.TargetThreadCount = TargetThreadCount;
+    //
+    //     MlasExecuteThreaded(MlasDepthwiseWithMultiplierThreaded, &WorkBlock,
+    //         TargetThreadCount, ThreadPool);
+    //     return;
+    // }
 
     //
     // Iterate over each batch and group.
@@ -1301,12 +1301,12 @@ Return Value:
 
 #endif
 
-                case MlasConvAlgorithmDepthwiseWithMultiplier:
-                {
-                    MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, Input, filter, Output);
-                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
-                    break;
-                }
+                // case MlasConvAlgorithmDepthwiseWithMultiplier:
+                // {
+                //     MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, Input, filter, Output);
+                //     MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
+                //     break;
+                // }
 
                 case MlasConvAlgorithmExpandThenGemmSegmented:
                 {
@@ -1556,21 +1556,23 @@ Return Value:
         // depth_multiplier = 2 is used together with 7x7 kernel shape, stride = 2 and dilation = 1.
         // This is a very specific scenario, but it is worth to have a specialized kernel for it given
         // the popularity of MobileNet models.
-        if (Dimensions == 2
-            // depthwise convolution
-            && Parameters->GroupCount > 1
-            && Parameters->InputChannels == 1
-            // depth_multiplier = 2
-            && Parameters->FilterCount == 2
-            // current scope for specialized kernel is for the 7x7 kernel shape
-            && Parameters->KernelShape[0] == 7 && Parameters->KernelShape[1] == 7
-            // keep this specialized kernel only for stride = 2x2
-            && Parameters->StrideShape[0] == 2 && Parameters->StrideShape[1] == 2
-            // keep this specialized kernel only for dilation = 1x1
-            && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
-            Parameters->Algorithm = MlasConvAlgorithmDepthwiseWithMultiplier;
-            return;
-        }
+        // if (Parameters->BackendKernelSelectorConfig != nullptr &&
+        //     Parameters->BackendKernelSelectorConfig->enable_depthwise_with_multiplier_kernel &&
+        //     Dimensions == 2
+        //     // depthwise convolution
+        //     && Parameters->GroupCount > 1
+        //     && Parameters->InputChannels == 1
+        //     // depth_multiplier = 2
+        //     && Parameters->FilterCount == 2
+        //     // current scope for specialized kernel is for the 7x7 kernel shape
+        //     && Parameters->KernelShape[0] == 7 && Parameters->KernelShape[1] == 7
+        //     // keep this specialized kernel only for stride = 2x2
+        //     && Parameters->StrideShape[0] == 2 && Parameters->StrideShape[1] == 2
+        //     // keep this specialized kernel only for dilation = 1x1
+        //     && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
+        //     Parameters->Algorithm = MlasConvAlgorithmDepthwiseWithMultiplier;
+        //     return;
+        // }
 
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 

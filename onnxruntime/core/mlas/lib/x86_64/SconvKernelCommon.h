@@ -611,6 +611,11 @@ Implicit Arguments:
 .if \FilterCount\() > 2
         lea     rbx,[rdx+rsi*2]             # compute filter plus 2 rows
 .endif
+.ifeqs "\Isa\()","Avx512F"
+.if \BlockSize\() == 16
+        # prefetcht0 [rdx+\BlockSize\()*\BlockSize\()*4]
+.endif
+.endif
 .if \BlockSize\() == 16
         .irp Index, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
             ComputeBlock Pointwise, \FilterCount\(), \OutputCount\(), \Index\()*16*4, \Index\()*4

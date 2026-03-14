@@ -1658,13 +1658,23 @@ MlasConvDepthwiseFloat_CHW(
 
 #endif
 
-void
-MlasConvDepthwiseWithMultiplierFloat_CHW(
-    const MLAS_CONV_PARAMETERS* Parameters,
-    const float* Input,
-    const float* Filter,
-    float* Output
-    );
+// void
+// MlasConvDepthwiseWithMultiplierFloat_CHW(
+//     const MLAS_CONV_PARAMETERS* Parameters,
+//     const float* Input,
+//     const float* Filter,
+//     float* Output
+//     );
+
+#if defined(MLAS_TARGET_AMD64)
+// void
+// MlasConvDepthwiseWithMultiplierFloatCHWKernel7x7Stride2DepthMultiplier2Avx512F(
+//     const MLAS_CONV_PARAMETERS* Parameters,
+//     const float* Input,
+//     const float* Filter,
+//     float* Output
+//     );
+#endif
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable

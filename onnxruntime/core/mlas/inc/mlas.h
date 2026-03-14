@@ -204,6 +204,10 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    bool enable_nchwc_conv_max_input_channel_tuning = false; /**< Enable input-channel batch tuning heuristics for NCHWc pointwise convolution */
+    // bool enable_nchwc_conv_thread_capping = false; /**< Enable thread-capping heuristics for NCHWc regular/pointwise/depthwise convolution */
+    bool enable_nchwc_conv_filter_set_tuning = false; /**< Enable FilterSetSize tuning heuristics for NCHWc regular convolution */
+    // bool enable_depthwise_with_multiplier_kernel = false; /**< Enable the specialized depthwise-with-multiplier convolution kernel */
 };
 
 //

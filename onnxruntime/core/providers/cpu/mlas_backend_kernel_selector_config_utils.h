@@ -17,6 +17,14 @@ namespace onnxruntime {
 inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& config,
                                                             const ConfigOptions& config_options) {
   config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
+  config.enable_nchwc_conv_max_input_channel_tuning =
+      config_options.GetConfigOrDefault(kOrtSessionOptionsMlasEnableNchwcConvMaxInputChannelTuning, "0") == "1";
+  // config.enable_nchwc_conv_thread_capping =
+  //     config_options.GetConfigOrDefault(kOrtSessionOptionsMlasEnableNchwcConvThreadCapping, "0") == "1";
+  config.enable_nchwc_conv_filter_set_tuning =
+      config_options.GetConfigOrDefault(kOrtSessionOptionsMlasEnableNchwcConvFilterSetTuning, "0") == "1";
+  // config.enable_depthwise_with_multiplier_kernel =
+  //     config_options.GetConfigOrDefault(kOrtSessionOptionsMlasEnableDepthwiseWithMultiplierKernel, "0") == "1";
 }
 
 }  // namespace onnxruntime

@@ -18,6 +18,9 @@ Abstract:
 #include "mlasi.h"
 #include <cassert>
 
+// Specialized depthwise-with-multiplier kernel disabled for A/B testing.
+#if 0
+
 static
 void
 MlasConv2dSingleChannel_CHW_Kernel7x7_PadAny_Stride2_Dilation1_DepthMultiplier2(
@@ -46,6 +49,7 @@ Arguments:
 {
     constexpr size_t HeightShapeIndex = 0;
     constexpr size_t WidthShapeIndex = 1;
+    constexpr size_t SpecializedKernelSize = 7;
 
     const size_t InputHeight = Parameters->InputShape[HeightShapeIndex];
     const size_t InputWidth = Parameters->InputShape[WidthShapeIndex];
@@ -132,6 +136,74 @@ Arguments:
 
         for (; ow < InteriorBegin; ++ow) {
             ComputeScalarPoint(oh, ow);
+        }
+
+        for (; ow + 1 < InteriorEnd; ow += 2) {
+            const ptrdiff_t InputOriginX = ptrdiff_t(ow * StrideWidth) - ptrdiff_t(PaddingLeft);
+
+            const float* InputRows[SpecializedKernelSize] = {
+                Input + (size_t(InputOriginY + 0) * InputWidth) + size_t(InputOriginX),
+                Input + (size_t(InputOriginY + 1) * InputWidth) + size_t(InputOriginX),
+                Input + (size_t(InputOriginY + 2) * InputWidth) + size_t(InputOriginX),
+                Input + (size_t(InputOriginY + 3) * InputWidth) + size_t(InputOriginX),
+                Input + (size_t(InputOriginY + 4) * InputWidth) + size_t(InputOriginX),
+                Input + (size_t(InputOriginY + 5) * InputWidth) + size_t(InputOriginX),
+                Input + (size_t(InputOriginY + 6) * InputWidth) + size_t(InputOriginX),
+            };
+
+            const float* FilterRows0[SpecializedKernelSize] = {
+                Filter0 + 0 * SpecializedKernelSize,
+                Filter0 + 1 * SpecializedKernelSize,
+                Filter0 + 2 * SpecializedKernelSize,
+                Filter0 + 3 * SpecializedKernelSize,
+                Filter0 + 4 * SpecializedKernelSize,
+                Filter0 + 5 * SpecializedKernelSize,
+                Filter0 + 6 * SpecializedKernelSize,
+            };
+
+            const float* FilterRows1[SpecializedKernelSize] = {
+                Filter1 + 0 * SpecializedKernelSize,
+                Filter1 + 1 * SpecializedKernelSize,
+                Filter1 + 2 * SpecializedKernelSize,
+                Filter1 + 3 * SpecializedKernelSize,
+                Filter1 + 4 * SpecializedKernelSize,
+                Filter1 + 5 * SpecializedKernelSize,
+                Filter1 + 6 * SpecializedKernelSize,
+            };
+
+            float Sum00 = 0.0f;
+            float Sum01 = 0.0f;
+            float Sum10 = 0.0f;
+            float Sum11 = 0.0f;
+
+            for (size_t kh = 0; kh < SpecializedKernelSize; ++kh) {
+                const float* InputRow = InputRows[kh];
+                const float* FilterRow0 = FilterRows0[kh];
+                const float* FilterRow1 = FilterRows1[kh];
+
+                for (size_t kw = 0; kw < SpecializedKernelSize; ++kw) {
+                    const float InputValue0 = InputRow[kw];
+                    const float InputValue1 = InputRow[kw + StrideWidth];
+
+                    Sum00 += InputValue0 * FilterRow0[kw];
+                    Sum10 += InputValue0 * FilterRow1[kw];
+                    Sum01 += InputValue1 * FilterRow0[kw];
+                    Sum11 += InputValue1 * FilterRow1[kw];
+                }
+            }
+
+            const size_t OutputOffset = oh * OutputWidth + ow;
+            if (Beta == 0.0f) {
+                Output0[OutputOffset] = Sum00;
+                Output0[OutputOffset + 1] = Sum01;
+                Output1[OutputOffset] = Sum10;
+                Output1[OutputOffset + 1] = Sum11;
+            } else {
+                Output0[OutputOffset] = Output0[OutputOffset] * Beta + Sum00;
+                Output0[OutputOffset + 1] = Output0[OutputOffset + 1] * Beta + Sum01;
+                Output1[OutputOffset] = Output1[OutputOffset] * Beta + Sum10;
+                Output1[OutputOffset + 1] = Output1[OutputOffset + 1] * Beta + Sum11;
+            }
         }
 
         for (; ow < InteriorEnd; ++ow) {
@@ -235,6 +307,15 @@ Note:
     assert(Parameters->DilationShape[1] == 1);
 
     // Kernel dispatch
+#if defined(MLAS_TARGET_AMD64)
+    if (GetMlasPlatform().Avx512Supported_) {
+        MlasConvDepthwiseWithMultiplierFloatCHWKernel7x7Stride2DepthMultiplier2Avx512F(
+            Parameters, Input, Filter, Output);
+        return;
+    }
+#endif
+
     MlasConv2dSingleChannel_CHW_Kernel7x7_PadAny_Stride2_Dilation1_DepthMultiplier2(
         Parameters, Input, Filter, Output);
 }
+#endif
