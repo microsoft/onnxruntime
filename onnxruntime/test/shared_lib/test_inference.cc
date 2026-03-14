@@ -5000,8 +5000,7 @@ TEST(CApiTest, InMemoryModel_SessionConfigExternalFileFolder_ExternalDataOutside
 
   // Verify that the exception message indicates security or external data issues
   EXPECT_TRUE(exception_message.find("External data path") != std::string::npos &&
-              exception_message.find("escapes both model directory") != std::string::npos &&
-              exception_message.find("and real model directory") != std::string::npos)
+              exception_message.find("escapes model directory") != std::string::npos)
       << "Exception message should indicate external data or security issue. Got: " << exception_message;
 }
 

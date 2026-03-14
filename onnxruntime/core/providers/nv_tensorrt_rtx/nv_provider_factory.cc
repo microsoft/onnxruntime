@@ -16,7 +16,6 @@
 #include "core/framework/plugin_ep_stream.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_custom_ops.h"
-#include "core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 // D3D12 headers for graphics interop on Windows
@@ -30,6 +29,7 @@
 #include "nv_provider_factory_creator.h"
 #include "nv_data_transfer.h"
 #include "nv_allocator.h"
+#include "nv_scoped_context.h"
 
 using namespace onnxruntime;
 
