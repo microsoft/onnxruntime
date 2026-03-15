@@ -10,13 +10,11 @@
 
 namespace {
 
-bool IsAvx512Available() {
 #if defined(MLAS_TARGET_AMD64)
+bool IsAvx512Available() {
   return GetMlasPlatform().Avx512Supported_;
-#else
-  return false;
-#endif
 }
+#endif
 
 std::vector<float> MakeInput(size_t n, float min_value, float max_value) {
   auto data = RandomVectorUniform<float>(n, min_value, max_value);
