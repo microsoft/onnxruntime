@@ -779,8 +779,10 @@ TEST_F(ActivationOpTest, ONNX_Gelu_MlasErfMinimaxApproximation) {
     test.AddInput<float>("X", dims, input_vals);
     test.AddOutput<float>("Y", dims, expected_vals, false, 2e-5f, 2e-6f);
 
-    std::unordered_set<std::string> excluded_providers;
-    test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    test
+        .Config(session_options)
+        .ConfigEp(DefaultCpuExecutionProvider())
+        .RunWithConfig();
   }
 }
 #endif
