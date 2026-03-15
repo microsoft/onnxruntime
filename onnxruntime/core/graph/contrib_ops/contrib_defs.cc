@@ -585,6 +585,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Gelu, 1,
                                   return true;
                                 }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(DivCeil, 1,
+                            OpSchema()
+                                .SetDomain(kMSDomain)
+                                .SinceVersion(1)
+                                .SetDoc("Fused Div+Ceil with precision correction for float division.")
+                                .Input(0, "A", "The dividend.", "T")
+                                .Input(1, "B", "The divisor.", "T")
+                                .Output(0, "C", "The output: ceil(A/B).", "T")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float16)", "tensor(float)"},
+                                    "Constrain input and output types to float tensors.")
+                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 constexpr const char* BiasGelu_ver1_doc =
     R"DOC(Bias Gelu.
 It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
