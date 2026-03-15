@@ -240,6 +240,7 @@ MlasComputeGeluVectorMinimaxAvx512(
     __m512 X
     )
 {
+    const __m512 PositiveInfinity = _mm512_set1_ps(std::numeric_limits<float>::infinity());
     const __m512 SignMask = _mm512_castsi512_ps(_mm512_set1_epi32(int(0x80000000u)));
     const __m512 PositiveMask = _mm512_castsi512_ps(_mm512_set1_epi32(0x7fffffffu));
     const __m512 One = _mm512_set1_ps(1.0f);
@@ -274,6 +275,9 @@ MlasComputeGeluVectorMinimaxAvx512(
     const __m512 Sign = _mm512_and_ps(X, SignMask);
     const __m512 ErfPart = _mm512_xor_ps(Polynomial, Sign);
     __m512 Result = _mm512_mul_ps(_mm512_mul_ps(X, _mm512_add_ps(ErfPart, One)), Half);
+
+    const __mmask16 PositiveInfinityMask = _mm512_cmp_ps_mask(X, PositiveInfinity, _CMP_EQ_OQ);
+    Result = _mm512_mask_mov_ps(Result, PositiveInfinityMask, PositiveInfinity);
 
     const __mmask16 NegativeInfinityMask = _mm512_cmp_ps_mask(X, NegativeInfinity, _CMP_EQ_OQ);
     Result = _mm512_mask_mov_ps(Result, NegativeInfinityMask, NegativeZero);
