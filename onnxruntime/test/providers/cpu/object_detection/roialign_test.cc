@@ -909,6 +909,11 @@ TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
 }
 
 TEST(RoiAlignTest, Float16_Opset16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
   OpTester test("RoiAlign", 16);
   test.AddAttribute<int64_t>("output_height", 3);
   test.AddAttribute<int64_t>("output_width", 4);
@@ -927,11 +932,16 @@ TEST(RoiAlignTest, Float16_Opset16) {
   test.AddOutput<MLFloat16>("Y", {1, 1, 3, 4}, ToFloat16({0.6665f, 1.333f, 2.0f, 2.666f, 4.0f, 4.668f, 5.332f, 6.0f, 7.332f, 8.0f, 8.664f, 9.336f}));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(std::move(cuda_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(RoiAlignTest, Float16_Opset22) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
   OpTester test("RoiAlign", 22);
   test.AddAttribute<int64_t>("output_height", 3);
   test.AddAttribute<int64_t>("output_width", 4);
@@ -949,11 +959,16 @@ TEST(RoiAlignTest, Float16_Opset22) {
   test.AddOutput<MLFloat16>("Y", {1, 1, 3, 4}, ToFloat16({0.6665f, 1.333f, 2.0f, 2.666f, 4.0f, 4.668f, 5.332f, 6.0f, 7.332f, 8.0f, 8.664f, 9.336f}));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(std::move(cuda_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(RoiAlignTest, BFloat16_Opset22) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
   OpTester test("RoiAlign", 22);
   test.AddAttribute<int64_t>("output_height", 3);
   test.AddAttribute<int64_t>("output_width", 4);
@@ -971,7 +986,7 @@ TEST(RoiAlignTest, BFloat16_Opset22) {
   test.AddOutput<BFloat16>("Y", {1, 1, 3, 4}, ToBFloat16({0.6665f, 1.333f, 2.0f, 2.666f, 4.0f, 4.668f, 5.332f, 6.0f, 7.332f, 8.0f, 8.664f, 9.336f}));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(std::move(cuda_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
