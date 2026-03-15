@@ -755,6 +755,7 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
       {{"approximate", "tanh"}}, true, 20);
 }
 
+#if defined(MLAS_TARGET_AMD64)
 TEST_F(ActivationOpTest, ONNX_Gelu_MlasErfMinimaxApproximation) {
   if (GetMlasPlatform().GeluErfMinimaxKernelRoutine == nullptr) {
     GTEST_SKIP() << "MLAS GELU erf minimax kernel is not available on this machine.";
@@ -782,6 +783,7 @@ TEST_F(ActivationOpTest, ONNX_Gelu_MlasErfMinimaxApproximation) {
     test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }
+#endif
 #endif
 
 }  // namespace test
