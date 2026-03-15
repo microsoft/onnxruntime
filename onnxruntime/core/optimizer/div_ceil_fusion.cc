@@ -6,7 +6,6 @@
 #include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status DivCeilFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
@@ -18,6 +17,8 @@ Status DivCeilFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     if (node == nullptr) {
       continue;  // was removed
     }
+
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Div", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
