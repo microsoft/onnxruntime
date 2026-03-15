@@ -147,6 +147,9 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
+  static std::mutex mutex_;
+  static std::once_flag init_default_flag_;
+
   // Use pointers to heap-allocated objects so that their destructors do NOT run
   // during static destruction at process exit. This avoids crashes when dependent
   // DLLs (e.g. dxcompiler.dll) have already been unloaded by the OS.
@@ -155,9 +158,7 @@ class WebGpuContextFactory {
   // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
   // On abnormal/process termination they simply leak, which is safe.
   static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
-  static std::mutex mutex_;
-  static std::once_flag init_default_flag_;
-  static wgpu::Instance default_instance_;
+  static WGPUInstance default_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.

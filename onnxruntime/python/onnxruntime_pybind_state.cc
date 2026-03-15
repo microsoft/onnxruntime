@@ -1106,11 +1106,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     }
     return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math);
 #endif
-  } else if (type == kArmNNExecutionProvider) {
-#ifdef USE_ARMNN
-    return onnxruntime::ArmNNProviderFactoryCreator::Create(
-        session_options.enable_cpu_mem_arena);
-#endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
@@ -1549,6 +1544,55 @@ void addGlobalMethods(py::module& m) {
         return status;
       },
       R"pbdoc("Validate a compiled model's compatibility information for one or more EP devices.)pbdoc");
+
+  m.def(
+      "get_compatibility_info_from_model",
+      [](const std::basic_string<ORTCHAR_T>& model_path, const std::string& ep_type) -> py::object {
+        Ort::AllocatorWithDefaultOptions allocator;
+        Ort::AllocatedStringPtr compat_info = Ort::GetCompatibilityInfoFromModelAllocated(
+            model_path.c_str(), ep_type.c_str(), allocator);
+        if (compat_info.get() == nullptr) {
+          return py::none();
+        }
+        return py::str(compat_info.get());
+      },
+      R"pbdoc(Extract EP compatibility info from a precompiled model file.
+
+Parses the model file to extract the compatibility info string for a specific execution provider
+from the model's metadata properties. Returns None if no compatibility info exists for the EP.
+
+Args:
+    model_path: Path to the ONNX model file.
+    ep_type: The execution provider type string (e.g. "CPUExecutionProvider").
+
+Returns:
+    The compatibility info string, or None if not found.
+)pbdoc");
+
+  m.def(
+      "get_compatibility_info_from_model_bytes",
+      [](const py::buffer& model_data, const std::string& ep_type) -> py::object {
+        py::buffer_info info = model_data.request();
+        Ort::AllocatorWithDefaultOptions allocator;
+        Ort::AllocatedStringPtr compat_info = Ort::GetCompatibilityInfoFromModelBytesAllocated(
+            info.ptr, static_cast<size_t>(info.size * info.itemsize), ep_type.c_str(), allocator);
+        if (compat_info.get() == nullptr) {
+          return py::none();
+        }
+        return py::str(compat_info.get());
+      },
+      R"pbdoc(Extract EP compatibility info from precompiled model bytes in memory.
+
+Same as get_compatibility_info_from_model but reads from a buffer instead of a file.
+Accepts bytes, bytearray, memoryview, or any object supporting the buffer protocol.
+
+Args:
+    model_data: The model data as a buffer (bytes, bytearray, memoryview, etc.).
+    ep_type: The execution provider type string (e.g. "CPUExecutionProvider").
+
+Returns:
+    The compatibility info string, or None if not found.
+)pbdoc");
 
   m.def(
       "copy_tensors",

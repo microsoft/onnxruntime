@@ -186,9 +186,12 @@ static std::unique_ptr<api::NodeRef> MakeDequantizeOp(api::GraphRef& graph, std:
   return node;
 }
 
-// Returns whether perm is a valid permutation (contains each value from 0 to perm.size() - 1 exactly once)
+// Returns whether perm is a non-empty valid permutation (rank > 0 and contains each value from 0 to perm.size() - 1 exactly once)
 static bool IsValidPerm(const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
+  if (rank == 0) {
+    return false;
+  }
   int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
   std::vector<bool> used_dims(rank);
   for (size_t i = 0; i < rank; ++i) {
@@ -748,7 +751,7 @@ std::vector<int64_t> ChannelLastToFirstPerm(size_t rank) {
   }
 
   std::vector<int64_t> p(rank);
-  p[0] = 0;
+  p[0] = 0;  // This is usually the batch dimension (hence preserve this position)
   p[1] = rank - 1;
   for (size_t i = 2; i < rank; ++i) {
     p[i] = i - 1;

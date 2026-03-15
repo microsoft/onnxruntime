@@ -28,11 +28,35 @@ parameters:
    - 12.8
    - 13.0
 
+- name: python_version
+  type: string
+  displayName: 'Python version label (e.g. 3.12, 3.13t)'
+
+- name: docker_python_exe_path
+  type: string
+  displayName: 'Full path to the Python executable inside the Docker image'
+
+- name: stage_name
+  type: string
+  displayName: 'Unique stage name for this build'
+
+- name: wheel_artifact_name
+  type: string
+  displayName: 'Name for the published wheel artifact'
+
+- name: build_intermediates_artifact_name
+  type: string
+  default: ''
+  displayName: |
+    Name for the published build intermediates artifact.
+    If the name is empty, no build intermediates artifact will be published.
+    The build intermediates can be used for testing.
+
 stages:
-- stage: Linux_py_GPU_Wheels_${{ parameters.arch }}
+- stage: ${{ parameters.stage_name }}
   dependsOn: []
   jobs:
-  - job: Linux_py_GPU_Wheels_${{ parameters.arch }}
+  - job: ${{ parameters.stage_name }}
     timeoutInMinutes: 360
     workspace:
       clean: all
@@ -43,15 +67,16 @@ stages:
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)/dist
-        artifactName: onnxruntime_gpu
-      - output: pipelineArtifact
-        targetPath: $(Build.ArtifactStagingDirectory)/${{ parameters.cmake_build_type }}
-        artifactName: linux_gpu_wheel_${{ parameters.arch }}
+        artifactName: ${{ parameters.wheel_artifact_name }}
+      - ${{ if ne(parameters.build_intermediates_artifact_name, '') }}:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)/${{ parameters.cmake_build_type }}
+          artifactName: ${{ parameters.build_intermediates_artifact_name }}
     variables:
       - name: extra_build_args
         ${{ if ne(parameters.extra_build_arg, '') }}:
           value: '-x "${{ parameters.extra_build_arg }}"'
-        ${{ if eq(parameters.extra_build_arg, '') }}:
+        ${{ else }}:
           value: ''
       - template: ../templates/common-variables.yml
       - name: trt_version
@@ -75,24 +100,28 @@ stages:
 
 
       - task: Bash@3
-        displayName: 'Build Python Wheel'
+        displayName: 'Build Python Wheel - ${{ parameters.python_version }}'
         inputs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-          arguments: -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+          arguments: >-
+            -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
+            -d "GPU"
+            -c ${{ parameters.cmake_build_type }}
+            -p "${{ parameters.docker_python_exe_path }}"
+            $(extra_build_args)
         env:
           CUDA_VERSION: ${{ parameters.cuda_version }}
 
       - script: |
           set -e -x
-          mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }}
           mv $(Build.BinariesDirectory)/dist ./dist
-          pushd dist
-          find . -name \*.whl -exec unzip -qq -o {} \;
-          rm -r onnxruntime
-          popd
-          pushd ${{ parameters.cmake_build_type }}
-          find . -name \*.whl -exec unzip -qq -o {} \;
-          popd
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
-        displayName: 'Move files'
+        displayName: 'Move wheel files'
+
+      - ${{ if ne(parameters.build_intermediates_artifact_name, '') }}:
+        - script: |
+            set -e -x
+            mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }}
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+          displayName: 'Move build intermediates'
