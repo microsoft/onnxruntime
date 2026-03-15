@@ -267,15 +267,18 @@ def _on_the_fly_rope_nodes(prefix, head_dim, include_expand=False):
     return nodes
 
 
-def _on_the_fly_rope_initializers(prefix, head_dim, batch_size=1, include_expand=False):
+def _on_the_fly_rope_initializers(prefix, head_dim, batch_size=1, include_expand=False, inv_freq_as_graph_input=False):
     """Initializers for on-the-fly RoPE computation."""
     inv_freq = 1.0 / (10000.0 ** (np.arange(0, head_dim, 2, dtype=np.float32) / head_dim))
     inits = [
         helper.make_tensor(f"{prefix}_unsq_axis", TensorProto.INT64, [1], [1]),
-        helper.make_tensor(f"{prefix}_inv_freq", TensorProto.FLOAT, [1, head_dim // 2, 1], inv_freq.tolist()),
         helper.make_tensor(f"{prefix}_scaling", TensorProto.FLOAT, [], [1.0]),
         helper.make_tensor(f"{prefix}_head_unsq_axis", TensorProto.INT64, [1], [1]),
     ]
+    if not inv_freq_as_graph_input:
+        inits.append(
+            helper.make_tensor(f"{prefix}_inv_freq", TensorProto.FLOAT, [1, head_dim // 2, 1], inv_freq.tolist())
+        )
     if include_expand:
         inits.extend(
             [
@@ -300,6 +303,7 @@ def create_qwen3_decoder_layer(
     seq_len=4,
     include_rope=False,
     include_expand_in_inv_freq=False,
+    inv_freq_as_graph_input=False,
 ):
     """Create a single Qwen3 decoder layer with RMSNorm, Q/K/V projections, QK-Norm, and residual Add.
 
@@ -365,12 +369,20 @@ def create_qwen3_decoder_layer(
         nodes.extend(_on_the_fly_rope_nodes("rope", head_dim, include_expand=include_expand_in_inv_freq))
         initializers.extend(
             _on_the_fly_rope_initializers(
-                "rope", head_dim, batch_size=batch_size, include_expand=include_expand_in_inv_freq
+                "rope",
+                head_dim,
+                batch_size=batch_size,
+                include_expand=include_expand_in_inv_freq,
+                inv_freq_as_graph_input=inv_freq_as_graph_input,
             )
         )
         inputs.append(
             helper.make_tensor_value_info("position_ids", TensorProto.INT64, [batch_size, seq_len]),
         )
+        if inv_freq_as_graph_input:
+            inputs.append(
+                helper.make_tensor_value_info("rope_inv_freq", TensorProto.FLOAT, [1, head_dim // 2, 1]),
+            )
 
         # --- Apply RoPE to Q ---
         nodes.extend(_rotate_half_nodes("q_rope", "q_transposed", "q_rope_out", "rope_cos_out", "rope_sin_out"))
