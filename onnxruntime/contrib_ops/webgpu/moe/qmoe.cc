@@ -124,6 +124,42 @@ class SwigLuProgram final : public Program<SwigLuProgram> {
  private:
 };
 
+class ActivationProgram final : public Program<ActivationProgram> {
+ public:
+  ActivationProgram(int activation_type) : Program<ActivationProgram>{"MoEActivation"}, activation_type_{activation_type} {};
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+
+    return WGSL_TEMPLATE_APPLY(shader, "moe/activation.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(activation_type, activation_type_));
+  };
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int activation_type_;
+};
+
+inline int MoEActivationTypeToInt(MoEActivationType type) {
+  switch (type) {
+    case MoEActivationType::Relu:
+      return 0;
+    case MoEActivationType::Gelu:
+      return 1;
+    case MoEActivationType::Silu:
+      return 2;
+    case MoEActivationType::Identity:
+      return 3;
+    case MoEActivationType::Relu2:
+      return 4;
+    default:
+      return 3;  // identity as fallback
+  }
+}
+
 class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
  public:
   QMoEFinalMixProgram() : Program<QMoEFinalMixProgram>{"QMoEFinalMix"} {}
@@ -288,7 +324,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                   swiglu_limit_});
         ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
       } else {
-        ORT_THROW("only swiglu is supported for WebGPU.");
+        uint32_t total_size = num_tokens * static_cast<uint32_t>(moe_params.inter_size);
+        ActivationProgram activation{MoEActivationTypeToInt(activation_type_)};
+        activation
+            .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}})
+            .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
+            .SetWorkgroupSize(128)
+            .SetDispatchGroupSize((total_size + 127) / 128)
+            .AddUniformVariables({total_size})
+            .CacheHint(MoEActivationTypeToInt(activation_type_));
+        ORT_RETURN_IF_ERROR(context.RunProgram(activation));
       }
 
       status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
@@ -393,7 +438,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       ORT_RETURN_IF_ERROR(status);
 
       //
-      // Step 4: apply swiglu
+      // Step 4: apply activation
       //
       if (is_swiglu) {
         SwigLuProgram swiglu;
@@ -409,7 +454,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                   swiglu_limit_});
         ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
       } else {
-        ORT_THROW("only swiglu is supported for WebGPU.");
+        uint32_t total_size = used_by * static_cast<uint32_t>(moe_params.inter_size);
+        ActivationProgram activation{MoEActivationTypeToInt(activation_type_)};
+        activation
+            .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}})
+            .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
+            .SetWorkgroupSize(128)
+            .SetDispatchGroupSize((total_size + 127) / 128)
+            .AddUniformVariables({total_size})
+            .CacheHint(MoEActivationTypeToInt(activation_type_));
+        ORT_RETURN_IF_ERROR(context.RunProgram(activation));
       }
 
       //
