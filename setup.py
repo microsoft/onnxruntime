@@ -874,7 +874,7 @@ setup(
     data_files=data_files,
     install_requires=install_requires,
     extras_require=extras_require,
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     keywords="onnx machine learning",
     entry_points={
         "console_scripts": [

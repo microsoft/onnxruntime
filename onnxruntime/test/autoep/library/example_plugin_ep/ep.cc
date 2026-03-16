@@ -154,44 +154,33 @@ const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept
   return ep->name_.c_str();
 }
 
-OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* ort_graph) {
-  Ort::ConstGraph graph{ort_graph};
+bool ExampleEp::CopiesConstantInitializers() const {
+  return true;
+}
 
-  try {
-    std::vector<Ort::ConstValueInfo> initializers = graph.GetInitializers();
+OrtStatus* ExampleEp::TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer) {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  const bool is_constant = maybe_initializer.IsConstantInitializer();
 
-    for (const auto& initializer : initializers) {
-      const bool is_constant = initializer.IsConstantInitializer();
+  if (is_constant) {
+    auto name = maybe_initializer.GetName();
+    Ort::ConstValue value;
+    RETURN_IF_ERROR(maybe_initializer.GetInitializer(value));
 
-      if (is_constant) {
-        auto name = initializer.GetName();
-        Ort::ConstValue value;
-        auto status = initializer.GetInitializer(value);
-        if (!status.IsOK())
-          return status.release();
+    auto type_shape = value.GetTensorTypeAndShapeInfo();
+    const size_t num_elems = type_shape.GetElementCount();
+    const ONNXTensorElementDataType elem_type = type_shape.GetElementType();
+    if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
+      return Ort::Status("Expected float32 initializers", ORT_INVALID_ARGUMENT).release();
 
-        auto type_shape = value.GetTensorTypeAndShapeInfo();
-        const size_t num_elems = type_shape.GetElementCount();
-        const ONNXTensorElementDataType elem_type = type_shape.GetElementType();
-        if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
-          return Ort::Status("Expected float32 initializers", ORT_INVALID_ARGUMENT).release();
+    std::vector<int64_t> dims = type_shape.GetShape();
+    const float* data = value.GetTensorData<float>();
 
-        std::vector<int64_t> dims = type_shape.GetShape();
-        const float* data = value.GetTensorData<float>();
-
-        FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
-        float_initializers_.emplace(std::move(name), std::move(ep_initializer));
-      }
-    }
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  } catch (const std::exception& ex) {
-    Ort::Status status(ex.what(), ORT_EP_FAIL);
-    return status.release();
+    FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
+    float_initializers_.emplace(std::move(name), std::move(ep_initializer));
   }
-
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 /*static*/
@@ -257,11 +246,20 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       OrtNodeFusionOptions node_fusion_options = {};
       node_fusion_options.ort_version_supported = ORT_API_VERSION;
 
-      // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
-      // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
-      // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
-      // during inference.
-      node_fusion_options.drop_constant_initializers = true;
+      // An EP would set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant
+      // initializers as inputs to the fused/compiled node at inference time. An EP would do this if, for example,
+      // the EP copies and manages the weight data used by its fused/compiled nodes.
+      // This gives ORT an opportunity to release unused ONNX initializers in the model.
+      //
+      // By default, this example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
+      // during inference. However, if the application wants to generate a compiled model with weightless EPContext nodes,
+      // then the EP sets "drop_constant_initializers" to false so that ONNX Runtime provides the weights as inputs to
+      // the compiled/fused nodes (i.e., the EPContext nodes).
+      //
+      // Refer to the "ep.enable_weightless_ep_context_nodes"
+      // session configuration entry in onnxruntime_session_options_config_keys.h for more information about generating
+      // weightless EPContext models.
+      node_fusion_options.drop_constant_initializers = ep->CopiesConstantInitializers();
       RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
                                                                    reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
                                                                    supported_nodes.size(),
@@ -298,11 +296,6 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
     Ort::ConstGraph graph{ort_graphs[0]};
 
-    // In GetCapability(), this EP specified that it doesn't need ORT to provide constant initializers during inference.
-    // So, this EP saves constant initializers so that they're available during inference, but an actual EP
-    // implementation could transfer the weights to device memory.
-    ep->SaveConstantInitializers(graph);
-
     std::vector<Ort::ConstNode> nodes = graph.GetNodes();
     if (nodes.size() != 1) {
       Ort::Status status("Expected to compile a single Mul node", ORT_EP_FAIL);
@@ -317,6 +310,17 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
     // Now we know we're compiling a single Mul node. Create a computation kernel.
     std::vector<Ort::ConstValueInfo> node_inputs = nodes[0].GetInputs();
+
+    // In GetCapability(), this EP may have specified that it doesn't need ORT to provide constant initializers
+    // during inference. If so, this EP saves copies of constant initializers so they're available during inference.
+    //
+    // We try to save each node input individually because graph.GetInitializers() does not return
+    // initializers defined in parent or sibling subgraphs.
+    if (ep->CopiesConstantInitializers()) {
+      RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[0]));
+      RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[1]));
+    }
+
     std::array<std::string, 2> node_input_names;
     node_input_names[0] = node_inputs[0].GetName();
     node_input_names[1] = node_inputs[1].GetName();
