@@ -103,6 +103,8 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   static const char* ORT_API_CALL GetCompiledModelCompatibilityInfoImpl(OrtEp* this_ptr,
                                                                         const OrtGraph* graph) noexcept;
 
+  static OrtStatus* ORT_API_CALL SyncImpl(_In_ OrtEp* this_ptr) noexcept;
+
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
