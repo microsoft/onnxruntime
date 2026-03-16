@@ -43,6 +43,7 @@ It is recommended to use run_benchmark.sh to launch benchmark.
 import argparse
 import logging
 import os
+import random
 import timeit
 from datetime import datetime
 
@@ -483,8 +484,6 @@ def run_tensorflow(
 
     if precision == Precision.FLOAT16 or precision == Precision.INT8:
         raise NotImplementedError("Mixed precision is currently not supported.")
-
-    import random  # noqa: PLC0415
 
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
