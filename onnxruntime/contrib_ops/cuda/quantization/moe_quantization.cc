@@ -149,8 +149,11 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc1_zero_points = context->Input<Tensor>(11);
   const Tensor* fc2_zero_points = context->Input<Tensor>(12);
   const Tensor* fc3_zero_points = context->Input<Tensor>(13);
+  const Tensor* router_weights = context->Input<Tensor>(14);
   ORT_ENFORCE(fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr,
               "Zero points are not yet implemented on CUDA for QMoE.");
+  ORT_ENFORCE(router_weights == nullptr,
+              "Separate router_weights is not yet implemented on CUDA for QMoE.");
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(

@@ -1690,6 +1690,83 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
 #endif
 }
 
+TEST(MoETest, QMoETest_CPU_RouterWeights) {
+#ifdef USE_MLAS
+  // Test that separate router_weights for aggregation works correctly.
+  // router_probs is used only for Top-K expert selection.
+  // router_weights is used only for weighting expert outputs.
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU execution provider not available";
+  }
+
+  int num_rows = 2;
+  int num_experts = 2;
+  int hidden_size = 32;
+  int inter_size = 32;
+
+  const std::vector<float> input = {
+      -0.5f, 0.2f, 1.1f, -0.3f, 0.8f, -0.1f, 0.4f, -0.7f, 0.9f, -0.2f, 0.6f, 0.1f, -0.4f, 0.3f, -0.8f, 0.7f,
+      0.2f, -0.5f, 0.1f, 0.9f, -0.3f, 0.6f, -0.1f, 0.4f, -0.7f, 0.8f, 0.3f, -0.2f, 0.5f, 0.1f, -0.6f, 0.9f,
+      0.1f, 0.7f, -0.4f, 0.2f, 0.8f, -0.3f, 0.5f, -0.1f, 0.6f, 0.4f, -0.7f, 0.3f, 0.9f, -0.2f, 0.1f, 0.8f,
+      -0.5f, 0.6f, 0.3f, -0.1f, 0.4f, 0.7f, -0.8f, 0.2f, 0.9f, 0.1f, -0.3f, 0.5f, 0.6f, -0.4f, 0.8f, 0.2f};
+
+  // router_probs: used for Top-K selection (expert 1 wins for token 0, expert 0 wins for token 1)
+  const std::vector<float> router_probs = {0.3f, 0.7f, 0.6f, 0.4f};
+
+  // router_weights: used for aggregation (different from router_probs to test separate paths)
+  const std::vector<float> router_weights = {0.5f, 0.5f, 0.8f, 0.2f};
+
+  // Use zero weights so output is zero regardless of aggregation weights
+  std::vector<uint8_t> fc1_experts_weights(num_experts * hidden_size * inter_size, 0x88);
+  std::vector<uint8_t> fc2_experts_weights(num_experts * inter_size * hidden_size / 2, 0x88);
+
+  std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.01f);
+  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);
+
+  std::vector<float> expected_output(num_rows * hidden_size, 0.0f);
+
+  OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+  cpu_tester.AddAttribute<int64_t>("k", 2);
+  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 0);
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+
+  std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  std::vector<int64_t> router_weights_dims = {num_rows, num_experts};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, 2 * inter_size, hidden_size / 2};
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size / 2};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size * 2};
+  std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
+  std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+  cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+  cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc1_experts_bias
+  cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc2_experts_bias
+  cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc3_experts_weights
+  cpu_tester.AddOptionalInputEdge<float>();                             // fc3_scales
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc3_experts_bias
+  cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc1_zero_points
+  cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc2_zero_points
+  cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc3_zero_points
+  cpu_tester.AddInput<MLFloat16>("router_weights", router_weights_dims, ToFloat16(router_weights));
+  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
+  cpu_tester.SetOutputTolerance(0.05f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
+  cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
+  cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+#else
+  GTEST_SKIP() << "Skipping CPU QMoE test";
+#endif
+}
+
 // Test for CPU MoE implementation
 static void RunMoECpuTest(const std::vector<float>& input, const std::vector<float>& router_probs,
                           const std::vector<float>& fc1_experts_weights, const std::vector<float>& fc2_experts_weights,
