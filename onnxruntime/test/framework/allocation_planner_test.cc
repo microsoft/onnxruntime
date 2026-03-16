@@ -103,21 +103,6 @@ class AllocationPlanTestUtility {
   // TODO: add the tests for new release plan.
 };
 
-void ExpectExecutionStepTypeContains(const SessionState& state,
-                                     size_t stream_idx,
-                                     size_t step_idx,
-                                     const char* expected_type_name,
-                                     const char* message) {
-  const auto* execution_plan = state.GetExecutionPlan();
-  ASSERT_NE(execution_plan, nullptr) << message;
-  ASSERT_LT(stream_idx, execution_plan->execution_plan.size()) << message;
-  const auto& steps = execution_plan->execution_plan[stream_idx]->steps_;
-  ASSERT_LT(step_idx, steps.size()) << message;
-  const auto* step = steps[step_idx].get();
-  ASSERT_NE(step, nullptr) << message;
-  EXPECT_NE(strstr(typeid(*step).name(), expected_type_name), nullptr) << message;
-}
-
 typedef std::unordered_map<const onnxruntime::NodeArg*, TensorShapeProto*> ShapeMap;
 
 class SequentialPlannerTestContext : public ISequentialPlannerContext {
@@ -1274,6 +1259,21 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   // TODO: test para exe plan on subgraph supported
   // const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParallelExecutionPlan();
   // EXPECT_EQ(para_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
+}
+
+void ExpectExecutionStepTypeContains(const SessionState& state,
+                                     size_t stream_idx,
+                                     size_t step_idx,
+                                     const char* expected_type_name,
+                                     const char* message) {
+  const auto* execution_plan = state.GetExecutionPlan();
+  ASSERT_NE(execution_plan, nullptr) << message;
+  ASSERT_LT(stream_idx, execution_plan->execution_plan.size()) << message;
+  const auto& steps = execution_plan->execution_plan[stream_idx]->steps_;
+  ASSERT_LT(step_idx, steps.size()) << message;
+  const auto* step = steps[step_idx].get();
+  ASSERT_NE(step, nullptr) << message;
+  EXPECT_NE(strstr(typeid(*step).name(), expected_type_name), nullptr) << message;
 }
 
 // Test MultiStream scenario for the graph:
