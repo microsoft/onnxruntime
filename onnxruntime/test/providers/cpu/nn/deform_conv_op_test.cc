@@ -920,8 +920,9 @@ TEST(DeformConvTest, ExtremeAspectRatio) {
   RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
 }
 
-// ONNX model data test: fixed inputs from deform_conv_test_gen.py (torchvision ref, seed=123).
-// Validates output matches torch reference. The .onnx/.npz can be used for standalone model zoo validation.
+// ONNX model data test: deform_conv_test_gen.py builds the ONNX model (via onnx.helper)
+// and generates fixed inputs from torchvision (seed=123). This test is a model-loading/
+// integration smoke test that uses ORT-generated outputs from deform_conv_test.onnx as the reference.
 TEST(DeformConvTest, OnnxModelTest) {
   OpTester test("DeformConv", 19);
   test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
