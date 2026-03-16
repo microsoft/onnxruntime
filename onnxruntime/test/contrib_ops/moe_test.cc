@@ -1781,6 +1781,38 @@ TEST(MoETest, MoECpuTest_BasicSwiGLU) {
                 fc3_experts_weights, fc1_experts_bias, fc2_experts_bias, output_data,
                 num_rows, num_experts, hidden_size, inter_size, "swiglu");
 }
+
+TEST(MoETest, MoECpuTest_BasicRelu2) {
+  int num_rows = 2;
+  int num_experts = 2;
+  int hidden_size = 4;
+  int inter_size = 8;
+
+  const std::vector<float> input = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  const std::vector<float> router_probs = {
+      0.8f, 0.2f,
+      0.3f, 0.7f};
+
+  const std::vector<float> fc1_experts_weights(num_experts * hidden_size * inter_size, 0.1f);
+  const std::vector<float> fc2_experts_weights(num_experts * inter_size * hidden_size, 0.1f);
+
+  const std::vector<float> fc3_experts_weights = {};
+  const std::vector<float> fc1_experts_bias = {};
+  const std::vector<float> fc2_experts_bias = {};
+
+  // Row 0: expert 0, FC1 output = [1.0]*8, relu2 = [1.0]*8, FC2 output = [0.8]*4
+  // Row 1: expert 1, FC1 output = [2.6]*8, relu2 = [6.76]*8, FC2 output = [5.408]*4
+  const std::vector<float> output_data = {
+      0.8f, 0.8f, 0.8f, 0.8f,
+      5.408f, 5.408f, 5.408f, 5.408f};
+
+  RunMoECpuTest(input, router_probs, fc1_experts_weights, fc2_experts_weights,
+                fc3_experts_weights, fc1_experts_bias, fc2_experts_bias, output_data,
+                num_rows, num_experts, hidden_size, inter_size, "relu2");
+}
 #endif
 
 }  // namespace test
