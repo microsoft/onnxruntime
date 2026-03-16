@@ -231,7 +231,8 @@ def validate_tarball(args):
         print(files)
         raise Exception("No packages / more than one packages found in the given path.")
 
-    package_name = args.package_name
+    tarball_path = files[0]
+    package_name = os.path.basename(tarball_path)
     if "-gpu-" in package_name.lower():
         is_gpu_package = True
     else:
@@ -239,8 +240,8 @@ def validate_tarball(args):
 
     package_folder = re.search("(.*)[.].*", package_name).group(1)
 
-    print("tar zxvf " + package_name)
-    subprocess.run(["tar", "zxvf", package_name], check=True)
+    print("tar zxvf " + tarball_path)
+    subprocess.run(["tar", "zxvf", "--", tarball_path], check=True)
 
     is_windows_ai_package = False
     zip_file = None
