@@ -769,6 +769,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       if (has_router_weights) {
         // When router_weights is provided, use it for aggregation weights instead of softmax of router_probs.
         // Gather weights from router_weights at the selected expert indices.
+        // Note: top_k_exp is reused here as a scratch buffer for the gathered weights.
         const float* weights_row = router_weights_float + i * num_experts;
         if (normalize_routing_weights_) {
           float weight_sum = 0.0f;

@@ -1726,12 +1726,6 @@ TEST(MoETest, QMoETest_CPU_RouterWeights) {
 
   std::vector<float> expected_output(num_rows * hidden_size, 0.0f);
 
-  OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
-  cpu_tester.AddAttribute<int64_t>("k", 2);
-  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
-  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 0);
-  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
-
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
   std::vector<int64_t> router_weights_dims = {num_rows, num_experts};
@@ -1741,27 +1735,67 @@ TEST(MoETest, QMoETest_CPU_RouterWeights) {
   std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
   std::vector<int64_t> output_dims = {num_rows, hidden_size};
 
-  cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
-  cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
-  cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
-  cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);
-  cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc1_experts_bias
-  cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
-  cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
-  cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc2_experts_bias
-  cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc3_experts_weights
-  cpu_tester.AddOptionalInputEdge<float>();                             // fc3_scales
-  cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc3_experts_bias
-  cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc1_zero_points
-  cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc2_zero_points
-  cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc3_zero_points
-  cpu_tester.AddInput<MLFloat16>("router_weights", router_weights_dims, ToFloat16(router_weights));
-  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
-  cpu_tester.SetOutputTolerance(0.05f);
+  // Test 1: router_weights without normalization
+  {
+    OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+    cpu_tester.AddAttribute<int64_t>("k", 2);
+    cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
+    cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 0);
+    cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
-  cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
-  cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+    cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+    cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+    cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+    cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);
+    cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc1_experts_bias
+    cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+    cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
+    cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc2_experts_bias
+    cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc3_experts_weights
+    cpu_tester.AddOptionalInputEdge<float>();                             // fc3_scales
+    cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc3_experts_bias
+    cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc1_zero_points
+    cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc2_zero_points
+    cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc3_zero_points
+    cpu_tester.AddInput<MLFloat16>("router_weights", router_weights_dims, ToFloat16(router_weights));
+    cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
+    cpu_tester.SetOutputTolerance(0.05f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
+    cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
+    cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+  }
+
+  // Test 2: router_weights with normalization
+  {
+    OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+    cpu_tester.AddAttribute<int64_t>("k", 2);
+    cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
+    cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+    cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+
+    cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+    cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+    cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+    cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);
+    cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc1_experts_bias
+    cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+    cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
+    cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc2_experts_bias
+    cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc3_experts_weights
+    cpu_tester.AddOptionalInputEdge<float>();                             // fc3_scales
+    cpu_tester.AddOptionalInputEdge<MLFloat16>();                         // fc3_experts_bias
+    cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc1_zero_points
+    cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc2_zero_points
+    cpu_tester.AddOptionalInputEdge<uint8_t>();                           // fc3_zero_points
+    cpu_tester.AddInput<MLFloat16>("router_weights", router_weights_dims, ToFloat16(router_weights));
+    cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
+    cpu_tester.SetOutputTolerance(0.05f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
+    cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
+    cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+  }
 #else
   GTEST_SKIP() << "Skipping CPU QMoE test";
 #endif
