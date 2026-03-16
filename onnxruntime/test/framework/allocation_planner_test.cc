@@ -108,7 +108,13 @@ void ExpectExecutionStepTypeContains(const SessionState& state,
                                      size_t step_idx,
                                      const char* expected_type_name,
                                      const char* message) {
-  const auto* step = state.GetExecutionPlan()->execution_plan[stream_idx]->steps_[step_idx].get();
+  const auto* execution_plan = state.GetExecutionPlan();
+  ASSERT_NE(execution_plan, nullptr) << message;
+  ASSERT_LT(stream_idx, execution_plan->execution_plan.size()) << message;
+  const auto& steps = execution_plan->execution_plan[stream_idx]->steps_;
+  ASSERT_LT(step_idx, steps.size()) << message;
+  const auto* step = steps[step_idx].get();
+  ASSERT_NE(step, nullptr) << message;
   EXPECT_NE(strstr(typeid(*step).name(), expected_type_name), nullptr) << message;
 }
 
