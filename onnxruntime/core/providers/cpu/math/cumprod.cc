@@ -9,6 +9,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -146,67 +147,96 @@ Status CumProd<T>::Compute(OpKernelContext* ctx) const {
   const int64_t lower_dim_size =  // sizes of the slices we can treat as 1D arrays
       std::accumulate(input_shape.begin() + axis + 1, input_shape.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
 
-  if (!reverse_) {
-    const auto* input_iter = input->Data<T>();
-    auto* output_iter = output_tensor.MutableData<T>();
-    const auto* prev_output_iter = output_iter;
+  const T* input_data = input->Data<T>();
+  T* output_data = output_tensor.MutableData<T>();
+  const int64_t slice_size = dim * lower_dim_size;
+  auto* tp = ctx->GetOperatorThreadPool();
 
+  if (!reverse_) {
     if (exclusive_) {
-      for (int64_t outer = 0; outer < upper_dim_count; outer++) {
-        prev_output_iter = output_iter;
-        for (int64_t inner = 0; inner < lower_dim_size; inner++) {
-          *(output_iter++) = static_cast<T>(1);
-        }
-        for (int64_t cum_axis = 1; cum_axis < dim; cum_axis++) {
-          for (int64_t inner = 0; inner < lower_dim_size; inner++) {
-            *(output_iter++) = *(prev_output_iter++) * *(input_iter++);
-          }
-        }
-        input_iter += lower_dim_size;
-      }
+      concurrency::ThreadPool::TryBatchParallelFor(
+          tp, static_cast<int32_t>(upper_dim_count),
+          [&](ptrdiff_t outer) {
+            const int64_t base = outer * slice_size;
+            const T* in = input_data + base;
+            T* out = output_data + base;
+
+            for (int64_t inner = 0; inner < lower_dim_size; inner++) {
+              out[inner] = static_cast<T>(1);
+            }
+            for (int64_t cum_axis = 1; cum_axis < dim; cum_axis++) {
+              const int64_t curr_offset = cum_axis * lower_dim_size;
+              const int64_t prev_offset = (cum_axis - 1) * lower_dim_size;
+              for (int64_t inner = 0; inner < lower_dim_size; inner++) {
+                out[curr_offset + inner] = out[prev_offset + inner] * in[prev_offset + inner];
+              }
+            }
+          },
+          0);
     } else {
-      for (int64_t outer = 0; outer < upper_dim_count; outer++) {
-        prev_output_iter = output_iter;
-        for (int64_t inner = 0; inner < lower_dim_size; inner++) {
-          *(output_iter++) = *(input_iter++);
-        }
-        for (int64_t cum_axis = 1; cum_axis < dim; cum_axis++) {
-          for (int64_t inner = 0; inner < lower_dim_size; inner++) {
-            *(output_iter++) = *(prev_output_iter++) * *(input_iter++);
-          }
-        }
-      }
+      concurrency::ThreadPool::TryBatchParallelFor(
+          tp, static_cast<int32_t>(upper_dim_count),
+          [&](ptrdiff_t outer) {
+            const int64_t base = outer * slice_size;
+            const T* in = input_data + base;
+            T* out = output_data + base;
+
+            for (int64_t inner = 0; inner < lower_dim_size; inner++) {
+              out[inner] = in[inner];
+            }
+            for (int64_t cum_axis = 1; cum_axis < dim; cum_axis++) {
+              const int64_t curr_offset = cum_axis * lower_dim_size;
+              const int64_t prev_offset = (cum_axis - 1) * lower_dim_size;
+              for (int64_t inner = 0; inner < lower_dim_size; inner++) {
+                out[curr_offset + inner] = out[prev_offset + inner] * in[curr_offset + inner];
+              }
+            }
+          },
+          0);
     }
   } else {
-    const auto* input_iter = input->Data<T>() + input->Shape().Size();
-    auto* output_iter = output_tensor.MutableData<T>() + output_shape.Size();
-    const auto* prev_output_iter = output_iter;
-
     if (exclusive_) {
-      for (int64_t outer = upper_dim_count - 1; outer >= 0; outer--) {
-        prev_output_iter = output_iter;
-        for (int64_t inner = lower_dim_size - 1; inner >= 0; inner--) {
-          *(--output_iter) = static_cast<T>(1);
-        }
-        for (int64_t cum_axis = dim - 1; cum_axis > 0; cum_axis--) {
-          for (int64_t inner = lower_dim_size - 1; inner >= 0; inner--) {
-            *(--output_iter) = *(--prev_output_iter) * *(--input_iter);
-          }
-        }
-        input_iter -= lower_dim_size;
-      }
+      concurrency::ThreadPool::TryBatchParallelFor(
+          tp, static_cast<int32_t>(upper_dim_count),
+          [&](ptrdiff_t outer) {
+            const int64_t base = outer * slice_size;
+            const T* in = input_data + base;
+            T* out = output_data + base;
+
+            const int64_t last_offset = (dim - 1) * lower_dim_size;
+            for (int64_t inner = 0; inner < lower_dim_size; inner++) {
+              out[last_offset + inner] = static_cast<T>(1);
+            }
+            for (int64_t cum_axis = dim - 2; cum_axis >= 0; cum_axis--) {
+              const int64_t curr_offset = cum_axis * lower_dim_size;
+              const int64_t next_offset = (cum_axis + 1) * lower_dim_size;
+              for (int64_t inner = 0; inner < lower_dim_size; inner++) {
+                out[curr_offset + inner] = out[next_offset + inner] * in[next_offset + inner];
+              }
+            }
+          },
+          0);
     } else {
-      for (int64_t outer = upper_dim_count - 1; outer >= 0; outer--) {
-        prev_output_iter = output_iter;
-        for (int64_t inner = lower_dim_size - 1; inner >= 0; inner--) {
-          *(--output_iter) = *(--input_iter);
-        }
-        for (int64_t cum_axis = dim - 1; cum_axis > 0; cum_axis--) {
-          for (int64_t inner = lower_dim_size - 1; inner >= 0; inner--) {
-            *(--output_iter) = *(--prev_output_iter) * *(--input_iter);
-          }
-        }
-      }
+      concurrency::ThreadPool::TryBatchParallelFor(
+          tp, static_cast<int32_t>(upper_dim_count),
+          [&](ptrdiff_t outer) {
+            const int64_t base = outer * slice_size;
+            const T* in = input_data + base;
+            T* out = output_data + base;
+
+            const int64_t last_offset = (dim - 1) * lower_dim_size;
+            for (int64_t inner = 0; inner < lower_dim_size; inner++) {
+              out[last_offset + inner] = in[last_offset + inner];
+            }
+            for (int64_t cum_axis = dim - 2; cum_axis >= 0; cum_axis--) {
+              const int64_t curr_offset = cum_axis * lower_dim_size;
+              const int64_t next_offset = (cum_axis + 1) * lower_dim_size;
+              for (int64_t inner = 0; inner < lower_dim_size; inner++) {
+                out[curr_offset + inner] = out[next_offset + inner] * in[curr_offset + inner];
+              }
+            }
+          },
+          0);
     }
   }
 
