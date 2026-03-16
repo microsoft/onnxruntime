@@ -97,7 +97,8 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
             << "let zero_point_value = zero_point_vec[zero_point_offset % 4];\n";
       } else {
         shader.MainFunctionBody()
-            << "let zero_point_value = " << zero_point.GetByIndices("scale_indices") << ";\n";
+            << "let zero_point_offset = " << scale.IndicesToOffset("scale_indices") << ";\n"
+            << "let zero_point_value = " << zero_point.GetByOffset("zero_point_offset") << ";\n";
       }
     }
   } else {
