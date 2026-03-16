@@ -7,6 +7,7 @@
 import logging
 import os
 import subprocess
+import sys
 import tempfile
 import textwrap
 from pathlib import Path
@@ -202,9 +203,13 @@ class WhisperJumpTimes(torch.nn.Module):
             assert torch.utils.cpp_extension.verify_ninja_availability()
         except Exception as e:
             logger.error(f"An error occurred while verifying `ninja` is available: {e}", exc_info=True)  # noqa: G201
-            install_cmd = ["pip", "install", "ninja"]
+            install_cmd = [sys.executable, "-m", "pip", "install", "ninja"]
             logger.warning(f"Could not import `ninja`. Attempting to install `ninja` via `{' '.join(install_cmd)}`.")
-            subprocess.run(install_cmd, check=True)
+            try:
+                subprocess.run(install_cmd, check=True)
+            except subprocess.CalledProcessError as install_err:
+                logger.error(f"Failed to install `ninja`: {install_err}", exc_info=True)  # noqa: G201
+                raise
 
         # Create UnfoldTensor torch op
         unfold_op_source = textwrap.dedent("""\
