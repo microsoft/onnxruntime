@@ -217,7 +217,7 @@ jobs:
             --use_webgpu shared_lib `
             --wgsl_template static `
             --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 `
             --disable_rtti `
             --enable_lto
 
