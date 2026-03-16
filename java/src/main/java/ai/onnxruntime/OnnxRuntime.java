@@ -16,7 +16,6 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -105,9 +104,6 @@ final class OnnxRuntime {
 
   /** Tracks if the shared providers have been extracted */
   private static final Set<String> extractedSharedProviders = new HashSet<>();
-
-  /** Test-only hook to observe calls to {@link #extractFromResources(String)}. */
-  private static volatile Consumer<String> extractFromResourcesHook;
 
   /** The API handle. */
   static long ortApiHandle;
@@ -296,15 +292,6 @@ final class OnnxRuntime {
   }
 
   /**
-   * Test-only hook to observe whether extraction from resources is attempted for a library.
-   *
-   * @param hook A consumer invoked with the requested library name, or null to clear the hook.
-   */
-  static void setExtractFromResourcesHook(Consumer<String> hook) {
-    extractFromResourcesHook = hook;
-  }
-
-  /**
    * Extracts a shared provider library from the classpath resources if present, or checks to see if
    * that library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
    *
@@ -436,10 +423,6 @@ final class OnnxRuntime {
    *     if it failed to extract or couldn't be found.
    */
   private static Optional<File> extractFromResources(String library) {
-    Consumer<String> hook = extractFromResourcesHook;
-    if (hook != null) {
-      hook.accept(library);
-    }
     String libraryFileName = mapLibraryName(library);
     String resourcePath = "/ai/onnxruntime/native/" + OS_ARCH_STR + '/' + libraryFileName;
     File tempFile = tempDirectory.resolve(libraryFileName).toFile();
