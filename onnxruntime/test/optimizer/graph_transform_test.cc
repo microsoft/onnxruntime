@@ -2933,8 +2933,7 @@ TEST_F(GraphTransformationTests, UnsqueezeElimination_ManyAxes) {
 // NOTE: Duplicate-axis and out-of-range axis error paths in UnsqueezeElimination::Apply
 // are defense-in-depth guards. They cannot be exercised through ModelTestBuilder because
 // ONNX schema validation during graph.Resolve() rejects such invalid models before the
-// optimizer runs. The guards protect against malformed models that bypass schema validation
-// (e.g., hand-crafted protobufs or future opset changes).
+// optimizer runs.
 
 static void TestFuseConvAddMul(logging::Logger& logger, const PathChar* model_uri) {
   std::shared_ptr<Model> p_model;
