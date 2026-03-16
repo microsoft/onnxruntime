@@ -155,9 +155,25 @@ inline int MoEActivationTypeToInt(MoEActivationType type) {
       return 3;
     case MoEActivationType::Relu2:
       return 4;
-    default:
-      return 3;  // identity as fallback
+    case MoEActivationType::SwiGLU:
+      ORT_THROW("SwiGLU should not use MoEActivationTypeToInt");
   }
+  ORT_THROW("Unknown MoEActivationType");
+}
+
+Status RunActivationProgram(ComputeContext& context, Tensor& input, Tensor& output,
+                            uint32_t token_count, uint32_t inter_size, MoEActivationType activation_type) {
+  int act_type_int = MoEActivationTypeToInt(activation_type);
+  uint32_t total_size = token_count * inter_size;
+  ActivationProgram activation{act_type_int};
+  activation
+      .AddInputs({{&input, ProgramTensorMetadataDependency::Type}})
+      .AddOutput({&output, ProgramTensorMetadataDependency::None})
+      .SetWorkgroupSize(128)
+      .SetDispatchGroupSize((total_size + 127) / 128)
+      .AddUniformVariables({total_size})
+      .CacheHint(act_type_int);
+  return context.RunProgram(activation);
 }
 
 class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
@@ -324,16 +340,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                   swiglu_limit_});
         ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
       } else {
-        uint32_t total_size = num_tokens * static_cast<uint32_t>(moe_params.inter_size);
-        ActivationProgram activation{MoEActivationTypeToInt(activation_type_)};
-        activation
-            .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}})
-            .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
-            .SetWorkgroupSize(128)
-            .SetDispatchGroupSize((total_size + 127) / 128)
-            .AddUniformVariables({total_size})
-            .CacheHint(MoEActivationTypeToInt(activation_type_));
-        ORT_RETURN_IF_ERROR(context.RunProgram(activation));
+        ORT_RETURN_IF_ERROR(RunActivationProgram(context, fc1_outputs, fc1_activated,
+                                                 num_tokens, static_cast<uint32_t>(moe_params.inter_size), activation_type_));
       }
 
       status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
@@ -454,16 +462,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                   swiglu_limit_});
         ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
       } else {
-        uint32_t total_size = used_by * static_cast<uint32_t>(moe_params.inter_size);
-        ActivationProgram activation{MoEActivationTypeToInt(activation_type_)};
-        activation
-            .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}})
-            .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
-            .SetWorkgroupSize(128)
-            .SetDispatchGroupSize((total_size + 127) / 128)
-            .AddUniformVariables({total_size})
-            .CacheHint(MoEActivationTypeToInt(activation_type_));
-        ORT_RETURN_IF_ERROR(context.RunProgram(activation));
+        ORT_RETURN_IF_ERROR(RunActivationProgram(context, fc1_outputs, fc1_activated,
+                                                 used_by, static_cast<uint32_t>(moe_params.inter_size), activation_type_));
       }
 
       //
