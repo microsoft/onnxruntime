@@ -153,6 +153,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
     Q4BitGemmPackQuantBData_Fn* HQ4BitGemmPackQuantBData = nullptr;
+    Q4BitGemmPackQuantBData_Fn* HQ8BitGemmPackQuantBData = nullptr;
 
     typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
         size_t N,
@@ -325,6 +326,12 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     );
 
     Q4BitBlkDequantBForSgemm_CompFp16_Fn* HQ4BitBlkDequantBForHgemm_CompFp16 = nullptr;
+
+    /**
+     * @brief Dequantize 8-bit quantized B into fp16 format for HGEMM.
+     *        Uses the same signature as the 4-bit variant.
+     */
+    Q4BitBlkDequantBForSgemm_CompFp16_Fn* HQ8BitBlkDequantBForHgemm_CompFp16 = nullptr;
 
     //
     // SQNBIT_CompInt8 kernel function prototypes.

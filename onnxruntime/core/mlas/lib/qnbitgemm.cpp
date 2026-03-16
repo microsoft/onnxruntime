@@ -33,6 +33,7 @@ enum QNBitGemmVariant {
     HQ4BitGemmVariant_CompFp16,
     HQ4BitGemmVariant_CompInt8,
     SQ8BitGemmVariant_CompInt8,
+    HQ8BitGemmVariant_CompFp16,
 
     // End of valid variants
 
@@ -62,6 +63,8 @@ GetQNBitGemmVariant(
         } else if (BlkBitWidth == 8) {
             if (ComputeType == SQNBIT_CompInt8) {
                 return SQ8BitGemmVariant_CompInt8;
+            } else if (ComputeType == HQNBIT_CompFp16) {
+                return HQ8BitGemmVariant_CompFp16;
             }
         }
     }
@@ -105,6 +108,11 @@ MlasIsQNBitGemmAvailable(
             return Dispatch->SQ8BitGemmPackQuantBDataAndBlkSum != nullptr &&
                    Dispatch->SQ8BitGemmKernel_BlkSum_CompInt8 != nullptr &&
                    Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr;
+        }
+        case HQ8BitGemmVariant_CompFp16: {
+            return Dispatch->HQ8BitGemmPackQuantBData != nullptr &&
+                   Dispatch->HQ8BitBlkDequantBForHgemm_CompFp16 != nullptr &&
+                   Dispatch->HQ4BitGemmKernel_CompFp16 != nullptr;
         }
         default: {
             return false;
@@ -315,7 +323,18 @@ MlasQNBitGemmPackQuantBData(
             return;
         }
     } else if (BlkBitWidth == 8) {
-        if (ComputeType == SQNBIT_CompInt8 && Dispatch->SQ8BitGemmPackQuantBDataAndBlkSum != nullptr) {
+        if (ComputeType == HQNBIT_CompFp16 && Dispatch->HQ8BitGemmPackQuantBData != nullptr) {
+            Dispatch->HQ8BitGemmPackQuantBData(
+                N,
+                K,
+                BlkLen,
+                ComputeType,
+                static_cast<const std::byte*>(QuantBData),
+                static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
+                ThreadPool,
+                BackendKernelSelectorConfig
+            );
+        } else if (ComputeType == SQNBIT_CompInt8 && Dispatch->SQ8BitGemmPackQuantBDataAndBlkSum != nullptr) {
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             PackedQuantBDataStruct<float, 8> packed_quant_b(PackedQuantBDataAndOrBlkSumWorkspace, N, BlockCountK,
                                                             BlkLen, GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned);
@@ -564,6 +583,80 @@ HQ4BitGemm_CompFp16(
         MLAS_FP16* c = C;
         for (size_t m = 0, countM; m < RangeCountM; m += countM) {
             countM = std::min(StrideM, RangeCountM - m);
+            GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16(
+                a, dequant_b, Bias, c, countM, countN, K, lda, ldb, ldc
+            );
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM + m, RangeStartN + n, countM, countN, ldc
+                );
+            }
+
+            a += countM * lda;
+            c += countM * ldc;
+        }
+
+        QuantBData += countN * qldb;
+        QuantBScale += countN * k_blk_num;
+        QuantBZeroPoint = QuantBZeroPoint ? QuantBZeroPoint + countN * k_zp_bytes : nullptr;
+        Bias = Bias ? Bias + countN : nullptr;
+        C += countN;
+    }
+}
+
+void
+HQ8BitGemm_CompFp16(
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* const DataParams,
+    void* const PerGemmWorkspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
+{
+    constexpr size_t BlkBitWidth = 8;
+    MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspace);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
+    const size_t lda = DataParams->lda;
+    const size_t ldc = DataParams->ldc;
+    const size_t k_blk_num = MlasDivRoundup(K, BlkLen);
+    const size_t qldb = k_blk_num * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t ldb = k_blk_num * BlkLen;
+    const size_t k_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blk_num);
+
+    const MLAS_FP16* A = DataParams->A + RangeStartM * lda;
+    MLAS_FP16* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * qldb;
+    const MLAS_FP16* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blk_num;
+    const std::byte* QuantBZeroPoint =
+        (DataParams->QuantBZeroPoint == nullptr)
+            ? nullptr
+            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_zp_bytes;
+    const MLAS_FP16* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias;
+
+    constexpr size_t StrideM = 2;
+    constexpr size_t StrideN = 32;
+
+    size_t bufsize = ldb * StrideN * sizeof(MLAS_FP16);
+    MlasThreadedBufAlloc(bufsize);
+    auto* dequant_b = reinterpret_cast<MLAS_FP16*>(ThreadedBufHolder.get());
+
+    for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+        countN = std::min(StrideN, RangeCountN - n);
+        GetMlasPlatform().QNBitGemmDispatch->HQ8BitBlkDequantBForHgemm_CompFp16(
+            BlkLen, dequant_b, QuantBData, QuantBScale, QuantBZeroPoint, countN, K, k_blk_num
+        );
+
+        const MLAS_FP16* a = A;
+        MLAS_FP16* c = C;
+        for (size_t m = 0, countM; m < RangeCountM; m += countM) {
+            countM = std::min(StrideM, RangeCountM - m);
+            // Reuse the same fp16 GEMM kernel - it operates on dequantized fp16 data
             GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16(
                 a, dequant_b, Bias, c, countM, countN, K, lda, ldb, ldc
             );
@@ -1035,6 +1128,8 @@ GetQNBitGemm(QNBitGemmVariant variant)
     switch (variant) {
         case HQ4BitGemmVariant_CompFp16:
             return HQ4BitGemm_CompFp16;
+        case HQ8BitGemmVariant_CompFp16:
+            return HQ8BitGemm_CompFp16;
         default:
             return nullptr;
     }

@@ -382,6 +382,24 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
 }
 #endif
 
+// ARM64 fp16 native GEMM path (HQNBIT_CompFp16) for 8-bit weights.
+// accuracy_level=2 maps to HQNBIT_CompFp16 on ARM64.
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+TEST(MatMulNBits, Float16_8b_ARM_CompFp16) {
+  constexpr float abs_error = 0.055f;
+  constexpr float rel_error = 0.02f;
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 32, 64, 260, 32, 2>(abs_error, rel_error);
+}
+#endif
+
 #if defined(USE_CUDA)
 TEST(MatMulNBits, Fp16_Int8_Cuda) {
   constexpr float abs_error = 0.5f;

@@ -607,6 +607,8 @@ GetMlasQNBitGemmDispatchNeon(
         d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
         d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
         d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+        d.HQ8BitGemmPackQuantBData = sqnbitgemm_neon::HQ8BitGemmPackQuantBData_CompFp16;
+        d.HQ8BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ8BitBlkDequantBForHgemm_CompFp16;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
         return d;
