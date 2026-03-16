@@ -365,7 +365,7 @@ TEST(DeformConvTest, ForwardNoMask) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
 }
 
-// Empty batch (N=0): ONNX DeformConv does not allow batch size 0; expect validation failure.
+// Empty batch (N=0): allowed, same as Conv/ConvTranspose/Pool — output shape [0, oC, oH, oW].
 TEST(DeformConvTest, EmptyBatch) {
   DeformConvTestParams p = {};
   p.batch_sz = 0;
@@ -408,7 +408,7 @@ TEST(DeformConvTest, EmptyBatch) {
   test.AddOutput<float>("Y", Y_shape, expected_Y);
   std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider,
                                               kOpenVINOExecutionProvider, kQnnExecutionProvider};
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Batch size N must be positive.", excluded);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
 }
 
 // Wrong offset channel count -> expect failure (like PyTorch test_wrong_sizes).
