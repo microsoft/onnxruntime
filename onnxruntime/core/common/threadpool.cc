@@ -391,11 +391,15 @@ ThreadPool::ThreadPool(Env* env,
     }
 
     extended_eigen_threadpool_ =
-        std::make_unique<ThreadPoolTempl<Env> >(name,
-                                                threads_to_create,
-                                                low_latency_hint,
-                                                *env,
-                                                thread_options_);
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        std::make_unique<ThreadPoolTempl<Env, WithWorkCallbackPolicy> >(name,
+#else
+        std::make_unique<ThreadPoolTempl<Env, NoWorkCallbackPolicy> >(name,
+#endif
+                                                                        threads_to_create,
+                                                                        low_latency_hint,
+                                                                        *env,
+                                                                        thread_options_);
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
 }
