@@ -310,6 +310,17 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
     // Now we know we're compiling a single Mul node. Create a computation kernel.
     std::vector<Ort::ConstValueInfo> node_inputs = nodes[0].GetInputs();
+
+    // In GetCapability(), this EP may have specified that it doesn't need ORT to provide constant initializers
+    // during inference. If so, this EP saves copies of constant initializers so they're available during inference.
+    //
+    // We try to save each node input individually because graph.GetInitializers() does not return
+    // initializers defined in parent or sibling subgraphs.
+    if (ep->CopiesConstantInitializers()) {
+      RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[0]));
+      RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[1]));
+    }
+
     std::array<std::string, 2> node_input_names;
     node_input_names[0] = node_inputs[0].GetName();
     node_input_names[1] = node_inputs[1].GetName();
