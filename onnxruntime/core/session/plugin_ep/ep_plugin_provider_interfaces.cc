@@ -11,7 +11,6 @@
 #include <vector>
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
-#include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/graph/ep_api_types.h"
@@ -227,8 +226,6 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     return {};
   }
 
-  ModelMetadefIdGenerator generator;
-
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
     // Skip this node grouping if any node has already been assigned to another EP.
@@ -278,8 +275,9 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // TODO(adrianlizarraga): Do not use the heavy-weight CreateSupportedPartitions just to check if the user
       // provided a single partition. Use utils::MakeCapability() and create a new helper to check that there are no
       // unsupported nodes in any path between supported nodes.
+      auto metadef_gen_functor = PluginEpMetaDefNameFunctor(metadef_id_generator_, graph_viewer, this->Type());
       std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
-          graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, this->Type()),
+          graph_viewer, node_set, /*stop_ops*/ {}, std::move(metadef_gen_functor),
           this->Type(), this->Type(), /*node_unit_map*/ nullptr,
           node_grouping.fusion_options.drop_constant_initializers);
 

@@ -1060,5 +1060,36 @@ TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
 
   api->ReleaseDeviceEpIncompatibilityDetails(details);
 }
+
+TEST(OrtEpLibrary, CompilingPluginEp_MultiSubgraphs_DuplicateMetaDefIdBug) {
+  // Test a fix to a bug that incorrectly assigned duplicate MetaDef IDs to fused nodes
+  // that live in different GraphViews (e.g., in different branches of an If node).
+  //
+  // The test model graph does the following computation:
+  //   if (A) { C = Mul(B, 2.0) }
+  //   else { C = Mul(B, 3) }
+  //   return C
+  //
+  // The example plugin EP should support and execute both Mul nodes (as compiled fused nodes).
+  // However, the bug (in PluginExecutionProvider::GetCapability) assigned the same MetaDef ID
+  // to both compiled Mul nodes, which caused session creation to fail with error:
+  //
+  //   > Failed to add kernel for example_ep_9433721956998717990_0 example_ep example_ep:
+  //     Conflicting with a registered kernel with op versions. the since version is: 1
+  //
+  // The fix was to use the same instance of `ModelMetadefIdGenerator` across all calls to
+  // PluginExecutionProvider::GetCapability(). This ensures that the MetaDef IDs are unique.
+  RegisteredEpDeviceUniquePtr example_kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info,
+                                                         example_kernel_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
+
+  std::unordered_map<std::string, std::string> ep_options;
+  Ort::SessionOptions session_options;
+
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+  ASSERT_NO_FATAL_FAILURE(RunIfMulModel(session_options, /*if_condition*/ true));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
