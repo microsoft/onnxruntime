@@ -47,7 +47,7 @@ class BifurcationDetector : public OpKernel {
       int64_t pred_tokens_len = pred_tokens->Shape().GetDims()[0];
       // Find bifurcation index between prediction tokens, and source tokens
       // starting from previous suffix match index.
-      ORT_ENFORCE(src_tokens_len >= prev_suffix_match_idx_data);
+      ORT_ENFORCE(prev_suffix_match_idx_data >= 0 && src_tokens_len >= prev_suffix_match_idx_data);
       ORT_ENFORCE(pred_tokens_len == (src_tokens_len + 1 - prev_suffix_match_idx_data));
       int64_t pred_bifur_idx = 0;
       for (; pred_bifur_idx < src_tokens_len - prev_suffix_match_idx_data; ++pred_bifur_idx) {
