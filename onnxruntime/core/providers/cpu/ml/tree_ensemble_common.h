@@ -318,7 +318,8 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     w.value = attributes.target_class_weights_as_tensor.empty()
                   ? static_cast<ThresholdType>(attributes.target_class_weights[i])
                   : attributes.target_class_weights_as_tensor[i];
-    ORT_ENFORCE(w.i >= 0 && w.i < n_targets_or_classes_, "w.i=", w.i, " not in the expected range [0, ", n_targets_or_classes_, "]");
+    ORT_ENFORCE(w.i >= 0 && w.i < n_targets_or_classes_,
+                "target_ids[", i, "]=", w.i, " not in the expected range [0, ", n_targets_or_classes_ - 1, "]");
     if (leaf.truenode_or_weight.weight_data.n_weights == 0) {
       leaf.truenode_or_weight.weight_data.weight = static_cast<int32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
@@ -453,7 +454,9 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
 
   TreeNodeElement<ThresholdType> node;
   node.flags = Convert_NODE_MODE_ONNX_to_ORT(cmodes[i]);
-  node.feature_id = static_cast<int>(nodes_featureids[i]);
+  node.feature_id = static_cast<int>(node.flags == NODE_MODE_ORT::LEAF ? -1 : nodes_featureids[i]);
+  ORT_ENFORCE(node.flags == NODE_MODE_ORT::LEAF || node.feature_id >= 0,
+             "nodes_featureids[", i, "]=", node.feature_id, " cannot be negative if the node is not a leaf.");
   if (node.feature_id > max_feature_id_) {
     max_feature_id_ = node.feature_id;
   }
