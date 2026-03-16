@@ -427,7 +427,7 @@ struct NoWorkCallbackPolicy {
 
   void Init(const onnxruntime::ThreadOptions&) {}
 
-  Work MakeWork(Task fn) const { return std::move(fn); }
+  Work MakeWork(Task fn) const { return fn; }
 
   void Execute(const Work& w) const { w(); }
 
