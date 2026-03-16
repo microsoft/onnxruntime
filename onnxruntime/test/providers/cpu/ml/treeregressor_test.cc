@@ -858,7 +858,7 @@ TEST(MLOpTest, TreeRegressorBranchEq) {
   std::vector<int64_t> nodes_truenodeids = {1, -1, 4, -1, -1};
 
   std::string post_transform = "NONE";
-  std::vector<int64_t> target_ids = {0, 1, 2};
+  std::vector<int64_t> target_ids = {0, 0, 0};
   std::vector<int64_t> target_nodeids = {1, 3, 4};
   std::vector<int64_t> target_treeids = {0, 0, 0};
   std::vector<float> target_weights = {10.0, 20.0, 30.0};
