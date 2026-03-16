@@ -366,21 +366,19 @@ TEST(ContribOpLinearAttentionTest, LinearAttentionRecurrent_Linear_Basic) {
 
   // Query: (1, 2, 1, 4)
   std::vector<float> query_data = {
-      0.5f, 0.3f, -0.2f, 0.1f,   // head 0
-      -0.4f, 0.6f, 0.2f, -0.3f   // head 1
+      0.5f, 0.3f, -0.2f, 0.1f,  // head 0
+      -0.4f, 0.6f, 0.2f, -0.3f  // head 1
   };
 
   // Key: (1, 2, 1, 4)
   std::vector<float> key_data = {
       0.1f, 0.2f, 0.3f, 0.4f,
-      0.2f, -0.1f, 0.3f, 0.1f
-  };
+      0.2f, -0.1f, 0.3f, 0.1f};
 
   // Value: (1, 2, 1, 4)
   std::vector<float> value_data = {
       0.4f, 0.3f, 0.2f, 0.1f,
-      -0.2f, 0.4f, 0.1f, 0.3f
-  };
+      -0.2f, 0.4f, 0.1f, 0.3f};
 
   // Past state: (1, 2, 4, 4) - initialized to small values
   std::vector<float> past_state_data(batch_size * num_heads * head_dim_k * head_dim_v, 0.1f);
@@ -400,26 +398,22 @@ TEST(ContribOpLinearAttentionTest, LinearAttentionRecurrent_Gated_Basic) {
 
   std::vector<float> query_data = {
       0.5f, 0.3f, -0.2f, 0.1f,
-      -0.4f, 0.6f, 0.2f, -0.3f
-  };
+      -0.4f, 0.6f, 0.2f, -0.3f};
 
   std::vector<float> key_data = {
       0.1f, 0.2f, 0.3f, 0.4f,
-      0.2f, -0.1f, 0.3f, 0.1f
-  };
+      0.2f, -0.1f, 0.3f, 0.1f};
 
   std::vector<float> value_data = {
       0.4f, 0.3f, 0.2f, 0.1f,
-      -0.2f, 0.4f, 0.1f, 0.3f
-  };
+      -0.2f, 0.4f, 0.1f, 0.3f};
 
   std::vector<float> past_state_data(batch_size * num_heads * head_dim_k * head_dim_v, 0.1f);
 
   // Decay: (1, 2, 1, 4) - negative values for decay
   std::vector<float> decay_data = {
       -0.1f, -0.1f, -0.1f, -0.1f,
-      -0.2f, -0.2f, -0.2f, -0.2f
-  };
+      -0.2f, -0.2f, -0.2f, -0.2f};
 
   RunLinearAttentionRecurrentTests(
       query_data, key_data, value_data, past_state_data,
@@ -436,19 +430,17 @@ TEST(ContribOpLinearAttentionTest, LinearAttentionRecurrent_Delta_Basic) {
 
   std::vector<float> query_data = {
       0.5f, 0.3f, -0.2f, 0.1f,
-      -0.4f, 0.6f, 0.2f, -0.3f
-  };
+      -0.4f, 0.6f, 0.2f, -0.3f};
 
   // L2-normalized keys for delta rule
   std::vector<float> key_data = {
       0.1826f, 0.3651f, 0.5477f, 0.7303f,  // normalized
-      0.5345f, -0.2673f, 0.8018f, 0.2673f   // normalized
+      0.5345f, -0.2673f, 0.8018f, 0.2673f  // normalized
   };
 
   std::vector<float> value_data = {
       0.4f, 0.3f, 0.2f, 0.1f,
-      -0.2f, 0.4f, 0.1f, 0.3f
-  };
+      -0.2f, 0.4f, 0.1f, 0.3f};
 
   std::vector<float> past_state_data(batch_size * num_heads * head_dim_k * head_dim_v, 0.1f);
 
@@ -470,27 +462,23 @@ TEST(ContribOpLinearAttentionTest, LinearAttentionRecurrent_GatedDelta_Basic) {
 
   std::vector<float> query_data = {
       0.5f, 0.3f, -0.2f, 0.1f,
-      -0.4f, 0.6f, 0.2f, -0.3f
-  };
+      -0.4f, 0.6f, 0.2f, -0.3f};
 
   // L2-normalized keys
   std::vector<float> key_data = {
       0.1826f, 0.3651f, 0.5477f, 0.7303f,
-      0.5345f, -0.2673f, 0.8018f, 0.2673f
-  };
+      0.5345f, -0.2673f, 0.8018f, 0.2673f};
 
   std::vector<float> value_data = {
       0.4f, 0.3f, 0.2f, 0.1f,
-      -0.2f, 0.4f, 0.1f, 0.3f
-  };
+      -0.2f, 0.4f, 0.1f, 0.3f};
 
   std::vector<float> past_state_data(batch_size * num_heads * head_dim_k * head_dim_v, 0.1f);
 
   // Decay: (1, 2, 1, 4)
   std::vector<float> decay_data = {
       -0.1f, -0.1f, -0.1f, -0.1f,
-      -0.2f, -0.2f, -0.2f, -0.2f
-  };
+      -0.2f, -0.2f, -0.2f, -0.2f};
 
   // Beta: (1, 2, 1, 1)
   std::vector<float> beta_data = {0.5f, 0.7f};

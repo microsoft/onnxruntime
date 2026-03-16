@@ -111,13 +111,13 @@ fn silu(x: input_element_t) -> input_element_t {
       // Read from conv_state: (B, D, state_length)
       let state_idx = (batch_idx * channels + channel_idx) * state_length + virtual_pos;
       val = )SHADER"
-                               << conv_state_ptr->GetByOffset("state_idx") << R"SHADER(;
+                              << conv_state_ptr->GetByOffset("state_idx") << R"SHADER(;
     } else {
       // Read from input: (B, D, L)
       let input_pos = virtual_pos - state_length;
       let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
       val = )SHADER"
-                               << input.GetByOffset("input_idx") << R"SHADER(;
+                              << input.GetByOffset("input_idx") << R"SHADER(;
     }
 )SHADER";
   } else {
@@ -127,14 +127,14 @@ fn silu(x: input_element_t) -> input_element_t {
       let input_pos = virtual_pos - state_length;
       let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
       val = )SHADER"
-                               << input.GetByOffset("input_idx") << R"SHADER(;
+                              << input.GetByOffset("input_idx") << R"SHADER(;
     }
 )SHADER";
   }
 
   shader.MainFunctionBody() << R"SHADER(
     let w = )SHADER"
-                             << weight.GetByOffset("weight_base + j") << R"SHADER(;
+                            << weight.GetByOffset("weight_base + j") << R"SHADER(;
     acc = acc + val * w;
   }
 )SHADER";
@@ -153,7 +153,7 @@ fn silu(x: input_element_t) -> input_element_t {
   shader.MainFunctionBody() << R"SHADER(
   let out_idx = (batch_idx * channels + channel_idx) * input_length + pos;
   )SHADER" << output.SetByOffset("out_idx", "acc")
-                             << "\n";
+                            << "\n";
 
   // Write present_state: the last (kernel_size - 1) elements from the
   // virtual input [conv_state, input]. The virtual input has total length
@@ -178,12 +178,12 @@ fn silu(x: input_element_t) -> input_element_t {
       if (vp < state_length) {
         let si = (batch_idx * channels + channel_idx) * state_length + vp;
         state_val = )SHADER"
-                               << conv_state_ptr->GetByOffset("si") << R"SHADER(;
+                              << conv_state_ptr->GetByOffset("si") << R"SHADER(;
       } else {
         let ip = vp - state_length;
         let ii = (batch_idx * channels + channel_idx) * input_length + ip;
         state_val = )SHADER"
-                               << input.GetByOffset("ii") << R"SHADER(;
+                              << input.GetByOffset("ii") << R"SHADER(;
       }
 )SHADER";
   } else {
@@ -192,7 +192,7 @@ fn silu(x: input_element_t) -> input_element_t {
         let ip = vp - state_length;
         let ii = (batch_idx * channels + channel_idx) * input_length + ip;
         state_val = )SHADER"
-                               << input.GetByOffset("ii") << R"SHADER(;
+                              << input.GetByOffset("ii") << R"SHADER(;
       }
 )SHADER";
   }
@@ -200,7 +200,7 @@ fn silu(x: input_element_t) -> input_element_t {
   shader.MainFunctionBody() << R"SHADER(
       let ps_idx = (batch_idx * channels + channel_idx) * state_length + s;
       )SHADER" << present_state.SetByOffset("ps_idx", "state_val")
-                             << R"SHADER(
+                            << R"SHADER(
     }
   }
 )SHADER";
@@ -209,9 +209,9 @@ fn silu(x: input_element_t) -> input_element_t {
 }
 
 Status CausalConv1DWithState::ComputeInternal(ComputeContext& context) const {
-  const Tensor* input = context.Input(0);   // (B, D, L)
-  const Tensor* weight = context.Input(1);  // (D, 1, K)
-  const Tensor* bias = context.Input(2);    // optional (D,)
+  const Tensor* input = context.Input(0);       // (B, D, L)
+  const Tensor* weight = context.Input(1);      // (D, 1, K)
+  const Tensor* bias = context.Input(2);        // optional (D,)
   const Tensor* conv_state = context.Input(3);  // optional (B, D, K-1)
 
   ORT_RETURN_IF(input == nullptr, "Input tensor must not be null");

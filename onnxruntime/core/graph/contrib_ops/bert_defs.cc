@@ -2289,8 +2289,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
             TensorShapeProto state_shape;
-            *state_shape.add_dim() = input_shape.dim(0);   // batch_size
-            *state_shape.add_dim() = input_shape.dim(1);   // channels
+            *state_shape.add_dim() = input_shape.dim(0);  // batch_size
+            *state_shape.add_dim() = input_shape.dim(1);  // channels
             // kernel_size - 1
             if (weight_shape.dim(2).has_dim_value()) {
               state_shape.add_dim()->set_dim_value(weight_shape.dim(2).dim_value() - 1);

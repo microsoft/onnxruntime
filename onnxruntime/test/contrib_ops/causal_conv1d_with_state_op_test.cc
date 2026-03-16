@@ -389,8 +389,8 @@ TEST(CausalConv1DWithStateTest, MultiBatch) {
   // Input: (2, 2, 3)
   std::vector<float> input_data = {
       // Batch 0
-      1.0f, 2.0f, 3.0f,   // ch 0
-      0.5f, 1.5f, 2.5f,   // ch 1
+      1.0f, 2.0f, 3.0f,  // ch 0
+      0.5f, 1.5f, 2.5f,  // ch 1
       // Batch 1
       -1.0f, 0.0f, 1.0f,  // ch 0
       0.2f, 0.4f, 0.6f};  // ch 1
@@ -404,11 +404,11 @@ TEST(CausalConv1DWithStateTest, MultiBatch) {
   // State: (2, 2, 2)
   std::vector<float> conv_state_data = {
       // Batch 0
-      -0.5f, 0.5f,   // ch 0
-      0.3f, -0.3f,   // ch 1
+      -0.5f, 0.5f,  // ch 0
+      0.3f, -0.3f,  // ch 1
       // Batch 1
-      0.1f, -0.1f,   // ch 0
-      0.7f, 0.8f};   // ch 1
+      0.1f, -0.1f,  // ch 0
+      0.7f, 0.8f};  // ch 1
 
   RunCausalConv1DWithStateTests(
       input_data, weight_data, &bias_data, &conv_state_data,
@@ -436,10 +436,10 @@ TEST(CausalConv1DWithStateTest, SingleTokenDecode) {
 
   // State: (1, 4, 3) - carrying the last 3 values per channel
   std::vector<float> conv_state_data = {
-      1.0f, 2.0f, 3.0f,    // ch 0
-      -1.0f, 0.0f, 1.0f,   // ch 1
-      0.5f, 0.5f, 0.5f,    // ch 2
-      -0.2f, 0.4f, -0.6f}; // ch 3
+      1.0f, 2.0f, 3.0f,     // ch 0
+      -1.0f, 0.0f, 1.0f,    // ch 1
+      0.5f, 0.5f, 0.5f,     // ch 2
+      -0.2f, 0.4f, -0.6f};  // ch 3
 
   RunCausalConv1DWithStateTests(
       input_data, weight_data, &bias_data, &conv_state_data,
@@ -451,10 +451,10 @@ TEST(CausalConv1DWithStateTest, SingleTokenDecodeMultiBatch) {
 
   // Input: (2, 2, 1)
   std::vector<float> input_data = {
-      0.5f,    // B0, ch 0
-      -0.3f,   // B0, ch 1
-      1.2f,    // B1, ch 0
-      0.8f};   // B1, ch 1
+      0.5f,   // B0, ch 0
+      -0.3f,  // B0, ch 1
+      1.2f,   // B1, ch 0
+      0.8f};  // B1, ch 1
 
   std::vector<float> weight_data = {
       0.1f, 0.2f, 0.3f,
@@ -462,10 +462,10 @@ TEST(CausalConv1DWithStateTest, SingleTokenDecodeMultiBatch) {
 
   // State: (2, 2, 2)
   std::vector<float> conv_state_data = {
-      1.0f, 2.0f,     // B0, ch 0
-      -1.0f, 0.0f,    // B0, ch 1
-      0.5f, 0.5f,     // B1, ch 0
-      -0.2f, 0.4f};   // B1, ch 1
+      1.0f, 2.0f,    // B0, ch 0
+      -1.0f, 0.0f,   // B0, ch 1
+      0.5f, 0.5f,    // B1, ch 0
+      -0.2f, 0.4f};  // B1, ch 1
 
   RunCausalConv1DWithStateTests(
       input_data, weight_data, nullptr, &conv_state_data,
@@ -566,8 +566,8 @@ TEST(CausalConv1DWithStateTest, SequenceVsTokenByToken) {
   for (int t = 0; t < 4; ++t) {
     // Extract single token: (1, 2, 1)
     std::vector<float> token_input = {
-        full_input[0 * 4 + t],  // ch 0
-        full_input[1 * 4 + t]}; // ch 1
+        full_input[0 * 4 + t],   // ch 0
+        full_input[1 * 4 + t]};  // ch 1
 
     std::vector<float> token_output;
     std::vector<float> next_state;
