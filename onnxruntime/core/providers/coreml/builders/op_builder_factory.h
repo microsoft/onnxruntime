@@ -27,6 +27,7 @@ void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConvTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateDepthToSpaceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -44,6 +45,7 @@ void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op
 void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateWhereOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace coreml
 }  // namespace onnxruntime
