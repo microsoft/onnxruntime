@@ -329,11 +329,21 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       OrtNodeFusionOptions node_fusion_options = {};
       node_fusion_options.ort_version_supported = ORT_API_VERSION;
 
-      // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
-      // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
-      // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
-      // during inference.
-      node_fusion_options.drop_constant_initializers = true;
+      // An EP would set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant
+      // initializers as inputs to the fused/compiled node at inference time. An EP would do this if, for example,
+      // the EP copies and manages the weight data used by its fused/compiled nodes.
+      // This gives ORT an opportunity to release unused ONNX initializers in the model.
+      //
+      // By default, this example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
+      // during inference. However, if the application wants to generate a compiled model with weightless EPContext nodes,
+      // then the EP sets "drop_constant_initializers" to false so that ONNX Runtime provides the weights as inputs to
+      // the compiled/fused nodes (i.e., the EPContext nodes).
+      //
+      // Refer to the "ep.enable_weightless_ep_context_nodes"
+      // session configuration entry in onnxruntime_session_options_config_keys.h for more information about generating
+      // weightless EPContext models.
+      node_fusion_options.drop_constant_initializers = !(ep->config_.enable_ep_context &&
+                                                         ep->config_.enable_weightless_ep_context_nodes);
       RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(
           graph_support_info,
           reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),

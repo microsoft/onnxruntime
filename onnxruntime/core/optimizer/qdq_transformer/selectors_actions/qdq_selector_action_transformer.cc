@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+
 #include "core/mlas/inc/mlas.h"
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
@@ -297,7 +298,7 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
                                 int64_t qdq_matmulnbits_accuracy_level,
                                 concurrency::ThreadPool* intra_op_thread_pool) {
   // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
-  // DQ's weight is int4/uint4. DQ's scale is float/float16.
+  // DQ's weight is 2/4/8-bit int (int2/uint2, int4/uint4, int8/uint8). DQ's scale is float/float16.
   // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
   const std::string action_name{"DQMatMulToMatMulNBits"};
 
@@ -306,7 +307,12 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
                                                          intra_op_thread_pool);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::vector<const char*> providers = {kCpuExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider};
+  // Include "" (empty string) to match nodes not yet assigned to an EP.
+  // For FP16 models on CPU EP, FP16 MatMul nodes are not claimed during partitioning
+  // (no FP16 MatMul kernel on CPU), leaving their EP unassigned. The DQ->MatMul fusion
+  // should still apply; the action assigns kCpuExecutionProvider to the resulting
+  // MatMulNBits node (which has both float and float16 CPU kernels).
+  std::vector<const char*> providers = {kCpuExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider, ""};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},
@@ -397,7 +403,9 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
           apply_context,
           // this transformer is compatible with CPU, DML, ACL and CUDA EP.
           // There is further EP control on the rule level.
-          {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider, kCudaExecutionProvider}} {
+          // Also accept nodes with empty EP (unassigned) so that individual selectors
+          // that include "" in their compatible providers can match unassigned nodes.
+          {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider, kCudaExecutionProvider, ""}} {
 }
 
 }  // namespace onnxruntime

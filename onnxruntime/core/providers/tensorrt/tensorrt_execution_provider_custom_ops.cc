@@ -20,7 +20,7 @@
 #endif
 
 #ifdef _WIN32
-#define ORT_DEF2STR_HELPER(x) L#x
+#define ORT_DEF2STR_HELPER(x) L"" #x
 #else
 #define ORT_DEF2STR_HELPER(X) #X
 #endif

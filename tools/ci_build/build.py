@@ -184,8 +184,6 @@ def use_dev_mode(args):
         return False
     if args.use_acl:
         return False
-    if args.use_armnn:
-        return False
     if is_macOS() and (args.ios or args.visionos or args.tvos):
         return False
     if args.use_qnn:
@@ -244,8 +242,6 @@ def generate_vcpkg_install_options(build_dir, args):
     vcpkg_install_options = ["--x-feature=tests"]
     if args.use_acl:
         vcpkg_install_options.append("--x-feature=acl-ep")
-    if args.use_armnn:
-        vcpkg_install_options.append("--x-feature=armnn-ep")
     if args.use_azure:
         vcpkg_install_options.append("--x-feature=azure-ep")
     if args.use_cann:
@@ -349,8 +345,6 @@ def generate_build_tree(
     migraphx_home,
     acl_home,
     acl_libs,
-    armnn_home,
-    armnn_libs,
     qnn_home,
     snpe_root,
     cann_home,
@@ -474,9 +468,6 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
-        "-Donnxruntime_USE_ARMNN=" + ("ON" if args.use_armnn else "OFF"),
-        "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
-        "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
@@ -766,12 +757,6 @@ def generate_build_tree(
     if acl_libs and os.path.exists(acl_libs):
         cmake_args += ["-Donnxruntime_ACL_LIBS=" + acl_libs]
 
-    if armnn_home and os.path.exists(armnn_home):
-        cmake_args += ["-Donnxruntime_ARMNN_HOME=" + armnn_home]
-
-    if armnn_libs and os.path.exists(armnn_libs):
-        cmake_args += ["-Donnxruntime_ARMNN_LIBS=" + armnn_libs]
-
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
@@ -1053,6 +1038,9 @@ def generate_build_tree(
 
         cmake_args += [f"-Donnxruntime_PREBUILT_PYTORCH_PATH={os.path.dirname(torch.__file__)}"]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
+
+    if args.enable_dx_interop:
+        cmake_args += ["-Donnxruntime_USE_DX_INTEROP=ON"]
 
     if args.use_azure:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
@@ -1937,7 +1925,6 @@ def build_python_wheel(
     use_openvino,
     use_vitisai,
     use_acl,
-    use_armnn,
     use_dml,
     use_webgpu,
     use_cann,
@@ -1987,8 +1974,6 @@ def build_python_wheel(
             args.append("--use_vitisai")
         elif use_acl:
             args.append("--use_acl")
-        elif use_armnn:
-            args.append("--use_armnn")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
         elif use_webgpu:
@@ -2403,9 +2388,6 @@ def main():
     acl_home = args.acl_home
     acl_libs = args.acl_libs
 
-    armnn_home = args.armnn_home
-    armnn_libs = args.armnn_libs
-
     qnn_home = ""
     if args.use_qnn:
         qnn_home = args.qnn_home
@@ -2555,8 +2537,6 @@ def main():
             migraphx_home,
             acl_home,
             acl_libs,
-            armnn_home,
-            armnn_libs,
             qnn_home,
             snpe_root,
             cann_home,
@@ -2615,7 +2595,6 @@ def main():
                 args.use_openvino,
                 args.use_vitisai,
                 args.use_acl,
-                args.use_armnn,
                 args.use_dml,
                 args.use_webgpu,
                 args.use_cann,
