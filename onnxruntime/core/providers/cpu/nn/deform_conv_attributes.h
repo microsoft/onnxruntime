@@ -92,7 +92,7 @@ inline Status DeformConvValidateAndParse(
   params.H = X_shape[2];
   params.W_in = X_shape[3];
   params.M = W_shape[0];
-  ORT_RETURN_IF_NOT(params.N > 0, "Batch size N must be positive.");
+  ORT_RETURN_IF_NOT(params.N >= 0, "Batch size N must be non-negative.");
   ORT_RETURN_IF_NOT(params.C > 0, "Input channels C must be positive.");
   ORT_RETURN_IF_NOT(params.M > 0, "Output channels M (oC) must be positive.");
   ORT_RETURN_IF_NOT(W_shape[1] > 0, "Weight W must have positive in-channels (W_shape[1] = C/group).");
