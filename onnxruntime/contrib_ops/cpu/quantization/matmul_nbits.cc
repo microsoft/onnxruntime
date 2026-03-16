@@ -304,6 +304,25 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       is_packed = true;
     }
 #endif  // MLAS_TARGET_ARM64
+  } else if (compute_type_ == HQNBIT_CompInt8 && nbits_ == 8) {
+    // For 8-bit HQNBIT_CompInt8, scales are fp16 but the SQ8 packing functions expect float.
+    // Convert fp16 scales to float and pack using the SQNBIT_CompInt8 path.
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+      auto sptr_fp16 = tensor.Data<MLFloat16>();
+      std::vector<float> scales_fp32(static_cast<size_t>(tensor.Shape().Size()));
+      MlasConvertHalfToFloatBuffer(sptr_fp16, scales_fp32.data(), scales_fp32.size());
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(),
+                                  scales_fp32.data(), has_zp_input_, nullptr, nullptr,
+                                  &mlas_backend_kernel_selector_config_);
+      is_packed = false;
+    }
+
+    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
+      auto zptr = tensor.Data<uint8_t>();
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(), nullptr,
+                                  has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+      is_packed = false;
+    }
   } else if (prefer_lut_gemm_) {
     // Pack scales/zero_points for LUT GEMM if B was already packed but scales weren't available then
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
@@ -466,7 +485,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   for (size_t i = 0; i < batch_count; ++i) {
     data[i].A = a_data + helper.LeftOffsets()[i];
     data[i].lda = lda;
-    if (compute_type_ == SQNBIT_CompInt8) {
+    if (compute_type_ == SQNBIT_CompInt8 || (compute_type_ == HQNBIT_CompInt8 && nbits_ == 8)) {
       data[i].QuantBDataWorkspace = packed_b_.get();
     }
     data[i].PackedQuantBData = static_cast<std::byte*>(packed_b_.get());

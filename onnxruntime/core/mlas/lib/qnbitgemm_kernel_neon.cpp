@@ -80,7 +80,7 @@ QNBitGemmPackQuantBDataSize(
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
 
-        if (ComputeType == SQNBIT_CompInt8) {
+        if (ComputeType == SQNBIT_CompInt8 || ComputeType == HQNBIT_CompInt8) {
             const size_t ScaleSize = N * BlockCountK * sizeof(float);
             size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
 
