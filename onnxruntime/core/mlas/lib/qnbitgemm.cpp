@@ -114,6 +114,11 @@ MlasIsQNBitGemmAvailable(
                    Dispatch->HQ8BitBlkDequantBForHgemm_CompFp16 != nullptr &&
                    Dispatch->HQ4BitGemmKernel_CompFp16 != nullptr;
         }
+        case HQ4BitGemmVariant_CompInt8: {
+            return
+              (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
+              (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr);
+        }
         default: {
             return false;
         }
@@ -292,6 +297,20 @@ MlasQNBitGemmPackQuantBData(
                 HasZeroPoint,
                 static_cast<const std::byte*>(QuantBZeroPoint),
                 packed_quant_b,
+                ThreadPool,
+                BackendKernelSelectorConfig
+            );
+        } else if (ComputeType == HQNBIT_CompInt8 && Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
+            // Use SQ4BitGemmPackQuantBData directly with SQNBIT_CompInt8 to get the correct int8
+            // sub-block packing format. Bypass SQ4BitGemmPackQuantBDataAndBlkSum to avoid KleidiAI
+            // path which would incorrectly interpret fp16 scales as float.
+            Dispatch->SQ4BitGemmPackQuantBData(
+                N,
+                K,
+                BlkLen,
+                SQNBIT_CompInt8,
+                static_cast<const std::byte*>(QuantBData),
+                static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
                 ThreadPool,
                 BackendKernelSelectorConfig
             );
@@ -680,6 +699,108 @@ HQ8BitGemm_CompFp16(
 }
 
 void
+HQ4BitGemm_CompInt8(
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* const DataParams,
+    void* const PerGemmWorkspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+    constexpr size_t BlkBitWidth = 4;
+
+    const size_t k_blks = MlasDivRoundup(K, BlkLen);
+
+    const size_t lda = k_blks * Q8BlkSize(BlkLen);
+    const size_t ldc = DataParams->ldc;
+    const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+
+    const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace) + RangeStartM * lda;
+
+    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
+    const MLAS_FP16* QuantBScaleFp16 = DataParams->QuantBScale + RangeStartN * k_blks;
+    const std::byte* QuantBZeroPoint =
+        (DataParams->QuantBZeroPoint == nullptr)
+            ? nullptr
+            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+
+    MLAS_FP16* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+    const MLAS_FP16* BiasFp16 = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
+
+    if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompInt8 == nullptr) {
+        return;
+    }
+
+    size_t CountN;
+    for (size_t n = 0; n < RangeCountN; n += CountN) {
+        CountN = std::min(RangeCountN - n, size_t{128});
+
+        const std::byte* a_row = QuantA;
+        const std::byte* b_col = QuantBData + n * ldb;
+        const std::byte* b_col_zp =
+            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+        MLAS_FP16* c_blk = C + n;
+        const MLAS_FP16* bias_fp16 = (BiasFp16 == nullptr) ? nullptr : BiasFp16 + n;
+
+        // Convert fp16 scales to fp32 for this column chunk
+        std::vector<float> b_col_scale_fp32(CountN * k_blks);
+        MlasConvertHalfToFloatBuffer(QuantBScaleFp16 + n * k_blks, b_col_scale_fp32.data(), CountN * k_blks);
+
+        // Convert fp16 bias to fp32
+        std::vector<float> bias_fp32;
+        float* bias_fp32_ptr = nullptr;
+        if (bias_fp16 != nullptr) {
+            bias_fp32.resize(CountN);
+            MlasConvertHalfToFloatBuffer(bias_fp16, bias_fp32.data(), CountN);
+            bias_fp32_ptr = bias_fp32.data();
+        }
+
+        // Temporary fp32 C buffer
+        std::vector<float> c_temp(RangeCountM * CountN);
+
+        size_t RowsRemaining = RangeCountM;
+        size_t RowsProcessed = 0;
+        while (RowsRemaining > 0) {
+            const auto RowsHandled = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
+                BlkLen,
+                a_row, b_col, b_col_scale_fp32.data(), b_col_zp,
+                c_temp.data() + RowsProcessed * CountN,
+                RowsRemaining, CountN, K, k_blks, CountN, bias_fp32_ptr
+            );
+
+            // Convert fp32 C output to fp16 and write to actual output
+            for (size_t m = 0; m < RowsHandled; m++) {
+                MlasConvertFloatToHalfBuffer(
+                    c_temp.data() + (RowsProcessed + m) * CountN,
+                    c_blk + m * ldc,
+                    CountN
+                );
+            }
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM + RowsProcessed, RangeStartN + n,
+                    RowsHandled, CountN, ldc
+                );
+            }
+
+            c_blk += RowsHandled * ldc;
+            a_row += RowsHandled * lda;
+
+            RowsProcessed += RowsHandled;
+            RowsRemaining -= RowsHandled;
+        }
+    }
+}
+
+void
 SQ4BitGemm_CompInt8(
     const size_t BlkLen,
     const size_t K,
@@ -1031,17 +1152,34 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
     size_t BlkBitWidth,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 ) {
-    MLAS_UNREFERENCED_PARAMETER(M);
     MLAS_UNREFERENCED_PARAMETER(N);
-    MLAS_UNREFERENCED_PARAMETER(K);
-    MLAS_UNREFERENCED_PARAMETER(BatchN);
-    MLAS_UNREFERENCED_PARAMETER(BlkLen);
-    MLAS_UNREFERENCED_PARAMETER(DataParams);
-    MLAS_UNREFERENCED_PARAMETER(Workspace);
-    MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspaceStride);
-    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
     MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
+    const auto QuantizeARow = GetMlasPlatform().QNBitGemmDispatch->QuantizeARow_CompInt8;
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
+
+    if (QuantizeARow) {
+        MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
+            const auto& data = DataParams[gemm_idx];
+
+            const MLAS_FP16* ARowPtr = data.A;
+            std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
+
+            // Temporary buffer for fp16 -> fp32 conversion of one row
+            std::vector<float> a_row_fp32(K);
+
+            for (size_t m = 0; m < M; ++m) {
+                MlasConvertHalfToFloatBuffer(ARowPtr, a_row_fp32.data(), K);
+                QuantizeARow(BlkLen, a_row_fp32.data(), K, QuantARowPtr);
+
+                ARowPtr += data.lda;
+                QuantARowPtr += QuantAStride;
+            }
+        });
+    }
 }
 
 template <typename T>
@@ -1130,6 +1268,8 @@ GetQNBitGemm(QNBitGemmVariant variant)
             return HQ4BitGemm_CompFp16;
         case HQ8BitGemmVariant_CompFp16:
             return HQ8BitGemm_CompFp16;
+        case HQ4BitGemmVariant_CompInt8:
+            return HQ4BitGemm_CompInt8;
         default:
             return nullptr;
     }
