@@ -146,8 +146,43 @@ static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, con
   const ONNX_NAMESPACE::TensorShapeProto* shape_input_shape = shape_input.Shape();
   const ONNX_NAMESPACE::TensorShapeProto* root_input_shape = root_input.Shape();
 
-  if (shape_input_shape != nullptr && root_input_shape != nullptr)
-    return optimizer_utils::CompareShape(*shape_input_shape, *root_input_shape);
+  if (shape_input_shape != nullptr && root_input_shape != nullptr) {
+    // First try the existing static-value comparison.
+    if (optimizer_utils::CompareShape(*shape_input_shape, *root_input_shape)) {
+      return true;
+    }
+    // Also allow matching when both shapes have the same rank and each dimension
+    // is either equal by static value or by matching symbolic dim_param.
+    // This covers cases like position_ids [?batch_size, ?sequence_length] taking
+    // shape from input_ids [?batch_size, ?sequence_length] — same symbolic dims
+    // but no static values.
+    if (shape_input_shape->dim_size() == root_input_shape->dim_size() &&
+        shape_input_shape->dim_size() > 0) {
+      bool all_dims_match = true;
+      for (int i = 0; i < shape_input_shape->dim_size(); ++i) {
+        const auto& dim_a = shape_input_shape->dim(i);
+        const auto& dim_b = root_input_shape->dim(i);
+        if (utils::HasDimValue(dim_a) && utils::HasDimValue(dim_b)) {
+          if (dim_a.dim_value() != dim_b.dim_value()) {
+            all_dims_match = false;
+            break;
+          }
+        } else if (utils::HasDimParam(dim_a) && utils::HasDimParam(dim_b)) {
+          if (dim_a.dim_param() != dim_b.dim_param()) {
+            all_dims_match = false;
+            break;
+          }
+        } else {
+          // One has value, the other has param, or neither has anything — no match.
+          all_dims_match = false;
+          break;
+        }
+      }
+      if (all_dims_match) {
+        return true;
+      }
+    }
+  }
 
   const Node* p_node_before_shape = graph_utils::GetInputNode(shape, 0);
   if (p_node_before_shape == nullptr) {
