@@ -635,6 +635,9 @@ Return Value:
 #endif
 
 #if defined(MLAS_USE_SVE)
+    this->GeluKernelRoutine = MlasGeluKernel;
+    this->SiluKernelRoutine = MlasSiluKernel;
+
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
         this->ErfKernelRoutine = MlasSveErfKernel;
         this->LogisticKernelRoutine = MlasSveLogisticKernel;
