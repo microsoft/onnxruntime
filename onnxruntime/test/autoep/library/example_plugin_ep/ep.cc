@@ -155,7 +155,7 @@ const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept
 }
 
 bool ExampleEp::CopiesConstantInitializers() const {
-  return !(config_.enable_ep_context && config_.enable_weightless_ep_context_nodes);
+  return true;
 }
 
 OrtStatus* ExampleEp::TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer) {
