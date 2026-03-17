@@ -206,11 +206,11 @@ class MlasComputeSiluAvx512Test : public MlasTestBase {
           const float expected = ComputeReferenceSilu(input[i]);
           ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], expected,
                                         kSiluAbsoluteTolerance, kSiluRelativeTolerance, true))
-              << "Silu mismatch at index " << i << " of " << size
-              << ", input=" << input[i]
-              << ", avx512=" << avx512_output[i]
-              << ", expected=" << expected
-              << ", abs_diff=" << std::fabs(avx512_output[i] - expected);
+            << "Silu mismatch at index " << i << " of " << size
+            << ", input=" << input[i]
+            << ", avx512=" << avx512_output[i]
+            << ", expected=" << expected
+            << ", abs_diff=" << std::fabs(avx512_output[i] - expected);
         }
       }
     }

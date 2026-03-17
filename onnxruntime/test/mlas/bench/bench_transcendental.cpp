@@ -146,13 +146,9 @@ void BM_GeluErfUnfusedExact(benchmark::State& state) {
 }
 
 void BM_GeluErfDispatchMinimax(benchmark::State& state) {
-  if (GetMlasPlatform().GeluErfMinimaxKernelRoutine == nullptr) {
-    state.SkipWithError("GELU erf minimax kernel is not available on this machine.");
-    return;
-  }
-
-  // Fused MLAS GELU(erf) entry point using the minimax erf approximation when
-  // the platform-specific kernel is available.
+  // Fused MLAS GELU(erf) entry point requesting the minimax erf mode. MLAS
+  // falls back to the exact GELU path when a platform-specific minimax kernel
+  // is not available.
   RunDispatchedUnaryBenchmark(
       state,
       [](const float* input, float* output, size_t n) {
