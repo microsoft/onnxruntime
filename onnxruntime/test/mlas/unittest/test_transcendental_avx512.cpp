@@ -204,8 +204,8 @@ class MlasComputeSiluAvx512Test : public MlasTestBase {
 
         for (size_t i = 0; i < size; ++i) {
           const float expected = ComputeReferenceSilu(input[i]);
-            ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], expected,
-                          kSiluAbsoluteTolerance, kSiluRelativeTolerance, true))
+          ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], expected,
+                                        kSiluAbsoluteTolerance, kSiluRelativeTolerance, true))
               << "Silu mismatch at index " << i << " of " << size
               << ", input=" << input[i]
               << ", avx512=" << avx512_output[i]
