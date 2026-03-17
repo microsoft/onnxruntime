@@ -25,8 +25,8 @@ constexpr std::array<size_t, 20> kShortTestSizes = {
     1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255};
 
 constexpr std::array<size_t, 27> kLongTestSizes = {
-    1,   2,   3,   4,   5,   7,   8,   15,  16,   17,   31,   32,   33,   63,
-    64,  65,  127, 128, 129, 255, 511,  512,  513,  1023, 1024, 1025, 4095};
+    1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 31, 32, 33, 63,
+    64, 65, 127, 128, 129, 255, 511, 512, 513, 1023, 1024, 1025, 4095};
 
 bool IsAvx512Available() {
   return GetMlasPlatform().Avx512Supported_;
@@ -156,8 +156,8 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
         MlasGeluKernelAvx512F(input, avx512_output, size);
 
         for (size_t i = 0; i < size; ++i) {
-            ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], generic_output[i],
-                          kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
+          ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], generic_output[i],
+                                        kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
               << "Gelu mismatch at index " << i << " of " << size
               << ", input=" << input[i]
               << ", avx512=" << avx512_output[i]
@@ -204,8 +204,8 @@ class MlasComputeSiluAvx512Test : public MlasTestBase {
 
         for (size_t i = 0; i < size; ++i) {
           const float expected = ComputeReferenceSilu(input[i]);
-            ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], expected,
-                          kSiluAbsoluteTolerance, kSiluRelativeTolerance, true))
+          ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], expected,
+                                        kSiluAbsoluteTolerance, kSiluRelativeTolerance, true))
               << "Silu mismatch at index " << i << " of " << size
               << ", input=" << input[i]
               << ", avx512=" << avx512_output[i]
