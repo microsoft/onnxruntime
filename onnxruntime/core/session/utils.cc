@@ -373,6 +373,33 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+OrtStatus* ParseCompositeModelConfig(_In_opt_z_ const ORTCHAR_T* config_file_path) {
+  std::ifstream if_stream(config_file_path);
+
+  ORT_TRY {
+    json json_config = json::parse(if_stream);
+  }
+  ORT_CATCH (const std::exception&) {
+  }
+
+  return OrtApis::CreateStatus(ORT_FAIL, "Loading composite models from non-file sources is not supported in this build.");
+}
+
+OrtStatus* CreateSessionAndLoadCompositeModel(_In_ const OrtSessionOptions* options,
+                                              _In_ const OrtEnv* env,
+                                              _In_opt_z_ const ORTCHAR_T* model_path,
+                                              std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+
+  if (model_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "composite model path is null");
+  }
+
+  if (!Env::Default().FolderExists(model_path)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "composite model path does not exist");
+  }
+
+}
+
 // Creates an InferenceSession and loads the model.
 // Caller should provide either model_path, or modal_data + model_data_length.
 OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,

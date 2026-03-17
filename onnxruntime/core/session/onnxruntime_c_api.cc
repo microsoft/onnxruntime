@@ -792,7 +792,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   *out = nullptr;
-  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+
+  // Check if it's composite model.
+  if (model_path && Env::Default().FolderExists(model_path)) {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadCompositeModel(options, env, model_path, sess));
+  } else {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+  }
+
   ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess));
   *out = reinterpret_cast<OrtSession*>(sess.release());
   return nullptr;
