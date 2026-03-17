@@ -813,33 +813,6 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(RegisterOrtCustomOpSchema, _In_ const char* domain, _In_ const OrtCustomOp* op) {
-  API_IMPL_BEGIN
-  ORT_ENFORCE(domain != nullptr, "domain must not be null");
-  ORT_ENFORCE(op != nullptr, "op must not be null");
-
-  std::string domain_str(domain);
-  auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-  const auto& domain_to_version_map = domain_instance.Map();
-  if (domain_to_version_map.find(domain_str) == domain_to_version_map.end()) {
-    domain_instance.AddDomainToVersion(domain_str, 1, 1000);
-  }
-  auto schema = CreateSchema(domain_str, {op});
-  ONNX_NAMESPACE::RegisterSchema(schema, ORT_API_VERSION);
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(DeregisterOrtCustomOpSchema, _In_ const char* domain, _In_ const char* op_type, _In_ int version) {
-  API_IMPL_BEGIN
-  ORT_ENFORCE(domain != nullptr, "domain must not be null");
-  ORT_ENFORCE(op_type != nullptr, "op_type must not be null");
-
-  ONNX_NAMESPACE::DeregisterSchema(std::string(op_type), version, std::string(domain));
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
                     _In_ const char* domain, _Outptr_result_maybenull_ const OrtOpSchema** out_schema) {
   API_IMPL_BEGIN
@@ -850,6 +823,29 @@ ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_v
   const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(
       std::string(name), max_inclusive_version, std::string(domain));
   *out_schema = reinterpret_cast<const OrtOpSchema*>(schema);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(schema != nullptr, "schema must not be null");
+  ORT_ENFORCE(out != nullptr, "out must not be null");
+
+  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
+  *out = onnx_schema->since_version();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(schema != nullptr, "schema must not be null");
+  ORT_ENFORCE(out != nullptr, "out must not be null");
+
+  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
+  const auto& inputs = onnx_schema->inputs();
+  *out = inputs.size();
   return nullptr;
   API_IMPL_END
 }
@@ -878,6 +874,18 @@ ORT_API_STATUS_IMPL(OpSchema_GetInputTypeStr, _In_ const OrtOpSchema* schema, _I
   const auto& inputs = onnx_schema->inputs();
   ORT_ENFORCE(index < inputs.size(), "Input index ", index, " out of range. Schema has ", inputs.size(), " inputs.");
   *out = inputs[index].GetTypeStr().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(schema != nullptr, "schema must not be null");
+  ORT_ENFORCE(out != nullptr, "out must not be null");
+
+  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
+  const auto& inputs = onnx_schema->outputs();
+  *out = inputs.size();
   return nullptr;
   API_IMPL_END
 }
@@ -979,15 +987,15 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::GetEnvConfigEntries,
     // End of Version 24 - DO NOT MODIFY ABOVE
 
-    &OrtExecutionProviderApi::RegisterOrtCustomOpSchema,
-    &OrtExecutionProviderApi::DeregisterOrtCustomOpSchema,
     &OrtExecutionProviderApi::GetOpSchema,
+    &OrtExecutionProviderApi::OpSchema_GetSinceVersion,
+    &OrtExecutionProviderApi::OpSchema_GetNumInputs,
     &OrtExecutionProviderApi::OpSchema_GetInputName,
     &OrtExecutionProviderApi::OpSchema_GetInputTypeStr,
+    &OrtExecutionProviderApi::OpSchema_GetNumOutputs,
     &OrtExecutionProviderApi::OpSchema_GetOutputName,
     &OrtExecutionProviderApi::OpSchema_GetOutputTypeStr,
     &OrtExecutionProviderApi::OpSchema_HasTypeConstraint,
-    // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -997,8 +1005,6 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
-static_assert(offsetof(OrtEpApi, OpSchema_HasTypeConstraint) / sizeof(void*) == 57,
-              "Size of version 25 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
 

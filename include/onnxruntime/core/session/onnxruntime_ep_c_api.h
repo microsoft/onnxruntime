@@ -1445,34 +1445,6 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
 
-  /** \brief Register an ONNX operator schema for a custom op in the given domain.
-   *
-   * Registers a schema derived from the OrtCustomOp metadata into the global ONNX schema registry.
-   * If the domain does not yet exist in the ONNX domain-to-version range map, it is automatically added.
-   *
-   * \param[in] domain A null-terminated string for the operator domain (e.g., "com.xilinx").
-   * \param[in] op The OrtCustomOp instance whose metadata defines the schema.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.25.
-   */
-  ORT_API2_STATUS(RegisterOrtCustomOpSchema, _In_ const char* domain, _In_ const OrtCustomOp* op);
-
-  /** \brief Deregister an ONNX operator schema.
-   *
-   * Removes a previously registered schema from the global ONNX schema registry.
-   *
-   * \param[in] domain A null-terminated string for the operator domain.
-   * \param[in] op_type A null-terminated string for the operator type name.
-   * \param[in] version The opset version of the schema to deregister.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.25.
-   */
-  ORT_API2_STATUS(DeregisterOrtCustomOpSchema, _In_ const char* domain, _In_ const char* op_type, _In_ int version);
-
   /** \brief Get an ONNX operator schema from the global registry.
    *
    * Looks up a schema by name, maximum inclusive version, and domain.
@@ -1490,6 +1462,36 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
                   _In_ const char* domain, _Outptr_result_maybenull_ const OrtOpSchema** out_schema);
+
+  /** \brief Get the first ONNX opset version that introduced this operator schema.
+   *
+   * If an operator has had no changes that break backwards compatibility, the `since_version` is
+   * just the first opset version that introduced the operator. However, if the operator has had breaking changes,
+   * then `since_version` corresponds to the opset version that introduced the breaking change.
+   *
+   * For example, suppose operator "Foo" was added in version 3, and had a breaking in version 6.
+   * Then there will be an operator schema entry for "Foo" with a since_version of 3, and another, updated
+   * operator schema entry for "Foo" with a since_version of 6.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out The ONNX opset version.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out);
+
+  /** \brief Get the number of inputs defined by the operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out The number of inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
 
   /** \brief Get the name of the i-th input formal parameter from an operator schema.
    *
@@ -1516,6 +1518,17 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(OpSchema_GetInputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
                   _Outptr_ const char** out);
+
+  /** \brief Get the number of outputs defined by the operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out The number of outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
 
   /** \brief Get the name of the i-th output formal parameter from an operator schema.
    *
