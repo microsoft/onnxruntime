@@ -65,10 +65,14 @@ class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, float, AveragePool);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, MLFloat16, AveragePool);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(11, 11, float, MaxPool);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(11, 11, MLFloat16, MaxPool);
-class CUDA_NHWC_OP_TYPED_CLASS_NAME(12, float, MaxPool);
-class CUDA_NHWC_OP_TYPED_CLASS_NAME(12, MLFloat16, MaxPool);
-class CUDA_NHWC_OP_TYPED_CLASS_NAME(12, int8_t, MaxPool);
-class CUDA_NHWC_OP_TYPED_CLASS_NAME(12, uint8_t, MaxPool);
+class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(12, 21, float, MaxPool);
+class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(12, 21, MLFloat16, MaxPool);
+class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(12, 21, int8_t, MaxPool);
+class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(12, 21, uint8_t, MaxPool);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, float, MaxPool);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, MLFloat16, MaxPool);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, int8_t, MaxPool);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, uint8_t, MaxPool);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(14, 14, float, BatchNormalization);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(14, 14, double, BatchNormalization);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(14, 14, MLFloat16, BatchNormalization);
@@ -130,10 +134,14 @@ Status RegisterCudaNhwcKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(10, 10, MLFloat16, MaxPool)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(11, 11, float, MaxPool)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(11, 11, MLFloat16, MaxPool)>,
-      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(12, float, MaxPool)>,
-      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(12, MLFloat16, MaxPool)>,
-      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(12, int8_t, MaxPool)>,
-      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(12, uint8_t, MaxPool)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(12, 21, float, MaxPool)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(12, 21, MLFloat16, MaxPool)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(12, 21, int8_t, MaxPool)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(12, 21, uint8_t, MaxPool)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(22, float, MaxPool)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(22, MLFloat16, MaxPool)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(22, int8_t, MaxPool)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(22, uint8_t, MaxPool)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(11, float, ConvTranspose)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(11, MLFloat16, ConvTranspose)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 10, float, ConvTranspose)>,
