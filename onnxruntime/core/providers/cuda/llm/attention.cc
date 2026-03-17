@@ -73,6 +73,10 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   ORT_ENFORCE(softcap_ >= 0.0f, "softcap must be non-negative");
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
+  // Valid softmax_precision values are TensorProto data types: 0 (not set), 1 (FLOAT), 10 (FLOAT16), 11 (DOUBLE), 16 (BFLOAT16)
+  ORT_ENFORCE(softmax_precision_ == 0 || softmax_precision_ == 1 || softmax_precision_ == 10 ||
+                  softmax_precision_ == 11 || softmax_precision_ == 16,
+              "softmax_precision must be a valid TensorProto data type (0, 1, 10, 11, or 16).");
   ORT_ENFORCE(scale_ > 0 || std::isnan(scale_), "scale must be greater than 0 if specified");
 
   const auto* kernel_options = this->GetAttentionKernelOptions();
@@ -1175,7 +1179,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (parameters.softcap > 0.0f) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "softcap requires flash attention or memory efficient attention, "
-                           "but neither is eligible. Ensure fp16/bf16 on Ampere+ GPU, or check head_size constraints.");
+                           "but neither is eligible for this configuration. Check dtype (fp16/bf16 required for Flash), "
+                           "head_size constraints, and past_key compatibility.");
   }
 
   // TODO(titaiwang): Support additional output_qk modes beyond kNone and kQK.
