@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
