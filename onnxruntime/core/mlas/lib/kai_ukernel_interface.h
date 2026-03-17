@@ -8,13 +8,17 @@
 
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp_qsi4c32p_interface.h"
 
+// matmul inferfaces
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p_f32p_interface.h"
 
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p_interface.h"
 
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp_qsi8cxp_interface.h"
 
+// imatmul interfaces
 #include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p_f32p_interface.h"
+
+#include "kai/ukernels/matmul/imatmul_clamp_f32_f32_f32p/kai_imatmul_clamp_f32_f32_f32p_interface.h"
 
 // Wrapper type that carries a stable "name" alongside the KAI ukernel interface.
 // This avoids needing to infer which underlying microkernel was selected from a function pointer.
@@ -39,6 +43,13 @@ using KaiDynamicQGemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi8c
 // Wrapper for FP32 IMATMUL kernels used by the KleidiAI convolution implementation.
 using KaiF32IMatmulKernel = KaiMatmulKernel<kai_imatmul_clamp_f32_f32p_f32p_ukernel>;
 
+// Wrapper for SVE based IMatmul
+using KaiF32SveIMatmulKernel = KaiMatmulKernel<kai_imatmul_clamp_f32_f32_f32p_ukernel>;
+
+// Wrapper for SVE based matmul
+using KaiF32SveKernel = KaiMatmulKernel<kai_matmul_clamp_f32_f32_f32p_ukernel>;
+
+
 // Returns the selected Qnbit GEMM ukernel based on runtime CPU capabilities.
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel();
 
@@ -56,3 +67,7 @@ const KaiF32SgemvKernel& GetKleidiAISGemvUKernel();
 
 // Returns the selected FP32 IMATMUL ukernel used by the KleidiAI convolution implementation.
 const KaiF32IMatmulKernel& GetKleidiAIF32IMatmulUKernel();
+
+const KaiF32SveIMatmulKernel GetKleidiAISveImatmulUKernel();
+
+const KaiF32SveKernel GetKleidiAISveSGemmUKernel();
