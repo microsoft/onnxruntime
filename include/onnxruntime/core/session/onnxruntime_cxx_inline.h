@@ -3941,4 +3941,66 @@ inline Ort::KeyValuePairs GetEnvConfigEntries() {
 
   return Ort::KeyValuePairs{entries};
 }
+
+namespace detail {
+template <typename T>
+inline int ConstOpSchemaImpl<T>::GetSinceVersion() const {
+  int version = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetSinceVersion(this->p_, &version));
+  return version;
+}
+
+template <typename T>
+inline size_t ConstOpSchemaImpl<T>::GetNumInputs() const {
+  size_t num = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetNumInputs(this->p_, &num));
+  return num;
+}
+
+template <typename T>
+inline const char* ConstOpSchemaImpl<T>::GetInputName(size_t index) const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputName(this->p_, index, &name));
+  return name;
+}
+
+template <typename T>
+inline const char* ConstOpSchemaImpl<T>::GetInputTypeStr(size_t index) const {
+  const char* type_str = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputTypeStr(this->p_, index, &type_str));
+  return type_str;
+}
+
+template <typename T>
+inline size_t ConstOpSchemaImpl<T>::GetNumOutputs() const {
+  size_t num = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetNumOutputs(this->p_, &num));
+  return num;
+}
+
+template <typename T>
+inline const char* ConstOpSchemaImpl<T>::GetOutputName(size_t index) const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputName(this->p_, index, &name));
+  return name;
+}
+
+template <typename T>
+inline const char* ConstOpSchemaImpl<T>::GetOutputTypeStr(size_t index) const {
+  const char* type_str = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputTypeStr(this->p_, index, &type_str));
+  return type_str;
+}
+
+template <typename T>
+inline bool ConstOpSchemaImpl<T>::HasTypeConstraint(const char* type_str) const {
+  return GetEpApi().OpSchema_HasTypeConstraint(this->p_, type_str);
+}
+}  // namespace detail
+
+inline ConstOpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain) {
+  const OrtOpSchema* schema = nullptr;
+  ThrowOnError(GetEpApi().GetOpSchema(name, max_inclusive_version, domain, &schema));
+  return ConstOpSchema{schema};
+}
 }  // namespace Ort

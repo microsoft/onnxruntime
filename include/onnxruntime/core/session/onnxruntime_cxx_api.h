@@ -3516,6 +3516,52 @@ struct KernelRegistry : detail::Base<OrtKernelRegistry> {
 };
 
 namespace detail {
+/** \brief Non-owning wrapper around a `const OrtOpSchema*` from the ONNX schema registry.
+ *
+ * Provides access to operator schema metadata such as version, input/output names,
+ * and type constraints. The underlying pointer is owned by the global ONNX schema registry
+ * and must not be released by the caller.
+ */
+template <typename T>
+struct ConstOpSchemaImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::OpSchema_GetSinceVersion
+  int GetSinceVersion() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetNumInputs
+  size_t GetNumInputs() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetInputName
+  const char* GetInputName(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetInputTypeStr
+  const char* GetInputTypeStr(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetNumOutputs
+  size_t GetNumOutputs() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetOutputName
+  const char* GetOutputName(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetOutputTypeStr
+  const char* GetOutputTypeStr(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_HasTypeConstraint
+  bool HasTypeConstraint(const char* type_str) const;
+};
+}  // namespace detail
+
+/// Non-owning wrapper around a `const OrtOpSchema*` from the ONNX schema registry.
+using ConstOpSchema = detail::ConstOpSchemaImpl<detail::Unowned<const OrtOpSchema>>;
+
+/// \brief Get an ONNX operator schema from the global registry.
+///
+/// Wraps OrtEpApi::GetOpSchema. Returns a ConstOpSchema that may wrap nullptr if the schema is not found.
+ConstOpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain);
+
+namespace detail {
 template <typename T>
 struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
