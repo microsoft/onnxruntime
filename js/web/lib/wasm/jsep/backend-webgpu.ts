@@ -278,7 +278,7 @@ export class WebGpuBackend {
       value: this.device,
       writable: false,
       enumerable: true,
-      configurable: true,  // Allow deletion when device is destroyed
+      configurable: true, // Allow deletion when device is destroyed
     });
     Object.defineProperty(this.env.webgpu, 'adapter', {
       value: adapter,
