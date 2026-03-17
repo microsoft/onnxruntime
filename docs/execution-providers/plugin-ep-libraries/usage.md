@@ -11,6 +11,12 @@ nav_order: 1
 
 This page provides a reference on how to use a plugin EP library with the ONNX Runtime API.
 
+The code on this page is C++ and uses the ONNX Runtime C++ API.
+
+There are also some usage examples in other languages:
+- [Python example](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/plugin_execution_providers/basic/python/example_usage/example_usage.py)
+- [C# example](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/plugin_execution_providers/basic/csharp/SampleApp/Program.cs)
+
 ## Contents
 {: .no_toc }
 
