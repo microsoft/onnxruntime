@@ -530,6 +530,28 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     QuantizeA_Packed_CompInt8_Fn* QuantizeA_Packed_CompInt8 = nullptr;
 
     /**
+     * @brief Compute float-domain block sums of A for zero-point correction.
+     *        Used when KleidiAI handles asymmetric quantization.
+     *
+     * @param       A               Supplies the float A matrix.
+     * @param       CountM          Number of rows of A.
+     * @param       CountK          Number of columns of A.
+     * @param       BlkLen          Number of values in a block.
+     * @param       lda             Leading dimension of A.
+     * @param[out]  AFloatBlkSum    Output: M * BlockCountK float sums.
+     */
+    typedef void(ComputeAFloatBlkSum_Fn)(
+        const float* A,
+        size_t CountM,
+        size_t CountK,
+        size_t BlkLen,
+        size_t lda,
+        float* AFloatBlkSum
+    );
+
+    ComputeAFloatBlkSum_Fn* ComputeAFloatBlkSum = nullptr;
+
+    /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
      *
      * @param       BlkLen  Number of values in a block.

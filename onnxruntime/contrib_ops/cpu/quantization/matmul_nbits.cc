@@ -308,6 +308,21 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       scales_are_packed_ = true;
       is_packed = true;
     }
+
+    // For KleidiAI asymmetric path: compute BZpCorr when zero points become available.
+    // BZpCorr = scale_b * (8 - zp_b) for each block, stored after KleidiAI packed B data.
+    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && has_zp_input_ && nbits_ == 4) {
+      auto zptr = tensor.Data<uint8_t>();
+      const Tensor* scales_tensor = nullptr;
+      OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales_tensor);
+      if (scales_tensor != nullptr) {
+        auto sptr = scales_tensor->Data<float>();
+        // Re-invoke packing with zero points to compute BZpCorr
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
+                                    has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+      }
+      is_packed = false;
+    }
 #endif  // MLAS_TARGET_ARM64
   } else if (compute_type_ == HQNBIT_CompInt8 && nbits_ == 8) {
     // For 8-bit HQNBIT_CompInt8, scales are fp16 but the SQ8 packing functions expect float.

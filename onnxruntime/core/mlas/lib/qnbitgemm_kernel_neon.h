@@ -220,7 +220,20 @@ SQ4BitGemmKernel_Packed_CompInt8(
     size_t ldc,
     const float *Bias
 );
+
+void
+ComputeAFloatBlkSum(
+    const float* A,
+    size_t CountM,
+    size_t CountK,
+    size_t BlkLen,
+    size_t lda,
+    float* AFloatBlkSum
+);
 #endif
+
+bool
+UseKleidiAIBase(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 bool
 UseKleidiAI(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);

@@ -134,7 +134,9 @@ QuantizeBlock(
 bool
 UsePacked_CompInt8(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
 {
-    return UseKleidiAI(K, BlkLen, HasZp, BackendKernelSelectorConfig);
+    MLAS_UNREFERENCED_PARAMETER(HasZp);
+    // Use KleidiAI packed path for both symmetric and asymmetric (with ZP correction).
+    return UseKleidiAIBase(K, BlkLen, BackendKernelSelectorConfig);
 }
 
 #ifdef USE_KLEIDIAI
@@ -168,6 +170,37 @@ QuantizeA_Packed_CompInt8(
     void* dst_ptr = QuantA + lhs_packed_offset;
 
     kai_run_lhs_quant_pack_qai8dxp_f32(CountM, CountK, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
+}
+
+void
+ComputeAFloatBlkSum(
+    const float* A,
+    size_t CountM,
+    size_t CountK,
+    size_t BlkLen,
+    size_t lda,
+    float* AFloatBlkSum
+)
+{
+    const size_t BlockCountK = MlasDivRoundup(CountK, BlkLen);
+    for (size_t m = 0; m < CountM; ++m) {
+        const float* a_row = A + m * lda;
+        float* blk_sum_row = AFloatBlkSum + m * BlockCountK;
+        for (size_t blk = 0; blk < BlockCountK; ++blk) {
+            const size_t blk_start = blk * BlkLen;
+            const size_t blk_end = std::min(blk_start + BlkLen, CountK);
+            float32x4_t sum_vec = vdupq_n_f32(0.0f);
+            size_t k = blk_start;
+            for (; k + 4 <= blk_end; k += 4) {
+                sum_vec = vaddq_f32(sum_vec, vld1q_f32(a_row + k));
+            }
+            float sum = vaddvq_f32(sum_vec);
+            for (; k < blk_end; ++k) {
+                sum += a_row[k];
+            }
+            blk_sum_row[blk] = sum;
+        }
+    }
 }
 #endif
 
