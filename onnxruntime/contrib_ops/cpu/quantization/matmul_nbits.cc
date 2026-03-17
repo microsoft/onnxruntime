@@ -401,15 +401,25 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
                                 scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
-    if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
-      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
-                                  scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
-      is_packed = false;
-    } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
-      auto zptr = tensor.Data<uint8_t>();
-      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
-                                  nullptr, has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
-      is_packed = false;
+    bool should_pack_scale_and_zp = [&]() {
+#if defined(MLAS_TARGET_AMD64_IX86)
+      return true;
+#else
+      return (nbits_ == 8);
+#endif
+    }();
+
+    if (should_pack_scale_and_zp) {
+      if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
+                                    scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
+        is_packed = false;
+      } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
+        auto zptr = tensor.Data<uint8_t>();
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
+                                    nullptr, has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+        is_packed = false;
+      }
     }
   }
 
