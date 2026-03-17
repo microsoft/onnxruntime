@@ -765,6 +765,10 @@ HQ8BitGemm_CompInt8(
     }
 
     size_t CountN;
+    const size_t MaxCountN = std::min(RangeCountN, size_t{128});
+    // Temporary fp32 C buffer reused across N-chunks to avoid per-iteration allocations.
+    std::vector<float> c_temp(RangeCountM * MaxCountN);
+
     for (size_t n = 0; n < RangeCountN; n += CountN) {
         CountN = std::min(RangeCountN - n, size_t{128});
 
@@ -776,9 +780,6 @@ HQ8BitGemm_CompInt8(
             BlkUnsignedQuantAZeroPointCorrection
                 ? BlkUnsignedQuantAZeroPointCorrection + n * k_blks
                 : nullptr;
-
-        // Temporary fp32 C buffer
-        std::vector<float> c_temp(RangeCountM * CountN);
 
         GetMlasPlatform().QNBitGemmDispatch->SQ8BitGemmKernel_BlkSum_CompInt8(
             BlkLen,
@@ -859,6 +860,12 @@ HQ4BitGemm_CompInt8(
     }
 
     size_t CountN;
+    const size_t maxCountN = std::min(RangeCountN, size_t{128});
+    // Pre-allocate reusable buffers sized for the maximum column chunk
+    std::vector<float> b_col_scale_fp32(maxCountN * k_blks);
+    std::vector<float> bias_fp32(maxCountN);
+    std::vector<float> c_temp(RangeCountM * maxCountN);
+
     for (size_t n = 0; n < RangeCountN; n += CountN) {
         CountN = std::min(RangeCountN - n, size_t{128});
 
@@ -870,20 +877,16 @@ HQ4BitGemm_CompInt8(
         const MLAS_FP16* bias_fp16 = (BiasFp16 == nullptr) ? nullptr : BiasFp16 + n;
 
         // Convert fp16 scales to fp32 for this column chunk
-        std::vector<float> b_col_scale_fp32(CountN * k_blks);
+        b_col_scale_fp32.resize(CountN * k_blks);
         MlasConvertHalfToFloatBuffer(QuantBScaleFp16 + n * k_blks, b_col_scale_fp32.data(), CountN * k_blks);
 
         // Convert fp16 bias to fp32
-        std::vector<float> bias_fp32;
         float* bias_fp32_ptr = nullptr;
         if (bias_fp16 != nullptr) {
             bias_fp32.resize(CountN);
             MlasConvertHalfToFloatBuffer(bias_fp16, bias_fp32.data(), CountN);
             bias_fp32_ptr = bias_fp32.data();
         }
-
-        // Temporary fp32 C buffer
-        std::vector<float> c_temp(RangeCountM * CountN);
 
         size_t RowsRemaining = RangeCountM;
         size_t RowsProcessed = 0;

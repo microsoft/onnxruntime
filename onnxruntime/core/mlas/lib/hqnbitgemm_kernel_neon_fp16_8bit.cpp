@@ -25,6 +25,7 @@ Abstract:
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 
 #include "fp16_common.h"
 #include "qnbitgemm.h"

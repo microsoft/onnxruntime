@@ -16,6 +16,7 @@ Abstract:
 
 #include <vector>
 #include <random>
+#include <algorithm>
 
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"
@@ -252,8 +253,11 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
 
   MLAS_FORCEINLINE
   bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
-    float f0 = std::abs(v0.ToFloat()), f1 = std::abs(v1.ToFloat());
-    return std::abs(f0 - f1) <= f1 * rtol + atol;
+    float f0 = v0.ToFloat();
+    float f1 = v1.ToFloat();
+    float diff = std::abs(f0 - f1);
+    float max_abs = std::max(std::abs(f0), std::abs(f1));
+    return diff <= max_abs * rtol + atol;
   }
 
   template <size_t Ldb, size_t N, size_t K>
@@ -515,7 +519,7 @@ class MlasNeonFp16Prepack8BitTest : public MlasTestBase {
         for (size_t k = 0; k < 16; ++k) {
           for (size_t col = 0; col < 8; ++col) {
             size_t raw_k = k_blk * 16 + k;
-            if (raw_k >= BlockCountK * BlkLen) continue;
+            if (raw_k >= K) continue;
             uint8_t expected = input[(n + col) * Ldb + raw_k];
             uint8_t actual = packed[n * Ldb + k_blk * 128 + k * 8 + col];
             ASSERT_EQ(actual, expected)
@@ -526,9 +530,9 @@ class MlasNeonFp16Prepack8BitTest : public MlasTestBase {
       }
     }
 
-    // Verify remainder columns (should be copied as-is)
+    // Verify remainder columns (should be copied as-is for the logical K range)
     for (; n < N; ++n) {
-      for (size_t k = 0; k < Ldb; ++k) {
+      for (size_t k = 0; k < K; ++k) {
         ASSERT_EQ(packed[n * Ldb + k], input[n * Ldb + k])
             << " seed " << seed_
             << " n " << n << " k " << k;
@@ -573,8 +577,11 @@ class MlasNeonFp16DequantB8BitTest : public MlasTestBase {
 
   MLAS_FORCEINLINE
   bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
-    float f0 = std::abs(v0.ToFloat()), f1 = std::abs(v1.ToFloat());
-    return std::abs(f0 - f1) <= f1 * rtol + atol;
+    float f0 = v0.ToFloat();
+    float f1 = v1.ToFloat();
+    float diff = std::abs(f0 - f1);
+    float max_abs = std::max(std::abs(f0), std::abs(f1));
+    return diff <= max_abs * rtol + atol;
   }
 
   // Reference dequantization for 8-bit packed data.
