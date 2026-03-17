@@ -4,6 +4,7 @@
 #param is_fp16
 #param is_qualcomm
 #param is_unidirectional
+#param max_k_step_param
 #param prefer_subgroupshuffle
 #param q_BNSH
 #param qkv_head_size
@@ -32,8 +33,9 @@ const min_value = q_element_t(-3.4028234663852886e+38f);
 #endif
 
 // For max performance max_k_step should be the same as sg_size, however we might run out of registers
-// for qk_1, qk_2 .. qk_(sg_size). So we cap it at max_k_step (16).
-const max_k_step : u32 = 16u;
+// for qk_1, qk_2 .. qk_(sg_size). So we cap it at max_k_step.
+// For smaller head_size, max_k_step can be 32 since register/SHM pressure is lower.
+const max_k_step : u32 = max_k_step_param;
 const vec_factor : u32 = 4u;
 const head_size_vec : u32 = head_size / vec_factor;
 
@@ -208,6 +210,12 @@ $MAIN {
     var qk_2 : vec4<q_element_t>;
     var qk_3 : vec4<q_element_t>;
     var qk_4 : vec4<q_element_t>;
+#if max_k_step_param > 16
+    var qk_5 : vec4<q_element_t>;
+    var qk_6 : vec4<q_element_t>;
+    var qk_7 : vec4<q_element_t>;
+    var qk_8 : vec4<q_element_t>;
+#endif
     if (sg_size > 8) {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
 #if prefer_subgroupshuffle
@@ -239,6 +247,24 @@ $MAIN {
         qk_4[1] += dot(q_own, fetchKTile(13, i, k_local));
         qk_4[2] += dot(q_own, fetchKTile(14, i, k_local));
         qk_4[3] += dot(q_own, fetchKTile(15, i, k_local));
+#if max_k_step_param > 16
+        qk_5[0] += dot(q_own, fetchKTile(16, i, k_local));
+        qk_5[1] += dot(q_own, fetchKTile(17, i, k_local));
+        qk_5[2] += dot(q_own, fetchKTile(18, i, k_local));
+        qk_5[3] += dot(q_own, fetchKTile(19, i, k_local));
+        qk_6[0] += dot(q_own, fetchKTile(20, i, k_local));
+        qk_6[1] += dot(q_own, fetchKTile(21, i, k_local));
+        qk_6[2] += dot(q_own, fetchKTile(22, i, k_local));
+        qk_6[3] += dot(q_own, fetchKTile(23, i, k_local));
+        qk_7[0] += dot(q_own, fetchKTile(24, i, k_local));
+        qk_7[1] += dot(q_own, fetchKTile(25, i, k_local));
+        qk_7[2] += dot(q_own, fetchKTile(26, i, k_local));
+        qk_7[3] += dot(q_own, fetchKTile(27, i, k_local));
+        qk_8[0] += dot(q_own, fetchKTile(28, i, k_local));
+        qk_8[1] += dot(q_own, fetchKTile(29, i, k_local));
+        qk_8[2] += dot(q_own, fetchKTile(30, i, k_local));
+        qk_8[3] += dot(q_own, fetchKTile(31, i, k_local));
+#endif
       }
     } else {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
@@ -263,6 +289,12 @@ $MAIN {
     if (sg_size > 8) {
       qk_3 = qk_3 + loadAttentionBias(batch_idx, q_idx_global, k_start + 8, head_idx);
       qk_4 = qk_4 + loadAttentionBias(batch_idx, q_idx_global, k_start + 12, head_idx);
+#if max_k_step_param > 16
+      qk_5 = qk_5 + loadAttentionBias(batch_idx, q_idx_global, k_start + 16, head_idx);
+      qk_6 = qk_6 + loadAttentionBias(batch_idx, q_idx_global, k_start + 20, head_idx);
+      qk_7 = qk_7 + loadAttentionBias(batch_idx, q_idx_global, k_start + 24, head_idx);
+      qk_8 = qk_8 + loadAttentionBias(batch_idx, q_idx_global, k_start + 28, head_idx);
+#endif
     }
 
     // Neuter qk values where K is out of bounds.
@@ -283,12 +315,36 @@ $MAIN {
       qk_4[1] = select(min_value, qk_4[1], k_start + 13 < seq_causal_length);
       qk_4[2] = select(min_value, qk_4[2], k_start + 14 < seq_causal_length);
       qk_4[3] = select(min_value, qk_4[3], k_start + 15 < seq_causal_length);
+#if max_k_step_param > 16
+      qk_5[0] = select(min_value, qk_5[0], k_start + 16 < seq_causal_length);
+      qk_5[1] = select(min_value, qk_5[1], k_start + 17 < seq_causal_length);
+      qk_5[2] = select(min_value, qk_5[2], k_start + 18 < seq_causal_length);
+      qk_5[3] = select(min_value, qk_5[3], k_start + 19 < seq_causal_length);
+      qk_6[0] = select(min_value, qk_6[0], k_start + 20 < seq_causal_length);
+      qk_6[1] = select(min_value, qk_6[1], k_start + 21 < seq_causal_length);
+      qk_6[2] = select(min_value, qk_6[2], k_start + 22 < seq_causal_length);
+      qk_6[3] = select(min_value, qk_6[3], k_start + 23 < seq_causal_length);
+      qk_7[0] = select(min_value, qk_7[0], k_start + 24 < seq_causal_length);
+      qk_7[1] = select(min_value, qk_7[1], k_start + 25 < seq_causal_length);
+      qk_7[2] = select(min_value, qk_7[2], k_start + 26 < seq_causal_length);
+      qk_7[3] = select(min_value, qk_7[3], k_start + 27 < seq_causal_length);
+      qk_8[0] = select(min_value, qk_8[0], k_start + 28 < seq_causal_length);
+      qk_8[1] = select(min_value, qk_8[1], k_start + 29 < seq_causal_length);
+      qk_8[2] = select(min_value, qk_8[2], k_start + 30 < seq_causal_length);
+      qk_8[3] = select(min_value, qk_8[3], k_start + 31 < seq_causal_length);
+#endif
     }
 
     var local_max_temp = max(qk_1, qk_2);
     if (sg_size > 8) {
       local_max_temp = max(local_max_temp, qk_3);
       local_max_temp = max(local_max_temp, qk_4);
+#if max_k_step_param > 16
+      local_max_temp = max(local_max_temp, qk_5);
+      local_max_temp = max(local_max_temp, qk_6);
+      local_max_temp = max(local_max_temp, qk_7);
+      local_max_temp = max(local_max_temp, qk_8);
+#endif
     }
     let local_max = max(max(local_max_temp.x, local_max_temp.y), max(local_max_temp.z, local_max_temp.w));
     let new_max = max(previous_max, local_max);
@@ -297,8 +353,18 @@ $MAIN {
     if (sg_size > 8) {
       qk_3 = q_value_t(exp(vec4<f32>(qk_3) - f32(new_max)));
       qk_4 = q_value_t(exp(vec4<f32>(qk_4) - f32(new_max)));
+#if max_k_step_param > 16
+      qk_5 = q_value_t(exp(vec4<f32>(qk_5) - f32(new_max)));
+      qk_6 = q_value_t(exp(vec4<f32>(qk_6) - f32(new_max)));
+      qk_7 = q_value_t(exp(vec4<f32>(qk_7) - f32(new_max)));
+      qk_8 = q_value_t(exp(vec4<f32>(qk_8) - f32(new_max)));
+#endif
     }
+#if max_k_step_param > 16
+    let sum_vec = qk_1 + qk_2 + qk_3 + qk_4 + qk_5 + qk_6 + qk_7 + qk_8;
+#else
     let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
+#endif
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
     // Compute lhs term of update di prime and the compute di prime.
@@ -310,6 +376,12 @@ $MAIN {
     if (sg_size > 8) {
       qk_3 = qk_3 / d;
       qk_4 = qk_4 / d;
+#if max_k_step_param > 16
+      qk_5 = qk_5 / d;
+      qk_6 = qk_6 / d;
+      qk_7 = qk_7 / d;
+      qk_8 = qk_8 / d;
+#endif
     }
     previous_max = new_max;
     previous_denom = d;
@@ -338,6 +410,24 @@ $MAIN {
         sum += subgroupShuffle(val, 13) * qk_4[1];
         sum += subgroupShuffle(val, 14) * qk_4[2];
         sum += subgroupShuffle(val, 15) * qk_4[3];
+#if max_k_step_param > 16
+        sum += subgroupShuffle(val, 16) * qk_5[0];
+        sum += subgroupShuffle(val, 17) * qk_5[1];
+        sum += subgroupShuffle(val, 18) * qk_5[2];
+        sum += subgroupShuffle(val, 19) * qk_5[3];
+        sum += subgroupShuffle(val, 20) * qk_6[0];
+        sum += subgroupShuffle(val, 21) * qk_6[1];
+        sum += subgroupShuffle(val, 22) * qk_6[2];
+        sum += subgroupShuffle(val, 23) * qk_6[3];
+        sum += subgroupShuffle(val, 24) * qk_7[0];
+        sum += subgroupShuffle(val, 25) * qk_7[1];
+        sum += subgroupShuffle(val, 26) * qk_7[2];
+        sum += subgroupShuffle(val, 27) * qk_7[3];
+        sum += subgroupShuffle(val, 28) * qk_8[0];
+        sum += subgroupShuffle(val, 29) * qk_8[1];
+        sum += subgroupShuffle(val, 30) * qk_8[2];
+        sum += subgroupShuffle(val, 31) * qk_8[3];
+#endif
         o_tile[i] = o_tile[i] * o_ratio + sum;
 
         if (sg_id < max_k_step) {
@@ -359,6 +449,24 @@ $MAIN {
         sum += subgroupShuffle(val, 13) * qk_4[1];
         sum += subgroupShuffle(val, 14) * qk_4[2];
         sum += subgroupShuffle(val, 15) * qk_4[3];
+#if max_k_step_param > 16
+        sum += subgroupShuffle(val, 16) * qk_5[0];
+        sum += subgroupShuffle(val, 17) * qk_5[1];
+        sum += subgroupShuffle(val, 18) * qk_5[2];
+        sum += subgroupShuffle(val, 19) * qk_5[3];
+        sum += subgroupShuffle(val, 20) * qk_6[0];
+        sum += subgroupShuffle(val, 21) * qk_6[1];
+        sum += subgroupShuffle(val, 22) * qk_6[2];
+        sum += subgroupShuffle(val, 23) * qk_6[3];
+        sum += subgroupShuffle(val, 24) * qk_7[0];
+        sum += subgroupShuffle(val, 25) * qk_7[1];
+        sum += subgroupShuffle(val, 26) * qk_7[2];
+        sum += subgroupShuffle(val, 27) * qk_7[3];
+        sum += subgroupShuffle(val, 28) * qk_8[0];
+        sum += subgroupShuffle(val, 29) * qk_8[1];
+        sum += subgroupShuffle(val, 30) * qk_8[2];
+        sum += subgroupShuffle(val, 31) * qk_8[3];
+#endif
         o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + sum;
       }
     } else {
@@ -415,6 +523,24 @@ $MAIN {
         sum += fetchVTile(13, i, val) * qk_4[1];
         sum += fetchVTile(14, i, val) * qk_4[2];
         sum += fetchVTile(15, i, val) * qk_4[3];
+#if max_k_step_param > 16
+        sum += fetchVTile(16, i, val) * qk_5[0];
+        sum += fetchVTile(17, i, val) * qk_5[1];
+        sum += fetchVTile(18, i, val) * qk_5[2];
+        sum += fetchVTile(19, i, val) * qk_5[3];
+        sum += fetchVTile(20, i, val) * qk_6[0];
+        sum += fetchVTile(21, i, val) * qk_6[1];
+        sum += fetchVTile(22, i, val) * qk_6[2];
+        sum += fetchVTile(23, i, val) * qk_6[3];
+        sum += fetchVTile(24, i, val) * qk_7[0];
+        sum += fetchVTile(25, i, val) * qk_7[1];
+        sum += fetchVTile(26, i, val) * qk_7[2];
+        sum += fetchVTile(27, i, val) * qk_7[3];
+        sum += fetchVTile(28, i, val) * qk_8[0];
+        sum += fetchVTile(29, i, val) * qk_8[1];
+        sum += fetchVTile(30, i, val) * qk_8[2];
+        sum += fetchVTile(31, i, val) * qk_8[3];
+#endif
         o_tile[i] = o_tile[i] * o_ratio + sum;
       }
     } else {

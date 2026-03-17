@@ -209,12 +209,18 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
+  // For smaller head_size, use a larger K tile (32) since register/SHM pressure is lower.
+  // This halves K loop iterations, reducing barrier sync overhead.
+  // SHM: max_k_step * (head_size/4) * 8bytes * 2(K+V). head_size=64: 32*16*8*2=8KB (OK)
+  const uint32_t max_k_step = (qkv_head_size_ <= 64 && !is_qualcomm_) ? 32 : 16;
+
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
+                             WGSL_TEMPLATE_PARAMETER(max_k_step_param, max_k_step),
                              WGSL_TEMPLATE_PARAMETER(prefer_subgroupshuffle, !is_nvidia_),
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
@@ -572,6 +578,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
 bool CanApplyFlashAttention(const Tensor* bias,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+  // Note: FlashAttention is slower than unfused path for head_size <= 32 (e.g.
+  // ~14x slower for head_size=16), but faster for head_size >= 64. Uncomment
+  // the check below if targeting models with head_size <= 32.
+  // if (parameters.head_size_ <= 32) { return false; }
   return !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
          bias == nullptr &&
