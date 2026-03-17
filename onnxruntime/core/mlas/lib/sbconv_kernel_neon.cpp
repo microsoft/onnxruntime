@@ -45,7 +45,12 @@ MlasConvPointwiseBf16KernelNeon(
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
 
     MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config;
-    mlas_backend_kernel_selector_config.use_kleidiai = ((KernelFlags & MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI) != 0);
+
+    // TODO(hasesh/ARM KleidiAI team): Study the impact of using the KleidiAI SBGEMM kernel for this convolution kernel
+    // and enable it if things look okay.
+    // Even if re-enabled, honor user override to disable KleidiAI usage if specified.
+    // That is, mlas_backend_kernel_selector_config.use_kleidiai = ((KernelFlags & MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI) != 0);
+    mlas_backend_kernel_selector_config.use_kleidiai = false;
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t InputStrideElements = InputStride / sizeof(float);
