@@ -1295,7 +1295,10 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
                 float* QuantARowScalePtr = quant_a_data.QuantScale;
                 float* QuantARowBlkSum = quant_a_data.BlockSum;
 
-                std::vector<float> a_row_fp32(K);
+                static thread_local std::vector<float> a_row_fp32;
+                if (a_row_fp32.size() < K) {
+                    a_row_fp32.resize(K);
+                }
 
                 for (size_t m = 0; m < M; ++m) {
                     MlasConvertHalfToFloatBuffer(ARowPtr, a_row_fp32.data(), K);
@@ -1320,7 +1323,10 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
                 const MLAS_FP16* ARowPtr = data.A;
                 std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
 
-                std::vector<float> a_row_fp32(K);
+                static thread_local std::vector<float> a_row_fp32;
+                if (a_row_fp32.size() < K) {
+                    a_row_fp32.resize(K);
+                }
 
                 for (size_t m = 0; m < M; ++m) {
                     MlasConvertHalfToFloatBuffer(ARowPtr, a_row_fp32.data(), K);

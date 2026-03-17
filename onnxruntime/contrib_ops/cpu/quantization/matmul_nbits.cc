@@ -263,7 +263,12 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         return Status::OK();
       }
       auto qptr = tensor.DataRaw();
-      auto scale_ptr = scales ? scales->DataRaw() : nullptr;
+      // For HQNBIT compute types, scales are fp16 and cannot be passed directly
+      // to packing functions that expect float*. Pass nullptr here; scales will
+      // be properly converted and packed in a subsequent PrePack call.
+      auto scale_ptr = (scales && compute_type_ != HQNBIT_CompInt8 && compute_type_ != HQNBIT_CompFp16)
+                           ? scales->DataRaw()
+                           : nullptr;
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
                                   has_zp_input_, nullptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
