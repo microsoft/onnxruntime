@@ -88,7 +88,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
             << "let zero_point_value = " << zero_point.GetByOffset("zero_point_index") << ";\n";
       }
     } else {
-      // BlockedQuantization. The zero-point input shape is same as the input shape except along axis.
+      // BlockedQuantization. The zero-point input shape is the same as the scale input shape.
       if (packed_) {
         shader.MainFunctionBody()
             << "let zero_point_offset = " << scale.IndicesToOffset("scale_indices") << ";\n"

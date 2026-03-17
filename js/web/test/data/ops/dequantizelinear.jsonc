@@ -376,6 +376,9 @@
             "dims": [2, 1, 2],
             "type": "float32"
           },
+          // Note: Zero point data is intentionally zeros because ONNX spec says that it should be zero when
+          // dequantizing int32.
+          // https://github.com/onnx/onnx/blob/d53918f79f1ccecb8c4d2f8c71bd0fcbdb0f364b/onnx/defs/doc_strings.cc#L106-L107
           {
             "data": [0, 0, 0, 0],
             "dims": [2, 1, 2],
