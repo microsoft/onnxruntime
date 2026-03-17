@@ -28,6 +28,8 @@
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 #include "core/session/utils.h"
+#include "core/common/profiler_common.h"
+#include "core/session/plugin_ep/ep_profiling_events_container.h"
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
@@ -806,6 +808,51 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtExecutionProviderApi::EpProfilingEventsContainer_AddEvents,
+                    _In_ OrtEpProfilingEventsContainer* events_container,
+                    _In_reads_(num_events) const OrtEpProfilingEvent* events,
+                    _In_ size_t num_events) {
+  API_IMPL_BEGIN
+  if (events_container == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "events_container is null");
+  }
+
+  if (events == nullptr && num_events > 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "events is null but num_events > 0");
+  }
+
+  auto& output = events_container->events;
+  output.reserve(output.size() + num_events);
+
+  for (size_t i = 0; i < num_events; ++i) {
+    const OrtEpProfilingEvent& c_event = events[i];
+
+    onnxruntime::InlinedHashMap<std::string, std::string> args;
+    if (c_event.arg_keys != nullptr && c_event.arg_values != nullptr) {
+      args.reserve(c_event.num_args);
+      for (size_t j = 0; j < c_event.num_args; ++j) {
+        const char* key = c_event.arg_keys[j];
+        const char* value = c_event.arg_values[j];
+        if (key != nullptr && value != nullptr) {
+          args[key] = value;
+        }
+      }
+    }
+
+    output.emplace_back(
+        static_cast<onnxruntime::profiling::EventCategory>(c_event.category),
+        static_cast<int>(c_event.process_id),
+        static_cast<int>(c_event.thread_id),
+        std::string(c_event.event_name ? c_event.event_name : ""),
+        static_cast<long long>(c_event.timestamp_us),
+        static_cast<long long>(c_event.duration_us),
+        std::move(args));
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -869,6 +916,9 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseKernelImpl,
     &OrtExecutionProviderApi::GetEnvConfigEntries,
     // End of Version 24 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::EpProfilingEventsContainer_AddEvents,
+    // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -878,6 +928,8 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
+static_assert(offsetof(OrtEpApi, EpProfilingEventsContainer_AddEvents) / sizeof(void*) == 50,
+              "Size of version 25 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
 

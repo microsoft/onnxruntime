@@ -119,4 +119,9 @@ ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl);
 
 // Env config entries
 ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
+
+// EP profiling events container
+ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents, _In_ OrtEpProfilingEventsContainer* events_container,
+                    _In_reads_(num_events) const OrtEpProfilingEvent* events,
+                    _In_ size_t num_events);
 }  // namespace OrtExecutionProviderApi

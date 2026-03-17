@@ -24,6 +24,7 @@ ORT_RUNTIME_CLASS(DataTransferImpl);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 ORT_RUNTIME_CLASS(EpProfilerImpl);
+ORT_RUNTIME_CLASS(EpProfilingEventsContainer);
 
 ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
 
@@ -437,8 +438,8 @@ typedef enum {
 
 /** \brief A profiling event reported by an execution provider.
  *
- * The event data (strings, key-value arrays) must remain valid until
- * \c OrtEpProfilerImpl::ReleaseProfilingEvents is called.
+ * The event data (strings, key-value arrays) must remain valid for the duration of the
+ * \c OrtEpApi::EpProfilingEventsContainer_AddEvents call that references them.
  *
  * \since Version 1.25.
  */
@@ -501,15 +502,16 @@ struct OrtEpProfilerImpl {
 
   /** \brief Called when profiling ends.
    *
-   * The EP should return all captured profiling events since the last StartProfiling call.
-   * The returned events and their string data must remain valid until ReleaseProfilingEvents is called.
+   * The EP should report all captured profiling events since the last StartProfiling call by calling
+   * \c OrtEpApi::EpProfilingEventsContainer_AddEvents on the provided container one or more times.
+   * ORT copies event data during AddEvents, so the EP may free its event data after each AddEvents call
+   * or after EndProfiling returns.
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
    * \param[in] start_time_ns The profiling start time in nanoseconds since epoch
    *                          (from std::chrono::high_resolution_clock).
-   * \param[out] events Output parameter set to an array of OrtEpProfilingEvent instances.
-   *                    Set to NULL if there are no events.
-   * \param[out] num_events Output parameter set to the number of events in the array.
+   * \param[in] events_container Opaque container provided by ORT. The EP adds events to it by calling
+   *                             \c OrtEpApi::EpProfilingEventsContainer_AddEvents.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -519,25 +521,7 @@ struct OrtEpProfilerImpl {
    */
   ORT_API2_STATUS(EndProfiling, _In_ OrtEpProfilerImpl* this_ptr,
                   _In_ int64_t start_time_ns,
-                  _Outptr_result_maybenull_ OrtEpProfilingEvent** events,
-                  _Out_ size_t* num_events);
-
-  /** \brief Release profiling events returned by EndProfiling.
-   *
-   * Called by ORT after it has finished processing the events returned by EndProfiling.
-   * The implementation should release the event array and any associated string data.
-   *
-   * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
-   * \param[in] events The event array returned by EndProfiling.
-   * \param[in] num_events The number of events in the array.
-   *
-   * \note Implementation of this function is required.
-   *
-   * \since Version 1.25.
-   */
-  ORT_API_T(void, ReleaseProfilingEvents, _In_ OrtEpProfilerImpl* this_ptr,
-            _In_reads_(num_events) OrtEpProfilingEvent* events,
-            _In_ size_t num_events);
+                  _In_ OrtEpProfilingEventsContainer* events_container);
 
   /** \brief Called before an operator starts execution.
    *
@@ -1583,6 +1567,25 @@ struct OrtEpApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
+
+  /** \brief Add profiling events to an opaque events container during \c OrtEpProfilerImpl::EndProfiling.
+   *
+   * ORT copies the event data (including all referenced strings) during this call, so the EP may free
+   * its event data immediately after the call returns. This function may be called multiple times within
+   * a single EndProfiling call to add events in batches.
+   *
+   * \param[in] events_container The opaque container provided by ORT to the EP's EndProfiling call.
+   * \param[in] events Array of profiling events to add. The event data (including all strings referenced by
+   *                   \c OrtEpProfilingEvent fields) must remain valid for the duration of this call.
+   * \param[in] num_events Number of events in the array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(EpProfilingEventsContainer_AddEvents, _In_ OrtEpProfilingEventsContainer* events_container,
+                  _In_reads_(num_events) const OrtEpProfilingEvent* events,
+                  _In_ size_t num_events);
 };
 
 /**
@@ -1887,7 +1890,8 @@ struct OrtEp {
    * profiling events during model execution.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[out] profiler Output parameter set to a new OrtEpProfilerImpl instance owned by ORT.
+   * \param[out] profiler Output parameter set to a new OrtEpProfilerImpl instance created by the EP.
+   *                      ORT will call OrtEpProfilerImpl::Release on it when done.
    *                      Set to NULL if the EP does not support profiling.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
