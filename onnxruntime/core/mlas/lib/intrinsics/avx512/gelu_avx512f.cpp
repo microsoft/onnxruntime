@@ -233,7 +233,7 @@ MlasGeluErfAvx512(
     BigResult = _mm512_sub_ps(ErfOne, MlasGeluErfExpVectorAvx512(BigResult));
 
     __m512 Result = _mm512_mask_blend_ps(SplitMask, SmallResult, BigResult);
-    Result = _mm512_or_ps(Result, SignMask);
+    Result = _mm512_castsi512_ps(_mm512_or_si512(_mm512_castps_si512(Result), _mm512_castps_si512(SignMask)));
     return Result;
 }
 

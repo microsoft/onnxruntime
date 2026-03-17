@@ -96,7 +96,7 @@ MlasLogisticApproxAvx512(
     const __m512 PositiveMask = _mm512_castsi512_ps(_mm512_set1_epi32(0x7fffffffu));
 
     const __m512 XAbs = _mm512_and_ps(Value, PositiveMask);
-    const __m512 XNeg = _mm512_or_ps(XAbs, SignMask);
+    const __m512 XNeg = _mm512_castsi512_ps(_mm512_or_si512(_mm512_castps_si512(XAbs), _mm512_castps_si512(SignMask)));
 
     const __m512 E = MlasExpApproxAvx512(XNeg);
     const __m512 Y = _mm512_div_ps(E, _mm512_add_ps(E, One));
