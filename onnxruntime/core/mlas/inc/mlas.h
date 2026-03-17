@@ -1118,6 +1118,10 @@ MlasComputeErf(
     size_t N
     );
 
+//
+// Note: The Input and Output buffers for MlasComputeGeluErf must not overlap.
+// In-place operation (e.g., passing the same buffer for both parameters) is unsupported.
+//
 void
 MLASCALL
 MlasComputeGeluErf(
@@ -1127,6 +1131,10 @@ MlasComputeGeluErf(
     MLAS_GELU_ERF_MODE Mode
     );
 
+//
+// Note: The Input and Output buffers for MlasComputeSilu must not overlap.
+// In-place operation (e.g., passing the same buffer for both parameters) is unsupported.
+//
 void
 MLASCALL
 MlasComputeSilu(
