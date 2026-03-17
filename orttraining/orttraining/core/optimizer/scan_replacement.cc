@@ -39,37 +39,37 @@ Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   }
   outputs.insert(outputs.begin() + n_carries, carries.begin(), carries.end());
 
-  std::unordered_map<std::string, const NodeArg*> activation;
-  std::unordered_map<std::string, const Node*> pending;
+  std::unordered_set<const NodeArg*> activation;
+  std::unordered_set<const Node*> pending;
   for (auto output : outputs) {
     const Node* node = body->GetProducerNode(output->Name());
     if (node == nullptr)
       continue;
 
     for (auto input : node->InputDefs())
-      pending.insert(std::make_pair(input->Name(), body->GetProducerNode(input->Name())));
+      pending.insert(body->GetProducerNode(input->Name()));
 
     while (pending.size() > 0) {
-      std::unordered_map<std::string, const NodeArg*> current_activation;
+      std::unordered_set<const NodeArg*> current_activation;
       for (auto pnode : pending) {
-        if (pnode.second == nullptr)
+        if (pnode == nullptr)
           continue;
 
-        for (auto i : pnode.second->InputDefs()) {
-          if (std::find(body_inputs.begin(), body_inputs.end(), i) == body_inputs.end())
-            current_activation.insert(std::make_pair(i->Name(), i));
+        for (auto i : pnode->InputDefs()) {
+          if (body->GetProducerNode(i->Name()))
+            current_activation.insert(i);
         }
       }
 
       pending.clear();
       for (auto a : current_activation)
-        pending.insert(std::make_pair(a.first, body->GetProducerNode(a.first)));
+        pending.insert(body->GetProducerNode(a->Name()));
       activation.insert(current_activation.begin(), current_activation.end());
     }
   }
 
   for (auto a : activation)
-    outputs.push_back(a.second);
+    outputs.push_back(a);
 
   body->SetOutputs(outputs);
   body->SetGraphProtoSyncNeeded();
@@ -92,8 +92,8 @@ Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
 
   for (auto& a : activation) {
     ONNX_NAMESPACE::TypeProto type_proto;
-    type_proto.mutable_tensor_type()->set_elem_type(a.second->TypeAsProto()->tensor_type().elem_type());
-    node_outputs.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(a.first), &type_proto));
+    type_proto.mutable_tensor_type()->set_elem_type(a->TypeAsProto()->tensor_type().elem_type());
+    node_outputs.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(a->Name()), &type_proto));
   }
 
   // Modify attributes

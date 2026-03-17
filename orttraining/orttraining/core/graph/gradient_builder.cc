@@ -2416,7 +2416,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
       std::vector<const NodeArg *>im;
       im.reserve(n_intermediate);
       for (size_t i = 0; i < n_intermediate; i++)
-	      im.push_back(&graph->GetOrCreateNodeArg(outputs[i + 2 * n_carries + n_outputs]->Name(), nullptr));
+        im.push_back(&graph->GetOrCreateNodeArg(outputs[i + 2 * n_carries + n_outputs]->Name(), nullptr));
 
       std::vector<const NodeArg*> gi;
       gi.reserve(GetSrcNodeInputSize());
@@ -2441,19 +2441,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
       outputs.insert(outputs.end(), gii.begin(), gii.end());
 
       graph->SetInputs(inputs);
+      ORT_ENFORCE(graph->GetInputs().size() == inputs.size());
       graph->SetOutputs(outputs);
 
       std::unordered_set<Node*> remove_candidate;
       for (auto& i : im)
-	      remove_candidate.insert(graph->GetMutableProducerNode(i->Name()));
-      if (remove_candidate.find(nullptr) != remove_candidate.end())
-	      remove_candidate.erase(nullptr);
+      {
+        auto node = graph->GetMutableProducerNode(i->Name());
+        remove_candidate.insert(node);
+        graph_utils::RemoveNodeOutputEdges(*graph, *node, graph_utils::GetNodeOutputIndexFromOutputName(*node, i->Name()));
+      }
 
       for (auto node : remove_candidate)
-      {
-	      graph_utils::RemoveNodeOutputEdges(*graph, *node);
-	      graph_utils::RemoveNodesWithOneOutputBottomUp(*graph, *node);
-      } });
+        graph_utils::RemoveNodesWithOneOutputBottomUp(*graph, *node);
+  });
   // Now, we need to setup attributes for backward Scan.
   // Because backward Scan calculate reverse order from forward one, we need to flip direction for carries_t, and inputs_t.
   // output_t_grad is also scan input, so need to copy scan direction and flip them.

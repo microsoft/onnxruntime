@@ -235,6 +235,7 @@ std::unique_ptr<ONNX_NAMESPACE::GraphProto> GradientBuilderBase::SubgraphGradien
   adjust_func(subgraph.get());
 
   subgraph->SetGraphProtoSyncNeeded();
+  ORT_THROW_IF_ERROR(subgraph->Resolve(options));
   subgraph->ToGraphProto();
   return subgraph_proto;
 }
