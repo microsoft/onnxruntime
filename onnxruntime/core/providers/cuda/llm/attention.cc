@@ -1098,10 +1098,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
 #endif
 
-  // softmax_precision: All CUDA backends (Flash, MEA, Unfused) already accumulate
-  // softmax in FP32 internally (Flash/MEA via tile-based FP32 accumulators, Unfused via
-  // cuBLAS FP32 compute and FP32 softmax kernel). softmax_precision=1 (FP32) is inherently
-  // satisfied; softmax_precision=0 (default) is also fine since higher precision is always
+  // softmax_precision: All CUDA backends (Flash, MEA, Unfused) compute softmax in
+  // FP32 internally (Flash/MEA via tile-based FP32 accumulators, Unfused via FP32
+  // softmax kernel). softmax_precision=1 (FP32) is inherently satisfied;
+  // softmax_precision=0 (default) is also fine since higher precision is always
   // acceptable per the ONNX spec.
 
 #if USE_FLASH_ATTENTION
