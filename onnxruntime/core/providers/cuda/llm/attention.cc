@@ -71,6 +71,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
               "qk_matmul_output_mode must be one of: kNone(-1), kQK(0), kQKMask(1), kQKSoftCap(2), kQKSoftMax(3).");
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
+  ORT_ENFORCE(softcap_ >= 0.0f, "softcap must be non-negative");
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
   ORT_ENFORCE(scale_ > 0 || std::isnan(scale_), "scale must be greater than 0 if specified");
 
@@ -171,9 +172,10 @@ Status Attention<T>::ConvertAttnMaskToBias(
 //   Path 3: no past, no mask (prompt) -> mha_fwd
 //   Eligibility: fp16/bf16, head_size==v_head_size, no output_qk,
 //                (no mask OR bool mask + past OR nonpad_kv_seqlen without mask)
-//   Note: softcap and softmax_precision are early-rejected before the cascade.
-//   Note: nonpad_kv_seqlen + attn_mask is supported but routes to MEA/unfused,
-//         not Flash (Flash has no bias parameter for this combination).
+//   Note: softcap is passed to the Flash kernel natively. softmax_precision is
+//   inherently satisfied (Flash accumulates softmax in FP32).
+//   Note: nonpad_kv_seqlen + attn_mask routes to MEA/unfused, not Flash
+//         (Flash has no bias parameter for this combination).
 //
 // PERFORMANCE NOTE: ONNX Attention's internal-cache decode path (past_key/past_value)
 // is ~15-30% slower than contrib GQA's decode path for grouped-query attention workloads.
@@ -545,7 +547,8 @@ Status Attention<T>::RunFlashAttention(
 //   Eligibility: see has_memory_efficient_attention() (SM50+/53+/80+ by dtype,
 //                head_size <= 1024), plus: no output_qk, no past_key (decode excluded),
 //                bias stride alignment.
-//   Note: softcap and softmax_precision are early-rejected before the cascade.
+//   Note: softcap is forwarded to the MEA kernel via p.softcap. softmax_precision
+//   is inherently satisfied (cutlass FMHA accumulates softmax in FP32).
 //
 template <typename T>
 Status Attention<T>::RunMemoryEfficientAttention(
@@ -823,7 +826,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
 //           (nonpad bias + mask bias added element-wise with cyclic broadcasting)
 //   Path 3: all other cases -> passes mask/bias directly
 //   Supports: all dtypes (fp16/bf16/fp32), all mask types (bool/float/none), all head sizes
-//   Not supported: softcap, softmax_precision, output_qk modes beyond kNone/kQK
+//   Not supported: softcap (rejected at fallback), output_qk modes beyond kNone/kQK
 //   Limitation: MHA only (q_num_heads must equal kv_num_heads)
 //
 template <typename T>
@@ -1169,7 +1172,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Fallback: unfused attention
   // Softcap is not implemented in the unfused path — it requires Flash or MEA.
-  if (parameters.softcap != 0.0f) {
+  if (parameters.softcap > 0.0f) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "softcap requires flash attention or memory efficient attention, "
                            "but neither is eligible. Ensure fp16/bf16 on Ampere+ GPU, or check head_size constraints.");
