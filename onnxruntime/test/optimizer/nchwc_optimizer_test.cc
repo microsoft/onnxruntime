@@ -85,12 +85,15 @@ struct NchwcTestHelper {
 
   Node& AddNode(const std::string& op_type,
                 const std::vector<NodeArg*>& input_args,
-                const std::vector<NodeArg*>& output_args) {
+                const std::vector<NodeArg*>& output_args,
+                const std::string& domain = kOnnxDomain) {
     return graph_.AddNode(graph_.GenerateNodeName("node"),
                           op_type,
                           "description",
                           input_args,
-                          output_args);
+                          output_args,
+                          nullptr,
+                          domain);
   }
 
   Node& AddConvNode(NodeArg* input_arg, NodeArg* output_arg, const std::vector<int64_t>& weights_shape, bool no_bias = false) {
@@ -704,6 +707,36 @@ TEST(NchwcOptimizerTests, ConvBinaryBroadcast) {
   for (auto& op_type : op_types) {
     test_case(op_type);
   }
+}
+
+TEST(NchwcOptimizerTests, ConvMulChannelScale) {
+  auto test_case = [&](const std::vector<int64_t>& scale_shape) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 32, 25, 21});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* mul_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {32, 32, 3, 3});
+      auto* scale_arg = helper.MakeInitializer<float>(scale_shape, helper.FillRandomData<float>(scale_shape));
+      helper.AddNode("Mul", {conv_output_arg, scale_arg}, {mul_output_arg});
+      helper.AddConvNode(mul_output_arg, output_arg, {16, 32, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 3);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["Mul"], 0);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  test_case({32});
+  test_case({32, 1, 1});
+  test_case({1, 32, 1, 1});
 }
 
 TEST(NchwcOptimizerTests, ConvConcat) {
@@ -1342,7 +1375,7 @@ TEST(NchwcOptimizerTests, UpsampleLinear) {
 }
 
 TEST(NchwcOptimizerTests, Activation) {
-  auto test_case = [&](const std::string& activation_op_type) {
+  auto test_case = [&](const std::string& activation_op_type, const std::string& domain = kOnnxDomain) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -1351,7 +1384,7 @@ TEST(NchwcOptimizerTests, Activation) {
       auto* output_arg = helper.MakeOutput();
 
       helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
-      helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg});
+      helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg}, domain);
       helper.AddNode("Add", {conv1_output_arg, activation_output_arg}, {mul_output_arg});
       helper.AddConvNode(mul_output_arg, output_arg, {16, 32, 1, 1});
     };
@@ -1368,12 +1401,16 @@ TEST(NchwcOptimizerTests, Activation) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  // Verify that the optimizer doesn't add reorders for these activations that
-  // cannot be fused with a convolution.
-  std::vector<std::string> activation_op_types{"Relu", "Sigmoid", "Tanh"};
-  for (auto& activation_op_type : activation_op_types) {
-    test_case(activation_op_type);
-  }
+  // Verify that the optimizer doesn't add reorders for these activations in
+  // this pattern. Relu/Sigmoid/Tanh are generally fusable with a preceding
+  // convolution, but not here because the Conv output is consumed both by the
+  // activation node and directly by the Add node. Gelu/QuickGelu are also
+  // expected to remain as separate nodes.
+  test_case("Relu");
+  test_case("Sigmoid");
+  test_case("Tanh");
+  test_case("Gelu", kMSDomain);
+  test_case("QuickGelu", kMSDomain);
 }
 
 TEST(NchwcOptimizerTests, MaxPoolTypeCheck) {
