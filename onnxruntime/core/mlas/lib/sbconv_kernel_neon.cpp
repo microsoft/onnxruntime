@@ -44,6 +44,9 @@ MlasConvPointwiseBf16KernelNeon(
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
 
+    MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config;
+    mlas_backend_kernel_selector_config.use_kleidiai = ((KernelFlags & MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI) != 0);
+
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t InputStrideElements = InputStride / sizeof(float);
     const size_t FilterStrideElements = FilterStride / sizeof(float);
@@ -91,7 +94,7 @@ MlasConvPointwiseBf16KernelNeon(
         }
     }
 
-    MlasSBGemmBatch(OutputCount, BlockSize, BlockSize, idx, gemm_params, nullptr);
+    MlasSBGemmBatch(CblasNoTrans, CblasNoTrans, OutputCount, BlockSize, BlockSize, idx, gemm_params, nullptr, &mlas_backend_kernel_selector_config);
 
     if (ReluActivation) {
         const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);

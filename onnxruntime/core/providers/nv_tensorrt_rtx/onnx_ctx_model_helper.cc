@@ -71,6 +71,13 @@ bool GraphHasCtxNode(const GraphViewer& graph_viewer, size_t& node_idx) {
   for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
     auto node = graph_viewer.GetNode(i);
     if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
+      // Only match EPContext nodes that belong to this EP.
+      // If the source attribute is present and doesn't match, skip the node.
+      const auto& attrs = node->GetAttributes();
+      if (attrs.count(SOURCE) > 0 &&
+          attrs.at(SOURCE).s() != kNvTensorRTRTXExecutionProvider) {
+        continue;
+      }
       node_idx = i;
       return true;
     }
@@ -143,6 +150,7 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
   auto attr_hw_architecture = ONNX_NAMESPACE::AttributeProto::Create();
   auto attr_onnx_filename = ONNX_NAMESPACE::AttributeProto::Create();
   auto attr_partition_name = ONNX_NAMESPACE::AttributeProto::Create();
+  auto attr_source = ONNX_NAMESPACE::AttributeProto::Create();
   std::string engine_data_str = "";
   attr_main_context->set_name(MAIN_CONTEXT);
   attr_main_context->set_type(onnx::AttributeProto_AttributeType_INT);
@@ -186,8 +194,12 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
   attr_sdk_version->set_type(onnx::AttributeProto_AttributeType_STRING);
   attr_sdk_version->set_s(std::to_string(trt_version));
 
+  attr_source->set_name(SOURCE);
+  attr_source->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_source->set_s(kNvTensorRTRTXExecutionProvider);
+
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  constexpr int num_attributes = 4;
+  constexpr int num_attributes = 8;
   node_attributes->reserve(num_attributes);
   node_attributes->emplace(MAIN_CONTEXT, *attr_main_context);
   node_attributes->emplace(EMBED_MODE, *attr_embed_mode);
@@ -196,6 +208,7 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
   node_attributes->emplace(PARTITION_NAME, *attr_partition_name);
   node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_onnx_filename);
   node_attributes->emplace(SDK_VERSION, *attr_sdk_version);
+  node_attributes->emplace(SOURCE, *attr_source);
 
   // Create EP context node
   graph_build.AddNode(ep_context_node_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
