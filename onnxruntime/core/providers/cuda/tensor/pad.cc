@@ -43,7 +43,67 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      18, 23,                                                     \
+      18, 18,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      19, 20,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      21, 22,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      23, 23,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      24, 24,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      25,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -147,11 +207,13 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   TensorShapeVector effective_input_extents;
   effective_input_extents.reserve(dimension_count);
+  TArray<int64_t> input_offsets(dimension_count);
   for (int32_t i = 0; i < dimension_count; i++) {
     int64_t extent = std::max<int64_t>(SafeInt<int64_t>(input_dims[i]) +
                                            (*p_slices)[i] + (*p_slices)[i + dimension_count],
                                        0LL);
     effective_input_extents.push_back(extent);
+    input_offsets[i] = -(*p_slices)[i];
   }
 
   TensorShape output_shape(output_dims);
@@ -223,7 +285,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  if (IsNCHWInputWithPaddingAlongHAndW(dimension_count, lower_pads, upper_pads)) {
+  if (mode_ != Mode::Wrap &&
+      IsNCHWInputWithPaddingAlongHAndW(dimension_count, lower_pads, upper_pads)) {
     // If we have entered here, it means the input can only be 4-D (NCHW), 3-D (CHW), or 2-D (HW)
 
     // NCHW input
@@ -269,6 +332,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       input_dims,
       input_strides,
       lower_pads,
+      TArray<int64_t>(effective_input_extents),
+      input_offsets,
       value,
       static_cast<int>(mode_),
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.Data<T>()),
