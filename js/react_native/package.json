@@ -20,12 +20,12 @@
     "ONNX Runtime"
   ],
   "devDependencies": {
-    "@react-native/typescript-config": "0.73.1",
+    "@react-native/typescript-config": "0.76.9",
     "@types/react": "^18.2.6",
     "pod-install": "^0.1.36",
     "prettier": "^2.8.8",
-    "react": "^18.2.0",
-    "react-native": "^0.73.11",
+    "react": "18.3.1",
+    "react-native": "0.76.9",
     "react-native-builder-bob": "^0.37.0"
   },
   "peerDependencies": {
