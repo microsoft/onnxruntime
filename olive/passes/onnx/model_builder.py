@@ -295,6 +295,15 @@ class ModelBuilder(Pass):
                 model_proto = onnx.load(output_model_filepath, load_external_data=False)
                 onnx.helper.set_model_props(model_proto, {"split_assignments": split_assignment_str})
                 onnx.save(model_proto, output_model_filepath)
+
+            # apply layer annotations if present
+            layer_annotations = model_attributes.get("layer_annotations")
+            if not metadata_only and layer_annotations:
+                from olive.passes.onnx.layer_annotation import annotate_proto_model
+
+                model_proto = onnx.load(output_model_filepath, load_external_data=False)
+                annotate_proto_model(model_proto, layer_annotations)
+                onnx.save(model_proto, output_model_filepath)
         except Exception:
             # if model building fails, clean up the intermediate files in the cache_dir
             cache_dir = Path(HF_HUB_CACHE)

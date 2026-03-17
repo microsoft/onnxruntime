@@ -738,6 +738,14 @@ class OnnxConversion(Pass):
         )
         if split_assignment_encoded:
             ir_model.metadata_props["split_assignments"] = split_assignment_encoded
+
+        # apply layer annotations if present
+        layer_annotations = model_attributes.get("layer_annotations")
+        if layer_annotations:
+            from olive.passes.onnx.layer_annotation import annotate_ir_model
+
+            annotate_ir_model(ir_model, layer_annotations)
+
         output_model = ir_model_to_olive_model(ir_model, output_model_path, config)
 
         output_model.model_attributes = model_attributes

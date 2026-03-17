@@ -36,6 +36,14 @@
             "supported_algorithms": [  ],
             "supported_quantization_encodings": [  ]
         },
+        "CaptureLayerAnnotations": {
+            "module_path": "olive.passes.pytorch.capture_layer_annotations.CaptureLayerAnnotations",
+            "supported_providers": [ "*" ],
+            "supported_accelerators": [ "*" ],
+            "supported_precisions": [ "*" ],
+            "supported_algorithms": [  ],
+            "supported_quantization_encodings": [  ]
+        },
         "ComposeOnnxModels": {
             "module_path": "olive.passes.onnx.compose.ComposeOnnxModels",
             "supported_providers": [ "*" ],
