@@ -711,21 +711,26 @@ TEST(NchwcOptimizerTests, ConvBinaryBroadcast) {
 }
 
 TEST(NchwcOptimizerTests, ConvMulChannelScale) {
-  auto test_case = [&](const std::vector<int64_t>& scale_shape, bool scale_first) {
+  const int64_t channels = static_cast<int64_t>(MlasNchwcGetBlockSize()) * 2;
+
+  auto test_case = [&](bool use_explicit_batch_dim, bool scale_first) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, 32, 25, 21});
+      auto* input_arg = helper.MakeInput<float>({1, channels, 25, 21});
       auto* conv_output_arg = helper.MakeIntermediate();
       auto* mul_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
 
-      helper.AddConvNode(input_arg, conv_output_arg, {32, 32, 3, 3});
+      helper.AddConvNode(input_arg, conv_output_arg, {channels, channels, 3, 3});
+      const std::vector<int64_t> scale_shape = use_explicit_batch_dim
+                                                   ? std::vector<int64_t>{1, channels, 1, 1}
+                                                   : std::vector<int64_t>{channels, 1, 1};
       auto* scale_arg = helper.MakeInitializer<float>(scale_shape, helper.FillRandomData<float>(scale_shape));
       if (scale_first) {
         helper.AddNode("Mul", {scale_arg, conv_output_arg}, {mul_output_arg});
       } else {
         helper.AddNode("Mul", {conv_output_arg, scale_arg}, {mul_output_arg});
       }
-      helper.AddConvNode(mul_output_arg, output_arg, {16, 32, 1, 1});
+      helper.AddConvNode(mul_output_arg, output_arg, {16, channels, 1, 1});
     };
 
     auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
@@ -740,10 +745,10 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
   };
 
   // Valid ONNX channel broadcast forms for NCHW tensors.
-  test_case({32, 1, 1}, false);
-  test_case({32, 1, 1}, true);
-  test_case({1, 32, 1, 1}, false);
-  test_case({1, 32, 1, 1}, true);
+  test_case(false, false);
+  test_case(false, true);
+  test_case(true, false);
+  test_case(true, true);
 }
 
 TEST(NchwcOptimizerTests, ConvConcat) {
