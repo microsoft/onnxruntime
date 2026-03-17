@@ -401,7 +401,6 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
                                 scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
-#ifdef MLAS_TARGET_AMD64_IX86
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
                                   scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
@@ -412,7 +411,6 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
                                   nullptr, has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
       is_packed = false;
     }
-#endif  // MLAS_TARGET_AMD64_IX86
   }
 
   return Status::OK();
