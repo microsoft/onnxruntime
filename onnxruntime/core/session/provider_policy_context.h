@@ -40,7 +40,8 @@ class ProviderPolicyContext {
  public:
   ProviderPolicyContext() = default;
 
-  Status SelectEpsForSession(const Environment& env, const OrtSessionOptions& options, InferenceSession& sess);
+  Status SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
+                             InferenceSession& sess, OrtKeyValuePairs& model_metadata);
   Status AddEpDefaultOptionsToSession(InferenceSession& sess, std::vector<const OrtEpDevice*> devices);
   void RemoveOrtCpuDevice(std::vector<const OrtEpDevice*>& devices);
   Status CreateExecutionProvider(const Environment& env, OrtSessionOptions& options, const OrtLogger& logger,

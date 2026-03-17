@@ -114,35 +114,11 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
 
   return sorted_devices;
 }
-
-OrtKeyValuePairs GetModelMetadata(const InferenceSession& session) {
-  OrtKeyValuePairs metadata;
-  auto status_and_metadata = session.GetModelMetadata();
-
-  if (!status_and_metadata.first.IsOK()) {
-    return metadata;
-  }
-
-  // use field names from onnx.proto
-  const auto& model_metadata = *status_and_metadata.second;
-  metadata.Add("producer_name", model_metadata.producer_name);
-  metadata.Add("producer_version", model_metadata.producer_version);
-  metadata.Add("domain", model_metadata.domain);
-  metadata.Add("model_version", std::to_string(model_metadata.version));
-  metadata.Add("doc_string", model_metadata.description);
-  metadata.Add("graph_name", model_metadata.graph_name);                // name from main GraphProto
-  metadata.Add("graph_description", model_metadata.graph_description);  // descriptions from main GraphProto
-  for (const auto& entry : model_metadata.custom_metadata_map) {
-    metadata.Add(entry.first, entry.second);
-  }
-
-  return metadata;
-}
 }  // namespace
 
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
-                                                  InferenceSession& sess) {
+                                                  InferenceSession& sess, OrtKeyValuePairs& model_metadata) {
   // Get the list of devices from the environment and order them.
   // Ordered by preference within each type. NPU -> GPU -> NPU
   // TODO: Should environment.cc do the ordering?
@@ -153,7 +129,6 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
 
   // Run the delegate if it was passed in lieu of any other policy
   if (options.value.ep_selection_policy.delegate) {
-    auto model_metadata = GetModelMetadata(sess);
     OrtKeyValuePairs runtime_metadata;  // TODO: where should this come from?
 
     std::vector<const OrtEpDevice*> delegate_devices(execution_devices.begin(), execution_devices.end());
