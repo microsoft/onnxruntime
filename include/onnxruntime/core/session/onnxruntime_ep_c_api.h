@@ -1563,11 +1563,12 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] type_str A null-terminated string for the type constraint name to look up.
-   * \return True if the type constraint exists in the schema's type constraint map, false otherwise.
+   * \param[out] out Set to true if the type constraint exists in the schema's type constraint map, false otherwise.
    *
    * \since Version 1.25.
    */
-  ORT_API_T(bool, OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str);
+  ORT_API2_STATUS(OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str,
+                  _Out_ bool* out);
 };
 
 /**

@@ -3994,7 +3994,9 @@ inline const char* ConstOpSchemaImpl<T>::GetOutputTypeStr(size_t index) const {
 
 template <typename T>
 inline bool ConstOpSchemaImpl<T>::HasTypeConstraint(const char* type_str) const {
-  return GetEpApi().OpSchema_HasTypeConstraint(this->p_, type_str);
+  bool result = false;
+  ThrowOnError(GetEpApi().OpSchema_HasTypeConstraint(this->p_, type_str, &result));
+  return result;
 }
 }  // namespace detail
 

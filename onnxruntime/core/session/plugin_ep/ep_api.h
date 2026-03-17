@@ -134,5 +134,6 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_
                     _Outptr_ const char** out);
 ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const char** out);
-ORT_API(bool, OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str);
+ORT_API_STATUS_IMPL(OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str,
+                    _Out_ bool* out);
 }  // namespace OrtExecutionProviderApi

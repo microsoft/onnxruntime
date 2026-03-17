@@ -918,12 +918,17 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _
   API_IMPL_END
 }
 
-ORT_API(bool, OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str) {
-  if (schema == nullptr || type_str == nullptr) {
-    return false;
-  }
+ORT_API_STATUS_IMPL(OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str,
+                    _Out_ bool* out) {
+  API_IMPL_BEGIN
+  ORT_ENFORCE(schema != nullptr, "schema must not be null");
+  ORT_ENFORCE(type_str != nullptr, "type_str must not be null");
+  ORT_ENFORCE(out != nullptr, "out must not be null");
+
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  return onnx_schema->typeConstraintMap().count(std::string(type_str)) > 0;
+  *out = onnx_schema->typeConstraintMap().count(std::string(type_str)) > 0;
+  return nullptr;
+  API_IMPL_END
 }
 
 static constexpr OrtEpApi ort_ep_api = {
