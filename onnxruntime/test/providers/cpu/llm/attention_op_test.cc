@@ -1053,6 +1053,8 @@ TEST(AttentionTest, Attention4DSoftCap) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), 2.0f, -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             ys, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            // disable_cuda: head_size(8) != v_head_size(10) blocks Flash, past_key blocks MEA,
+            // unfused path doesn't support softcap. Needs test with head_size == v_head_size and no past.
             false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
@@ -1081,6 +1083,8 @@ TEST(AttentionTest, Attention4DSoftCapFloat16) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), 2.0f, -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             ys, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            // disable_cuda: head_size(8) != v_head_size(10) blocks Flash, past_key blocks MEA,
+            // unfused path doesn't support softcap. Needs test with head_size == v_head_size and no past.
             false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
