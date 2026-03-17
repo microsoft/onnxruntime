@@ -145,16 +145,6 @@ __global__ void _PadNCHWInputWithPaddingAlongHAndWKernel(
                                        input_width +
                                    current_input_width];
       break;
-
-    case PadMode::Wrap:
-      current_input_height = static_cast<int>(WrapCoordinate(current_input_height, input_height));
-      current_input_width = static_cast<int>(WrapCoordinate(current_input_width, input_width));
-
-      output_data[id] = input_data[(nc_index * input_height +
-                                    current_input_height) *
-                                       input_width +
-                                   current_input_width];
-      break;
   }
 }
 

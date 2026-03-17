@@ -135,6 +135,11 @@ static void RunCudaOnlyOnnxOpsetPadTest(
     const std::vector<int64_t>& output_dims,
     const std::vector<T>& output,
     const std::string& mode = "constant") {
+  auto cuda_execution_provider = DefaultCudaExecutionProvider();
+  if (cuda_execution_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
   OpTester test("Pad", opset);
   if (mode != "constant") {
     test.AddAttribute("mode", mode);
@@ -145,7 +150,7 @@ static void RunCudaOnlyOnnxOpsetPadTest(
   test.AddOutput<T>("output", output_dims, output);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  execution_providers.emplace_back(std::move(cuda_execution_provider));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
@@ -227,10 +232,6 @@ TYPED_TEST(PadOpTest, Pad_Edge_1D) {
 
 #ifdef USE_CUDA
 TEST(PadOpTest, Pad_Edge_CudaOnly_MLFloat16_SupportedOpsets) {
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
-  }
-
   const std::vector<int> supported_opsets{18, 19, 20, 21, 22, 23, 24, 25};
   for (int opset : supported_opsets) {
     SCOPED_TRACE(MakeString("opset: ", opset));
@@ -251,10 +252,6 @@ TEST(PadOpTest, Pad_Edge_CudaOnly_MLFloat16_SupportedOpsets) {
 }
 
 TEST(PadOpTest, Pad_Wrap_CudaOnly_Float_SupportedOpsets) {
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
-  }
-
   const std::vector<int> supported_opsets{19, 20, 21, 22, 23, 24, 25};
   for (int opset : supported_opsets) {
     SCOPED_TRACE(MakeString("opset: ", opset));
