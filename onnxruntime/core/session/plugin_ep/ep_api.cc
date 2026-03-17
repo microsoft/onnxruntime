@@ -31,12 +31,6 @@
 #include "core/session/utils.h"
 
 using namespace onnxruntime;
-
-namespace onnxruntime {
-// Forward declaration of CreateSchema from custom_ops.cc
-ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
-}  // namespace onnxruntime
-
 namespace OrtExecutionProviderApi {
 ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                     _In_ const OrtHardwareDevice* hardware_device,
