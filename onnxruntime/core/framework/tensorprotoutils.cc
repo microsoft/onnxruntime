@@ -479,6 +479,8 @@ size_t GetElementSizeInTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_pro
       {TensorProto_DataType_UINT64, sizeof(uint64_t)},
       {TensorProto_DataType_INT64, sizeof(int64_t)},
       {TensorProto_DataType_DOUBLE, sizeof(double)},
+      {TensorProto_DataType_COMPLEX64, sizeof(float)},   /* byteswap each element individually */
+      {TensorProto_DataType_COMPLEX128, sizeof(double)}, /* byteswap each element individually */
       {TensorProto_DataType_BOOL, sizeof(uint8_t)},
       {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
       {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
@@ -488,6 +490,8 @@ size_t GetElementSizeInTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_pro
       {TensorProto_DataType_INT4, sizeof(uint8_t)},
       {TensorProto_DataType_UINT2, sizeof(uint8_t)},
       {TensorProto_DataType_INT2, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT4E2M1, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E8M0, sizeof(uint8_t)},
   };
 
   auto pos = tensorproto_data_size.find(tensor_proto.data_type());

@@ -51,6 +51,8 @@ void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto);
 /**
  * This function is used to get element size of TensorProto data.
  *
+ * For complex types it returns size of one of elements of complex value.
+ *
  * It will be used mostly to convert data on big endian systems
  * after unpacking data.
  * @param tensor_proto tensor to get element size from
