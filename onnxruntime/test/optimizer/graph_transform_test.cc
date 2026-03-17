@@ -4402,6 +4402,61 @@ TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   ASSERT_TRUE(op_to_count["Slice"] == 0);
 }
 
+// Regression test: ConcatSliceElimination with Slice nodes that omit optional axes/steps inputs.
+TEST_F(GraphTransformationTests, ConcatSliceEliminationTest_NoAxesSteps) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* q_bias = builder.MakeInitializer<float>({4}, {0.01f, 0.02f, 0.03f, 0.04f});
+    auto* k_bias = builder.MakeInitializer<float>({4}, {0.05f, 0.06f, 0.07f, 0.08f});
+    auto* v_bias = builder.MakeInitializer<float>({4}, {0.09f, 0.10f, 0.11f, 0.12f});
+
+    auto* concat_out = builder.MakeIntermediate();
+    builder.AddNode("Concat", {q_bias, k_bias, v_bias}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(0));
+
+    auto* q_starts = builder.MakeInitializer<int64_t>({1}, {int64_t{0}});
+    auto* q_ends = builder.MakeInitializer<int64_t>({1}, {int64_t{4}});
+    auto* k_starts = builder.MakeInitializer<int64_t>({1}, {int64_t{4}});
+    auto* k_ends = builder.MakeInitializer<int64_t>({1}, {int64_t{8}});
+    auto* v_starts = builder.MakeInitializer<int64_t>({1}, {int64_t{8}});
+    auto* v_ends = builder.MakeInitializer<int64_t>({1}, {std::numeric_limits<int64_t>::max()});
+
+    auto* slice_q_out = builder.MakeIntermediate();
+    auto* slice_k_out = builder.MakeIntermediate();
+    auto* slice_v_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {concat_out, q_starts, q_ends}, {slice_q_out});
+    builder.AddNode("Slice", {concat_out, k_starts, k_ends}, {slice_k_out});
+    builder.AddNode("Slice", {concat_out, v_starts, v_ends}, {slice_v_out});
+
+    auto* input_q = builder.MakeInput<float>({{4}});
+    auto* input_k = builder.MakeInput<float>({{4}});
+    auto* input_v = builder.MakeInput<float>({{4}});
+    auto* add_q_out = builder.MakeOutput();
+    auto* add_k_out = builder.MakeOutput();
+    auto* add_v_out = builder.MakeOutput();
+    builder.AddNode("Add", {input_q, slice_q_out}, {add_q_out});
+    builder.AddNode("Add", {input_k, slice_k_out}, {add_k_out});
+    builder.AddNode("Add", {input_v, slice_v_out}, {add_v_out});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 3);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 0);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConcatSliceElimination>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, ExpandElimination) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "expand_elimination.onnx";
   std::shared_ptr<Model> model;

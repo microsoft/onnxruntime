@@ -47,6 +47,10 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
       LOGS(logger, WARNING) << "UnsqueezeElimination cannot remove node due to invalid axes" << node.Name();
       return Status::OK();
     }
+    if (new_dims[static_cast<size_t>(axis)] != 0) {
+      LOGS(logger, WARNING) << "UnsqueezeElimination cannot remove node due to duplicate axes " << node.Name();
+      return Status::OK();
+    }
     new_dims[static_cast<size_t>(axis)] = 1;
   }
 

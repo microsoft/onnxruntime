@@ -141,6 +141,20 @@ static bool GetSliceInfo(const Graph& graph,
   } else {
     return false;
   }
+
+  // Per ONNX Slice spec: if axes not provided, default to [0, 1, ..., len(starts)-1].
+  if (axes.empty()) {
+    axes.reserve(starts.size());
+    for (int64_t i = 0, limit = static_cast<int64_t>(starts.size()); i < limit; ++i) {
+      axes.push_back(i);
+    }
+  }
+
+  // Per ONNX Slice spec: if steps not provided, default to all 1s.
+  if (steps.empty()) {
+    steps.assign(starts.size(), int64_t{1});
+  }
+
   return true;
 }
 
