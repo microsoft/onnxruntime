@@ -429,7 +429,7 @@ struct OrtExternalResourceImporterImpl {
  *
  * \since Version 1.25.
  */
-typedef enum {
+typedef enum OrtEpProfilingEventCategory {
   OrtEpProfilingEventCategory_SESSION = 0,  ///< Session-level event
   OrtEpProfilingEventCategory_NODE = 1,     ///< Node-level event
   OrtEpProfilingEventCategory_KERNEL = 2,   ///< Kernel-level event
@@ -444,6 +444,7 @@ typedef enum {
  * \since Version 1.25.
  */
 typedef struct OrtEpProfilingEvent {
+  uint32_t ort_version_supported;        ///< Must be initialized to ORT_API_VERSION.
   OrtEpProfilingEventCategory category;  ///< Event category.
   int32_t process_id;                    ///< Process ID.
   int32_t thread_id;                     ///< Thread ID.

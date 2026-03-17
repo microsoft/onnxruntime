@@ -808,17 +808,17 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtExecutionProviderApi::EpProfilingEventsContainer_AddEvents,
+ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents,
                     _In_ OrtEpProfilingEventsContainer* events_container,
                     _In_reads_(num_events) const OrtEpProfilingEvent* events,
                     _In_ size_t num_events) {
   API_IMPL_BEGIN
   if (events_container == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "events_container is null");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEpProfilingEventsContainer instance is null");
   }
 
-  if (events == nullptr && num_events > 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "events is null but num_events > 0");
+  if (events == nullptr || num_events == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must at least one event to add");
   }
 
   auto& output = events_container->events;
@@ -826,6 +826,11 @@ ORT_API_STATUS_IMPL(OrtExecutionProviderApi::EpProfilingEventsContainer_AddEvent
 
   for (size_t i = 0; i < num_events; ++i) {
     const OrtEpProfilingEvent& c_event = events[i];
+
+    if (c_event.ort_version_supported < 25) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "OrtEpProfilingEvent::ort_version_supported must be set ORT_API_VERSION >= 25");
+    }
 
     onnxruntime::InlinedHashMap<std::string, std::string> args;
     if (c_event.arg_keys != nullptr && c_event.arg_values != nullptr) {
@@ -918,7 +923,6 @@ static constexpr OrtEpApi ort_ep_api = {
     // End of Version 24 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::EpProfilingEventsContainer_AddEvents,
-    // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -928,9 +932,6 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
-static_assert(offsetof(OrtEpApi, EpProfilingEventsContainer_AddEvents) / sizeof(void*) == 50,
-              "Size of version 25 API cannot change");
-
 }  // namespace OrtExecutionProviderApi
 
 ORT_API(const OrtEpApi*, OrtExecutionProviderApi::GetEpApi) {

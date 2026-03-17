@@ -786,7 +786,8 @@ namespace {
 
 class PluginEpProfiler final : public profiling::EpProfiler {
  public:
-  explicit PluginEpProfiler(OrtEpProfilerImpl& profiler_impl) : profiler_impl_{&profiler_impl} {}
+  explicit PluginEpProfiler(OrtEpProfilerImpl& profiler_impl, const logging::Logger& logger)
+      : profiler_impl_{&profiler_impl}, logger_{logger} {}
 
   ~PluginEpProfiler() override {
     if (profiler_impl_ != nullptr) {
@@ -810,10 +811,11 @@ class PluginEpProfiler final : public profiling::EpProfiler {
                      .count();
 
     OrtEpProfilingEventsContainer container{events};
-    OrtStatus* status = profiler_impl_->EndProfiling(profiler_impl_, ns, &container);
-    if (status != nullptr) {
+    Status status = ToStatusAndRelease(profiler_impl_->EndProfiling(profiler_impl_, ns, &container));
+    if (!status.IsOK()) {
       // Log error but don't throw — profiling failures shouldn't break execution.
-      OrtApis::ReleaseStatus(status);
+      LOGS(logger_, ERROR) << "OrtEpProfilerImpl::EndProfiling() returned an error OrtStatus: "
+                           << status.ErrorMessage();
       return;
     }
   }
@@ -832,6 +834,7 @@ class PluginEpProfiler final : public profiling::EpProfiler {
 
  private:
   OrtEpProfilerImpl* profiler_impl_;
+  const logging::Logger& logger_;
 };
 
 }  // namespace
@@ -848,7 +851,8 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
     return {};
   }
 
-  return std::make_unique<PluginEpProfiler>(*profiler_impl);
+  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+  return std::make_unique<PluginEpProfiler>(*profiler_impl, logger);
 }
 
 }  // namespace onnxruntime
