@@ -42,6 +42,10 @@ static void RunOnnxOpsetTypedTest(
   if constexpr (std::is_same_v<T, int8_t>) {
     provider_types.insert(kTensorrtExecutionProvider);
   }
+  // CUDA Pad does not implement wrap mode yet.
+  if (mode == "wrap") {
+    provider_types.insert(kCudaExecutionProvider);
+  }
   // Exclude QNN due to a few test failures with the CPU backend.
   provider_types.insert(kQnnExecutionProvider);
   SessionOptions so;
@@ -198,6 +202,31 @@ TYPED_TEST(PadOpTest, Pad_Edge_1D) {
                                   {T(1), T(1), T(1), T(2), T(2), T(3), T(3), T(3), T(4), T(4), T(5), T(5), T(5), T(6), T(6)},
                                   "edge");
 }
+
+#ifdef USE_CUDA
+TEST(PadOpTest, Pad_Edge_Opset19_CudaOnly_MLFloat16) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  OpTester test("Pad", 19);
+  test.AddAttribute("mode", "edge");
+  test.AddInput<MLFloat16>("data", {3, 2},
+                           {MLFloat16(1.0f), MLFloat16(2.0f),
+                            MLFloat16(3.0f), MLFloat16(4.0f),
+                            MLFloat16(5.0f), MLFloat16(6.0f)});
+  test.AddInput<int64_t>("pads", {4}, {0, 2, 0, 1}, true);
+  test.AddInput<MLFloat16>("value", {}, {MLFloat16(0.0f)}, true);
+  test.AddOutput<MLFloat16>("output", {3, 5},
+                            {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(2.0f),
+                             MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(4.0f), MLFloat16(4.0f),
+                             MLFloat16(5.0f), MLFloat16(5.0f), MLFloat16(5.0f), MLFloat16(6.0f), MLFloat16(6.0f)});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TYPED_TEST(PadOpTest, Pad_Constant_2D) {
   using T = TypeParam;
@@ -1391,9 +1420,8 @@ TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
   // Post-slice core: [4]; wrap 3 -> [4, 4, 4, 4]
   const std::vector<float> expected_data = {4, 4, 4, 4};
 
-  // CUDA registers only up to 18 and does not impl wrap mode
-  // so we force version to 19 to automatically exclude EPs that do not
-  // implement wrap mode similar to the above tests.
+  // Use opset 19 to exercise wrap mode while EPs without wrap support
+  // (including CUDA) are excluded by the helper or explicit EP exclusions.
   OpTester test("Pad", 19);
   test.AddInput<float>("data", input_shape, input_data);
   test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
