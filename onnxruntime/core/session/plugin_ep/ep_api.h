@@ -119,4 +119,19 @@ ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl);
 
 // Env config entries
 ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
+
+// OpSchema APIs
+ORT_API_STATUS_IMPL(RegisterOrtCustomOpSchema, _In_ const char* domain, _In_ const OrtCustomOp* op);
+ORT_API_STATUS_IMPL(DeregisterOrtCustomOpSchema, _In_ const char* domain, _In_ const char* op_type, _In_ int version);
+ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
+                    _In_ const char* domain, _Outptr_result_maybenull_ const OrtOpSchema** out_schema);
+ORT_API_STATUS_IMPL(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(OpSchema_GetInputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_ const char** out);
+ORT_API(bool, OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str);
 }  // namespace OrtExecutionProviderApi
