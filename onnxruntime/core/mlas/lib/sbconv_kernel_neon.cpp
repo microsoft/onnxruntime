@@ -46,7 +46,7 @@ MlasConvPointwiseBf16KernelNeon(
 
     MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config;
 
-    // TODO(hasesh/ARM KleidiAI team): Study the impact of using the KleidiAI SBGEMM kernel for this convolution kernel
+    // TODO(hasesh): With the ARM KleidiAI team, study the impact of using the KleidiAI SBGEMM kernel for this convolution kernel
     // and enable it if things look okay.
     // Even if re-enabled, honor user override to disable KleidiAI usage if specified.
     // That is, mlas_backend_kernel_selector_config.use_kleidiai = ((KernelFlags & MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI) != 0);
