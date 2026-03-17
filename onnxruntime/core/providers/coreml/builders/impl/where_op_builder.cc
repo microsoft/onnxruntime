@@ -106,6 +106,19 @@ bool WhereOpBuilder::HasSupportedInputsImpl(const Node& node,
     return false;
   }
 
+  // CoreML select requires a and b to have matching element types.
+  // Validate that X and Y have the same dtype.
+  int32_t x_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  int32_t y_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  if (!GetType(*input_defs[1], x_type, logger) || !GetType(*input_defs[2], y_type, logger)) {
+    return false;
+  }
+  if (x_type != y_type) {
+    LOGS(logger, VERBOSE) << "[Where] X and Y inputs must have the same type, got X: "
+                          << x_type << " and Y: " << y_type;
+    return false;
+  }
+
   return true;
 }
 

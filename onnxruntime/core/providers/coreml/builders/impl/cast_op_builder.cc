@@ -150,8 +150,8 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
     } else {
       LOGS(logger, VERBOSE) << "[" << node.OpType()
                             << "] Input type: [" << input_type
-                            << "] or output type: [" << output_type
-                            << "] is not supported.";
+                            << "] and/or output type: [" << output_type
+                            << "] is not supported for ML Program Cast.";
       return false;
     }
   }

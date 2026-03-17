@@ -61,9 +61,18 @@ Status ExpandOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       AddOperationInput(*op, "shape",
                         model_builder.AddConstant(op->type(), "shape", shape_data));
     } else {
-      // Shape is a dynamic runtime value — pass it through directly.
-      // CoreML will handle the int64->int32 conversion at the framework level.
-      AddOperationInput(*op, "shape", input_defs[1]->Name());
+      // Shape is a dynamic runtime value. CoreML broadcast_to requires shape as int32,
+      // but ONNX Expand provides shape as int64. Insert a cast op to convert.
+      std::unique_ptr<Operation> cast_op = model_builder.CreateOperation(node, "cast", "shape_cast");
+      AddOperationInput(*cast_op, "x", input_defs[1]->Name());
+      AddOperationInput(*cast_op, "dtype",
+                        model_builder.AddScalarConstant(cast_op->type(), "dtype", std::string("int32")));
+      const auto& cast_output = model_builder.GetUniqueName(node, "shape_int32");
+      AddIntermediateOperationOutput(*cast_op, cast_output,
+                                     ONNX_NAMESPACE::TensorProto_DataType_INT32, std::nullopt);
+      model_builder.AddOperation(std::move(cast_op));
+
+      AddOperationInput(*op, "shape", cast_output);
     }
 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
