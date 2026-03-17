@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <fstream>
 #include <string_view>
 #include <vector>
 // #include <absl/base/config.h>
@@ -933,6 +934,54 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Scan) {
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
     ASSERT_NO_FATAL_FAILURE(RunScanMulModel(session_options));
   }
+}
+
+// Runs a model with profiling enabled and verifies the example kernel EP's profiling events appear in the output.
+TEST(OrtEpLibrary, KernelPluginEp_Profiling) {
+  RegisteredEpDeviceUniquePtr example_kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info,
+                                                         example_kernel_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
+
+  std::unordered_map<std::string, std::string> ep_options;
+  Ort::SessionOptions session_options;
+
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+  session_options.EnableProfiling(ORT_TSTR("plugin_ep_profiling_test"));
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+  // Run the model.
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data(6, 2.0f);
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+
+  std::array<const char*, 1> input_names{"X"};
+  std::array<const char*, 1> output_names{"Y"};
+  session.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(),
+              ort_inputs.size(), output_names.data(), output_names.size());
+
+  // End profiling and read the profile file.
+  Ort::AllocatorWithDefaultOptions allocator;
+  Ort::AllocatedStringPtr profile_file = session.EndProfilingAllocated(allocator);
+  std::string profile_path(profile_file.get());
+
+  std::ifstream profile(profile_path);
+  ASSERT_TRUE(profile.is_open()) << "Could not open profile file: " << profile_path;
+
+  std::string content(std::istreambuf_iterator<char>{profile}, std::istreambuf_iterator<char>{});
+  profile.close();
+
+  // Verify the EP's profiling event appears in the output.
+  EXPECT_NE(content.find("ExampleKernelEp_profiling_event"), std::string::npos)
+      << "Expected to find EP profiling event in profile output. Profile content:\n"
+      << content;
+
+  // Clean up profile file.
+  std::filesystem::remove(profile_path);
 }
 
 // Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.

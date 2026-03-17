@@ -28,6 +28,7 @@ ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const Config& 
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
   GetKernelRegistry = GetKernelRegistryImpl;
+  GetProfiler = GetProfilerImpl;
 
   // This is not a compiling EP, so don't need the following
   Compile = nullptr;
@@ -118,4 +119,75 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetKernelRegistryImpl(
   // Get the cached kernel registry from parent factory to avoid recreating the kernel registry for every EP instance.
   RETURN_IF_ERROR(ep->factory_.GetKernelRegistryForEp(*ep, kernel_registry));
   return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// ExampleKernelEpProfiler — demonstrates how a plugin EP reports profiling events.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
+  const OrtEpApi& ep_api;
+  bool is_profiling = false;
+
+  explicit ExampleKernelEpProfiler(const OrtEpApi& api) : OrtEpProfilerImpl{}, ep_api(api) {
+    ort_version_supported = ORT_API_VERSION;
+    Release = ReleaseImpl;
+    StartProfiling = StartProfilingImpl;
+    EndProfiling = EndProfilingImpl;
+    Start = nullptr;  // Optional — not needed for this example.
+    Stop = nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseImpl(OrtEpProfilerImpl* this_ptr) noexcept {
+    delete static_cast<ExampleKernelEpProfiler*>(this_ptr);
+  }
+
+  static bool ORT_API_CALL StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
+                                              int64_t /*profiling_start_time_ns*/) noexcept {
+    auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
+    self->is_profiling = true;
+    return true;
+  }
+
+  static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
+                                                  int64_t /*start_time_ns*/,
+                                                  OrtEpProfilingEventsContainer* events_container) noexcept {
+    auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
+    self->is_profiling = false;
+
+    // Report a single summary event so the integration test can verify EP events appear in the profile.
+    const char* arg_keys[] = {"ep_name"};
+    const char* arg_values[] = {"ExampleKernelEp"};
+
+    OrtEpProfilingEvent event{};
+    event.ort_version_supported = ORT_API_VERSION;
+    event.category = OrtEpProfilingEventCategory_SESSION;
+    event.process_id = 0;
+    event.thread_id = 0;
+    event.event_name = "ExampleKernelEp_profiling_event";
+    event.timestamp_us = 0;
+    event.duration_us = 0;
+    event.arg_keys = arg_keys;
+    event.arg_values = arg_values;
+    event.num_args = 1;
+
+    return self->ep_api.EpProfilingEventsContainer_AddEvents(events_container, &event, 1);
+  }
+};
+
+}  // namespace
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleKernelEp::GetProfilerImpl(OrtEp* this_ptr,
+                                                         OrtEpProfilerImpl** profiler) noexcept {
+  try {
+    ExampleKernelEp* ep = static_cast<ExampleKernelEp*>(this_ptr);
+    *profiler = new ExampleKernelEpProfiler(ep->ep_api_);
+    return nullptr;
+  } catch (const std::exception& ex) {
+    Ort::Status status(ex.what(), ORT_EP_FAIL);
+    return status.release();
+  }
 }
