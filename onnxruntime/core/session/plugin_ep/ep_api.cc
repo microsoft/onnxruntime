@@ -884,8 +884,8 @@ ORT_API_STATUS_IMPL(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out
   ORT_ENFORCE(out != nullptr, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  const auto& inputs = onnx_schema->outputs();
-  *out = inputs.size();
+  const auto& outputs = onnx_schema->outputs();
+  *out = outputs.size();
   return nullptr;
   API_IMPL_END
 }
@@ -919,6 +919,9 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _
 }
 
 ORT_API(bool, OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str) {
+  if (schema == nullptr || type_str == nullptr) {
+    return false;
+  }
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
   return onnx_schema->typeConstraintMap().count(std::string(type_str)) > 0;
 }
