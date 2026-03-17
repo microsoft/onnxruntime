@@ -1094,7 +1094,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
   }
   context_.Replay(captured_commands_, *graph_buffer_mgr_);
   if (session_profiler_ && session_profiler_->Enabled()) {
-    context_.CollectProfilingData();
+    context_.CollectProfilingData(session_profiler_);
   }
   return Status::OK();
 }

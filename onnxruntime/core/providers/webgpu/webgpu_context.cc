@@ -626,8 +626,9 @@ void WebGpuContext::StartProfiling() {
 }
 
 void WebGpuContext::CollectProfilingData(const void* profiler_key) {
+  ORT_ENFORCE(profiler_key != nullptr, "profiler_key must be non-null when collecting profiling data.");
   if (!pending_queries_.empty()) {
-    auto& events = per_session_events_[profiler_key ? profiler_key : current_profiler_key_];
+    auto& events = per_session_events_[profiler_key];
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
       const auto& query_read_buffer = pending_query.query_buffer;
@@ -689,6 +690,7 @@ void WebGpuContext::CollectProfilingData(const void* profiler_key) {
 void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, const void* profiler_key) {
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
+  ORT_ENFORCE(profiler_key != nullptr, "profiler_key must not be null when ending profiling.");
 
   if (query_type_ != TimestampQueryType::None) {
     // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.

@@ -238,8 +238,8 @@ class WebGpuContext final {
   }
 
   void StartProfiling();
-  void CollectProfilingData(const void* profiler_key = nullptr);
-  void EndProfiling(TimePoint, profiling::Events& events, const void* profiler_key = nullptr);
+  void CollectProfilingData(const void* profiler_key);
+  void EndProfiling(TimePoint, profiling::Events& events, const void* profiler_key);
 
   //
   // Push error scope.
@@ -360,7 +360,6 @@ class WebGpuContext final {
   // When multiple sessions share a WebGpuContext, each session's events are
   // stored separately so EndProfiling returns only that session's GPU events.
   std::unordered_map<const void*, profiling::Events> per_session_events_;
-  const void* current_profiler_key_ = nullptr;  // set during StartProfiling/OnRunEnd
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
