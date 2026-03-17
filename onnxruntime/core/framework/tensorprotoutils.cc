@@ -352,7 +352,7 @@ Status TensorProtoWithExternalDataToTensorProto(
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, model_path, unpacked_data));
 
     // Set the raw data in the new tensor
-    result.set_raw_data(unpacked_data.data(), unpacked_data.size());
+    onnxruntime::utils::SetRawDataInTensorProto(result, unpacked_data.data(), unpacked_data.size());
   }
 
   new_tensor_proto = std::move(result);
