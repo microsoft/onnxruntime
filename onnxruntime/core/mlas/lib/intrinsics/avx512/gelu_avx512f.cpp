@@ -202,8 +202,8 @@ MlasGeluErfAvx512(
     const __m512 ErfOne = _mm512_set1_ps(GeluAvx512Constants::ErfOne);
     const __m512 ExpLowerRange = _mm512_set1_ps(GeluAvx512Constants::ExpLowerRange);
 
-    const __m512 SignMask = _mm512_and_ps(Value, NegZero);
-    __m512 AbsValue = _mm512_andnot_ps(NegZero, Value);
+    const __m512 SignMask = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(Value), _mm512_castps_si512(NegZero)));
+    __m512 AbsValue = _mm512_castsi512_ps(_mm512_andnot_si512(_mm512_castps_si512(NegZero), _mm512_castps_si512(Value)));
     AbsValue = _mm512_min_ps(ErfUpperAbsRange, AbsValue);
 
     const __m512 SquareValue = _mm512_mul_ps(AbsValue, AbsValue);
@@ -228,7 +228,7 @@ MlasGeluErfAvx512(
     BigResult = _mm512_fmadd_ps(BigResult, BigInput, ErfBigP6MinusOne);
     BigResult = _mm512_fmadd_ps(BigResult, BigInput, BigInput);
 
-    BigResult = _mm512_xor_ps(BigResult, NegZero);
+    BigResult = _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(BigResult), _mm512_castps_si512(NegZero)));
     BigResult = _mm512_max_ps(ExpLowerRange, BigResult);
     BigResult = _mm512_sub_ps(ErfOne, MlasGeluErfExpVectorAvx512(BigResult));
 
@@ -256,7 +256,7 @@ MlasComputeGeluVectorMinimaxAvx512(
     const __m512i TwentyThreeI = _mm512_set1_epi32(23);
     const __m512i TwentyFourI = _mm512_set1_epi32(24);
 
-    const __m512 XPositive = _mm512_and_ps(X, PositiveMask);
+    const __m512 XPositive = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(X), _mm512_castps_si512(PositiveMask)));
 
     __m512i Index = _mm512_castps_si512(XPositive);
     Index = _mm512_add_epi32(Index, IndexBias);
@@ -274,8 +274,8 @@ MlasComputeGeluVectorMinimaxAvx512(
     Polynomial = _mm512_fmadd_ps(Polynomial, XPositive, MlasGatherMinimaxCoeff(1, Index));
     Polynomial = _mm512_fmadd_ps(Polynomial, XPositive, MlasGatherMinimaxCoeff(0, Index));
 
-    const __m512 Sign = _mm512_and_ps(X, SignMask);
-    const __m512 ErfPart = _mm512_xor_ps(Polynomial, Sign);
+    const __m512 Sign = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(X), _mm512_castps_si512(SignMask)));
+    const __m512 ErfPart = _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(Polynomial), _mm512_castps_si512(Sign)));
     __m512 Result = _mm512_mul_ps(_mm512_mul_ps(X, _mm512_add_ps(ErfPart, One)), Half);
 
     const __mmask16 PositiveInfinityMask = _mm512_cmp_ps_mask(X, PositiveInfinity, _CMP_EQ_OQ);

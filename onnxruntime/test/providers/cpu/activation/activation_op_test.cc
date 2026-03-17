@@ -755,10 +755,6 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
 #endif
 
 TEST_F(ActivationOpTest, ONNX_Gelu_MlasErfMinimaxApproximation) {
-  if (GetMlasPlatform().GeluErfMinimaxKernelRoutine == nullptr) {
-    GTEST_SKIP() << "MLAS GELU erf minimax kernel is not available on this machine.";
-  }
-
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsMlasGeluErfUseMinimaxApproximation, "1"));
