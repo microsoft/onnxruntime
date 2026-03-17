@@ -685,6 +685,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_causal;
     p.scale = parameters.scale;
+    p.softcap = parameters.softcap;
     p.seqlen_k_ptr = seqlens_k_buffer.get();
     p.has_custom_right_padding = true;
     p.broadcast_attn_bias_dim_0 = broadcast_bias_dim_0;
@@ -734,6 +735,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_causal;
     p.scale = parameters.scale;
+    p.softcap = parameters.softcap;
     p.broadcast_attn_bias_dim_0 = broadcast_bias_dim_0;
     p.broadcast_attn_bias_dim_1 = broadcast_bias_dim_1;
     p.query = q_data;
@@ -1093,17 +1095,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
 #endif
 
-  // Early-reject features not supported by any CUDA kernel path.
-  // TODO(titaiwang): Support softcap and softmax_precision on CUDA kernels.
-  // When a kernel adds support, move these checks to the unfused fallback section.
-  if (parameters.softcap != 0.0f) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softcap is not supported yet in Attention op (CUDA).");
-  }
-  if (parameters.softmax_precision != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softmax_precision is not supported yet in Attention op (CUDA).");
-  }
+  // softmax_precision: All CUDA backends (Flash, MEA, Unfused) already accumulate
+  // softmax in FP32 internally (Flash/MEA via tile-based FP32 accumulators, Unfused via
+  // cuBLAS FP32 compute and FP32 softmax kernel). softmax_precision=1 (FP32) is inherently
+  // satisfied; softmax_precision=0 (default) is also fine since higher precision is always
+  // acceptable per the ONNX spec.
 
 #if USE_FLASH_ATTENTION
   {
@@ -1172,6 +1168,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   // Fallback: unfused attention
+  // Softcap is not implemented in the unfused path — it requires Flash or MEA.
+  if (parameters.softcap != 0.0f) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "softcap requires flash attention or memory efficient attention, "
+                           "but neither is eligible. Ensure fp16/bf16 on Ampere+ GPU, or check head_size constraints.");
+  }
+
   // TODO(titaiwang): Support additional output_qk modes beyond kNone and kQK.
   // Currently only unfused handles output_qk, and only kNone/kQK modes.
   if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
