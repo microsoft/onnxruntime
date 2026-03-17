@@ -347,42 +347,6 @@
     ]
   },
   {
-    "name": "dequantizelinear",
-    "operator": "DequantizeLinear",
-    "opset": { "domain": "", "version": 13 },
-    "attributes": [
-      {
-        "name": "axis",
-        "data": 1,
-        "type": "int"
-      }
-    ],
-    "cases": [
-      {
-        "name": "uint8 2D per-axis scalar scale no zero point",
-        "inputs": [
-          {
-            "data": [1, 2, 3, 4],
-            "dims": [2, 2],
-            "type": "uint8"
-          },
-          {
-            "data": [0.1],
-            "dims": [1],
-            "type": "float32"
-          }
-        ],
-        "outputs": [
-          {
-            "data": [0.1, 0.2, 0.3, 0.4],
-            "dims": [2, 2],
-            "type": "float32"
-          }
-        ]
-      }
-    ]
-  },
-    {
     "name": "dequantizelinear block dequantization",
     "operator": "DequantizeLinear",
     "opset": { "domain": "", "version": 21 },
@@ -422,6 +386,42 @@
           {
             "data": [0.1, 0.4, 0.3, 0.8, 1.5, 2.4, 2.1, 3.2],
             "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "uint8 2D per-axis scalar scale no zero point",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [2, 2],
+            "type": "uint8"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [2, 2],
             "type": "float32"
           }
         ]
