@@ -43,7 +43,7 @@ jobs:
     needs: build-linux-TensorRT-x64-release
     runs-on:
       - self-hosted
-      - "1ES.Pool=Onnxruntime-github-Linux-GPU-H100"
+      - "1ES.Pool=onnxruntime-github-linux-a10"
       - "JobId=test-linux-TensorRT-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     permissions:
       contents: read
