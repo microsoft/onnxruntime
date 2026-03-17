@@ -585,49 +585,53 @@ class MlasNeonFp16DequantB8BitTest : public MlasTestBase {
   }
 
   // Reference dequantization for 8-bit packed data.
-  // For N=8: packed data is 8N-interleaved. Each 8-byte load = 1 K position x 8 cols.
-  // For N<8: data is sequential (unmodified).
+  // Uses explicit position-based indexing to match the packed layout exactly.
+  //
+  // Packed layout for N>=8 group (8N-interleaved):
+  //   For each K position, 8 consecutive bytes hold one value per column.
+  //   byte[groupStart + k * 8 + col] = value for K=k, column=col
+  //
+  // Packed layout for remainder N<8 (sequential):
+  //   byte[colStart + k] = value for K=k
+  //
+  // Scale layout: scales[col * BlkNum + block] = scale for column col, block block
+  // ZP layout (8-bit): zero_points[col * BlkNum + block] = zp for column col, block block
   template <size_t N, size_t K, size_t BlkLen, bool UseZeroPoints>
   void DequantB8Bit(const uint8_t* src, MLAS_FP16* dst, const MLAS_FP16* scales, const uint8_t* zero_points) {
-    constexpr size_t blkNum = (K + BlkLen - 1) / BlkLen;
-    constexpr size_t ld_src = blkNum * BlkLen;
-    constexpr size_t ld_dst = blkNum * BlkLen;
-    constexpr size_t ld_zp = blkNum;
+    constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
+    constexpr size_t PaddedK = BlkNum * BlkLen;
 
     size_t n = 0;
-    // N=8 block: packed data is interleaved (k*8 + col gives col's value at K=k)
+    // N=8 groups: data is 8N-interleaved from Transpose8x8 packing
     for (; n + 8 <= N; n += 8) {
-      size_t i_src = n * ld_src;
-      size_t i_dst = n * ld_dst;
-      size_t i_scale = n * blkNum;
-      size_t i_zp = n * ld_zp;
-      for (size_t blk = 0; blk < blkNum; ++blk, ++i_scale, ++i_zp) {
-        for (size_t k = 0; k < BlkLen; ++k) {
-          for (size_t col = 0; col < 8; ++col, ++i_src, ++i_dst) {
-            uint8_t v = src[i_src];
-            float value = static_cast<float>(v);
-            float zp = static_cast<float>(UseZeroPoints ? zero_points[i_zp + ld_zp * col] : 128);
-            float scale = scales[i_scale + blkNum * col].ToFloat();
-            dst[i_dst] = MLAS_FP16(value * scale - zp * scale);
-          }
+      const size_t groupStart = n * PaddedK;
+      for (size_t k = 0; k < PaddedK; ++k) {
+        const size_t block = k / BlkLen;
+        for (size_t col = 0; col < 8; ++col) {
+          const size_t absCol = n + col;
+          const size_t srcIdx = groupStart + k * 8 + col;
+          const size_t dstIdx = srcIdx;  // output has the same interleaved layout
+          const float value = static_cast<float>(src[srcIdx]);
+          const float scale = scales[absCol * BlkNum + block].ToFloat();
+          const float zp = static_cast<float>(
+              UseZeroPoints ? zero_points[absCol * BlkNum + block] : 128);
+          dst[dstIdx] = MLAS_FP16(value * scale - zp * scale);
         }
       }
     }
 
-    // Remainder N<8: data is sequential
+    // Remainder columns: data is sequential (not interleaved)
     for (; n < N; ++n) {
-      size_t i_src = n * ld_src;
-      size_t i_dst = n * ld_dst;
-      size_t i_scale = n * blkNum;
-      size_t i_zp = n * ld_zp;
-      for (size_t blk = 0; blk < blkNum; ++blk, ++i_scale, ++i_zp) {
-        float zp = static_cast<float>(UseZeroPoints ? zero_points[i_zp] : 128);
-        float scale = scales[i_scale].ToFloat();
-        for (size_t k = 0; k < BlkLen; ++k, ++i_src, ++i_dst) {
-          uint8_t v = src[i_src];
-          float value = static_cast<float>(v);
-          dst[i_dst] = MLAS_FP16(value * scale - zp * scale);
-        }
+      const size_t colStart = n * PaddedK;
+      for (size_t k = 0; k < PaddedK; ++k) {
+        const size_t block = k / BlkLen;
+        const size_t srcIdx = colStart + k;
+        const size_t dstIdx = srcIdx;
+        const float value = static_cast<float>(src[srcIdx]);
+        const float scale = scales[n * BlkNum + block].ToFloat();
+        const float zp = static_cast<float>(
+            UseZeroPoints ? zero_points[n * BlkNum + block] : 128);
+        dst[dstIdx] = MLAS_FP16(value * scale - zp * scale);
       }
     }
   }
