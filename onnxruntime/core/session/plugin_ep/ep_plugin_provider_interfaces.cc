@@ -851,6 +851,18 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
     return {};
   }
 
+  // Validate that required function pointers are set.
+  if (profiler_impl->Release == nullptr ||
+      profiler_impl->StartProfiling == nullptr ||
+      profiler_impl->EndProfiling == nullptr) {
+    if (profiler_impl->Release != nullptr) {
+      profiler_impl->Release(profiler_impl);
+    }
+    ORT_THROW(
+        "OrtEpProfilerImpl is missing required function pointer(s): "
+        "Release, StartProfiling, and EndProfiling must all be non-null.");
+  }
+
   const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
   return std::make_unique<PluginEpProfiler>(*profiler_impl, logger);
 }

@@ -833,7 +833,11 @@ ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents,
     }
 
     onnxruntime::InlinedHashMap<std::string, std::string> args;
-    if (c_event.arg_keys != nullptr && c_event.arg_values != nullptr) {
+    if (c_event.num_args > 0) {
+      if (c_event.arg_keys == nullptr || c_event.arg_values == nullptr) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                     "arg_keys and arg_values must both be non-null when num_args > 0");
+      }
       args.reserve(c_event.num_args);
       for (size_t j = 0; j < c_event.num_args; ++j) {
         const char* key = c_event.arg_keys[j];
