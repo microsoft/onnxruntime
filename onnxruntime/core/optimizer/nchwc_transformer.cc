@@ -773,9 +773,7 @@ void NchwcTransformerImpl::TransformMul(Node& node) {
   const auto scale_dims = mul_scale.dims();
 
   bool channel_broadcast_shape = false;
-  if (scale_dims.size() == 1) {
-    channel_broadcast_shape = (scale_dims[0] == channels);
-  } else if (scale_dims.size() == 3) {
+  if (scale_dims.size() == 3) {
     channel_broadcast_shape = (scale_dims[0] == channels && scale_dims[1] == 1 && scale_dims[2] == 1);
   } else if (scale_dims.size() == 4) {
     channel_broadcast_shape = (scale_dims[0] == 1 && scale_dims[1] == channels && scale_dims[2] == 1 && scale_dims[3] == 1);

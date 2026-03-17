@@ -734,7 +734,7 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  test_case({32});
+  // Valid ONNX channel broadcast forms for NCHW tensors.
   test_case({32, 1, 1});
   test_case({1, 32, 1, 1});
 }
