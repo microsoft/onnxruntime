@@ -139,43 +139,6 @@ Status TileCoreForStringType(const Tensor& input_tensor, Tensor& output_tensor, 
   return Status::OK();
 }
 
-namespace TileOp {
-// Find the first non-1 repeat and check the input shape to the left of that dimension:
-// 1) If the dim values to the left are all 1s (or don't exist), then the tiling logic is essentially copying the input buffer
-// multiple times. The number of times can be computed as the product of the repeat values. (OR)
-// 2) Allow at-most one non-1 dim value to the left (for the batch dimension), in this case, the sub-tensor at each batch index
-// is copied multiple times. This is still faster because it avoids other Tile operator's machinery.
-bool IsTileMemcpy(const TensorShape& input_shape,
-                  const int64_t* repeats,
-                  size_t rank,
-                  /*out*/ bool& is_batched_memcpy,
-                  /*out*/ size_t& num_of_elements_per_batch,
-                  /*out*/ size_t& num_of_copies_per_batch,
-                  /*out*/ size_t& num_of_batch_copies) {
-  for (int64_t i = static_cast<int64_t>(rank) - 1; i >= 0; --i) {
-    if (repeats[i] != 1) {
-      if (input_shape.SizeToDimension(onnxruntime::narrow<size_t>(i)) == 1) {
-        num_of_copies_per_batch = 1;
-        for (int64_t j = 0; j <= i; ++j) {
-          num_of_copies_per_batch *= onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(j)]);
-        }
-        is_batched_memcpy = false;
-        return true;
-      } else if (i == 1) {  // else check if the previous dim is just the batch dim
-        num_of_elements_per_batch = static_cast<size_t>(input_shape.SizeFromDimension(1));
-        num_of_copies_per_batch = onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(i)]);
-        num_of_batch_copies = onnxruntime::narrow<size_t>(repeats[0]);
-        is_batched_memcpy = true;
-        return true;
-      } else {
-        break;
-      }
-    }
-  }
-  return false;
-}
-}  // namespace TileOp
-
 Status Tile::Compute(OpKernelContext* ctx) const {
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr)

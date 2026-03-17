@@ -60,7 +60,8 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y.MutableData<T>()),
         this->mode_ == RoiAlignMode::avg,
         this->half_pixel_,
-        batch_indices_ptr->Data<int64_t>());
+        batch_indices_ptr->Data<int64_t>(),
+        x_dims[0]);  // batch_size
   }
 
   return Status::OK();

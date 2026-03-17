@@ -78,7 +78,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_shape = input_tensor.Shape();
   const auto input_dims = input_shape.GetDims();
   auto output_dims(input_shape.AsShapeVector());
-  for (size_t axis = 0; axis < input_rank; axis++) {
+  for (int32_t axis = 0; axis < input_rank; axis++) {
     if (repeats[axis] < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Tile repeat value must be non-negative, got: ", repeats[axis]);
