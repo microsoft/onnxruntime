@@ -1062,7 +1062,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   }
 
   if ((session_profiler_ && session_profiler_->Enabled()) || run_options.enable_profiling) {
-    context_.CollectProfilingData();
+    context_.CollectProfilingData(session_profiler_);
   }
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)

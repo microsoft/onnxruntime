@@ -625,8 +625,9 @@ void WebGpuContext::StartProfiling() {
   }
 }
 
-void WebGpuContext::CollectProfilingData() {
+void WebGpuContext::CollectProfilingData(const void* profiler_key) {
   if (!pending_queries_.empty()) {
+    auto& events = per_session_events_[profiler_key ? profiler_key : current_profiler_key_];
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
       const auto& query_read_buffer = pending_query.query_buffer;
@@ -672,7 +673,7 @@ void WebGpuContext::CollectProfilingData() {
                                      static_cast<int64_t>(std::round(start_time / 1000.0)),
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
-        events_.emplace_back(std::move(event));
+        events.emplace_back(std::move(event));
       }
 
       query_read_buffer.Unmap();
@@ -685,7 +686,7 @@ void WebGpuContext::CollectProfilingData() {
   is_profiling_ = false;
 }
 
-void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) {
+void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, const void* profiler_key) {
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
@@ -693,11 +694,13 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) 
     // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
     ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
 
-    events.insert(events.end(),
-                  std::make_move_iterator(events_.begin()),
-                  std::make_move_iterator(events_.end()));
-
-    events_.clear();
+    auto it = per_session_events_.find(profiler_key);
+    if (it != per_session_events_.end()) {
+      events.insert(events.end(),
+                    std::make_move_iterator(it->second.begin()),
+                    std::make_move_iterator(it->second.end()));
+      per_session_events_.erase(it);
+    }
   } else {
     LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
   }
