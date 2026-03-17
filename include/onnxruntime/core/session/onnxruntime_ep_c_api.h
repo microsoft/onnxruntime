@@ -1469,8 +1469,8 @@ struct OrtEpApi {
    * just the first opset version that introduced the operator. However, if the operator has had breaking changes,
    * then `since_version` corresponds to the opset version that introduced the breaking change.
    *
-   * For example, suppose operator "Foo" was added in version 3, and had a breaking in version 6.
-   * Then there will be an operator schema entry for "Foo" with a since_version of 3, and another, updated
+   * For example, suppose operator "Foo" was added in version 3 and had a breaking change in version 6.
+   * Then, there will be an operator schema entry for "Foo" with a since_version of 3 and another updated
    * operator schema entry for "Foo" with a since_version of 6.
    *
    * \param[in] schema The OrtOpSchema instance.

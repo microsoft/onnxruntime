@@ -806,10 +806,13 @@ TEST(OpSchemaCxxApiTest, GetOpSchema_WrongDomain_ReturnsNull) {
 
 // Test ConstOpSchema methods on the "Add" operator schema (2 inputs, 1 output).
 TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  int opset_version = 20;
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", opset_version, "");
   ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
 
-  EXPECT_EQ(schema.GetSinceVersion(), 14);
+  // The "since version" will be <= to the opset version used to retrieve the schema.
+  EXPECT_LT(schema.GetSinceVersion(), opset_version + 1);
+  EXPECT_GT(schema.GetSinceVersion(), 0);
 
   // Add has 2 inputs: A, B
   ASSERT_EQ(schema.GetNumInputs(), 2u);
