@@ -220,6 +220,12 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
       test.ConfigEps(std::move(execution_providers));
       test.RunWithConfig();
     }
+  } else if constexpr (std::is_same<T1, MLFloat16>::value) {
+    if (MlasIsQNBitGemmAvailable(8, 32, HQNBIT_CompFp16)) {
+      execution_providers.emplace_back(DefaultCpuExecutionProvider());
+      test.ConfigEps(std::move(execution_providers));
+      test.RunWithConfig();
+    }
   }
 #endif
 }
