@@ -804,46 +804,24 @@ TEST(OpSchemaCxxApiTest, GetOpSchema_WrongDomain_ReturnsNull) {
   ASSERT_EQ(static_cast<const OrtOpSchema*>(schema), nullptr);
 }
 
-// Test all ConstOpSchema methods on the "Relu" operator schema (1 input, 1 output).
-TEST(OpSchemaCxxApiTest, ReluSchemaProperties) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
-
-  EXPECT_GT(schema.GetSinceVersion(), 0);
-
-  // Relu has 1 input: X with type constraint "T"
-  ASSERT_EQ(schema.GetNumInputs(), 1u);
-  EXPECT_STREQ(schema.GetInputName(0), "X");
-  EXPECT_STREQ(schema.GetInputTypeStr(0), "T");
-
-  // Relu has 1 output: Y with type constraint "T"
-  ASSERT_EQ(schema.GetNumOutputs(), 1u);
-  EXPECT_STREQ(schema.GetOutputName(0), "Y");
-  EXPECT_STREQ(schema.GetOutputTypeStr(0), "T");
-
-  // Relu defines type constraint "T"
-  EXPECT_TRUE(schema.HasTypeConstraint("T"));
-  EXPECT_FALSE(schema.HasTypeConstraint("nonexistent"));
-}
-
 // Test ConstOpSchema methods on the "Add" operator schema (2 inputs, 1 output).
 TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
   Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
   ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
 
-  EXPECT_GT(schema.GetSinceVersion(), 0);
+  EXPECT_EQ(schema.GetSinceVersion(), 14);
 
   // Add has 2 inputs: A, B
   ASSERT_EQ(schema.GetNumInputs(), 2u);
-  EXPECT_STREQ(schema.GetInputName(0), "A");
-  EXPECT_STREQ(schema.GetInputName(1), "B");
-  EXPECT_STREQ(schema.GetInputTypeStr(0), "T");
-  EXPECT_STREQ(schema.GetInputTypeStr(1), "T");
+  EXPECT_EQ(schema.GetInputName(0), "A");
+  EXPECT_EQ(schema.GetInputName(1), "B");
+  EXPECT_EQ(schema.GetInputTypeStr(0), "T");
+  EXPECT_EQ(schema.GetInputTypeStr(1), "T");
 
   // Add has 1 output: C
   ASSERT_EQ(schema.GetNumOutputs(), 1u);
-  EXPECT_STREQ(schema.GetOutputName(0), "C");
-  EXPECT_STREQ(schema.GetOutputTypeStr(0), "T");
+  EXPECT_EQ(schema.GetOutputName(0), "C");
+  EXPECT_EQ(schema.GetOutputTypeStr(0), "T");
 
   EXPECT_TRUE(schema.HasTypeConstraint("T"));
   EXPECT_FALSE(schema.HasTypeConstraint("U"));

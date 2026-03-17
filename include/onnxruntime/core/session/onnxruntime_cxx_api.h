@@ -3534,19 +3534,19 @@ struct ConstOpSchemaImpl : Base<T> {
   size_t GetNumInputs() const;
 
   ///< Wraps OrtEpApi::OpSchema_GetInputName
-  const char* GetInputName(size_t index) const;
+  std::string GetInputName(size_t index) const;
 
   ///< Wraps OrtEpApi::OpSchema_GetInputTypeStr
-  const char* GetInputTypeStr(size_t index) const;
+  std::string GetInputTypeStr(size_t index) const;
 
   ///< Wraps OrtEpApi::OpSchema_GetNumOutputs
   size_t GetNumOutputs() const;
 
   ///< Wraps OrtEpApi::OpSchema_GetOutputName
-  const char* GetOutputName(size_t index) const;
+  std::string GetOutputName(size_t index) const;
 
   ///< Wraps OrtEpApi::OpSchema_GetOutputTypeStr
-  const char* GetOutputTypeStr(size_t index) const;
+  std::string GetOutputTypeStr(size_t index) const;
 
   ///< Wraps OrtEpApi::OpSchema_HasTypeConstraint
   bool HasTypeConstraint(const char* type_str) const;

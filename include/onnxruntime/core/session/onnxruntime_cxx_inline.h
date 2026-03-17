@@ -3958,17 +3958,17 @@ inline size_t ConstOpSchemaImpl<T>::GetNumInputs() const {
 }
 
 template <typename T>
-inline const char* ConstOpSchemaImpl<T>::GetInputName(size_t index) const {
+inline std::string ConstOpSchemaImpl<T>::GetInputName(size_t index) const {
   const char* name = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetInputName(this->p_, index, &name));
-  return name;
+  return std::string(name);
 }
 
 template <typename T>
-inline const char* ConstOpSchemaImpl<T>::GetInputTypeStr(size_t index) const {
+inline std::string ConstOpSchemaImpl<T>::GetInputTypeStr(size_t index) const {
   const char* type_str = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetInputTypeStr(this->p_, index, &type_str));
-  return type_str;
+  return std::string(type_str);
 }
 
 template <typename T>
@@ -3979,17 +3979,17 @@ inline size_t ConstOpSchemaImpl<T>::GetNumOutputs() const {
 }
 
 template <typename T>
-inline const char* ConstOpSchemaImpl<T>::GetOutputName(size_t index) const {
+inline std::string ConstOpSchemaImpl<T>::GetOutputName(size_t index) const {
   const char* name = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetOutputName(this->p_, index, &name));
-  return name;
+  return std::string(name);
 }
 
 template <typename T>
-inline const char* ConstOpSchemaImpl<T>::GetOutputTypeStr(size_t index) const {
+inline std::string ConstOpSchemaImpl<T>::GetOutputTypeStr(size_t index) const {
   const char* type_str = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetOutputTypeStr(this->p_, index, &type_str));
-  return type_str;
+  return std::string(type_str);
 }
 
 template <typename T>

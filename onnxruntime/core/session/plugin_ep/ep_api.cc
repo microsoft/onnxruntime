@@ -816,12 +816,12 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
 ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
                     _In_ const char* domain, _Outptr_result_maybenull_ const OrtOpSchema** out_schema) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(name != nullptr, "name must not be null");
-  ORT_ENFORCE(domain != nullptr, "domain must not be null");
-  ORT_ENFORCE(out_schema != nullptr, "out_schema must not be null");
+  ORT_API_RETURN_IF(name == nullptr, ORT_INVALID_ARGUMENT, "name must not be null");
+  ORT_API_RETURN_IF(domain == nullptr, ORT_INVALID_ARGUMENT, "domain must not be null");
+  ORT_API_RETURN_IF(out_schema == nullptr, ORT_INVALID_ARGUMENT, "out_schema must not be null");
 
   const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(
-      std::string(name), max_inclusive_version, std::string(domain));
+      name, max_inclusive_version, domain);
   *out_schema = reinterpret_cast<const OrtOpSchema*>(schema);
   return nullptr;
   API_IMPL_END
@@ -829,8 +829,8 @@ ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_v
 
 ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(schema != nullptr, "schema must not be null");
-  ORT_ENFORCE(out != nullptr, "out must not be null");
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
   *out = onnx_schema->since_version();
@@ -840,12 +840,11 @@ ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _O
 
 ORT_API_STATUS_IMPL(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(schema != nullptr, "schema must not be null");
-  ORT_ENFORCE(out != nullptr, "out must not be null");
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  const auto& inputs = onnx_schema->inputs();
-  *out = inputs.size();
+  *out = onnx_schema->inputs().size();
   return nullptr;
   API_IMPL_END
 }
@@ -853,12 +852,13 @@ ORT_API_STATUS_IMPL(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_
 ORT_API_STATUS_IMPL(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const char** out) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(schema != nullptr, "schema must not be null");
-  ORT_ENFORCE(out != nullptr, "out must not be null");
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
   const auto& inputs = onnx_schema->inputs();
-  ORT_ENFORCE(index < inputs.size(), "Input index ", index, " out of range. Schema has ", inputs.size(), " inputs.");
+  ORT_API_RETURN_IF(index >= inputs.size(), ORT_INVALID_ARGUMENT, "Input index ", index, " out of range. Schema has ",
+                    inputs.size(), " inputs.");
   *out = inputs[index].GetName().c_str();
   return nullptr;
   API_IMPL_END
@@ -867,12 +867,12 @@ ORT_API_STATUS_IMPL(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ 
 ORT_API_STATUS_IMPL(OpSchema_GetInputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const char** out) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(schema != nullptr, "schema must not be null");
-  ORT_ENFORCE(out != nullptr, "out must not be null");
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
   const auto& inputs = onnx_schema->inputs();
-  ORT_ENFORCE(index < inputs.size(), "Input index ", index, " out of range. Schema has ", inputs.size(), " inputs.");
+  ORT_API_RETURN_IF(index >= inputs.size(), ORT_INVALID_ARGUMENT, "Input index ", index, " out of range. Schema has ", inputs.size(), " inputs.");
   *out = inputs[index].GetTypeStr().c_str();
   return nullptr;
   API_IMPL_END
@@ -880,12 +880,11 @@ ORT_API_STATUS_IMPL(OpSchema_GetInputTypeStr, _In_ const OrtOpSchema* schema, _I
 
 ORT_API_STATUS_IMPL(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(schema != nullptr, "schema must not be null");
-  ORT_ENFORCE(out != nullptr, "out must not be null");
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  const auto& outputs = onnx_schema->outputs();
-  *out = outputs.size();
+  *out = onnx_schema->outputs().size();
   return nullptr;
   API_IMPL_END
 }
@@ -893,12 +892,13 @@ ORT_API_STATUS_IMPL(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out
 ORT_API_STATUS_IMPL(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const char** out) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(schema != nullptr, "schema must not be null");
-  ORT_ENFORCE(out != nullptr, "out must not be null");
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
   const auto& outputs = onnx_schema->outputs();
-  ORT_ENFORCE(index < outputs.size(), "Output index ", index, " out of range. Schema has ", outputs.size(), " outputs.");
+  ORT_API_RETURN_IF(index >= outputs.size(), ORT_INVALID_ARGUMENT, "Output index ", index, " out of range. Schema has ",
+                    outputs.size(), " outputs.");
   *out = outputs[index].GetName().c_str();
   return nullptr;
   API_IMPL_END
@@ -907,12 +907,13 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_
 ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const char** out) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(schema != nullptr, "schema must not be null");
-  ORT_ENFORCE(out != nullptr, "out must not be null");
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
   const auto& outputs = onnx_schema->outputs();
-  ORT_ENFORCE(index < outputs.size(), "Output index ", index, " out of range. Schema has ", outputs.size(), " outputs.");
+  ORT_API_RETURN_IF(index >= outputs.size(), ORT_INVALID_ARGUMENT, "Output index ", index, " out of range. Schema has ",
+                    outputs.size(), " outputs.");
   *out = outputs[index].GetTypeStr().c_str();
   return nullptr;
   API_IMPL_END
@@ -921,12 +922,12 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _
 ORT_API_STATUS_IMPL(OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str,
                     _Out_ bool* out) {
   API_IMPL_BEGIN
-  ORT_ENFORCE(schema != nullptr, "schema must not be null");
-  ORT_ENFORCE(type_str != nullptr, "type_str must not be null");
-  ORT_ENFORCE(out != nullptr, "out must not be null");
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(type_str == nullptr, ORT_INVALID_ARGUMENT, "type_str must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
   const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  *out = onnx_schema->typeConstraintMap().count(std::string(type_str)) > 0;
+  *out = onnx_schema->typeConstraintMap().count(type_str) > 0;
   return nullptr;
   API_IMPL_END
 }
