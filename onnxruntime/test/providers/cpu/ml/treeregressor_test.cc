@@ -921,7 +921,6 @@ TEST(MLOpTest, TreeEnsembleRegressorTargetIdsOutsideBoundary) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "target_ids[1]=99 not in the expected range [0, 1]");
 }
 
-
 TEST(MLOpTest, TreeEnsembleRegressorNegativeFeatureId) {
   OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
 
