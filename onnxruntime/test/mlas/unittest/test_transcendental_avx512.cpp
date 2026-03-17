@@ -156,8 +156,8 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
         MlasGeluKernelAvx512F(input, avx512_output, size);
 
         for (size_t i = 0; i < size; ++i) {
-            ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], generic_output[i],
-                          kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
+          ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], generic_output[i],
+                                        kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
               << "Gelu mismatch at index " << i << " of " << size
               << ", input=" << input[i]
               << ", avx512=" << avx512_output[i]
