@@ -8,6 +8,7 @@
 #include <cassert>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -160,9 +161,18 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
     delete static_cast<ExampleKernelEpProfiler*>(this_ptr);
   }
 
+  // A single mutex is sufficient for this example profiler implementation.
+  // It protects access to shared mutable state (is_profiling, profiling_start_time_ns,
+  // pending_ops, completed_ops) across Start/Stop/StartProfiling/EndProfiling calls.
+  static std::mutex& GetProfilerMutex() {
+    static std::mutex m;
+    return m;
+  }
+
   static bool ORT_API_CALL StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
                                               int64_t profiling_start_time_ns) noexcept {
     auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
+    std::lock_guard<std::mutex> lock(GetProfilerMutex());
     self->is_profiling = true;
     self->profiling_start_time_ns = profiling_start_time_ns;
     self->pending_ops.clear();
@@ -172,12 +182,14 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
 
   static void ORT_API_CALL StartImpl(OrtEpProfilerImpl* this_ptr, uint64_t id) noexcept {
     auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
+    std::lock_guard<std::mutex> lock(GetProfilerMutex());
     if (!self->is_profiling) return;
     self->pending_ops.push_back({id, std::chrono::high_resolution_clock::now()});
   }
 
   static void ORT_API_CALL StopImpl(OrtEpProfilerImpl* this_ptr, uint64_t /*id*/) noexcept {
     auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
+    std::lock_guard<std::mutex> lock(GetProfilerMutex());
     if (!self->is_profiling || self->pending_ops.empty()) return;
     auto pending = self->pending_ops.back();
     self->pending_ops.pop_back();
@@ -191,9 +203,8 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
                                                   int64_t start_time_ns,
                                                   OrtEpProfilingEventsContainer* events_container) noexcept {
     auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
+    std::lock_guard<std::mutex> lock(GetProfilerMutex());
     self->is_profiling = false;
-
-    const int64_t profiling_start_us = start_time_ns / 1000;
 
     // Build per-op NODE events from completed ops.
     std::vector<std::string> event_names;
@@ -211,7 +222,9 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
       ev.process_id = 0;
       ev.thread_id = 0;
       ev.event_name = event_names.back().c_str();
-      ev.timestamp_us = profiling_start_us + static_cast<int64_t>(op.start_offset_us);
+      // Use the same time base as ORT's profiling::EventRecord:
+      // microseconds relative to profiling_start_time_.
+      ev.timestamp_us = static_cast<int64_t>(op.start_offset_us);
       ev.duration_us = op.duration_us;
       ev.num_args = 0;
       ev.arg_keys = nullptr;

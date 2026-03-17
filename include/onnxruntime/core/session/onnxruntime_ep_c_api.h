@@ -449,8 +449,10 @@ typedef struct OrtEpProfilingEvent {
   int32_t process_id;                    ///< Process ID.
   int32_t thread_id;                     ///< Thread ID.
   const char* event_name;                ///< Null-terminated event name. EP-owned.
-  int64_t timestamp_us;                  ///< Timestamp in microseconds.
-  int64_t duration_us;                   ///< Duration in microseconds.
+  int64_t timestamp_us;                  ///< Timestamp in microseconds, relative to the profiling start time
+                                         ///< (i.e., relative to the start_time_ns value passed to EndProfiling).
+  int64_t duration_us;                   ///< Duration in microseconds, using the same time base as timestamp_us
+                                         ///< (relative to the profiling start time).
   const char* const* arg_keys;           ///< Array of null-terminated argument key strings. EP-owned.
                                          ///< Can be NULL if num_args is 0.
   const char* const* arg_values;         ///< Array of null-terminated argument value strings. EP-owned.
@@ -527,7 +529,17 @@ struct OrtEpProfilerImpl {
   /** \brief Called before an operator starts execution.
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
-   * \param[in] id An identifier for the operator execution.
+   * \param[in] id A value associated with this operator execution.
+   *
+   *            ORT currently passes the profiler timestamp offset in microseconds for this callback.
+   *            The offset is measured relative to the profiling start time for the current profiling
+   *            session (as provided to StartProfiling / EndProfiling). Within a single profiling
+   *            session, values passed for \p id are monotonically non-decreasing and the same value
+   *            will be provided to the corresponding Stop call for this execution.
+   *
+   *            EP implementations MUST NOT treat \p id as a stable or unique operator identifier.
+   *            It should only be used for temporal correlation (e.g., constructing timelines) based
+   *            on the start/stop timestamps.
    *
    * \note Implementation of this function is optional. If set to NULL, it is not called.
    *
@@ -538,7 +550,12 @@ struct OrtEpProfilerImpl {
   /** \brief Called after an operator finishes execution.
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
-   * \param[in] id An identifier for the operator execution.
+   * \param[in] id The same timestamp offset in microseconds that was passed to the corresponding
+   *               Start call for this operator execution.
+   *
+   *               ORT does not guarantee that \p id values are unique per operator; they are
+   *               derived from the profiler timestamp and are intended only for temporal
+   *               correlation with Start/Stop callbacks.
    *
    * \note Implementation of this function is optional. If set to NULL, it is not called.
    *

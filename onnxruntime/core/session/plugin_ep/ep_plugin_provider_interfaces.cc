@@ -851,6 +851,14 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
     return {};
   }
 
+  // Validate that the profiler implementation was built against a compatible ORT API version.
+  if (profiler_impl->ort_version_supported < 25 || profiler_impl->ort_version_supported > ORT_API_VERSION) {
+    ORT_THROW("OrtEpProfilerImpl was built against an incompatible ORT API version. "
+              "Supported range is [25, " +
+                  std::to_string(ORT_API_VERSION) + "], but got " +
+                  std::to_string(profiler_impl->ort_version_supported) + ".");
+  }
+
   // Validate that required function pointers are set.
   if (profiler_impl->Release == nullptr ||
       profiler_impl->StartProfiling == nullptr ||

@@ -818,7 +818,7 @@ ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents,
   }
 
   if (events == nullptr || num_events == 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must at least one event to add");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must provide at least one event to add.");
   }
 
   auto& output = events_container->events;
@@ -827,9 +827,10 @@ ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents,
   for (size_t i = 0; i < num_events; ++i) {
     const OrtEpProfilingEvent& c_event = events[i];
 
-    if (c_event.ort_version_supported < 25) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "OrtEpProfilingEvent::ort_version_supported must be set ORT_API_VERSION >= 25");
+    if (c_event.ort_version_supported < 25 || c_event.ort_version_supported > ORT_API_VERSION) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          "OrtEpProfilingEvent::ort_version_supported must be between 25 and ORT_API_VERSION (inclusive)");
     }
 
     onnxruntime::InlinedHashMap<std::string, std::string> args;
@@ -848,8 +849,15 @@ ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents,
       }
     }
 
+    const int category_value = static_cast<int>(c_event.category);
+    if (category_value < static_cast<int>(onnxruntime::profiling::EventCategory::SESSION) ||
+        category_value > static_cast<int>(onnxruntime::profiling::EventCategory::API)) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "OrtEpProfilingEvent::category is out of the supported range");
+    }
+
     output.emplace_back(
-        static_cast<onnxruntime::profiling::EventCategory>(c_event.category),
+        static_cast<onnxruntime::profiling::EventCategory>(category_value),
         static_cast<int>(c_event.process_id),
         static_cast<int>(c_event.thread_id),
         std::string(c_event.event_name ? c_event.event_name : ""),
