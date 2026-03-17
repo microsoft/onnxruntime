@@ -43,6 +43,16 @@ class Tensor final {
   // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
   // Use InitOrtValue() methods to allocate for OrtValue.
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  /// Static factory kept for plugin EP kernels that still call Tensor::Create().
+  /// The main tree deprecated these in favor of constructors, but dynamically-linked
+  /// plugin code relies on the static method.
+  static std::unique_ptr<Tensor> Create(MLDataType elt_type, const TensorShape& shape,
+                                        std::shared_ptr<IAllocator> allocator) {
+    return std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
+  }
+#endif
+
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
   /**
@@ -206,7 +216,11 @@ class Tensor final {
      May return nullptr if tensor size is zero
   */
   template <typename T>
-  gsl::span<T> MutableDataAsSpan() {
+#if defined(__GNUC__) || defined(__clang__)
+  __attribute__((always_inline))
+#endif
+  gsl::span<T>
+  MutableDataAsSpan() {
     // Type check
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
@@ -223,7 +237,11 @@ class Tensor final {
   }
 
   template <typename T>
-  gsl::span<const T> DataAsSpan() const {
+#if defined(__GNUC__) || defined(__clang__)
+  __attribute__((always_inline))
+#endif
+  gsl::span<const T>
+  DataAsSpan() const {
     // Type check
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
