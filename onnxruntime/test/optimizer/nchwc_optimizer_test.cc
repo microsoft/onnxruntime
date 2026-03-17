@@ -180,6 +180,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
+  domain_to_version[kMSDomain] = 1;
   Model model("nchwc", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   NchwcTestHelper helper(model.MainGraph());
@@ -710,7 +711,7 @@ TEST(NchwcOptimizerTests, ConvBinaryBroadcast) {
 }
 
 TEST(NchwcOptimizerTests, ConvMulChannelScale) {
-  auto test_case = [&](const std::vector<int64_t>& scale_shape) {
+  auto test_case = [&](const std::vector<int64_t>& scale_shape, bool scale_first) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 32, 25, 21});
       auto* conv_output_arg = helper.MakeIntermediate();
@@ -719,7 +720,11 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
 
       helper.AddConvNode(input_arg, conv_output_arg, {32, 32, 3, 3});
       auto* scale_arg = helper.MakeInitializer<float>(scale_shape, helper.FillRandomData<float>(scale_shape));
-      helper.AddNode("Mul", {conv_output_arg, scale_arg}, {mul_output_arg});
+      if (scale_first) {
+        helper.AddNode("Mul", {scale_arg, conv_output_arg}, {mul_output_arg});
+      } else {
+        helper.AddNode("Mul", {conv_output_arg, scale_arg}, {mul_output_arg});
+      }
       helper.AddConvNode(mul_output_arg, output_arg, {16, 32, 1, 1});
     };
 
@@ -735,8 +740,10 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
   };
 
   // Valid ONNX channel broadcast forms for NCHW tensors.
-  test_case({32, 1, 1});
-  test_case({1, 32, 1, 1});
+  test_case({32, 1, 1}, false);
+  test_case({32, 1, 1}, true);
+  test_case({1, 32, 1, 1}, false);
+  test_case({1, 32, 1, 1}, true);
 }
 
 TEST(NchwcOptimizerTests, ConvConcat) {
@@ -1391,10 +1398,11 @@ TEST(NchwcOptimizerTests, Activation) {
 
     auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const std::string activation_key = domain.empty() ? activation_op_type : domain + "." + activation_op_type;
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
-      EXPECT_EQ(op_to_count[activation_op_type], 1);
+      EXPECT_EQ(op_to_count[activation_key], 1);
       EXPECT_EQ(op_to_count["Add"], 1);
     };
 
