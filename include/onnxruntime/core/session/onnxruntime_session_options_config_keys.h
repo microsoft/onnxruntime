@@ -394,9 +394,6 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 static const char* const kOrtSessionOptionsMlasGeluErfUseMinimaxApproximation =
     "mlas.gelu_erf_use_minimax_approximation";
 
-static const char* const kOrtSessionOptionsMlasEnableNchwcConvMaxInputChannelTuning =
-    "mlas.enable_nchwc_conv_max_input_channel_tuning";
-
 // static const char* const kOrtSessionOptionsMlasEnableNchwcConvThreadCapping =
 //     "mlas.enable_nchwc_conv_thread_capping";
 

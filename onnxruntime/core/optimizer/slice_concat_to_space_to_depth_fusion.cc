@@ -176,6 +176,46 @@ bool TryGetStaticChannelCount(const NodeArg& input, int64_t& channel_count) {
   return true;
 }
 
+TypeProto MakeSpaceToDepthOutputTypeProto(const NodeArg& input) {
+  TypeProto output_type;
+
+  const auto* input_type_proto = input.TypeAsProto();
+  if (input_type_proto == nullptr) {
+    return output_type;
+  }
+
+  output_type = *input_type_proto;
+
+  if (!output_type.has_tensor_type()) {
+    return output_type;
+  }
+
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  if (output_shape == nullptr || output_shape->dim_size() != kRank) {
+    return output_type;
+  }
+
+  auto* channel_dim = output_shape->mutable_dim(onnxruntime::narrow<int>(kChannelAxis));
+  if (utils::HasDimValue(*channel_dim) && channel_dim->dim_value() > 0) {
+    channel_dim->set_dim_value(channel_dim->dim_value() * kBlockSize * kBlockSize);
+  } else {
+    channel_dim->clear_dim_value();
+    channel_dim->clear_dim_param();
+  }
+
+  for (const int64_t axis : {kHeightAxis, kWidthAxis}) {
+    auto* dim = output_shape->mutable_dim(onnxruntime::narrow<int>(axis));
+    if (utils::HasDimValue(*dim) && dim->dim_value() > 0 && dim->dim_value() % kBlockSize == 0) {
+      dim->set_dim_value(dim->dim_value() / kBlockSize);
+    } else {
+      dim->clear_dim_value();
+      dim->clear_dim_param();
+    }
+  }
+
+  return output_type;
+}
+
 bool TryMatchSlicePhase(const Graph& graph,
                         const Node& slice,
                         const NodeArg& common_input,
@@ -350,7 +390,8 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
   if (is_canonical_order) {
     space_to_depth_outputs = {};
   } else {
-    space_to_depth_outputs.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("space_to_depth_out"), common_input->TypeAsProto()));
+    auto space_to_depth_output_type = MakeSpaceToDepthOutputTypeProto(*common_input);
+    space_to_depth_outputs.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("space_to_depth_out"), &space_to_depth_output_type));
   }
 
   Node& space_to_depth = graph.AddNode(graph.GenerateNodeName("SpaceToDepth"),

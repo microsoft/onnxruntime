@@ -389,8 +389,13 @@ MlasNchwcSelectPointwiseConvFilterSetSize(
     const size_t OutputChannelBlockCount =
         (WorkBlock.OutputChannels + BlockSize - 1) / BlockSize;
 
+    // Pointwise convolutions have historically used FilterSetSize=4. Only
+    // switch to FilterSetSize=3 when the output-channel block count is a
+    // multiple of 3 but not 4, so we avoid regressing shapes where both 3-way
+    // and 4-way partitioning are possible (for example 12, 24, 48, ... blocks).
     if (OutputChannelBlockCount >= 3 &&
-        (OutputChannelBlockCount % 3) == 0) {
+        (OutputChannelBlockCount % 3) == 0 &&
+        (OutputChannelBlockCount % MlasNchwcDefaultGroupedConvFilterSetSize) != 0) {
         return 3;
     }
 
@@ -1064,38 +1069,11 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasConvPointwiseFloatKernel;
 #endif
 
+        constexpr size_t MaximumInputChannelBatch = 128;
+
         size_t InputChannelBatch = 0;
         for (size_t ic = 0; ic < InputChannels; ) {
-            constexpr size_t DefaultMaximumInputChannelBatch = 128;
-            constexpr size_t RaisedMaximumInputChannelBatch = 192;
-
             const size_t RemainingInputChannels = InputChannels - ic;
-            size_t MaximumInputChannelBatch = DefaultMaximumInputChannelBatch;
-
-            if (WorkBlock->BackendKernelSelectorConfig != nullptr &&
-                WorkBlock->BackendKernelSelectorConfig->enable_nchwc_conv_max_input_channel_tuning) {
-                // Prefer a larger 192-channel batch only when it reduces the
-                // number of partial accumulation passes compared to the
-                // historical 128-channel batch size. This targets channel
-                // counts like 192/384/768 while preserving the existing 128
-                // behavior for shapes like 256 where 192 does not reduce the
-                // number of batches.
-                if (RemainingInputChannels == RaisedMaximumInputChannelBatch) {
-                    MaximumInputChannelBatch = RaisedMaximumInputChannelBatch;
-                } else if (RemainingInputChannels >= RaisedMaximumInputChannelBatch * 2) {
-                    const size_t BatchCount128 =
-                        (RemainingInputChannels + DefaultMaximumInputChannelBatch - 1) /
-                        DefaultMaximumInputChannelBatch;
-                    const size_t BatchCount192 =
-                        (RemainingInputChannels + RaisedMaximumInputChannelBatch - 1) /
-                        RaisedMaximumInputChannelBatch;
-
-                    if (BatchCount192 < BatchCount128) {
-                        MaximumInputChannelBatch = RaisedMaximumInputChannelBatch;
-                    }
-                }
-            }
-
             InputChannelBatch = std::min(RemainingInputChannels, MaximumInputChannelBatch);
 
             unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);

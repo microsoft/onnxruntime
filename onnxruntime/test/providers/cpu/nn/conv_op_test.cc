@@ -851,38 +851,6 @@ TEST(ConvTest, Conv2D_NchwcFilterSetTuning_CPU_EP) {
   TestCpuConvOpWithSessionOptions(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, so, true);
 }
 
-TEST(ConvTest, Conv2D_NchwcMaxInputChannelTuning_CPU_EP) {
-  if (MlasNchwcGetBlockSize() <= 1) {
-    GTEST_SKIP() << "NCHWc is not supported on this platform.";
-  }
-
-  ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{1, 1},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
-  };
-
-  SessionOptions so;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasEnableNchwcConvMaxInputChannelTuning, "1"));
-
-  RandomValueGenerator random{1234};
-
-  for (const vector<int64_t>& X_shape : {vector<int64_t>{1, 192, 7, 7}, vector<int64_t>{1, 384, 4, 4}}) {
-    vector<int64_t> W_shape = {96, X_shape[1], 1, 1};
-    vector<int64_t> Y_shape = {1, 96, X_shape[2], X_shape[3]};
-
-    vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
-    vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
-    vector<float> expected_vals = ComputeExpectedConv2D(attrs, X, X_shape, W, W_shape, Y_shape);
-
-    TestCpuConvOpWithSessionOptions(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, so, true);
-  }
-}
-
 // Conv10
 TEST(ConvTest, Conv3D_1) {
   ConvOpAndTestAttributes attrs = {

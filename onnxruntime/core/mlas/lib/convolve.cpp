@@ -23,6 +23,15 @@ Abstract:
 #define MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD \
     (MLAS_SGEMM_STRIDEN * MLAS_SGEMM_STRIDEK)
 
+static size_t
+MlasConvGetWorkingBufferSizePerThread(
+    const MLAS_CONV_PARAMETERS* Parameters
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Parameters);
+    return MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+}
+
 //
 // Define the parameters to execute segments of a convolution operation on
 // worker threads.
@@ -635,7 +644,7 @@ Return Value:
     MLAS_CONV_WORK_BLOCK::SEGMENT* Segment = &WorkBlock->Segments[Index];
 
     float* ColumnBuffer =
-        WorkBlock->WorkingBuffer + Index * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+        WorkBlock->WorkingBuffer + Index * MlasConvGetWorkingBufferSizePerThread(WorkBlock->Parameters);
 
     MlasConvOperation(WorkBlock->Parameters, WorkBlock->Input, WorkBlock->Filter,
         WorkBlock->Bias, ColumnBuffer, WorkBlock->Output, Segment->StartN,
@@ -920,47 +929,6 @@ Return Value:
 //
 // --*/
 // {
-//     MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
-//
-//     const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
-//     const size_t GroupCount = Parameters->GroupCount;
-//     const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
-//
-//     size_t BatchGroupStart;
-//     size_t BatchGroupRemaining;
-//
-//     MlasPartitionWork(Index, WorkBlock->TargetThreadCount, BatchGroupCount,
-//         &BatchGroupStart, &BatchGroupRemaining);
-//
-//     size_t BatchGroupEnd = BatchGroupStart + BatchGroupRemaining;
-//
-//     const size_t FilterCount = Parameters->FilterCount;
-//     const size_t OutputSize = Parameters->OutputSize;
-//     const size_t K = Parameters->K;
-//
-//     const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
-//     const size_t OutputGroupSize = FilterCount * OutputSize;
-//     const size_t FilterGroupSize = FilterCount * K;
-//
-//     const float* input = WorkBlock->Input + BatchGroupStart * InputGroupSize;
-//     float* output = WorkBlock->Output + BatchGroupStart * OutputGroupSize;
-//
-//     for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
-//         size_t group = bg % GroupCount;
-//
-//         const float* filter = WorkBlock->Filter + group * FilterGroupSize;
-//         const float* bias = WorkBlock->Bias;
-//         if (bias != nullptr) {
-//             bias += group * FilterCount;
-//         }
-//
-//         MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, input, filter, output);
-//         MlasActivation(Parameters->Activation, output, bias, FilterCount,
-//             OutputSize, OutputSize);
-//
-//         input += InputGroupSize;
-//         output += OutputGroupSize;
-//     }
 // }
 
 inline
@@ -1301,10 +1269,6 @@ Return Value:
 
 #endif
 
-                case MlasConvAlgorithmDepthwiseWithMultiplier:
-                    // The specialized depthwise-with-multiplier path is disabled.
-                    // Fall back to the generic segmented path below if this enum is ever selected.
-
                 case MlasConvAlgorithmExpandThenGemmSegmented:
                 {
                     //
@@ -1549,27 +1513,9 @@ Return Value:
 
     } else {
 
-        // Commonly found in MobileNet like models, where the depthwise convolution with
-        // depth_multiplier = 2 is used together with 7x7 kernel shape, stride = 2 and dilation = 1.
-        // This is a very specific scenario, but it is worth to have a specialized kernel for it given
-        // the popularity of MobileNet models.
-        // if (Parameters->BackendKernelSelectorConfig != nullptr &&
-        //     Parameters->BackendKernelSelectorConfig->enable_depthwise_with_multiplier_kernel &&
-        //     Dimensions == 2
-        //     // depthwise convolution
-        //     && Parameters->GroupCount > 1
-        //     && Parameters->InputChannels == 1
-        //     // depth_multiplier = 2
-        //     && Parameters->FilterCount == 2
-        //     // current scope for specialized kernel is for the 7x7 kernel shape
-        //     && Parameters->KernelShape[0] == 7 && Parameters->KernelShape[1] == 7
-        //     // keep this specialized kernel only for stride = 2x2
-        //     && Parameters->StrideShape[0] == 2 && Parameters->StrideShape[1] == 2
-        //     // keep this specialized kernel only for dilation = 1x1
-        //     && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
-        //     Parameters->Algorithm = MlasConvAlgorithmDepthwiseWithMultiplier;
-        //     return;
-        // }
+        // A previously tested specialized depthwise-with-multiplier kernel for
+        // 7x7 stride-2 depth_multiplier=2 did not perform well enough to use
+        // by default. Keep these shapes on the generic grouped path.
 
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 
@@ -1650,13 +1596,13 @@ Return Value:
         Parameters->Algorithm = MlasConvAlgorithmExpandThenGemmSegmented;
         Parameters->u.ExpandThenGemmSegmented.ThreadStrideN = StrideN;
 
-        *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+        *WorkingBufferSize = TargetThreadCount * MlasConvGetWorkingBufferSizePerThread(Parameters);
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
             size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K,
                                                           Parameters->FilterCount * Parameters->OutputSize,
-                                                          static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)});
+                                                          MlasConvGetWorkingBufferSizePerThread(Parameters)});
             TargetThreadCount = MaximumThreadCount;
             if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
                 TargetThreadCount = static_cast<ptrdiff_t>(Parameters->BatchCount * Parameters->GroupCount);

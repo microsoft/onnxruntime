@@ -18,8 +18,12 @@ Abstract:
 #include "mlasi.h"
 #include <cassert>
 
-// Specialized depthwise-with-multiplier kernel disabled for A/B testing.
+// Specialized depthwise-with-multiplier kernels are currently disabled.
+// Keep the previous implementation here for reference while excluding it from
+// the active MLAS build.
 #if 0
+
+// Specialized depthwise-with-multiplier kernel for 7x7 stride-2 depth_multiplier=2.
 
 static
 void
@@ -313,9 +317,10 @@ Note:
             Parameters, Input, Filter, Output);
         return;
     }
-#endif
 
     MlasConv2dSingleChannel_CHW_Kernel7x7_PadAny_Stride2_Dilation1_DepthMultiplier2(
         Parameters, Input, Filter, Output);
 }
+#endif
+
 #endif

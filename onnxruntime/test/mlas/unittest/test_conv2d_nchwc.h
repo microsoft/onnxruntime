@@ -250,30 +250,7 @@ class MlasNchwcConv2DFilterSetTuningTest : public MlasNchwcConv2DTest<Threaded> 
  private:
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG backend_kernel_selector_config_{
       false,
-      false,
       true,
-  };
-};
-
-template <bool Threaded>
-class MlasNchwcConv2DMaxInputChannelTuningTest : public MlasNchwcConv2DTest<Threaded> {
- public:
-  static const char* GetTestSuiteName() {
-    static const std::string suite_name(Threaded ? "Conv2dNchwcMaxInputChannelTuning_Threaded"
-                                                 : "Conv2dNchwcMaxInputChannelTuning_SingleThread");
-    return suite_name.c_str();
-  }
-
- protected:
-  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* GetBackendKernelSelectorConfig() const override {
-    return &backend_kernel_selector_config_;
-  }
-
- private:
-  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG backend_kernel_selector_config_{
-      false,
-      true,
-      false,
   };
 };
 
