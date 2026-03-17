@@ -3,9 +3,12 @@
 
 #include "core/session/ep_cache_versioning.h"
 
-#include <array>
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -20,24 +23,19 @@ namespace onnxruntime {
 
 namespace {
 
-// Option keys (as used in config and provider options) that are EP cache paths.
-// When session.ep_cache_use_ort_version is "1", these are suffixed with ORT version.
-// Format: (provider_name_lowercase, option_key).
-const std::array<std::pair<std::string, std::string>, 5> kEpCachePathOptions = {
-    std::pair<std::string, std::string>{"coreml", "ModelCacheDirectory"},
-    std::pair<std::string, std::string>{"tensorrt", "trt_engine_cache_path"},
-    std::pair<std::string, std::string>{"tensorrt", "trt_timing_cache_path"},
-    std::pair<std::string, std::string>{"migraphx", "migraphx_model_cache_dir"},
-    std::pair<std::string, std::string>{"nvtensorrtrtx", "nv_runtime_cache_path"},
-};
+// Registry of EP cache path option keys, keyed by provider name (lowercased).
+// This allows EP-specific code to register which options are cache directories,
+// so the generic versioning logic does not need hardcoded knowledge of each EP.
+std::unordered_map<std::string, EpCachePathOptionKeys>& EpCachePathOptionsRegistry() {
+  // Function-local static to avoid static initialization order issues across translation units.
+  static std::unordered_map<std::string, EpCachePathOptionKeys> registry;
+  return registry;
+}
 
-bool IsEpCachePathOption(const std::string& provider_lower, const std::string& option_key) {
-  for (const auto& cache_option : kEpCachePathOptions) {
-    if (cache_option.first == provider_lower && cache_option.second == option_key) {
-      return true;
-    }
-  }
-  return false;
+std::mutex& EpCachePathOptionsMutex() {
+  // Function-local static to avoid static initialization order issues across translation units.
+  static std::mutex mutex;
+  return mutex;
 }
 
 std::string GetVersionedCachePath(const std::string& path) {
@@ -62,6 +60,34 @@ std::string GetLowercaseString(const std::string& s) {
 
 }  // namespace
 
+void RegisterEpCachePathOptions(const char* provider_name,
+                                std::initializer_list<const char*> option_keys) {
+  if (provider_name == nullptr) {
+    return;
+  }
+
+  const std::string provider_lower = GetLowercaseString(provider_name);
+
+  std::lock_guard<std::mutex> lock(EpCachePathOptionsMutex());
+  auto& registered_keys = EpCachePathOptionsRegistry()[provider_lower];
+  for (const char* key : option_keys) {
+    if (key == nullptr) {
+      continue;
+    }
+    registered_keys.emplace_back(key);
+  }
+}
+
+static const EpCachePathOptionKeys* TryGetEpCachePathOptionKeys(const std::string& provider_lower) {
+  std::lock_guard<std::mutex> lock(EpCachePathOptionsMutex());
+  auto& registry = EpCachePathOptionsRegistry();
+  auto it = registry.find(provider_lower);
+  if (it == registry.end()) {
+    return nullptr;
+  }
+  return &it->second;
+}
+
 void ApplyEpCacheVersionToConfigOptions(ConfigOptions& config_options) {
   if (config_options.GetConfigOrDefault(kOrtSessionOptionsEpCacheUseOrtVersion, "0") != "1") {
     return;
@@ -78,7 +104,13 @@ void ApplyEpCacheVersionToConfigOptions(ConfigOptions& config_options) {
     if (dot == std::string::npos) continue;
     std::string provider_lower = GetLowercaseString(key.substr(prefix.size(), dot - prefix.size()));
     std::string option_key = key.substr(dot + 1);
-    if (!IsEpCachePathOption(provider_lower, option_key)) continue;
+    const EpCachePathOptionKeys* cache_keys = TryGetEpCachePathOptionKeys(provider_lower);
+    if (cache_keys == nullptr) {
+      continue;
+    }
+    if (std::find(cache_keys->begin(), cache_keys->end(), option_key) == cache_keys->end()) {
+      continue;
+    }
     const std::string& value = kv.second;
     if (value.empty()) continue;
     to_update.push_back({key, GetVersionedCachePath(value)});
@@ -97,9 +129,18 @@ ProviderOptions GetProviderOptionsWithVersionedCachePaths(
   if (config_options.GetConfigOrDefault(kOrtSessionOptionsEpCacheUseOrtVersion, "0") != "1") {
     return result;
   }
+  if (provider_name == nullptr) {
+    return result;
+  }
   std::string provider_lower = GetLowercaseString(provider_name);
+  const EpCachePathOptionKeys* cache_keys = TryGetEpCachePathOptionKeys(provider_lower);
+  if (cache_keys == nullptr) {
+    return result;
+  }
   for (auto& kv : result) {
-    if (!IsEpCachePathOption(provider_lower, kv.first)) continue;
+    if (std::find(cache_keys->begin(), cache_keys->end(), kv.first) == cache_keys->end()) {
+      continue;
+    }
     if (kv.second.empty()) continue;
     kv.second = GetVersionedCachePath(kv.second);
   }

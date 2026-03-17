@@ -147,6 +147,16 @@ std::string GetVersionedCachePath(const std::string& base_path) {
 }
 #endif
 
+// Ensure EP cache path option keys are registered for tests that call the
+// generic versioning helpers directly with provider names.
+const bool kRegisterTestEpCachePathOptions = []() {
+  RegisterEpCachePathOptions("CoreML", {"ModelCacheDirectory"});
+  RegisterEpCachePathOptions("TensorRT", {"trt_engine_cache_path", "trt_timing_cache_path"});
+  RegisterEpCachePathOptions("MIGraphX", {"migraphx_model_cache_dir"});
+  RegisterEpCachePathOptions("NvTensorRtRtx", {"nv_runtime_cache_path"});
+  return true;
+}();
+
 }  // namespace
 
 TEST(CApiTest, ep_cache_versioning_config_options_disabled) {

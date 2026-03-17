@@ -458,7 +458,9 @@ static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep
 // When set to "1", execution provider cache directory options (e.g. CoreML ModelCacheDirectory,
 // TensorRT trt_engine_cache_path, MIGraphX migraphx_model_cache_dir) are automatically suffixed with
 // the ONNX Runtime version string. This invalidates caches when ORT is updated and avoids crashes
-// from loading outdated EP caches. Set this option before appending execution providers.
+// from loading outdated EP caches. Set this option before appending execution providers via the
+// generic AppendExecutionProvider API or config options. TensorRT-specific C APIs that take
+// OrtTensorRTProviderOptionsV2 do not currently apply this option automatically.
 //
 // Option values:
 // - "0": EP cache paths are used as provided. [DEFAULT]

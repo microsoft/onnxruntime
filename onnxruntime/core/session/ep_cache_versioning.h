@@ -3,14 +3,28 @@
 
 #pragma once
 
+#include <initializer_list>
 #include <string>
-#include <unordered_map>
+#include <vector>
 
-#include "core/common/common.h"
 #include "core/framework/config_options.h"
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
+
+using EpCachePathOptionKeys = std::vector<std::string>;
+
+/**
+ * Register the set of provider option keys that represent cache directory paths for a given EP.
+ *
+ * The provider_name must be the canonical EP name (e.g. "CoreML", "MIGraphX", "NvTensorRtRtx", "TensorRT").
+ * Keys are the option names as they appear in ProviderOptions/config entries (e.g. "ModelCacheDirectory").
+ *
+ * This is typically called from EP-specific code (e.g. factory/bridge) so that EP-specific knowledge
+ * about cache paths lives with the EP rather than in generic session code.
+ */
+void RegisterEpCachePathOptions(const char* provider_name,
+                                std::initializer_list<const char*> option_keys);
 
 /**
  * When session.ep_cache_use_ort_version is "1", rewrites known EP cache path entries in
