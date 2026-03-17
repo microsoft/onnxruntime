@@ -287,6 +287,8 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
 
           double sum = 0;
 
+          ORT_ENFORCE(j_coeff_row_offset + SafeInt<size_t>(start_index_i + class_i_support_count) <= coefficients_.size(),
+                      "The number of vectors per class is not consistent with the number of vectors in the model.");
           const float* val1 = &(coefficients_[j_coeff_row_offset + SafeInt<size_t>(start_index_i)]);
           const float* val2 = &(cur_kernels[onnxruntime::narrow<size_t>(start_index_i)]);
           for (int64_t m = 0; m < class_i_support_count; ++m, ++val1, ++val2)

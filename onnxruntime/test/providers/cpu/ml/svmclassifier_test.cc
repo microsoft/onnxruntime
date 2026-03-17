@@ -263,5 +263,36 @@ TEST(MLOpTest, SVMClassifierLinear) {
   test.Run();
 }
 
+TEST(MLOpTest, SVMClassifierOutOfBoundary) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  // NUM_FEATURES = 4;
+  // NUM_CLASSES = 3; //3 classes → needs 3*(3-1)/2 rho entries
+  // NUM_VECTORS = 2; // Support vectors
+  // n_rho = NUM_CLASSES * (NUM_CLASSES - 1) ;
+
+  std::vector<float> coefficients = {1.f, 1.f};  // 2: undersized otherwise NUM_VECTORS * (NUM_CLASSES-1)
+  std::vector<float> support_vectors = {0.1f,0.1f,0.1f,0.1f,0.1f,0.1f,0.1f,0.1f}; // NUM_VECTORS * NUM_FEATURES
+  std::vector<float> rho = {0.1f}; // only one
+  std::vector<float> kernel_params = {0.01f, 0.f, 3.f};
+  std::vector<int64_t> classes = {0, 1, 2};  // NUM_CLASSES
+  std::vector<int64_t> vectors_per_class = {1, 1, 0}; // undersised
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("vectors_per_class", vectors_per_class);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 4}, {0.f,0.f,0.f,0.f});
+  test.AddOutput<int64_t>("Y", {1}, {1});
+  test.AddOutput<float>("Z", {1, 4}, {0.f,0.f,0.f,0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "The number of vectors per class is not consistent");
+}
+
+
 }  // namespace test
 }  // namespace onnxruntime
