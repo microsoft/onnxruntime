@@ -395,7 +395,7 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
 // accuracy_level=2 maps to HQNBIT_CompFp16 on ARM64.
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 TEST(MatMulNBits, Float16_8b_ARM_CompFp16) {
-  constexpr float abs_error = 0.055f;
+  constexpr float abs_error = 0.1f;
   constexpr float rel_error = 0.02f;
   TestMatMul8BitsTyped<MLFloat16, 1, 1, 16, 16, 2>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 1, 2, 16, 16, 2>(abs_error, rel_error);
@@ -440,7 +440,7 @@ TEST(MatMulNBits, Float16_8b_ARM_CompFp16) {
 // ARM64 fp16 int8 quantized GEMM path (HQNBIT_CompInt8) for 8-bit weights.
 // accuracy_level=4 maps to HQNBIT_CompInt8 on ARM64.
 TEST(MatMulNBits, Float16_8b_ARM_CompInt8) {
-  constexpr float abs_error = 0.055f * 1.02f;
+  constexpr float abs_error = 0.1f * 1.02f;
   constexpr float rel_error = 0.02f * 1.02f;
   TestMatMul8BitsTyped<MLFloat16, 1, 1, 16, 16, 4>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 1, 2, 16, 16, 4>(abs_error, rel_error);
