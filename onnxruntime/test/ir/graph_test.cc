@@ -2828,5 +2828,101 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   ASSERT_TRUE(second_resolve.IsOK()) << "Second resolve failed: " << second_resolve.ErrorMessage();
 }
 
+// Test for GitHub issue #24880: subgraph referencing an initializer from the outer graph
+// should resolve successfully even without explicit value_info in the subgraph.
+// Uses a custom op with a GRAPH attribute but NO type inference function, so subgraph
+// type inferencing is never invoked. This directly exercises the verification-time
+// propagation in VerifyNodeAndOpMatch.
+TEST_F(GraphTest, OuterScopeInitializerTypeInfoPropagatedToSubgraph) {
+  // Register a custom op with a GRAPH attribute but no type/shape inference function.
+  // This simulates ops like BeamSearch whose schema inference does not invoke subgraph
+  // inferencing, so InferAndVerifySubgraphTypes is never called during type inference.
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry =
+      std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schema = {
+      OpSchema()
+          .SetName("FakeSubgraphOp")
+          .SetDomain("FakeTestDomain")
+          .Input(0, "X", "Input tensor", "T")
+          .Output(0, "Y", "Output tensor", "T")
+          .Attr("body", "A subgraph", AttributeProto::GRAPH)
+          .TypeConstraint("T", OpSchema::all_tensor_types(),
+                          "Constrain input and output types to any tensor type.")};
+  ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
+
+  // Build the model proto.
+  // Main graph: float input "x" [2,3], float initializer "weight" [2,3],
+  //             FakeSubgraphOp node with a subgraph that references "weight".
+  // The subgraph uses "weight" via implicit capture (no value_info for it in the subgraph).
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  ImportOpset(model_proto, "", 16);
+  ImportOpset(model_proto, "FakeTestDomain", 1);
+
+  GraphProto& main_graph = *model_proto.mutable_graph();
+  main_graph.set_name("main_graph");
+
+  // Main graph input: float tensor "x"
+  ValueInfoProto* x_input = main_graph.add_input();
+  x_input->set_name("x");
+  SetTypeAndShape(x_input->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Initializer "weight" in the main graph (float [2,3]).
+  // Not added as a graph input — ORT relaxes the ONNX requirement that initializers
+  // must also be listed as graph inputs.
+  TensorProto* weight_init = main_graph.add_initializer();
+  weight_init->set_name("weight");
+  weight_init->set_data_type(TensorProto_DataType_FLOAT);
+  weight_init->add_dims(2);
+  weight_init->add_dims(3);
+  for (int i = 0; i < 6; ++i) {
+    weight_init->add_float_data(static_cast<float>(i));
+  }
+
+  // Build subgraph: Identity(weight) -> result
+  // "weight" is from the outer scope — deliberately NO value_info for it in this subgraph.
+  // It will be picked up as an implicit input by BuildConnections.
+  GraphProto subgraph;
+  subgraph.set_name("body_subgraph");
+
+  // Subgraph output
+  ValueInfoProto* sg_output = subgraph.add_output();
+  sg_output->set_name("result");
+  SetTypeAndShape(sg_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Identity node: result = Identity(weight)
+  NodeProto* identity_node = subgraph.add_node();
+  identity_node->set_op_type("Identity");
+  *identity_node->add_input() = "weight";  // outer scope initializer
+  *identity_node->add_output() = "result";
+
+  // FakeSubgraphOp node: takes "x" as input, has "body" subgraph attribute
+  NodeProto* fake_node = main_graph.add_node();
+  fake_node->set_op_type("FakeSubgraphOp");
+  fake_node->set_domain("FakeTestDomain");
+  fake_node->set_name("fake_subgraph_node");
+  *fake_node->add_input() = "x";
+  *fake_node->add_output() = "y";
+
+  AttributeProto* body_attr = fake_node->add_attribute();
+  body_attr->set_name("body");
+  body_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  *body_attr->mutable_g() = subgraph;
+
+  // Main graph output
+  ValueInfoProto* main_output = main_graph.add_output();
+  main_output->set_name("y");
+  SetTypeAndShape(main_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Load the model — this calls Graph::Resolve internally.
+  // Without the fix, this fails with:
+  //   "input arg (weight) does not have type information set by parent node"
+  // because FakeSubgraphOp has no type inference that propagates types to the subgraph.
+  // The fix propagates type info from implicit_input_defs during VerifyNodeAndOpMatch.
+  std::shared_ptr<Model> model;
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs, *logger_));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
