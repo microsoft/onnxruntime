@@ -18,7 +18,6 @@
 #include "test/util/include/inference_session_wrapper.h"
 
 #include <filesystem>
-#include <iostream>
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
