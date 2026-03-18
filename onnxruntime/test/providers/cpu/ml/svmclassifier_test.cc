@@ -271,9 +271,9 @@ TEST(MLOpTest, SVMClassifierOutOfBoundary) {
   // NUM_VECTORS = 2; // Support vectors
   // n_rho = NUM_CLASSES * (NUM_CLASSES - 1) ;
 
-  std::vector<float> coefficients = {1.f, 1.f};  // 2: undersized otherwise NUM_VECTORS * (NUM_CLASSES-1)
-  std::vector<float> support_vectors = {0.1f,0.1f,0.1f,0.1f,0.1f,0.1f,0.1f,0.1f}; // NUM_VECTORS * NUM_FEATURES
-  std::vector<float> rho = {0.1f}; // only one
+  std::vector<float> coefficients = {1.f, 1.f};                                           // 2: undersized otherwise NUM_VECTORS * (NUM_CLASSES-1)
+  std::vector<float> support_vectors = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};  // NUM_VECTORS * NUM_FEATURES
+  std::vector<float> rho = {0.1f};                                                        // only one
   std::vector<float> kernel_params = {0.01f, 0.f, 3.f};
   std::vector<int64_t> classes = {0, 1, 2};  // NUM_CLASSES
   std::vector<int64_t> vectors_per_class = {1, 1, 0}; // undersised
