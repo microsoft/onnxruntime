@@ -445,7 +445,6 @@ Return Value:
 
                 if ((Cpuid7_1[0] & 0x10) != 0) {
 
-                    this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
@@ -500,7 +499,6 @@ Return Value:
 
                         if ((Cpuid7[2] & 0x800) != 0) {
 
-                            this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
@@ -540,7 +538,6 @@ Return Value:
                     (Cpuid7[3] & 0b1 << 25) != 0 &&
                     (xcr0 & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE) {
                     if (MlasInitAMX()) {
-                        this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAmx;
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
@@ -626,6 +623,14 @@ Return Value:
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
+#if defined(__aarch64__) && defined(__linux__)
+        // Currently only an SME2 variant of SBGEMM exists
+        if (ArmKleidiAI::UseSME2){
+            this->MlasSBGemmBatchOverride = ArmKleidiAI::MlasSBGemmBatch;
+            this->MlasSBGemmPackBSizeOverride = ArmKleidiAI::MlasSBGemmPackBSize;
+            this->MlasSBGemmPackBOverride = ArmKleidiAI::MlasSBGemmPackB;
+        }
+#endif
     }
 #endif
 

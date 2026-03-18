@@ -697,33 +697,29 @@ TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits_Cuda) {
   RunDQMatMulConverted<UInt4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
 }
 
-// Cast-aware DQ->MatMul fusion tests
-// Pattern: DQ(int4->fp16) -> Cast(fp16->fp32) -> MatMul(fp32)
-// The Cast between DQ and MatMul on input B should be handled by the
-// DQCastMatMulToMatMulNBits selector-action pair.
-// MatMulNBits always operates in the DQ scale dtype (fp16).
-// The action always inserts Cast on input A and Cast on output.
-// ORT's redundant cast elimination optimizer cleans up unnecessary casts.
+// DQ(fp16) -> MatMul fusion test
+// Pattern: DQ(int4, fp16_scale) -> MatMul(fp16)
+// For FP16 models on CPU EP, CPU EP doesn't claim FP16 MatMul during partitioning
+// (no FP16 MatMul kernel on CPU), so the node's EP is empty "".
+// The DQ->MatMul fusion should still match and fuse to MatMulNBits.
 //
-// Input1(fp32)      DQ(int4->fp16)
-//   |                    |
-//    \             Cast(fp16->fp32)
-//     \              /
-//      MatMul(fp32)
+//  Input1(fp16)     DQ(int4->fp16)
+//     \               /
+//     MatMul(fp16)
 //          |
-//        output(fp32)
+//       output(fp16)
 //
 // After optimization:
-// Input1(fp32) -> Cast(fp32->fp16) -> MatMulNBits(fp16) -> Cast(fp16->fp32) -> output(fp32)
+//  Input1(fp16)  ->  MatMulNBits(fp16)  ->  output(fp16)
 template <typename T, bool use_zp>
 typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
-RunDQCastMatMulConverted(const std::vector<int64_t>& input1_shape,
+RunDQMatMulFP16Converted(const std::vector<int64_t>& input1_shape,
                          const std::vector<int64_t>& weight_shape,
                          const int64_t axis,
                          const int64_t block_size,
                          int64_t accuracy_level) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput(input1_shape, -1.0f, 1.0f);
+    auto* input_arg = builder.MakeInput<MLFloat16>(input1_shape, MLFloat16(-1.0f), MLFloat16(1.0f));
     auto* output_arg = builder.MakeOutput();
 
     // DQ with fp16 scales
@@ -745,24 +741,14 @@ RunDQCastMatMulConverted(const std::vector<int64_t>& input1_shape,
       builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output}, "", &dq_attrs);
     }
 
-    // Cast fp16 -> fp32
-    auto* cast_output = builder.MakeIntermediate();
-    NodeAttributes cast_attrs;
-    utils::SetNodeAttribute(utils::MakeAttribute("to",
-                                                 static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT)),
-                            cast_attrs);
-    builder.AddNode("Cast", {dq_output}, {cast_output}, "", &cast_attrs);
-
-    // MatMul
-    builder.AddNode("MatMul", {input_arg, cast_output}, {output_arg});
+    // MatMul (fp16)
+    builder.AddNode("MatMul", {input_arg, dq_output}, {output_arg});
   };
 
   auto check_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
     EXPECT_EQ(op_to_count["MatMul"], 0);
-    // B-side Cast removed. New Cast(fp32->fp16) on A and Cast(fp16->fp32) on output.
-    EXPECT_EQ(op_to_count["Cast"], 2);
     EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
   };
@@ -786,12 +772,12 @@ RunDQCastMatMulConverted(const std::vector<int64_t>& input1_shape,
                     add_session_options_fn);
 }
 
-TEST(QDQTransformerTests, DQCastMatMulConvertedToMatMulNBits) {
-  // DQ(int4->fp16) -> Cast(fp16->fp32) -> MatMul should be fused to MatMulNBits
-  RunDQCastMatMulConverted<Int4x2, true>({12, 32}, {32, 16}, 0, 16, 0);
-  RunDQCastMatMulConverted<Int4x2, false>({12, 32}, {32, 16}, 0, 16, 0);
-  RunDQCastMatMulConverted<UInt4x2, true>({12, 32}, {32, 16}, 0, 16, 0);
-  RunDQCastMatMulConverted<UInt4x2, false>({12, 32}, {32, 16}, 0, 16, 0);
+TEST(QDQTransformerTests, DQMatMulFP16ConvertedToMatMulNBits) {
+  // DQ(int4, fp16_scale) -> MatMul(fp16) should be fused to MatMulNBits
+  RunDQMatMulFP16Converted<Int4x2, true>({12, 32}, {32, 16}, 0, 16, 0);
+  RunDQMatMulFP16Converted<Int4x2, false>({12, 32}, {32, 16}, 0, 16, 0);
+  RunDQMatMulFP16Converted<UInt4x2, true>({12, 32}, {32, 16}, 0, 16, 0);
+  RunDQMatMulFP16Converted<UInt4x2, false>({12, 32}, {32, 16}, 0, 16, 0);
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

@@ -111,7 +111,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     const auto pads_data = pads_tensor.DataAsSpan<int64_t>();
 
-    PadBase::ComputePads(*ctx, input_shape.NumDimensions(), pads_data, pads);
+    PadBase::ComputePadsImpl(*ctx, input_shape.NumDimensions(), pads_data, pads);
 
     // Separate out any negative pads into the slices array
     PadBase::SeparateNegativeToSlices(pads, slices);
@@ -134,7 +134,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_strides(input_pitches);
 
   auto output_dims(input_shape.AsShapeVector());
-  ORT_ENFORCE(dimension_count * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(dimension_count * 2 == narrow<int32_t>(p_pads->size()), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
   TArray<int64_t> lower_pads(dimension_count);
@@ -195,12 +195,12 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
                            "Pad: invalid mode: ", static_cast<int>(mode_), " with zero effective input extent");
   }
 
-  // Special case for Reflect mode: ensure all extents >= 2 after slicing
-  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
-  // implies that this would be wrong as the start and end positions should be distinct
-  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
+  // Special case for Reflect mode: ensure all extents >= 2 after slicing;
+  // otherwise reflection is not possible. Also validate that pads do not
+  // exceed extent - 1 on each side, as required by the ONNX spec, which
+  // aligns with NumPy behavior where start and end positions must be distinct.
   if (mode_ == Mode::Reflect) {
-    for (size_t i = 0; i < dimension_count; ++i) {
+    for (int32_t i = 0; i < dimension_count; ++i) {
       const int64_t extent = effective_input_extents[i];  // length after slicing
       const bool reflect_on_axis =
           (*p_pads)[i] > 0 || (*p_pads)[i + dimension_count] > 0;
@@ -208,6 +208,19 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Pad reflect requires axis length >= 2 after slicing. Input shape:",
                                input_shape);
+      }
+      // ONNX spec: reflect pads must not exceed extent - 1 on each side
+      if ((*p_pads)[i] > extent - 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect: pre-pad (", (*p_pads)[i],
+                               ") exceeds maximum allowed (", extent - 1,
+                               ") for axis ", i, ". Input shape:", input_shape);
+      }
+      if ((*p_pads)[i + dimension_count] > extent - 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect: post-pad (", (*p_pads)[i + dimension_count],
+                               ") exceeds maximum allowed (", extent - 1,
+                               ") for axis ", i, ". Input shape:", input_shape);
       }
     }
   }

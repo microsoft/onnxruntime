@@ -17,7 +17,6 @@
 #include "core/common/logging/macros.h"
 #include "core/common/logging/severity.h"
 #include "core/common/logging/sink_types.h"
-#include "date/date.h"
 
 /*
 
@@ -56,43 +55,38 @@ struct OrtLogger;  // opaque API type. is always an instance of Logger
 namespace onnxruntime {
 namespace logging {
 
-using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
+// This class wraps `std::chrono::system_clock::time_point` and provides `operator<<`.
+// It is a workaround for the inconsistent availability of `std::chrono::operator<<` for
+// `std::chrono::system_clock::time_point`.
+// TODO When all builds support `std::chrono::operator<<`, we can simply use `std::chrono::system_clock::time_point`:
+//   `using Timestamp = std::chrono::system_clock::time_point;`
+class Timestamp {
+ public:
+  using TimePoint = std::chrono::system_clock::time_point;
 
-// C++20 has operator<< in std::chrono for Timestamp type but mac builds need additional checks
-// to ensure usage is valid.
-// TODO: As we enable C++20 on other platforms we may need similar checks.
-// define a temporary value to determine whether to use the std::chrono or date implementation.
-#define ORT_USE_CXX20_STD_CHRONO __cplusplus >= 202002L
+  // This constructor is intentionally not `explicit` to allow implicit conversion from
+  // `std::chrono::system_clock::time_point`, a.k.a., `TimePoint`.
+  // The hope is that eventually we can replace the `Timestamp` class with an alias to `TimePoint`.
+  Timestamp(const TimePoint& time_point) noexcept : time_point_{time_point} {}
 
-// Apply constraints for mac builds
-#if __APPLE__
-#include <TargetConditionals.h>
+  // Partial implementation of `std::chrono::system_clock::time_point` interface.
 
-// Catalyst check must be first as it has both TARGET_OS_MACCATALYST and TARGET_OS_MAC set
-#if TARGET_OS_MACCATALYST
-// maccatalyst requires version 16.3
-#if (defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED < 160300)
-#undef ORT_USE_CXX20_STD_CHRONO
-#endif
+  using duration = TimePoint::duration;
 
-#elif TARGET_OS_MAC
-// Xcode added support for C++20's std::chrono::operator<< in SDK version 14.4,
-// but the target macOS version must also be >= 13.3 for it to be used.
-#if (defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED < 140400) || \
-    (defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED < 130300)
-#undef ORT_USE_CXX20_STD_CHRONO
-#endif
+  friend std::ostream& operator<<(std::ostream& os, const Timestamp& time_stamp) {
+    return time_stamp.WriteToStream(os);
+  }
 
-#endif
-#endif  // __APPLE__
+  friend std::wostream& operator<<(std::wostream& os, const Timestamp& time_stamp) {
+    return time_stamp.WriteToWStream(os);
+  }
 
-#if ORT_USE_CXX20_STD_CHRONO
-namespace timestamp_ns = std::chrono;
-#else
-namespace timestamp_ns = ::date;
-#endif
+ private:
+  std::ostream& WriteToStream(std::ostream& os) const;
+  std::wostream& WriteToWStream(std::wostream& os) const;
 
-#undef ORT_USE_CXX20_STD_CHRONO
+  TimePoint time_point_{};
+};
 
 #ifndef NDEBUG
 ORT_ATTRIBUTE_UNUSED static bool vlog_enabled = true;  // Set directly based on your needs.
@@ -396,7 +390,7 @@ inline Timestamp LoggingManager::GetTimestamp() const noexcept {
   static const Epochs& epochs = GetEpochs();
 
   const auto high_res_now = std::chrono::high_resolution_clock::now();
-  return std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+  return std::chrono::time_point_cast<Timestamp::duration>(
       epochs.system + (high_res_now - epochs.high_res) + epochs.localtime_offset_from_utc);
 }
 

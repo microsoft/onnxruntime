@@ -22,6 +22,27 @@ TEST(CApiTest, allocation_info) {
   ASSERT_EQ(OrtMemTypeDefault, cpu_mem_info_1.GetMemoryType());
 }
 
+// Verify that legacy (pre-1.25) memory info names "WebGPU_Buffer" and "WebNN_Tensor" are accepted
+// and normalized to the current short names "WebGPU_Buf" and "WebNN_Ten".
+// This ensures backward compatibility with released onnxruntime-genai that uses the old names.
+TEST(CApiTest, LegacyWebGpuWebNNMemoryInfoNames) {
+  // Old (pre-1.25) names must be accepted
+  Ort::MemoryInfo legacy_webgpu("WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo legacy_webnn("WebNN_Tensor", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  // Current (short) names
+  Ort::MemoryInfo current_webgpu("WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo current_webnn("WebNN_Ten", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  // Legacy names should be normalized to the current names
+  ASSERT_EQ(std::string("WebGPU_Buf"), legacy_webgpu.GetAllocatorName());
+  ASSERT_EQ(std::string("WebNN_Ten"), legacy_webnn.GetAllocatorName());
+
+  // Memory infos created with legacy and current names should be equal
+  ASSERT_EQ(legacy_webgpu, current_webgpu);
+  ASSERT_EQ(legacy_webnn, current_webnn);
+}
+
 TEST(CApiTest, DefaultAllocator) {
   Ort::AllocatorWithDefaultOptions default_allocator;
   auto cpu_info = default_allocator.GetInfo();
