@@ -718,6 +718,8 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
     if args.use_nv_tensorrt_rtx:
         cmake_args.append("-Donnxruntime_TENSORRT_RTX_HOME=" + tensorrt_rtx_home)
+        if args.tensorrt_rtx_plugin_path:
+            cmake_args.append("-Donnxruntime_TENSORRT_RTX_PLUGIN_HOME=" + args.tensorrt_rtx_plugin_path)
 
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
