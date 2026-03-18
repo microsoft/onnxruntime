@@ -84,6 +84,41 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNetExcerpt) {
   }
 }
 
+TEST(CoreMLExecutionProviderDynamicInputShapeTest, Reshape) {
+  constexpr auto model_path = ORT_TSTR("testdata/reshape_with_dynamic_input_shape.onnx");
+
+  auto test = [&](const size_t M) {
+    SCOPED_TRACE(MakeString("M=", M));
+    std::unordered_map<std::string, std::string> options;
+    auto coreml_ep = CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
+
+    const auto ep_verification_params = EPVerificationParams{
+        ExpectedEPNodeAssignment::All,
+        1e-4f,
+    };
+
+#if defined(__APPLE__)
+    RandomValueGenerator gen{1234};
+    // Input is [M, 512], reshape to [-1, 2048] so M must be a multiple of 4.
+    const auto X_shape = std::vector<int64_t>{static_cast<int64_t>(M * 4), 512};
+    const auto X_data = gen.Uniform<float>(X_shape, 0.0f, 1.0f);
+
+    OrtValue X = CreateInputOrtValueOnCPU<float>(X_shape, X_data);
+
+    RunAndVerifyOutputsWithEP(model_path, CurrentTestName(),
+                              std::move(coreml_ep),
+                              {{"X", X}},
+                              ep_verification_params);
+#else
+    TestModelLoad(model_path, std::move(coreml_ep), ep_verification_params.ep_node_assignment);
+#endif
+  };
+
+  for (size_t i = 1; i <= 3; ++i) {
+    test(i);
+  }
+}
+
 TEST(CoreMLExecutionProviderDynamicInputShapeTest, EmptyInputFails) {
   constexpr auto model_path = ORT_TSTR("testdata/matmul_with_dynamic_input_shape.onnx");
 
