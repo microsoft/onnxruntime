@@ -200,7 +200,7 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
   }
 
   static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
-                                                  int64_t start_time_ns,
+                                                  int64_t /*start_time_ns*/,
                                                   OrtEpProfilingEventsContainer* events_container) noexcept {
     auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
     std::lock_guard<std::mutex> lock(GetProfilerMutex());

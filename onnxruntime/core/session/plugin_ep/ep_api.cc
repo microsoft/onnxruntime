@@ -850,8 +850,8 @@ ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents,
     }
 
     const int category_value = static_cast<int>(c_event.category);
-    if (category_value < static_cast<int>(onnxruntime::profiling::EventCategory::SESSION) ||
-        category_value > static_cast<int>(onnxruntime::profiling::EventCategory::API)) {
+    if (category_value < static_cast<int>(onnxruntime::profiling::EventCategory::SESSION_EVENT) ||
+        category_value >= static_cast<int>(onnxruntime::profiling::EventCategory::EVENT_CATEGORY_MAX)) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "OrtEpProfilingEvent::category is out of the supported range");
     }

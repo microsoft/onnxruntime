@@ -844,19 +844,25 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
     return {};
   }
 
+  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
   OrtEpProfilerImpl* profiler_impl = nullptr;
-  ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetProfiler(ort_ep_.get(), &profiler_impl)));
+  Status status = ToStatusAndRelease(ort_ep_->GetProfiler(ort_ep_.get(), &profiler_impl));
+
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << "OrtEp::GetProfiler returned an error status: " << status.ErrorMessage();
+    return {};
+  }
 
   if (profiler_impl == nullptr) {
     return {};
   }
 
-  // Validate that the profiler implementation was built against a compatible ORT API version.
-  if (profiler_impl->ort_version_supported < 25 || profiler_impl->ort_version_supported > ORT_API_VERSION) {
-    ORT_THROW("OrtEpProfilerImpl was built against an incompatible ORT API version. "
-              "Supported range is [25, " +
-                  std::to_string(ORT_API_VERSION) + "], but got " +
-                  std::to_string(profiler_impl->ort_version_supported) + ".");
+  if (profiler_impl->ort_version_supported != ort_ep_->ort_version_supported) {
+    LOGS(logger, ERROR) << "OrtEpProfilerImpl::ort_version_supported declares an ORT version ("
+                        << profiler_impl->ort_version_supported
+                        << ") that does not match OrtEp::ort_version_supported (" << ort_ep_->ort_version_supported
+                        << ")";
+    return {};
   }
 
   // Validate that required function pointers are set.
@@ -866,12 +872,11 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
     if (profiler_impl->Release != nullptr) {
       profiler_impl->Release(profiler_impl);
     }
-    ORT_THROW(
-        "OrtEpProfilerImpl is missing required function pointer(s): "
-        "Release, StartProfiling, and EndProfiling must all be non-null.");
+    LOGS(logger, ERROR) << "OrtEpProfilerImpl is missing required function pointer(s): "
+                        << "Release, StartProfiling, and EndProfiling must all be non-null.";
+    return {};
   }
 
-  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
   return std::make_unique<PluginEpProfiler>(*profiler_impl, logger);
 }
 
