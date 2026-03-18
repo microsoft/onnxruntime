@@ -74,32 +74,13 @@ class ONNXModel:
 
     def check_is_large_model(self):
         """Check model > 2GB."""
-        init_size = 0
-        for init in self._model.graph.initializer:
-            # if initializer has external data location, return True
-            if init.HasField("data_location") and init.data_location == onnx.TensorProto.EXTERNAL:
-                self._is_large_model = True
-                return
-
-            # if aggregated initializer size > 2GB, return True            
-            try:
-                ir_graph = ir.from_proto(self._model.graph)
-                initializer_size = sum(
-                    v.const_value.nbytes
-                    for v in ir_graph.initializers.values()
-                    if v.const_value is not None
-                )
-                self._is_large_model = initializer_size > MAXIMUM_PROTOBUF
-                return
-
-            except Exception as e:
-                if "exceeds maximum protobuf size of 2GB" in str(e):
-                    self._is_large_model = True
-                    return
-                else:  # pragma: no cover
-                    raise e
-
-        self._is_large_model = False
+        ir_graph = ir.from_proto(self._model.graph)
+        initializer_size = sum(
+            v.const_value.nbytes
+            for v in ir_graph.initializers.values()
+            if v.const_value is not None
+        )
+        self._is_large_model = initializer_size > MAXIMUM_PROTOBUF
 
     @property
     def is_large_model(self):
