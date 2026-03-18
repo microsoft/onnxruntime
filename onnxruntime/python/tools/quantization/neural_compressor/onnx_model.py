@@ -27,6 +27,7 @@ from pathlib import Path
 
 import onnx
 import onnx.external_data_helper
+import onnx_ir as ir
 
 from .util import MAXIMUM_PROTOBUF, find_by_name
 
@@ -79,19 +80,25 @@ class ONNXModel:
             if init.HasField("data_location") and init.data_location == onnx.TensorProto.EXTERNAL:
                 self._is_large_model = True
                 return
-            # if raise error of initializer size > 2GB, return True
+
+            # if aggregated initializer size > 2GB, return True            
             try:
-                init_bytes = init.SerializeToString()
-                init_size += sys.getsizeof(init_bytes)
+                ir_graph = ir.from_proto(self._model.graph)
+                initializer_size = sum(
+                    v.const_value.nbytes
+                    for v in ir_graph.initializers.values()
+                    if v.const_value is not None
+                )
+                self._is_large_model = initializer_size > MAXIMUM_PROTOBUF
+                return
+
             except Exception as e:
                 if "exceeds maximum protobuf size of 2GB" in str(e):
                     self._is_large_model = True
                     return
                 else:  # pragma: no cover
                     raise e
-            if init_size > MAXIMUM_PROTOBUF:
-                self._is_large_model = True
-                return
+
         self._is_large_model = False
 
     @property
