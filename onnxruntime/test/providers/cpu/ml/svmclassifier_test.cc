@@ -269,7 +269,7 @@ TEST(MLOpTest, SVMClassifierOutOfBoundary) {
   // NUM_FEATURES = 4;
   // NUM_CLASSES = 3; //3 classes → needs 3*(3-1)/2 rho entries
   // NUM_VECTORS = 2; // Support vectors
-  // n_rho = NUM_CLASSES * (NUM_CLASSES - 1) ;
+  // n_rho = NUM_CLASSES * (NUM_CLASSES - 1) / 2;
 
   std::vector<float> coefficients = {1.f, 1.f};                                           // 2: undersized otherwise NUM_VECTORS * (NUM_CLASSES-1)
   std::vector<float> support_vectors = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};  // NUM_VECTORS * NUM_FEATURES
