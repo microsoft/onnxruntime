@@ -23,6 +23,13 @@ bool GraphHasCtxNode(const GraphViewer& graph_viewer) {
   for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
     auto node = graph_viewer.GetNode(i);
     if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
+      // Only match EPContext nodes that belong to this EP.
+      // If the source attribute is present and doesn't match, skip the node.
+      const auto& attrs = node->GetAttributes();
+      if (attrs.count(SOURCE) > 0 &&
+          attrs.at(SOURCE).s() != kTensorrtExecutionProvider) {
+        continue;
+      }
       return true;
     }
   }
@@ -92,6 +99,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();  // ep_cache_context
   auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_architecture
   auto attr_3 = ONNX_NAMESPACE::AttributeProto::Create();  // onnx_model_filename
+  auto attr_4 = ONNX_NAMESPACE::AttributeProto::Create();  // source
   std::string engine_data_str = "";
   attr_0->set_name(EMBED_MODE);
   attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
@@ -113,14 +121,18 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   attr_3->set_name(ONNX_MODEL_FILENAME);
   attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
   attr_3->set_s(std::filesystem::path(onnx_model_path).filename().string());
+  attr_4->set_name(SOURCE);
+  attr_4->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_4->set_s(kTensorrtExecutionProvider);
 
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  constexpr int num_attributes = 4;
+  constexpr int num_attributes = 5;
   node_attributes->reserve(num_attributes);
   node_attributes->emplace(EMBED_MODE, *attr_0);
   node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
   node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
   node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
+  node_attributes->emplace(SOURCE, *attr_4);
 
   // Create EP context node
   graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);

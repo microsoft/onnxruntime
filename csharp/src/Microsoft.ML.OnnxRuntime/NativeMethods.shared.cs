@@ -452,6 +452,36 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Graph_GetModelMetadata;
         public IntPtr GetModelCompatibilityForEpDevices;
         public IntPtr CreateExternalInitializerInfo;
+
+        // v1.24 APIs
+        public IntPtr TensorTypeAndShape_HasShape;
+        public IntPtr KernelInfo_GetConfigEntries;
+        public IntPtr KernelInfo_GetOperatorDomain;
+        public IntPtr KernelInfo_GetOperatorType;
+        public IntPtr KernelInfo_GetOperatorSinceVersion;
+        public IntPtr GetInteropApi;
+        public IntPtr SessionGetEpDeviceForOutputs;
+        public IntPtr GetNumHardwareDevices;
+        public IntPtr GetHardwareDevices;
+        public IntPtr GetHardwareDeviceEpIncompatibilityDetails;
+        public IntPtr DeviceEpIncompatibilityDetails_GetReasonsBitmask;
+        public IntPtr DeviceEpIncompatibilityDetails_GetNotes;
+        public IntPtr DeviceEpIncompatibilityDetails_GetErrorCode;
+        public IntPtr ReleaseDeviceEpIncompatibilityDetails;
+        public IntPtr GetCompatibilityInfoFromModel;
+        public IntPtr GetCompatibilityInfoFromModelBytes;
+        public IntPtr CreateEnvWithOptions;
+        public IntPtr Session_GetEpGraphAssignmentInfo;
+        public IntPtr EpAssignedSubgraph_GetEpName;
+        public IntPtr EpAssignedSubgraph_GetNodes;
+        public IntPtr EpAssignedNode_GetName;
+        public IntPtr EpAssignedNode_GetDomain;
+        public IntPtr EpAssignedNode_GetOperatorType;
+        public IntPtr RunOptionsSetSyncStream;
+        public IntPtr GetTensorElementTypeAndShapeDataReference;
+        // v1.25 APIs
+        public IntPtr RunOptionsEnableProfiling;
+        public IntPtr RunOptionsDisableProfiling;
     }
 
     internal static class NativeMethods
@@ -884,6 +914,16 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtCopyTensors)Marshal.GetDelegateForFunctionPointer(
                     api_.CopyTensors,
                     typeof(DOrtCopyTensors));
+
+            OrtGetCompatibilityInfoFromModel =
+                (DOrtGetCompatibilityInfoFromModel)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetCompatibilityInfoFromModel,
+                    typeof(DOrtGetCompatibilityInfoFromModel));
+
+            OrtGetCompatibilityInfoFromModelBytes =
+                (DOrtGetCompatibilityInfoFromModelBytes)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetCompatibilityInfoFromModelBytes,
+                    typeof(DOrtGetCompatibilityInfoFromModelBytes));
         }
 
         internal class NativeLib
@@ -3091,6 +3131,31 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleasePrepackedWeightsContainer(IntPtr /*(OrtPrepackedWeightsContainer*)*/ prepackedWeightsContainer);
 
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
+
+        /// <summary>
+        /// Extract EP compatibility info from a precompiled model file.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetCompatibilityInfoFromModel(
+            byte[] /* const ORTCHAR_T* */ model_path,
+            byte[] /* const char* */ ep_type,
+            IntPtr /* OrtAllocator* */ allocator,
+            out IntPtr /* char** */ compatibility_info);
+
+        public static DOrtGetCompatibilityInfoFromModel OrtGetCompatibilityInfoFromModel;
+
+        /// <summary>
+        /// Extract EP compatibility info from precompiled model bytes in memory.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetCompatibilityInfoFromModelBytes(
+            byte[] /* const void* */ model_data,
+            UIntPtr /* size_t */ model_data_length,
+            byte[] /* const char* */ ep_type,
+            IntPtr /* OrtAllocator* */ allocator,
+            out IntPtr /* char** */ compatibility_info);
+
+        public static DOrtGetCompatibilityInfoFromModelBytes OrtGetCompatibilityInfoFromModelBytes;
 
         #endregion
     } // class NativeMethods

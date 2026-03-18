@@ -910,6 +910,9 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_Format0_Negative) {
 
 // Test that OOB position_ids on CUDA (format 1) pass through input unchanged.
 TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_OOB_CUDA_Passthrough) {
+#if !defined(NDEBUG)
+  GTEST_SKIP() << "Skipping in Debug builds because CUDA device-side asserts poison the CUDA context.";
+#else
   int batch_size = 1;
   int sequence_length = 1;
   int num_heads = 2;
@@ -944,6 +947,7 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_OOB_CUDA_Passthroug
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#endif
 }
 
 }  // namespace test
