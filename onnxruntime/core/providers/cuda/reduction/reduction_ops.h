@@ -46,9 +46,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
         calculate_log_(false),
         calculate_sqt_(false),
         log_sum_exp_(false),
-        fast_reduction_(false) {
-    cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
-  }
+        fast_reduction_(false) {}
 
   // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
   // Only Max Min will have indices output, need to set the indices to nullptr for other ops
@@ -80,9 +78,6 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
   // Indicates if this reduction can be delegated to our highly-optimized reduction kernels.
   // Those efficient kernels are defined/implemented in reduction_functions.h/.cu.
   bool fast_reduction_;
-
-  // We need to access to the CUDA EP instance to get the cudnn handle
-  const CUDAExecutionProvider* cuda_ep_;
 };
 
 template <typename T>

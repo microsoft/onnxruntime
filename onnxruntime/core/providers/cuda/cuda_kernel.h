@@ -91,12 +91,20 @@ class CudaKernel : public OpKernel {
     return stream->cudnn_handle_;
   }
 
+  static inline cudnnHandle_t GetCudnnHandle(onnxruntime::Stream* stream) {
+    return GetCudnnHandle(static_cast<CudaStream*>(stream));
+  }
+
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
     return GetCublasHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
   }
 
   static inline cublasHandle_t GetCublasHandle(onnxruntime::CudaStream* stream) {
     return stream->cublas_handle_;
+  }
+
+  static inline cublasHandle_t GetCublasHandle(onnxruntime::Stream* stream) {
+    return GetCublasHandle(static_cast<CudaStream*>(stream));
   }
 
   bool UseTF32() const {
