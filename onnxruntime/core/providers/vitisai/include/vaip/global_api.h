@@ -37,6 +37,16 @@ using EventInfo = std::tuple<
     long long,    // timestamp
     long long     // duration
     >;
+
+// Notify EP that profiling has started with the base timestamp (in nanoseconds since epoch)
+// The EP can use this to:
+// 1. Calculate relative timestamps (event_ts - base_ts) for the profiling timeline
+// 2. Store the absolute base timestamp if needed for other purposes
+void profiler_start(uint64_t profiling_start_time_ns);
+
+// Notify EP that profiling has stopped
+void profiler_stop();
+
 void profiler_collect(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events);

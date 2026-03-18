@@ -91,6 +91,8 @@ struct OrtVitisAIEpAPI {
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       const char* const* keys,
       const char* const* values, size_t kv_len) = nullptr;
+  void (*profiler_start)(uint64_t profiling_start_time_ns);
+  void (*profiler_stop)();
   void (*profiler_collect)(
       std::vector<EventInfo>& api_events,
       std::vector<EventInfo>& kernel_events);
@@ -132,6 +134,8 @@ struct OrtVitisAIEpAPI {
     }
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_start", (void**)&profiler_start);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_stop", (void**)&profiler_stop);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
@@ -157,6 +161,18 @@ static std::vector<OrtCustomOpDomain*> s_domains_vitisaiep;
 static vaip_core::OrtApiForVaip the_global_api;
 std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
+
+void profiler_start(uint64_t profiling_start_time_ns) {
+  if (s_library_vitisaiep.profiler_start) {
+    s_library_vitisaiep.profiler_start(profiling_start_time_ns);
+  }
+}
+
+void profiler_stop() {
+  if (s_library_vitisaiep.profiler_stop) {
+    s_library_vitisaiep.profiler_stop();
+  }
+}
 
 void profiler_collect(
     std::vector<EventInfo>& api_events,
