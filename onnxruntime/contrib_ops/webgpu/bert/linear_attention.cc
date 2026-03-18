@@ -107,8 +107,17 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Step 1: Apply decay (for gated and gated_delta modes)
   if (update_rule_ == LinearAttentionUpdateRule::Gated || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
     shader.MainFunctionBody()
-        << "\n  // Apply exponential decay: S *= exp(decay)\n"
-        << "  let decay_base = (qkv_bh_offset + t) * uniforms.head_dim_k + dk_idx;\n"
+        << "\n  // Apply exponential decay: S *= exp(decay)\n";
+    if (decay_broadcast_dk_) {
+      // Decay shape is (B, H, T) — same decay for all dk rows
+      shader.MainFunctionBody()
+          << "  let decay_base = qkv_bh_offset + t;\n";
+    } else {
+      // Decay shape is (B, H, T, dk) — per-dk decay
+      shader.MainFunctionBody()
+          << "  let decay_base = (qkv_bh_offset + t) * uniforms.head_dim_k + dk_idx;\n";
+    }
+    shader.MainFunctionBody()
         << "  let exp_g = exp(f32(decay[decay_base]));\n"
         << "  for (var j = 0u; j < TILE_V; j++) {\n"
         << "    state[j] *= exp_g;\n"
@@ -290,7 +299,16 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   bool has_decay = decay != nullptr;
   bool has_beta = beta != nullptr;
 
-  LinearAttentionProgram program{update_rule_, has_initial_state, has_decay, has_beta, tile_v};
+  // Detect whether decay is (B,H,T) or (B,H,T,dk)
+  bool decay_broadcast_dk = false;
+  if (has_decay) {
+    const auto& decay_shape = decay->Shape();
+    if (decay_shape.NumDimensions() == 3) {
+      decay_broadcast_dk = true;
+    }
+  }
+
+  LinearAttentionProgram program{update_rule_, has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v};
 
   program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
                      {key, ProgramTensorMetadataDependency::TypeAndRank},
@@ -311,7 +329,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   program.SetDispatchGroupSize(num_workgroups)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(std::to_string(static_cast<int>(update_rule_)),
-                 has_initial_state, has_decay, has_beta, tile_v)
+                 has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(num_heads)},
                             {static_cast<uint32_t>(seq_length)},

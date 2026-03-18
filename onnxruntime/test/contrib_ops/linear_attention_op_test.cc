@@ -27,6 +27,7 @@ void LinearAttentionReference(
     const std::vector<float>* initial_state,
     const std::vector<float>* decay,
     const std::vector<float>* beta,
+    bool decay_broadcast_dk,
     std::vector<float>& output,
     std::vector<float>& final_state) {
   // State: (B, H, dk, dv)
@@ -63,8 +64,14 @@ void LinearAttentionReference(
         // Step 1: Apply decay (gated, gated_delta)
         if (update_rule == "gated" || update_rule == "gated_delta") {
           for (int k = 0; k < head_dim_k; k++) {
-            int decay_idx = ((b * num_heads + h) * seq_length + t) * head_dim_k + k;
-            float exp_g = std::exp((*decay)[decay_idx]);
+            float exp_g;
+            if (decay_broadcast_dk) {
+              int decay_idx = (b * num_heads + h) * seq_length + t;
+              exp_g = std::exp((*decay)[decay_idx]);
+            } else {
+              int decay_idx = ((b * num_heads + h) * seq_length + t) * head_dim_k + k;
+              exp_g = std::exp((*decay)[decay_idx]);
+            }
             for (int v_idx = 0; v_idx < head_dim_v; v_idx++) {
               final_state[state_offset(k, v_idx)] *= exp_g;
             }
@@ -127,12 +134,14 @@ void RunLinearAttentionTest(
     const std::vector<float>& value,
     const std::vector<float>* initial_state,
     const std::vector<float>* decay,
-    const std::vector<float>* beta_data) {
+    const std::vector<float>* beta_data,
+    bool decay_broadcast_dk = false) {
   // Compute reference output
   std::vector<float> expected_output, expected_state;
   LinearAttentionReference(update_rule, batch_size, num_heads, seq_length,
                            head_dim_k, head_dim_v, scale,
                            query, key, value, initial_state, decay, beta_data,
+                           decay_broadcast_dk,
                            expected_output, expected_state);
 
   bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get());
@@ -161,8 +170,13 @@ void RunLinearAttentionTest(
 
   // Optional: decay
   if (decay != nullptr) {
-    std::vector<int64_t> decay_dims = {batch_size, num_heads, seq_length, head_dim_k};
-    tester.AddInput<float>("decay", decay_dims, *decay);
+    if (decay_broadcast_dk) {
+      std::vector<int64_t> decay_dims = {batch_size, num_heads, seq_length};
+      tester.AddInput<float>("decay", decay_dims, *decay);
+    } else {
+      std::vector<int64_t> decay_dims = {batch_size, num_heads, seq_length, head_dim_k};
+      tester.AddInput<float>("decay", decay_dims, *decay);
+    }
   } else {
     tester.AddOptionalInputEdge<float>();
   }
@@ -390,6 +404,64 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_MultiToken) {
 }
 
 // ===========================================================================
+// Test: Gated rule with B,H,T decay (broadcast across dk)
+// ===========================================================================
+TEST(ContribOpLinearAttentionTest, GatedRule_BroadcastDecay) {
+  const int B = 1, H = 1, T = 3, dk = 4, dv = 4;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query = {
+      1.0f, 0.0f, 0.5f, -0.5f,
+      0.5f, 1.0f, -0.5f, 0.0f,
+      0.0f, -1.0f, 1.0f, 0.5f};
+  std::vector<float> key = {
+      0.5f, 0.5f, 0.0f, 1.0f,
+      1.0f, 0.0f, 1.0f, 0.5f,
+      -0.5f, 1.0f, 0.5f, 0.0f};
+  std::vector<float> value = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      2.0f, 1.0f, 0.0f, 3.0f,
+      3.0f, 0.0f, 1.0f, 2.0f};
+  // Decay shape: (B, H, T) = (1, 1, 3) — one scalar per token
+  std::vector<float> decay = {-0.1f, -0.2f, -0.05f};
+
+  std::vector<float> initial_state(dk * dv, 0.5f);
+
+  RunLinearAttentionTest("gated", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         &initial_state, &decay, nullptr,
+                         /*decay_broadcast_dk=*/true);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_BroadcastDecay) {
+  const int B = 1, H = 1, T = 3, dk = 4, dv = 4;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query = {
+      1.0f, 0.0f, 0.5f, -0.5f,
+      0.5f, 1.0f, -0.5f, 0.0f,
+      0.0f, -1.0f, 1.0f, 0.5f};
+  std::vector<float> key = {
+      0.5f, 0.5f, 0.0f, 1.0f,
+      1.0f, 0.0f, 1.0f, 0.5f,
+      -0.5f, 1.0f, 0.5f, 0.0f};
+  std::vector<float> value = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      2.0f, 1.0f, 0.0f, 3.0f,
+      3.0f, 0.0f, 1.0f, 2.0f};
+  // Decay shape: (B, H, T) = (1, 1, 3) — one scalar per token
+  std::vector<float> decay = {-0.1f, -0.2f, -0.05f};
+  std::vector<float> beta = {0.8f, 0.6f, 0.9f};
+
+  std::vector<float> initial_state(dk * dv, 0.5f);
+
+  RunLinearAttentionTest("gated_delta", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         &initial_state, &decay, &beta,
+                         /*decay_broadcast_dk=*/true);
+}
+
+// ===========================================================================
 // Test: Multi-batch, multi-head
 // ===========================================================================
 TEST(ContribOpLinearAttentionTest, LinearRule_MultiBatchMultiHead) {
@@ -459,6 +531,7 @@ TEST(ContribOpLinearAttentionTest, LinearRule_DefaultScale) {
   std::vector<float> expected_output, expected_state;
   LinearAttentionReference("linear", B, H, T, dk, dv, actual_scale,
                            query, key, value, nullptr, nullptr, nullptr,
+                           false,
                            expected_output, expected_state);
 
   bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get());
