@@ -488,6 +488,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   enable_file_mapped_weights_ = false;
   LOGS_DEFAULT(WARNING) << "File mapped weights feature is only available on Windows arm64 devices for QNN API versions >= 2.32. "
                         << "Feature will be disabled by default";
+#else
+  if (qnn_context_embed_mode_ && enable_file_mapped_weights_) {
+    enable_file_mapped_weights_ = false;
+    LOGS_DEFAULT(WARNING) << "File mapped weights feature is incompatible with embedded EP contexts. Feature will be disabled by default.";
+  }
 #endif
 
   static const std::string QNN_DEVICE_ID = "device_id";
