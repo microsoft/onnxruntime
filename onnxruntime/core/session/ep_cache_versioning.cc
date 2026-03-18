@@ -24,8 +24,6 @@ namespace onnxruntime {
 namespace {
 
 // Registry of EP cache path option keys, keyed by provider name (lowercased).
-// This allows EP-specific code to register which options are cache directories,
-// so the generic versioning logic does not need hardcoded knowledge of each EP.
 std::unordered_map<std::string, EpCachePathOptionKeys>& EpCachePathOptionsRegistry() {
   // Function-local static to avoid static initialization order issues across translation units.
   static std::unordered_map<std::string, EpCachePathOptionKeys> registry;
@@ -89,7 +87,9 @@ static const EpCachePathOptionKeys* TryGetEpCachePathOptionKeys(const std::strin
 }
 
 void ApplyEpCacheVersionToConfigOptions(ConfigOptions& config_options) {
-  if (config_options.GetConfigOrDefault(kOrtSessionOptionsEpCacheUseOrtVersion, "0") != "1") {
+  const std::string mode = config_options.GetConfigOrDefault(kOrtSessionOptionsEpCacheUseOrtVersion, "0");
+  const bool ep_cache_versioning_enabled = (mode == "1");
+  if (!ep_cache_versioning_enabled) {
     return;
   }
 #ifdef ORT_VERSION
@@ -100,10 +100,12 @@ void ApplyEpCacheVersionToConfigOptions(ConfigOptions& config_options) {
     if (key.size() <= prefix.size() || key.compare(0, prefix.size(), prefix) != 0) {
       continue;
     }
-    size_t dot = key.find('.', prefix.size());
-    if (dot == std::string::npos) continue;
-    std::string provider_lower = GetLowercaseString(key.substr(prefix.size(), dot - prefix.size()));
-    std::string option_key = key.substr(dot + 1);
+    const size_t dot = key.find('.', prefix.size());
+    if (dot == std::string::npos) {
+      continue;
+    }
+    const std::string provider_lower = GetLowercaseString(key.substr(prefix.size(), dot - prefix.size()));
+    const std::string option_key = key.substr(dot + 1);
     const EpCachePathOptionKeys* cache_keys = TryGetEpCachePathOptionKeys(provider_lower);
     if (cache_keys == nullptr) {
       continue;
@@ -112,7 +114,9 @@ void ApplyEpCacheVersionToConfigOptions(ConfigOptions& config_options) {
       continue;
     }
     const std::string& value = kv.second;
-    if (value.empty()) continue;
+    if (value.empty()) {
+      continue;
+    }
     to_update.push_back({key, GetVersionedCachePath(value)});
   }
   for (const auto& p : to_update) {
@@ -126,13 +130,15 @@ ProviderOptions GetProviderOptionsWithVersionedCachePaths(
     const ConfigOptions& config_options,
     const char* provider_name) {
   ProviderOptions result = provider_options;
-  if (config_options.GetConfigOrDefault(kOrtSessionOptionsEpCacheUseOrtVersion, "0") != "1") {
+  const std::string mode = config_options.GetConfigOrDefault(kOrtSessionOptionsEpCacheUseOrtVersion, "0");
+  const bool ep_cache_versioning_enabled = (mode == "1");
+  if (!ep_cache_versioning_enabled) {
     return result;
   }
   if (provider_name == nullptr) {
     return result;
   }
-  std::string provider_lower = GetLowercaseString(provider_name);
+  const std::string provider_lower = GetLowercaseString(provider_name);
   const EpCachePathOptionKeys* cache_keys = TryGetEpCachePathOptionKeys(provider_lower);
   if (cache_keys == nullptr) {
     return result;
@@ -141,7 +147,9 @@ ProviderOptions GetProviderOptionsWithVersionedCachePaths(
     if (std::find(cache_keys->begin(), cache_keys->end(), kv.first) == cache_keys->end()) {
       continue;
     }
-    if (kv.second.empty()) continue;
+    if (kv.second.empty()) {
+      continue;
+    }
     kv.second = GetVersionedCachePath(kv.second);
   }
   return result;
