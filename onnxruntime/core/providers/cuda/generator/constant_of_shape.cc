@@ -30,10 +30,21 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()),
     ConstantOfShape);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ConstantOfShape,
+    kOnnxDomain,
+    23, 24,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()),
+    ConstantOfShape);
+
 ONNX_OPERATOR_KERNEL_EX(
     ConstantOfShape,
     kOnnxDomain,
-    23,
+    25,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)

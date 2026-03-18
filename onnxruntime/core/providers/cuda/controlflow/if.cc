@@ -66,9 +66,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
                                   If);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
+                                  kOnnxDomain,
+                                  23, 24,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                  If);
+
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
-                        23,
+                        25,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU

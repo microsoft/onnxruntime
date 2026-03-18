@@ -132,9 +132,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
                                   Scan<9>);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  23, 24,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                                      // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                                  Scan<9>);
+
 ONNX_OPERATOR_KERNEL_EX(Scan,
                         kOnnxDomain,
-                        23,
+                        25,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             // 'I' is in the ONNX spec but is not used for any inputs or outputs
