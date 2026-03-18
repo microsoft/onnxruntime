@@ -12,6 +12,7 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/providers.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -159,6 +160,13 @@ class PluginExecutionProvider : public IExecutionProvider {
   // which are then passed to the underlying OrtEp instance. This class stores this "fused node state"
   // so that it is not destroyed until the EP itself is destroyed.
   std::vector<FusedNodeState> fused_node_states_;
+
+  // Generates a model's hash and a monotonically increasing ID that is unique per model hash. The
+  // ID is used in the MetaDef name for a fused node containing a compiling EP's supported subgraph.
+  //
+  // The same generator instance must be used across calls to GetCapability() to ensure that fused nodes that live in
+  // different GraphViews (e.g., different branches of an If node) obtain a unique ID.
+  ModelMetadefIdGenerator metadef_id_generator_;
 
   // Stores the EPContext Nodes created from the OrtNode instances returned by the underlying plugin EP.
   // Need to store both the Node and NodeArg instances so that they are available when the GraphPartitioner
