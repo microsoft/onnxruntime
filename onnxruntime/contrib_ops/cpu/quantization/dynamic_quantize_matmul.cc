@@ -165,7 +165,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
 #if defined(USE_KLEIDIAI)
   bool SupportsKleidiaiDynamicQuant() const override {
-    if (!MlasIsDynamicQGemmAvailable()) {
+    if (!MlasIsDynamicQGemmAvailable(&mlas_backend_kernel_selector_config_)) {
       return false;
     }
     return true;
@@ -182,6 +182,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   int GetBiasIdx() const override {
     return IN_BIAS;
   }
+
 #endif
 
   enum InputTensors : int {
@@ -301,7 +302,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
       params.ldc = gemm_shape.N;
     }
 
-    MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool());
+    MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
     // This evaluates to true if bias data was not provided as constant data for prepacking stage
     if (!dynamic_quant_mlas_bias_data_was_packed_) {
       if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {

@@ -10,33 +10,33 @@ namespace contrib {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct AttentionParameters {
-  int batch_size;
-  int sequence_length;
-  int kv_sequence_length;     // input sequence length of K or V
-  int past_sequence_length;   // sequence length in past state of K or V
-  int total_sequence_length;  // total sequence length of K or V
-  int max_sequence_length;    // max sequence length from 4D mask
-  int input_hidden_size;      // first dimension of weights for input projection
-  int hidden_size;            // hidden size of Q or K
-  int head_size;              // hidden size per head of Q or K
-  int v_hidden_size;          // hidden size of V
-  int v_head_size;            // hidden size per head of V
-  int num_heads;
-  int num_splits;      // number of splits for splitkv
+  int batch_size = 0;
+  int sequence_length = 0;
+  int kv_sequence_length = 0;     // input sequence length of K or V
+  int past_sequence_length = 0;   // sequence length in past state of K or V
+  int total_sequence_length = 0;  // total sequence length of K or V
+  int max_sequence_length = 0;    // max sequence length from 4D mask
+  int input_hidden_size = 0;      // first dimension of weights for input projection
+  int hidden_size = 0;            // hidden size of Q or K
+  int head_size = 0;              // hidden size per head of Q or K
+  int v_hidden_size = 0;          // hidden size of V
+  int v_head_size = 0;            // hidden size per head of V
+  int num_heads = 0;
+  int num_splits = 0;  // number of splits for splitkv
   int rotary_dim = 0;  // rotary embedding dimension
-  int beam_width;
+  int beam_width = 0;
   bool is_unidirectional = false;
   bool past_present_share_buffer = false;
   bool is_packed_qkv = false;  // whether qkv is packed
   bool do_rotary = false;
   bool broadcast_attn_bias_dim_0 = false;
   bool broadcast_attn_bias_dim_1 = false;
-  float mask_filter_value;
-  float scale;
+  float mask_filter_value = 0.0f;
+  float scale = 0.0f;
   bool use_tf32 = false;
   bool is_output_bnsh = false;  // whether the output format is BNSH
-  AttentionMaskType mask_type;
-  AttentionQkvFormat qkv_format;
+  AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
+  AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

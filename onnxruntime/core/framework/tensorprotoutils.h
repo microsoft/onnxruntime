@@ -166,6 +166,12 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
 /// in shape inferencing, it is cheaper to inline them.
 constexpr const size_t kSmallTensorExternalDataThreshold = 127;  // 127 bytes
 
+/// Max in-memory tensor size (from shape × dtype) allowed for embedded (non-external) initializers.
+/// This is an allocation guard to prevent a malicious model from triggering excessive memory allocation.
+/// 2 GiB is chosen as a practical upper bound: valid ONNX protobuf messages cannot exceed ~2 GiB of serialized data,
+/// so any embedded initializer whose in-memory representation exceeds this is highly suspect.
+constexpr const size_t kMaxEmbeddedInitializerSizeInBytes = size_t{2} * 1024 * 1024 * 1024;  // 2 GiB
+
 /**
  * @brief Creates a TensorProto from a Tensor.
  * @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
@@ -197,6 +203,13 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
 
 template <size_t alignment>
 Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out);
+
+/// Validates that the size of the actual data content in a non-external TensorProto is consistent with its
+/// declared shape and data type. This prevents allocating memory based on a maliciously large
+/// declared shape when the actual data is absent or much smaller.
+/// The caller must ensure that the TensorProto does not use external data; if it does, this function will
+/// return an error status.
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**
 Special marker used to indicate an existing memory buffer contains the TensorProto external data.
@@ -249,10 +262,14 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-// Convert a SparseTensorProto to a dense TensorProto
-// If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
-// The resulting TensorProto will contain the data as raw data.
-// model_path is used for constructing full path for external_data
+/// <summary>
+// The function supports only COO format with 1D or 2D indices. Values shape is expected to be 1D.
+// The function does not support sparse tensors of other formats like CSR/CSC.
+/// </summary>
+/// <param name="sparse"></param>
+/// <param name="model_path">model path is only used if there are references to external data.</param>
+/// <param name="dense">The resulting dense tensor proto.</param>
+/// <returns>Status</returns>
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const std::filesystem::path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense);
@@ -522,16 +539,33 @@ Status TensorProtoWithExternalDataToTensorProto(
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
 /// <summary>
-/// The functions will make sure the 'location' specified in the external data is under the 'base_dir'.
-/// If the `base_dir` is empty, the function only ensures that `location` is not an absolute path.
+/// Validates that the given external data path is not an absolute path, is under the model directory
+/// (after resolving symlinks), and exists.
+///
+/// The model path can be empty if the model is loaded from bytes and the application did not specify a directory
+/// for external data files. In this case, the external data path must be contained under the current working
+/// directory.
+///
+/// The model path can point to a non-existing model file if the model is loaded from bytes and the application
+/// specified a directory for external data files via the session config entry
+/// `kOrtSessionOptionsModelExternalInitializersFileFolderPath`. In this case, the model_path is set to
+/// "<kOrtSessionOptionsModelExternalInitializersFileFolderPath> / virtual_model.onnx" and the external data path
+/// must be contained under `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
+///
+/// If the model itself is a symlink, this function checks against both the directory containing the symlink
+/// and the real/canonical directory of the model after resolving all symlinks.
+///
+/// On WASM builds, this function skips most validation (except checks for non-empty/non-absolute path) if we are
+/// unable to query the current working directory, as this indicates that the WASM environment does not have
+/// a valid filesystem. If skipped, an ExternalDataLoader will validate the location and contents of the
+/// external data file at the time of access.
 /// </summary>
-/// <param name="base_dir">model location directory</param>
-/// <param name="location">location is a string retrieved from TensorProto external data that is not
-///                        an in-memory tag</param>
-/// <returns>The function will fail if the resolved full path is not under the model directory
-///          or one of the subdirectories</returns>
-Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location);
+/// <param name="model_path">Path to the model file. Can be empty or point to a virtual file.</param>
+/// <param name="external_data_path">External data file path to be validated.
+/// Retrieved from TensorProto external data info</param>
+/// <returns>The function will fail if the resolved `external_data_path` path is not under the model directory</returns>
+Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                const std::filesystem::path& external_data_path);
 
 #endif  // !defined(SHARED_PROVIDER)
 

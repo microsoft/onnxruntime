@@ -342,8 +342,14 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
                                                       : past_dims[2].dim_value();
           present_shape.add_dim()->set_dim_value(present_sequence_length);
         } else {
-          // Cannot compute exact present_sequence_length, copy from past_key (may be dynamic)
-          *present_shape.add_dim() = past_dims[2];
+          // Cannot compute exact present_sequence_length.
+          if (ctx.getNumInputs() > 6 && past_dims[2].has_dim_value() && past_dims[2].dim_value() == 0) {
+            // If total_sequence_length is provided and past_key has 0 length, present_key will grow.
+            // Leave the dimension as dynamic to avoid "Error merging shape info" warning.
+            present_shape.add_dim();
+          } else {
+            *present_shape.add_dim() = past_dims[2];
+          }
         }
         *present_shape.add_dim() = past_dims[3];  // head_size
 

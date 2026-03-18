@@ -4,9 +4,12 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <core/common/inlined_containers_fwd.h>
@@ -120,6 +123,49 @@ void PrintAntiAliasBuffers(std::ostream& os, gsl::span<int64_t> bounds, gsl::spa
   os << std::endl;
 }
 
+namespace upsamplebase_helper {
+
+inline void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                     InlinedVector<float>& scales, AspectRatioPolicy keep_aspect_ratio_policy,
+                                     const TensorShapeVector& axes) {
+  if (keep_aspect_ratio_policy == AspectRatioPolicy::STRETCH) {
+    return;
+  }
+
+  std::unordered_set<int64_t> axes_set(axes.begin(), axes.end());
+
+  float scale_in_policy = 0.0f;
+  if (keep_aspect_ratio_policy == AspectRatioPolicy::NOT_LARGER) {
+    scale_in_policy = std::numeric_limits<float>::max();
+
+    for (size_t i = 0; i < scales.size(); ++i) {
+      if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+        scale_in_policy = std::min(scale_in_policy, scales[i]);
+      }
+    }
+  } else if (keep_aspect_ratio_policy == AspectRatioPolicy::NOT_SMALLER) {
+    scale_in_policy = std::numeric_limits<float>::min();
+
+    for (size_t i = 0; i < scales.size(); ++i) {
+      if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+        scale_in_policy = std::max(scale_in_policy, scales[i]);
+      }
+    }
+  }
+
+  for (size_t i = 0; i < scales.size(); ++i) {
+    if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+      scales[i] = scale_in_policy;
+      output_dims[i] = static_cast<int64_t>(std::round(scales[i] * input_dims[i]));
+    } else {
+      scales[i] = 1.0f;
+      output_dims[i] = input_dims[i];
+    }
+  }
+}
+
+}  // namespace upsamplebase_helper
+
 class UpsampleBase {
  public:
   // Make this available in other EP via provider bridge
@@ -128,27 +174,28 @@ class UpsampleBase {
                                 InlinedVector<float>& scales) const;
 
  protected:
-  explicit UpsampleBase(const OpKernelInfo& info)
+  template <typename KernelInfoType>
+  explicit UpsampleBase(const KernelInfoType& info)
       : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     const auto& node = info.node();
     auto opset = node.SinceVersion();
     is_resize_ = (opset >= 10);
 
     std::string mode;
-    ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
+    ORT_ENFORCE(info.template GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
 
     auto input_count = info.GetInputCount();
     if (input_count == 1) {  // opset < 10
       std::vector<float> scales;
-      ORT_THROW_IF_ERROR(info.GetAttrs<float>("scales", scales));
+      ORT_THROW_IF_ERROR(info.template GetAttrs<float>("scales", scales));
       ORT_THROW_IF_ERROR(ScalesValidation(scales, mode_));
       scales_.assign(scales.cbegin(), scales.cend());
       scales_cached_ = true;
     }
 
     if (opset >= 18) {
-      antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
+      antialias_ = info.template GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
 
       if (antialias_) {
         ORT_ENFORCE((UpsampleMode::LINEAR == mode_ || UpsampleMode::CUBIC == mode_),
@@ -156,21 +203,21 @@ class UpsampleBase {
       }
 
       // The attribute is absent in opset < 18, but the default value as if stretch.
-      std::string keep_aspect_ratio_policy = info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
+      std::string keep_aspect_ratio_policy = info.template GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
       keep_aspect_ratio_policy_ = StringToKeepAspectRatioPolicy(keep_aspect_ratio_policy);
 
       // guard against unit tests that can add an attribute
-      auto axes = info.GetAttrsOrDefault<int64_t>("axes");
+      auto axes = info.template GetAttrsOrDefault<int64_t>("axes");
       axes_.assign(axes.cbegin(), axes.cend());
     }
 
-    extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
+    extrapolation_value_ = info.template GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
     // Coordinate transformation mode attr was introduced in version 11.
     // before that asymmetric mode was the only available transformation mode
     std::string coordinate_transform_mode_name =
         opset > 10
-            ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
+            ? info.template GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
             : "asymmetric";
 
     coordinate_transform_mode_ = StringToCoordinateTransformationMode(coordinate_transform_mode_name);
@@ -184,13 +231,13 @@ class UpsampleBase {
     use_extrapolation_ = need_roi_input_ = (coordinate_transform_mode_ == TF_CROP_AND_RESIZE);
 
     std::string nearest_mode_name = (mode_ == NN && opset >= 11)
-                                        ? info.GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor")
+                                        ? info.template GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor")
                                         : "";
     nearest_mode_ = StringToNearestMode(nearest_mode_name);
     get_nearest_pixel_ = GetNearestPixelFromOriginal(nearest_mode_);
 
-    cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", antialias_constants::kCubicCoeffA);
-    exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
+    cubic_coeff_a_ = info.template GetAttrOrDefault<float>("cubic_coeff_a", antialias_constants::kCubicCoeffA);
+    exclude_outside_ = info.template GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == false || mode_ != LINEAR)) {
       ORT_THROW(
@@ -595,6 +642,13 @@ class UpsampleBase {
     return lookup_table;
   }
 };  // UpsampleBase
+
+#ifndef SHARED_PROVIDER
+inline void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                                   InlinedVector<float>& scales) const {
+  upsamplebase_helper::AdjustOutputSizeAsPolicy(output_dims, input_dims, scales, keep_aspect_ratio_policy_, axes_);
+}
+#endif
 
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)

@@ -43,7 +43,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #define CASE_TILE(type)                                                                                            \
   case sizeof(type): {                                                                                             \
-    TileImpl(Stream(ctx), rank, fdm_input_shape, input_strides,                                                    \
+    TileImpl(Stream(ctx), input_rank, fdm_input_shape, input_strides,                                              \
              reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), fdm_output_strides,       \
              reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), output_tensor.Shape().Size()); \
   } break
@@ -66,11 +66,11 @@ ONNX_OPERATOR_KERNEL_EX(
 Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   auto& input_tensor = *ctx->Input<Tensor>(0);
   auto& repeats_tensor = *ctx->Input<Tensor>(1);
-  int32_t rank = static_cast<int32_t>(input_tensor.Shape().NumDimensions());
+  int32_t input_rank = static_cast<int32_t>(input_tensor.Shape().NumDimensions());
 
   if (repeats_tensor.Shape().NumDimensions() != 1)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must be 1 dimensional");
-  if (repeats_tensor.Shape().Size() != rank)
+  if (repeats_tensor.Shape().Size() != input_rank)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must have the same length as the 'input' tensor");
 
   // Calculate the shape of the output tensor
@@ -78,8 +78,14 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_shape = input_tensor.Shape();
   const auto input_dims = input_shape.GetDims();
   auto output_dims(input_shape.AsShapeVector());
-  for (auto axis = 0; axis < rank; axis++)
-    output_dims[axis] *= repeats[axis];
+  for (int32_t axis = 0; axis < input_rank; axis++) {
+    if (repeats[axis] < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile repeat value must be non-negative, got: ", repeats[axis]);
+    }
+    output_dims[axis] = SafeInt<int64_t>(output_dims[axis]) * repeats[axis];
+  }
+
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
 
@@ -105,7 +111,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   size_t num_of_batch_copies = 1;
   if (TileOp::IsTileMemcpy(input_shape,
                            repeats,
-                           rank,
+                           input_rank,
                            is_batched_memcpy,
                            num_of_elements_per_batch,
                            num_of_copies_per_batch,
@@ -136,14 +142,14 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   TensorPitches input_pitches(input_dims);
   TArray<int64_t> input_strides(input_pitches);
 
-  TArray<fast_divmod> fdm_input_shape(rank);
+  TArray<fast_divmod> fdm_input_shape(input_rank);
   for (size_t i = 0; i < input_dims.size(); ++i) {
     fdm_input_shape[gsl::narrow_cast<int>(i)] = fast_divmod(gsl::narrow_cast<int>(input_dims[i]));
   }
 
-  TArray<fast_divmod> fdm_output_strides(rank);
+  TArray<fast_divmod> fdm_output_strides(input_rank);
   TensorPitches output_pitches(output_dims);
-  for (auto i = 0; i < rank; i++) {
+  for (auto i = 0; i < input_rank; i++) {
     fdm_output_strides[i] = fast_divmod(static_cast<int>(output_pitches[i]));
   }
 

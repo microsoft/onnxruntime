@@ -166,6 +166,20 @@ stages:
 - template: win-ci.yml
   parameters:
     DoEsrp: true
+    stage_name_suffix: CPU_arm64x_${{ parameters.BuildVariant }}
+    buildArch: x64
+    msbuildPlatform: arm64x
+    packageName: arm64x
+    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
+- template: win-ci.yml
+  parameters:
+    DoEsrp: true
     stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     buildArch: x64
     msbuildPlatform: x64

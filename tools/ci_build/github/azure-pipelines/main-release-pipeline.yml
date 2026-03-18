@@ -1,0 +1,161 @@
+trigger: none
+
+parameters:
+- name: branch
+  displayName: 'Target branch (without refs/heads/ prefix)'
+  type: string
+  default: 'main'
+
+- name: dry_run
+  displayName: 'Dry run — show what would be triggered without actually triggering'
+  type: boolean
+  default: false
+
+- name: nuget_cuda12_packaging
+  displayName: 'Run Zip-Nuget-Java-Nodejs Packaging Pipeline (940)'
+  type: boolean
+  default: true
+
+- name: nuget_cuda13_packaging
+  displayName: 'Run Nuget - Packaging - CUDA13 (2138)'
+  type: boolean
+  default: true
+
+- name: python_packaging
+  displayName: 'Run Python packaging pipeline (841)'
+  type: boolean
+  default: true
+
+- name: python_cuda12_packaging
+  displayName: 'Run Python-CUDA-Packaging-Pipeline (1299)'
+  type: boolean
+  default: true
+
+- name: python_cuda13_packaging
+  displayName: 'Run Python CUDA 13 Packaging Pipeline (2104)'
+  type: boolean
+  default: true
+
+- name: python_dml_packaging
+  displayName: 'Run Python DML Packaging Pipeline (1625)'
+  type: boolean
+  default: true
+
+- name: qnn_nuget_packaging
+  displayName: 'Run QNN_Nuget_Windows (1234)'
+  type: boolean
+  default: true
+
+- name: dml_nuget_packaging
+  displayName: 'Run DML Nuget Pipeline (1994)'
+  type: boolean
+  default: true
+
+- name: npm_packaging
+  displayName: 'Run Npm Packaging Pipeline (1080)'
+  type: boolean
+  default: true
+
+- name: ios_packaging
+  displayName: 'Run onnxruntime-ios-packaging-pipeline (995)'
+  type: boolean
+  default: true
+
+- name: webgpu_python_packaging
+  displayName: 'Run WebGPU Python Packaging Pipeline (2107)'
+  type: boolean
+  default: true
+
+- name: pre_release_suffix_string
+  displayName: 'Pre-release version suffix, applied to supported pipelines'
+  type: string
+  default: 'none'
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: pre_release_suffix_number
+  displayName: 'Pre-release version suffix number'
+  type: number
+  default: 0
+
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+extends:
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.BinariesDirectory)'
+      tsa:
+        enabled: true
+
+    stages:
+    - stage: TriggerSubPipelines
+      displayName: 'Trigger and wait for sub-pipelines'
+      jobs:
+      - job: TriggerAndWait
+        displayName: 'Trigger and wait for sub-pipelines'
+        timeoutInMinutes: 600
+        pool:
+          name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          os: linux
+
+        steps:
+        - checkout: self
+
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
+        - bash: |
+            set -euo pipefail
+            python3 --version
+            python3 -m venv "$(Agent.TempDirectory)/orchestrator_venv"
+            source "$(Agent.TempDirectory)/orchestrator_venv/bin/activate"
+            python3 -m pip install requests pandas azure-kusto-data[pandas]==4.5.1 azure-kusto-ingest[pandas]==4.5.1
+          displayName: 'Create venv and install Python dependencies'
+
+        - task: AzureCLI@2
+          displayName: 'Run master orchestrator'
+          inputs:
+            azureSubscription: AISC-MAIA_DEV-CICD-KUSTO-Lotus
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set -euo pipefail
+              source "$(Agent.TempDirectory)/orchestrator_venv/bin/activate"
+
+              CMD=(python3 tools/python/trigger_and_wait_pipelines.py)
+              CMD+=(--branch "${{ parameters.branch }}")
+
+              if [ "${{ parameters.dry_run }}" = "True" ]; then
+                CMD+=(--dry-run)
+              fi
+
+              if [ "$PRE_RELEASE_SUFFIX_STRING" != "none" ]; then
+                CMD+=(--pre-release-suffix-string "$PRE_RELEASE_SUFFIX_STRING")
+                CMD+=(--pre-release-suffix-number "$PRE_RELEASE_SUFFIX_NUMBER")
+              fi
+
+              echo "Running: ${CMD[@]}"
+              "${CMD[@]}"
+          env:
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+            PRE_RELEASE_SUFFIX_STRING: ${{ parameters.pre_release_suffix_string }}
+            PRE_RELEASE_SUFFIX_NUMBER: ${{ parameters.pre_release_suffix_number }}
+            # pipeline enable/disable flags are auto-generated from parameters.
+            ${{ each pair in parameters }}:
+              ${{ if and(ne(pair.key, 'branch'), ne(pair.key, 'dry_run'), ne(pair.key, 'pre_release_suffix_string'), ne(pair.key, 'pre_release_suffix_number')) }}:
+                ENABLE_${{ pair.key }}: ${{ pair.value }}

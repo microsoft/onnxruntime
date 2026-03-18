@@ -64,7 +64,7 @@ struct PackedQuantBDataStruct {
         // TODO(hasesh): Can we unify the alignment for 4-bit and 8-bit ARM64 Gemms so as to
         // simpify this logic and make code here cleaner ?
         if constexpr (BlkBitWidth == 8) {
-            PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);        
+            PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
         }
         else {
             PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
@@ -121,7 +121,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t K,
         size_t BlkLen,
         bool HasZeroPoint,
-        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
     Q4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
@@ -132,24 +133,33 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t K,
         size_t BlkLen,
         bool HasZeroPoint,
-        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
     Q8BitGemmPackQuantBDataSize_Fn* Q8BitGemmPackQuantBDataSize = nullptr;
 
-    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
-    typedef void(Q4BitGemmPackQuantBData_Fn)(
+    /** Packs quantized B data containing n-bit integers. See MlasQNBitGemmPackQuantBData(). */
+    typedef void(QNBitGemmPackQuantBData_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
         const std::byte* QuantBDataBegin,
         std::byte* PackedQuantBDataBegin,
-        MLAS_THREADPOOL* ThreadPool
+        MLAS_THREADPOOL* ThreadPool,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
+
+    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
+    typedef QNBitGemmPackQuantBData_Fn Q4BitGemmPackQuantBData_Fn;
+
+    /** Packs quantized B data containing 8-bit integers. See MlasQNBitGemmPackQuantBData(). */
+    typedef QNBitGemmPackQuantBData_Fn Q8BitGemmPackQuantBData_Fn;
 
     Q4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
     Q4BitGemmPackQuantBData_Fn* HQ4BitGemmPackQuantBData = nullptr;
+    Q8BitGemmPackQuantBData_Fn* HQ8BitGemmPackQuantBData = nullptr;
 
     typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
         size_t N,
@@ -161,7 +171,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         bool HasZeroPoint,
         const std::byte* QuantBZPBegin,
         PackedQuantBDataStruct<float, 4>& PackedQuantB,
-        MLAS_THREADPOOL* ThreadPool
+        MLAS_THREADPOOL* ThreadPool,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
     SQ4BitGemmPackQuantBDataAndSumBlk_Fn* SQ4BitGemmPackQuantBDataAndBlkSum = nullptr;
@@ -176,7 +187,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         bool HasZeroPoint,
         const std::byte* QuantBZPBegin,
         PackedQuantBDataStruct<float, 8>& PackedQuantB,
-        MLAS_THREADPOOL* ThreadPool
+        MLAS_THREADPOOL* ThreadPool,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
     SQ8BitGemmPackQuantBDataAndSumBlk_Fn* SQ8BitGemmPackQuantBDataAndBlkSum = nullptr;
@@ -195,6 +207,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   BlkLen          number of quantized values per block
      * @param[in]   HasZeroPoint    whether zero points are provided
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+     * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+     * @param[in]   BackendKernelSelectorConfig  backend kernel selector configuration
      */
     typedef size_t(QNBitGemmPerGemmWorkspaceSize_Fn)(
         size_t M,
@@ -203,7 +217,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t BlkLen,
         bool HasZeroPoint,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-        size_t BlkBitWidth
+        size_t BlkBitWidth,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
     QNBitGemmPerGemmWorkspaceSize_Fn* QNBitGemmPerGemmWorkspaceSize = nullptr;
@@ -318,6 +333,12 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q4BitBlkDequantBForSgemm_CompFp16_Fn* HQ4BitBlkDequantBForHgemm_CompFp16 = nullptr;
 
+    /**
+     * @brief Dequantize 8-bit quantized B into fp16 format for HGEMM.
+     *        Uses the same signature as the 4-bit variant.
+     */
+    Q4BitBlkDequantBForSgemm_CompFp16_Fn* HQ8BitBlkDequantBForHgemm_CompFp16 = nullptr;
+
     //
     // SQNBIT_CompInt8 kernel function prototypes.
     //
@@ -412,7 +433,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param       ldc                                    Number of elements between adjacent rows of C..
      * @param       ABlockSum                              Supplies the blksum of A.
      * @param       QuantBBlkSum                           Supplies the blksum of B.
-     * @param       BlkUnsignedQuantAZeroPointCorrection   Supplies the optional input to de-bias the Gemm output to account for the +128 bias 
+     * @param       BlkUnsignedQuantAZeroPointCorrection   Supplies the optional input to de-bias the Gemm output to account for the +128 bias
                                                            addition when the activation input A is quantized to uint8.
      */
     typedef size_t(SQ8BitGemmKernel_BlkSum_CompInt8_Fn)(
@@ -479,7 +500,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     typedef bool(UsePacked_CompInt8_Fn)(
         size_t K,
         size_t BlkLen,
-        bool HasZp
+        bool HasZp,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
     UsePacked_CompInt8_Fn* UsePacked_CompInt8 = nullptr;
@@ -494,13 +516,15 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param       CountK  Number of columns of A.
      * @param[out]  QuantA  Supplies the output quantized A matrix.
      *                      Binary data containing block quantized int8 data and scale values.
+     * @param       BackendKernelSelectorConfig  Optional configuration for selecting backend kernels.
      */
     typedef void(QuantizeA_Packed_CompInt8_Fn)(
         size_t BlkLen,
         const float* A,
         size_t CountM,
         size_t CountK,
-        std::byte* QuantA
+        std::byte* QuantA,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
     QuantizeA_Packed_CompInt8_Fn* QuantizeA_Packed_CompInt8 = nullptr;

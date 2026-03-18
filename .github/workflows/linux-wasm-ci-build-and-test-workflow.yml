@@ -50,6 +50,12 @@ jobs:
         --enable_wasm_simd
         ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }}
         ${{ inputs.extra_build_args }}
+      reduced_size_build_args: >-
+        --disable_ml_ops
+        --disable_generation_ops
+        --disable_types string float4 float8 optional sparsetensor
+        --include_ops_by_config onnxruntime/wasm/reduced_types.config
+        --enable_reduced_operator_type_support
 
     steps:
       - name: Checkout code
@@ -67,6 +73,9 @@ jobs:
         with:
           python-version: "3.12"
           architecture: ${{ env.buildArch }}
+
+      - name: Install python dependencies
+        run: python -m pip install flatbuffers
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
@@ -109,6 +118,7 @@ jobs:
             --use_webnn \
             --target onnxruntime_webassembly \
             ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
+            ${{ env.reduced_size_build_args }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
@@ -122,6 +132,7 @@ jobs:
             --use_webnn \
             --enable_wasm_jspi \
             --target onnxruntime_webassembly \
+            ${{ env.reduced_size_build_args }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 

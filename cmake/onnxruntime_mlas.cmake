@@ -103,6 +103,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
         ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
@@ -284,6 +285,7 @@ function(setup_kleidiai)
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
     ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sbgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
   )
@@ -296,13 +298,13 @@ function(setup_kleidiai)
   endif()
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 
-  # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
+  # If KLEIDIAI_DEBUG_LOGGING is enabled that implies both DEBUG and KERNEL messages.
   if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG=1)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG_LOGGING=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
   endif()
   if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
   endif()
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
@@ -328,6 +330,16 @@ function (setup_arm_neon_nchwc)
    ${MLAS_SRC_DIR}/sconv_nchwc_kernel_neon.cpp
    ${MLAS_SRC_DIR}/spool_nchwc_kernel_neon.cpp
   )
+  if(NOT WIN32)
+    target_sources(onnxruntime_mlas PRIVATE
+     # Hand written AArch64 micro-kernel for NCHW convolution.  Using a
+     # separate assembly file allows tighter control over register allocation
+     # and avoids the overhead of C++/intrinsics based code generation.
+     ${MLAS_SRC_DIR}/aarch64/SconvKernelNeon.S
+     ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
+     ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
+    )
+  endif()
   list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
   set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
 endfunction ()
@@ -518,6 +530,7 @@ else()
             ${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp
             ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
@@ -534,6 +547,7 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/cast_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
@@ -580,6 +594,7 @@ else()
             COMPILES_P10
           )
           if(COMPILES_P10)
+            enable_language(ASM)
             check_cxx_source_compiles("
               #ifdef _AIX
               #define POWER_10       0x40000
@@ -609,6 +624,11 @@ else()
               ${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp
               ${MLAS_SRC_DIR}/power/qgemm_kernel_power10.cpp
             )
+	    # Only compile assembly on non-AIX systems
+            if (NOT AIX)
+              list(APPEND mlas_platform_srcs_power10 ${MLAS_SRC_DIR}/power/SgemmKernelPackA.S)
+              set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPackA.S PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
+            endif()
             set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10 -DSINGLE")
             set_source_files_properties(${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
             set_source_files_properties(${MLAS_SRC_DIR}/power/qgemm_kernel_power10.cpp PROPERTIES COMPILE_FLAGS "-O3 -mcpu=power10")

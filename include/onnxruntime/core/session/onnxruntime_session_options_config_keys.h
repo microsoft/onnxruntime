@@ -13,7 +13,7 @@
  * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 2048
+ * The maximum length of the Config Value is 8192
  */
 
 // Key for disable PrePacking,
@@ -380,10 +380,21 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // - "1": Use LUT based GEMM when available.
 static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 
+// Use KleidiAI kernels in MLAS if available.
+// Option values:
+// - "0": Use KleidiAI kernels when available. [DEFAULT]
+// - "1": Disable KleidiAI kernels even if available.
+static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// Enable the DQ->MatMulNBits fusion graph transformer.
+// "0": disabled (default). "1": enabled.
+// This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
+static const char* const kOrtSessionOptionsEnableDQMatMulNBitsFusion = "session.enable_dq_matmulnbits_fusion";
 
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
 // Meant to be used with SetEpDynamicOptions
@@ -429,3 +440,17 @@ static const char* const kOrtEpDynamicOptionsQnnHtpPerformanceMode = "ep.dynamic
 // - "0": Recording of EP graph assignment information is disabled. [DEFAULT]
 // - "1": Recording of EP graph assignment information is enabled.
 static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "session.record_ep_graph_assignment_info";
+
+// An application enables this option to request that EPs create compiled models (i.e., EPContext models) with EPContext
+// nodes that do not store model weights internally. Instead, the weights should be provided by ONNX Runtime as
+// explicit inputs to the EPContext nodes.
+//
+// This option is ignored by an EP if "ep.context_enable" is not set to "1".
+//
+// If the weights are originally stored in an external file, this allows multiple models to share the same
+// external weights file.
+//
+// Option values:
+// - "0": disable. (default)
+// - "1": enable.
+static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";

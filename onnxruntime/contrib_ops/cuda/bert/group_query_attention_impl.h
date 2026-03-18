@@ -122,6 +122,16 @@ struct GQABufferRequirements {
   }
 };
 
+template <typename T>
+// Also used by ONNX Attention (core/providers/cuda/llm/attention.cc) for GQA head expansion in MEA path.
+Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
+                     float2* k_buff, float2* v_buff,
+                     const float2* k_og, const float2* v_og,
+                     const int buff_seqlen, const int og_seqlen,
+                     const bool is_bsnh,
+                     cudaStream_t stream,
+                     const int max_threads_per_block);
+
 Status LaunchGetSequenceLengths(
     const int* total_seq_lens_minus_one,
     int* past_seq_lens,
@@ -132,18 +142,6 @@ Status LaunchGetSequenceLengths(
     const bool is_first_prompt,
     cudaStream_t stream,
     const int max_threads_per_block);
-
-template <typename T>
-Status LaunchUnpackRoPEAppend(
-    const T* packed_qkv, const T* query, const T* key, const T* value,
-    T* unpacked_q, void* k_cache, void* v_cache,
-    const float* k_scale, const float* v_scale,
-    const int num_heads, const int kv_num_heads, const int head_size,
-    const int sequence_length, const int batch_size, const int max_seqlen,
-    const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
-    const int rotary_dim, const int64_t* position_ids, const bool interleaved,
-    const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
-    const int bit_width, cudaStream_t stream, const int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib
