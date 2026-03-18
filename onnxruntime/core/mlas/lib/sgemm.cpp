@@ -1574,7 +1574,8 @@ MlasGemmBatch(
     )
 {
     // Override
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+    if ((!BackendKernelSelectorConfig ||
+        (BackendKernelSelectorConfig->use_kleidiai && BackendKernelSelectorConfig->use_kleidiai_sme)) &&
         GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
@@ -1677,7 +1678,8 @@ Return Value:
     //
     // KleidiAI or other override
     #if defined(USE_KLEIDIAI)
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+    if ((!BackendKernelSelectorConfig ||
+        (BackendKernelSelectorConfig->use_kleidiai && BackendKernelSelectorConfig->use_kleidiai_sme)) &&
         GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans) {
@@ -1748,7 +1750,8 @@ Return Value:
 --*/
 {
 #if defined(USE_KLEIDIAI)
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+    if ((!BackendKernelSelectorConfig ||
+        (BackendKernelSelectorConfig->use_kleidiai && BackendKernelSelectorConfig->use_kleidiai_sme)) &&
         GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans    &&
