@@ -871,13 +871,15 @@ def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments for the ONNX Runtime build."""
 
     class Parser(argparse.ArgumentParser):
-        # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:  # Use list[str] for Python 3.9+
-            return shlex.split(arg_line)
+        # override argument file line parsing behavior
+        # - allow multiple arguments per line and handle quotes
+        # - allow comments starting with '#'
+        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
+            return shlex.split(arg_line, comments=True)
 
     parser = Parser(
         description="ONNXRuntime CI build driver.",
-        usage="""
+        usage=f"""
         Default behavior is --update --build --test for native architecture builds.
         Default behavior is --update --build for cross-compiled builds.
 
@@ -886,6 +888,10 @@ def parse_arguments() -> argparse.Namespace:
         The Test phase will run all unit tests, and optionally the ONNX tests.
 
         Use the individual flags (--update, --build, --test) to only run specific stages.
+
+        Arguments can also be passed in an argument file prefixed with '@'.
+        E.g., `{sys.argv[0]} @arguments.txt`.
+        Argument files may contain comments starting with '#'. They will be ignored.
         """,
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )
