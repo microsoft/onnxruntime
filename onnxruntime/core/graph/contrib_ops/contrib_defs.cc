@@ -22,6 +22,16 @@
 #if defined(_WIN32) && !defined(NDEBUG)
 #pragma warning(disable : 26426)
 #endif
+
+// Convenience macro: conditionally call fail_shape_inference.
+// Usage: fail_shape_inference_if(condition, "message", args...)
+#define fail_shape_inference_if(cond, ...) \
+  do {                                     \
+    if (cond) {                            \
+      fail_shape_inference(__VA_ARGS__);   \
+    }                                      \
+  } while (0)
+
 namespace ONNX_NAMESPACE {
 
 inline int64_t HandleNegativeAxis(int64_t axis, int64_t rank) {
@@ -2924,9 +2934,232 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
   *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
 }
 
+// Type and shape inference for the com.microsoft variable-length Scan op.
+// Mirrors the standard ONNX ScanInferenceFunction but accounts for:
+//   1. An optional output_lengths input at position 0 (variadic inputs start at 1).
+//   2. Scan outputs are concatenated (not stacked): no new sequence dimension is added.
+//      The concat-axis dimension is left unknown since it varies across iterations.
+static void VarLenScanInferenceFunction(ONNX_NAMESPACE::InferenceContext& ctx) {
+  using namespace ONNX_NAMESPACE;
+
+  auto num_inputs = ctx.getNumInputs();
+  auto num_scan_inputs_attr = ctx.getAttribute("num_scan_inputs");
+  fail_shape_inference_if(!num_scan_inputs_attr, "Required attribute 'num_scan_inputs' is missing.");
+
+  auto num_scan_inputs_signed = num_scan_inputs_attr->i();
+  fail_shape_inference_if(num_scan_inputs_signed < 1,
+                          "'num_scan_inputs' must be at least 1, got ", num_scan_inputs_signed);
+  auto num_scan_inputs = static_cast<size_t>(num_scan_inputs_signed);
+
+  // Input 0 is optional output_lengths (type I); variadic inputs start at index 1.
+  constexpr size_t input_offset = 1;
+  fail_shape_inference_if(num_inputs < num_scan_inputs + input_offset,
+                          "Expected at least ", num_scan_inputs + input_offset,
+                          " input(s) (", input_offset, " non-variadic + ", num_scan_inputs,
+                          " scan inputs), got ", num_inputs);
+  auto num_variadic_inputs = num_inputs - input_offset;
+  auto num_loop_state_vars = num_variadic_inputs - num_scan_inputs;
+
+  auto num_outputs = ctx.getNumOutputs();
+  fail_shape_inference_if(num_outputs < num_loop_state_vars,
+                          "Number of outputs (", num_outputs,
+                          ") is less than the number of loop state variables (", num_loop_state_vars, ").");
+  auto num_scan_outputs = num_outputs - num_loop_state_vars;
+
+  // Parse scan_input_axes and scan_output_axes attributes.
+  std::vector<int64_t> axes, output_axes;
+  if (getRepeatedAttribute(ctx, "scan_input_axes", axes)) {
+    fail_shape_inference_if(axes.size() != num_scan_inputs,
+                            "Number of scan input axes specified (", axes.size(),
+                            ") is not equal to number of scan inputs (", num_scan_inputs, ").");
+  } else {
+    axes.assign(num_scan_inputs, 0);
+  }
+
+  if (getRepeatedAttribute(ctx, "scan_output_axes", output_axes)) {
+    fail_shape_inference_if(output_axes.size() != num_scan_outputs,
+                            "Number of scan output axes specified (", output_axes.size(),
+                            ") is not equal to number of scan outputs (", num_scan_outputs, ").");
+  } else {
+    output_axes.assign(num_scan_outputs, 0);
+  }
+
+  // Build subgraph input types (removing the sequence axis from scan inputs).
+  std::vector<TypeProto> temporary_type_protos;
+  temporary_type_protos.reserve(num_variadic_inputs);
+
+  std::vector<const TypeProto*> subgraph_input_types;
+  subgraph_input_types.reserve(num_variadic_inputs);
+
+  for (size_t i = 0; i < num_variadic_inputs; ++i) {
+    auto ctx_idx = i + input_offset;
+    bool is_loop_state_var = i < num_loop_state_vars;
+    bool has_shape = hasInputShape(ctx, ctx_idx);
+    const auto* input_type = ctx.getInputType(ctx_idx);
+
+    if (!input_type || !input_type->has_tensor_type()) {
+      fail_type_inference("Scan input ", i, " was not a tensor.");
+    }
+
+    if (is_loop_state_var) {
+      // Loop state variable: propagate type and shape 1:1 to matching output.
+      propagateElemTypeFromInputToOutput(ctx, ctx_idx, i);
+      if (has_shape)
+        propagateShapeFromInputToOutput(ctx, ctx_idx, i);
+      subgraph_input_types.push_back(input_type);
+    } else {
+      // Scan input: remove the sequence axis dimension for the subgraph input.
+      if (has_shape) {
+        auto scan_input_index = i - num_loop_state_vars;
+        int axis = static_cast<int>(axes[scan_input_index]);
+        const auto& shape = input_type->tensor_type().shape();
+        int rank = shape.dim_size();
+        if (axis < 0) axis += rank;
+        fail_shape_inference_if(axis < 0 || axis >= rank,
+                                "Invalid scan_input_axes value ", axes[scan_input_index],
+                                " for input rank ", rank);
+
+        temporary_type_protos.emplace_back(RemoveIthDimensionFromShape(*input_type, axis));
+        subgraph_input_types.push_back(&temporary_type_protos.back());
+      } else {
+        subgraph_input_types.push_back(input_type);
+      }
+    }
+  }
+
+  // Run inferencing on the body subgraph.
+  std::vector<const TypeProto*> output_types;
+  GraphInferencer* graphInferencer = ctx.getGraphAttributeInferencer("body");
+  if (graphInferencer) {
+    std::vector<const TensorProto*> input_data;
+    input_data.resize(num_variadic_inputs, nullptr);
+    output_types = graphInferencer->doInferencing(subgraph_input_types, input_data);
+  }
+
+  // Propagate inferred types and shapes to Scan outputs.
+  if (!output_types.empty()) {
+    if (output_types.size() != num_outputs) {
+      fail_type_inference(
+          "Graph attribute inferencing returned type information for ",
+          output_types.size(), " outputs. Expected ", num_outputs);
+    }
+
+    for (size_t i = 0; i < num_outputs; ++i) {
+      bool is_loop_state_var = i < num_loop_state_vars;
+      const auto* subgraph_output_type = output_types[i];
+      auto* scan_output_type = ctx.getOutputType(i);
+
+      if (!subgraph_output_type->has_tensor_type()) {
+        fail_type_inference("Scan 'body' subgraph outputs should all be tensors but output ", i, " was not");
+      }
+      const auto& subgraph_output_tensor_type = subgraph_output_type->tensor_type();
+
+      if (is_loop_state_var) {
+        // Merge shape; type already propagated from input above.
+        mergeInShapeInfo(subgraph_output_tensor_type, *scan_output_type->mutable_tensor_type());
+      } else {
+        // Set element type from subgraph output.
+        scan_output_type->mutable_tensor_type()->set_elem_type(subgraph_output_tensor_type.elem_type());
+
+        // Variable-length concatenation: output shape = subgraph output shape with
+        // an unknown dimension at the scan_output_axes position (the concat axis).
+        // Non-concat dimensions are copied directly from the subgraph output.
+        if (subgraph_output_tensor_type.has_shape()) {
+          const auto& subgraph_shape = subgraph_output_tensor_type.shape();
+          auto subgraph_rank = subgraph_shape.dim_size();
+
+          auto scan_output_index = i - num_loop_state_vars;
+          int64_t output_axis = output_axes[scan_output_index];
+          if (output_axis < 0) output_axis += subgraph_rank;
+          fail_shape_inference_if(output_axis < 0 || output_axis >= subgraph_rank,
+                                  "Invalid scan_output_axes value for output ", scan_output_index);
+
+          // Build the final shape: same as the subgraph output shape, but with the
+          // concat-axis dimension set to unknown (since it is the sum of per-iteration sizes).
+          TensorShapeProto final_shape;
+          for (int d = 0; d < subgraph_rank; ++d) {
+            if (d == static_cast<int>(output_axis)) {
+              final_shape.add_dim();  // unknown concat-axis dimension
+            } else {
+              *final_shape.add_dim() = subgraph_shape.dim(d);
+            }
+          }
+
+          mergeInShapeInfo(final_shape, *scan_output_type->mutable_tensor_type());
+        }
+      }
+    }
+  }
+}
+
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Scan)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Scan variant with variable-length output concatenation. "
+          "Identical to ONNX Scan (opset 9), except that per-iteration scan outputs "
+          "are concatenated along the scan output axis instead of being stacked with a "
+          "new sequence dimension. This allows the concatenation-axis dimension to "
+          "differ across iterations. "
+          "An optional output_lengths input can be provided to pre-allocate the final "
+          "output tensors, enabling in-place construction of scan outputs.")
+      .Input(
+          0,
+          "output_lengths",
+          "Optional 1D int64 tensor where the i-th entry specifies the expected "
+          "total size of the i-th scan output along the concatenation axis. "
+          "When provided, output tensors are pre-allocated for efficiency.",
+          "I",
+          OpSchema::Optional)
+      .Input(
+          1,
+          "initial_state_and_scan_inputs",
+          "Initial values of the N loop state variables followed by M scan_inputs",
+          "V",
+          OpSchema::Variadic,
+          false,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "final_state_and_scan_outputs",
+          "Final values of the N loop state variables followed by K scan_outputs",
+          "V",
+          OpSchema::Variadic,
+          false,
+          1,
+          OpSchema::NonDifferentiable)
+      .Attr("body",
+            "The graph to run each iteration.",
+            AttributeProto::GRAPH)
+      .Attr("num_scan_inputs",
+            "An attribute specifying the number of scan_inputs M.",
+            AttributeProto::INT)
+      .Attr("scan_input_directions",
+            "An optional list of M flags. 0 indicates forward, 1 indicates reverse.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+      .Attr("scan_input_axes",
+            "An optional list of M flags for the scan axis of each scan input.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+      .Attr("scan_output_axes",
+            "An optional list of K flags for the scan axis of each scan output.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+      .TypeConstraint(
+          "I",
+          {"tensor(int64)"},
+          "Int64 tensor for output_lengths")
+      .TypeConstraint(
+          "V",
+          OpSchema::all_tensor_types(),
+          "All Tensor types")
+      .TypeAndShapeInferenceFunction(VarLenScanInferenceFunction);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)

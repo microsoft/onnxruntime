@@ -31,10 +31,12 @@ namespace onnxruntime {
 namespace scan {
 namespace detail {
 
-Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8)
-    : subgraph(subgraph_in), num_scan_inputs(num_scan_inputs_in) {
+Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8,
+           int num_non_variadic_inputs_in)
+    : subgraph(subgraph_in), num_scan_inputs(num_scan_inputs_in),
+      num_non_variadic_inputs(num_non_variadic_inputs_in) {
   num_inputs = static_cast<int>(node.InputDefs().size());
-  num_variadic_inputs = is_v8 ? num_inputs - 1 : num_inputs;  // allow for sequence_lens input in v8
+  num_variadic_inputs = num_inputs - (is_v8 ? 1 : 0) - num_non_variadic_inputs;
   num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
 
   num_outputs = static_cast<int>(node.OutputDefs().size());
@@ -82,7 +84,8 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
                       const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
                       const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
                       ScanDirection direction,
-                      bool temporary) {
+                      bool temporary,
+                      int input_offset) {
   // use the shape from the subgraph output. we require this to be specified in the model or inferable.
   auto& graph_outputs = subgraph.GetOutputs();
   auto* graph_output = graph_outputs.at(output_index);
@@ -116,7 +119,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
                                                TensorShape(scan_output_dims),
                                                create_slicer_func, zero_data_func,
-                                               output_iterator, direction));
+                                               output_iterator, direction, false, nullptr, input_offset));
   } else {
     auto mltype = utils::GetMLDataType(*graph_output);
 
@@ -126,7 +129,8 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
                                                TensorShape(scan_output_dims),
                                                create_slicer_func, zero_data_func,
-                                               output_iterator, direction, temporary, ml_data_type));
+                                               output_iterator, direction, temporary, ml_data_type,
+                                               input_offset));
   }
 
   return Status::OK();
@@ -144,7 +148,7 @@ Status CreateFeedsFetchesManager(const Node& node,
   feed_names.reserve(static_cast<size_t>(info.num_variadic_inputs) + info.num_implicit_inputs);
 
   const auto& scan_inputs = node.InputDefs();
-  int start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
+  int start = (is_v8 ? 1 : 0) + info.num_non_variadic_inputs;  // skip non-variadic inputs
   for (int i = start; i < info.num_inputs; ++i) {
     feed_names.push_back(scan_inputs[i]->Name());
   }
@@ -293,6 +297,75 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
   return status;
 }
 
+Status IterateSequenceVarLen(OpKernelContextInternal& context, const SessionState& session_state,
+                             std::vector<LoopStateVariable>& loop_state_variables,
+                             std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
+                             int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
+                             int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
+                             std::vector<std::vector<OrtValue>>& per_iteration_outputs,
+                             const FeedsFetchesManager& ffm) {
+  Status status = Status::OK();
+  int num_scan_outputs = num_variadic_outputs - num_loop_state_variables;
+
+  auto num_implicit_inputs = implicit_inputs.size();
+  auto num_inputs = num_variadic_inputs + num_implicit_inputs;
+
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
+  // No custom allocators needed: subgraph allocates fresh memory for each scan output per iteration.
+  std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
+
+  feeds.resize(num_inputs);
+
+  per_iteration_outputs.clear();
+  per_iteration_outputs.resize(num_scan_outputs);
+
+  // add implicit inputs (constant across iterations)
+  for (size_t i = 0; i < num_implicit_inputs; ++i) {
+    feeds[num_variadic_inputs + i] = *implicit_inputs[i];
+  }
+
+  for (int64_t seq_no = 0; seq_no < seq_length; ++seq_no) {
+    for (int input = 0; input < num_variadic_inputs; ++input) {
+      if (input < num_loop_state_variables) {
+        feeds[input] = loop_state_variables[input].Input();
+      } else {
+        auto& iterator = scan_input_stream_iterators[static_cast<ptrdiff_t>(input) - num_loop_state_variables];
+        feeds[input] = *iterator;
+        ++iterator;
+      }
+    }
+
+    fetches.clear();
+
+    for (int output = 0; output < num_variadic_outputs; ++output) {
+      if (output < num_loop_state_variables) {
+        fetches.push_back(loop_state_variables[output].Output());
+      } else {
+        // Leave empty: subgraph will allocate fresh memory for each scan output
+        fetches.emplace_back();
+      }
+    }
+
+    status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(),
+                                    context.GetComputeStream());
+
+    ORT_RETURN_IF_ERROR(status);
+
+    // Cycle the LoopStateVariable input/output in preparation for the next iteration
+    std::for_each(loop_state_variables.begin(), loop_state_variables.end(), [](LoopStateVariable& v) { v.Next(); });
+
+    // Save per-iteration scan outputs
+    for (int output = num_loop_state_variables; output < num_variadic_outputs; ++output) {
+      int scan_output_idx = output - num_loop_state_variables;
+      per_iteration_outputs[scan_output_idx].push_back(fetches[output]);
+    }
+  }
+
+  return status;
+}
+
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
   OrtValue ort_value;
   Tensor::InitOrtValue(data_type, shape, allocator, ort_value);
@@ -414,7 +487,8 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
                                const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
                                ScanDirection direction,
                                bool temporary,
-                               MLDataType data_type)
+                               MLDataType data_type,
+                               int input_offset)
     : context_(context),
       is_v8_(is_v8),
       output_index_(output_index),
@@ -425,7 +499,8 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
       temporary_(temporary),
       data_type_{data_type},
       create_slicer_func_(create_slicer_func),
-      zero_data_func_(zero_data_func) {
+      zero_data_func_(zero_data_func),
+      input_offset_(input_offset) {
   is_concrete_shape_ = final_shape_.Size() >= 0;
 
   if (is_v8) {
@@ -448,7 +523,8 @@ Status OutputIterator::Initialize() {
   if (is_loop_state_var_ && !is_concrete_shape_) {
     // copy the shape from the input initial value which will have a concrete shape.
     // +1 to skip the sequence_len input if v8
-    auto* input = context_.Input<Tensor>(is_v8_ ? output_index_ + 1 : output_index_);
+    // +input_offset_ to skip non-variadic inputs (e.g., output_lengths in ScanVarLen)
+    auto* input = context_.Input<Tensor>(is_v8_ ? output_index_ + 1 : output_index_ + input_offset_);
     status = MakeShapeConcrete(input->Shape(), final_shape_);
     ORT_RETURN_IF_ERROR(status);
 

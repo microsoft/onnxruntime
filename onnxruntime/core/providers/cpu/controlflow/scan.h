@@ -22,7 +22,8 @@ Helper struct for keeping static information about the Scan node and its subgrap
 Used to create the FeedsFetchesManager needed for efficient subgraph execution.
 */
 struct Info {
-  Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8);
+  Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8,
+       int num_non_variadic_inputs = 0);
 
   const GraphViewer& subgraph;
 
@@ -34,6 +35,7 @@ struct Info {
   int num_scan_outputs;
 
   int num_implicit_inputs;
+  int num_non_variadic_inputs;
 
   std::vector<std::string> subgraph_input_names;
   std::vector<std::string> subgraph_output_names;
@@ -79,12 +81,23 @@ class Scan : public controlflow::IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
   struct Info : scan::detail::Info {
-    Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in)
-        : scan::detail::Info(node, subgraph_in, num_scan_inputs_in, /* is_v8 */ OpSet == 8) {}
+    Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in,
+         int num_non_variadic_inputs = 0)
+        : scan::detail::Info(node, subgraph_in, num_scan_inputs_in, /* is_v8 */ OpSet == 8,
+                             num_non_variadic_inputs) {}
   };
 
   void SetDeviceHelpers(const scan::detail::DeviceHelpers& device_helpers) {
     device_helpers_ = device_helpers;  // copy
+  }
+
+ protected:
+  // Protected constructor for subclasses that need to set members before Init runs.
+  Scan(const OpKernelInfo& info, bool use_var_len_output, int num_non_variadic_inputs)
+      : IControlFlowKernel(info),
+        use_var_len_output_(use_var_len_output),
+        num_non_variadic_inputs_(num_non_variadic_inputs) {
+    Init(info);
   }
 
  private:
@@ -99,5 +112,14 @@ class Scan : public controlflow::IControlFlowKernel {
   std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
 
   scan::detail::DeviceHelpers device_helpers_;
+
+ protected:
+  // When true, uses the variable-length output implementation that collects per-iteration
+  // scan outputs and concatenates them at the end.
+  bool use_var_len_output_ = false;
+
+  // Number of non-variadic inputs before the variadic state+scan inputs.
+  // 0 for standard Scan; 1 for the contrib ScanVarLen (output_lengths input).
+  int num_non_variadic_inputs_ = 0;
 };
 }  // namespace onnxruntime
