@@ -12,76 +12,12 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
-#include <cstdlib>
 #include <cmath>
-#include <fstream>
-#include <sstream>
 
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {
-
-namespace {
-
-bool ShouldDumpNchwcOptimizerGraphs() {
-  const char* value = std::getenv("ORT_NCHWC_TEST_DUMP_GRAPH");
-  return value == nullptr || value[0] == '\0' || std::string(value) != "0";
-}
-
-void DumpNchwcOptimizerGraph(const Graph& graph, const std::string& test_name, const std::string& stage) {
-  if (!ShouldDumpNchwcOptimizerGraphs()) {
-    return;
-  }
-
-  std::ostringstream stream;
-  stream << "===== NCHWC graph dump: " << test_name << " [" << stage << "] =====\n";
-
-  const auto op_to_count = CountOpsInGraph(graph);
-  stream << "Op counts:\n";
-  for (const auto& entry : op_to_count) {
-    stream << "  " << entry.first << ": " << entry.second << "\n";
-  }
-
-  stream << "Nodes:\n";
-  for (const auto& node : graph.Nodes()) {
-    stream << "  " << node.Name() << " : "
-           << (node.Domain().empty() ? kOnnxDomain : node.Domain())
-           << "." << node.OpType() << "\n";
-
-    stream << "    Inputs:";
-    for (const auto* input_def : node.InputDefs()) {
-      stream << " " << (input_def == nullptr ? "<null>" : input_def->Name());
-    }
-    stream << "\n";
-
-    stream << "    Outputs:";
-    for (const auto* output_def : node.OutputDefs()) {
-      stream << " " << (output_def == nullptr ? "<null>" : output_def->Name());
-    }
-    stream << "\n";
-  }
-
-  stream << "Graph outputs:";
-  for (const auto* output : graph.GetOutputs()) {
-    stream << " " << (output == nullptr ? "<null>" : output->Name());
-  }
-  stream << "\n";
-  stream << "===== End NCHWC graph dump =====\n";
-
-  const std::string text = stream.str();
-  std::cerr << text;
-
-  const char* file_path = std::getenv("ORT_NCHWC_TEST_DUMP_GRAPH_FILE");
-  if (file_path != nullptr && file_path[0] != '\0') {
-    std::ofstream output_stream(file_path, std::ios::app);
-    if (output_stream.is_open()) {
-      output_stream << text;
-    }
-  }
-}
-
-}  // namespace
 
 struct NchwcTestHelper {
   NchwcTestHelper(Graph& graph) : graph_(graph), fill_value_(0), per_sample_tolerance_(0.0) {
@@ -786,29 +722,26 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, channels, 25, 21});
       auto* conv_output_arg = helper.MakeIntermediate();
+      auto* quickgelu_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
 
       helper.AddConvNode(input_arg, conv_output_arg, {channels, channels, 3, 3});
+      helper.AddNode("QuickGelu", {conv_output_arg}, {quickgelu_output_arg}, kMSDomain);
       const std::vector<int64_t> scale_shape = use_explicit_batch_dim
                                                    ? std::vector<int64_t>{1, channels, 1, 1}
                                                    : std::vector<int64_t>{channels, 1, 1};
       auto* scale_arg = helper.MakeInitializer<float>(scale_shape, helper.FillRandomData<float>(scale_shape));
       if (scale_first) {
-        helper.AddNode("Mul", {scale_arg, conv_output_arg}, {output_arg});
+        helper.AddNode("Mul", {scale_arg, quickgelu_output_arg}, {output_arg});
       } else {
-        helper.AddNode("Mul", {conv_output_arg, scale_arg}, {output_arg});
+        helper.AddNode("Mul", {quickgelu_output_arg, scale_arg}, {output_arg});
       }
     };
 
     auto check_pre_optimization_graph = [&](const Graph& graph) {
       auto op_to_count = CountOpsInGraph(graph);
-      if (op_to_count["Conv"] != 1 || op_to_count["Mul"] != 1 ||
-          op_to_count["com.microsoft.nchwc.Conv"] != 0 ||
-          op_to_count["com.microsoft.nchwc.ReorderInput"] != 0 ||
-          op_to_count["com.microsoft.nchwc.ReorderOutput"] != 0) {
-        DumpNchwcOptimizerGraph(graph, "NchwcOptimizerTests.ConvMulChannelScale", "pre_optimization_failure");
-      }
       EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], 1);
       EXPECT_EQ(op_to_count["Mul"], 1);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
@@ -817,12 +750,10 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
 
     auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      if (op_to_count["com.microsoft.nchwc.Conv"] != 2 || op_to_count["Mul"] != 0) {
-        DumpNchwcOptimizerGraph(session.GetGraph(), "NchwcOptimizerTests.ConvMulChannelScale", "post_optimization_failure");
-      }
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
-      //EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
-      //EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       EXPECT_EQ(op_to_count["Mul"], 0);
     };
 
