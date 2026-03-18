@@ -4,6 +4,7 @@
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
 #include <gsl/gsl>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -784,6 +785,76 @@ const OrtEp* PluginExecutionProvider::GetOrtEp() const {
 
 namespace {
 
+// Merge EP-provided events into the existing event list by timestamp.
+// For each EP event whose timestamp matches an existing event, inherits
+// op_name and parent_name from that parent event. Events are interleaved
+// in timestamp order. This mirrors GPUProfilerBase::MergeEvents from
+// gpu_profiler_common.h.
+void MergeEpEvents(profiling::Events& ep_events, profiling::Events& events) {
+  profiling::Events merged_events;
+  merged_events.reserve(events.size() + ep_events.size());
+
+  // Group EP events by timestamp for ordered merge
+  std::map<long long, profiling::Events> ep_events_by_ts;
+  for (auto& evt : ep_events) {
+    ep_events_by_ts[evt.ts].emplace_back(std::move(evt));
+  }
+
+  auto event_iter = events.begin();
+  auto event_end = events.end();
+
+  for (auto& [ts, ep_group] : ep_events_by_ts) {
+    if (ep_group.empty()) {
+      continue;
+    }
+
+    // Advance past existing events with earlier timestamps,
+    // and past all-but-the-last existing event sharing this timestamp.
+    while (event_iter != event_end &&
+           (event_iter->ts < ts ||
+            (event_iter->ts == ts &&
+             (event_iter + 1) != event_end &&
+             (event_iter + 1)->ts == ts))) {
+      merged_events.emplace_back(std::move(*event_iter));
+      ++event_iter;
+    }
+
+    bool copy_op_names = false;
+    std::string op_name;
+    std::string parent_name;
+
+    if (event_iter != event_end && event_iter->ts == ts) {
+      // Found a matching parent event. Inherit its op_name and name.
+      copy_op_names = true;
+      auto op_name_it = event_iter->args.find("op_name");
+      if (op_name_it != event_iter->args.end()) {
+        op_name = op_name_it->second;
+      }
+      parent_name = event_iter->name;
+      merged_events.emplace_back(std::move(*event_iter));
+      ++event_iter;
+    }
+
+    for (auto& evt : ep_group) {
+      if (copy_op_names) {
+        evt.args["op_name"] = op_name;
+        evt.args["parent_name"] = parent_name;
+      }
+    }
+
+    merged_events.insert(merged_events.end(),
+                         std::make_move_iterator(ep_group.begin()),
+                         std::make_move_iterator(ep_group.end()));
+  }
+
+  // Move any remaining existing events
+  merged_events.insert(merged_events.end(),
+                       std::make_move_iterator(event_iter),
+                       std::make_move_iterator(event_end));
+
+  std::swap(events, merged_events);
+}
+
 class PluginEpProfiler final : public profiling::EpProfiler {
  public:
   explicit PluginEpProfiler(OrtEpProfilerImpl& profiler_impl, const logging::Logger& logger)
@@ -810,13 +881,21 @@ class PluginEpProfiler final : public profiling::EpProfiler {
                      start_time.time_since_epoch())
                      .count();
 
-    OrtEpProfilingEventsContainer container{events};
+    // Collect EP events into a separate buffer so we can merge them into the
+    // existing events afterward (matching timestamps and annotating with
+    // parent op_name/parent_name, mirroring GPUProfilerBase::MergeEvents).
+    profiling::Events ep_events;
+    OrtEpProfilingEventsContainer container{ep_events};
     Status status = ToStatusAndRelease(profiler_impl_->EndProfiling(profiler_impl_, ns, &container));
     if (!status.IsOK()) {
       // Log error but don't throw — profiling failures shouldn't break execution.
       LOGS(logger_, ERROR) << "OrtEpProfilerImpl::EndProfiling() returned an error OrtStatus: "
                            << status.ErrorMessage();
       return;
+    }
+
+    if (!ep_events.empty()) {
+      MergeEpEvents(ep_events, events);
     }
   }
 
