@@ -250,8 +250,10 @@ UNARY_OP_BWUZCSILHFDX(Sign, 13)
 
 UNARY_LOGICALOP_NOT_TYPED(1, bool)
 UNARY_OP_HFD(Round, 11)
-UNARY_OP_HFD(Cos, 7)
-UNARY_OP_HFD(Sin, 7)
+UNARY_OP_VERSIONED_HFD(Cos, 7, 21)
+UNARY_OP_VERSIONED_HFD(Sin, 7, 21)
+UNARY_OP_HFDX(Cos, 22)
+UNARY_OP_HFDX(Sin, 22)
 
 }  // namespace cuda
 }  // namespace onnxruntime
