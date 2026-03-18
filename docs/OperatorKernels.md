@@ -834,7 +834,8 @@ Do not modify directly.*
 |||[13, 14]|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)<br/> **T1** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
 |||12|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)<br/> **T1** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64)|
 |||[7, 11]|**T** = tensor(double), tensor(float), tensor(float16)|
-|QuantizeLinear|*in* x:**T1**<br> *in* y_scale:**T1**<br> *in* y_zero_point:**T2**<br> *out* y:**T2**<br><br>or<br><br>*in* x:**T1**<br> *in* y_scale:**T2**<br> *in* y_zero_point:**T3**<br> *out* y:**T3**<br><br>or<br><br>*in* x:**T1**<br> *in* y_scale:**tensor(float)**<br> *in* y_zero_point:**T2**<br> *out* y:**T2**|21+|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int4), tensor(int8), tensor(uint4), tensor(uint8)|
+|QuantizeLinear|*in* x:**T1**<br> *in* y_scale:**T1**<br> *in* y_zero_point:**T2**<br> *out* y:**T2**<br><br>or<br><br>*in* x:**T1**<br> *in* y_scale:**T2**<br> *in* y_zero_point:**T3**<br> *out* y:**T3**<br><br>or<br><br>*in* x:**T1**<br> *in* y_scale:**tensor(float)**<br> *in* y_zero_point:**T2**<br> *out* y:**T2**|25+|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int4), tensor(int8), tensor(uint4), tensor(uint8)|
+|||[21, 24]|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int4), tensor(int8), tensor(uint4), tensor(uint8)|
 |||[19, 20]|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int8), tensor(uint8)|
 |||[13, 18]|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
 |||[10, 12]|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
