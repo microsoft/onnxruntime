@@ -70,6 +70,9 @@ QNBitGemmPackQuantBDataSize(
             const size_t sr = ukernel.get_sr();
             size_t packed_size = kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
             if (HasZeroPoint) {
+                // Align so that BZpCorrection starts at a float-aligned offset
+                constexpr size_t FloatAlignment = alignof(float);
+                packed_size = (packed_size + FloatAlignment - 1) & ~(FloatAlignment - 1);
                 // Additional space for BZpCorrection: N * BlockCountK floats
                 const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
                 packed_size += N * BlockCountK * sizeof(float);
@@ -214,7 +217,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
         // Pack B data with KleidiAI (only when B data is provided)
-        if (QuantBDataBegin != nullptr && QuantBScaleBegin != nullptr) {
+        if (QuantBDataBegin != nullptr) {
+            assert(QuantBScaleBegin != nullptr);
             kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params;
             params.lhs_zero_point = 1;
             params.rhs_zero_point = 8;
@@ -239,7 +243,10 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
         if (HasZeroPoint && QuantBZPBegin != nullptr && QuantBScaleBegin != nullptr) {
             const size_t kleidiai_packed_size = kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(
                 N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
-            float* BZpCorr = reinterpret_cast<float*>(PackedQuantBDataBegin + kleidiai_packed_size);
+            // Align offset so BZpCorr starts at a float-aligned address
+            constexpr size_t FloatAlignment = alignof(float);
+            const size_t bzpcorr_offset = (kleidiai_packed_size + FloatAlignment - 1) & ~(FloatAlignment - 1);
+            float* BZpCorr = reinterpret_cast<float*>(PackedQuantBDataBegin + bzpcorr_offset);
 
             for (size_t n = 0; n < N; ++n) {
                 for (size_t blk = 0; blk < BlockCountK; ++blk) {
@@ -457,6 +464,9 @@ QNBitGemmPerGemmWorkspaceSize(
                 const size_t sr = ukernel.get_sr();
                 size_t ws = kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(M, K, mr, kr, sr);
                 if (HasZeroPoint) {
+                    // Align so that AFloatBlkSum starts at a float-aligned offset
+                    constexpr size_t FloatAlignment = alignof(float);
+                    ws = (ws + FloatAlignment - 1) & ~(FloatAlignment - 1);
                     // Additional space for AFloatBlkSum: M * BlockCountK floats
                     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
                     ws += M * BlockCountK * sizeof(float);

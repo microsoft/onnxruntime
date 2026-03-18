@@ -1237,7 +1237,10 @@ InitializeWorkspace_CompInt8<float>(
             // For asymmetric KleidiAI path, also compute float-domain A block sums
             // for zero-point correction. AFloatBlkSum is stored after KleidiAI packed A.
             if (data.QuantBZeroPoint != nullptr && ComputeAFloatBlkSumFn != nullptr && kleidiAIPackedASize > 0) {
-                float* AFloatBlkSum = reinterpret_cast<float*>(QuantARowPtr + kleidiAIPackedASize);
+                // Align offset so AFloatBlkSum starts at a float-aligned address
+                constexpr size_t FloatAlignment = alignof(float);
+                const size_t alignedAOffset = (kleidiAIPackedASize + FloatAlignment - 1) & ~(FloatAlignment - 1);
+                float* AFloatBlkSum = reinterpret_cast<float*>(QuantARowPtr + alignedAOffset);
                 ComputeAFloatBlkSumFn(ARowPtr, M, K, BlkLen, data.lda, AFloatBlkSum);
             }
         });
@@ -1539,16 +1542,24 @@ MlasQNBitGemmBatch(
                   M, N, K, BlkLen, /*HasZeroPoint=*/false, ComputeType, BlkBitWidth, BackendKernelSelectorConfig)
             : 0;
 
+        // Align offsets so float arrays start at float-aligned addresses
+        constexpr size_t FloatAlignment = alignof(float);
+        const size_t alignedBOffset = (kleidiAIPackedBSize + FloatAlignment - 1) & ~(FloatAlignment - 1);
+        const size_t alignedAOffset = (kleidiAIPackedASize + FloatAlignment - 1) & ~(FloatAlignment - 1);
+
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
             auto* Data = const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(&DataParams[gemm_i]);
-            // BZpCorr is at the end of packed B data
-            if (kleidiAIPackedBSize > 0 && Data->PackedQuantBData != nullptr) {
-                Data->BZpCorr = reinterpret_cast<const float*>(Data->PackedQuantBData + kleidiAIPackedBSize);
+            if (Data->QuantBZeroPoint == nullptr) {
+                continue;
             }
-            // AFloatBlkSum is at the end of the workspace's KleidiAI packed A
+            // BZpCorr is at the end of packed B data (float-aligned)
+            if (kleidiAIPackedBSize > 0 && Data->PackedQuantBData != nullptr) {
+                Data->BZpCorr = reinterpret_cast<const float*>(Data->PackedQuantBData + alignedBOffset);
+            }
+            // AFloatBlkSum is at the end of the workspace's KleidiAI packed A (float-aligned)
             if (kleidiAIPackedASize > 0 && Workspace != nullptr) {
                 std::byte* wsBase = reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
-                Data->AFloatBlkSum = reinterpret_cast<const float*>(wsBase + kleidiAIPackedASize);
+                Data->AFloatBlkSum = reinterpret_cast<const float*>(wsBase + alignedAOffset);
             }
         }
     }
