@@ -144,6 +144,8 @@ bool IsSupportedSpaceToDepthInputType(const NodeArg& input) {
   }
 
   const int32_t elem_type = type_proto->tensor_type().elem_type();
+
+  // TODO(hasesh): Consider supporting float16 too ?
   if (elem_type != TensorProto::FLOAT && elem_type != TensorProto::DOUBLE) {
     return false;
   }
@@ -174,6 +176,39 @@ bool TryGetStaticChannelCount(const NodeArg& input, int64_t& channel_count) {
 
   channel_count = channel_dim.dim_value();
   return true;
+}
+
+bool TryGetStaticInputDim(const NodeArg& input, int64_t axis, int64_t& dim_value) {
+  const auto* type_proto = input.TypeAsProto();
+  if (type_proto == nullptr || !type_proto->has_tensor_type()) {
+    return false;
+  }
+
+  const auto& tensor_type = type_proto->tensor_type();
+  if (!tensor_type.has_shape() || tensor_type.shape().dim_size() != kRank || axis < 0 || axis >= kRank) {
+    return false;
+  }
+
+  const auto& dim = tensor_type.shape().dim(onnxruntime::narrow<int>(axis));
+  if (!utils::HasDimValue(dim) || dim.dim_value() <= 0) {
+    return false;
+  }
+
+  dim_value = dim.dim_value();
+  return true;
+}
+
+bool IsFullExtentEnd(const NodeArg& input, int64_t axis, int64_t end) {
+  if (end == std::numeric_limits<int64_t>::max()) {
+    return true;
+  }
+
+  if (end < 0) {
+    return false;
+  }
+
+  int64_t dim_value = 0;
+  return TryGetStaticInputDim(input, axis, dim_value) && end == dim_value;
 }
 
 TypeProto MakeSpaceToDepthOutputTypeProto(const NodeArg& input) {
@@ -241,6 +276,7 @@ bool TryMatchSlicePhase(const Graph& graph,
       std::numeric_limits<int64_t>::max(),
       std::numeric_limits<int64_t>::max()};
   params.steps = {1, 1, 1, 1};
+  std::array<bool, 4> axis_seen{false, false, false, false};
 
   for (size_t i = 0; i < starts.size(); ++i) {
     const int64_t axis = NormalizeAxis(axes[i], kRank);
@@ -248,14 +284,33 @@ bool TryMatchSlicePhase(const Graph& graph,
       return false;
     }
 
+    if (axis_seen[onnxruntime::narrow<size_t>(axis)]) {
+      return false;
+    }
+
+    axis_seen[onnxruntime::narrow<size_t>(axis)] = true;
+
     params.starts[onnxruntime::narrow<size_t>(axis)] = starts[i];
     params.ends[onnxruntime::narrow<size_t>(axis)] = ends[i];
     params.steps[onnxruntime::narrow<size_t>(axis)] = steps[i];
   }
 
+  for (size_t axis = 0; axis < params.starts.size(); ++axis) {
+    if (params.starts[axis] < 0 || params.steps[axis] <= 0) {
+      return false;
+    }
+  }
+
   if (params.starts[0] != 0 || params.starts[1] != 0 ||
       params.steps[0] != 1 || params.steps[1] != 1 ||
       params.steps[kHeightAxis] != kBlockSize || params.steps[kWidthAxis] != kBlockSize) {
+    return false;
+  }
+
+  if (!IsFullExtentEnd(common_input, 0, params.ends[0]) ||
+      !IsFullExtentEnd(common_input, 1, params.ends[1]) ||
+      !IsFullExtentEnd(common_input, kHeightAxis, params.ends[kHeightAxis]) ||
+      !IsFullExtentEnd(common_input, kWidthAxis, params.ends[kWidthAxis])) {
     return false;
   }
 
