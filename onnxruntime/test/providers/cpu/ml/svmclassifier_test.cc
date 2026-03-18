@@ -286,7 +286,7 @@ TEST(MLOpTest, SVMClassifierOutOfBoundary) {
   test.AddAttribute("kernel_params", kernel_params);
   test.AddAttribute("classlabels_ints", classes);
 
-  test.AddInput<float>("X", {1, 4}, {0.f,0.f,0.f,0.f});
+  test.AddInput<float>("X", {1, 4}, {0.f, 0.f, 0.f, 0.f});
   test.AddOutput<int64_t>("Y", {1}, {1});
   test.AddOutput<float>("Z", {1, 4}, {0.f,0.f,0.f,0.f});
 
