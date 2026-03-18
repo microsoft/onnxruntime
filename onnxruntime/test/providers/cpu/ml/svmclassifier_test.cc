@@ -275,8 +275,8 @@ TEST(MLOpTest, SVMClassifierOutOfBoundary) {
   std::vector<float> support_vectors = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};  // NUM_VECTORS * NUM_FEATURES
   std::vector<float> rho = {0.1f};                                                        // only one
   std::vector<float> kernel_params = {0.01f, 0.f, 3.f};
-  std::vector<int64_t> classes = {0, 1, 2};  // NUM_CLASSES
-  std::vector<int64_t> vectors_per_class = {1, 1, 0}; // undersised
+  std::vector<int64_t> classes = {0, 1, 2};            // NUM_CLASSES
+  std::vector<int64_t> vectors_per_class = {1, 1, 0};  // undersised
 
   test.AddAttribute("kernel_type", std::string("RBF"));
   test.AddAttribute("coefficients", coefficients);
