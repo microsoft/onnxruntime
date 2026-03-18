@@ -40,6 +40,8 @@ class ProviderPolicyContext {
  public:
   ProviderPolicyContext() = default;
 
+  Status SelectEpDevices(std::vector<const OrtEpDevice*>& execution_devices, const OrtSessionOptions& options,
+                         OrtKeyValuePairs& model_metadata, std::vector<const OrtEpDevice*> devices_selected);
   Status SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
                              InferenceSession& sess, OrtKeyValuePairs& model_metadata);
   Status AddEpDefaultOptionsToSession(InferenceSession& sess, std::vector<const OrtEpDevice*> devices);
@@ -48,6 +50,16 @@ class ProviderPolicyContext {
                                  SelectionInfo& info, std::unique_ptr<IExecutionProvider>& ep);
   void FoldSelectedDevices(std::vector<const OrtEpDevice*> devices_selected,  // copy
                            std::vector<SelectionInfo>& eps_selected);
+
+  std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice*>& devices);
+
+  Status LogTelemetry(InferenceSession& sess,
+                      const OrtSessionOptions& options,
+                      const std::vector<const OrtEpDevice*>& execution_devices,
+                      const std::vector<const OrtEpDevice*>& devices_selected);
+
+  Status CreateAndRegisterExecutionProviders(const Environment& env, InferenceSession& sess,
+                                             std::vector<const OrtEpDevice*>& devices_selected);
 
  private:
 };

@@ -50,11 +50,12 @@ bool IsDefaultCpuEp(const OrtEpDevice* d) {
   return d->device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU &&
          d->ep_vendor == "Microsoft";
 }
+}  // namespace
 
 // Sort devices. NPU -> GPU -> CPU
 // Within in type, vendor owned, not.
 // Default CPU EP is last
-std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice*>& devices) {
+std::vector<const OrtEpDevice*> ProviderPolicyContext::OrderDevices(const std::vector<const OrtEpDevice*>& devices) {
   std::vector<const OrtEpDevice*> sorted_devices(devices.begin(), devices.end());
   std::sort(sorted_devices.begin(), sorted_devices.end(), [](const OrtEpDevice* a, const OrtEpDevice* b) {
     auto aDeviceType = a->device->type;
@@ -114,19 +115,11 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
 
   return sorted_devices;
 }
-}  // namespace
 
-// Select execution providers based on the device policy and available devices and add to session
-Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
-                                                  InferenceSession& sess, OrtKeyValuePairs& model_metadata) {
-  // Get the list of devices from the environment and order them.
-  // Ordered by preference within each type. NPU -> GPU -> NPU
-  // TODO: Should environment.cc do the ordering?
-  std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
-
-  // The list of devices selected by policies
-  std::vector<const OrtEpDevice*> devices_selected;
-
+Status ProviderPolicyContext::SelectEpDevices(std::vector<const OrtEpDevice*>& execution_devices,
+                                              const OrtSessionOptions& options,
+                                              OrtKeyValuePairs& model_metadata,
+                                              std::vector<const OrtEpDevice*> devices_selected) {
   // Run the delegate if it was passed in lieu of any other policy
   if (options.value.ep_selection_policy.delegate) {
     OrtKeyValuePairs runtime_metadata;  // TODO: where should this come from?
@@ -197,68 +190,73 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
                            "No execution providers selected. Please check the device policy and available devices.");
   }
 
-  // Log telemetry for auto EP selection
-  {
-    std::vector<std::string> requested_ep_ids;
-    requested_ep_ids.reserve(devices_selected.size());
+  return Status::OK();
+}
 
-    for (const auto* device : devices_selected) {
-      if (device != nullptr) {
-        requested_ep_ids.push_back(device->ep_name);
-      }
+Status ProviderPolicyContext::LogTelemetry(InferenceSession& sess,
+                                           const OrtSessionOptions& options,
+                                           const std::vector<const OrtEpDevice*>& execution_devices,
+                                           const std::vector<const OrtEpDevice*>& devices_selected) {
+  std::vector<std::string> requested_ep_ids;
+  requested_ep_ids.reserve(devices_selected.size());
+
+  for (const auto* device : devices_selected) {
+    if (device != nullptr) {
+      requested_ep_ids.push_back(device->ep_name);
     }
-
-    // Extract available execution provider IDs
-    std::vector<std::string> available_ep_ids;
-    available_ep_ids.reserve(execution_devices.size());
-    for (const auto* device : execution_devices) {
-      available_ep_ids.push_back(device->ep_name);
-    }
-
-    std::string policy_type;
-    if (options.value.ep_selection_policy.delegate) {
-      policy_type = "custom_delegate";
-    } else {
-      switch (options.value.ep_selection_policy.policy) {
-        case OrtExecutionProviderDevicePolicy_DEFAULT:
-          policy_type = "DEFAULT";
-          break;
-        case OrtExecutionProviderDevicePolicy_PREFER_CPU:
-          policy_type = "PREFER_CPU";
-          break;
-        case OrtExecutionProviderDevicePolicy_PREFER_NPU:
-          policy_type = "PREFER_NPU";
-          break;
-        case OrtExecutionProviderDevicePolicy_PREFER_GPU:
-          policy_type = "PREFER_GPU";
-          break;
-        case OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE:
-          policy_type = "MAX_PERFORMANCE";
-          break;
-        case OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY:
-          policy_type = "MAX_EFFICIENCY";
-          break;
-        case OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER:
-          policy_type = "MIN_OVERALL_POWER";
-          break;
-        default:
-          policy_type = "UNKNOWN";
-          break;
-      }
-    }
-
-    const Env& os_env = Env::Default();
-    os_env.GetTelemetryProvider().LogAutoEpSelection(
-        sess.GetCurrentSessionId(),
-        policy_type,
-        requested_ep_ids,
-        available_ep_ids);
   }
 
-  // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
-  // EP options that have not been overridden by the user.
-  ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(sess, devices_selected));
+  // Extract available execution provider IDs
+  std::vector<std::string> available_ep_ids;
+  available_ep_ids.reserve(execution_devices.size());
+  for (const auto* device : execution_devices) {
+    available_ep_ids.push_back(device->ep_name);
+  }
 
+  std::string policy_type;
+  if (options.value.ep_selection_policy.delegate) {
+    policy_type = "custom_delegate";
+  } else {
+    switch (options.value.ep_selection_policy.policy) {
+      case OrtExecutionProviderDevicePolicy_DEFAULT:
+        policy_type = "DEFAULT";
+        break;
+      case OrtExecutionProviderDevicePolicy_PREFER_CPU:
+        policy_type = "PREFER_CPU";
+        break;
+      case OrtExecutionProviderDevicePolicy_PREFER_NPU:
+        policy_type = "PREFER_NPU";
+        break;
+      case OrtExecutionProviderDevicePolicy_PREFER_GPU:
+        policy_type = "PREFER_GPU";
+        break;
+      case OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE:
+        policy_type = "MAX_PERFORMANCE";
+        break;
+      case OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY:
+        policy_type = "MAX_EFFICIENCY";
+        break;
+      case OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER:
+        policy_type = "MIN_OVERALL_POWER";
+        break;
+      default:
+        policy_type = "UNKNOWN";
+        break;
+    }
+  }
+
+  const Env& os_env = Env::Default();
+  os_env.GetTelemetryProvider().LogAutoEpSelection(
+      sess.GetCurrentSessionId(),
+      policy_type,
+      requested_ep_ids,
+      available_ep_ids);
+
+  return Status::OK();
+}
+
+Status ProviderPolicyContext::CreateAndRegisterExecutionProviders(const Environment& env, InferenceSession& sess,
+                                                                  std::vector<const OrtEpDevice*>& devices_selected) {
   // Create OrtSessionOptions for the CreateEp call.
   // Once the InferenceSession is created, its SessionOptions is the source of truth and contains all the values from
   // the user provided OrtSessionOptions. We do a copy for simplicity. The OrtSessionOptions instance goes away
@@ -288,6 +286,31 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
       ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
     }
   }
+
+  return Status::OK();
+}
+
+// Select execution providers based on the device policy and available devices and add to session
+Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
+                                                  InferenceSession& sess, OrtKeyValuePairs& model_metadata) {
+  // Get the list of devices from the environment and order them.
+  // Ordered by preference within each type. NPU -> GPU -> NPU
+  // TODO: Should environment.cc do the ordering?
+  std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
+
+  // The list of devices selected by policies
+  std::vector<const OrtEpDevice*> devices_selected;
+
+  ORT_RETURN_IF_ERROR(SelectEpDevices(execution_devices, options, model_metadata, devices_selected));
+
+  // Log telemetry for auto EP selection
+  ORT_RETURN_IF_ERROR(LogTelemetry(sess, options, execution_devices, devices_selected));
+
+  // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
+  // EP options that have not been overridden by the user.
+  ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(sess, devices_selected));
+
+  ORT_RETURN_IF_ERROR(CreateAndRegisterExecutionProviders(env, sess, devices_selected));
 
   return Status::OK();
 }
