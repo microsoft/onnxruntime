@@ -198,6 +198,7 @@ export declare namespace InferenceSession {
     cuda: CudaExecutionProviderOption;
     dml: DmlExecutionProviderOption;
     nnapi: NnapiExecutionProviderOption;
+    openvino: OpenVinoExecutionProviderOption;
     tensorrt: TensorRtExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
@@ -357,6 +358,14 @@ export declare namespace InferenceSession {
      * @default true
      */
     enableFp16Precision?: boolean;
+  }
+  export interface OpenVinoExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'openvino';
+    /**
+     * Specify the device type to use for OpenVINO.
+     * E.g., 'CPU', 'GPU', 'NPU', or combinations like 'AUTO:GPU,CPU' or 'HETERO:GPU,CPU'.
+     */
+    deviceType?: string;
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'coreml';
