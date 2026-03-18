@@ -288,7 +288,7 @@ TEST(MLOpTest, SVMClassifierOutOfBoundary) {
 
   test.AddInput<float>("X", {1, 4}, {0.f, 0.f, 0.f, 0.f});
   test.AddOutput<int64_t>("Y", {1}, {1});
-  test.AddOutput<float>("Z", {1, 4}, {0.f,0.f,0.f,0.f});
+  test.AddOutput<float>("Z", {1, 4}, {0.f, 0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "The number of vectors per class is not consistent");
 }
