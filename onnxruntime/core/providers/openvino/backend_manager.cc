@@ -4,6 +4,7 @@
 #include <array>
 #include <algorithm>
 #include <cassert>
+#include <cstdlib>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -398,8 +399,9 @@ static void ReadExternalDataFields(const ONNX_NAMESPACE::TensorProto* src_init, 
     if (pb_key == "location") {
       location = pb_value;
     } else if (pb_key == "offset") {
-      const auto res = std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), offset);
-      if (res.ec != std::errc()) {
+      char* end_ptr = nullptr;
+      offset = std::strtoull(pb_value.c_str(), &end_ptr, 10);
+      if (end_ptr == pb_value.c_str() || (end_ptr != nullptr && *end_ptr != '\0')) {
         std::ostringstream err_msg;
         err_msg << "External data in memory has invalid offset field: "
                 << src_init->name() << "], location: " << location
@@ -407,8 +409,9 @@ static void ReadExternalDataFields(const ONNX_NAMESPACE::TensorProto* src_init, 
         ORT_THROW(err_msg.str());
       }
     } else if (pb_key == "length") {
-      const auto res = std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), length);
-      if (res.ec != std::errc()) {
+      char* end_ptr = nullptr;
+      length = std::strtoull(pb_value.c_str(), &end_ptr, 10);
+      if (end_ptr == pb_value.c_str() || (end_ptr != nullptr && *end_ptr != '\0')) {
         std::ostringstream err_msg;
         err_msg << "External data in memory has invalid length field: "
                 << src_init->name() << "], location: " << location
