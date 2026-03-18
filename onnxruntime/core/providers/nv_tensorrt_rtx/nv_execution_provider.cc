@@ -2016,6 +2016,13 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
     const auto& node = graph.GetNode(node_idx);
     const bool is_context_node = node && !node->OpType().empty() && node->OpType() == EPCONTEXT_OP;
     if (is_context_node) {
+      // Only claim EPContext nodes that belong to this EP.
+      // If the source attribute is present and doesn't match, skip the node.
+      const auto& attrs = node->GetAttributes();
+      if (attrs.count(SOURCE) > 0 &&
+          attrs.at(SOURCE).s() != kNvTensorRTRTXExecutionProvider) {
+        continue;
+      }
       SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{node_idx}, true));
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
 

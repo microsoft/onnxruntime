@@ -461,6 +461,11 @@ if(WIN32)
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
 endif()
 
+if(LINUX)
+  list(APPEND onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/platform/linux/*.cc" )
+endif()
+
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
   if(onnxruntime_USE_CUDA)
@@ -1781,7 +1786,7 @@ endif()
   endif()
 endif()
 
-if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL)
 
   set(custom_op_src_patterns
     "${TEST_SRC_DIR}/testdata/custom_op_library/*.h"

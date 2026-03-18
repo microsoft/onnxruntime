@@ -377,7 +377,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
     if (TryMatMulNBits(
-            nbits_,
+            static_cast<int>(nbits_),
             reinterpret_cast<CudaT*>(Y->MutableData<T>()),
             reinterpret_cast<const CudaT*>(a_data),
             blob_data,
