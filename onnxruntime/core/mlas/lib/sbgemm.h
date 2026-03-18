@@ -311,7 +311,7 @@ MlasSBGemmPackBSize(
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
-#if defined(USE_KLEIDIAI) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+#if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSBGemmPackBSizeOverride != nullptr &&
         TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
@@ -359,7 +359,7 @@ MlasSBGemmConvertPackB(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
-#if defined(USE_KLEIDIAI) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+#if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSBGemmPackBOverride != nullptr &&
         TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
@@ -393,7 +393,7 @@ MlasSBGemmBatch(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
-#if defined(USE_KLEIDIAI) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+#if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSBGemmBatchOverride != nullptr &&
         TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
