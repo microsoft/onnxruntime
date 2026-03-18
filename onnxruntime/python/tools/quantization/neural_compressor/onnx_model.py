@@ -76,9 +76,7 @@ class ONNXModel:
         """Check model > 2GB."""
         ir_graph = ir.from_proto(self._model.graph)
         initializer_size = sum(
-            v.const_value.nbytes
-            for v in ir_graph.initializers.values()
-            if v.const_value is not None
+            v.const_value.nbytes for v in ir_graph.initializers.values() if v.const_value is not None
         )
         self._is_large_model = initializer_size > MAXIMUM_PROTOBUF
 
