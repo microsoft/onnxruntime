@@ -1351,6 +1351,67 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
 
 #ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
+TEST(LSTMTest, ONNXRuntime_TestLSTMForward_OpSet22_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  constexpr int seq_len = 2, batch_size = 1;
+  constexpr int64_t input_size = 2, hidden_size = 2;
+  constexpr int num_directions = 1;
+
+  OpTester test("LSTM", 22);
+
+  test.AddAttribute<std::vector<string>>("activations", {"sigmoid", "tanh", "tanh"});
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
+  std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
+
+  std::vector<float> W_data = {-0.494659f, 0.0453352f,
+                                -0.487793f, 0.417264f,
+                                -0.0175329f, 0.489074f,
+                                -0.446013f, 0.414029f};
+  std::vector<int64_t> W_dims = {num_directions, 4 * hidden_size, input_size};
+
+  std::vector<float> R_data = {0.146304f, -0.0243403f,
+                                -0.487793f, 0.417264f,
+                                -0.0175329f, 0.489074f,
+                                -0.446013f, 0.414029f,
+                                0.146304f, -0.0243403f,
+                                -0.487793f, 0.417264f,
+                                -0.0175329f, 0.489074f,
+                                -0.446013f, 0.414029f};
+  std::vector<int64_t> R_dims = {num_directions, 4 * hidden_size, hidden_size};
+
+  test.AddInput<float>("X", X_dims, X_data);
+  test.AddInput<float>("W", W_dims, W_data, true);
+  test.AddInput<float>("R", R_dims, R_data, true);
+
+  // B, sequence_lens, initial_h, initial_c, P - all optional, not provided
+  test.AddOptionalInputEdge<float>();   // B
+  test.AddOptionalInputEdge<int>();     // sequence_lens
+  test.AddOptionalInputEdge<float>();   // initial_h
+  test.AddOptionalInputEdge<float>();   // initial_c
+  test.AddOptionalInputEdge<float>();   // P
+
+  // Only check Y_h output to keep the test simple.
+  // Y (sequence output)
+  test.AddOptionalOutputEdge<float>();
+  // Y_h (final hidden state)
+  std::vector<int64_t> Y_h_dims = {num_directions, batch_size, hidden_size};
+  // Expected values are computed by running the same test with the CUDA EP at opset 14.
+  test.AddOutput<float>("Y_h", Y_h_dims, {-0.0321607f, 0.0540958f}, false, 1e-4f, 1e-4f);
+  // Y_c
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(LSTMTest, SharedPrepackedWeights) {
   int64_t seq_length = 2;
   int batch_size = 2;
