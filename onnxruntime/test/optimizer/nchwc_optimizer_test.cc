@@ -717,7 +717,6 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, channels, 25, 21});
       auto* conv_output_arg = helper.MakeIntermediate();
-      auto* mul_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
 
       helper.AddConvNode(input_arg, conv_output_arg, {channels, channels, 3, 3});
@@ -726,16 +725,16 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
                                                    : std::vector<int64_t>{channels, 1, 1};
       auto* scale_arg = helper.MakeInitializer<float>(scale_shape, helper.FillRandomData<float>(scale_shape));
       if (scale_first) {
-        helper.AddNode("Mul", {scale_arg, conv_output_arg}, {mul_output_arg});
+        helper.AddNode("Mul", {scale_arg, conv_output_arg}, {output_arg});
       } else {
-        helper.AddNode("Mul", {conv_output_arg, scale_arg}, {mul_output_arg});
+        helper.AddNode("Mul", {conv_output_arg, scale_arg}, {output_arg});
       }
-      helper.AddConvNode(mul_output_arg, output_arg, {16, channels, 1, 1});
     };
 
     auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 3);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["Conv"], 0);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       EXPECT_EQ(op_to_count["Mul"], 0);
