@@ -4,9 +4,12 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <core/common/inlined_containers_fwd.h>
@@ -119,6 +122,49 @@ void PrintAntiAliasBuffers(std::ostream& os, gsl::span<int64_t> bounds, gsl::spa
             std::ostream_iterator<T>(os, " "));
   os << std::endl;
 }
+
+namespace upsamplebase_helper {
+
+inline void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                     InlinedVector<float>& scales, AspectRatioPolicy keep_aspect_ratio_policy,
+                                     const TensorShapeVector& axes) {
+  if (keep_aspect_ratio_policy == AspectRatioPolicy::STRETCH) {
+    return;
+  }
+
+  std::unordered_set<int64_t> axes_set(axes.begin(), axes.end());
+
+  float scale_in_policy = 0.0f;
+  if (keep_aspect_ratio_policy == AspectRatioPolicy::NOT_LARGER) {
+    scale_in_policy = std::numeric_limits<float>::max();
+
+    for (size_t i = 0; i < scales.size(); ++i) {
+      if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+        scale_in_policy = std::min(scale_in_policy, scales[i]);
+      }
+    }
+  } else if (keep_aspect_ratio_policy == AspectRatioPolicy::NOT_SMALLER) {
+    scale_in_policy = std::numeric_limits<float>::min();
+
+    for (size_t i = 0; i < scales.size(); ++i) {
+      if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+        scale_in_policy = std::max(scale_in_policy, scales[i]);
+      }
+    }
+  }
+
+  for (size_t i = 0; i < scales.size(); ++i) {
+    if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+      scales[i] = scale_in_policy;
+      output_dims[i] = static_cast<int64_t>(std::round(scales[i] * input_dims[i]));
+    } else {
+      scales[i] = 1.0f;
+      output_dims[i] = input_dims[i];
+    }
+  }
+}
+
+}  // namespace upsamplebase_helper
 
 class UpsampleBase {
  public:
@@ -596,6 +642,13 @@ class UpsampleBase {
     return lookup_table;
   }
 };  // UpsampleBase
+
+#ifndef SHARED_PROVIDER
+inline void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                                   InlinedVector<float>& scales) const {
+  upsamplebase_helper::AdjustOutputSizeAsPolicy(output_dims, input_dims, scales, keep_aspect_ratio_policy_, axes_);
+}
+#endif
 
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)

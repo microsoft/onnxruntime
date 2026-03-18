@@ -113,7 +113,6 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
 }
 
 common::Status VitisAIExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
-  InlinedVector<const Node*> ep_context_node_ptrs;
   auto get_config_entry = [](const void* state, const char* entry_name) -> vaip_core::DllSafe<std::string> {
     const onnxruntime::RunOptions& run_options = *static_cast<const onnxruntime::RunOptions*>(state);
     auto ret = run_options.GetConfigOptions().GetConfigEntry(std::string(entry_name));

@@ -10,6 +10,24 @@ cmake_policy(SET CMP0104 OLD)
 # Project
 project(onnxruntime C CXX ASM)
 
+# Set C/C++ standard versions
+if (NOT CMAKE_C_STANDARD)
+  # Needed for Java
+  set(CMAKE_C_STANDARD 99)
+endif()
+
+if (NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 20)
+endif()
+
+# We don't use C++20 modules yet.
+# There are some known issues to address first:
+# - Android builds from Linux Docker containers have trouble finding clang-scan-deps.
+# - The MSVC /permissive option is needed for compiling some of the CUDA EP code which uses CUTLASS.
+#   This option is not compatible with C++20 modules.
+# So we will skip module scanning for now.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 # Disable fast-math for Intel oneAPI compiler
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
   if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
@@ -21,11 +39,6 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
   endif()
 endif()
 
-# Needed for Java
-if (NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_C_STANDARD 99)
-endif()
-
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
@@ -33,15 +46,6 @@ include(FetchContent)
 include(CheckFunctionExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
-
-if (NOT CMAKE_CXX_STANDARD)
-  # TODO: update this once all system adapt c++20
-  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(CMAKE_CXX_STANDARD 20)
-  else()
-    set(CMAKE_CXX_STANDARD 17)
-  endif()
-endif()
 
 if (MSVC)
   #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
@@ -1437,7 +1441,7 @@ configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_c
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
 if (onnxruntime_USE_CUDA)
-  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
   if(onnxruntime_CUDA_HOME)
     file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDAToolkit_ROOT)
   endif()

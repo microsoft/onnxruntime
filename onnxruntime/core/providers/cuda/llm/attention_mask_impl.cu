@@ -8,15 +8,18 @@ namespace onnxruntime {
 namespace cuda {
 
 // CUDA kernel to convert boolean attention mask to sequence lengths.
-// Also validates that the mask follows right-padding convention via CUDA_KERNEL_ASSERT.
+// Also validates that the mask follows right-padding convention.
 //
 // The kernel processes one batch per thread.
 // For each batch, it finds the first False in the mask row, which indicates
 // where padding starts. The sequence length is the index of first False.
 //
-// Validation (via CUDA_KERNEL_ASSERT, reported asynchronously):
+// Validation:
 // - All-false masks are valid (represents fully masked / zero-length sequence)
 // - After the first False, all remaining elements must be False (contiguous padding)
+// - CUDA_KERNEL_ASSERT fires in debug builds if mask is non-contiguous
+// - In release builds, non-contiguous masks produce safe output: seqlens_k is the
+//   count of leading True values (up to first False), ignoring later True values
 //
 // Handle broadcasting:
 // - 2D mask (q_seq_len, total_seq_len): broadcasts over batch; uses first query position (row 0)
@@ -75,7 +78,7 @@ __global__ void ConvertMaskToSeqlensKernel(
   }
 
   // Find the first False (where padding starts)
-  // All elements before this should be True, all after should be False
+  // All elements before first False must be True, all after must be False (right-padding convention)
   int seq_len;
   if (!mask_row[0]) {
     // Entire row is padding (all-false mask)
@@ -94,6 +97,7 @@ __global__ void ConvertMaskToSeqlensKernel(
       } else if (found_first_false && current) {
         // Found True after False - mask is not contiguous (invalid)
         CUDA_KERNEL_ASSERT(false);  // mask must be contiguous (no True after False)
+        break;                      // Safe: seq_len already reflects leading-True count
       }
     }
   }
@@ -282,7 +286,7 @@ template Status LaunchConvertNonpadKvSeqlenToAttentionBias<__nv_bfloat16>(
 
 // Add an addend bias into an existing bias buffer using cyclic broadcasting.
 // Used to compose nonpad_kv_seqlen bias [B, q, t] with an attn_mask bias that
-// may be smaller (e.g. 2D [q, t] broadcasts over batch).
+// is smaller or equal (e.g. 2D [q, t] cyclic-broadcasts over batch dimension).
 template <typename T>
 __global__ void AddBiasInPlaceKernel(
     T* __restrict__ bias,

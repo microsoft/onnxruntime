@@ -111,7 +111,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     const auto pads_data = pads_tensor.DataAsSpan<int64_t>();
 
-    PadBase::ComputePads(*ctx, input_shape.NumDimensions(), pads_data, pads);
+    PadBase::ComputePadsImpl(*ctx, input_shape.NumDimensions(), pads_data, pads);
 
     // Separate out any negative pads into the slices array
     PadBase::SeparateNegativeToSlices(pads, slices);
@@ -134,7 +134,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_strides(input_pitches);
 
   auto output_dims(input_shape.AsShapeVector());
-  ORT_ENFORCE(dimension_count * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(dimension_count * 2 == narrow<int32_t>(p_pads->size()), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
   TArray<int64_t> lower_pads(dimension_count);
@@ -200,7 +200,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   // implies that this would be wrong as the start and end positions should be distinct
   // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
   if (mode_ == Mode::Reflect) {
-    for (size_t i = 0; i < dimension_count; ++i) {
+    for (int32_t i = 0; i < dimension_count; ++i) {
       const int64_t extent = effective_input_extents[i];  // length after slicing
       const bool reflect_on_axis =
           (*p_pads)[i] > 0 || (*p_pads)[i + dimension_count] > 0;
