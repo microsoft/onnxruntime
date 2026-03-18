@@ -4489,6 +4489,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNode
                                      values.size() * sizeof(int64_t));
 
       NodeArg* output = builder.MakeIntermediate();
+      tensor_proto.set_name(output->Name());
       builder.AddNode("Constant", {}, {output}).AddAttribute("value", tensor_proto);
       return output;
     };
