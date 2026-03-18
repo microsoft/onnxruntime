@@ -10,11 +10,28 @@
 namespace onnxruntime {
 namespace cuda {
 
+// InstanceNormalization opsets 6-22 share the same CUDA implementation for the currently supported types.
+#define REGISTER_KERNEL_VERSIONED_TYPED(T)                        \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      InstanceNormalization,                                      \
+      kOnnxDomain,                                                \
+      6,                                                          \
+      21,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      InstanceNorm<T>);
+
+REGISTER_KERNEL_VERSIONED_TYPED(float)
+REGISTER_KERNEL_VERSIONED_TYPED(double)
+REGISTER_KERNEL_VERSIONED_TYPED(MLFloat16)
+
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       InstanceNormalization,                                      \
       kOnnxDomain,                                                \
-      6,                                                          \
+      22,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
