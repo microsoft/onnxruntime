@@ -6,7 +6,7 @@ accelerate
 onnx==1.18.0
 packaging
 # Use newer version of protobuf might cause crash
-protobuf==4.25.8
+protobuf==5.29.6
 psutil
 sympy
 nvtx==0.2.5
