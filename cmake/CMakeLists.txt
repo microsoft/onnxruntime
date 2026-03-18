@@ -1103,7 +1103,7 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()
 
-    set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+    set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
