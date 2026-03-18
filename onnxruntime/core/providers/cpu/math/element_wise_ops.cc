@@ -682,12 +682,15 @@ template <typename T>
 Status Div<T>::Compute(OpKernelContext* context) const {
   // Integer division by zero is undefined behavior in C++ and causes a hardware exception.
   // Check for zeros in the divisor before performing the division.
+  // Skip the check if the divisor was already validated as a constant initializer during kernel creation.
   if constexpr (std::is_integral<T>::value) {
-    const Tensor& B = *context->Input<Tensor>(1);
-    const T* b_data = B.Data<T>();
-    const int64_t b_size = B.Shape().Size();
-    for (int64_t i = 0; i < b_size; ++i) {
-      ORT_RETURN_IF(b_data[i] == T{0}, "Integer division by zero");
+    if (!divisor_is_validated_constant_) {
+      const Tensor& B = *context->Input<Tensor>(1);
+      const T* b_data = B.Data<T>();
+      const int64_t b_size = B.Shape().Size();
+      for (int64_t i = 0; i < b_size; ++i) {
+        ORT_RETURN_IF(b_data[i] == T{0}, "Integer division by zero");
+      }
     }
   }
 
