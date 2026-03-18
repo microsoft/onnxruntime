@@ -46,7 +46,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: Permissive
+      networkIsolationPolicy: Permissive,Maven
     # Update the pool with your team's 1ES hosted pool.
     sdl:
       sourceAnalysisPool:
