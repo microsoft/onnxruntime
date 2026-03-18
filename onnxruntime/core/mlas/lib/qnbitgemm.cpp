@@ -953,28 +953,19 @@ SQ4BitGemm_CompInt8(
             const float* BCorr = DataParams->BZpCorr + RangeStartN * BlockCountK;
             float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
-            // Correction GEMM: C += ABlkSum * BCorr^T using platform-optimized SGEMM
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_LARCH64)
-            size_t RowsRemaining = RangeCountM;
-            while (RowsRemaining > 0) {
-                auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-                    ABlkSum, BCorr, C, BlockCountK, RowsRemaining, RangeCountN, BlockCountK, ldc, 1.f, false
-                );
-                C += ldc * RowsHandled;
-                ABlkSum += BlockCountK * RowsHandled;
-                RowsRemaining -= RowsHandled;
+            // Correction GEMM: C[m,n] += sum_blk(ABlkSum[m,blk] * BCorr[n,blk])
+            // ABlkSum is (M x BlockCountK) row-major, BCorr is (N x BlockCountK) row-major
+            // Note: cannot use MlasSgemmKernelAdd here because it expects B in panel-packed
+            // format, but BZpCorr is in simple [N, BlockCountK] row-major layout.
+            for (size_t m = 0; m < RangeCountM; ++m) {
+                for (size_t n = 0; n < RangeCountN; ++n) {
+                    float corr = 0.0f;
+                    for (size_t blk = 0; blk < BlockCountK; ++blk) {
+                        corr += ABlkSum[m * BlockCountK + blk] * BCorr[n * BlockCountK + blk];
+                    }
+                    C[m * ldc + n] += corr;
+                }
             }
-#else
-            size_t RowsRemaining = RangeCountM;
-            while (RowsRemaining > 0) {
-                auto RowsHandled = MlasSgemmKernelAdd(
-                    ABlkSum, BCorr, C, BlockCountK, RowsRemaining, RangeCountN, BlockCountK, ldc, 1.f
-                );
-                C += ldc * RowsHandled;
-                ABlkSum += BlockCountK * RowsHandled;
-                RowsRemaining -= RowsHandled;
-            }
-#endif
         }
         return;
     }
