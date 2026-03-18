@@ -35,10 +35,25 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    TopK,
+    kOnnxDomain,
+    11, 23,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
+                              DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<int64_t>()})
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    TopK<true>);
+
 ONNX_OPERATOR_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    11,
+    24,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
