@@ -171,7 +171,8 @@ struct NchwcTestHelper {
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
                           const std::function<void(InferenceSessionWrapper& session)>& check_nchwc_graph,
-                          int opset_version = 13) {
+                          int opset_version = 13,
+                          const std::function<void(const Graph& graph)>& check_pre_optimization_graph = nullptr) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
@@ -186,6 +187,10 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  if (check_pre_optimization_graph) {
+    check_pre_optimization_graph(model.MainGraph());
+  }
 
   // Serialize the model to a string.
   std::string model_data;
@@ -731,18 +736,27 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
       }
     };
 
+    auto check_pre_optimization_graph = [&](const Graph& graph) {
+      auto op_to_count = CountOpsInGraph(graph);
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["Mul"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+    };
+
     auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       // TODO: Re-enable the Conv count checks once the remaining platform-
       // specific behavior is understood.
-      // EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"] + op_to_count["Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
       // EXPECT_GE(op_to_count["com.microsoft.nchwc.Conv"], 1);
       //EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
       //EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       EXPECT_EQ(op_to_count["Mul"], 0);
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, 13, check_pre_optimization_graph);
   };
 
   // Valid ONNX channel broadcast forms for NCHW tensors.
