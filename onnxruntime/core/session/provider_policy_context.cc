@@ -255,8 +255,71 @@ Status ProviderPolicyContext::LogTelemetry(InferenceSession& sess,
   return Status::OK();
 }
 
-Status ProviderPolicyContext::CreateAndRegisterExecutionProviders(const Environment& env, InferenceSession& sess,
-                                                                  std::vector<const OrtEpDevice*>& devices_selected) {
+Status ProviderPolicyContext::RegisterExecutionProviders(InferenceSession& sess,
+                                                         std::vector<std::unique_ptr<IExecutionProvider>>& providers) {
+  for (auto& provider : providers) {
+    ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(provider)));
+  }
+
+  return Status::OK();
+}
+
+Status ProviderPolicyContext::CreateExecutionProviders(const Environment& env, InferenceSession& sess,
+                                                       std::vector<const OrtEpDevice*>& devices_selected,
+                                                       std::vector<std::unique_ptr<IExecutionProvider>>& providers) {
+  // Create OrtSessionOptions for the CreateEp call.
+  // Once the InferenceSession is created, its SessionOptions is the source of truth and contains all the values from
+  // the user provided OrtSessionOptions. We do a copy for simplicity. The OrtSessionOptions instance goes away
+  // once we exit this function so an EP implementation should not use OrtSessionOptions after it returns from
+  // CreateEp.
+  auto& session_options = sess.GetMutableSessionOptions();
+  OrtSessionOptions ort_so;
+  ort_so.value = session_options;
+  const auto& session_logger = sess.GetLogger();
+  const OrtLogger& api_session_logger = *session_logger->ToExternal();
+
+  // Remove the ORT CPU EP if configured to do so
+  bool disable_ort_cpu_ep = ort_so.value.config_options.GetConfigEntry(kOrtSessionOptionsDisableCPUEPFallback) == "1";
+  if (disable_ort_cpu_ep) {
+    RemoveOrtCpuDevice(devices_selected);
+  }
+
+  // Fold the EPs into a single structure per factory
+  std::vector<SelectionInfo> eps_selected;
+  FoldSelectedDevices(devices_selected, eps_selected);
+
+  // Iterate through the selected EPs and create them
+  for (size_t idx = 0; idx < eps_selected.size(); ++idx) {
+    std::unique_ptr<IExecutionProvider> ep = nullptr;
+    ORT_RETURN_IF_ERROR(CreateExecutionProvider(env, ort_so, api_session_logger, eps_selected[idx], ep));
+    if (ep != nullptr) {
+      providers.push_back(std::move(ep));
+    }
+  }
+
+  return Status::OK();
+}
+
+// Select execution providers based on the device policy and available devices and add to session
+Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
+                                                  InferenceSession& sess, OrtKeyValuePairs& model_metadata) {
+  // Get the list of devices from the environment and order them.
+  // Ordered by preference within each type. NPU -> GPU -> NPU
+  // TODO: Should environment.cc do the ordering?
+  std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
+
+  // The list of devices selected by policies
+  std::vector<const OrtEpDevice*> devices_selected;
+
+  ORT_RETURN_IF_ERROR(SelectEpDevices(execution_devices, options, model_metadata, devices_selected));
+
+  // Log telemetry for auto EP selection
+  ORT_RETURN_IF_ERROR(LogTelemetry(sess, options, execution_devices, devices_selected));
+
+  // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
+  // EP options that have not been overridden by the user.
+  ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(sess, devices_selected));
+
   // Create OrtSessionOptions for the CreateEp call.
   // Once the InferenceSession is created, its SessionOptions is the source of truth and contains all the values from
   // the user provided OrtSessionOptions. We do a copy for simplicity. The OrtSessionOptions instance goes away
@@ -286,31 +349,6 @@ Status ProviderPolicyContext::CreateAndRegisterExecutionProviders(const Environm
       ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
     }
   }
-
-  return Status::OK();
-}
-
-// Select execution providers based on the device policy and available devices and add to session
-Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
-                                                  InferenceSession& sess, OrtKeyValuePairs& model_metadata) {
-  // Get the list of devices from the environment and order them.
-  // Ordered by preference within each type. NPU -> GPU -> NPU
-  // TODO: Should environment.cc do the ordering?
-  std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
-
-  // The list of devices selected by policies
-  std::vector<const OrtEpDevice*> devices_selected;
-
-  ORT_RETURN_IF_ERROR(SelectEpDevices(execution_devices, options, model_metadata, devices_selected));
-
-  // Log telemetry for auto EP selection
-  ORT_RETURN_IF_ERROR(LogTelemetry(sess, options, execution_devices, devices_selected));
-
-  // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
-  // EP options that have not been overridden by the user.
-  ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(sess, devices_selected));
-
-  ORT_RETURN_IF_ERROR(CreateAndRegisterExecutionProviders(env, sess, devices_selected));
 
   return Status::OK();
 }

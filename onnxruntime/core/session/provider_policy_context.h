@@ -58,8 +58,12 @@ class ProviderPolicyContext {
                       const std::vector<const OrtEpDevice*>& execution_devices,
                       const std::vector<const OrtEpDevice*>& devices_selected);
 
-  Status CreateAndRegisterExecutionProviders(const Environment& env, InferenceSession& sess,
-                                             std::vector<const OrtEpDevice*>& devices_selected);
+  Status CreateExecutionProviders(const Environment& env, InferenceSession& sess,
+                                  std::vector<const OrtEpDevice*>& devices_selected,
+                                  std::vector<std::unique_ptr<IExecutionProvider>>& providers);
+
+  Status RegisterExecutionProviders(InferenceSession& sess,
+                                    std::vector<std::unique_ptr<IExecutionProvider>>& providers);
 
  private:
 };
