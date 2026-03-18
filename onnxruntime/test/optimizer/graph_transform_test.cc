@@ -2684,14 +2684,14 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_NeedReshape_3D) {
     builder.AddNode("Add", {matmul_out, bias_arg}, {output_arg});
   };
 
-  auto pre_graph_checker = [get_op_count](Graph& graph) {
+  auto pre_graph_checker = [](Graph& graph) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
     TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
     return Status::OK();
   };
 
-  auto post_graph_checker = [get_op_count](Graph& graph) {
+  auto post_graph_checker = [](Graph& graph) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 0);
     TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
@@ -4368,14 +4368,14 @@ TEST_F(GraphTransformationTests, ReshapeFusion_Contiguous_Reshape) {
     builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
   };
 
-  auto pre_graph_checker = [get_op_count](Graph& graph) {
+  auto pre_graph_checker = [](Graph& graph) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 2);
     TEST_RETURN_IF_NOT(op_to_count["Unsqueeze"] == 1);
     return Status::OK();
   };
 
-  auto post_graph_checker = [get_op_count](Graph& graph) {
+  auto post_graph_checker = [](Graph& graph) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 1);
     TEST_RETURN_IF_NOT(op_to_count["Unsqueeze"] == 0);
@@ -4633,7 +4633,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForS
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
-  auto pre_graph_checker = [](Graph& graph) {
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
     TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
@@ -4641,7 +4641,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForS
     return Status::OK();
   };
 
-  auto post_graph_checker = [](Graph& graph) {
+  auto post_graph_checker = [get_op_count](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
     TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
@@ -4688,7 +4688,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForC
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
-  auto pre_graph_checker = [](Graph& graph) {
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
     TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
@@ -4696,7 +4696,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForC
     return Status::OK();
   };
 
-  auto post_graph_checker = [](Graph& graph) {
+  auto post_graph_checker = [get_op_count](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
     TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
