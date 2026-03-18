@@ -293,6 +293,5 @@ TEST(MLOpTest, SVMClassifierOutOfBoundary) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "The number of vectors per class is not consistent");
 }
 
-
 }  // namespace test
 }  // namespace onnxruntime
