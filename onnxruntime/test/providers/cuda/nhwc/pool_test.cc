@@ -61,7 +61,7 @@ TYPED_TEST(CudaNhwcTypedTest, MaxPoolNhwc) {
 
 TYPED_TEST(CudaNhwcTypedTest, GlobalMaxPoolNhwc) {
   RandomValueGenerator random{};
-  auto test = std::make_unique<CompareOpTester>("GlobalMaxPool", 14);
+  auto test = std::make_unique<CompareOpTester>("GlobalMaxPool", 22);
   const std::vector<int64_t> input_dims = {4, 16, 4, 8};
   std::vector<TypeParam> input_data = random.Uniform<TypeParam>(input_dims, 0.5f, 1.3f);
   test->AddInput<TypeParam>("X", input_dims, input_data);
