@@ -189,12 +189,22 @@ ComputeAFloatBlkSum(
         for (size_t blk = 0; blk < BlockCountK; ++blk) {
             const size_t blk_start = blk * BlkLen;
             const size_t blk_end = std::min(blk_start + BlkLen, CountK);
-            float32x4_t sum_vec = vdupq_n_f32(0.0f);
+            float32x4_t s0 = vdupq_n_f32(0.0f);
+            float32x4_t s1 = vdupq_n_f32(0.0f);
+            float32x4_t s2 = vdupq_n_f32(0.0f);
+            float32x4_t s3 = vdupq_n_f32(0.0f);
             size_t k = blk_start;
-            for (; k + 4 <= blk_end; k += 4) {
-                sum_vec = vaddq_f32(sum_vec, vld1q_f32(a_row + k));
+            for (; k + 16 <= blk_end; k += 16) {
+                s0 = vaddq_f32(s0, vld1q_f32(a_row + k));
+                s1 = vaddq_f32(s1, vld1q_f32(a_row + k + 4));
+                s2 = vaddq_f32(s2, vld1q_f32(a_row + k + 8));
+                s3 = vaddq_f32(s3, vld1q_f32(a_row + k + 12));
             }
-            float sum = vaddvq_f32(sum_vec);
+            s0 = vaddq_f32(vaddq_f32(s0, s1), vaddq_f32(s2, s3));
+            for (; k + 4 <= blk_end; k += 4) {
+                s0 = vaddq_f32(s0, vld1q_f32(a_row + k));
+            }
+            float sum = vaddvq_f32(s0);
             for (; k < blk_end; ++k) {
                 sum += a_row[k];
             }
@@ -214,11 +224,54 @@ ApplyBZpCorrection(
     size_t ldc
 )
 {
-    for (size_t m = 0; m < RangeCountM; ++m) {
-        const float* a_row = ABlkSum + m * BlockCountK;
-        float* c_row = C + m * ldc;
-        for (size_t n = 0; n < RangeCountN; ++n) {
-            const float* b_row = BCorr + n * BlockCountK;
+    // Process 4 N columns at a time. For each n-tile, iterate all M rows.
+    // This keeps the 4 BCorr rows in L1 cache and reuses them across all M.
+    size_t n = 0;
+    for (; n + 4 <= RangeCountN; n += 4) {
+        const float* b0 = BCorr + (n + 0) * BlockCountK;
+        const float* b1 = BCorr + (n + 1) * BlockCountK;
+        const float* b2 = BCorr + (n + 2) * BlockCountK;
+        const float* b3 = BCorr + (n + 3) * BlockCountK;
+
+        for (size_t m = 0; m < RangeCountM; ++m) {
+            const float* a_row = ABlkSum + m * BlockCountK;
+            float32x4_t acc0 = vdupq_n_f32(0.0f);
+            float32x4_t acc1 = vdupq_n_f32(0.0f);
+            float32x4_t acc2 = vdupq_n_f32(0.0f);
+            float32x4_t acc3 = vdupq_n_f32(0.0f);
+            size_t blk = 0;
+            for (; blk + 4 <= BlockCountK; blk += 4) {
+                float32x4_t a_vec = vld1q_f32(a_row + blk);
+                acc0 = vfmaq_f32(acc0, a_vec, vld1q_f32(b0 + blk));
+                acc1 = vfmaq_f32(acc1, a_vec, vld1q_f32(b1 + blk));
+                acc2 = vfmaq_f32(acc2, a_vec, vld1q_f32(b2 + blk));
+                acc3 = vfmaq_f32(acc3, a_vec, vld1q_f32(b3 + blk));
+            }
+            // Horizontal reduce and add scalar tail
+            float c0 = vaddvq_f32(acc0);
+            float c1 = vaddvq_f32(acc1);
+            float c2 = vaddvq_f32(acc2);
+            float c3 = vaddvq_f32(acc3);
+            for (; blk < BlockCountK; ++blk) {
+                float a_val = a_row[blk];
+                c0 += a_val * b0[blk];
+                c1 += a_val * b1[blk];
+                c2 += a_val * b2[blk];
+                c3 += a_val * b3[blk];
+            }
+            float* c_ptr = C + m * ldc + n;
+            c_ptr[0] += c0;
+            c_ptr[1] += c1;
+            c_ptr[2] += c2;
+            c_ptr[3] += c3;
+        }
+    }
+
+    // Handle remaining N columns
+    for (; n < RangeCountN; ++n) {
+        const float* b_row = BCorr + n * BlockCountK;
+        for (size_t m = 0; m < RangeCountM; ++m) {
+            const float* a_row = ABlkSum + m * BlockCountK;
             float32x4_t sum_vec = vdupq_n_f32(0.0f);
             size_t blk = 0;
             for (; blk + 4 <= BlockCountK; blk += 4) {
@@ -228,7 +281,7 @@ ApplyBZpCorrection(
             for (; blk < BlockCountK; ++blk) {
                 corr += a_row[blk] * b_row[blk];
             }
-            c_row[n] += corr;
+            C[m * ldc + n] += corr;
         }
     }
 }
