@@ -230,6 +230,17 @@ ComputeAFloatBlkSum(
     size_t lda,
     float* AFloatBlkSum
 );
+
+void
+ApplyBZpCorrection(
+    const float* ABlkSum,
+    const float* BCorr,
+    float* C,
+    size_t RangeCountM,
+    size_t RangeCountN,
+    size_t BlockCountK,
+    size_t ldc
+);
 #endif
 
 bool

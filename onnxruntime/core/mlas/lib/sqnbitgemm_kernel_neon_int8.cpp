@@ -202,6 +202,36 @@ ComputeAFloatBlkSum(
         }
     }
 }
+
+void
+ApplyBZpCorrection(
+    const float* ABlkSum,
+    const float* BCorr,
+    float* C,
+    size_t RangeCountM,
+    size_t RangeCountN,
+    size_t BlockCountK,
+    size_t ldc
+)
+{
+    for (size_t m = 0; m < RangeCountM; ++m) {
+        const float* a_row = ABlkSum + m * BlockCountK;
+        float* c_row = C + m * ldc;
+        for (size_t n = 0; n < RangeCountN; ++n) {
+            const float* b_row = BCorr + n * BlockCountK;
+            float32x4_t sum_vec = vdupq_n_f32(0.0f);
+            size_t blk = 0;
+            for (; blk + 4 <= BlockCountK; blk += 4) {
+                sum_vec = vfmaq_f32(sum_vec, vld1q_f32(a_row + blk), vld1q_f32(b_row + blk));
+            }
+            float corr = vaddvq_f32(sum_vec);
+            for (; blk < BlockCountK; ++blk) {
+                corr += a_row[blk] * b_row[blk];
+            }
+            c_row[n] += corr;
+        }
+    }
+}
 #endif
 
 void

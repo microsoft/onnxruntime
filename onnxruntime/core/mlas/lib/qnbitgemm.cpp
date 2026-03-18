@@ -953,17 +953,19 @@ SQ4BitGemm_CompInt8(
             const float* BCorr = DataParams->BZpCorr + RangeStartN * BlockCountK;
             float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
-            // Correction GEMM: C[m,n] += sum_blk(ABlkSum[m,blk] * BCorr[n,blk])
-            // ABlkSum is (M x BlockCountK) row-major, BCorr is (N x BlockCountK) row-major
-            // Note: cannot use MlasSgemmKernelAdd here because it expects B in panel-packed
-            // format, but BZpCorr is in simple [N, BlockCountK] row-major layout.
-            for (size_t m = 0; m < RangeCountM; ++m) {
-                for (size_t n = 0; n < RangeCountN; ++n) {
-                    float corr = 0.0f;
-                    for (size_t blk = 0; blk < BlockCountK; ++blk) {
-                        corr += ABlkSum[m * BlockCountK + blk] * BCorr[n * BlockCountK + blk];
+            const auto ApplyCorrection = GetMlasPlatform().QNBitGemmDispatch->ApplyBZpCorrection;
+            if (ApplyCorrection) {
+                ApplyCorrection(ABlkSum, BCorr, C, RangeCountM, RangeCountN, BlockCountK, ldc);
+            } else {
+                // Scalar fallback
+                for (size_t m = 0; m < RangeCountM; ++m) {
+                    for (size_t n = 0; n < RangeCountN; ++n) {
+                        float corr = 0.0f;
+                        for (size_t blk = 0; blk < BlockCountK; ++blk) {
+                            corr += ABlkSum[m * BlockCountK + blk] * BCorr[n * BlockCountK + blk];
+                        }
+                        C[m * ldc + n] += corr;
                     }
-                    C[m * ldc + n] += corr;
                 }
             }
         }

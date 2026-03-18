@@ -642,6 +642,7 @@ GetMlasQNBitGemmDispatchNeon(
             d.SQ4BitGemmKernel_Packed_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_Packed_CompInt8;
             d.QuantizeA_Packed_CompInt8 = sqnbitgemm_neon::QuantizeA_Packed_CompInt8;
             d.ComputeAFloatBlkSum = sqnbitgemm_neon::ComputeAFloatBlkSum;
+            d.ApplyBZpCorrection = sqnbitgemm_neon::ApplyBZpCorrection;
 #endif
         }
 
