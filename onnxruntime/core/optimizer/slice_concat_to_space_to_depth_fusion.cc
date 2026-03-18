@@ -77,15 +77,13 @@ bool GetConstantInputIntValues(const Graph& graph, const NodeArg* input, IntValu
     return false;
   }
 
-  NodeProto constant_node_proto;
-  producer->ToProto(constant_node_proto);
-
-  TensorProto tensor_proto;
-  if (!utils::ConstantNodeProtoToTensorProto(constant_node_proto, graph.ModelPath(), tensor_proto, input->Name()).IsOK()) {
+  const auto& attributes = producer->GetAttributes();
+  const auto attr_it = attributes.find("value");
+  if (attr_it == attributes.end() || attr_it->second.type() != AttributeProto_AttributeType_TENSOR) {
     return false;
   }
 
-  return GetInitializerIntValues(graph, &tensor_proto, values);
+  return GetInitializerIntValues(graph, &attr_it->second.t(), values);
 }
 
 bool GetSliceInfo(const Graph& graph,
@@ -512,10 +510,19 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
     graph_utils::GraphEdge::RemoveGraphEdges(graph, auxiliary_input_edges);
   }
 
-  graph_utils::FinalizeNodeFusion(graph,
-                                  {std::ref(*slice_nodes[0]), std::ref(*slice_nodes[1]), std::ref(*slice_nodes[2]), std::ref(*slice_nodes[3]), std::ref(concat)},
-                                  space_to_depth,
-                                  *replacement_end);
+  graph_utils::MoveAllNodeInputEdges(graph, *slice_nodes[0], space_to_depth);
+
+  auto concat_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(concat);
+  replacement_end->MutableOutputDefs() = concat.MutableOutputDefs();
+
+  for (const auto& edge : concat_output_edges) {
+    graph.AddEdge(replacement_end->Index(), edge.dst_node, 0, edge.dst_arg_index);
+  }
+
+  for (Node* node : {slice_nodes[0], slice_nodes[1], slice_nodes[2], slice_nodes[3], &concat}) {
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
 
   LOGS(logger, INFO) << "Fused Slice+Concat downsample pattern into "
                      << (is_canonical_order ? "SpaceToDepth" : "SpaceToDepth + Gather")
