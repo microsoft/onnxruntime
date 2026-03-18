@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <vector>
 #include <ranges>
-#include <format>
+#include <fmt/std.h>
 
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
@@ -170,7 +170,7 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
 
   const size_t required_factories = supported_factories.size();
   if (max_factories < required_factories) {
-    return Ort::Status(std::format("Not enough space to return EP factories. Need at least {} factories.", required_factories).c_str(), ORT_INVALID_ARGUMENT);
+    return Ort::Status(fmt::format("Not enough space to return EP factories. Need at least {} factories.", required_factories).c_str(), ORT_INVALID_ARGUMENT);
   }
 
   size_t factory_index = 0;

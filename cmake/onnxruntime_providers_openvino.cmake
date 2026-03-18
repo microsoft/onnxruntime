@@ -21,6 +21,13 @@
     add_definitions(-DUSE_OVEP_NPU_MEMORY=1)
   endif()
 
+  onnxruntime_fetchcontent_declare(
+    fmt
+    URL ${DEP_URL_fmt}
+    URL_HASH SHA1=${DEP_SHA1_fmt}
+  )
+  onnxruntime_fetchcontent_makeavailable(fmt)
+
   # If building RelWithDebInfo and OV package does not have that configuration map to Release
   get_target_property(ov_rt_implib_rwdi openvino::runtime IMPORTED_IMPLIB_RELWITHDEBINFO)
   if ((CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo) AND NOT ov_rt_implib_rwdi)

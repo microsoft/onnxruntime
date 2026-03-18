@@ -3,7 +3,7 @@
 
 #include "core/providers/openvino/ov_interface.h"
 
-#include <format>
+#include <fmt/std.h>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -18,17 +18,17 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 template <bool typed, typename Func, typename... Args>
-inline auto OvExceptionBoundary(Func&& func, std::format_string<Args...>&& fmt, Args&&... args) {
+inline auto OvExceptionBoundary(Func&& func, fmt::format_string<Args...>&& fmt, Args&&... args) {
   try {
     return func();
   } catch (const ov::Exception& e) {
     if constexpr (typed) {
       throw ovep_exception(e, ovep_exception::type::import_model);
     } else {
-      ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)) + ": " + std::string(e.what()));
+      ORT_THROW(log_tag + fmt::vformat(fmt.get(), fmt::make_format_args(args...)) + ": " + std::string(e.what()));
     }
   } catch (...) {
-    ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)));
+    ORT_THROW(log_tag + fmt::vformat(fmt.get(), fmt::make_format_args(args...)));
   }
 }
 
@@ -618,7 +618,7 @@ OVTensorPtr StatefulOVInferRequest::GetTensor(const std::string& input_name) {
   if (_npu_logits_slice_required) {
     if (input_name == "logits") {
       if (tobj->get_shape().size() != 3) {
-        ORT_THROW(log_tag + std::format("Expected logits to have shape of rank 3, but it has shape of rank {}",
+        ORT_THROW(log_tag + fmt::format("Expected logits to have shape of rank 3, but it has shape of rank {}",
                                         tobj->get_shape().size()));
       }
 
