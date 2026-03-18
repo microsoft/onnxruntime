@@ -11,6 +11,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "fast-xml-parser": "^5.3.4",
     "react": "^18.2.0",
     "react-native": "^0.73.11",
     "react-native-fs": "^2.20.0"
