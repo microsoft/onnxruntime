@@ -61,10 +61,30 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .Alias(0, 0),
     IdentityOp<false>);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Identity,
+    kOnnxDomain,
+    19, 20,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9())
+        .Alias(0, 0),
+    IdentityOp<false>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Identity,
+    kOnnxDomain,
+    21, 22,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9())
+        .Alias(0, 0),
+    IdentityOp<false>);
+
 ONNX_OPERATOR_KERNEL_EX(
     Identity,
     kOnnxDomain,
-    19,
+    23,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9())
