@@ -100,11 +100,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Setup CCache
-        uses: actions/cache@v4
-        with:
-          key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
-          path: ~/.ccache
+      # FUTURE WORK:  Re-enable once total cache size limit has been increased.
+      #               We're prioritising getting vcpkg cache on all workflows and pipelines due to
+      #               reliability issues when fetching pkg contents from upstream.
+      # - name: Setup CCache
+      #   uses: actions/cache@v4
+      #   with:
+      #     key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
+      #     path: ~/.ccache
 
       # same idea as ccache, but for vcpkg artifacts. ideally we'd use vcpkg's nuget remote cache facility instead.
       - name: Setup VCPKG Cache
