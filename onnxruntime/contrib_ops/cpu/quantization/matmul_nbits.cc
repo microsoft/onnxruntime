@@ -305,10 +305,23 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     if (input_idx == InputIndex::scales && packed_b_ != nullptr &&
         MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_,
                                   has_zp_input_, &mlas_backend_kernel_selector_config_)) {
+      // For asymmetric quantization, we require zero_points to be a constant initializer
+      // in order to safely use the KleidiAI packed-scales path. If zero_points is not
+      // constant, fall back to the non-KleidiAI path by leaving scales unpacked.
+      if (has_zp_input_) {
+        const Tensor* zp_tensor = nullptr;
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+        if (zp_tensor == nullptr) {
+          // zero_points is dynamic: do not mark scales as packed so that the
+          // execution falls back to the non-KleidiAI path.
+          return Status::OK();
+        }
+      }
+
       scales_are_packed_ = true;
       is_packed = true;
 
-      // For KleidiAI asymmetric path: compute BZpCorr now while scales are still accessible.
+      // For KleidiAI asymmetric 4-bit path: compute BZpCorr now while scales are still accessible.
       // After this PrePack returns is_packed=true, ORT may erase scales from the constant
       // input table (use count drops to 0), making them unavailable in later PrePack calls.
       // Zero points haven't been PrePacked yet so they are still accessible.

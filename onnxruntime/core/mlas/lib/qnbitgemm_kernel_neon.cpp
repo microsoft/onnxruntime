@@ -20,6 +20,7 @@ Abstract:
 #include <arm_neon.h>
 
 #include <cassert>
+#include <cstring>
 #include <vector>
 #include <numeric>
 
@@ -227,8 +228,10 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
             const size_t scales_len = N * BlockCountK;
             std::vector<uint16_t> scales(scales_len);
             for (size_t i = 0; i < scales_len; i++) {
-                const uint32_t* i32 = reinterpret_cast<const uint32_t*>(&QuantBScaleBegin[i]);
-                scales[i] = *i32 >> 16;
+                uint32_t bits;
+                static_assert(sizeof(bits) == sizeof(QuantBScaleBegin[i]), "Unexpected float size");
+                std::memcpy(&bits, &QuantBScaleBegin[i], sizeof(bits));
+                scales[i] = static_cast<uint16_t>(bits >> 16);
             }
 
             kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(1, N, K, nr, kr, sr, BlkLen,
@@ -239,6 +242,9 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 
         // Compute BZpCorrection when both scales and zero points are available.
         // BZpCorr[n * BlockCountK + blk] = scale_b * (8 - zp_b)
+        // Note: We intentionally use fp32 scales here (not bf16-truncated) for higher precision
+        // in the correction term. KleidiAI internally truncates scales to bf16 for the main GEMM,
+        // but the correction benefits from full fp32 precision to better approximate the true result.
         // This may be called separately from B packing when zero points arrive later.
         if (HasZeroPoint && QuantBZPBegin != nullptr && QuantBScaleBegin != nullptr) {
             const size_t kleidiai_packed_size = kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(
