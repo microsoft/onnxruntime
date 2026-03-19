@@ -41,10 +41,10 @@ struct EpContextVariantInfo {
 struct SelectionEpInfo {
   std::string ep_name;
   OrtEpFactory* ep_factory;
-  std::vector<const OrtEpDevice*> devices;
+  std::vector<const OrtEpDevice*> ep_devices;
   std::vector<const OrtHardwareDevice*> hardware_devices;
   std::vector<const OrtKeyValuePairs*> ep_metadata;
-  OrtKeyValuePairs ep_options;
+  ProviderOptions ep_options;
 };
 
 class ModelPackageManifestParser {
@@ -65,7 +65,7 @@ class ModelPackageContext {
 
   Status SelectComponent(const Environment& env,
                          gsl::span<EpContextVariantInfo> components,
-                         gsl::span<const OrtEpDevice* const> ep_devices,
+                         gsl::span<SelectionEpInfo> ep_infos,
                          std::optional<std::filesystem::path>& selected_component_path);
 
 };

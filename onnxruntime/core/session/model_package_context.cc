@@ -4,11 +4,118 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include <fstream>
+#include <algorithm>
+#include <string>
+#include <cctype>
 
 #include "core/session/model_package_context.h"
 
 namespace onnxruntime {
 namespace {
+std::string ToLower(std::string_view s) {
+  std::string result(s);
+  std::transform(result.begin(), result.end(), result.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  return result;
+}
+
+bool MatchesDevice(const OrtHardwareDevice* hd,
+                           std::string_view value) {
+  if (value.empty() || hd == nullptr) {
+    return value.empty();
+  }
+
+  std::string device_type = ToLower(value);
+  switch (hd->type) {
+    case OrtHardwareDeviceType::OrtHardwareDeviceType_CPU:
+      return device_type == "cpu";
+    case OrtHardwareDeviceType::OrtHardwareDeviceType_GPU:
+      return device_type == "gpu";
+    case OrtHardwareDeviceType::OrtHardwareDeviceType_NPU:
+      return device_type == "npu";
+    default:
+      return false;
+  }
+
+  return false;
+}
+
+bool MatchesArchitecture(const OrtHardwareDevice* hd,
+                         std::string_view value) {
+  if (value.empty() || hd == nullptr) {
+    return value.empty();
+  }
+
+  // For architecture, we check against a specific key in hardware device metadata 
+  // since there's no standard key for it in OrtHardwareDevice. Skipping this check for now.
+
+  return true;
+}
+
+bool MatchesProviderOptionsSpecificKeyForDeviceType(std::string_view provider_option_key, 
+                                                    std::string_view provider_option_value,
+                                                    std::string_view value) {
+  // Currently, the provider option key is not standardized.
+  // So we hardcode well-known keys for device matching for different EPs.
+  // TODO: In the future, we may want to standardize some common keys like "device_type" and only check those.
+
+  if (ToLower(provider_option_key) == "device_type") {
+    return ToLower(provider_option_value) == ToLower(value);
+  } else if (ToLower(provider_option_key) == "backend_type") {
+    return ToLower(provider_option_value) == ToLower(value);
+  }
+
+  return false;
+}
+
+bool MatchesComponent(const EpContextVariantInfo& component, const SelectionEpInfo& ep_info) {
+  // EP constraint
+  if (!component.ep.empty() && component.ep != ep_info.ep_name) {
+    return false;
+  }
+
+  // Device constraint
+  // - Check "device" field against EP's hardware devices' OrtHardwareDeviceType
+  // - Check "device" field against EP provider options. (currently the provider options key is not standardized).
+  bool device_ok = component.device.empty();
+  if (!device_ok) {
+    for (const auto* hd : ep_info.hardware_devices) {
+      if (MatchesDevice(hd, component.device)) {
+        device_ok = true;
+        break;
+      }
+    }
+  }
+
+  if (!device_ok) {
+    return false;
+  }
+
+  device_ok = component.device.empty();
+  for (const auto& [key, value] : ep_info.ep_options) {
+    if (MatchesProviderOptionsSpecificKeyForDeviceType(key, value, component.device)) {
+      device_ok = true;
+      break;
+    }
+  }
+
+  if (!device_ok) {
+    return false;
+  }
+
+  // Architecture constraint
+  bool arch_ok = component.architecture.empty();
+  if (!arch_ok) {
+    for (const auto* hd : ep_info.hardware_devices) {
+      if (MatchesArchitecture(hd, component.architecture)) {
+        arch_ok = true;
+        break;
+      }
+    }
+  }
+
+  return arch_ok;
+}
 
 }  // namespace
 
@@ -83,14 +190,42 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
 
 Status ModelPackageContext::SelectComponent(const Environment& env,
                                             gsl::span<EpContextVariantInfo> components,
-                                            gsl::span<const OrtEpDevice* const> ep_devices,
+                                            gsl::span<SelectionEpInfo> ep_infos,
                                             std::optional<std::filesystem::path>& selected_component_path) {
-  
-  
+  ORT_UNUSED_PARAMETER(env);
 
+  selected_component_path = std::nullopt;
+
+  if (components.empty()) {
+    return Status::OK();
+  }
+
+  // 1) Check a component with no constraints.
+  auto it_no_constraints = std::find_if(
+      components.begin(), components.end(),
+      [](const EpContextVariantInfo& c) {
+        return c.ep.empty() && c.device.empty() && c.architecture.empty();
+      });
+
+  if (it_no_constraints != components.end()) {
+    selected_component_path = it_no_constraints->model_path;
+    return Status::OK();
+  }
+
+  // 2) Try to find the first component that matches the available EP/device selection.
+  for (const auto& c : components) {
+    for (const auto& ep_info : ep_infos) {
+      if (MatchesComponent(c, ep_info)) {
+        selected_component_path = c.model_path;
+        return Status::OK();
+      }
+    }
+  }
+
+  // 3) Fallback to the first component.
+  selected_component_path = components.front().model_path;
   return Status::OK();
 }
-
 
 }  // namespace onnxruntime
 
