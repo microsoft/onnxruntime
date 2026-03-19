@@ -88,11 +88,15 @@ class CudaKernel : public OpKernel {
   }
 
   static inline cudnnHandle_t GetCudnnHandle(onnxruntime::CudaStream* stream) {
-    return stream->cudnn_handle_;
+    return stream ? stream->cudnn_handle_ : nullptr;
   }
 
   static inline cudnnHandle_t GetCudnnHandle(onnxruntime::Stream* stream) {
     return GetCudnnHandle(static_cast<CudaStream*>(stream));
+  }
+
+  inline cudnnHandle_t GetCudnnHandleOrDefault(onnxruntime::Stream* stream) const {
+    return stream ? GetCudnnHandle(stream) : DefaultCudnnHandle();
   }
 
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
@@ -100,11 +104,15 @@ class CudaKernel : public OpKernel {
   }
 
   static inline cublasHandle_t GetCublasHandle(onnxruntime::CudaStream* stream) {
-    return stream->cublas_handle_;
+    return stream ? stream->cublas_handle_ : nullptr;
   }
 
   static inline cublasHandle_t GetCublasHandle(onnxruntime::Stream* stream) {
     return GetCublasHandle(static_cast<CudaStream*>(stream));
+  }
+
+  inline cublasHandle_t GetCublasHandleOrDefault(onnxruntime::Stream* stream) const {
+    return stream ? GetCublasHandle(stream) : DefaultCublasHandle();
   }
 
   bool UseTF32() const {
