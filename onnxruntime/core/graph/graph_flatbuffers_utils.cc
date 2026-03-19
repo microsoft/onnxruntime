@@ -56,7 +56,7 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     // external data not getting converted by ConvertRawDataInTensorProto function.
     // Instead convert data after unpacking it
     if constexpr (endian::native != endian::little) {
-      size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(initializer);
+      size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type()));
 
       if (element_size > 1) {
         onnxruntime::utils::SwapByteOrderInplace(
@@ -478,8 +478,21 @@ Status SaveOrtTensorOrtFormat(
   // building the tensor. See flatbuffer_builder.h's NotNested() function for more details.
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
   if (!external_data_writer) {
-    raw_data = builder.CreateVector(static_cast<const uint8_t*>(ort_tensor.DataRaw()),
-                                    ort_tensor.SizeInBytes());
+    if constexpr (endian::native != endian::little) {
+      std::vector<uint8_t> unpacked_tensor;
+      unpacked_tensor.resize(ort_tensor.SizeInBytes());
+
+      size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(ort_tensor.GetElementType()));
+      auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
+      auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(unpacked_tensor.data()), unpacked_tensor.size());
+
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span));
+
+      raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
+    } else {
+      raw_data = builder.CreateVector(static_cast<const uint8_t*>(ort_tensor.DataRaw()),
+                                      ort_tensor.SizeInBytes());
+    }
   }
 
   fbs::TensorBuilder tb(builder);
@@ -489,8 +502,22 @@ Status SaveOrtTensorOrtFormat(
   tb.add_data_type(static_cast<fbs::TensorDataType>(ort_tensor.GetElementType()));
   if (external_data_writer) {
     uint64_t offset = 0;
-    gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
-    ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
+    if constexpr (endian::native != endian::little) {
+      std::vector<uint8_t> unpacked_tensor;
+      unpacked_tensor.resize(ort_tensor.SizeInBytes());
+
+      size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(ort_tensor.GetElementType()));
+      auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
+      auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(unpacked_tensor.data()), unpacked_tensor.size());
+
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span));
+
+      gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
+      ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), dst_span, offset));
+    } else {
+      gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
+      ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
+    }
     int64_t external_data_offset = onnxruntime::narrow<int64_t>(offset);
     tb.add_external_data_offset(external_data_offset);
   } else {

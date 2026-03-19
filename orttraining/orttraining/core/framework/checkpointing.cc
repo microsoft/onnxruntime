@@ -82,7 +82,7 @@ Status SaveRuntimeTensor(
     std::vector<char> le_data;
     le_data.resize(length);
 
-    size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(saved_tensor_proto);
+    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(saved_tensor_proto.data_type()));
     auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(tensor_data.data()), tensor_data.size_bytes());
     auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(le_data.data()), le_data.size());
     ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span));

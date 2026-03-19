@@ -4895,7 +4895,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
 
       // Convert it data to little endian before saving to file
       if constexpr (endian::native != endian::little) {
-        size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(initializer);
+        size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type()));
 
         if (element_size > 1) {
           onnxruntime::utils::SwapByteOrderInplace(

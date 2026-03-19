@@ -238,7 +238,7 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
       gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
 
   if constexpr (endian::native != endian::little) {
-    size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(tensor_proto);
+    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto.data_type()));
 
     if (element_size > 1) {
       onnxruntime::utils::SwapByteOrderInplace(
@@ -465,8 +465,8 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::str
   }
 }
 
-size_t GetElementSizeInTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  static const std::unordered_map<size_t, size_t> tensorproto_data_size{
+size_t GetElementSizeOfTensor(ONNX_NAMESPACE::TensorProto_DataType tensor_data_type) {
+  static const std::unordered_map<ONNX_NAMESPACE::TensorProto_DataType, size_t> tensorproto_data_size{
       {TensorProto_DataType_FLOAT, sizeof(float)},
       {TensorProto_DataType_UINT8, sizeof(uint8_t)},
       {TensorProto_DataType_INT8, sizeof(int8_t)},
@@ -494,7 +494,7 @@ size_t GetElementSizeInTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_pro
       {TensorProto_DataType_FLOAT8E8M0, sizeof(uint8_t)},
   };
 
-  auto pos = tensorproto_data_size.find(tensor_proto.data_type());
+  auto pos = tensorproto_data_size.find(tensor_data_type);
   if (pos == tensorproto_data_size.end()) {
     return 0;
   }
@@ -510,7 +510,7 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   // For some data_type, element size differs for raw data vs
   // data set using the add_<data_type>data() API
   if (HasRawData(tensor)) {
-    element_size = GetElementSizeInTensorProto(tensor);
+    element_size = GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor.data_type()));
 
     if (element_size <= 1) {
       return;
