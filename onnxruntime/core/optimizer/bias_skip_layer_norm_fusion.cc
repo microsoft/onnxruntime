@@ -67,8 +67,8 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
            ++add_matmul_input_idx) {
         // --- Path 1: SLN.input[sln_input_idx] ← Add ← MatMul (direct) ---
         std::vector<graph_utils::EdgeEndToMatch> path_matmul{
-            {sln_input_idx, 0, "Add", {7, 13, 14}, kOnnxDomain},
-            {add_matmul_input_idx, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
+            {0, sln_input_idx, "Add", {7, 13, 14}, kOnnxDomain},
+            {0, add_matmul_input_idx, "MatMul", {1, 9, 13}, kOnnxDomain}};
 
         std::vector<const Node::EdgeEnd*> edges;
         if (graph_utils::FindPath(sln_node, true, path_matmul, edges, logger)) {
@@ -95,8 +95,8 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
 
         // --- Path 2: SLN.input[sln_input_idx] ← Add ← Cast ← MatMul (fp16 models) ---
         std::vector<graph_utils::EdgeEndToMatch> path_cast_matmul{
-            {sln_input_idx, 0, "Add", {7, 13, 14}, kOnnxDomain},
-            {add_matmul_input_idx, 0, "Cast", {1, 6, 9, 13, 15}, kOnnxDomain},
+            {0, sln_input_idx, "Add", {7, 13, 14}, kOnnxDomain},
+            {0, add_matmul_input_idx, "Cast", {1, 6, 9, 13, 15}, kOnnxDomain},
             {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
 
         if (graph_utils::FindPath(sln_node, true, path_cast_matmul, edges, logger)) {
