@@ -74,15 +74,15 @@ extends:
         WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
         is1ES: true
 
-      ${{ if eq(parameters.EnableReactNative, true) }}:
-        - template: templates/react-native-ci.yml
-          parameters:
-            NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-            BuildConfig: 'Release'
-            PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
-            PackageName: 'onnxruntime-react-native'
-            InitialStageDependsOn: 'Precheck_and_extract_commit'
-            enable_code_sign: false
+    - ${{ if eq(parameters.EnableReactNative, true) }}:
+      - template: templates/react-native-ci.yml
+        parameters:
+          NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+          BuildConfig: 'Release'
+          PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          PackageName: 'onnxruntime-react-native'
+          InitialStageDependsOn: 'Precheck_and_extract_commit'
+          enable_code_sign: false
 
     - stage: Download_Node_Package_And_Publish_Validation_Script
       dependsOn:
