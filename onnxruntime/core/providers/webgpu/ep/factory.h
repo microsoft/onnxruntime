@@ -63,7 +63,6 @@ class Factory : public OrtEpFactory {
       const OrtKeyValuePairs* stream_options,
       OrtSyncStreamImpl** stream) noexcept;
 
-  Ep::Config config_;
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;  // used for initializers
 
