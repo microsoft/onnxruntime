@@ -36,6 +36,33 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
 
+  auto get_bias_info = [&](Graph& g, NodeArg& bias_arg, bool& is_1d_bias, int64_t& bias_hidden_size) {
+    is_1d_bias = false;
+    bias_hidden_size = -1;
+
+    const TensorShapeProto* bias_shape = bias_arg.Shape();
+    if (bias_shape != nullptr) {
+      is_1d_bias = (bias_shape->dim_size() == 1);
+      if (is_1d_bias) {
+        const auto& dim0 = bias_shape->dim(0);
+        if (dim0.has_dim_value()) {
+          bias_hidden_size = dim0.dim_value();
+        }
+      }
+    } else {
+      // For constant initializers from an outer scope, NodeArg::Shape() may be null.
+      // Fall back to checking the TensorProto dims to confirm that the bias is 1D.
+      const TensorProto* bias_initializer =
+          graph_utils::GetConstantInitializer(g, bias_arg.Name(), true);
+      if (bias_initializer != nullptr) {
+        is_1d_bias = (bias_initializer->dims_size() == 1);
+        if (is_1d_bias && bias_initializer->dims_size() == 1) {
+          bias_hidden_size = bias_initializer->dims(0);
+        }
+      }
+    }
+  };
+
   for (auto node_index : node_topology_list) {
     Node* p_sln = graph.GetNode(node_index);
     if (p_sln == nullptr) continue;  // node was removed in an earlier fusion
@@ -83,27 +110,7 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
             if (graph_utils::NodeArgIsConstant(graph, *bias_arg)) {
               bool is_1d_bias = false;
               int64_t bias_hidden_size = -1;
-              const TensorShapeProto* bias_shape = bias_arg->Shape();
-              if (bias_shape != nullptr) {
-                is_1d_bias = (bias_shape->dim_size() == 1);
-                if (is_1d_bias) {
-                  const auto& dim0 = bias_shape->dim(0);
-                  if (dim0.has_dim_value()) {
-                    bias_hidden_size = dim0.dim_value();
-                  }
-                }
-              } else {
-                // For constant initializers from an outer scope, NodeArg::Shape() may be null.
-                // Fall back to checking the TensorProto dims to confirm that the bias is 1D.
-                const TensorProto* bias_initializer =
-                    graph_utils::GetConstantInitializer(graph, bias_arg->Name(), true);
-                if (bias_initializer != nullptr) {
-                  is_1d_bias = (bias_initializer->dims_size() == 1);
-                  if (is_1d_bias && bias_initializer->dims_size() == 1) {
-                    bias_hidden_size = bias_initializer->dims(0);
-                  }
-                }
-              }
+              get_bias_info(graph, *bias_arg, is_1d_bias, bias_hidden_size);
 
               // If we know the bias is 1D, additionally check that its length matches the
               // hidden size expected by SkipLayerNormalization (gamma/beta) when that size
@@ -177,9 +184,16 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
 
             if (graph_utils::NodeArgIsConstant(graph, *bias_arg)) {
               bool is_1d_bias = false;
+              int64_t bias_hidden_size = -1;
               const TensorShapeProto* bias_shape = bias_arg->Shape();
               if (bias_shape != nullptr) {
                 is_1d_bias = (bias_shape->dim_size() == 1);
+                if (is_1d_bias) {
+                  const auto& dim0 = bias_shape->dim(0);
+                  if (dim0.has_dim_value()) {
+                    bias_hidden_size = dim0.dim_value();
+                  }
+                }
               } else {
                 // For constant initializers from an outer scope, NodeArg::Shape() may be null.
                 // Fall back to checking the TensorProto dims to confirm that the bias is 1D.
@@ -187,10 +201,37 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
                     graph_utils::GetConstantInitializer(graph, bias_arg->Name(), true);
                 if (bias_initializer != nullptr) {
                   is_1d_bias = (bias_initializer->dims_size() == 1);
+                  if (is_1d_bias && bias_initializer->dims_size() == 1) {
+                    bias_hidden_size = bias_initializer->dims(0);
+                  }
                 }
               }
 
+              bool bias_matches_hidden = true;
               if (is_1d_bias) {
+                // Derive the hidden size from SkipLayerNormalization's gamma input when available.
+                const NodeArg* gamma_arg = sln_node.InputDefs()[2];
+                int64_t sln_hidden_size = -1;
+                const TensorShapeProto* gamma_shape = gamma_arg->Shape();
+                if (gamma_shape != nullptr && gamma_shape->dim_size() == 1) {
+                  const auto& dim0 = gamma_shape->dim(0);
+                  if (dim0.has_dim_value()) {
+                    sln_hidden_size = dim0.dim_value();
+                  }
+                } else {
+                  const TensorProto* gamma_initializer =
+                      graph_utils::GetConstantInitializer(graph, gamma_arg->Name(), true);
+                  if (gamma_initializer != nullptr && gamma_initializer->dims_size() == 1) {
+                    sln_hidden_size = gamma_initializer->dims(0);
+                  }
+                }
+
+                if (bias_hidden_size > 0 && sln_hidden_size > 0 && bias_hidden_size != sln_hidden_size) {
+                  bias_matches_hidden = false;
+                }
+              }
+
+              if (is_1d_bias && bias_matches_hidden) {
                 p_add = candidate_add;
                 sln_add_input_index = sln_input_idx;
                 add_bias_index = bias_idx;
@@ -230,8 +271,18 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
         {},
         kMSDomain);
 
-    // Copy the epsilon attribute from the original SkipLayerNormalization node.
+    // Copy all attributes from the original SkipLayerNormalization node, ensuring epsilon is set.
     const NodeAttributes& sln_attrs = sln_node.GetAttributes();
+
+    // First copy all non-epsilon attributes.
+    for (const auto& attr_pair : sln_attrs) {
+      if (attr_pair.first == "epsilon") {
+        continue;
+      }
+      new_sln_node.AddAttributeProto(attr_pair.second);
+    }
+
+    // Then handle epsilon specifically so we can apply a default if it is missing.
     auto epsilon_it = sln_attrs.find("epsilon");
     if (epsilon_it != sln_attrs.end()) {
       new_sln_node.AddAttributeProto(epsilon_it->second);

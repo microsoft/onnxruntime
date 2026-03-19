@@ -916,6 +916,49 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_WithCast) {
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
+// Cast variant negative test: bias is 1D but its length is incompatible with gamma/beta.
+// This guards against fusing dimension-mismatched biases when hidden-size validation is applied
+// on the Cast path.
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_WithCast_BiasHiddenSizeMismatch) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* matmul_a = builder.MakeInput<onnxruntime::MLFloat16>({2, 4, 8}, -1.0f, 1.0f);
+    auto* matmul_b = builder.MakeInitializer<onnxruntime::MLFloat16>({8, 4}, -1.0f, 1.0f);
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    // Intentionally use a 1D bias whose length does not match gamma/beta.
+    auto* bias = builder.MakeInitializer<float>({3}, {0.1f, 0.2f, 0.3f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* cast_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    builder.AddNode("Add", {cast_out, bias}, {add_out});
+    builder.AddNode("SkipLayerNormalization", {add_out, skip, gamma, beta}, {sln_out}, kMSDomain);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    // Fusion should not occur: Add must remain, and SkipLayerNormalization must keep 4 inputs.
+    TEST_RETURN_IF_NOT(op_count["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 4u);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 // Fusion must NOT occur when the bias is 2D (not 1D).
 TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_NoFusion_2DBias) {
   auto build_test_case = [](ModelTestBuilder& builder) {
