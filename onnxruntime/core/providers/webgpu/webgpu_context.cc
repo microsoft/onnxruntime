@@ -57,17 +57,30 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
-      wgpu::Adapter adapter;
-      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
-                                                                     &req_adapter_options,
-                                                                     wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message, wgpu::Adapter* ptr) {
-                                                                       ORT_ENFORCE(status == wgpu::RequestAdapterStatus::Success, "Failed to get a WebGPU adapter: ", std::string_view{message});
-                                                                       *ptr = std::move(adapter);
-                                                                     },
-                                                                     &adapter),
-                                                                 UINT64_MAX));
-      ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
+      struct AdapterRequestContext {
+        wgpu::Adapter adapter;
+        std::string error_message;
+      } adapter_request_context;
+
+      auto adapter_request = instance_.RequestAdapter(
+          &req_adapter_options,
+          wgpu::CallbackMode::WaitAnyOnly,
+          [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message,
+             AdapterRequestContext* context) {
+            if (status != wgpu::RequestAdapterStatus::Success) {
+              context->error_message = std::string_view(message);
+            } else {
+              context->adapter = std::move(adapter);
+            }
+          },
+          &adapter_request_context);
+
+      auto adapter_wait_status = instance_.WaitAny(adapter_request, UINT64_MAX);
+      ORT_ENFORCE(adapter_wait_status == wgpu::WaitStatus::Success && adapter_request_context.adapter != nullptr,
+                  "Failed to get a WebGPU adapter.",
+                  adapter_request_context.error_message.empty() ? "" : " Error: ",
+                  adapter_request_context.error_message);
+      wgpu::Adapter adapter = std::move(adapter_request_context.adapter);
 
       // Create wgpu::Device
       wgpu::DeviceDescriptor device_desc = {};
@@ -106,16 +119,30 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
         }
       });
 
-      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
-                                                                     &device_desc,
-                                                                     wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message, wgpu::Device* ptr) {
-                                                                       ORT_ENFORCE(status == wgpu::RequestDeviceStatus::Success, "Failed to get a WebGPU device: ", std::string_view{message});
-                                                                       *ptr = std::move(device);
-                                                                     },
-                                                                     &device_),
-                                                                 UINT64_MAX));
-      ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
+      struct DeviceRequestContext {
+        wgpu::Device device;
+        std::string error_message;
+      } device_request_context;
+
+      auto device_request = adapter.RequestDevice(
+          &device_desc,
+          wgpu::CallbackMode::WaitAnyOnly,
+          [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message,
+             DeviceRequestContext* context) {
+            if (status != wgpu::RequestDeviceStatus::Success) {
+              context->error_message = std::string_view(message);
+            } else {
+              context->device = std::move(device);
+            }
+          },
+          &device_request_context);
+
+      auto device_wait_status = instance_.WaitAny(device_request, UINT64_MAX);
+      ORT_ENFORCE(device_wait_status == wgpu::WaitStatus::Success && device_request_context.device != nullptr,
+                  "Failed to get a WebGPU device.",
+                  device_request_context.error_message.empty() ? "" : " Error: ",
+                  device_request_context.error_message);
+      device_ = std::move(device_request_context.device);
     }
 
     LOGS_DEFAULT(VERBOSE) << "WebGPU EP Context is created for: Instance=" << instance_.Get() << ", Device=" << device_.Get() << ".";
