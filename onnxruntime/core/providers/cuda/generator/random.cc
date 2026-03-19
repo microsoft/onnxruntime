@@ -9,21 +9,41 @@ namespace cuda {
 
 using namespace ONNX_NAMESPACE;
 
-ONNX_OPERATOR_KERNEL_EX(RandomNormal, kOnnxDomain, 1, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(RandomNormal, kOnnxDomain, 1, 21, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  RandomNormal);
+
+ONNX_OPERATOR_KERNEL_EX(RandomNormal, kOnnxDomain, 22, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
                         RandomNormal);
 
-ONNX_OPERATOR_KERNEL_EX(RandomNormalLike, kOnnxDomain, 1, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(RandomNormalLike, kOnnxDomain, 1, 21, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
+                                      .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  RandomNormalLike);
+
+ONNX_OPERATOR_KERNEL_EX(RandomNormalLike, kOnnxDomain, 22, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
                             .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
                         RandomNormalLike);
 
-ONNX_OPERATOR_KERNEL_EX(RandomUniform, kOnnxDomain, 1, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(RandomUniform, kOnnxDomain, 1, 21, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  RandomUniform);
+
+ONNX_OPERATOR_KERNEL_EX(RandomUniform, kOnnxDomain, 22, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
                         RandomUniform);
 
-ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, 21, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
+                                      .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  RandomUniformLike);
+
+ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 22, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
                             .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
