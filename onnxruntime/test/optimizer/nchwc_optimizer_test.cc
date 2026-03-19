@@ -769,6 +769,8 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
 
 TEST(NchwcOptimizerTests, ConvMulChannelScaleHardSigmoid) {
   const int64_t channels = static_cast<int64_t>(MlasNchwcGetBlockSize()) * 2;
+  constexpr float alpha = 0.125f;
+  constexpr float beta = 0.4f;
 
   auto test_case = [&](bool use_explicit_batch_dim, bool scale_first) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
@@ -779,8 +781,8 @@ TEST(NchwcOptimizerTests, ConvMulChannelScaleHardSigmoid) {
 
       helper.AddConvNode(input_arg, conv_output_arg, {channels, channels, 3, 3});
       auto& hardsigmoid_node = helper.AddNode("HardSigmoid", {conv_output_arg}, {hardsigmoid_output_arg});
-      hardsigmoid_node.AddAttribute("alpha", 0.125f);
-      hardsigmoid_node.AddAttribute("beta", 0.4f);
+      hardsigmoid_node.AddAttribute("alpha", alpha);
+      hardsigmoid_node.AddAttribute("beta", beta);
 
       const std::vector<int64_t> scale_shape = use_explicit_batch_dim
                                                    ? std::vector<int64_t>{1, channels, 1, 1}
@@ -806,10 +808,33 @@ TEST(NchwcOptimizerTests, ConvMulChannelScaleHardSigmoid) {
     auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
-      EXPECT_EQ(op_to_count["HardSigmoid"], 1);
+      EXPECT_EQ(op_to_count["HardSigmoid"], 0);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
       EXPECT_EQ(op_to_count["Mul"], 0);
+
+      size_t hard_sigmoid_fused_count = 0;
+      for (const auto& node : session.GetGraph().Nodes()) {
+        if (node.Domain() != kMSNchwcDomain || node.OpType() != "Conv") {
+          continue;
+        }
+
+        const auto activation_it = node.GetAttributes().find("activation");
+        if (activation_it == node.GetAttributes().end() || activation_it->second.s() != "HardSigmoid") {
+          continue;
+        }
+
+        ++hard_sigmoid_fused_count;
+
+        const auto activation_params_it = node.GetAttributes().find("activation_params");
+        ASSERT_NE(activation_params_it, node.GetAttributes().end());
+        const auto& params = activation_params_it->second.floats();
+        ASSERT_EQ(params.size(), 2);
+        EXPECT_EQ(params.Get(0), alpha);
+        EXPECT_EQ(params.Get(1), beta);
+      }
+
+      EXPECT_EQ(hard_sigmoid_fused_count, 1u);
     };
 
     NchwcOptimizerTester(build_test_case, check_nchwc_graph, 13, check_pre_optimization_graph);
@@ -819,6 +844,51 @@ TEST(NchwcOptimizerTests, ConvMulChannelScaleHardSigmoid) {
   test_case(false, true);
   test_case(true, false);
   test_case(true, true);
+}
+
+TEST(NchwcOptimizerTests, ConvHardSigmoidTwoConsumers) {
+  constexpr float alpha = 0.125f;
+  constexpr float beta = 0.4f;
+
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* hardsigmoid_output_arg = helper.MakeIntermediate();
+    auto* add_output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {32, 48, 3, 3});
+    auto& hardsigmoid_node = helper.AddNode("HardSigmoid", {conv_output_arg}, {hardsigmoid_output_arg});
+    hardsigmoid_node.AddAttribute("alpha", alpha);
+    hardsigmoid_node.AddAttribute("beta", beta);
+    helper.AddNode("Add", {conv_output_arg, hardsigmoid_output_arg}, {add_output_arg});
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["HardSigmoid"], 1);
+    EXPECT_EQ(op_to_count["Add"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+
+    const Node* hard_sigmoid_node = nullptr;
+    const Node* nchwc_conv_node = nullptr;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "HardSigmoid") {
+        hard_sigmoid_node = &node;
+      } else if (node.Domain() == kMSNchwcDomain && node.OpType() == "Conv") {
+        nchwc_conv_node = &node;
+      }
+    }
+
+    ASSERT_NE(hard_sigmoid_node, nullptr);
+    ASSERT_NE(nchwc_conv_node, nullptr);
+    ASSERT_EQ(hard_sigmoid_node->GetInputEdgesCount(), 1u);
+    EXPECT_EQ(&*hard_sigmoid_node->InputNodesBegin(), nchwc_conv_node);
+    EXPECT_EQ(nchwc_conv_node->GetOutputEdgesCount(), 2u);
+  };
+
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
 TEST(NchwcOptimizerTests, ConvConcat) {
@@ -1485,13 +1555,14 @@ TEST(NchwcOptimizerTests, Activation) {
   };
 
   // Verify that the optimizer doesn't add reorders for these activations in
-  // this pattern. Relu/Sigmoid/Tanh are generally fusable with a preceding
-  // convolution, but not here because the Conv output is consumed both by the
-  // activation node and directly by the Add node. Gelu/QuickGelu are also
-  // expected to remain as separate nodes.
+  // this pattern. Relu/Sigmoid/Tanh/HardSigmoid are generally fusable with a
+  // preceding convolution, but not here because the Conv output is consumed
+  // both by the activation node and directly by the Add node. Gelu/QuickGelu
+  // are also expected to remain as separate nodes.
   test_case("Relu");
   test_case("Sigmoid");
   test_case("Tanh");
+  test_case("HardSigmoid");
   test_case("Gelu", kMSDomain);
   test_case("QuickGelu", kMSDomain);
 }
