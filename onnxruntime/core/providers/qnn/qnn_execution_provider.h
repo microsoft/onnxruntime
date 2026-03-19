@@ -130,7 +130,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool enable_spill_fill_buffer_ = false;
   bool enable_file_mapped_weights_ = true;
   bool enable_htp_shared_mem_allocator_ = false;
-  uint8_t num_graph_prepare_threads_ = 2;
+  uint8_t num_graph_prepare_threads_ = 0;
 #if defined(_WIN32)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif

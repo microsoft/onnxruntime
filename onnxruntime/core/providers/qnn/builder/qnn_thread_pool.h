@@ -92,10 +92,6 @@ class QnnJobThreadPool {
     }
 
    private:
-    /*
-    void Run() {
-
-    }*/
 
     bool IsStopped() {
       std::unique_lock<std::mutex> lock(thread_stopped_mutex_);
