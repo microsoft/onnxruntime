@@ -1041,8 +1041,10 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_WithCast_BiasHiddenSize
     auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
     auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
     auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
-    // Intentionally use a 1D bias whose length does not match gamma/beta.
-    auto* bias = builder.MakeInitializer<float>({3}, {0.1f, 0.2f, 0.3f});
+    // Intentionally use a 1D bias whose length does not match gamma/beta (size 4).
+    // bias{1} broadcasts validly with cast_out{2,4,4}, but bias_hidden_size(1) != sln_hidden_size(4)
+    // so the fusion is blocked.
+    auto* bias = builder.MakeInitializer<float>({1}, {0.5f});
 
     auto* matmul_out = builder.MakeIntermediate();
     auto* cast_out = builder.MakeIntermediate();
