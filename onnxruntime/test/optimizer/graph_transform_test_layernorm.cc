@@ -792,6 +792,37 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_AddAtInput0) {
       if (node.OpType() == "SkipLayerNormalization") {
         // Bias absorbed as 5th input
         TEST_RETURN_IF_NOT(node.InputDefs().size() == 5u);
+
+        // Verify wiring: input[0] is produced by MatMul, input[1] is the original skip input,
+        // and input[4] is an initializer (the fused bias).
+        const auto& input_defs = node.InputDefs();
+        auto* input0 = input_defs[0];
+        auto* input1 = input_defs[1];
+        auto* input4 = input_defs[4];
+
+        // input[0] should come from MatMul
+        const Node* input0_producer = graph.GetProducerNode(input0->Name());
+        TEST_RETURN_IF_NOT(input0_producer != nullptr);
+        TEST_RETURN_IF_NOT(input0_producer->OpType() == "MatMul");
+
+        // input[1] should be the skip connection: a graph input (no producer)
+        const Node* input1_producer = graph.GetProducerNode(input1->Name());
+        TEST_RETURN_IF_NOT(input1_producer == nullptr);
+        bool is_graph_input1 = false;
+        for (const auto* gi : graph.GetInputs()) {
+          if (gi->Name() == input1->Name()) {
+            is_graph_input1 = true;
+            break;
+          }
+        }
+        TEST_RETURN_IF_NOT(is_graph_input1);
+
+        // input[4] should be an initializer (the fused bias), identified by name
+        const Node* input4_producer = graph.GetProducerNode(input4->Name());
+        TEST_RETURN_IF_NOT(input4_producer == nullptr);
+        const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input4->Name(), bias_initializer).IsOK());
+        TEST_RETURN_IF_NOT(bias_initializer != nullptr);
       }
     }
     return Status::OK();
@@ -829,6 +860,37 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_BiasAsFirstAddInput) {
     for (auto& node : graph.Nodes()) {
       if (node.OpType() == "SkipLayerNormalization") {
         TEST_RETURN_IF_NOT(node.InputDefs().size() == 5u);
+
+        // Verify wiring for this scenario as well: input[0] from MatMul, input[1] is skip input,
+        // and input[4] is an initializer (the fused bias).
+        const auto& input_defs = node.InputDefs();
+        auto* input0 = input_defs[0];
+        auto* input1 = input_defs[1];
+        auto* input4 = input_defs[4];
+
+        // input[0] should come from MatMul
+        const Node* input0_producer = graph.GetProducerNode(input0->Name());
+        TEST_RETURN_IF_NOT(input0_producer != nullptr);
+        TEST_RETURN_IF_NOT(input0_producer->OpType() == "MatMul");
+
+        // input[1] should be the skip connection: a graph input (no producer)
+        const Node* input1_producer = graph.GetProducerNode(input1->Name());
+        TEST_RETURN_IF_NOT(input1_producer == nullptr);
+        bool is_graph_input1 = false;
+        for (const auto* gi : graph.GetInputs()) {
+          if (gi->Name() == input1->Name()) {
+            is_graph_input1 = true;
+            break;
+          }
+        }
+        TEST_RETURN_IF_NOT(is_graph_input1);
+
+        // input[4] should be an initializer (the fused bias), identified by name
+        const Node* input4_producer = graph.GetProducerNode(input4->Name());
+        TEST_RETURN_IF_NOT(input4_producer == nullptr);
+        const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input4->Name(), bias_initializer).IsOK());
+        TEST_RETURN_IF_NOT(bias_initializer != nullptr);
       }
     }
     return Status::OK();

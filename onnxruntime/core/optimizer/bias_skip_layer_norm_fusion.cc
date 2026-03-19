@@ -296,7 +296,7 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
 
     // Rewire all downstream consumers from the original SLN node to the new fused node.
     // Collect the outgoing edges first to avoid iterator invalidation or use-after-free
-    // when removing edges from the graph.
+    // when modifying edges in the graph.
     std::vector<std::tuple<NodeIndex, int, int>> sln_output_edges;
     sln_output_edges.reserve(std::distance(sln_node.OutputEdgesBegin(), sln_node.OutputEdgesEnd()));
     for (auto it = sln_node.OutputEdgesBegin(); it != sln_node.OutputEdgesEnd(); ++it) {
@@ -312,9 +312,8 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
       int src_arg_index = std::get<1>(edge_info);
       int dst_arg_index = std::get<2>(edge_info);
 
-      // Remove the edge from the original SLN node to the downstream node.
-      graph.RemoveEdge(sln_node.Index(), downstream_node_index, src_arg_index, dst_arg_index);
       // Add an equivalent edge from the new fused SLN node to the same downstream node.
+      // The original edges from the old SLN node have already been removed when that node was removed.
       graph.AddEdge(new_sln_node.Index(), downstream_node_index, src_arg_index, dst_arg_index);
     }
 
