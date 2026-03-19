@@ -85,7 +85,19 @@ std::unique_ptr<Tensor> FuncReshape(
 ONNX_OPERATOR_KERNEL_EX(
     Reshape,
     kOnnxDomain,
-    23,
+    25,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypesIRv9())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
+    Reshape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Reshape,
+    kOnnxDomain,
+    23, 24,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypesIRv9())
