@@ -1199,423 +1199,9 @@ TEST(Scan, MixedExecutionProvidersUnknownDimInSubgraphOutput) {
 #endif
 
 // ---------------------------------------------------------------------------
-// Tests for the com.microsoft domain Scan op with variable-length output concatenation.
-// The subgraph is the same as the standard Scan tests, but the output shape
-// differs: instead of stacking [N, d1, ..., dk], outputs are concatenated
-// along axis 0 producing [N*d1, d2, ..., dk].
-// ---------------------------------------------------------------------------
-
-class ScanVarLenOpTester : public OpTester {
- public:
-  ScanVarLenOpTester() : OpTester("Scan", 1, kMSDomain) {
-  }
-
-  // Override to add the default ONNX domain (needed for Constant/Identity nodes in the outer graph).
-  void CreateModelToTest(const ModelOptions& model_options, Model*& model) override {
-    model = &BuildModel({{"", 11}}, model_options);
-    auto& graph = model->MainGraph();
-
-    const auto& ctx = GetRunContext();
-    Status status = graph.Resolve(ctx.resolve_options);
-
-    if (!status.IsOK()) {
-      model = nullptr;
-      if (ctx.expect_result == ExpectResult::kExpectFailure) {
-        ASSERT_THAT(status.ErrorMessage(), testing::HasSubstr(ctx.expected_failure_string));
-      } else {
-        ASSERT_TRUE(status.IsOK()) << "Resolve failed with status: " << status.ErrorMessage();
-      }
-    }
-  }
-
- protected:
-  void AddNodes(onnxruntime::Graph& graph,
-                std::vector<onnxruntime::NodeArg*>& graph_input_defs,
-                std::vector<onnxruntime::NodeArg*>& graph_output_defs,
-                std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) override {
-    // add outer_scope_0 node (same as ScanOpTester)
-    {
-      TypeProto float_single_value;
-      float_single_value.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-      auto mutable_dim = float_single_value.mutable_tensor_type()->mutable_shape()->add_dim();
-      mutable_dim->set_dim_value(1);
-
-      {
-        auto& outer_scope_constant = graph.GetOrCreateNodeArg("outer_scope_constant", &float_single_value);
-        auto& constant = graph.AddNode("outer_scope_constant", "Constant", "Constant with value kOuterNodeAddValue",
-                                       {}, {&outer_scope_constant});
-
-        TensorProto value_tensor;
-        value_tensor.add_dims(1);
-        value_tensor.add_float_data(kOuterNodeAddValue);
-        value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-
-        constant.AddAttribute("value", value_tensor);
-
-        auto& outer_scope_node_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_single_value);
-        graph.AddNode("outer_scope_id", "Identity", "Identity for outer_scope_0",
-                      {&outer_scope_constant}, {&outer_scope_node_arg});
-      }
-    }
-
-    OpTester::AddNodes(graph, graph_input_defs, graph_output_defs, add_attribute_funcs);
-  }
-};
-
-static void RunTest_VarLen(const std::string test_name, int64_t sequence_len, int64_t input_size,
-                           std::vector<int64_t>* input_directions,
-                           std::vector<int64_t>* output_directions,
-                           std::vector<int64_t>* input_axes,
-                           std::vector<int64_t>* output_axes,
-                           std::vector<float>& loop_state_in_0,
-                           std::vector<float> input_0,
-                           std::vector<float> input_1,
-                           std::vector<float>& loop_state_out_0,
-                           std::vector<float> output_0,
-                           std::vector<float> output_1,
-                           std::vector<float> output_2,
-                           std::vector<float> output_3,
-                           RunOptions options = {},
-                           std::vector<int64_t>* output_lengths = nullptr,
-                           OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                           const std::string& failure_message = "") {
-  // Use the same subgraph as standard Scan tests.
-  // The subgraph uses ONNX opset 11 for Add/Concat/Split ops.
-  Model model(test_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              {{"", 11}, {kMSDomain, 1}},
-              {}, DefaultLoggingManager().DefaultLogger());
-  auto& graph = model.MainGraph();
-  auto status = CreateSubgraph(graph, options);
-  if (!status.IsOK()) {
-    return;
-  }
-  auto& proto = graph.ToGraphProto();
-
-  ScanVarLenOpTester test;
-
-  test.AddAttribute("body", proto);
-  test.AddAttribute<int64_t>("num_scan_inputs", 2);
-
-  if (input_directions != nullptr) {
-    test.AddAttribute<std::vector<int64_t>>("scan_input_directions", *input_directions);
-  }
-
-  if (output_directions != nullptr) {
-    test.AddAttribute<std::vector<int64_t>>("scan_output_directions", *output_directions);
-  }
-
-  if (input_axes != nullptr) {
-    test.AddAttribute<std::vector<int64_t>>("scan_input_axes", *input_axes);
-  }
-
-  if (output_axes != nullptr) {
-    test.AddAttribute<std::vector<int64_t>>("scan_output_axes", *output_axes);
-  }
-
-  test.AddShapeToTensorData(options.include_dim_values_in_main_graph);
-
-  // Input 0: output_lengths (optional)
-  if (output_lengths != nullptr) {
-    std::vector<int64_t> lengths_shape{static_cast<int64_t>(output_lengths->size())};
-    test.AddInput<int64_t>("output_lengths", lengths_shape, *output_lengths);
-  } else {
-    test.AddOptionalInputEdge<int64_t>();
-  }
-
-  std::vector<int64_t> loop_state_shape;
-  if (!options.scalar_loop_state_value) {
-    loop_state_shape.push_back(1);
-  }
-
-  test.AddInput<float>("scan_loop_state_in_0", loop_state_shape, loop_state_in_0);
-
-  std::vector<int64_t> input_shape{sequence_len, input_size};
-  test.AddInput<float>("scan_input_0", input_shape, input_0);
-  test.AddInput<float>("scan_input_1", input_shape, input_1);
-
-  test.AddOutput<float>("scan_loop_state_out_0", loop_state_shape, loop_state_out_0);
-
-  // Key difference from RunTest_v9: output shape is {sequence_len} (concatenation)
-  // instead of {sequence_len, 1} (stacking with new sequence dimension).
-  // Each iteration produces a [1] tensor; concatenating sequence_len of them gives [sequence_len].
-  TensorShape output_shape{sequence_len};
-
-  auto calculate_output_shape = [&](size_t output_index) {
-    if (output_axes && output_axes->size() > output_index) {
-      const auto axis = output_axes->at(output_index);
-      const auto rank = gsl::narrow_cast<int64_t>(output_shape.NumDimensions());
-
-      if (axis >= -rank && axis < rank) {
-        InlinedVector<size_t> permutations;
-        TensorShapeVector new_shape;
-        scan::detail::CalculateTransposedShapeForOutput(output_shape, HandleNegativeAxis(axis, rank),
-                                                        permutations, new_shape);
-        return std::vector<int64_t>(new_shape.cbegin(), new_shape.cend());
-      }
-    }
-
-    const auto output_dims = output_shape.GetDims();
-    return std::vector<int64_t>(output_dims.begin(), output_dims.end());
-  };
-
-  test.AddOutput<float>("scan_output_0", calculate_output_shape(0), output_0);
-  test.AddOutput<float>("scan_output_1", calculate_output_shape(1), output_1);
-  test.AddOutput<float>("scan_output_2", calculate_output_shape(2), output_2);
-  test.AddOutput<float>("scan_output_3", calculate_output_shape(3), output_3);
-
-  test.Run(expect_result, failure_message, options.excluded_provider_types);
-}
-
-static void VarLen_ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options,
-                                                          const std::string& expected_error = "") {
-  constexpr int64_t sequence_len = 2;
-  constexpr int64_t input_size = 2;
-
-  std::vector<float> iteration_count_in{0.f};
-
-  std::vector<float> input_0{1.f, 2.f,
-                             4.f, 3.f};
-  std::vector<float> input_1{3.f, 4.f,
-                             2.f, 1.f};
-
-  std::vector<float> iteration_count_out{2.f};
-
-  float output_adjust = options.include_outer_scope_add ? kOuterNodeAddValue : 0.f;
-
-  std::vector<float> output_0{1.f + output_adjust, 4.f + output_adjust};
-  std::vector<float> output_1{2.f + output_adjust, 3.f + output_adjust};
-  std::vector<float> output_2{3.f + output_adjust, 2.f + output_adjust};
-  std::vector<float> output_3{4.f + output_adjust, 1.f + output_adjust};
-
-  RunTest_VarLen("VarLen_ShortSequenceOneInBatchOneLoopStateVar", input_size, sequence_len,
-                 nullptr, nullptr, nullptr, nullptr,
-                 iteration_count_in, input_0, input_1,
-                 iteration_count_out, output_0, output_1, output_2, output_3,
-                 options, nullptr,
-                 expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
-                 expected_error);
-}
-
-TEST(ScanVarLen, ShortSequenceOneInBatchOneLoopStateVar_NoShapeInMainGraph_TypeAndShapeInSubgraph) {
-  RunOptions options{};
-  options.is_v8 = false;
-  options.include_dim_values_in_main_graph = false;
-  options.include_types_in_subgraph = true;
-  options.include_dim_values_in_subgraph = true;
-
-  VarLen_ShortSequenceOneInBatchOneLoopStateVar(options);
-}
-
-TEST(ScanVarLen, ShortSequenceOneInBatchOneLoopStateVar_ShapeInMainGraph_NoTypeAndShapeInSubgraph) {
-  RunOptions options{};
-  options.is_v8 = false;
-  options.include_dim_values_in_main_graph = true;
-  options.include_types_in_subgraph = false;
-  options.include_dim_values_in_subgraph = false;
-
-  VarLen_ShortSequenceOneInBatchOneLoopStateVar(options);
-}
-
-TEST(ScanVarLen, ShortSequenceOneInBatchOneLoopStateVar_NoShapeInMainGraph_NoTypeAndShapeInSubgraph) {
-  RunOptions options{};
-  options.is_v8 = false;
-  options.include_dim_values_in_main_graph = false;
-  options.include_types_in_subgraph = false;
-  options.include_dim_values_in_subgraph = false;
-
-  VarLen_ShortSequenceOneInBatchOneLoopStateVar(options);
-}
-
-TEST(ScanVarLen, OnnxScalarLoopState) {
-  RunOptions options{};
-  options.is_v8 = false;
-  options.include_dim_values_in_main_graph = true;
-  options.include_types_in_subgraph = false;
-  options.include_dim_values_in_subgraph = false;
-  options.scalar_loop_state_value = true;
-
-  VarLen_ShortSequenceOneInBatchOneLoopStateVar(options);
-}
-
-TEST(ScanVarLen, OuterScopeAccess_NoShapeInMainGraph_TypeAndShapeInSubgraph) {
-  RunOptions options{};
-  options.is_v8 = false;
-  options.include_dim_values_in_main_graph = false;
-  options.include_types_in_subgraph = true;
-  options.include_dim_values_in_subgraph = true;
-  options.include_outer_scope_add = true;
-
-  VarLen_ShortSequenceOneInBatchOneLoopStateVar(options);
-}
-
-TEST(ScanVarLen, InputReversal_NoShapeInMainGraph_TypeAndShapeInSubgraph) {
-  RunOptions options{};
-  options.is_v8 = false;
-  options.include_dim_values_in_main_graph = false;
-  options.include_types_in_subgraph = true;
-  options.include_dim_values_in_subgraph = true;
-
-  constexpr int64_t sequence_len = 2;
-  constexpr int64_t input_size = 2;
-
-  std::vector<float> iteration_count_in{0.f};
-
-  // inputs are reversed so iteration 0 gets row 1, iteration 1 gets row 0
-  std::vector<float> input_0{1.f, 2.f,
-                             4.f, 3.f};
-  std::vector<float> input_1{3.f, 4.f,
-                             2.f, 1.f};
-
-  std::vector<float> iteration_count_out{2.f};
-
-  // reversed inputs: iter 0 gets {4,3} and {2,1}, iter 1 gets {1,2} and {3,4}
-  std::vector<float> output_0{4.f, 1.f};
-  std::vector<float> output_1{3.f, 2.f};
-  std::vector<float> output_2{2.f, 3.f};
-  std::vector<float> output_3{1.f, 4.f};
-
-  std::vector<int64_t> input_directions{1, 1};
-
-  RunTest_VarLen("VarLen_InputReversal", input_size, sequence_len,
-                 &input_directions, nullptr, nullptr, nullptr,
-                 iteration_count_in, input_0, input_1,
-                 iteration_count_out, output_0, output_1, output_2, output_3,
-                 options);
-}
-
-// ---------------------------------------------------------------------------
-// Tests for the pre-allocation path (with output_lengths specified).
-// These tests provide output_lengths to enable the in-place construction optimization.
-// ---------------------------------------------------------------------------
-
-TEST(ScanVarLen, PreAlloc_Basic) {
-  RunOptions options{};
-  options.is_v8 = false;
-  options.include_dim_values_in_main_graph = false;
-  options.include_types_in_subgraph = true;
-  options.include_dim_values_in_subgraph = true;
-
-  constexpr int64_t sequence_len = 2;
-  constexpr int64_t input_size = 2;
-
-  std::vector<float> iteration_count_in{0.f};
-
-  std::vector<float> input_0{1.f, 2.f,
-                             4.f, 3.f};
-  std::vector<float> input_1{3.f, 4.f,
-                             2.f, 1.f};
-
-  std::vector<float> iteration_count_out{2.f};
-
-  std::vector<float> output_0{1.f, 4.f};
-  std::vector<float> output_1{2.f, 3.f};
-  std::vector<float> output_2{3.f, 2.f};
-  std::vector<float> output_3{4.f, 1.f};
-
-  // Each scan output has shape [1] per iteration, so total concat len = 2 for each
-  std::vector<int64_t> output_lengths{2, 2, 2, 2};
-
-  RunTest_VarLen("VarLen_PreAlloc_Basic", input_size, sequence_len,
-                 nullptr, nullptr, nullptr, nullptr,
-                 iteration_count_in, input_0, input_1,
-                 iteration_count_out, output_0, output_1, output_2, output_3,
-                 options, &output_lengths);
-}
-
-TEST(ScanVarLen, PreAlloc_ScalarLoopState) {
-  RunOptions options{};
-  options.is_v8 = false;
-  options.include_dim_values_in_main_graph = true;
-  options.include_types_in_subgraph = false;
-  options.include_dim_values_in_subgraph = false;
-  options.scalar_loop_state_value = true;
-
-  constexpr int64_t sequence_len = 2;
-  constexpr int64_t input_size = 2;
-
-  std::vector<float> iteration_count_in{0.f};
-
-  std::vector<float> input_0{1.f, 2.f,
-                             4.f, 3.f};
-  std::vector<float> input_1{3.f, 4.f,
-                             2.f, 1.f};
-
-  std::vector<float> iteration_count_out{2.f};
-
-  std::vector<float> output_0{1.f, 4.f};
-  std::vector<float> output_1{2.f, 3.f};
-  std::vector<float> output_2{3.f, 2.f};
-  std::vector<float> output_3{4.f, 1.f};
-
-  std::vector<int64_t> output_lengths{2, 2, 2, 2};
-
-  RunTest_VarLen("VarLen_PreAlloc_ScalarLoopState", input_size, sequence_len,
-                 nullptr, nullptr, nullptr, nullptr,
-                 iteration_count_in, input_0, input_1,
-                 iteration_count_out, output_0, output_1, output_2, output_3,
-                 options, &output_lengths);
-}
-
-// Test concatenation along a non-zero axis (scan_output_axes = 1).
-// Subgraph: Identity pass-through of a 2D scan input [1, 2].
-// Scan input shape: [2, 1, 2] (sequence_len=2, per-iter=[1, 2]).
-// With scan_output_axes=1, concatenation along axis 1:
-//   [1, 2] concat [1, 2] → [1, 4]
-TEST(ScanVarLen, OutputAxis1) {
-  // Build a simple subgraph: one loop state (scalar), one scan input/output (2D identity)
-  Model body_model("ScanBody", false, DefaultLoggingManager().DefaultLogger());
-  auto& body_graph = body_model.MainGraph();
-
-  // Loop state: scalar float, pass through via Identity
-  TypeProto scalar_type;
-  scalar_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-
-  auto& state_in = body_graph.GetOrCreateNodeArg("state_in", &scalar_type);
-  auto& state_out = body_graph.GetOrCreateNodeArg("state_out", &scalar_type);
-  body_graph.AddNode("state_id", "Identity", "Pass state through", {&state_in}, {&state_out});
-
-  // Scan input/output: shape [1, 2], pass through via Identity
-  TypeProto float_2d;
-  float_2d.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  float_2d.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-  float_2d.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
-
-  auto& scan_in = body_graph.GetOrCreateNodeArg("scan_in", &float_2d);
-  auto& scan_out = body_graph.GetOrCreateNodeArg("scan_out", &float_2d);
-  body_graph.AddNode("scan_id", "Identity", "Pass scan input through", {&scan_in}, {&scan_out});
-
-  auto status = body_graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  auto& body_proto = body_graph.ToGraphProto();
-
-  ScanVarLenOpTester test;
-  test.AddAttribute("body", body_proto);
-  test.AddAttribute<int64_t>("num_scan_inputs", 1);
-  test.AddAttribute<std::vector<int64_t>>("scan_output_axes", {1});
-
-  test.AddShapeToTensorData(true);
-
-  // Optional output_lengths: not provided
-  test.AddOptionalInputEdge<int64_t>();
-
-  // Loop state input: scalar
-  test.AddInput<float>("state_in", {}, {0.f});
-
-  // Scan input: shape [2, 1, 2] (2 iterations, each [1, 2])
-  test.AddInput<float>("scan_input", {2, 1, 2}, {1.f, 2.f, 3.f, 4.f});
-
-  // Loop state output: scalar (unchanged)
-  test.AddOutput<float>("state_out", {}, {0.f});
-
-  // Scan output: concatenated along axis 1 → [1, 4]
-  test.AddOutput<float>("scan_out", {1, 4}, {1.f, 2.f, 3.f, 4.f});
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types);
-}
-
-// ---------------------------------------------------------------------------
-// Parser-based test: uses ONNX text format for a self-contained, readable test.
-// The entire model (including the Scan body subgraph) is expressed as a string.
+// Tests for the com.microsoft domain Scan op with variable-length output
+// concatenation (ScanVarLen). These tests use the ONNX text-format parser
+// for self-contained, readable model definitions.
 // ---------------------------------------------------------------------------
 
 // Parse an ONNX text-format model, run it with the given feeds, and return the output fetches.
@@ -1645,11 +1231,297 @@ static std::vector<OrtValue> RunOnnxTextModel(
   return fetches;
 }
 
-TEST(ScanVarLen, OutputAxis1_Parsed) {
-  // The model has a single ScanVarLen node with:
-  //   - 1 loop state (scalar float, passed through via Identity)
-  //   - 1 scan input of shape [2, 1, 2] (2 iterations, each producing [1, 2])
-  //   - scan_output_axes = [1]: concatenation along axis 1 → final output [1, 4]
+// Helper to create a CPU allocator for building OrtValue feeds.
+static AllocatorPtr GetCpuAllocator() {
+  auto provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  return provider->CreatePreferredAllocators()[0];
+}
+
+// ---------------------------------------------------------------------------
+// Subgraph used by most tests:
+//   Inputs:  loop_state_in (scalar), scan_in_0 ([2]), scan_in_1 ([2])
+//   Body:    loop_state_out = loop_state_in + 1.0  (iteration counter)
+//            Concat(scan_in_0, scan_in_1) -> [4] -> Split -> 4 x [1] outputs
+//   Outputs: loop_state_out (scalar), scan_out_0..3 ([1] each)
+//
+// Main graph: 2 iterations, so scan inputs have shape [2, 2].
+// Final scan outputs: [2] each (concatenation of 2 x [1]).
+// Loop state: starts at 0, ends at 2.
+// ---------------------------------------------------------------------------
+
+// Basic test: 2 scan inputs of [2,2], 1 scalar loop state, 4 scan outputs.
+TEST(ScanVarLen, Basic) {
+  const char* model_text = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (float loop_state_in, float[2, 2] scan_in_0, float[2, 2] scan_in_1)
+    => (float loop_state_out, float[2] scan_out_0, float[2] scan_out_1,
+        float[2] scan_out_2, float[2] scan_out_3)
+{
+  loop_state_out, scan_out_0, scan_out_1, scan_out_2, scan_out_3 =
+      com.microsoft.Scan (, loop_state_in, scan_in_0, scan_in_1) <
+    num_scan_inputs = 2,
+    body = scan_body (float state_in, float[2] in_0, float[2] in_1)
+        => (float state_out, float[1] out_0, float[1] out_1, float[1] out_2, float[1] out_3)
+    {
+      one = Constant <value = float {1.0}> ()
+      state_out = Add(state_in, one)
+      concat_out = Concat <axis = 0> (in_0, in_1)
+      split_sizes = Constant <value = int64[4] {1, 1, 1, 1}> ()
+      out_0, out_1, out_2, out_3 = Split <axis = 0> (concat_out, split_sizes)
+    }
+  >
+}
+)ONNX";
+
+  auto alloc = GetCpuAllocator();
+
+  OrtValue loop_state_in, scan_in_0, scan_in_1;
+  CreateMLValue<float>(alloc, {}, {0.f}, &loop_state_in);
+  CreateMLValue<float>(alloc, {2, 2}, {1.f, 2.f, 4.f, 3.f}, &scan_in_0);
+  CreateMLValue<float>(alloc, {2, 2}, {3.f, 4.f, 2.f, 1.f}, &scan_in_1);
+
+  NameMLValMap feeds;
+  feeds["loop_state_in"] = loop_state_in;
+  feeds["scan_in_0"] = scan_in_0;
+  feeds["scan_in_1"] = scan_in_1;
+
+  auto fetches = RunOnnxTextModel(model_text, feeds,
+      AsSpan({std::string("loop_state_out"), std::string("scan_out_0"),
+              std::string("scan_out_1"), std::string("scan_out_2"), std::string("scan_out_3")}));
+
+  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 2.f);
+
+  std::vector<std::vector<float>> expected = {{1.f, 4.f}, {2.f, 3.f}, {3.f, 2.f}, {4.f, 1.f}};
+  for (size_t i = 0; i < 4; ++i) {
+    auto& t = fetches[i + 1].Get<Tensor>();
+    EXPECT_EQ(t.Shape(), TensorShape({2}));
+    for (size_t j = 0; j < expected[i].size(); ++j) {
+      EXPECT_FLOAT_EQ(t.Data<float>()[j], expected[i][j]) << "output " << i << " index " << j;
+    }
+  }
+}
+
+// Scalar loop state (no dimensions, rank 0).
+TEST(ScanVarLen, ScalarLoopState) {
+  const char* model_text = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (float loop_state_in, float[2, 2] scan_in_0, float[2, 2] scan_in_1)
+    => (float loop_state_out, float[2] scan_out_0, float[2] scan_out_1,
+        float[2] scan_out_2, float[2] scan_out_3)
+{
+  loop_state_out, scan_out_0, scan_out_1, scan_out_2, scan_out_3 =
+      com.microsoft.Scan (, loop_state_in, scan_in_0, scan_in_1) <
+    num_scan_inputs = 2,
+    body = scan_body (float state_in, float[2] in_0, float[2] in_1)
+        => (float state_out, float[1] out_0, float[1] out_1, float[1] out_2, float[1] out_3)
+    {
+      one = Constant <value = float {1.0}> ()
+      state_out = Add(state_in, one)
+      concat_out = Concat <axis = 0> (in_0, in_1)
+      split_sizes = Constant <value = int64[4] {1, 1, 1, 1}> ()
+      out_0, out_1, out_2, out_3 = Split <axis = 0> (concat_out, split_sizes)
+    }
+  >
+}
+)ONNX";
+
+  auto alloc = GetCpuAllocator();
+
+  OrtValue loop_state_in, scan_in_0, scan_in_1;
+  CreateMLValue<float>(alloc, {}, {0.f}, &loop_state_in);  // scalar
+  CreateMLValue<float>(alloc, {2, 2}, {1.f, 2.f, 4.f, 3.f}, &scan_in_0);
+  CreateMLValue<float>(alloc, {2, 2}, {3.f, 4.f, 2.f, 1.f}, &scan_in_1);
+
+  NameMLValMap feeds;
+  feeds["loop_state_in"] = loop_state_in;
+  feeds["scan_in_0"] = scan_in_0;
+  feeds["scan_in_1"] = scan_in_1;
+
+  auto fetches = RunOnnxTextModel(model_text, feeds,
+      AsSpan({std::string("loop_state_out"), std::string("scan_out_0"),
+              std::string("scan_out_1"), std::string("scan_out_2"), std::string("scan_out_3")}));
+
+  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 2.f);
+
+  std::vector<std::vector<float>> expected = {{1.f, 4.f}, {2.f, 3.f}, {3.f, 2.f}, {4.f, 1.f}};
+  for (size_t i = 0; i < 4; ++i) {
+    auto& t = fetches[i + 1].Get<Tensor>();
+    EXPECT_EQ(t.Shape(), TensorShape({2}));
+    for (size_t j = 0; j < expected[i].size(); ++j) {
+      EXPECT_FLOAT_EQ(t.Data<float>()[j], expected[i][j]) << "output " << i << " index " << j;
+    }
+  }
+}
+
+// Input reversal: scan_input_directions = [1, 1] reverses iteration order over inputs.
+TEST(ScanVarLen, InputReversal) {
+  const char* model_text = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (float loop_state_in, float[2, 2] scan_in_0, float[2, 2] scan_in_1)
+    => (float loop_state_out, float[2] scan_out_0, float[2] scan_out_1,
+        float[2] scan_out_2, float[2] scan_out_3)
+{
+  loop_state_out, scan_out_0, scan_out_1, scan_out_2, scan_out_3 =
+      com.microsoft.Scan (, loop_state_in, scan_in_0, scan_in_1) <
+    num_scan_inputs = 2,
+    scan_input_directions = [1, 1],
+    body = scan_body (float state_in, float[2] in_0, float[2] in_1)
+        => (float state_out, float[1] out_0, float[1] out_1, float[1] out_2, float[1] out_3)
+    {
+      one = Constant <value = float {1.0}> ()
+      state_out = Add(state_in, one)
+      concat_out = Concat <axis = 0> (in_0, in_1)
+      split_sizes = Constant <value = int64[4] {1, 1, 1, 1}> ()
+      out_0, out_1, out_2, out_3 = Split <axis = 0> (concat_out, split_sizes)
+    }
+  >
+}
+)ONNX";
+
+  auto alloc = GetCpuAllocator();
+
+  OrtValue loop_state_in, scan_in_0, scan_in_1;
+  CreateMLValue<float>(alloc, {}, {0.f}, &loop_state_in);
+  CreateMLValue<float>(alloc, {2, 2}, {1.f, 2.f, 4.f, 3.f}, &scan_in_0);
+  CreateMLValue<float>(alloc, {2, 2}, {3.f, 4.f, 2.f, 1.f}, &scan_in_1);
+
+  NameMLValMap feeds;
+  feeds["loop_state_in"] = loop_state_in;
+  feeds["scan_in_0"] = scan_in_0;
+  feeds["scan_in_1"] = scan_in_1;
+
+  auto fetches = RunOnnxTextModel(model_text, feeds,
+      AsSpan({std::string("loop_state_out"), std::string("scan_out_0"),
+              std::string("scan_out_1"), std::string("scan_out_2"), std::string("scan_out_3")}));
+
+  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 2.f);
+
+  // Reversed: iter 0 gets row 1 ({4,3} and {2,1}), iter 1 gets row 0 ({1,2} and {3,4}).
+  std::vector<std::vector<float>> expected = {{4.f, 1.f}, {3.f, 2.f}, {2.f, 3.f}, {1.f, 4.f}};
+  for (size_t i = 0; i < 4; ++i) {
+    auto& t = fetches[i + 1].Get<Tensor>();
+    EXPECT_EQ(t.Shape(), TensorShape({2}));
+    for (size_t j = 0; j < expected[i].size(); ++j) {
+      EXPECT_FLOAT_EQ(t.Data<float>()[j], expected[i][j]) << "output " << i << " index " << j;
+    }
+  }
+}
+
+// Outer scope access: the subgraph references a value defined in the main graph.
+TEST(ScanVarLen, OuterScopeAccess) {
+  const char* model_text = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (float loop_state_in, float[2, 2] scan_in_0, float[2, 2] scan_in_1)
+    => (float loop_state_out, float[2] scan_out_0, float[2] scan_out_1,
+        float[2] scan_out_2, float[2] scan_out_3)
+{
+  outer_val = Constant <value = float[1] {42.0}> ()
+  loop_state_out, scan_out_0, scan_out_1, scan_out_2, scan_out_3 =
+      com.microsoft.Scan (, loop_state_in, scan_in_0, scan_in_1) <
+    num_scan_inputs = 2,
+    body = scan_body (float state_in, float[2] in_0, float[2] in_1)
+        => (float state_out, float[1] out_0, float[1] out_1, float[1] out_2, float[1] out_3)
+    {
+      one = Constant <value = float {1.0}> ()
+      state_out = Add(state_in, one)
+      concat_out = Concat <axis = 0> (in_0, in_1)
+      add_out = Add(concat_out, outer_val)
+      split_sizes = Constant <value = int64[4] {1, 1, 1, 1}> ()
+      out_0, out_1, out_2, out_3 = Split <axis = 0> (add_out, split_sizes)
+    }
+  >
+}
+)ONNX";
+
+  auto alloc = GetCpuAllocator();
+
+  OrtValue loop_state_in, scan_in_0, scan_in_1;
+  CreateMLValue<float>(alloc, {}, {0.f}, &loop_state_in);
+  CreateMLValue<float>(alloc, {2, 2}, {1.f, 2.f, 4.f, 3.f}, &scan_in_0);
+  CreateMLValue<float>(alloc, {2, 2}, {3.f, 4.f, 2.f, 1.f}, &scan_in_1);
+
+  NameMLValMap feeds;
+  feeds["loop_state_in"] = loop_state_in;
+  feeds["scan_in_0"] = scan_in_0;
+  feeds["scan_in_1"] = scan_in_1;
+
+  auto fetches = RunOnnxTextModel(model_text, feeds,
+      AsSpan({std::string("loop_state_out"), std::string("scan_out_0"),
+              std::string("scan_out_1"), std::string("scan_out_2"), std::string("scan_out_3")}));
+
+  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 2.f);
+
+  // Each output element has 42.0 added from the outer scope constant.
+  std::vector<std::vector<float>> expected = {{43.f, 46.f}, {44.f, 45.f}, {45.f, 44.f}, {46.f, 43.f}};
+  for (size_t i = 0; i < 4; ++i) {
+    auto& t = fetches[i + 1].Get<Tensor>();
+    EXPECT_EQ(t.Shape(), TensorShape({2}));
+    for (size_t j = 0; j < expected[i].size(); ++j) {
+      EXPECT_FLOAT_EQ(t.Data<float>()[j], expected[i][j]) << "output " << i << " index " << j;
+    }
+  }
+}
+
+// Pre-allocation path: output_lengths provided to enable in-place construction.
+TEST(ScanVarLen, PreAlloc) {
+  const char* model_text = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (int64[4] output_lengths, float loop_state_in,
+            float[2, 2] scan_in_0, float[2, 2] scan_in_1)
+    => (float loop_state_out, float[2] scan_out_0, float[2] scan_out_1,
+        float[2] scan_out_2, float[2] scan_out_3)
+{
+  loop_state_out, scan_out_0, scan_out_1, scan_out_2, scan_out_3 =
+      com.microsoft.Scan (output_lengths, loop_state_in, scan_in_0, scan_in_1) <
+    num_scan_inputs = 2,
+    body = scan_body (float state_in, float[2] in_0, float[2] in_1)
+        => (float state_out, float[1] out_0, float[1] out_1, float[1] out_2, float[1] out_3)
+    {
+      one = Constant <value = float {1.0}> ()
+      state_out = Add(state_in, one)
+      concat_out = Concat <axis = 0> (in_0, in_1)
+      split_sizes = Constant <value = int64[4] {1, 1, 1, 1}> ()
+      out_0, out_1, out_2, out_3 = Split <axis = 0> (concat_out, split_sizes)
+    }
+  >
+}
+)ONNX";
+
+  auto alloc = GetCpuAllocator();
+
+  OrtValue output_lengths_val, loop_state_in, scan_in_0, scan_in_1;
+  CreateMLValue<int64_t>(alloc, {4}, {int64_t(2), int64_t(2), int64_t(2), int64_t(2)}, &output_lengths_val);
+  CreateMLValue<float>(alloc, {}, {0.f}, &loop_state_in);
+  CreateMLValue<float>(alloc, {2, 2}, {1.f, 2.f, 4.f, 3.f}, &scan_in_0);
+  CreateMLValue<float>(alloc, {2, 2}, {3.f, 4.f, 2.f, 1.f}, &scan_in_1);
+
+  NameMLValMap feeds;
+  feeds["output_lengths"] = output_lengths_val;
+  feeds["loop_state_in"] = loop_state_in;
+  feeds["scan_in_0"] = scan_in_0;
+  feeds["scan_in_1"] = scan_in_1;
+
+  auto fetches = RunOnnxTextModel(model_text, feeds,
+      AsSpan({std::string("loop_state_out"), std::string("scan_out_0"),
+              std::string("scan_out_1"), std::string("scan_out_2"), std::string("scan_out_3")}));
+
+  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 2.f);
+
+  std::vector<std::vector<float>> expected = {{1.f, 4.f}, {2.f, 3.f}, {3.f, 2.f}, {4.f, 1.f}};
+  for (size_t i = 0; i < 4; ++i) {
+    auto& t = fetches[i + 1].Get<Tensor>();
+    EXPECT_EQ(t.Shape(), TensorShape({2}));
+    for (size_t j = 0; j < expected[i].size(); ++j) {
+      EXPECT_FLOAT_EQ(t.Data<float>()[j], expected[i][j]) << "output " << i << " index " << j;
+    }
+  }
+}
+
+// Non-zero output axis: scan_output_axes = [1], concatenation along axis 1.
+// Subgraph: Identity pass-through of a 2D scan input [1, 2].
+// Scan input: [2, 1, 2] (2 iterations, each [1, 2]).
+// Result: [1, 2] concat [1, 2] along axis 1 -> [1, 4].
+TEST(ScanVarLen, OutputAxis1) {
   const char* model_text = R"ONNX(
 <ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
 main_graph (float state_in, float[2, 1, 2] scan_input)
@@ -1668,14 +1540,10 @@ main_graph (float state_in, float[2, 1, 2] scan_input)
 }
 )ONNX";
 
-  // Create input feeds.
-  auto provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  auto alloc = provider->CreatePreferredAllocators()[0];
+  auto alloc = GetCpuAllocator();
 
-  OrtValue state_in_val;
+  OrtValue state_in_val, scan_input_val;
   CreateMLValue<float>(alloc, {}, {0.f}, &state_in_val);
-
-  OrtValue scan_input_val;
   CreateMLValue<float>(alloc, {2, 1, 2}, {1.f, 2.f, 3.f, 4.f}, &scan_input_val);
 
   NameMLValMap feeds;
@@ -1685,12 +1553,8 @@ main_graph (float state_in, float[2, 1, 2] scan_input)
   auto fetches = RunOnnxTextModel(model_text, feeds,
                                   AsSpan({std::string("state_out"), std::string("scan_out")}));
 
-  // Check loop state output (scalar, unchanged).
-  auto& state_out = fetches[0].Get<Tensor>();
-  EXPECT_EQ(state_out.Shape().Size(), 1);
-  EXPECT_FLOAT_EQ(*state_out.Data<float>(), 0.f);
+  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 0.f);
 
-  // Check scan output: concatenated along axis 1 → [1, 4].
   auto& scan_out = fetches[1].Get<Tensor>();
   EXPECT_EQ(scan_out.Shape(), TensorShape({1, 4}));
   auto* data = scan_out.Data<float>();
