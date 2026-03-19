@@ -10,13 +10,12 @@ USER root
 WORKDIR /
 
 RUN dnf install -y --nodocs \
-        ccache \
-        git \
+        wget \
+        tar \
         gzip \
+        git \
         numactl-libs \
         ocl-icd \
-        tar \
-        wget \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
