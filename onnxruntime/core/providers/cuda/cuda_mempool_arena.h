@@ -155,7 +155,6 @@ class CudaMempoolArena final : public IArena {
   // ---- Pool/context configuration (immutable) ----
   uint64_t pool_release_threshold_;
   size_t bytes_to_keep_on_shrink_;
-  size_t initial_pool_size_bytes_;
   const logging::Logger* logger_;
   cudaMemPool_t pool_{nullptr};
 
