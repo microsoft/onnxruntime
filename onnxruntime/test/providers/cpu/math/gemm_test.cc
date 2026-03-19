@@ -1484,10 +1484,11 @@ struct GemmOptimizePackedParams {
 
   // Helper for converting int to string
   static std::string DimToString(int64_t val) {
-    if (val < 0) {
-      return "neg" + std::to_string(-val);
+    if (val >= 0) {
+      return std::to_string(val);
     }
-    return std::to_string(val);
+    // Use uint64_t to safely negate INT64_MIN without overflow.
+    return "neg" + std::to_string(static_cast<uint64_t>(-(val + 1)) + 1);
   }
 
   // Helper for readable test names
