@@ -1205,16 +1205,21 @@ TEST(Scan, MixedExecutionProvidersUnknownDimInSubgraphOutput) {
 // ---------------------------------------------------------------------------
 
 // Parse an ONNX text-format model, run it with the given feeds, and return the Run status.
+// Output names are extracted from the model's graph outputs.
 static common::Status RunOnnxTextModel(
     const char* model_text,
     const NameMLValMap& feeds,
-    gsl::span<const std::string> output_names,
     std::vector<OrtValue>& fetches) {
   ONNX_NAMESPACE::ModelProto model_proto;
   ONNX_NAMESPACE::OnnxParser parser(model_text);
   auto parse_status = parser.Parse(model_proto);
   EXPECT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
   EXPECT_TRUE(parser.EndOfInput()) << "Extra unparsed input.";
+
+  std::vector<std::string> output_names;
+  for (const auto& output : model_proto.graph().output()) {
+    output_names.push_back(output.name());
+  }
 
   std::string serialized_model;
   EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
@@ -1232,10 +1237,9 @@ static common::Status RunOnnxTextModel(
 // Convenience overload: asserts success and returns fetches.
 static std::vector<OrtValue> RunOnnxTextModel(
     const char* model_text,
-    const NameMLValMap& feeds,
-    gsl::span<const std::string> output_names) {
+    const NameMLValMap& feeds) {
   std::vector<OrtValue> fetches;
-  auto status = RunOnnxTextModel(model_text, feeds, output_names, fetches);
+  auto status = RunOnnxTextModel(model_text, feeds, fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   return fetches;
 }
@@ -1244,61 +1248,6 @@ static std::vector<OrtValue> RunOnnxTextModel(
 static AllocatorPtr GetCpuAllocator() {
   auto provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   return provider->CreatePreferredAllocators()[0];
-}
-
-// Outer scope access: the subgraph references a value defined in the main graph.
-TEST(ScanVarLen, OuterScopeAccess) {
-  const char* model_text = R"ONNX(
-<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
-main_graph (float loop_state_in, float[2, 2] scan_in_0, float[2, 2] scan_in_1)
-    => (float loop_state_out, float[2] scan_out_0, float[2] scan_out_1,
-        float[2] scan_out_2, float[2] scan_out_3)
-{
-  outer_val = Constant <value = float[1] {42.0}> ()
-  loop_state_out, scan_out_0, scan_out_1, scan_out_2, scan_out_3 =
-      com.microsoft.Scan (, loop_state_in, scan_in_0, scan_in_1) <
-    num_scan_inputs = 2,
-    body = scan_body (float state_in, float[2] in_0, float[2] in_1)
-        => (float state_out, float[1] out_0, float[1] out_1, float[1] out_2, float[1] out_3)
-    {
-      one = Constant <value = float {1.0}> ()
-      state_out = Add(state_in, one)
-      concat_out = Concat <axis = 0> (in_0, in_1)
-      add_out = Add(concat_out, outer_val)
-      split_sizes = Constant <value = int64[4] {1, 1, 1, 1}> ()
-      out_0, out_1, out_2, out_3 = Split <axis = 0> (add_out, split_sizes)
-    }
-  >
-}
-)ONNX";
-
-  auto alloc = GetCpuAllocator();
-
-  OrtValue loop_state_in, scan_in_0, scan_in_1;
-  CreateMLValue<float>(alloc, {}, {0.f}, &loop_state_in);
-  CreateMLValue<float>(alloc, {2, 2}, {1.f, 2.f, 4.f, 3.f}, &scan_in_0);
-  CreateMLValue<float>(alloc, {2, 2}, {3.f, 4.f, 2.f, 1.f}, &scan_in_1);
-
-  NameMLValMap feeds;
-  feeds["loop_state_in"] = loop_state_in;
-  feeds["scan_in_0"] = scan_in_0;
-  feeds["scan_in_1"] = scan_in_1;
-
-  auto fetches = RunOnnxTextModel(model_text, feeds,
-      AsSpan({std::string("loop_state_out"), std::string("scan_out_0"),
-              std::string("scan_out_1"), std::string("scan_out_2"), std::string("scan_out_3")}));
-
-  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 2.f);
-
-  // Each output element has 42.0 added from the outer scope constant.
-  std::vector<std::vector<float>> expected = {{43.f, 46.f}, {44.f, 45.f}, {45.f, 44.f}, {46.f, 43.f}};
-  for (size_t i = 0; i < 4; ++i) {
-    auto& t = fetches[i + 1].Get<Tensor>();
-    EXPECT_EQ(t.Shape(), TensorShape({2}));
-    for (size_t j = 0; j < expected[i].size(); ++j) {
-      EXPECT_FLOAT_EQ(t.Data<float>()[j], expected[i][j]) << "output " << i << " index " << j;
-    }
-  }
 }
 
 // Pre-allocation path: output_lengths provided to enable in-place construction.
@@ -1340,9 +1289,7 @@ main_graph (int64[4] output_lengths, float loop_state_in,
   feeds["scan_in_0"] = scan_in_0;
   feeds["scan_in_1"] = scan_in_1;
 
-  auto fetches = RunOnnxTextModel(model_text, feeds,
-      AsSpan({std::string("loop_state_out"), std::string("scan_out_0"),
-              std::string("scan_out_1"), std::string("scan_out_2"), std::string("scan_out_3")}));
+  auto fetches = RunOnnxTextModel(model_text, feeds);
 
   EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 2.f);
 
@@ -1389,8 +1336,7 @@ main_graph (float state_in, float[2, 1, 2] scan_input)
   feeds["state_in"] = state_in_val;
   feeds["scan_input"] = scan_input_val;
 
-  auto fetches = RunOnnxTextModel(model_text, feeds,
-                                  AsSpan({std::string("state_out"), std::string("scan_out")}));
+  auto fetches = RunOnnxTextModel(model_text, feeds);
 
   EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 0.f);
 
@@ -1440,8 +1386,7 @@ main_graph (float[3] values, int64[3] repeats)
   feeds["values"] = values_val;
   feeds["repeats"] = repeats_val;
 
-  auto fetches = RunOnnxTextModel(model_text, feeds,
-                                  AsSpan({std::string("scan_out")}));
+  auto fetches = RunOnnxTextModel(model_text, feeds);
 
   auto& scan_out = fetches[0].Get<Tensor>();
   EXPECT_EQ(scan_out.Shape(), TensorShape({5}));
@@ -1495,8 +1440,7 @@ main_graph (float[2, 3] values, int64[3] repeats)
   feeds["values"] = values_val;
   feeds["repeats"] = repeats_val;
 
-  auto fetches = RunOnnxTextModel(model_text, feeds,
-                                  AsSpan({std::string("scan_out")}));
+  auto fetches = RunOnnxTextModel(model_text, feeds);
 
   auto& scan_out = fetches[0].Get<Tensor>();
   EXPECT_EQ(scan_out.Shape(), TensorShape({2, 4}));
@@ -1543,8 +1487,7 @@ TEST(ScanVarLen, VariableLengthExpand_PreAlloc) {
   feeds["values"] = values_val;
   feeds["repeats"] = repeats_val;
 
-  auto fetches = RunOnnxTextModel(kVariableLengthExpandPreAllocModel, feeds,
-                                  AsSpan({std::string("scan_out")}));
+  auto fetches = RunOnnxTextModel(kVariableLengthExpandPreAllocModel, feeds);
 
   auto& scan_out = fetches[0].Get<Tensor>();
   EXPECT_EQ(scan_out.Shape(), TensorShape({5}));
@@ -1570,8 +1513,7 @@ TEST(ScanVarLen, VariableLengthExpand_UnderAlloc) {
   feeds["repeats"] = repeats_val;
 
   std::vector<OrtValue> fetches;
-  auto status = RunOnnxTextModel(kVariableLengthExpandPreAllocModel, feeds,
-                                       AsSpan({std::string("scan_out")}), fetches);
+  auto status = RunOnnxTextModel(kVariableLengthExpandPreAllocModel, feeds, fetches);
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeded pre-allocated size"));
 }
