@@ -179,7 +179,7 @@ RunDQMatMulNotConverted_FirstDQInput(const std::vector<int64_t>& weight_shape,
     utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), attrs);
 
-    auto scale_shape = std::vector<int64_t>{weight_shape};
+    std::vector<int64_t> scale_shape = weight_shape;
     scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
     auto* scale_arg = builder.MakeInitializer(scale_shape, 8.0f, 12.0f);
     if constexpr (use_zp) {
@@ -295,7 +295,7 @@ void RunDQMatMulNotConverted_TypeShapeMismatch(const std::vector<int64_t>& input
     utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), attrs);
 
-    auto scale_shape = std::vector<int64_t>{weight_shape};
+    std::vector<int64_t> scale_shape = weight_shape;
     scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
     auto* scale_arg = builder.MakeInitializer(scale_shape, 8.0f, 12.0f);
     if constexpr (use_zp) {
@@ -727,7 +727,7 @@ RunDQMatMulFP16Converted(const std::vector<int64_t>& input1_shape,
     utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), dq_attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), dq_attrs);
 
-    auto scale_shape = std::vector<int64_t>{weight_shape};
+    std::vector<int64_t> scale_shape = weight_shape;
     scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
 
     auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
@@ -778,6 +778,645 @@ TEST(QDQTransformerTests, DQMatMulFP16ConvertedToMatMulNBits) {
   RunDQMatMulFP16Converted<Int4x2, false>({12, 32}, {32, 16}, 0, 16, 0);
   RunDQMatMulFP16Converted<UInt4x2, true>({12, 32}, {32, 16}, 0, 16, 0);
   RunDQMatMulFP16Converted<UInt4x2, false>({12, 32}, {32, 16}, 0, 16, 0);
+}
+
+// Per-tensor DQ -> MatMul conversion to MatMulNBits
+// DQ has scalar scale (and optional scalar zero-point), no block_size attribute.
+//  Input1
+//    |      DQ(per-tensor)
+//     \    /
+//     MatMul
+//       |
+//     output
+template <typename T, bool use_zp>
+void RunDQMatMulPerTensorConverted(const std::vector<int64_t>& input1_shape,
+                                   const std::vector<int64_t>& weight_shape,
+                                   int64_t accuracy_level) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* dq_output = builder.MakeIntermediate();
+
+    // Scalar scale (per-tensor)
+    auto* scale_arg = builder.MakeInitializer<float>({}, {10.0f});
+    if constexpr (use_zp) {
+      auto* zp_arg = builder.MakeInitializer(std::vector<int64_t>{}, T(1, 0), T(1, 0));
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output});
+    } else {
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output});
+    }
+
+    builder.AddNode("MatMul", {input_arg, dq_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    EXPECT_EQ(op_to_count["MatMul"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn{};
+  if (accuracy_level >= 0) {
+    add_session_options_fn = [accuracy_level](SessionOptions& sess_opts) {
+      std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                            std::to_string(accuracy_level).c_str());
+    };
+  }
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    0.01 /*per_sample_tolerance - higher due to blockwise accumulation reordering*/,
+                    5e-5 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQMatMulPerTensorConvertedToMatMulNBits) {
+  // Per-tensor int4/uint4 with and without zero-point
+  RunDQMatMulPerTensorConverted<Int4x2, true>({12, 32}, {32, 16}, 0);
+  RunDQMatMulPerTensorConverted<Int4x2, false>({12, 32}, {32, 16}, 0);
+  RunDQMatMulPerTensorConverted<UInt4x2, true>({12, 32}, {32, 16}, 0);
+  RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 32}, {32, 16}, 0);
+  // With accuracy_level=1
+  RunDQMatMulPerTensorConverted<Int4x2, true>({12, 32}, {32, 16}, 1);
+  RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 32}, {32, 16}, 1);
+  // K not divisible by default block_size (32)
+  RunDQMatMulPerTensorConverted<Int4x2, true>({12, 37}, {37, 16}, 0);
+  RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 37}, {37, 16}, 0);
+  // N=1 (edge case: single column)
+  RunDQMatMulPerTensorConverted<Int4x2, true>({12, 768}, {768, 1}, 0);
+  RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 768}, {768, 1}, 0);
+}
+
+// Per-channel (axis=1) DQ -> MatMul conversion to MatMulNBits
+// DQ has 1D scale shape [N], axis=1, no block_size attribute.
+//  Input1
+//    |      DQ(per-channel axis=1)
+//     \    /
+//     MatMul
+//       |
+//     output
+template <typename T, bool use_zp>
+void RunDQMatMulPerChannelConverted(const std::vector<int64_t>& input1_shape,
+                                    const std::vector<int64_t>& weight_shape,
+                                    int64_t accuracy_level) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* dq_output = builder.MakeIntermediate();
+
+    int64_t N = weight_shape[1];
+    // 1D scale shape [N] for per-channel (axis=1)
+    auto* scale_arg = builder.MakeInitializer<float>({N}, 8.0f, 12.0f);
+
+    NodeAttributes attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", static_cast<int64_t>(1)), attrs);
+
+    if constexpr (use_zp) {
+      auto* zp_arg = builder.MakeInitializer(std::vector<int64_t>{N}, T(0, 0), T(2, 0));
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output}, "", &attrs);
+    } else {
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output}, "", &attrs);
+    }
+
+    builder.AddNode("MatMul", {input_arg, dq_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    EXPECT_EQ(op_to_count["MatMul"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn{};
+  if (accuracy_level >= 0) {
+    add_session_options_fn = [accuracy_level](SessionOptions& sess_opts) {
+      std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                            std::to_string(accuracy_level).c_str());
+    };
+  }
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5 /*per_sample_tolerance*/,
+                    1e-5 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQMatMulPerChannelConvertedToMatMulNBits) {
+  // Per-channel int4/uint4 with and without zero-point
+  RunDQMatMulPerChannelConverted<Int4x2, true>({12, 32}, {32, 16}, 0);
+  RunDQMatMulPerChannelConverted<Int4x2, false>({12, 32}, {32, 16}, 0);
+  RunDQMatMulPerChannelConverted<UInt4x2, true>({12, 32}, {32, 16}, 0);
+  RunDQMatMulPerChannelConverted<UInt4x2, false>({12, 32}, {32, 16}, 0);
+  // With accuracy_level=1
+  RunDQMatMulPerChannelConverted<Int4x2, true>({12, 32}, {32, 16}, 1);
+  // K not divisible by default block_size (32)
+  RunDQMatMulPerChannelConverted<Int4x2, true>({12, 37}, {37, 16}, 0);
+  RunDQMatMulPerChannelConverted<UInt4x2, false>({12, 37}, {37, 16}, 0);
+}
+
+// Negative test: per-axis axis=0 with 1D scale should NOT fuse
+template <typename T>
+void RunDQMatMulPerAxisAxis0NotConverted(const std::vector<int64_t>& input1_shape,
+                                         const std::vector<int64_t>& weight_shape) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* dq_output = builder.MakeIntermediate();
+
+    int64_t K = weight_shape[0];
+    // 1D scale shape [K] for per-axis axis=0 — should NOT match
+    auto* scale_arg = builder.MakeInitializer<float>({K}, 8.0f, 12.0f);
+
+    NodeAttributes attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", static_cast<int64_t>(0)), attrs);
+
+    builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output}, "", &attrs);
+    builder.AddNode("MatMul", {input_arg, dq_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    EXPECT_EQ(op_to_count["MatMul"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn = [](SessionOptions& sess_opts) {
+    std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "0");
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5 /*per_sample_tolerance*/,
+                    1e-5 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQMatMulPerAxisAxis0NotConvertedToMatMulNBits) {
+  RunDQMatMulPerAxisAxis0NotConverted<Int4x2>({12, 32}, {32, 16});
+  RunDQMatMulPerAxisAxis0NotConverted<UInt4x2>({12, 32}, {32, 16});
+}
+
+// Per-tensor DQ -> MatMul with configurable block_size session option
+template <typename T, bool use_zp>
+void RunDQMatMulPerTensorWithBlockSize(const std::vector<int64_t>& input1_shape,
+                                       const std::vector<int64_t>& weight_shape,
+                                       int64_t block_size_option) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* dq_output = builder.MakeIntermediate();
+
+    auto* scale_arg = builder.MakeInitializer<float>({}, {10.0f});
+    if constexpr (use_zp) {
+      auto* zp_arg = builder.MakeInitializer(std::vector<int64_t>{}, T(1, 0), T(1, 0));
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output});
+    } else {
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output});
+    }
+
+    builder.AddNode("MatMul", {input_arg, dq_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["MatMul"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+
+    // Verify the MatMulNBits node has the expected block_size attribute
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "MatMulNBits") {
+        auto& attrs = node.GetAttributes();
+        auto bs_iter = attrs.find("block_size");
+        ASSERT_NE(bs_iter, attrs.end());
+        int64_t expected_bs = block_size_option > 0 ? block_size_option : 32;  // default is 32
+        EXPECT_EQ(bs_iter->second.i(), expected_bs);
+      }
+    }
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn =
+      [block_size_option](SessionOptions& sess_opts) {
+        std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel, "0");
+        std::ignore = sess_opts.config_options.AddConfigEntry(
+            kOrtSessionOptionsQDQMatMulNBitsBlockSize,
+            std::to_string(block_size_option).c_str());
+      };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5 /*per_sample_tolerance*/,
+                    1e-5 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQMatMulPerTensorWithBlockSizeOption) {
+  // Default block_size (0 -> 32)
+  RunDQMatMulPerTensorWithBlockSize<Int4x2, false>({12, 32}, {32, 16}, 0);
+  // Explicit block_size=16
+  RunDQMatMulPerTensorWithBlockSize<Int4x2, true>({12, 32}, {32, 16}, 16);
+  // Explicit block_size=64
+  RunDQMatMulPerTensorWithBlockSize<UInt4x2, false>({12, 64}, {64, 16}, 64);
+  // Explicit block_size=128
+  RunDQMatMulPerTensorWithBlockSize<Int4x2, false>({12, 128}, {128, 16}, 128);
+}
+
+// UINT8 per-tensor DQ -> MatMul -> MatMulNBits
+// Tests shapes from real models including small dimensions (N=1, N=8).
+template <bool use_zp>
+void RunDQMatMulPerTensorUint8Converted(const std::vector<int64_t>& input1_shape,
+                                        const std::vector<int64_t>& weight_shape,
+                                        int64_t accuracy_level) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    auto* weight_arg = builder.MakeInitializer<uint8_t>(weight_shape, uint8_t(0), uint8_t(255));
+    auto* dq_output = builder.MakeIntermediate();
+
+    // Scalar scale (per-tensor)
+    auto* scale_arg = builder.MakeInitializer<float>({}, {0.05f});
+    if constexpr (use_zp) {
+      auto* zp_arg = builder.MakeInitializer<uint8_t>({}, {uint8_t(128)});
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output});
+    } else {
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output});
+    }
+
+    builder.AddNode("MatMul", {input_arg, dq_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    EXPECT_EQ(op_to_count["MatMul"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn{};
+  if (accuracy_level >= 0) {
+    add_session_options_fn = [accuracy_level](SessionOptions& sess_opts) {
+      std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                            std::to_string(accuracy_level).c_str());
+    };
+  }
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    0.01 /*per_sample_tolerance - higher due to blockwise accumulation reordering*/,
+                    5e-5 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQMatMulPerTensorUint8ConvertedToMatMulNBits) {
+  // Typical shapes
+  RunDQMatMulPerTensorUint8Converted<true>({12, 768}, {768, 768}, 0);
+  RunDQMatMulPerTensorUint8Converted<false>({12, 768}, {768, 768}, 0);
+  // Small N=8
+  RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 8}, 0);
+  // N=1 (smallest possible column count)
+  RunDQMatMulPerTensorUint8Converted<true>({12, 768}, {768, 1}, 0);
+  RunDQMatMulPerTensorUint8Converted<false>({12, 768}, {768, 1}, 0);
+  // Large N
+  RunDQMatMulPerTensorUint8Converted<true>({12, 768}, {768, 3072}, 0);
+}
+
+// ---------------------------------------------------------------------------
+// DQ -> Gemm tests for MatMulNBits fusion
+// ---------------------------------------------------------------------------
+
+//  Input1
+//    |      DQ (4-bit weight)
+//     \    /
+//      Gemm
+//        |
+//      output
+// Gemm has no bias, equivalent to MatMul. Should fuse to MatMulNBits.
+template <typename T, bool use_zp>
+typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
+RunDQGemmConvertedNoBias(const std::vector<int64_t>& input1_shape,
+                         const std::vector<int64_t>& weight_shape,
+                         const int64_t axis,
+                         const int64_t block_size,
+                         int64_t accuracy_level) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    NodeAttributes dq_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), dq_attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), dq_attrs);
+    std::vector<int64_t> scale_shape = weight_shape;
+    scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
+
+    auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* dq_output = builder.MakeIntermediate();
+    auto* scales_arg = builder.MakeInitializer(scale_shape, 8.0f, 12.0f);
+    if constexpr (use_zp) {
+      auto* zp_arg = builder.MakeInitializer(scale_shape, T(0, 0), T(2, 0));
+      builder.AddNode("DequantizeLinear", {weight_arg, scales_arg, zp_arg}, {dq_output}, "", &dq_attrs);
+    } else {
+      builder.AddNode("DequantizeLinear", {weight_arg, scales_arg}, {dq_output}, "", &dq_attrs);
+    }
+
+    builder.AddNode("Gemm", {input_arg, dq_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    EXPECT_EQ(op_to_count["Gemm"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn{};
+  if (accuracy_level >= 0) {
+    add_session_options_fn = [accuracy_level](SessionOptions& sess_opts) {
+      std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                            std::to_string(accuracy_level).c_str());
+    };
+  }
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5 /*per_sample_tolerance*/,
+                    2e-5 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQGemmConvertedToMatMulNBits_NoBias) {
+  RunDQGemmConvertedNoBias<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedNoBias<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedNoBias<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedNoBias<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
+}
+
+//  Input1
+//    |      DQ (4-bit weight)    bias (float)
+//     \    /                    /
+//      Gemm
+//        |
+//      output
+// Gemm has a direct (non-DQ) float bias. Should fuse to MatMulNBits with bias at input 5.
+template <typename T, bool use_zp>
+typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
+RunDQGemmConvertedWithBias(const std::vector<int64_t>& input1_shape,
+                           const std::vector<int64_t>& weight_shape,
+                           const int64_t axis,
+                           const int64_t block_size,
+                           int64_t accuracy_level) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    NodeAttributes dq_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), dq_attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), dq_attrs);
+    std::vector<int64_t> scale_shape = weight_shape;
+    scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
+
+    int64_t N = weight_shape[1];
+    auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* dq_output = builder.MakeIntermediate();
+    auto* scales_arg = builder.MakeInitializer(scale_shape, 8.0f, 12.0f);
+    if constexpr (use_zp) {
+      auto* zp_arg = builder.MakeInitializer(scale_shape, T(0, 0), T(2, 0));
+      builder.AddNode("DequantizeLinear", {weight_arg, scales_arg, zp_arg}, {dq_output}, "", &dq_attrs);
+    } else {
+      builder.AddNode("DequantizeLinear", {weight_arg, scales_arg}, {dq_output}, "", &dq_attrs);
+    }
+
+    auto* bias_arg = builder.MakeInitializer<float>({N}, std::vector<float>(static_cast<size_t>(N), 0.5f));
+    builder.AddNode("Gemm", {input_arg, dq_output, bias_arg}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    EXPECT_EQ(op_to_count["Gemm"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn{};
+  if (accuracy_level >= 0) {
+    add_session_options_fn = [accuracy_level](SessionOptions& sess_opts) {
+      std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                            std::to_string(accuracy_level).c_str());
+    };
+  }
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5 /*per_sample_tolerance*/,
+                    2e-5 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQGemmConvertedToMatMulNBits_WithBias) {
+  RunDQGemmConvertedWithBias<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedWithBias<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedWithBias<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedWithBias<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
+}
+
+//  Input1
+//    |      DQ (4-bit weight)    DQ (bias)
+//     \    /                    /
+//      Gemm
+//        |
+//      output
+// Gemm has a bias from DQ. Weight DQ fused into MatMulNBits, bias DQ stays alive,
+// bias DQ output wired to MatMulNBits input 5.
+template <typename T, bool use_zp>
+typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
+RunDQGemmConvertedWithDQBias(const std::vector<int64_t>& input1_shape,
+                             const std::vector<int64_t>& weight_shape,
+                             const int64_t axis,
+                             const int64_t block_size,
+                             int64_t accuracy_level) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    // Weight DQ
+    NodeAttributes dq_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), dq_attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), dq_attrs);
+    std::vector<int64_t> scale_shape = weight_shape;
+    scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
+
+    int64_t N = weight_shape[1];
+    auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* dq_output = builder.MakeIntermediate();
+    auto* scales_arg = builder.MakeInitializer(scale_shape, 8.0f, 12.0f);
+    if constexpr (use_zp) {
+      auto* zp_arg = builder.MakeInitializer(scale_shape, T(0, 0), T(2, 0));
+      builder.AddNode("DequantizeLinear", {weight_arg, scales_arg, zp_arg}, {dq_output}, "", &dq_attrs);
+    } else {
+      builder.AddNode("DequantizeLinear", {weight_arg, scales_arg}, {dq_output}, "", &dq_attrs);
+    }
+
+    // Bias DQ (int8 quantized bias -> float)
+    auto* bias_quantized = builder.MakeInitializer<int8_t>({N}, std::vector<int8_t>(static_cast<size_t>(N), 5));
+    auto* bias_scale = builder.MakeInitializer<float>({}, std::vector<float>{0.1f});
+    auto* bias_zp = builder.MakeInitializer<int8_t>({}, std::vector<int8_t>{0});
+    auto* bias_dq_output = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {bias_quantized, bias_scale, bias_zp}, {bias_dq_output});
+
+    builder.AddNode("Gemm", {input_arg, dq_output, bias_dq_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    EXPECT_EQ(op_to_count["Gemm"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+    // Weight DQ removed, bias DQ stays
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+  };
+
+  std::function<void(SessionOptions&)> add_session_options_fn{};
+  if (accuracy_level >= 0) {
+    add_session_options_fn = [accuracy_level](SessionOptions& sess_opts) {
+      std::ignore = sess_opts.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                            std::to_string(accuracy_level).c_str());
+    };
+  }
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5 /*per_sample_tolerance*/,
+                    2e-5 /*relative_per_sample_tolerance*/,
+                    nullptr,
+                    add_session_options_fn);
+}
+
+TEST(QDQTransformerTests, DQGemmConvertedToMatMulNBits_WithDQBias) {
+  RunDQGemmConvertedWithDQBias<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedWithDQBias<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedWithDQBias<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
+  RunDQGemmConvertedWithDQBias<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
+}
+
+// Negative test: DQ -> Gemm with transB=1 should NOT be fused.
+TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_TransB) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({12, 37}, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    // With transB=1, Gemm transposes B at runtime: weight shape [N,K]=[12,37], transposed to [K,N]=[37,12].
+    // DQ weight shape is [12,37] (N=12, K=37 after transpose).
+    NodeAttributes dq_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", static_cast<int64_t>(0)), dq_attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("block_size", static_cast<int64_t>(16)), dq_attrs);
+    auto* weight_arg = builder.MakeInitializer<Int4x2>({12, 37}, Int4x2(Int4x2::min_val, 0), Int4x2(Int4x2::max_val, 0));
+    auto* scales_arg = builder.MakeInitializer<float>({1, 37}, 8.0f, 12.0f);
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {weight_arg, scales_arg}, {dq_output}, "", &dq_attrs);
+
+    NodeAttributes gemm_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("transB", static_cast<int64_t>(1)), gemm_attrs);
+    builder.AddNode("Gemm", {input_arg, dq_output}, {output_arg}, "", &gemm_attrs);
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["Gemm"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5, 2e-5);
+}
+
+// Negative test: DQ -> Gemm with alpha != 1.0 should NOT be fused.
+TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_Alpha) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({12, 37}, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    NodeAttributes dq_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", static_cast<int64_t>(0)), dq_attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("block_size", static_cast<int64_t>(16)), dq_attrs);
+    auto* weight_arg = builder.MakeInitializer<Int4x2>({37, 12}, Int4x2(Int4x2::min_val, 0), Int4x2(Int4x2::max_val, 0));
+    auto* scales_arg = builder.MakeInitializer<float>({3, 12}, 8.0f, 12.0f);
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {weight_arg, scales_arg}, {dq_output}, "", &dq_attrs);
+
+    NodeAttributes gemm_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("alpha", 2.0f), gemm_attrs);
+    builder.AddNode("Gemm", {input_arg, dq_output}, {output_arg}, "", &gemm_attrs);
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["Gemm"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5, 2e-5);
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
