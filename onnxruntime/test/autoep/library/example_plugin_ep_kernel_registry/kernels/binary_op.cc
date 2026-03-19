@@ -130,15 +130,15 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
   std::optional<uint64_t> profiler_client_id = ep != nullptr ? ep->GetActiveProfilerClientId() : std::nullopt;
 
   if (profiler_client_id.has_value()) {
-    auto& ep_event_tracer = EpEventTracer::GetInstance();
-    uint64_t ort_event_id = ep_event_tracer.PeekOrtEventId(*profiler_client_id);
-    int64_t ts_us = std::chrono::duration_cast<std::chrono::microseconds>(kernel_start_ts.time_since_epoch()).count();
-    int64_t dur_us = std::chrono::duration_cast<std::chrono::microseconds>(
+    auto& ep_event_manager = EpEventManager::GetInstance();
+    uint64_t ort_event_id = ep_event_manager.PeekOrtEventId(*profiler_client_id);
+    int64_t ts_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel_start_ts.time_since_epoch()).count();
+    int64_t dur_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                          kernel_end_ts.time_since_epoch() - kernel_start_ts.time_since_epoch())
                          .count();
 
-    EpEventTracer::Event event = {op_type, ort_event_id, ts_us, dur_us};
-    ep_event_tracer.AddEvent(*profiler_client_id, std::move(event));
+    EpEventManager::Event event = {op_type, ort_event_id, ts_ns, dur_ns};
+    ep_event_manager.AddEpEvent(*profiler_client_id, std::move(event));
   }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

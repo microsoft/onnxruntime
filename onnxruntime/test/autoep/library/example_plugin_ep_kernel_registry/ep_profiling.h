@@ -9,132 +9,78 @@
 
 #include "../plugin_ep_utils.h"
 
-class EpEventTracer {
+/// <summary>
+/// Example implementation of OrtEpProfilerImpl. ORT obtains an instance of this EP profiler by calling
+/// OrtEp::GetProfiler().
+///
+/// ORT calls the function pointers at appropriate times during a profiling session:
+///   - StartProfiling once when profiling begins.
+///   - [Optional] StartEvent / StopEvent around each ORT event (operator executions, session events, etc.).
+///   - EndProfiling once when profiling ends to collect EP events.
+///   - Release when ORT no longer needs the profiler.
+/// </summary>
+struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
+  const OrtEpApi& ep_api;
+  int64_t profiling_start_time_ns = 0;
+  uint64_t client_id = 0;
+
+  explicit ExampleKernelEpProfiler(const OrtEpApi& api);
+  ~ExampleKernelEpProfiler();
+
+  static void ORT_API_CALL ReleaseImpl(OrtEpProfilerImpl* this_ptr) noexcept;
+  static bool ORT_API_CALL StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
+                                              int64_t profiling_start_time_ns) noexcept;
+
+  static void ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept;
+  static void ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept;
+  static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
+                                                  int64_t profiling_start_time_ns,
+                                                  OrtEpProfilingEventsContainer* events_container) noexcept;
+};
+
+/// <summary>
+/// Singleton object that stores events from this EP's kernels and manages the stack of ORT event IDs
+/// used for correlating EP events with ORT events.
+///
+/// This singleton maintains state per profiling session (i.e., a client). An OrtEpProfilerImpl must register itself
+/// as a client via RegisterClient().
+///
+/// An OrtEpProfilerImpl performs the following operations:
+///   - RegisterClient()
+///   - PushOrtEventId() / PopOrtEventId() as ORT provides events
+///   - ConsumeEvents() to get all EP events when ORT calls OrtEpProfilerImpl::EndProfiling()
+///
+/// An EP kernel performs the following operations:
+///   - PeekOrtEventId() to get the ID of the ORT event with which an EP event is correlated.
+///   - AddEvent() to add a new EP event (e.g., kernel execution start and duration)
+/// </summary>
+class EpEventManager {
  public:
   struct Event {
     std::string name;
     uint64_t ort_event_id;
-    int64_t ts_us;
-    int64_t dur_us;
+    int64_t ts_ns;
+    int64_t dur_ns;
   };
 
-  static EpEventTracer& GetInstance() {
-    static EpEventTracer instance;
-    return instance;
-  }
+  static EpEventManager& GetInstance();
 
-  uint64_t RegisterClient() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    uint64_t result = next_client_id_++;
+  uint64_t RegisterClient();
+  void UnregisterClient(uint64_t client_id);
 
-    client_state_.insert({result, {}});
-    num_clients_++;
+  void StartProfiling();
 
-    return result;
-  }
+  uint64_t PeekOrtEventId(uint64_t client_id);
+  void PushOrtEventId(uint64_t client_id, uint64_t ort_event_id);
+  void PopOrtEventId(uint64_t client_id);
 
-  void UnregisterClient(uint64_t client_id) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto iter = client_state_.find(client_id);
-    if (iter == client_state_.end()) {
-      return;
-    }
+  void AddEpEvent(uint64_t client_id, Event event);
 
-    client_state_.erase(iter);
-    --num_clients_;
-
-    if (num_clients_ == 0 && enabled_) {
-      Shutdown();
-    }
-  }
-
-  void StartProfiling() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (enabled_) {
-      return;
-    }
-
-    enabled_ = true;
-  }
-
-  uint64_t PeekOrtEventId(uint64_t client_id) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!enabled_) {
-      return 0;
-    }
-
-    auto iter = client_state_.find(client_id);
-    if (iter == client_state_.end() || iter->second.ort_event_id_stack.empty()) {
-      return 0;
-    }
-
-    return iter->second.ort_event_id_stack.back();
-  }
-
-  void PushOrtEventId(uint64_t client_id, uint64_t ort_event_id) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!enabled_) {
-      return;
-    }
-
-    auto iter = client_state_.find(client_id);
-    if (iter == client_state_.end()) {
-      return;
-    }
-
-    iter->second.ort_event_id_stack.push_back(ort_event_id);
-  }
-
-  void PopOrtEventId(uint64_t client_id) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!enabled_) {
-      return;
-    }
-
-    auto iter = client_state_.find(client_id);
-    if (iter == client_state_.end() || iter->second.ort_event_id_stack.empty()) {
-      return;
-    }
-
-    iter->second.ort_event_id_stack.pop_back();
-  }
-
-  void AddEvent(uint64_t client_id, Event event) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto iter = client_state_.find(client_id);
-
-    if (iter == client_state_.end()) {
-      return;
-    }
-
-    iter->second.events.push_back(std::move(event));
-  }
-
-  void ConsumeEvents(uint64_t client_id, std::vector<Event>& events) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!enabled_) {
-      return;
-    }
-
-    auto iter = client_state_.find(client_id);
-    if (iter == client_state_.end()) {
-      return;
-    }
-
-    events.clear();
-    std::swap(iter->second.events, events);
-  }
+  void ConsumeEvents(uint64_t client_id, std::vector<Event>& events);
 
  private:
   // Caller should hold mutex_
-  void Shutdown() {
-    if (!enabled_) {
-      return;
-    }
-
-    enabled_ = false;
-    client_state_.clear();
-  }
+  void Shutdown();
 
   struct ClientState {
     std::vector<uint64_t> ort_event_id_stack;
@@ -148,103 +94,4 @@ class EpEventTracer {
 
   // client ID -> ClientState
   std::unordered_map<uint64_t, ClientState> client_state_;
-};
-
-struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
-  const OrtEpApi& ep_api;
-  int64_t profiling_start_time_ns = 0;
-  uint64_t client_id = 0;
-
-  explicit ExampleKernelEpProfiler(const OrtEpApi& api) : OrtEpProfilerImpl{}, ep_api(api) {
-    ort_version_supported = ORT_API_VERSION;
-    Release = ReleaseImpl;
-    StartProfiling = StartProfilingImpl;
-    EndProfiling = EndProfilingImpl;
-    StartEvent = StartEventImpl;
-    StopEvent = StopEventImpl;
-
-    auto& ep_event_tracer = EpEventTracer::GetInstance();
-    client_id = ep_event_tracer.RegisterClient();
-  }
-
-  ~ExampleKernelEpProfiler() {
-    auto& ep_event_tracer = EpEventTracer::GetInstance();
-    ep_event_tracer.UnregisterClient(client_id);
-  }
-
-  static void ORT_API_CALL ReleaseImpl(OrtEpProfilerImpl* this_ptr) noexcept {
-    delete static_cast<ExampleKernelEpProfiler*>(this_ptr);
-  }
-
-  static bool ORT_API_CALL StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
-                                              int64_t profiling_start_time_ns) noexcept {
-    auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
-    auto& ep_event_tracer = EpEventTracer::GetInstance();
-    ep_event_tracer.StartProfiling();
-
-    self->profiling_start_time_ns = profiling_start_time_ns;
-    return true;
-  }
-
-  static void ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept {
-    auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
-    auto& ep_event_tracer = EpEventTracer::GetInstance();
-
-    ep_event_tracer.PushOrtEventId(self->client_id, ort_event_id);
-  }
-
-  static void ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t /*ort_event_id*/) noexcept {
-    auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
-    auto& ep_event_tracer = EpEventTracer::GetInstance();
-
-    ep_event_tracer.PopOrtEventId(self->client_id);
-  }
-
-  static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
-                                                  int64_t /*profiling_start_time_ns*/,
-                                                  OrtEpProfilingEventsContainer* events_container) noexcept {
-    auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
-    auto& ep_event_tracer = EpEventTracer::GetInstance();
-
-    std::vector<EpEventTracer::Event> raw_ep_events;
-    ep_event_tracer.ConsumeEvents(self->client_id, raw_ep_events);
-
-    if (raw_ep_events.empty()) {
-      return nullptr;
-    }
-
-    std::vector<OrtEpProfilingEvent*> events;
-    events.reserve(raw_ep_events.size());
-
-    auto cleanup_resources = [&]() {
-      for (auto* ev : events) {
-        self->ep_api.ReleaseEpProfilingEvent(ev);
-      }
-
-      events.clear();
-    };
-
-    OrtStatus* status = nullptr;
-
-    for (EpEventTracer::Event& raw_ep_event : raw_ep_events) {
-      OrtEpProfilingEvent* ev = nullptr;
-
-      status = self->ep_api.CreateEpProfilingEvent(
-          OrtEpProfilingEventCategory_KERNEL, raw_ep_event.ort_event_id, -1, -1, raw_ep_event.name.c_str(),
-          static_cast<int64_t>(raw_ep_event.ts_us), raw_ep_event.dur_us,
-          nullptr, nullptr, 0, &ev);
-
-      if (status != nullptr) {
-        cleanup_resources();
-        return status;
-      }
-      events.push_back(ev);
-    }
-
-    status = self->ep_api.EpProfilingEventsContainer_AddEvents(
-        events_container, events.data(), events.size());
-
-    cleanup_resources();
-    return status;
-  }
 };
