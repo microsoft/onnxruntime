@@ -1507,12 +1507,29 @@ TEST_P(GemmOptimizePackedTest, TestVariants) {
 // Test parameter generation
 std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
   std::vector<GemmOptimizePackedParams> params;
-
+ 
   std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {{1, 1, 1}, {1, 64, 448}, {2, 3, 4}, {8, 8, 8}, {31, 31, 31}, {32, 32, 32}, {33, 67, 99}, {37, 64, 256}, {48, 48, 120}, {60, 16, 92}, {63, 64, 65}, {64, 64, 64}, {64, 64, 65}, {72, 80, 84}, {96, 24, 48}, {128, 32, 64}, {128, 128, 128}, {129, 129, 129}, {256, 64, 1024}, {16, 768, 192}, {15, 768, 192}, {16, 768, 191}};
-
+ 
+  // Invalid/edge-case B matrix dimensions: regression test for out-of-bounds
+  // read in MlasSgemmTransposePackB when GemmPackBFp32 received invalid
+  // dimensions. B is always 2D with shape {K,N} or {N,K} (transposed).
+  // M only affects A, so only K and N variations exercise our fix.
+  std::vector<std::tuple<int64_t, int64_t, int64_t>> invalid_dim_sizes = {
+      {2, 0, 4},                                           // K=0
+      {2, 4, 0},                                           // N=0
+      {0, 4, 4},                                           // M=0 (A is empty)
+      {2, -1, 4},                                          // Negative K
+      {2, 4, -1},                                          // Negative N
+      {2, -1, -1},                                         // Both K and N negative
+      {2, std::numeric_limits<int64_t>::max(), 4},         // Huge K
+      {2, 4, std::numeric_limits<int64_t>::max()},         // Huge N
+      {2, std::numeric_limits<int64_t>::min(), 4},         // INT64_MIN K
+      {2, 4, std::numeric_limits<int64_t>::min()},         // INT64_MIN N
+  };
+ 
   std::vector<BiasType>
       bias_types = {BiasType::noBias, BiasType::MBias, BiasType::ScalarBias, BiasType::MNBias, BiasType::NBias};
-
+ 
   // Test all four transpose combinations: (transA, transB)
   std::vector<std::pair<bool, bool>> transpose_combinations = {
       {false, false},  // No transpose
@@ -1520,7 +1537,7 @@ std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
       {false, true},   // Transpose B
       {true, true}     // Transpose A and B
   };
-
+ 
   // Generate all combinations
   for (const auto& [transA, transB] : transpose_combinations) {
     for (const auto& size : test_sizes) {
@@ -1528,6 +1545,12 @@ std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
         params.push_back({std::get<0>(size), std::get<1>(size), std::get<2>(size),
                           bias_type, transA, transB});
       }
+    }
+    // Invalid dimension tests only with noBias to avoid initialize_bias
+    // trying to allocate based on negative/huge dimension values.
+    for (const auto& size : invalid_dim_sizes) {
+      params.push_back({std::get<0>(size), std::get<1>(size), std::get<2>(size),
+                        BiasType::noBias, transA, transB});
     }
   }
   return params;
