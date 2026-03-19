@@ -63,6 +63,8 @@ stages:
     pool:
       name: ${{ parameters.machine_pool }}
       os: linux
+      ${{ if eq(parameters.arch, 'aarch64') }}:
+        hostArchitecture: Arm64
     templateContext:
       outputs:
       - output: pipelineArtifact
