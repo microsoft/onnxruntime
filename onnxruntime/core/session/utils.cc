@@ -281,29 +281,58 @@ static Status CreateAndRegisterExecutionProviders(_In_ const OrtSessionOptions* 
   return Status::OK();
 }
 
-static Status GetSelectionEpInfo(const Environment& env,
-                                 const OrtSessionOptions* options,
+static Status GetSelectionEpInfo(const OrtSessionOptions* session_options,
                                  std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
-                                 std::vector<const OrtEpDevice*>& devices_selected,
+                                 std::vector<const OrtEpDevice*>& ep_devices,
                                  std::vector<SelectionEpInfo>& ep_infos) {
   // For simplicity, there are some constraints in this initial implementation:
-  // - only one EP/IExecutionProvider is supported
-  // - all devices should be supported by the same EP
+  // - Only one EP/IExecutionProvider is supported
+  // - All devices should be supported by the same EP
   ep_infos.push_back(SelectionEpInfo{});
   auto& ep_info = ep_infos.back();
 
-  // add ep name to ep_info
+  // Add ep name to ep_info
   if (!provider_list.empty()) {
     ep_info.ep_name = provider_list.front()->Type();
-  } else if (!devices_selected.empty()) {
-    ep_info.ep_name = devices_selected.front()->ep_name;
+  } else if (!ep_devices.empty()) {
+    ep_info.ep_name = ep_devices.front()->ep_name;
   }
 
-  // add ep provider options to ep_info
-  const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_info.ep_name.c_str());
+  ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
 
-  // add devices to ep_info
-  ep_info.devices = devices_selected;
+  // Add ep factory to ep_info
+  ep_info.ep_factory = (ep_devices.empty()) ? nullptr : ep_devices.front()->ep_factory;
+
+  // Add ep devices to ep_info
+  ep_info.ep_devices = ep_devices;
+
+  // Add hardware devices to ep_info
+  ep_info.hardware_devices.reserve(ep_devices.size());
+  for (const auto& ep_device : ep_devices) {
+    if (ep_device->device != nullptr) {
+      ep_info.hardware_devices.push_back(ep_device->device);
+    }
+  }
+
+  // Add ep metadata to ep_info
+  ep_info.ep_metadata.reserve(ep_devices.size());
+  for (const auto& ep_device : ep_devices) {
+    ep_info.ep_metadata.push_back(&ep_device->ep_metadata);
+  }
+
+  // Add ep provider options to ep_info
+  ProviderOptions provider_options;
+  const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_info.ep_name.c_str());
+  const auto& configs = session_options->value.config_options.configurations;
+
+  for (const auto& kv : configs) {
+    if (kv.first.rfind(ep_options_prefix, 0) == 0) {                       // starts with prefix
+      provider_options.emplace(kv.first.substr(ep_options_prefix.size()), kv.second);  // strip prefix
+    }
+  }
+  ep_info.ep_options = std::move(provider_options);
+
+  return Status::OK();
 }
 
 // Internal function that creates an InferenceSession and loads the model.
@@ -357,28 +386,29 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
   bool is_model_package = false;
 
-  // The list of devices selected by policies
-  std::vector<const OrtEpDevice*> devices_selected;
-
 #if !defined(ORT_MINIMAL_BUILD)
   if (model_path != nullptr) {
     std::error_code ec;
     std::filesystem::path package_root{model_path};
-    std::filesystem::path selected_component_path;
 
-    // Check if it's a model package directory
     if (std::filesystem::is_directory(package_root, ec) && !ec) {
       is_model_package = true;
-      std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
-      std::vector<SelectionEpInfo> ep_infos;
-
       const bool has_provider_factories = options != nullptr && !options->provider_factories.empty();
+      std::vector<const OrtEpDevice*> devices_selected;
+      std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
 
-      // The EPs should be either
-      // 1) specified by the user through session options
+      // Creates the IExecutionProvider instances
+      // 
+      // The EPs should be:
+      // 1) specified by an application through session options
       // 2) auto-selected by ORT
-      //
-      // Try to get IExecutionProvider instances.
+      // 
+      // Note: The reason to get the IExecutionProviders is because if application specifies provider-bridge EPs 
+      // using the older SessionOptionsAppendExecutionProvider_XXX APIs and provider-bridge EPs didn't implement
+      // OrtEpFactory, there won't be OrtEpDevice info available. The OrtEpDevice info associated with EPs is crucial
+      // for component selection in the model package scenario.
+      // The ep factory (as IExecutionProviderFactory) in session options can't get much info about the ep itself.
+      // Therefore, the IExecutionProvider needs to be created first.
       if (has_provider_factories) {
         for (auto& factory : options->provider_factories) {
           auto provider = factory->CreateProvider(*options, *logging::LoggingManager::DefaultLogger().ToExternal());
@@ -429,36 +459,35 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
         }
       }
 
-      // Get EP instance.
+      // Get the EP info from finalized EPs.
+      // 
+      // Note: The EP info could be different depending on how the EP is added.
       // - provider-bridge EP:
       //   - Using SessionOptionsAppendExecutionProvider_XXX: Only EP name, no OrtEpDevice info is available.
-      //   - Using SessionOptionsAppendExecutionprovider_V2:
-      //   - autoep selection:                               Both EP name and OrtEpDevice info are available.
-      //                                                     provider-bridge EP needs to implement OrtEpFactory,
-      //                                                     and applications need to call RegisterExecutionProviderLibrary to register EP dll.
-      //
+      //   - Using SessionOptionsAppendExecutionprovider_V2 : Both EP name and OrtEpDevice info are available.
+      //                                                      provider-bridge EP needs to implement OrtEpFactory,
+      //                                                      and applications need to call RegisterExecutionProviderLibrary to register EP dll.
+      //   - autoep selection: same as above.      
       //
       // - plugin EP:
-      //   - Using SessionOptionsAppendExecutionprovider_V2:
-      //   - autoep selection:                               Both EP name and OrtEpDevice info are available.
+      //   - Using SessionOptionsAppendExecutionprovider_V2:  Both EP name and OrtEpDevice info are available.
+      //   - autoep selection: same as above.
       //
-      //
-      // Get provider options.
+      std::vector<SelectionEpInfo> ep_infos;
+      ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(options, provider_list, devices_selected, ep_infos));
 
-      ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(env, options, provider_list, devices_selected, ep_infos));
-
-      // Once EPs are known, parse the manifest json.
+      // Once EPs are determined, parse the manifest json.
       ModelPackageManifestParser parser(logging::LoggingManager::DefaultLogger());
       std::vector<EpContextVariantInfo> components;
       ORT_API_RETURN_IF_STATUS_NOT_OK(parser.ParseManifest(package_root, components));
 
-      /*
-      ModelPackageContext mp_context;
-      if (auto selected = SelectModelPackageComponent(components, options)) {
-        selected_component_path = *selected;
-        model_path_to_use = selected_component_path.c_str();
+      // Select the appropriate component based on the session options and EP availability.
+      ModelPackageContext context;
+      std::optional<std::filesystem::path> component_path;
+      ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectComponent(env, components, ep_infos, component_path));
+      if (component_path.has_value()) {
+        model_path_to_use = component_path->c_str();
       }
-      */
     }
   }
 #endif
