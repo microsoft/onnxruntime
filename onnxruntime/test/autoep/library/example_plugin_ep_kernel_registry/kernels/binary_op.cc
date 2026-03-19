@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <chrono>
 #include <gsl/span>
 #include <sstream>
 #include "binary_op.h"
 #include "utils.h"
 #include "../ep.h"
+#include "../ep_profiling.h"
 
 // Defines a kernel creation function for version 14 of Mul.
 ONNX_OPERATOR_KERNEL_EX(
@@ -71,7 +73,10 @@ void ORT_API_CALL BinaryOp::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 /*static*/
 OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto kernel_start_ts = std::chrono::high_resolution_clock::now();
+
   BinaryOp* binary_op_kernel = static_cast<BinaryOp*>(this_ptr);
+  const ExampleKernelEp* ep = static_cast<const ExampleKernelEp*>(binary_op_kernel->info_.GetEp());
 
   Ort::KernelContext kernel_context(kernel_ctx);
 
@@ -121,6 +126,20 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
     }
   }
 
+  auto kernel_end_ts = std::chrono::high_resolution_clock::now();
+  std::optional<uint64_t> profiler_client_id = ep != nullptr ? ep->GetActiveProfilerClientId() : std::nullopt;
+
+  if (profiler_client_id.has_value()) {
+    auto& ep_event_tracer = EpEventTracer::GetInstance();
+    uint64_t ort_event_id = ep_event_tracer.PeekOrtEventId(*profiler_client_id);
+    int64_t ts_us = std::chrono::duration_cast<std::chrono::microseconds>(kernel_start_ts.time_since_epoch()).count();
+    int64_t dur_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                         kernel_end_ts.time_since_epoch() - kernel_start_ts.time_since_epoch())
+                         .count();
+
+    EpEventTracer::Event event = {op_type, ort_event_id, ts_us, dur_us};
+    ep_event_tracer.AddEvent(*profiler_client_id, std::move(event));
+  }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
