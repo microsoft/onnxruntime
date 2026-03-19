@@ -34,7 +34,6 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
                                           const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  const size_t original_num_nodes = graph.NumberOfNodes();
 
   auto get_bias_info = [&](Graph& g, NodeArg& bias_arg, bool& is_1d_bias, int64_t& bias_hidden_size) {
     is_1d_bias = false;
@@ -270,11 +269,6 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
                     std::get<2>(edge_info));
     }
 
-    modified = true;
-  }
-
-  // Set 'modified' based on whether the number of nodes in the graph changed.
-  if (graph.NumberOfNodes() != original_num_nodes) {
     modified = true;
   }
 
