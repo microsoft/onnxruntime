@@ -80,7 +80,7 @@ QNBitGemmPackQuantBDataSize(
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
 
-        if (ComputeType == SQNBIT_CompInt8) {
+        if (ComputeType == SQNBIT_CompInt8 || ComputeType == HQNBIT_CompInt8) {
             const size_t ScaleSize = N * BlockCountK * sizeof(float);
             size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
 
@@ -122,7 +122,7 @@ SQ4BitGemmPackQuantBData(
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    const size_t SubBlkLen = (ComputeType == SQNBIT_CompInt8)
+    const size_t SubBlkLen = (ComputeType == SQNBIT_CompInt8 || ComputeType == HQNBIT_CompInt8)
                                  ? ((BlkLen == 16) ? 16 : 32)
                                  : 16;
 
@@ -437,6 +437,12 @@ QNBitGemmPerGemmWorkspaceSize(
                 return PerGemmWorkspaceSize;
             }
         }
+        case HQNBIT_CompInt8: {
+            // Same workspace layout as SQNBIT_CompInt8 for block quantization of A to int8
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
+            return PerGemmWorkspaceSize;
+        }
         default: {
             return 0;
         }
@@ -452,7 +458,8 @@ QNBitGemmPerGemmWorkspaceAlignment(
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
 
     switch (ComputeType) {
-        case SQNBIT_CompInt8: {
+        case SQNBIT_CompInt8:
+        case HQNBIT_CompInt8: {
             return Q8BlkAlignment();
         }
         default: {
@@ -607,6 +614,8 @@ GetMlasQNBitGemmDispatchNeon(
         d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
         d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
         d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+        d.HQ8BitGemmPackQuantBData = sqnbitgemm_neon::HQ8BitGemmPackQuantBData_CompFp16;
+        d.HQ8BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ8BitBlkDequantBForHgemm_CompFp16;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
         return d;

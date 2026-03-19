@@ -24,7 +24,15 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, Ru
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
     os.add_dll_directory(os.getcwd())
 
-available_providers = list(onnxrt.get_available_providers())
+available_providers = [
+    (
+        ep,
+        {"enable_cann_subgraph": True},
+    )
+    if ep == "CANNExecutionProvider"
+    else ep
+    for ep in onnxrt.get_available_providers()
+]
 
 # TVM EP doesn't support:
 # * calling Run() on different threads using the same session object
@@ -38,13 +46,13 @@ available_providers = list(onnxrt.get_available_providers())
 # * testSequenceInsert
 # * testSequenceLength
 available_providers_without_tvm = [
-    provider for provider in onnxrt.get_available_providers() if provider not in {"TvmExecutionProvider"}
+    ep for ep in available_providers if (ep[0] if isinstance(ep, tuple) else ep) not in {"TvmExecutionProvider"}
 ]
 
 available_providers_without_tvm_and_tensorrt = [
-    provider
-    for provider in onnxrt.get_available_providers()
-    if provider not in {"TvmExecutionProvider", "TensorrtExecutionProvider"}
+    ep
+    for ep in available_providers_without_tvm
+    if (ep[0] if isinstance(ep, tuple) else ep) not in {"TensorrtExecutionProvider"}
 ]
 
 
@@ -706,7 +714,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_run_model_from_bytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
-        sess = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(content, providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -721,7 +729,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2(self):
-        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -736,7 +744,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2_contiguous(self):
-        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=available_providers)
         x = np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)[:, [1, 0]]
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -811,7 +819,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(result, q.get())
 
     def test_list_as_input(self):
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x.tolist()})
@@ -1014,7 +1022,7 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
             sess_options=so,
-            providers=onnxrt.get_available_providers(),
+            providers=available_providers,
         )
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         sess.run([], {"X": x})
@@ -1350,7 +1358,7 @@ class TestInferenceSession(unittest.TestCase):
         )
 
     def test_ort_value(self):
-        providers_to_test = onnxrt.get_available_providers()
+        providers_to_test = available_providers
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
@@ -1601,8 +1609,12 @@ class TestInferenceSession(unittest.TestCase):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         self.assertEqual(cpu_device.device_id(), 0)
         self.assertEqual(cpu_device.device_type(), 0)
-        self.assertEqual(cpu_device.device_vendor_id(), 0)
+        self.assertEqual(cpu_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NONE)
         self.assertEqual(cpu_device.device_mem_type(), 0)
+
+        cuda_device = onnxrt.OrtDevice.make("cuda", 0)
+        self.assertEqual(cuda_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NVIDIA)
+        self.assertEqual(onnxrt.OrtDeviceVendorId.NVIDIA, 0x10DE)
 
     def test_ort_memory_info(self):
         cpu_memory_info = onnxrt.OrtMemoryInfo(

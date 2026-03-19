@@ -139,8 +139,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q8BitGemmPackQuantBDataSize_Fn* Q8BitGemmPackQuantBDataSize = nullptr;
 
-    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
-    typedef void(Q4BitGemmPackQuantBData_Fn)(
+    /** Packs quantized B data containing n-bit integers. See MlasQNBitGemmPackQuantBData(). */
+    typedef void(QNBitGemmPackQuantBData_Fn)(
         size_t N,
         size_t K,
         size_t BlkLen,
@@ -151,8 +151,15 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
+    /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
+    typedef QNBitGemmPackQuantBData_Fn Q4BitGemmPackQuantBData_Fn;
+
+    /** Packs quantized B data containing 8-bit integers. See MlasQNBitGemmPackQuantBData(). */
+    typedef QNBitGemmPackQuantBData_Fn Q8BitGemmPackQuantBData_Fn;
+
     Q4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
     Q4BitGemmPackQuantBData_Fn* HQ4BitGemmPackQuantBData = nullptr;
+    Q8BitGemmPackQuantBData_Fn* HQ8BitGemmPackQuantBData = nullptr;
 
     typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
         size_t N,
@@ -325,6 +332,12 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     );
 
     Q4BitBlkDequantBForSgemm_CompFp16_Fn* HQ4BitBlkDequantBForHgemm_CompFp16 = nullptr;
+
+    /**
+     * @brief Dequantize 8-bit quantized B into fp16 format for HGEMM.
+     *        Uses the same signature as the 4-bit variant.
+     */
+    Q4BitBlkDequantBForSgemm_CompFp16_Fn* HQ8BitBlkDequantBForHgemm_CompFp16 = nullptr;
 
     //
     // SQNBIT_CompInt8 kernel function prototypes.

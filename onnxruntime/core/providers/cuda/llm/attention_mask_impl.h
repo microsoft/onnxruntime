@@ -24,13 +24,16 @@ namespace cuda {
 //   seqlens_k[b] = num_true_tokens + seqlen_offset
 //
 // Common offsets:
-//   0: actual token count (for prompt with mha_fwd_kvcache, MEA custom right padding)
+//   0: total valid token count (for decode Step 4 where mha_fwd_kvcache reads from
+//      pre-populated cache with k_new=nullptr, and for MEA custom right padding)
 //  -N: subtract N from count (for decode with mha_fwd_kvcache where N=kv_sequence_length,
 //      giving the number of tokens already in cache BEFORE appending new ones)
 //
 // Note: Mask validity (right-padding convention, contiguous True/False)
-//   is checked asynchronously via CUDA_KERNEL_ASSERT inside the kernel. Invalid masks will
-//   trigger a device-side assertion failure.
+//   is checked via CUDA_KERNEL_ASSERT inside the kernel (debug builds only).
+//   In release builds, non-contiguous masks produce memory-safe but semantically incorrect output:
+//   seqlens_k is computed as the count of leading True values (up to the first False),
+//   ignoring any True values that appear after the first False.
 Status LaunchConvertMaskToFlashSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,

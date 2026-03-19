@@ -380,5 +380,11 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   return BaseCompute(context, roi_array, scales_array, output_dims);
 }
 
+template class Upsample<float>;
+template class Upsample<double>;
+template class Upsample<MLFloat16>;
+template class Upsample<int32_t>;
+template class Upsample<uint8_t>;
+
 }  // namespace cuda
 }  // namespace onnxruntime

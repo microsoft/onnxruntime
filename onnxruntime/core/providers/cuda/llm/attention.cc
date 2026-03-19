@@ -8,6 +8,7 @@
 #include "core/providers/cuda/llm/attention_mask_impl.h"
 #include "contrib_ops/cuda/bert/attention_data.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_kv_cache.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
@@ -187,7 +188,8 @@ Status Attention<T>::ConvertAttnMaskToBias(
 //    (B, H, total_seq, head_size) where total_seq = past_seq + kv_seq.
 //    Since past and present have different shapes, they cannot share the same buffer.
 //    Contrib GQA allows past and present to be the same tensor (in-place append),
-//    eliminating the memset + strided copy overhead (~67MB per decode step for typical LLM).
+//    eliminating the concat copy overhead. ONNX Attention uses LaunchConcatNewToPastKV
+//    to fuse past copy + new token append in one kernel (no memset or strided copy).
 //    This overhead does NOT apply to the external-cache path (TensorScatter +
 //    nonpad_kv_seqlen), which bypasses past/present entirely.
 //
@@ -310,70 +312,44 @@ Status Attention<T>::RunFlashAttention(
     ORT_ENFORCE(present_key != nullptr && present_value != nullptr,
                 "present_key/value outputs are required when past_key is provided.");
 
-    // Zero present buffers before strided copy to avoid stale data in positions
-    // beyond past_seq that mha_fwd_kvcache might read during attention (matching GQA pattern).
-    // NOTE: This memset + strided copy is the main decode overhead vs contrib GQA.
-    // See PERFORMANCE NOTE above for why buffer sharing is impossible under the ONNX spec.
-    const size_t num_kv_rows = static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads;
-    const size_t present_k_bytes = num_kv_rows * parameters.total_sequence_length *
-                                   parameters.head_size * sizeof(T);
-    const size_t present_v_bytes = num_kv_rows * parameters.total_sequence_length *
-                                   parameters.v_head_size * sizeof(T);
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_key->MutableData<T>(), 0,
-                                         present_k_bytes, cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_value->MutableData<T>(), 0,
-                                         present_v_bytes, cuda_stream));
+    // TODO(titaiwang): Consolidate preprocessing (RoPE, mask conversion, KV cache concat) into a
+    // single fused kernel like GQA's LaunchUnpackRoPEAppend. Current decode path uses 4-6 kernel
+    // launches; a fused approach would reduce to ~2, saving ~21μs launch overhead and ~256KB
+    // intermediate buffer traffic per decode step.
 
-    // Copy past KV (BNSH) into present buffers (BNSH). Strided copy because
-    // past has [B, N_kv, past_seq, H] and present has [B, N_kv, total_seq, H].
-    const size_t past_k_row_bytes = static_cast<size_t>(parameters.past_sequence_length) *
-                                    parameters.head_size * sizeof(T);
-    const size_t present_k_row_bytes = static_cast<size_t>(parameters.total_sequence_length) *
-                                       parameters.head_size * sizeof(T);
-    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(
-        present_key->MutableData<T>(), present_k_row_bytes,
-        past_key->Data<T>(), past_k_row_bytes,
-        past_k_row_bytes, num_kv_rows,
-        cudaMemcpyDeviceToDevice, cuda_stream));
+    // Concat past + new KV directly into present buffers using a single fused kernel.
+    // This replaces the old pattern of memset + strided cudaMemcpy2DAsync + Flash's
+    // internal Append_KV, eliminating redundant memory writes per decode step (proportional to B×H×total_seq×head_size).
+    // LaunchConcatNewToPastKV reads past (BNSH) and new (BSNH), writes present (BNSH).
+    // OrtToCudaType maps BFloat16 → __nv_bfloat16 (native HW arithmetic on SM80+),
+    // consistent with GQA's early native-type conversion pattern.
+    using NativeCudaT = typename OrtToCudaType<T>::type;
 
-    const size_t past_v_row_bytes = static_cast<size_t>(parameters.past_sequence_length) *
-                                    parameters.v_head_size * sizeof(T);
-    const size_t present_v_row_bytes = static_cast<size_t>(parameters.total_sequence_length) *
-                                       parameters.v_head_size * sizeof(T);
-    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(
-        present_value->MutableData<T>(), present_v_row_bytes,
-        past_value->Data<T>(), past_v_row_bytes,
-        past_v_row_bytes, num_kv_rows,
-        cudaMemcpyDeviceToDevice, cuda_stream));
-
-    // seqlens_k: derive per-batch sequence lengths for the KV cache.
-    // mha_fwd_kvcache expects seqlens_k = tokens already in cache BEFORE appending new ones.
-    // When a bool mask is present, it encodes total valid token count (past + new).
-    // Subtract kv_sequence_length to get the pre-append count.
-    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    // Step 1: Compute per-batch past sequence lengths for the concat kernel.
+    // The concat kernel needs past_seq_lens to know where past data ends and new begins.
+    auto past_seqlens_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
       size_t mask_dims = attn_mask->Shape().NumDimensions();
       auto dims = attn_mask->Shape().GetDims();
       int64_t mask_dim0 = dims[0];
       int64_t mask_dim1 = mask_dims >= 3 ? dims[1] : 0;
       int64_t mask_dim2 = mask_dims >= 4 ? dims[2] : 0;
-      // Offset: mask gives total valid count, subtract kv_sequence_length for pre-append count.
+      // Offset -kv_seq: mask encodes total valid count; subtract to get past-only count.
       int seqlen_offset = -parameters.kv_sequence_length;
       ORT_RETURN_IF_ERROR(LaunchConvertMaskToFlashSeqlensK(
-          attn_mask->Data<bool>(), seqlens_k_buffer.get(),
+          attn_mask->Data<bool>(), past_seqlens_buffer.get(),
           parameters.batch_size, parameters.total_sequence_length,
           static_cast<int>(mask_dims), mask_dim0, mask_dim1, mask_dim2,
           cuda_stream, device_prop.maxThreadsPerBlock, seqlen_offset));
     } else {
-      ORT_RETURN_IF_ERROR(LaunchFillInt32(seqlens_k_buffer.get(), parameters.past_sequence_length,
+      ORT_RETURN_IF_ERROR(LaunchFillInt32(past_seqlens_buffer.get(), parameters.past_sequence_length,
                                           parameters.batch_size, cuda_stream,
                                           device_prop.maxThreadsPerBlock));
     }
 
-    // K/V new tokens: mha_fwd_kvcache expects BSNH for k_new/v_new.
-    // When !is_bsnh (4D BNSH input), transpose new tokens to BSNH.
-    const void* k_new = K->Data<T>();
-    const void* v_new = V->Data<T>();
+    // Step 2: Transpose K/V to BSNH if input is 4D BNSH (concat kernel reads new as BSNH).
+    const T* k_new_bsnh = K->Data<T>();
+    const T* v_new_bsnh = V->Data<T>();
     IAllocatorUniquePtr<void> k_bsnh_buffer;
     IAllocatorUniquePtr<void> v_bsnh_buffer;
     if (!is_bsnh) {
@@ -393,18 +369,74 @@ Status Attention<T>::RunFlashAttention(
           parameters.kv_num_heads, parameters.v_head_size,
           V->Data<T>(), v_bsnh_buffer.get(),
           cuda_stream, device_prop.maxThreadsPerBlock));
-      k_new = k_bsnh_buffer.get();
-      v_new = v_bsnh_buffer.get();
+      k_new_bsnh = static_cast<const T*>(k_bsnh_buffer.get());
+      v_new_bsnh = static_cast<const T*>(v_bsnh_buffer.get());
     }
 
-    // mha_fwd_kvcache: present_key/value as cache (BNSH), K/V as new tokens (BSNH).
-    // The kernel appends new tokens at position seqlens_k[b] and attends to all.
+    // Step 3: Fused concat: past_key + new_key → present_key (and same for values).
+    // One kernel copies past data from [0, past_seq) and new data from BSNH layout
+    // into present buffer at [past_seq, past_seq + kv_seq), all in BNSH.
+    // Note: is_bsnh=false means past/present cache layout is BNSH. New tokens
+    // (k_new_bsnh/v_new_bsnh) are always read as BSNH by the kernel (hardcoded strides).
+    // NOTE: When bool masks produce variable per-batch past_seq_lens, positions in the range
+    // [past_seq_lens[b] + kv_sequence_length, total_sequence_length) for each batch b are left
+    // uninitialized by the concat kernel. Flash Attention reads only up to seqlens_k[b] positions
+    // per batch, so these values are never accessed. In the no-mask case (uniform past_seq_lens),
+    // every position in the present buffer is written.
+    ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<NativeCudaT>(
+        parameters.batch_size,
+        parameters.kv_num_heads,
+        parameters.head_size,
+        parameters.kv_sequence_length,
+        parameters.past_sequence_length,
+        parameters.total_sequence_length,
+        /*is_bsnh=*/false,
+        past_seqlens_buffer.get(),
+        /*total_seq_lens=*/nullptr,
+        reinterpret_cast<const NativeCudaT*>(past_key->Data<T>()),
+        reinterpret_cast<const NativeCudaT*>(past_value->Data<T>()),
+        reinterpret_cast<const NativeCudaT*>(k_new_bsnh),
+        reinterpret_cast<const NativeCudaT*>(v_new_bsnh),
+        reinterpret_cast<NativeCudaT*>(present_key->MutableData<T>()),
+        reinterpret_cast<NativeCudaT*>(present_value->MutableData<T>()),
+        cuda_stream,
+        device_prop.maxThreadsPerBlock,
+        /*past_only=*/false));
+
+    // Step 4: Compute total seqlens for mha_fwd_kvcache.
+    // With k_new=nullptr, the kernel treats seqlens_k as the total valid token count
+    // (not pre-append count), so we need past + new.
+    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
+      size_t mask_dims = attn_mask->Shape().NumDimensions();
+      auto dims = attn_mask->Shape().GetDims();
+      int64_t mask_dim0 = dims[0];
+      int64_t mask_dim1 = mask_dims >= 3 ? dims[1] : 0;
+      int64_t mask_dim2 = mask_dims >= 4 ? dims[2] : 0;
+      // Offset 0: mask encodes total valid count, which is exactly what we need.
+      int seqlen_offset = 0;
+      ORT_RETURN_IF_ERROR(LaunchConvertMaskToFlashSeqlensK(
+          attn_mask->Data<bool>(), seqlens_k_buffer.get(),
+          parameters.batch_size, parameters.total_sequence_length,
+          static_cast<int>(mask_dims), mask_dim0, mask_dim1, mask_dim2,
+          cuda_stream, device_prop.maxThreadsPerBlock, seqlen_offset));
+    } else {
+      ORT_RETURN_IF_ERROR(LaunchFillInt32(
+          seqlens_k_buffer.get(),
+          parameters.past_sequence_length + parameters.kv_sequence_length,
+          parameters.batch_size, cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    }
+
+    // Step 5: Flash attention on pre-populated cache.
+    // k_new=nullptr tells mha_fwd_kvcache to skip its internal Append_KV — the cache
+    // is already fully populated by LaunchConcatNewToPastKV above.
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
         device_prop, cuda_stream,
         const_cast<void*>(q_data),
         static_cast<void*>(present_key->MutableData<T>()),
         static_cast<void*>(present_value->MutableData<T>()),
-        const_cast<void*>(k_new), const_cast<void*>(v_new),
+        /*k_new=*/nullptr, /*v_new=*/nullptr,
         out_data,
         softmax_lse_buffer.get(),
         static_cast<void*>(seqlens_k_buffer.get()),
@@ -414,7 +446,7 @@ Status Attention<T>::RunFlashAttention(
         parameters.batch_size, parameters.q_num_heads, parameters.kv_num_heads,
         parameters.head_size,
         parameters.q_sequence_length, parameters.total_sequence_length,
-        parameters.kv_sequence_length, /*rotary_dim=*/0,
+        /*seqlen_k_new=*/0, /*rotary_dim=*/0,
         parameters.scale, parameters.softcap,
         parameters.is_causal, is_bf16, /*use_smooth_softmax=*/false,
         /*past_bsnh=*/false,  // present cache is BNSH
@@ -801,7 +833,7 @@ Status Attention<T>::RunUnfusedAttention(
     Tensor* Y, Tensor* present_key, Tensor* present_value,
     Tensor* output_qk,
     const attention_helper::AttentionParameters& parameters) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  using CudaT = typename ToCudaType<T>::MappedType;
   auto& device_prop = GetDeviceProp();
   auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
 
@@ -1057,7 +1089,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   //   Flash: cannot handle this combo (no bias param when seqlens_k is used) → excluded.
   //   MEA:   supports both (custom_right_padding for seqlens + additive attn_bias for mask).
   //   Unfused: nonpad → attention_bias; mask composed additively when both present.
+#if USE_FLASH_ATTENTION || USE_MEMORY_EFFICIENT_ATTENTION
   const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
+#endif
 
   // Early-reject features not supported by any CUDA kernel path.
   // TODO(titaiwang): Support softcap and softmax_precision on CUDA kernels.
