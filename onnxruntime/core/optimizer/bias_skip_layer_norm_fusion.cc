@@ -145,9 +145,22 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
       if (!is_1d_bias) {
         return false;
       }
-      // When both sizes are known, reject if they are incompatible.
+      // Verify the bias length matches the SLN hidden size.
+      // Try gamma/beta first; if not available, fall back to the last dimension of the Add's
+      // non-bias input (the MatMul/Cast output, whose last dim equals the hidden size).
       int64_t sln_hidden_size = get_sln_hidden_size(sln_node);
-      if (sln_hidden_size != -1 && bias_hidden_size != -1 && sln_hidden_size != bias_hidden_size) {
+      if (sln_hidden_size == -1) {
+        const NodeArg* non_bias_arg = candidate_add->MutableInputDefs()[add_matmul_input_idx];
+        const TensorShapeProto* non_bias_shape = non_bias_arg->Shape();
+        if (non_bias_shape != nullptr && non_bias_shape->dim_size() > 0) {
+          const auto& last_dim = non_bias_shape->dim(non_bias_shape->dim_size() - 1);
+          if (last_dim.has_dim_value()) {
+            sln_hidden_size = last_dim.dim_value();
+          }
+        }
+      }
+      // Require positive proof that bias length == hidden size; bail if either is still unknown.
+      if (sln_hidden_size == -1 || bias_hidden_size == -1 || sln_hidden_size != bias_hidden_size) {
         return false;
       }
       p_add = candidate_add;
