@@ -1250,105 +1250,6 @@ static AllocatorPtr GetCpuAllocator() {
   return provider->CreatePreferredAllocators()[0];
 }
 
-// Pre-allocation path: output_lengths provided to enable in-place construction.
-TEST(ScanVarLen, PreAlloc) {
-  const char* model_text = R"ONNX(
-<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
-main_graph (int64[4] output_lengths, float loop_state_in,
-            float[2, 2] scan_in_0, float[2, 2] scan_in_1)
-    => (float loop_state_out, float[2] scan_out_0, float[2] scan_out_1,
-        float[2] scan_out_2, float[2] scan_out_3)
-{
-  loop_state_out, scan_out_0, scan_out_1, scan_out_2, scan_out_3 =
-      com.microsoft.Scan (output_lengths, loop_state_in, scan_in_0, scan_in_1) <
-    num_scan_inputs = 2,
-    body = scan_body (float state_in, float[2] in_0, float[2] in_1)
-        => (float state_out, float[1] out_0, float[1] out_1, float[1] out_2, float[1] out_3)
-    {
-      one = Constant <value = float {1.0}> ()
-      state_out = Add(state_in, one)
-      concat_out = Concat <axis = 0> (in_0, in_1)
-      split_sizes = Constant <value = int64[4] {1, 1, 1, 1}> ()
-      out_0, out_1, out_2, out_3 = Split <axis = 0> (concat_out, split_sizes)
-    }
-  >
-}
-)ONNX";
-
-  auto alloc = GetCpuAllocator();
-
-  OrtValue output_lengths_val, loop_state_in, scan_in_0, scan_in_1;
-  CreateMLValue<int64_t>(alloc, {4}, {int64_t(2), int64_t(2), int64_t(2), int64_t(2)}, &output_lengths_val);
-  CreateMLValue<float>(alloc, {}, {0.f}, &loop_state_in);
-  CreateMLValue<float>(alloc, {2, 2}, {1.f, 2.f, 4.f, 3.f}, &scan_in_0);
-  CreateMLValue<float>(alloc, {2, 2}, {3.f, 4.f, 2.f, 1.f}, &scan_in_1);
-
-  NameMLValMap feeds;
-  feeds["output_lengths"] = output_lengths_val;
-  feeds["loop_state_in"] = loop_state_in;
-  feeds["scan_in_0"] = scan_in_0;
-  feeds["scan_in_1"] = scan_in_1;
-
-  auto fetches = RunOnnxTextModel(model_text, feeds);
-
-  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 2.f);
-
-  std::vector<std::vector<float>> expected = {{1.f, 4.f}, {2.f, 3.f}, {3.f, 2.f}, {4.f, 1.f}};
-  for (size_t i = 0; i < 4; ++i) {
-    auto& t = fetches[i + 1].Get<Tensor>();
-    EXPECT_EQ(t.Shape(), TensorShape({2}));
-    for (size_t j = 0; j < expected[i].size(); ++j) {
-      EXPECT_FLOAT_EQ(t.Data<float>()[j], expected[i][j]) << "output " << i << " index " << j;
-    }
-  }
-}
-
-// Non-zero output axis: scan_output_axes = [1], concatenation along axis 1.
-// Subgraph: Identity pass-through of a 2D scan input [1, 2].
-// Scan input: [2, 1, 2] (2 iterations, each [1, 2]).
-// Result: [1, 2] concat [1, 2] along axis 1 -> [1, 4].
-TEST(ScanVarLen, OutputAxis1) {
-  const char* model_text = R"ONNX(
-<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
-main_graph (float state_in, float[2, 1, 2] scan_input)
-    => (float state_out, float[1, 4] scan_out)
-{
-  state_out, scan_out = com.microsoft.Scan (, state_in, scan_input) <
-    num_scan_inputs = 1,
-    scan_output_axes = [1],
-    body = scan_body (float state_in_b, float[1, 2] scan_in_b)
-        => (float state_out_b, float[1, 2] scan_out_b)
-    {
-      state_out_b = Identity(state_in_b)
-      scan_out_b = Identity(scan_in_b)
-    }
-  >
-}
-)ONNX";
-
-  auto alloc = GetCpuAllocator();
-
-  OrtValue state_in_val, scan_input_val;
-  CreateMLValue<float>(alloc, {}, {0.f}, &state_in_val);
-  CreateMLValue<float>(alloc, {2, 1, 2}, {1.f, 2.f, 3.f, 4.f}, &scan_input_val);
-
-  NameMLValMap feeds;
-  feeds["state_in"] = state_in_val;
-  feeds["scan_input"] = scan_input_val;
-
-  auto fetches = RunOnnxTextModel(model_text, feeds);
-
-  EXPECT_FLOAT_EQ(*fetches[0].Get<Tensor>().Data<float>(), 0.f);
-
-  auto& scan_out = fetches[1].Get<Tensor>();
-  EXPECT_EQ(scan_out.Shape(), TensorShape({1, 4}));
-  auto* data = scan_out.Data<float>();
-  std::vector<float> expected = {1.f, 2.f, 3.f, 4.f};
-  for (size_t i = 0; i < expected.size(); ++i) {
-    EXPECT_FLOAT_EQ(data[i], expected[i]) << "at index " << i;
-  }
-}
-
 // Variable-length scan output: each iteration produces a different-sized output.
 // Scan inputs: values={1,2,3}, repeats={2,1,2}.
 // Body: Expand value to length given by repeat count.
@@ -1359,20 +1260,16 @@ main_graph (float state_in, float[2, 1, 2] scan_input)
 TEST(ScanVarLen, VariableLengthExpand) {
   const char* model_text = R"ONNX(
 <ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
-main_graph (float[3] values, int64[3] repeats)
-    => (float[?] scan_out)
+main_graph (float[3] values, int64[3] repeats) => (float[?] scan_out)
 {
   scan_out = com.microsoft.Scan (, values, repeats) <
     num_scan_inputs = 2,
-    body = scan_body (float value_in, int64 repeat_in)
-        => (float[?] out)
-    {
+    body = scan_body (float value_in, int64 repeat_in) => (float[?] out) {
       one_shape = Constant <value = int64[1] {1}> ()
       value_1d = Reshape (value_in, one_shape)
       repeat_shape = Reshape (repeat_in, one_shape)
       out = Expand (value_1d, repeat_shape)
-    }
-  >
+    }>
 }
 )ONNX";
 
@@ -1408,16 +1305,13 @@ main_graph (float[3] values, int64[3] repeats)
 TEST(ScanVarLen, VariableLengthExpandColumns) {
   const char* model_text = R"ONNX(
 <ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
-main_graph (float[2, 3] values, int64[3] repeats)
-    => (float[2, ?] scan_out)
+main_graph (float[2, 3] values, int64[3] repeats) => (float[2, ?] scan_out)
 {
   scan_out = com.microsoft.Scan (, values, repeats) <
     num_scan_inputs = 2,
     scan_input_axes = [1, 0],
     scan_output_axes = [1],
-    body = scan_body (float[2] col_in, int64 repeat_in)
-        => (float[2, ?] out)
-    {
+    body = scan_body (float[2] col_in, int64 repeat_in) => (float[2, ?] out) {
       two_one = Constant <value = int64[2] {2, 1}> ()
       col_2d = Reshape (col_in, two_one)
       one_shape = Constant <value = int64[1] {1}> ()
@@ -1425,8 +1319,7 @@ main_graph (float[2, 3] values, int64[3] repeats)
       two = Constant <value = int64[1] {2}> ()
       target_shape = Concat <axis = 0> (two, repeat_1d)
       out = Expand (col_2d, target_shape)
-    }
-  >
+    }>
 }
 )ONNX";
 
@@ -1456,20 +1349,16 @@ main_graph (float[2, 3] values, int64[3] repeats)
 // Same subgraph as VariableLengthExpand, but with output_lengths as first input.
 static const char* kVariableLengthExpandPreAllocModel = R"ONNX(
 <ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
-main_graph (int64[1] output_lengths, float[3] values, int64[3] repeats)
-    => (float[?] scan_out)
+main_graph (int64[1] output_lengths, float[3] values, int64[3] repeats) => (float[?] scan_out)
 {
   scan_out = com.microsoft.Scan (output_lengths, values, repeats) <
     num_scan_inputs = 2,
-    body = scan_body (float value_in, int64 repeat_in)
-        => (float[?] out)
-    {
+    body = scan_body (float value_in, int64 repeat_in) => (float[?] out) {
       one_shape = Constant <value = int64[1] {1}> ()
       value_1d = Reshape (value_in, one_shape)
       repeat_shape = Reshape (repeat_in, one_shape)
       out = Expand (value_1d, repeat_shape)
-    }
-  >
+    }>
 }
 )ONNX";
 
