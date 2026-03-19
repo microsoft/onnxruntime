@@ -81,8 +81,21 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
             NodeArg* bias_arg = candidate_add->MutableInputDefs()[bias_idx];
 
             if (graph_utils::NodeArgIsConstant(graph, *bias_arg)) {
+              bool is_1d_bias = false;
               const TensorShapeProto* bias_shape = bias_arg->Shape();
-              if (bias_shape != nullptr && bias_shape->dim_size() == 1) {
+              if (bias_shape != nullptr) {
+                is_1d_bias = (bias_shape->dim_size() == 1);
+              } else {
+                // For constant initializers from an outer scope, NodeArg::Shape() may be null.
+                // Fall back to checking the TensorProto dims to confirm that the bias is 1D.
+                const TensorProto* bias_initializer =
+                    graph_utils::GetConstantInitializer(graph, bias_arg->Name(), true);
+                if (bias_initializer != nullptr) {
+                  is_1d_bias = (bias_initializer->dims_size() == 1);
+                }
+              }
+
+              if (is_1d_bias) {
                 p_add = candidate_add;
                 sln_add_input_index = sln_input_idx;
                 add_bias_index = bias_idx;
@@ -109,8 +122,21 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
             NodeArg* bias_arg = candidate_add->MutableInputDefs()[bias_idx];
 
             if (graph_utils::NodeArgIsConstant(graph, *bias_arg)) {
+              bool is_1d_bias = false;
               const TensorShapeProto* bias_shape = bias_arg->Shape();
-              if (bias_shape != nullptr && bias_shape->dim_size() == 1) {
+              if (bias_shape != nullptr) {
+                is_1d_bias = (bias_shape->dim_size() == 1);
+              } else {
+                // For constant initializers from an outer scope, NodeArg::Shape() may be null.
+                // Fall back to checking the TensorProto dims to confirm that the bias is 1D.
+                const TensorProto* bias_initializer =
+                    graph_utils::GetConstantInitializer(graph, bias_arg->Name(), true);
+                if (bias_initializer != nullptr) {
+                  is_1d_bias = (bias_initializer->dims_size() == 1);
+                }
+              }
+
+              if (is_1d_bias) {
                 p_add = candidate_add;
                 sln_add_input_index = sln_input_idx;
                 add_bias_index = bias_idx;
