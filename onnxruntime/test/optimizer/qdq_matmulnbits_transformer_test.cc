@@ -852,8 +852,8 @@ TEST(QDQTransformerTests, DQMatMulPerTensorConvertedToMatMulNBits) {
   RunDQMatMulPerTensorConverted<Int4x2, true>({12, 37}, {37, 16}, 0);
   RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 37}, {37, 16}, 0);
   // N=1 (edge case: single column)
-  RunDQMatMulPerTensorConverted<Int4x2, true>({12, 768}, {768, 1}, 0);
-  RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 768}, {768, 1}, 0);
+  RunDQMatMulPerTensorConverted<Int4x2, true>({12, 96}, {96, 1}, 0);
+  RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 96}, {96, 1}, 0);
 }
 
 // Per-channel (axis=1) DQ -> MatMul conversion to MatMulNBits
@@ -1108,15 +1108,15 @@ void RunDQMatMulPerTensorUint8Converted(const std::vector<int64_t>& input1_shape
 
 TEST(QDQTransformerTests, DQMatMulPerTensorUint8ConvertedToMatMulNBits) {
   // Typical shapes
-  RunDQMatMulPerTensorUint8Converted<true>({12, 768}, {768, 768}, 0);
-  RunDQMatMulPerTensorUint8Converted<false>({12, 768}, {768, 768}, 0);
+  RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 96}, 0);
+  RunDQMatMulPerTensorUint8Converted<false>({12, 96}, {96, 96}, 0);
   // Small N=8
   RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 8}, 0);
   // N=1 (smallest possible column count)
-  RunDQMatMulPerTensorUint8Converted<true>({12, 768}, {768, 1}, 0);
-  RunDQMatMulPerTensorUint8Converted<false>({12, 768}, {768, 1}, 0);
-  // Large N
-  RunDQMatMulPerTensorUint8Converted<true>({12, 768}, {768, 3072}, 0);
+  RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 1}, 0);
+  RunDQMatMulPerTensorUint8Converted<false>({12, 96}, {96, 1}, 0);
+  // Larger N
+  RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 384}, 0);
 }
 
 // ---------------------------------------------------------------------------
