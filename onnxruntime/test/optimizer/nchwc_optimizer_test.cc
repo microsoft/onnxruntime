@@ -767,6 +767,60 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
   test_case(true, true);
 }
 
+TEST(NchwcOptimizerTests, ConvMulChannelScaleHardSigmoid) {
+  const int64_t channels = static_cast<int64_t>(MlasNchwcGetBlockSize()) * 2;
+
+  auto test_case = [&](bool use_explicit_batch_dim, bool scale_first) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, channels, 25, 21});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* hardsigmoid_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {channels, channels, 3, 3});
+      auto& hardsigmoid_node = helper.AddNode("HardSigmoid", {conv_output_arg}, {hardsigmoid_output_arg});
+      hardsigmoid_node.AddAttribute("alpha", 0.125f);
+      hardsigmoid_node.AddAttribute("beta", 0.4f);
+
+      const std::vector<int64_t> scale_shape = use_explicit_batch_dim
+                                                   ? std::vector<int64_t>{1, channels, 1, 1}
+                                                   : std::vector<int64_t>{channels, 1, 1};
+      auto* scale_arg = helper.MakeInitializer<float>(scale_shape, helper.FillRandomData<float>(scale_shape));
+      if (scale_first) {
+        helper.AddNode("Mul", {scale_arg, hardsigmoid_output_arg}, {output_arg});
+      } else {
+        helper.AddNode("Mul", {hardsigmoid_output_arg, scale_arg}, {output_arg});
+      }
+    };
+
+    auto check_pre_optimization_graph = [&](const Graph& graph) {
+      auto op_to_count = CountOpsInGraph(graph);
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["HardSigmoid"], 1);
+      EXPECT_EQ(op_to_count["Mul"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["HardSigmoid"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["Mul"], 0);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, 13, check_pre_optimization_graph);
+  };
+
+  test_case(false, false);
+  test_case(false, true);
+  test_case(true, false);
+  test_case(true, true);
+}
+
 TEST(NchwcOptimizerTests, ConvConcat) {
   auto test_case = [&](int axis, int channel_count, int reorder_output_count) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
