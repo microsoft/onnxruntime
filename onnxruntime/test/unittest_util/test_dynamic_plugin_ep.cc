@@ -167,7 +167,7 @@ void Shutdown() {
   g_plugin_ep_infrastructure_state.reset();
 }
 
-std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const ConfigOptions* config_options) {
+std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const ConfigOptions* ep_options) {
   if (!IsInitialized()) {
     return nullptr;
   }
@@ -182,8 +182,8 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const 
   StrMapToKeyValueCstrVectors(state.config.default_ep_options,
                               default_ep_option_key_cstrs, default_ep_option_value_cstrs);
 
-  if (config_options != nullptr) {
-    for (const auto& [key, value] : config_options->configurations) {
+  if (ep_options != nullptr) {
+    for (const auto& [key, value] : ep_options->configurations) {
       default_ep_option_key_cstrs.push_back(key.c_str());
       default_ep_option_value_cstrs.push_back(value.c_str());
     }
