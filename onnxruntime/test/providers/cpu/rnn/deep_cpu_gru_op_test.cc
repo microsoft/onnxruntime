@@ -1113,8 +1113,8 @@ TEST(GruTest, GRU_ForwardDefaultActivations_LinearBeforeReset_OpSet22_CUDA) {
   std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
 
   std::vector<float> W_data = {0.1f, 0.2f, 0.3f,
-                                1.f, 2.f, 3.f,
-                                10.f, 11.f, 12.f};
+                               1.f, 2.f, 3.f,
+                               10.f, 11.f, 12.f};
   std::vector<int64_t> W_dims = {num_directions, 3 * hidden_size, input_size};
 
   std::vector<float> R_data(num_directions * 3 * hidden_size * hidden_size, 0.1f);
