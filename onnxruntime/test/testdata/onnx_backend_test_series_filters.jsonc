@@ -379,7 +379,16 @@
         "^test_quantizelinear_int4",
         "^test_quantizelinear_uint4",
         // topk uint64 is not implemented in ORT yet.
-        "^test_top_k_uint64"
+        "^test_top_k_uint64",
+        // ORT DFT kernel does not implement IRFFT (inverse real FFT) — it always outputs
+        // complex (last dim=2) which is wrong for IRFFT. These ONNX backend tests were
+        // added in onnx commit ee910d0e4 for DFT-20 spec clarification.
+        "^test_dft_rfft",
+        "^test_dft_irfft",
+        "^test_dft_rfft_opset19",
+        "^test_dft_irfft_opset19",
+        // ORT BitCast kernel does not support bool type.
+        "^test_bitcast_bool_to_uint8"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
