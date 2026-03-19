@@ -54,8 +54,12 @@ std::wstring DetermineLoadLibraryError(const wchar_t* filename_in, DWORD flags) 
       if (wide_len <= 0) {
         continue;  // Skip this entry if conversion fails.
       }
-      std::wstring wide_dll_name(wide_len - 1, L'\0');  // wide_len includes the null terminator
-      MultiByteToWideChar(CP_ACP, 0, dll_name, -1, &wide_dll_name[0], wide_len);
+      std::wstring wide_dll_name(wide_len, L'\0');  // wide_len includes the null terminator
+      int converted = MultiByteToWideChar(CP_ACP, 0, dll_name, -1, wide_dll_name.data(), wide_len);
+      if (converted <= 0) {
+        continue;  // Skip this entry if conversion fails.
+      }
+      wide_dll_name.resize(static_cast<size_t>(converted - 1));
 
       // Try to load the dependent DLL, and if it fails, we loop again with this as the DLL and we'll be one step closer to the missing file.
       ModulePtr hDepModule{LoadLibraryW(wide_dll_name.c_str())};
