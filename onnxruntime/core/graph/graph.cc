@@ -4382,6 +4382,13 @@ Node& Graph::AddNode(const Node& other) {
                            &other.GetAttributes(),
                            other.Domain());
 
+  // Preserve layering annotation from the source node so that graph transformers
+  // that reconstruct nodes (or function inlining) retain the EP assignment hint.
+  const auto& annotation = other.GetLayeringAnnotation();
+  if (!annotation.empty()) {
+    new_node.SetLayeringAnnotation(annotation);
+  }
+
   return new_node;
 }
 
@@ -4407,12 +4414,12 @@ Node& Graph::AddNode(const NodeProto& node_proto,
                            &attributes,
                            node_proto.domain());
 
-#ifndef ORT_MINIMAL_BUILD
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   auto maybe_annotation = utils::GetNodeProtoLayeringAnnotation(node_proto);
   if (maybe_annotation) {
     new_node.SetLayeringAnnotation(std::move(*maybe_annotation));
   }
-#endif
+#endif  //
 
   // Perf optimization: temporarily set NodeProto in Node so we don't need to call Node::ToProto prior to
   // calling onnx::check_node
