@@ -115,18 +115,12 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   }
 
   b_shape = tensor_b.Shape();
-  if (b_shape[0] <= 0 || b_shape[1] <= 0) {
+  if (b_shape.Size() < 0) {
     return false;
   }
 
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
-
-  // Verify the tensor has enough data for the declared dimensions.
-  if (b_shape.Size() < 0 ||
-      static_cast<size_t>(b_shape.Size()) < K * N) {
-    return false;
-  }
 
   packed_b_size = MlasGemmPackBSize(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans, N, K, mlas_backend_kernel_selector_config);
   if (packed_b_size == 0) {
