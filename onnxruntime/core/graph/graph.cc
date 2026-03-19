@@ -6156,6 +6156,13 @@ Status Graph::InlineFunction(Node& callnode) {
   base_uniq_identifier.append(callnode.OpType());
   const auto uniq_identifier = GenerateNodeName(base_uniq_identifier);
 
+  // Capture the parent function node's layering annotation before inlining.
+  // Inlined nodes that don't already have their own annotation will inherit this.
+  const std::string parent_annotation = callnode.GetLayeringAnnotation();
+
+  // Record the current max node index so we can identify newly inlined nodes afterward.
+  const int max_node_index_before_inline = MaxNodeIndex();
+
   // Replace a (function-call) node by an inlined graph.
   if (!callnode.GetFunctionBody()) {
     // This is the normal use-case: inlining a FunctionProto (representing
@@ -6217,13 +6224,24 @@ Status Graph::InlineFunction(Node& callnode) {
     }
   }
 
+  // Propagate the parent function node's layering annotation to all newly inlined nodes
+  // that don't already have their own annotation.
+  if (!parent_annotation.empty()) {
+    const int max_node_index_after_inline = MaxNodeIndex();
+    for (int i = max_node_index_before_inline; i < max_node_index_after_inline; ++i) {
+      Node* node = GetNode(static_cast<NodeIndex>(i));
+      if (node != nullptr && node->GetLayeringAnnotation().empty()) {
+        node->SetLayeringAnnotation(parent_annotation);
+      }
+    }
+  }
+
   RemoveNode(callnode.Index());
 
   // std::cout << "Graph after inlining\n\n" << *this << std::endl << std::flush;
 
   return Status::OK();
 }
-
 void Graph::SetInputs(gsl::span<const NodeArg* const> inputs) {
   graph_inputs_including_initializers_.clear();
   graph_inputs_excluding_initializers_.clear();
