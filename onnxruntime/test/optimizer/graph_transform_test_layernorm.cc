@@ -931,7 +931,8 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_AddAtSkipInput) {
 
         const auto& input_defs = node.InputDefs();
 
-        // input[0] should come from MatMul (Add was at SLN.input[1] = skip)
+        // input[0] should be the original graph input (unchanged – Add fed SLN.input[1], so
+        // only SLN.input[1] is replaced with the MatMul output; input[0] keeps its original value).
         const Node* input0_producer = graph.GetProducerNode(input_defs[0]->Name());
         TEST_RETURN_IF_NOT(input0_producer == nullptr);
         bool is_graph_input0 = false;

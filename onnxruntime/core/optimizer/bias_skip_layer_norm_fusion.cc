@@ -185,19 +185,24 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
 
     if (p_add == nullptr) continue;
 
-    // Determine the non-bias Add input (MatMul / Cast output) and the SLN skip input.
+    // Determine the non-bias Add input (MatMul / Cast output).
     int add_non_bias_input_index = 1 - add_bias_index;
-    int sln_skip_input_index = 1 - sln_add_input_index;
 
     // Snapshot all information we need from the original nodes before modifying the graph.
-    // Inputs from the Add and SkipLayerNormalization nodes.
+    // Build the new 5-input SkipLayerNormalization by replacing only the SLN input slot that
+    // was fed by the bias-Add with the Add's non-bias (MatMul/Cast) input.  All other SLN inputs
+    // stay in their original positions.  Preserving the input[0]/input[1] order is important
+    // because SkipLayerNormalization derives its output shape from input[0] while input[1]
+    // supports broadcasting; swapping them would silently change semantics.
     InlinedVector<NodeArg*> new_sln_inputs{
-        p_add->MutableInputDefs()[add_non_bias_input_index],  // input (MatMul / Cast output)
-        sln_inputs[sln_skip_input_index],                     // skip
-        sln_inputs[2],                                        // gamma
-        sln_inputs[3],                                        // beta
-        p_add->MutableInputDefs()[add_bias_index]             // bias (1D constant)
+        sln_inputs[0],                                         // original input[0] (replaced below if needed)
+        sln_inputs[1],                                         // original input[1] (replaced below if needed)
+        sln_inputs[2],                                         // gamma – unchanged
+        sln_inputs[3],                                         // beta – unchanged
+        p_add->MutableInputDefs()[add_bias_index]              // bias (1D constant) – absorbed from Add
     };
+    // Replace only the SLN slot that was connected to the bias-Add.
+    new_sln_inputs[sln_add_input_index] = p_add->MutableInputDefs()[add_non_bias_input_index];
 
     // Snapshot the outputs of the original SkipLayerNormalization so we can safely remove it
     // before creating the replacement node while preserving the same graph outputs.
@@ -228,9 +233,9 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     graph_utils::RemoveNodeOutputEdges(graph, sln_node);
     graph.RemoveNode(sln_node.Index());
 
-    // Build the new 5-input SkipLayerNormalization:
-    //   input[0] = MatMul (or Cast) output   – the "input" tensor
-    //   input[1] = skip                       – the "skip" tensor
+    // The fused 5-input SkipLayerNormalization:
+    //   input[0] = original SLN input[0] (unless the bias-Add was at SLN input[0])
+    //   input[1] = original SLN input[1] (unless the bias-Add was at SLN input[1])
     //   input[2] = gamma                      – unchanged
     //   input[3] = beta                       – unchanged
     //   input[4] = bias                       – absorbed from the Add node
