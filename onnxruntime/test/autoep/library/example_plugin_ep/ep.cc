@@ -196,44 +196,33 @@ const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept
   return ep->name_.c_str();
 }
 
-OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* ort_graph) {
-  Ort::ConstGraph graph{ort_graph};
+bool ExampleEp::CopiesConstantInitializers() const {
+  return !(config_.enable_ep_context && config_.enable_weightless_ep_context_nodes);
+}
 
-  try {
-    std::vector<Ort::ConstValueInfo> initializers = graph.GetInitializers();
+OrtStatus* ExampleEp::TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer) {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  const bool is_constant = maybe_initializer.IsConstantInitializer();
 
-    for (const auto& initializer : initializers) {
-      const bool is_constant = initializer.IsConstantInitializer();
+  if (is_constant) {
+    auto name = maybe_initializer.GetName();
+    Ort::ConstValue value;
+    RETURN_IF_ERROR(maybe_initializer.GetInitializer(value));
 
-      if (is_constant) {
-        auto name = initializer.GetName();
-        Ort::ConstValue value;
-        auto status = initializer.GetInitializer(value);
-        if (!status.IsOK())
-          return status.release();
+    auto type_shape = value.GetTensorTypeAndShapeInfo();
+    const size_t num_elems = type_shape.GetElementCount();
+    const ONNXTensorElementDataType elem_type = type_shape.GetElementType();
+    if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
+      return Ort::Status("Expected float32 initializers", ORT_INVALID_ARGUMENT).release();
 
-        auto type_shape = value.GetTensorTypeAndShapeInfo();
-        const size_t num_elems = type_shape.GetElementCount();
-        const ONNXTensorElementDataType elem_type = type_shape.GetElementType();
-        if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
-          return Ort::Status("Expected float32 initializers", ORT_INVALID_ARGUMENT).release();
+    std::vector<int64_t> dims = type_shape.GetShape();
+    const float* data = value.GetTensorData<float>();
 
-        std::vector<int64_t> dims = type_shape.GetShape();
-        const float* data = value.GetTensorData<float>();
-
-        FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
-        float_initializers_.emplace(std::move(name), std::move(ep_initializer));
-      }
-    }
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  } catch (const std::exception& ex) {
-    Ort::Status status(ex.what(), ORT_EP_FAIL);
-    return status.release();
+    FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
+    float_initializers_.emplace(std::move(name), std::move(ep_initializer));
   }
-
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 /*static*/
@@ -342,8 +331,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       // Refer to the "ep.enable_weightless_ep_context_nodes"
       // session configuration entry in onnxruntime_session_options_config_keys.h for more information about generating
       // weightless EPContext models.
-      node_fusion_options.drop_constant_initializers = !(ep->config_.enable_ep_context &&
-                                                         ep->config_.enable_weightless_ep_context_nodes);
+      node_fusion_options.drop_constant_initializers = ep->CopiesConstantInitializers();
       RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(
           graph_support_info,
           reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
@@ -376,11 +364,6 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
     Ort::ConstGraph graph{ort_graphs[0]};
-
-    // In GetCapability(), this EP specified that it doesn't need ORT to provide constant initializers during inference.
-    // So, this EP saves constant initializers so that they're available during inference, but an actual EP
-    // implementation could transfer the weights to device memory.
-    ep->SaveConstantInitializers(graph);
 
     std::vector<Ort::ConstNode> nodes = graph.GetNodes();
     if (nodes.size() != 1) {
@@ -435,6 +418,16 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         std::string err_msg = "Mul node should have 2 inputs, got " + std::to_string(node_inputs.size());
         Ort::Status status(err_msg.c_str(), ORT_EP_FAIL);
         return status.release();
+      }
+
+      // In GetCapability(), this EP may have specified that it doesn't need ORT to provide constant initializers
+      // during inference. If so, this EP saves copies of constant initializers so they're available during inference.
+      //
+      // We try to save each node input individually because graph.GetInitializers() does not return
+      // initializers defined in parent or sibling subgraphs.
+      if (ep->CopiesConstantInitializers()) {
+        RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[0]));
+        RETURN_IF_ERROR(ep->TrySaveConstantInitializer(node_inputs[1]));
       }
 
       // Create MulKernel for Mul nodes
