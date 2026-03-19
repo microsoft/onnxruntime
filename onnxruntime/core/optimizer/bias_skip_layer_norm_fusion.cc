@@ -63,6 +63,43 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     }
   };
 
+  // Helper: derive the hidden size from a single SLN 1-D input (gamma or beta).
+  // Returns -1 when the size cannot be determined.
+  auto get_sln_hidden_size_from_input = [&](const Node& sln, size_t input_index) -> int64_t {
+    if (sln.InputDefs().size() <= input_index) {
+      return -1;
+    }
+    const NodeArg* arg = sln.InputDefs()[input_index];
+    if (arg == nullptr) {
+      return -1;
+    }
+
+    const TensorShapeProto* shape = arg->Shape();
+    if (shape != nullptr && shape->dim_size() == 1) {
+      const auto& dim0 = shape->dim(0);
+      if (dim0.has_dim_value()) {
+        return dim0.dim_value();
+      }
+    }
+
+    const TensorProto* initializer =
+        graph_utils::GetConstantInitializer(graph, arg->Name(), true);
+    if (initializer != nullptr && initializer->dims_size() == 1) {
+      return initializer->dims(0);
+    }
+
+    return -1;
+  };
+
+  // Helper: derive the SLN hidden size by trying gamma (input 2) then beta (input 3).
+  auto get_sln_hidden_size = [&](const Node& sln) -> int64_t {
+    int64_t size = get_sln_hidden_size_from_input(sln, 2);
+    if (size == -1) {
+      size = get_sln_hidden_size_from_input(sln, 3);
+    }
+    return size;
+  };
+
   for (auto node_index : node_topology_list) {
     Node* p_sln = graph.GetNode(node_index);
     if (p_sln == nullptr) continue;  // node was removed in an earlier fusion
@@ -117,39 +154,7 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
               // can be determined. If the sizes are known and incompatible, skip fusion.
               bool bias_matches_hidden = true;
               if (is_1d_bias) {
-                int64_t sln_hidden_size = -1;
-
-                auto get_sln_hidden_size_from_input = [&](size_t input_index) -> int64_t {
-                  if (sln_node.InputDefs().size() <= input_index) {
-                    return -1;
-                  }
-                  NodeArg* arg = sln_node.MutableInputDefs()[input_index];
-                  if (arg == nullptr) {
-                    return -1;
-                  }
-
-                  const TensorShapeProto* shape = arg->Shape();
-                  if (shape != nullptr && shape->dim_size() == 1) {
-                    const auto& dim0 = shape->dim(0);
-                    if (dim0.has_dim_value()) {
-                      return dim0.dim_value();
-                    }
-                  }
-
-                  const TensorProto* initializer =
-                      graph_utils::GetConstantInitializer(graph, arg->Name(), true);
-                  if (initializer != nullptr && initializer->dims_size() == 1) {
-                    return initializer->dims(0);
-                  }
-
-                  return -1;
-                };
-
-                // Try gamma (input index 2), then beta (input index 3) as the hidden-size source.
-                sln_hidden_size = get_sln_hidden_size_from_input(2);
-                if (sln_hidden_size == -1) {
-                  sln_hidden_size = get_sln_hidden_size_from_input(3);
-                }
+                int64_t sln_hidden_size = get_sln_hidden_size(sln_node);
 
                 if (sln_hidden_size != -1 && bias_hidden_size != -1 && sln_hidden_size != bias_hidden_size) {
                   bias_matches_hidden = false;
@@ -191,22 +196,9 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
 
               bool bias_matches_hidden = true;
               if (is_1d_bias) {
-                // Derive the hidden size from SkipLayerNormalization's gamma input when available.
-                const NodeArg* gamma_arg = sln_node.InputDefs()[2];
-                int64_t sln_hidden_size = -1;
-                const TensorShapeProto* gamma_shape = gamma_arg->Shape();
-                if (gamma_shape != nullptr && gamma_shape->dim_size() == 1) {
-                  const auto& dim0 = gamma_shape->dim(0);
-                  if (dim0.has_dim_value()) {
-                    sln_hidden_size = dim0.dim_value();
-                  }
-                } else {
-                  const TensorProto* gamma_initializer =
-                      graph_utils::GetConstantInitializer(graph, gamma_arg->Name(), true);
-                  if (gamma_initializer != nullptr && gamma_initializer->dims_size() == 1) {
-                    sln_hidden_size = gamma_initializer->dims(0);
-                  }
-                }
+                // Derive the hidden size from SkipLayerNormalization's gamma/beta inputs,
+                // using the same logic as Path 1.
+                int64_t sln_hidden_size = get_sln_hidden_size(sln_node);
 
                 if (bias_hidden_size > 0 && sln_hidden_size > 0 && bias_hidden_size != sln_hidden_size) {
                   bias_matches_hidden = false;
