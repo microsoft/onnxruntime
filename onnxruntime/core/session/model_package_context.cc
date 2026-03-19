@@ -20,7 +20,7 @@ std::string ToLower(std::string_view s) {
 }
 
 bool MatchesDevice(const OrtHardwareDevice* hd,
-                           std::string_view value) {
+                   std::string_view value) {
   if (value.empty() || hd == nullptr) {
     return value.empty();
   }
@@ -46,13 +46,13 @@ bool MatchesArchitecture(const OrtHardwareDevice* hd,
     return value.empty();
   }
 
-  // For architecture, we check against a specific key in hardware device metadata 
+  // For architecture, we check against a specific key in hardware device metadata
   // since there's no standard key for it in OrtHardwareDevice. Skipping this check for now.
 
   return true;
 }
 
-bool MatchesProviderOptionsSpecificKeyForDeviceType(std::string_view provider_option_key, 
+bool MatchesProviderOptionsSpecificKeyForDeviceType(std::string_view provider_option_key,
                                                     std::string_view provider_option_value,
                                                     std::string_view value) {
   // Currently, the provider option key is not standardized.
@@ -120,7 +120,7 @@ bool MatchesComponent(const EpContextVariantInfo& component, const SelectionEpIn
 }  // namespace
 
 Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& package_root,
-                                                   /*out*/ std::vector<EpContextVariantInfo>& components) {
+                                                 /*out*/ std::vector<EpContextVariantInfo>& components) {
   components.clear();
   const auto manifest_path = package_root / kModelPackageManifestFileName;
   if (!std::filesystem::exists(manifest_path)) {
@@ -136,6 +136,12 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
 
   ORT_TRY {
     json doc = json::parse(f);
+    if (!doc.contains(kModelNameKey) || !doc[kModelNameKey].is_string()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "The \"name\" field in the manifest.json is missing or not a string");
+    }
+    const std::string model_name = doc[kModelNameKey].get<std::string>();
+
     if (!doc.is_object() || !doc.contains(kComponentsKey) || !doc[kComponentsKey].is_array()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "The \"components\" field in the manifest.json is missing or not an array");
@@ -158,8 +164,8 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
       std::string variant_name = comp[kVariantNameKey].get<std::string>();
       c.metadata.Add(kVariantNameKey, variant_name);
 
-      // Build model path: package_root / "models" / variant_name / file
-      std::filesystem::path model_dir = package_root / "models" / variant_name;
+      // Build model path: package_root / "models" / model_name / variant_name / file
+      std::filesystem::path model_dir = package_root / "models" / model_name / variant_name;
       c.model_path = model_dir / comp[kFileKey].get<std::string>();
 
       if (comp.contains(kConstraintsKey) && comp[kConstraintsKey].is_object()) {

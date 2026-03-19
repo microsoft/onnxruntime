@@ -37,7 +37,7 @@ struct EpContextVariantInfo {
 };
 
 // Same as the `SelecionInfo` in provider_policy_context.h but with
-// additional fields for ep name and provider options. 
+// additional fields for ep name and provider options.
 struct SelectionEpInfo {
   std::string ep_name;
   OrtEpFactory* ep_factory;
@@ -67,7 +67,6 @@ class ModelPackageContext {
                          gsl::span<EpContextVariantInfo> components,
                          gsl::span<SelectionEpInfo> ep_infos,
                          std::optional<std::filesystem::path>& selected_component_path);
-
 };
 
 }  // namespace onnxruntime

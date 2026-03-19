@@ -300,6 +300,46 @@ Status ProviderPolicyContext::CreateExecutionProviders(const Environment& env, I
   return Status::OK();
 }
 
+Status ProviderPolicyContext::SelectEpsForModelPackage(const Environment& env,
+                                                       const OrtSessionOptions& options,
+                                                       OrtKeyValuePairs& model_metadata,
+                                                       std::vector<const OrtEpDevice*>& execution_devices,
+                                                       std::vector<const OrtEpDevice*>& devices_selected,
+                                                       std::vector<std::unique_ptr<IExecutionProvider>>& providers) {
+  // Get the list of devices from the environment and order them.
+  // Ordered by preference within each type. NPU -> GPU -> NPU
+  // TODO: Should environment.cc do the ordering?
+  execution_devices = OrderDevices(env.GetOrtEpDevices());
+
+  ORT_RETURN_IF_ERROR(SelectEpDevices(execution_devices, options, model_metadata, devices_selected));
+
+  // Remove the ORT CPU EP if configured to do so
+  bool disable_ort_cpu_ep = options.value.config_options.GetConfigEntry(kOrtSessionOptionsDisableCPUEPFallback) == "1";
+  if (disable_ort_cpu_ep) {
+    RemoveOrtCpuDevice(devices_selected);
+  }
+
+  // Fold the EPs into a single structure per factory
+  std::vector<SelectionInfo> eps_selected;
+  FoldSelectedDevices(devices_selected, eps_selected);
+
+  OrtSessionOptions ort_so = options;
+
+  // Iterate through the selected EPs and create them
+  for (size_t idx = 0; idx < eps_selected.size(); ++idx) {
+    std::unique_ptr<IExecutionProvider> ep = nullptr;
+    ORT_RETURN_IF_ERROR(CreateExecutionProvider(env,
+                                                ort_so,
+                                                *logging::LoggingManager::DefaultLogger().ToExternal(),
+                                                eps_selected[idx], ep));
+    if (ep != nullptr) {
+      providers.push_back(std::move(ep));
+    }
+  }
+
+  return Status::OK();
+}
+
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
                                                   InferenceSession& sess, OrtKeyValuePairs& model_metadata) {
