@@ -1482,9 +1482,17 @@ struct GemmOptimizePackedParams {
   BiasType bias_type;
   bool transA, transB;
 
+  // Helper for converting int to string
+  static std::string DimToString(int64_t val) {
+    if (val < 0) {
+      return "neg" + std::to_string(-val);
+    }
+    return std::to_string(val);
+  }
+
   // Helper for readable test names
   std::string ToString() const {
-    std::string name = std::to_string(M) + "x" + std::to_string(K) + "x" + std::to_string(N);
+    std::string name = DimToString(M) + "x" + DimToString(K) + "x" + DimToString(N);
 
     // Bias type names
     const char* bias_names[] = {"noBias", "MBias", "ScalarBias", "MNBias", "NBias"};
