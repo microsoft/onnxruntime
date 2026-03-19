@@ -29,7 +29,7 @@
 #include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 #include "core/session/utils.h"
 #include "core/common/profiler_common.h"
-#include "core/session/plugin_ep/ep_profiling_events_container.h"
+#include "core/session/plugin_ep/ep_event_profiling.h"
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
@@ -810,64 +810,91 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
 
 ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents,
                     _In_ OrtEpProfilingEventsContainer* events_container,
-                    _In_reads_(num_events) const OrtEpProfilingEvent* events,
+                    _In_reads_(num_events) const OrtEpProfilingEvent* const* events,
                     _In_ size_t num_events) {
   API_IMPL_BEGIN
-  if (events_container == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEpProfilingEventsContainer instance is null");
-  }
+  ORT_API_RETURN_IF(events_container == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpProfilingEpEventsContainer instance is NULL");
+  ORT_API_RETURN_IF(events == nullptr || num_events == 0, ORT_INVALID_ARGUMENT,
+                    "Must provide at least one event to add to OrtEpProfilingEventsContainer.");
 
-  if (events == nullptr || num_events == 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must provide at least one event to add.");
-  }
-
-  auto& output = events_container->events;
-  output.reserve(output.size() + num_events);
+  auto& all_ep_events = events_container->ep_events;
+  all_ep_events.reserve(all_ep_events.size() + num_events);
 
   for (size_t i = 0; i < num_events; ++i) {
-    const OrtEpProfilingEvent& c_event = events[i];
-
-    if (c_event.ort_version_supported < 25 || c_event.ort_version_supported > ORT_API_VERSION) {
-      return OrtApis::CreateStatus(
-          ORT_INVALID_ARGUMENT,
-          "OrtEpProfilingEvent::ort_version_supported must be between 25 and ORT_API_VERSION (inclusive)");
-    }
-
-    onnxruntime::InlinedHashMap<std::string, std::string> args;
-    if (c_event.num_args > 0) {
-      if (c_event.arg_keys == nullptr || c_event.arg_values == nullptr) {
-        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                     "arg_keys and arg_values must both be non-null when num_args > 0");
-      }
-      args.reserve(c_event.num_args);
-      for (size_t j = 0; j < c_event.num_args; ++j) {
-        const char* key = c_event.arg_keys[j];
-        const char* value = c_event.arg_values[j];
-        if (key != nullptr && value != nullptr) {
-          args[key] = value;
-        }
-      }
-    }
-
-    const int category_value = static_cast<int>(c_event.category);
-    if (category_value < static_cast<int>(onnxruntime::profiling::EventCategory::SESSION_EVENT) ||
-        category_value >= static_cast<int>(onnxruntime::profiling::EventCategory::EVENT_CATEGORY_MAX)) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "OrtEpProfilingEvent::category is out of the supported range");
-    }
-
-    output.emplace_back(
-        static_cast<onnxruntime::profiling::EventCategory>(category_value),
-        static_cast<int>(c_event.process_id),
-        static_cast<int>(c_event.thread_id),
-        std::string(c_event.event_name ? c_event.event_name : ""),
-        static_cast<long long>(c_event.timestamp_us),
-        static_cast<long long>(c_event.duration_us),
-        std::move(args));
+    ORT_API_RETURN_IF(events[i] == nullptr, ORT_INVALID_ARGUMENT,
+                      "OrtEpProfilingEvent instance at index ", i, " is NULL");
+    all_ep_events.push_back(*events[i]);
   }
 
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(CreateEpProfilingEvent,
+                    _In_ OrtEpProfilingEventCategory category,
+                    _In_ uint64_t ort_event_id,
+                    _In_ int32_t process_id,
+                    _In_ int32_t thread_id,
+                    _In_ const char* event_name,
+                    _In_ int64_t timestamp_us,
+                    _In_ int64_t duration_us,
+                    _In_reads_(num_args) const char* const* arg_keys,
+                    _In_reads_(num_args) const char* const* arg_values,
+                    _In_ size_t num_args,
+                    _Outptr_ OrtEpProfilingEvent** out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpProfilingEvent output parameter is NULL");
+
+  *out = nullptr;
+
+  // ORT does not generate any ORT event IDs with values larger than what is representable with a long long.
+  // This is because ORT event IDs are really timestamps, which are represented as long long in profiling::EventRecord.
+  constexpr uint64_t max_ort_event_id = static_cast<uint64_t>(std::numeric_limits<long long>::max());
+  ORT_API_RETURN_IF(ort_event_id > max_ort_event_id, ORT_INVALID_ARGUMENT, "Invalid ort_event_id: ", ort_event_id);
+
+  const int category_value = static_cast<int>(category);
+  const int min_category_val = static_cast<int>(profiling::EventCategory::SESSION_EVENT);
+  const int max_category_val = static_cast<int>(profiling::EventCategory::EVENT_CATEGORY_MAX);
+  ORT_API_RETURN_IF(category_value < min_category_val || category_value >= max_category_val, ORT_INVALID_ARGUMENT,
+                    "OrtEpProfilingEventCategory value '", category_value, "' is out of the expected range: [",
+                    min_category_val, " ... ", max_category_val, ")");
+
+  onnxruntime::InlinedHashMap<std::string, std::string> args;
+  if (num_args > 0) {
+    ORT_API_RETURN_IF(arg_keys == nullptr || arg_values == nullptr, ORT_INVALID_ARGUMENT,
+                      "`arg_keys` and `arg_values` must be non-null when `num_args` > 0");
+
+    args.reserve(num_args);
+
+    for (size_t i = 0; i < num_args; ++i) {
+      const char* key = arg_keys[i];
+      const char* value = arg_values[i];
+      ORT_API_RETURN_IF(key == nullptr, ORT_INVALID_ARGUMENT, "Arg key at index ", i, " is NULL");
+      ORT_API_RETURN_IF(value == nullptr, ORT_INVALID_ARGUMENT, "Arg value at index ", i, " is NULL");
+      args[key] = value;
+    }
+  }
+
+  auto ep_event = std::make_unique<OrtEpProfilingEvent>();
+  ep_event->ort_event_id = ort_event_id;
+  ep_event->record = onnxruntime::profiling::EventRecord(
+      static_cast<onnxruntime::profiling::EventCategory>(category_value),
+      static_cast<int>(process_id),
+      static_cast<int>(thread_id),
+      std::string(event_name ? event_name : ""),
+      static_cast<long long>(timestamp_us),
+      static_cast<long long>(duration_us),
+      std::move(args));
+
+  *out = ep_event.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseEpProfilingEvent, _Frees_ptr_opt_ OrtEpProfilingEvent* event) {
+  delete event;
 }
 
 static constexpr OrtEpApi ort_ep_api = {
@@ -935,6 +962,8 @@ static constexpr OrtEpApi ort_ep_api = {
     // End of Version 24 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::EpProfilingEventsContainer_AddEvents,
+    &OrtExecutionProviderApi::CreateEpProfilingEvent,
+    &OrtExecutionProviderApi::ReleaseEpProfilingEvent,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

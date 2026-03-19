@@ -129,6 +129,8 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetKernelRegistryImpl(
 
 namespace {
 
+// TODO(adrianlizarraga): Make this actually create EP events that measure kernel runtime!
+// Right now this entire implementation is wrong.
 struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
   const OrtEpApi& ep_api;
   bool is_profiling = false;
@@ -153,8 +155,8 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
     Release = ReleaseImpl;
     StartProfiling = StartProfilingImpl;
     EndProfiling = EndProfilingImpl;
-    Start = StartImpl;
-    Stop = StopImpl;
+    StartEvent = StartEventImpl;
+    StopEvent = StopEventImpl;
   }
 
   static void ORT_API_CALL ReleaseImpl(OrtEpProfilerImpl* this_ptr) noexcept {
@@ -180,14 +182,14 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
     return true;
   }
 
-  static void ORT_API_CALL StartImpl(OrtEpProfilerImpl* this_ptr, uint64_t id) noexcept {
+  static void ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t id) noexcept {
     auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
     std::lock_guard<std::mutex> lock(GetProfilerMutex());
     if (!self->is_profiling) return;
     self->pending_ops.push_back({id, std::chrono::high_resolution_clock::now()});
   }
 
-  static void ORT_API_CALL StopImpl(OrtEpProfilerImpl* this_ptr, uint64_t /*id*/) noexcept {
+  static void ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t /*id*/) noexcept {
     auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
     std::lock_guard<std::mutex> lock(GetProfilerMutex());
     if (!self->is_profiling || self->pending_ops.empty()) return;
@@ -200,63 +202,69 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
   }
 
   static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
-                                                  int64_t /*start_time_ns*/,
+                                                  int64_t /*profiling_start_time_ns*/,
                                                   OrtEpProfilingEventsContainer* events_container) noexcept {
     auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
     std::lock_guard<std::mutex> lock(GetProfilerMutex());
     self->is_profiling = false;
 
     // Build per-op NODE events from completed ops.
-    std::vector<std::string> event_names;
-    std::vector<OrtEpProfilingEvent> events;
-    event_names.reserve(self->completed_ops.size() + 1);
+    std::vector<OrtEpProfilingEvent*> events;
     events.reserve(self->completed_ops.size() + 1);
+
+    auto cleanup_resources = [&]() {
+      for (auto* ev : events) {
+        self->ep_api.ReleaseEpProfilingEvent(ev);
+      }
+
+      events.clear();
+      self->completed_ops.clear();
+      self->pending_ops.clear();
+    };
+
+    OrtStatus* status = nullptr;
 
     for (size_t i = 0; i < self->completed_ops.size(); ++i) {
       const auto& op = self->completed_ops[i];
-      event_names.push_back("ep_op_" + std::to_string(i));
+      std::string name = "ep_op_" + std::to_string(i);
 
-      OrtEpProfilingEvent ev{};
-      ev.ort_version_supported = ORT_API_VERSION;
-      ev.category = OrtEpProfilingEventCategory_NODE;
-      ev.process_id = 0;
-      ev.thread_id = 0;
-      ev.event_name = event_names.back().c_str();
+      OrtEpProfilingEvent* ev = nullptr;
       // Use the same time base as ORT's profiling::EventRecord:
       // microseconds relative to profiling_start_time_.
-      ev.timestamp_us = static_cast<int64_t>(op.start_offset_us);
-      ev.duration_us = op.duration_us;
-      ev.num_args = 0;
-      ev.arg_keys = nullptr;
-      ev.arg_values = nullptr;
+      uint64_t ort_event_id = 0;
+      status = self->ep_api.CreateEpProfilingEvent(
+          OrtEpProfilingEventCategory_NODE, ort_event_id, 0, 0, name.c_str(),
+          static_cast<int64_t>(op.start_offset_us), op.duration_us,
+          nullptr, nullptr, 0, &ev);
+      if (status != nullptr) {
+        cleanup_resources();
+        return status;
+      }
       events.push_back(ev);
     }
 
-    // Also emit a summary SESSION event (preserves backward compatibility with existing test).
-    const char* arg_keys[] = {"ep_name"};
-    const char* arg_values[] = {"ExampleKernelEp"};
+    {
+      // Also emit a summary SESSION event (preserves backward compatibility with existing test).
+      const char* arg_keys[] = {"ep_name"};
+      const char* arg_values[] = {"ExampleKernelEp"};
 
-    event_names.push_back("ExampleKernelEp_profiling_event");
+      OrtEpProfilingEvent* summary = nullptr;
+      uint64_t ort_event_id = 0;
+      status = self->ep_api.CreateEpProfilingEvent(
+          OrtEpProfilingEventCategory_SESSION, ort_event_id, 0, 0,
+          "ExampleKernelEp_profiling_event", 0, 0,
+          arg_keys, arg_values, 1, &summary);
+      if (status != nullptr) {
+        cleanup_resources();
+        return status;
+      }
+      events.push_back(summary);
+    }
 
-    OrtEpProfilingEvent summary{};
-    summary.ort_version_supported = ORT_API_VERSION;
-    summary.category = OrtEpProfilingEventCategory_SESSION;
-    summary.process_id = 0;
-    summary.thread_id = 0;
-    summary.event_name = event_names.back().c_str();
-    summary.timestamp_us = 0;
-    summary.duration_us = 0;
-    summary.arg_keys = arg_keys;
-    summary.arg_values = arg_values;
-    summary.num_args = 1;
-    events.push_back(summary);
-
-    OrtStatus* status = self->ep_api.EpProfilingEventsContainer_AddEvents(
+    status = self->ep_api.EpProfilingEventsContainer_AddEvents(
         events_container, events.data(), events.size());
 
-    self->completed_ops.clear();
-    self->pending_ops.clear();
-
+    cleanup_resources();
     return status;
   }
 };
