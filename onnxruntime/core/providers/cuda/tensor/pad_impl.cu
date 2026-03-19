@@ -15,14 +15,19 @@ enum class PadMode : int {
   Wrap
 };
 
+__device__ __forceinline__ int64_t WrapCoordinate(int64_t coord, int64_t extent) {
+  int64_t wrapped = coord % extent;
+  return wrapped < 0 ? wrapped + extent : wrapped;
+}
+
 template <typename T, int pad_mode>
 __global__ void _PadKernel(
     const size_t shape_rank,
     const TArray<int64_t> input_dims,
     const TArray<int64_t> input_strides,
     const TArray<int64_t> lower_pads,
-    const TArray<int64_t> slice_starts,
-    const TArray<int64_t> effective_input_dims,
+    const TArray<int64_t> effective_input_extents,
+    const TArray<int64_t> input_offsets,
     const T pad_value,
     const T* input_data,
     const TArray<fast_divmod> fdm_output_strides,
@@ -36,59 +41,44 @@ __global__ void _PadKernel(
     int out_coord, r;
     fdm_output_strides[dim].divmod(output_index, out_coord, r);
     output_index = r;
-    int in_coord = 0;
-    if (out_coord < lower_pads[dim]) {
-      switch ((PadMode)pad_mode) {
-        case PadMode::Constant:
-          use_pad_value = true;
-          break;
-        case PadMode::Edge:
-          in_coord = 0;
-          break;
-        case PadMode::Reflect:
-          in_coord = lower_pads[dim] - out_coord;
-          break;
-        case PadMode::Wrap: {
-          int64_t eff_len = effective_input_dims[dim];
-          if (eff_len == 0) {
-            // Should not happen if output size > 0, but safe fallback
-            in_coord = 0;
-          } else {
-            // Match CPU: effective_index = (eff_len - lower_pads[dim] + out_coord) % eff_len
-            // then in_coord = -slice_starts[dim] + effective_index (map to input via effective region)
-            int64_t effective_index = (eff_len - lower_pads[dim] + static_cast<int64_t>(out_coord)) % eff_len;
-            if (effective_index < 0) effective_index += eff_len;
-            in_coord = static_cast<int>(-slice_starts[dim] + effective_index);
-          }
-          break;
-        }
-      }
-    } else if (out_coord >= lower_pads[dim] + input_dims[dim]) {
-      switch ((PadMode)pad_mode) {
-        case PadMode::Constant:
-          use_pad_value = true;
-          break;
-        case PadMode::Edge:
-          in_coord = input_dims[dim] - 1;
-          break;
-        case PadMode::Reflect:
-          in_coord = input_dims[dim] - 2 - (out_coord - (lower_pads[dim] + input_dims[dim]));
-          break;
-        case PadMode::Wrap: {
-          int64_t eff_len = effective_input_dims[dim];
-          if (eff_len == 0) {
-            in_coord = 0;
-          } else {
-            // Match CPU: effective_index = (eff_len - lower_pads[dim] + out_coord) % eff_len
-            int64_t effective_index = (eff_len - lower_pads[dim] + static_cast<int64_t>(out_coord)) % eff_len;
-            if (effective_index < 0) effective_index += eff_len;
-            in_coord = static_cast<int>(-slice_starts[dim] + effective_index);
-          }
-          break;
-        }
-      }
+    int64_t in_coord = 0;
+    if constexpr (pad_mode == static_cast<int>(PadMode::Wrap)) {
+      const int64_t effective_input_extent = effective_input_extents[dim];
+      const int64_t pre_pad = lower_pads[dim] + input_offsets[dim];
+      const int64_t relative_coord = static_cast<int64_t>(out_coord) - pre_pad;
+      in_coord = input_offsets[dim] + WrapCoordinate(relative_coord, effective_input_extent);
     } else {
-      in_coord = out_coord - lower_pads[dim];
+      if (out_coord < lower_pads[dim]) {
+        switch ((PadMode)pad_mode) {
+          case PadMode::Constant:
+            use_pad_value = true;
+            break;
+          case PadMode::Edge:
+            in_coord = 0;
+            break;
+          case PadMode::Reflect:
+            in_coord = lower_pads[dim] - out_coord;
+            break;
+          case PadMode::Wrap:
+            break;
+        }
+      } else if (out_coord >= lower_pads[dim] + input_dims[dim]) {
+        switch ((PadMode)pad_mode) {
+          case PadMode::Constant:
+            use_pad_value = true;
+            break;
+          case PadMode::Edge:
+            in_coord = input_dims[dim] - 1;
+            break;
+          case PadMode::Reflect:
+            in_coord = input_dims[dim] - 2 - (out_coord - (lower_pads[dim] + input_dims[dim]));
+            break;
+          case PadMode::Wrap:
+            break;
+        }
+      } else {
+        in_coord = out_coord - lower_pads[dim];
+      }
     }
     input_index += input_strides[dim] * in_coord;
   }
@@ -105,10 +95,6 @@ __global__ void _PadNCHWInputWithPaddingAlongHAndWKernel(
     const int64_t output_width,
     const int64_t pad_height_start,
     const int64_t pad_width_start,
-    const int64_t slice_height_start,
-    const int64_t slice_width_start,
-    const int64_t effective_input_height,
-    const int64_t effective_input_width,
     const T pad_value,
     const T* input_data,
     T* output_data,
@@ -159,32 +145,6 @@ __global__ void _PadNCHWInputWithPaddingAlongHAndWKernel(
                                        input_width +
                                    current_input_width];
       break;
-
-    case PadMode::Wrap: {
-      int64_t h_in, w_in;
-
-      if (effective_input_height == 0) {
-        h_in = 0;
-      } else {
-        // Match CPU: effective_index = (eff_len - lower_pads + out_coord) % eff_len
-        int64_t effective_index_h = (effective_input_height - pad_height_start + current_output_height) % effective_input_height;
-        if (effective_index_h < 0) effective_index_h += effective_input_height;
-        h_in = -slice_height_start + effective_index_h;
-      }
-
-      if (effective_input_width == 0) {
-        w_in = 0;
-      } else {
-        // Match CPU: effective_index = (eff_len - lower_pads + out_coord) % eff_len
-        int64_t effective_index_w = (effective_input_width - pad_width_start + current_output_width) % effective_input_width;
-        if (effective_index_w < 0) effective_index_w += effective_input_width;
-        w_in = -slice_width_start + effective_index_w;
-      }
-
-      output_data[id] = input_data[(nc_index * input_height + static_cast<int>(h_in)) * input_width +
-                                   static_cast<int>(w_in)];
-      break;
-    }
   }
 }
 
@@ -195,8 +155,8 @@ void PadImpl(
     const TArray<int64_t>& input_dims,
     const TArray<int64_t>& input_strides,
     const TArray<int64_t>& lower_pads,
-    const TArray<int64_t>& slice_starts,
-    const TArray<int64_t>& effective_input_dims,
+    const TArray<int64_t>& effective_input_extents,
+    const TArray<int64_t>& input_offsets,
     const T pad_value,
     const int pad_mode,
     const T* input_data,
@@ -210,22 +170,22 @@ void PadImpl(
   switch (pad_mode) {
     case 0:
       _PadKernel<T, 0><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          shape_rank, input_dims, input_strides, lower_pads, slice_starts, effective_input_dims,
+          shape_rank, input_dims, input_strides, lower_pads, effective_input_extents, input_offsets,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 1:
       _PadKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          shape_rank, input_dims, input_strides, lower_pads, slice_starts, effective_input_dims,
+          shape_rank, input_dims, input_strides, lower_pads, effective_input_extents, input_offsets,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 2:
       _PadKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          shape_rank, input_dims, input_strides, lower_pads, slice_starts, effective_input_dims,
+          shape_rank, input_dims, input_strides, lower_pads, effective_input_extents, input_offsets,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 3:
       _PadKernel<T, 3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          shape_rank, input_dims, input_strides, lower_pads, slice_starts, effective_input_dims,
+          shape_rank, input_dims, input_strides, lower_pads, effective_input_extents, input_offsets,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
   }
@@ -242,10 +202,6 @@ void PadNCHWInputWithPaddingAlongHAndWImpl(
     const int64_t output_width,
     const int64_t pad_height_start,
     const int64_t pad_width_start,
-    const int64_t slice_height_start,
-    const int64_t slice_width_start,
-    const int64_t effective_input_height,
-    const int64_t effective_input_width,
     const T pad_value,
     const int pad_mode,
     const T* input_data,
@@ -259,29 +215,19 @@ void PadNCHWInputWithPaddingAlongHAndWImpl(
     case 0:
       _PadNCHWInputWithPaddingAlongHAndWKernel<T, 0><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           n, c, input_height, output_height, input_width, output_width,
-          pad_height_start, pad_width_start, slice_height_start, slice_width_start,
-          effective_input_height, effective_input_width,
+          pad_height_start, pad_width_start,
           pad_value, input_data, output_data, N);
       break;
     case 1:
       _PadNCHWInputWithPaddingAlongHAndWKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           n, c, input_height, output_height, input_width, output_width,
-          pad_height_start, pad_width_start, slice_height_start, slice_width_start,
-          effective_input_height, effective_input_width,
+          pad_height_start, pad_width_start,
           pad_value, input_data, output_data, N);
       break;
     case 2:
       _PadNCHWInputWithPaddingAlongHAndWKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           n, c, input_height, output_height, input_width, output_width,
-          pad_height_start, pad_width_start, slice_height_start, slice_width_start,
-          effective_input_height, effective_input_width,
-          pad_value, input_data, output_data, N);
-      break;
-    case 3:
-      _PadNCHWInputWithPaddingAlongHAndWKernel<T, 3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          n, c, input_height, output_height, input_width, output_width,
-          pad_height_start, pad_width_start, slice_height_start, slice_width_start,
-          effective_input_height, effective_input_width,
+          pad_height_start, pad_width_start,
           pad_value, input_data, output_data, N);
       break;
   }
@@ -291,8 +237,8 @@ void PadNCHWInputWithPaddingAlongHAndWImpl(
   template void PadImpl<T>(cudaStream_t stream, const size_t shape_rank,                                          \
                            const TArray<int64_t>& input_dims, const TArray<int64_t>& input_strides,               \
                            const TArray<int64_t>& lower_pads,                                                     \
-                           const TArray<int64_t>& slice_starts,                                                   \
-                           const TArray<int64_t>& effective_input_dims,                                           \
+                           const TArray<int64_t>& effective_input_extents,                                        \
+                           const TArray<int64_t>& input_offsets,                                                  \
                            const T pad_value,                                                                     \
                            const int pad_mode,                                                                    \
                            const T* input_data,                                                                   \
@@ -304,10 +250,6 @@ void PadNCHWInputWithPaddingAlongHAndWImpl(
                                                          const int64_t input_width, const int64_t output_width,   \
                                                          const int64_t pad_height_start,                          \
                                                          const int64_t pad_width_start,                           \
-                                                         const int64_t slice_height_start,                        \
-                                                         const int64_t slice_width_start,                         \
-                                                         const int64_t effective_input_height,                    \
-                                                         const int64_t effective_input_width,                     \
                                                          const T pad_value,                                       \
                                                          const int pad_mode,                                      \
                                                          const T* input_data, T* output_data,                     \

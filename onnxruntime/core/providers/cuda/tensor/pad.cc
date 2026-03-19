@@ -76,10 +76,34 @@ namespace cuda {
           .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      23, 23,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      24, 24,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      23,                                                         \
+      25,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -190,11 +214,10 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     effective_input_extents.push_back(extent);
   }
 
-  TArray<int64_t> slice_starts(dimension_count);
-  for (size_t i = 0; i < dimension_count; ++i) {
-    slice_starts[i] = (*p_slices)[i];
+  TArray<int64_t> input_offsets(dimension_count);
+  for (int32_t i = 0; i < dimension_count; ++i) {
+    input_offsets[i] = -(*p_slices)[i];
   }
-  TArray<int64_t> effective_input_dims(effective_input_extents);
 
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
@@ -278,7 +301,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  if (IsNCHWInputWithPaddingAlongHAndW(dimension_count, lower_pads, upper_pads)) {
+  if (mode_ != Mode::Wrap &&
+      IsNCHWInputWithPaddingAlongHAndW(dimension_count, lower_pads, upper_pads)) {
     // If we have entered here, it means the input can only be 4-D (NCHW), 3-D (CHW), or 2-D (HW)
 
     // NCHW input
@@ -303,10 +327,6 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
         output_dims[width_dim],
         lower_pads[height_dim],
         lower_pads[width_dim],
-        slice_starts[height_dim],
-        slice_starts[width_dim],
-        effective_input_dims[height_dim],
-        effective_input_dims[width_dim],
         value,
         static_cast<int>(mode_),
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.Data<T>()),
@@ -328,8 +348,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       input_dims,
       input_strides,
       lower_pads,
-      slice_starts,
-      effective_input_dims,
+      TArray<int64_t>(effective_input_extents),
+      input_offsets,
       value,
       static_cast<int>(mode_),
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.Data<T>()),
