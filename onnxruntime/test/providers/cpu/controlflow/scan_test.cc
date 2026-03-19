@@ -1204,11 +1204,12 @@ TEST(Scan, MixedExecutionProvidersUnknownDimInSubgraphOutput) {
 // for self-contained, readable model definitions.
 // ---------------------------------------------------------------------------
 
-// Parse an ONNX text-format model, run it with the given feeds, and return the output fetches.
-static std::vector<OrtValue> RunOnnxTextModel(
+// Parse an ONNX text-format model, run it with the given feeds, and return the Run status.
+static common::Status RunOnnxTextModel(
     const char* model_text,
     const NameMLValMap& feeds,
-    gsl::span<const std::string> output_names) {
+    gsl::span<const std::string> output_names,
+    std::vector<OrtValue>& fetches) {
   ONNX_NAMESPACE::ModelProto model_proto;
   ONNX_NAMESPACE::OnnxParser parser(model_text);
   auto parse_status = parser.Parse(model_proto);
@@ -1225,8 +1226,16 @@ static std::vector<OrtValue> RunOnnxTextModel(
   status = session.Initialize();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
+  return session.Run(feeds, output_names, &fetches);
+}
+
+// Convenience overload: asserts success and returns fetches.
+static std::vector<OrtValue> RunOnnxTextModel(
+    const char* model_text,
+    const NameMLValMap& feeds,
+    gsl::span<const std::string> output_names) {
   std::vector<OrtValue> fetches;
-  status = session.Run(feeds, output_names, &fetches);
+  auto status = RunOnnxTextModel(model_text, feeds, output_names, fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   return fetches;
 }
@@ -1667,6 +1676,74 @@ main_graph (float[2, 3] values, int64[3] repeats)
   for (size_t i = 0; i < expected.size(); ++i) {
     EXPECT_FLOAT_EQ(data[i], expected[i]) << "at index " << i;
   }
+}
+
+// Model text for VariableLengthExpand with output_lengths (pre-allocation).
+// Same subgraph as VariableLengthExpand, but with output_lengths as first input.
+static const char* kVariableLengthExpandPreAllocModel = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (int64[1] output_lengths, float[3] values, int64[3] repeats)
+    => (float[?] scan_out)
+{
+  scan_out = com.microsoft.Scan (output_lengths, values, repeats) <
+    num_scan_inputs = 2,
+    body = scan_body (float value_in, int64 repeat_in)
+        => (float[?] out)
+    {
+      one_shape = Constant <value = int64[1] {1}> ()
+      value_1d = Reshape (value_in, one_shape)
+      repeat_shape = Reshape (repeat_in, one_shape)
+      out = Expand (value_1d, repeat_shape)
+    }
+  >
+}
+)ONNX";
+
+// Pre-allocation with correct output_lengths: same result as VariableLengthExpand.
+TEST(ScanVarLen, VariableLengthExpand_PreAlloc) {
+  auto alloc = GetCpuAllocator();
+
+  OrtValue output_lengths_val, values_val, repeats_val;
+  CreateMLValue<int64_t>(alloc, {1}, {int64_t(5)}, &output_lengths_val);  // 2+1+2 = 5
+  CreateMLValue<float>(alloc, {3}, {1.f, 2.f, 3.f}, &values_val);
+  CreateMLValue<int64_t>(alloc, {3}, {int64_t(2), int64_t(1), int64_t(2)}, &repeats_val);
+
+  NameMLValMap feeds;
+  feeds["output_lengths"] = output_lengths_val;
+  feeds["values"] = values_val;
+  feeds["repeats"] = repeats_val;
+
+  auto fetches = RunOnnxTextModel(kVariableLengthExpandPreAllocModel, feeds,
+                                  AsSpan({std::string("scan_out")}));
+
+  auto& scan_out = fetches[0].Get<Tensor>();
+  EXPECT_EQ(scan_out.Shape(), TensorShape({5}));
+  auto* data = scan_out.Data<float>();
+  std::vector<float> expected = {1.f, 1.f, 2.f, 3.f, 3.f};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], expected[i]) << "at index " << i;
+  }
+}
+
+// Under-allocation: output_lengths is too small, should fail at runtime.
+TEST(ScanVarLen, VariableLengthExpand_UnderAlloc) {
+  auto alloc = GetCpuAllocator();
+
+  OrtValue output_lengths_val, values_val, repeats_val;
+  CreateMLValue<int64_t>(alloc, {1}, {int64_t(3)}, &output_lengths_val);  // too small (need 5)
+  CreateMLValue<float>(alloc, {3}, {1.f, 2.f, 3.f}, &values_val);
+  CreateMLValue<int64_t>(alloc, {3}, {int64_t(2), int64_t(1), int64_t(2)}, &repeats_val);
+
+  NameMLValMap feeds;
+  feeds["output_lengths"] = output_lengths_val;
+  feeds["values"] = values_val;
+  feeds["repeats"] = repeats_val;
+
+  std::vector<OrtValue> fetches;
+  auto status = RunOnnxTextModel(kVariableLengthExpandPreAllocModel, feeds,
+                                       AsSpan({std::string("scan_out")}), fetches);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeded pre-allocated size"));
 }
 
 }  // namespace test
