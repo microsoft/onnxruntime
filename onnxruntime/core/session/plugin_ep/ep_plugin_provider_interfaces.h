@@ -139,6 +139,8 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
  private:
+  const logging::Logger& GetEpLoggerOrDefault() const;
+
   struct FusedNodeState {
     FusedNodeState() = default;
     FusedNodeState(FusedNodeState&& other) = default;

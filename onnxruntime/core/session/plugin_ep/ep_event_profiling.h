@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include "core/common/profiler_common.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -32,12 +33,17 @@ class Logger;
 /// Wraps OrtEpProfilerImpl from a plugin EP into the C++ profiling::EpProfiler instance.
 /// </summary>
 class PluginEpProfiler final : public profiling::EpProfiler {
- public:
-  explicit PluginEpProfiler(OrtEpProfilerImpl& profiler_impl, const logging::Logger& logger);
-  ~PluginEpProfiler() override;
+ private:
+  struct PrivateTag {};
 
-  PluginEpProfiler(const PluginEpProfiler&) = delete;
-  PluginEpProfiler& operator=(const PluginEpProfiler&) = delete;
+ public:
+  static Status Create(OrtEpProfilerImpl& profiler_impl, const logging::Logger& logger,
+                       const std::string& ep_name, std::unique_ptr<PluginEpProfiler>& profiler_out);
+
+  // Do not use constructor. Use PluginEpProfiler::Create() for validation.
+  PluginEpProfiler(OrtEpProfilerImpl& profiler_impl, const logging::Logger& logger, std::string ep_name, PrivateTag);
+  ~PluginEpProfiler() override;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PluginEpProfiler);
 
   bool StartProfiling(TimePoint profiling_start_time) override;
   void EndProfiling(TimePoint start_time, profiling::Events& events) override;
@@ -46,8 +52,9 @@ class PluginEpProfiler final : public profiling::EpProfiler {
   void Stop(uint64_t ort_event_id) override;
 
  private:
-  OrtEpProfilerImpl* profiler_impl_;
+  OrtEpProfilerImpl& profiler_impl_;
   const logging::Logger& logger_;
+  std::string ep_name_;
 };
 
 }  // namespace onnxruntime

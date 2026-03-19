@@ -194,6 +194,10 @@ PluginExecutionProvider::~PluginExecutionProvider() {
   }
 }
 
+const logging::Logger& PluginExecutionProvider::GetEpLoggerOrDefault() const {
+  return GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+}
+
 std::shared_ptr<KernelRegistry> PluginExecutionProvider::GetKernelRegistry() const {
   return kernel_registry_;
 }
@@ -206,7 +210,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(graph_optimizer_registry);  // TODO: Add support
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
 
-  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+  const logging::Logger& logger = GetEpLoggerOrDefault();
 
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   if (Status status = EpGraph::Create(graph_viewer, ep_graph, true); !status.IsOK()) {
@@ -416,7 +420,7 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
                 " did not provide a valid ReleaseNodeComputeInfos() function");
 
-  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+  const logging::Logger& logger = GetEpLoggerOrDefault();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
   std::vector<const OrtGraph*> api_graphs;
@@ -746,7 +750,7 @@ std::string PluginExecutionProvider::GetCompiledModelCompatibilityInfo(const onn
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   auto ort_status = EpGraph::Create(graph_viewer, ep_graph);
   if (!ort_status.IsOK()) {
-    LOGS(*GetLogger(), ERROR) << "Failed to create EpGraph: " << ort_status.ToString();
+    LOGS(GetEpLoggerOrDefault(), ERROR) << "Failed to create EpGraph: " << ort_status.ToString();
     return {};
   }
   // Call EP plugin's OrtEp::GenerateCompiledModelCompatibilityInfo() function.
@@ -784,40 +788,28 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
     return {};
   }
 
-  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+  const logging::Logger& logger = GetEpLoggerOrDefault();
   OrtEpProfilerImpl* profiler_impl = nullptr;
   Status status = ToStatusAndRelease(ort_ep_->GetProfiler(ort_ep_.get(), &profiler_impl));
 
   if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "OrtEp::GetProfiler returned an error status: " << status.ErrorMessage();
+    LOGS(logger, ERROR) << "OrtEp::GetProfiler for " << Type() << " returned an error status: "
+                        << status.ErrorMessage();
     return {};
   }
 
   if (profiler_impl == nullptr) {
+    return {};  // plugin EP doesn't have a profiler
+  }
+
+  std::unique_ptr<PluginEpProfiler> ep_profiler;
+  status = PluginEpProfiler::Create(*profiler_impl, logger, Type(), /*out*/ ep_profiler);
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << status.ErrorMessage();
     return {};
   }
 
-  if (profiler_impl->ort_version_supported != ort_ep_->ort_version_supported) {
-    LOGS(logger, ERROR) << "OrtEpProfilerImpl::ort_version_supported declares an ORT version ("
-                        << profiler_impl->ort_version_supported
-                        << ") that does not match OrtEp::ort_version_supported (" << ort_ep_->ort_version_supported
-                        << ")";
-    return {};
-  }
-
-  // Validate that required function pointers are set.
-  if (profiler_impl->Release == nullptr ||
-      profiler_impl->StartProfiling == nullptr ||
-      profiler_impl->EndProfiling == nullptr) {
-    if (profiler_impl->Release != nullptr) {
-      profiler_impl->Release(profiler_impl);
-    }
-    LOGS(logger, ERROR) << "OrtEpProfilerImpl is missing required function pointer(s): "
-                        << "Release, StartProfiling, and EndProfiling must all be non-null.";
-    return {};
-  }
-
-  return std::make_unique<PluginEpProfiler>(*profiler_impl, logger);
+  return ep_profiler;
 }
 
 }  // namespace onnxruntime
