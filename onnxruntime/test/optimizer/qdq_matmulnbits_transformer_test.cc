@@ -802,7 +802,7 @@ void RunDQMatMulPerTensorConverted(const std::vector<int64_t>& input1_shape,
     // Scalar scale (per-tensor)
     auto* scale_arg = builder.MakeInitializer<float>({}, {10.0f});
     if constexpr (use_zp) {
-      auto* zp_arg = builder.MakeInitializer(std::vector<int64_t>{}, T(1, 0), T(1, 0));
+      auto* zp_arg = builder.MakeInitializer<T>({}, std::vector<T>{T(1, 0)});
       builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output});
     } else {
       builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output});
@@ -997,7 +997,7 @@ void RunDQMatMulPerTensorWithBlockSize(const std::vector<int64_t>& input1_shape,
 
     auto* scale_arg = builder.MakeInitializer<float>({}, {10.0f});
     if constexpr (use_zp) {
-      auto* zp_arg = builder.MakeInitializer(std::vector<int64_t>{}, T(1, 0), T(1, 0));
+      auto* zp_arg = builder.MakeInitializer<T>({}, std::vector<T>{T(1, 0)});
       builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output});
     } else {
       builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output});
