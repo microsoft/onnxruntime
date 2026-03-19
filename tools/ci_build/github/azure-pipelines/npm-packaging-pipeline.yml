@@ -88,7 +88,7 @@ extends:
       dependsOn:
       - Build_web_Release
       - Build_web_Debug
-      ${{ if eq(parameters.EnableReactNative, true) }}:
+      - ${{ if eq(parameters.EnableReactNative, true) }}:
         - ReactNative_CI_iOS
         - ReactNative_CI_Android
       jobs:
