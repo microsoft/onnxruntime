@@ -63,6 +63,15 @@ static const char* const kOrtSessionOptionsDisableDoubleQDQRemover = "session.di
 // Available since version 1.11.
 static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enable_quant_qdq_cleanup";
 
+// If set to "1", enables float activations mode for QDQ models. This skips QDQ fusion for data-movement ops
+// (Reshape, Transpose, etc.) and removes all remaining activation Q->DQ pairs after compute-op fusions
+// (QLinearMatMul, QLinearConv, etc.) have been applied. This allows unfused ops to run in float precision while
+// preserving quantized compute where fused kernels are available. Also enables MatMulNBits fusion for blockwise
+// quantized weights that become eligible after activation Q/DQ removal, and constant-folds remaining weight DQ
+// nodes into float initializers.
+// The default value is "0"
+static const char* const kOrtSessionOptionsQDQFloatActivations = "session.qdq_float_activations";
+
 // Enable or disable gelu approximation in graph optimization. "0": disable; "1": enable. The default is "0".
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";

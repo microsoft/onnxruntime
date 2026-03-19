@@ -370,10 +370,13 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 SelectorActionRegistry CreateSelectorActionRegistry(
     bool is_int8_allowed,
     int64_t qdq_matmulnbits_accuracy_level,
-    concurrency::ThreadPool* intra_op_thread_pool) {
+    concurrency::ThreadPool* intra_op_thread_pool,
+    bool skip_data_movement_qdq_rules) {
   SelectorActionRegistry qdq_selector_action_registry;
-  SplitQDQRules(qdq_selector_action_registry);
-  DropQDQNodesRules(qdq_selector_action_registry);
+  if (!skip_data_movement_qdq_rules) {
+    SplitQDQRules(qdq_selector_action_registry);
+    DropQDQNodesRules(qdq_selector_action_registry);
+  }
   DropDQNodesRules(qdq_selector_action_registry);
   UnaryOpQDQRules(qdq_selector_action_registry);
   BinaryOpQDQRules(qdq_selector_action_registry);
@@ -395,11 +398,12 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
     bool is_int8_allowed,
     const SatApplyContextVariant& apply_context,
     int64_t qdq_matmulnbits_accuracy_level,
-    concurrency::ThreadPool* intra_op_thread_pool)
+    concurrency::ThreadPool* intra_op_thread_pool,
+    bool skip_data_movement_qdq_rules)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
           CreateSelectorActionRegistry(is_int8_allowed, qdq_matmulnbits_accuracy_level,
-                                       intra_op_thread_pool),
+                                       intra_op_thread_pool, skip_data_movement_qdq_rules),
           apply_context,
           // this transformer is compatible with CPU, DML, ACL and CUDA EP.
           // There is further EP control on the rule level.
