@@ -9,6 +9,8 @@
 #include <cstdlib>
 #include <mutex>
 #include <unordered_map>
+#include <sstream>
+#include <algorithm>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -21,6 +23,10 @@
 // D3D12 headers for graphics interop on Windows
 #if defined(_WIN32) && USE_DX_INTEROP
 #include <d3d12.h>
+#endif
+// NVML for driver version checking (optional; see HAVE_NVML in CMake)
+#if defined(HAVE_NVML)
+#include <nvml.h>
 #endif
 
 #include "onnx_ctx_model_helper.h"
@@ -1027,6 +1033,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     DeinitGraphicsInterop = DeinitGraphicsInteropImpl;
 
     CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
+    GetHardwareDeviceIncompatibilityDetails = GetHardwareDeviceIncompatibilityDetailsImpl;
     ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
   }
 
@@ -1066,9 +1073,11 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
    *    compute capability is at least 8.0 (Ampere) or newer.
    *
    * @param device The OrtHardwareDevice to check.
+   * @param major Optional output parameter for the major compute capability version.
+   * @param minor Optional output parameter for the minor compute capability version.
    * @return True if the device is a supported NVIDIA GPU, false otherwise.
    */
-  bool IsOrtHardwareDeviceSupported(const OrtHardwareDevice& device) {
+  bool IsOrtHardwareDeviceSupported(const OrtHardwareDevice& device, int* major = nullptr, int* minor = nullptr) {
 #if _WIN32
     const auto& metadata_entries = device.metadata.Entries();
     const auto it = metadata_entries.find("LUID");
@@ -1106,6 +1115,13 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
       memcpy(&current_luid, prop.luid, sizeof(current_luid));
 
       if (current_luid == target_luid) {
+        // Set output parameters if provided
+        if (major != nullptr) {
+          *major = prop.major;
+        }
+        if (minor != nullptr) {
+          *minor = prop.minor;
+        }
         // Ampere architecture or newer is required.
         return prop.major >= 8;
       }
@@ -1128,9 +1144,192 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     if (cudaGetDeviceProperties(&prop, cuda_device_idx) != cudaSuccess) {
       return false;
     }
+    // Set output parameters if provided
+    if (major != nullptr) {
+      *major = prop.major;
+    }
+    if (minor != nullptr) {
+      *minor = prop.minor;
+    }
     // Ampere architecture or newer is required.
     return prop.major >= 8;
 #endif
+  }
+
+
+  /**
+   * @brief Parses NVML driver version string and compares with minimum required version.
+   * 
+   * NVML always returns driver version in standard format: "major.minor" (e.g., "581.80", "555.85", "570.00")
+   * The minimum version is also provided in standard format.
+   * 
+   * @param driver_version_str NVML driver version string (e.g., "581.80")
+   * @param min_version_str Minimum required version string (e.g., "570.00")
+   * @return true if driver_version >= min_version, false otherwise
+   */
+  bool CompareNVMLDriverVersion(const std::string& driver_version_str, const std::string& min_version_str) {
+    // Helper lambda to parse standard format version string (major.minor)
+    auto parseVersion = [](const std::string& version_str, int& major, int& minor) -> bool {
+      size_t dot_pos = version_str.find('.');
+      if (dot_pos == std::string::npos || dot_pos == version_str.length() - 1 || dot_pos == 0) {
+        return false;
+      }
+      try {
+        major = std::stoi(version_str.substr(0, dot_pos));
+        minor = std::stoi(version_str.substr(dot_pos + 1));
+        return true;
+      } catch (const std::exception&) {
+        return false;
+      }
+    };
+
+    int driver_major = 0, driver_minor = 0;
+    int min_major = 0, min_minor = 0;
+    
+    // Parse both versions (both should be in standard format from NVML)
+    if (!parseVersion(driver_version_str, driver_major, driver_minor) ||
+        !parseVersion(min_version_str, min_major, min_minor)) {
+      // If parsing fails, conservatively treat as incompatible (fail safe)
+      return false;
+    }
+    
+    // Compare versions numerically
+    if (driver_major > min_major) return true;
+    if (driver_major < min_major) return false;
+    return driver_minor >= min_minor;
+  }
+
+  /**
+   * @brief Checks for hardware device incompatibility reasons with NvTensorRTRTX EP.
+   *
+   * This function is called by ORT's GetHardwareDeviceEpIncompatibilityDetails() API
+   * to provide diagnostic information about why a device may be incompatible with
+   * this execution provider.
+   *
+   * Currently checks:
+   * - Compute capability: Requires Ampere (8.0) or newer GPU architecture
+   * - Driver version: Uses NVML to check NVIDIA graphics driver version
+   *   - Ampere/Ada (CC 8.x): Requires >= 555.85
+   *   - Blackwell (CC 12.x): Requires >= R570_00
+   *
+   * @param this_ptr The OrtEpFactory instance.
+   * @param hw The hardware device to check for incompatibility.
+   * @param details Pre-allocated incompatibility details object initialized by ORT.
+   * @return nullptr on success (compatible or details set), OrtStatus on error.
+   */
+  static OrtStatus* ORT_API_CALL GetHardwareDeviceIncompatibilityDetailsImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* hw,
+      OrtDeviceEpIncompatibilityDetails* details) noexcept {
+    auto* factory = static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    if (hw == nullptr || details == nullptr) {
+      return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                          "[NvTensorRTRTX EP] Invalid arguments: hw or details is null");
+    }
+
+    // Check if the device is a GPU from NVIDIA vendor
+    OrtHardwareDeviceType device_type = factory->ort_api.HardwareDevice_Type(hw);
+    uint32_t vendor_id = factory->ort_api.HardwareDevice_VendorId(hw);
+
+    if (device_type != OrtHardwareDeviceType::OrtHardwareDeviceType_GPU ||
+        vendor_id != factory->vendor_id) {
+      // Not a NVIDIA GPU - device type/vendor incompatible
+      uint32_t reasons = OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE;
+      return factory->ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code
+          "NvTensorRTRTX EP only supports NVIDIA GPU devices");
+    }
+
+    // Check compute capability and get major/minor for driver version check
+    int compute_capability_major = 0;
+    int compute_capability_minor = 0;
+    if (!factory->IsOrtHardwareDeviceSupported(*hw, &compute_capability_major, &compute_capability_minor)) {
+      uint32_t reasons = OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE;
+      // If both are still 0, the CUDA device lookup failed (device not matched by LUID/PCI bus ID)
+      if (compute_capability_major == 0 && compute_capability_minor == 0) {
+        return factory->ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+            details,
+            reasons,
+            0,  // error_code
+            "NvTensorRTRTX EP could not determine the compute capability of this NVIDIA GPU. "
+            "Ensure the CUDA runtime is installed and the device is accessible.");
+      }
+      // Device architecture not supported - compute capability too low
+      std::string cc_string = std::to_string(compute_capability_major) + "." + std::to_string(compute_capability_minor);
+      std::string msg = "NvTensorRTRTX EP does not support GPU with Compute Capability " + cc_string +
+                        ". Requires Ampere (8.0+) or newer GPU architecture.";
+      return factory->ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code
+          msg.c_str());
+    }
+
+#if defined(HAVE_NVML)
+    // Determine minimum driver version based on GPU architecture
+    // Note: NVML returns driver version in standard format (e.g., "581.80"), not "R570_00" format
+    // So we use standard format for minimum versions
+    std::string min_driver_version;
+    if (compute_capability_major >= 12) {
+      // Blackwell architecture (CC 12.x) - requires driver 570.00 or higher
+      // (R570_00 in documentation corresponds to 570.00 in NVML format)
+      min_driver_version = "570.00";
+    } else if (compute_capability_major >= 8) {
+      // Ampere and Ada architectures (CC 8.x) - requires driver 555.85 or higher
+      min_driver_version = "555.85";
+    } else {
+      // Should not reach here (already checked compute capability above)
+      min_driver_version = "555.85";
+    }
+
+    // Initialize NVML and get driver version
+    nvmlReturn_t nvml_result = nvmlInit_v2();
+    if (nvml_result != NVML_SUCCESS) {
+      uint32_t reasons = OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE;
+      std::string msg = "Failed to initialize NVML (" + std::string(nvmlErrorString(nvml_result)) +
+                         "). NVML may be unavailable due to missing or incompatible NVIDIA driver, insufficient permissions, or runtime/container restrictions.";
+      return factory->ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code
+          msg.c_str());
+    }
+
+    char driver_version_str[NVML_SYSTEM_DRIVER_VERSION_BUFFER_SIZE] = {0};
+    nvml_result = nvmlSystemGetDriverVersion(driver_version_str, sizeof(driver_version_str));
+    
+    // Shutdown NVML before returning
+    nvmlShutdown();
+
+    if (nvml_result != NVML_SUCCESS) {
+      uint32_t reasons = OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE;
+      std::string msg = "Failed to query NVIDIA driver version: " + std::string(nvmlErrorString(nvml_result));
+      return factory->ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code
+          msg.c_str());
+    }
+
+    // Compare driver version with minimum required
+    if (!factory->CompareNVMLDriverVersion(driver_version_str, min_driver_version)) {
+      uint32_t reasons = OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE;
+      std::string msg = "NVIDIA driver version " + std::string(driver_version_str) + 
+                        " is too old. Minimum required: " + min_driver_version + " or higher";
+      
+      return factory->ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+          details,
+          reasons,
+          0,  // error_code (could store parsed version if needed)
+          msg.c_str());
+    }
+#endif  // HAVE_NVML
+
+    // Device is compatible - details are already initialized with default values by ORT
+    return nullptr;
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
