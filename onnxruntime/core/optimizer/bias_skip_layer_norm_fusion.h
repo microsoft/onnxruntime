@@ -8,24 +8,22 @@
 namespace onnxruntime {
 
 /**
-@Class BiasSkipLayerNormFusion
-
-Rewrite graph fusing Add + SkipLayerNormalization subgraph to a single SkipLayerNormalization node,
-where the Add node adds a 1D constant bias to the output of a MatMul (or Cast after MatMul).
-
-Before fusion:
-    MatMul
-      |
-   Add(bias)    [skip]
-           \       /
-       SkipLayerNormalization (4 inputs: input, skip, gamma, beta)
-
-After fusion:
-    MatMul    [skip]
-        \       /
-    SkipLayerNormalization (5 inputs: input, skip, gamma, beta, bias)
-
-*/
+ * \class BiasSkipLayerNormFusion
+ * \brief Rewrite graph fusing Add + SkipLayerNormalization subgraph to a single SkipLayerNormalization node,
+ * where the Add node adds a 1D constant bias to the output of a MatMul (or Cast after MatMul).
+ *
+ * Before fusion:
+ *     MatMul
+ *       |
+ *    Add(bias)    [skip]
+ *            \       /
+ *        SkipLayerNormalization (4 inputs: input, skip, gamma, beta)
+ *
+ * After fusion:
+ *     MatMul    [skip]
+ *         \       /
+ *     SkipLayerNormalization (5 inputs: input, skip, gamma, beta, bias)
+ */
 class BiasSkipLayerNormFusion : public GraphTransformer {
  public:
   explicit BiasSkipLayerNormFusion(
