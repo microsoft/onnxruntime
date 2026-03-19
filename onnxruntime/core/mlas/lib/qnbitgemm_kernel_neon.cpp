@@ -63,7 +63,7 @@ QNBitGemmPackQuantBDataSize(
 #endif
 
 #ifdef USE_KLEIDIAI
-        if (ComputeType == SQNBIT_CompInt8 && UseKleidiAIBase(K, BlkLen, BackendKernelSelectorConfig)) {
+        if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, BackendKernelSelectorConfig)) {
             const auto& k = GetKleidiAIGemmUKernel();
             const auto& ukernel = k.ukernel;
             const size_t nr = ukernel.get_nr();
@@ -207,7 +207,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
 #ifdef USE_KLEIDIAI
-    if (UseKleidiAIBase(K, BlkLen, BackendKernelSelectorConfig)) {
+    if (UseKleidiAI(K, BlkLen, BackendKernelSelectorConfig)) {
         const auto& k = GetKleidiAIGemmUKernel();
         const auto& ukernel = k.ukernel;
         std::byte* PackedQuantBDataBegin = PackedQuantB.PackedQuantBData;
@@ -461,7 +461,7 @@ QNBitGemmPerGemmWorkspaceSize(
         case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
 #ifdef USE_KLEIDIAI
-            if (BlkBitWidth == 4 && UseKleidiAIBase(K, BlkLen, BackendKernelSelectorConfig)) {
+            if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, BackendKernelSelectorConfig)) {
                 const auto& k = (M == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
                 const auto& ukernel = k.ukernel;
 
@@ -522,7 +522,7 @@ QNBitGemmPerGemmWorkspaceAlignment(
 }  // namespace
 
 bool
-UseKleidiAIBase(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+UseKleidiAI(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
 {
 #ifdef USE_KLEIDIAI
     if (BackendKernelSelectorConfig != nullptr && !BackendKernelSelectorConfig->use_kleidiai) {
@@ -537,12 +537,6 @@ UseKleidiAIBase(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONF
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
     return false;
 #endif
-}
-
-bool
-UseKleidiAI(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
-{
-    return !HasZp && UseKleidiAIBase(K, BlkLen, BackendKernelSelectorConfig);
 }
 
 template<bool QuantAUnsigned>

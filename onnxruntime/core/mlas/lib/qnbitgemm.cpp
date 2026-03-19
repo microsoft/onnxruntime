@@ -944,7 +944,9 @@ SQ4BitGemm_CompInt8(
             DataParams->C, RangeStartM, RangeCountM, RangeStartN, RangeCountN, K,
             DataParams->ldc, DataParams->Bias);
 
-        // Apply zero-point correction for asymmetric quantization:
+        // Apply zero-point correction for asymmetric quantization (KleidiAI path only).
+        // BZpCorr and AFloatBlkSum are only set when KleidiAI is active with asymmetric
+        // quantization (has zero points). On all other paths they remain nullptr.
         // C += AFloatBlkSum * BZpCorr^T  (for this tile's M/N ranges)
         if (DataParams->BZpCorr != nullptr && DataParams->AFloatBlkSum != nullptr) {
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);

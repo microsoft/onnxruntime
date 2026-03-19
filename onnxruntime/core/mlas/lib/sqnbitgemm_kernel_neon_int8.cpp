@@ -136,7 +136,7 @@ UsePacked_CompInt8(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNE
 {
     MLAS_UNREFERENCED_PARAMETER(HasZp);
     // Use KleidiAI packed path for both symmetric and asymmetric (with ZP correction).
-    return UseKleidiAIBase(K, BlkLen, BackendKernelSelectorConfig);
+    return UseKleidiAI(K, BlkLen, BackendKernelSelectorConfig);
 }
 
 #ifdef USE_KLEIDIAI
