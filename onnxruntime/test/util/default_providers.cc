@@ -307,11 +307,8 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
                                               webgpu::options::kPreferredLayout_NCHW)
                     .IsOK());
   }
-#if defined(ORT_USE_EP_API_ADAPTERS)
-  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
-#else
-  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
-#endif
+
+  return WebGpuExecutionProviderWithOptions(config_options);
 #else
   ORT_UNUSED_PARAMETER(is_nhwc);
   return nullptr;
@@ -321,6 +318,10 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
 #if defined(USE_WEBGPU)
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  ORT_ENFORCE(ep_name.has_value() && *ep_name == kWebGpuExecutionProvider,
+              "Dynamic plugin EP is not the WebGPU EP. Expected \"", kWebGpuExecutionProvider,
+              "\", got \"", ep_name.value_or("<uninitialized>"), "\"");
   return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
 #else
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
