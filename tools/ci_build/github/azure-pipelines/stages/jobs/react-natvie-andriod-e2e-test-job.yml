@@ -13,15 +13,6 @@ parameters:
   type: string
   default: 'dev'
 
-# We're currently out of compliance for Detox.
-# The tests try to reach out to multiple external repos
-# Whereas 1ESPT requires us to use a single internal feed.
-# While we are working on bringing react native into compliance
-# allow failures in detox testing.
-- name: AllowFailuresOnDetox
-  type: boolean
-  default: true
-
 jobs:
 - job: ReactNative_CI_Android
   pool:
@@ -120,7 +111,6 @@ jobs:
                    --take-screenshots failing
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Run React Native Detox Android e2e Tests
-    continueOnError: ${{ parameters.AllowFailuresOnDetox }}
 
   - template: ../../templates/use-android-emulator.yml
     parameters:
@@ -129,7 +119,7 @@ jobs:
   - task: PublishTestResults@2
     inputs:
       testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml'
-      failTaskOnFailedTests: ${{ not(parameters.AllowFailuresOnDetox) }}
+      failTaskOnFailedTests: true
       testRunTitle: 'React Native Detox Android e2e Test Results'
     condition: succeededOrFailed()
     displayName: Publish React Native Detox Android e2e Test Results
@@ -140,7 +130,6 @@ jobs:
     displayName: Restore git changes
 
   - task: PowerShell@2
-    condition: succeeded()
     inputs:
       filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
       arguments: '"${{parameters.NpmPackagingMode}}" $(Build.SourcesDirectory) react_native'
@@ -149,7 +138,6 @@ jobs:
     displayName: Pack NPM packages
 
   - task: CopyFiles@2
-    condition: succeeded()
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/common
       contents: onnxruntime-common*.tgz
@@ -157,7 +145,6 @@ jobs:
     displayName: 'Create Artifacts onnxruntime-common'
 
   - task: CopyFiles@2
-    condition: succeeded()
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/react_native
       contents: onnxruntime-react-native*.tgz
@@ -165,15 +152,12 @@ jobs:
     displayName: Create Artifacts onnxruntime-react-native
 
   - task: 1ES.PublishPipelineArtifact@1
-    condition: succeeded()
     inputs:
       artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
       targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
     condition: succeededOrFailed()
     displayName: Publish React Native Detox E2E test logs
-
   - task: 1ES.PublishPipelineArtifact@1
-    condition: succeeded()
     inputs:
       artifactName: '${{parameters.PackageName}}'
       targetPath: '$(Build.ArtifactStagingDirectory)'
