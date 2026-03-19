@@ -16,6 +16,7 @@ Abstract:
 
 #include <vector>
 #include <random>
+#include <algorithm>
 
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"
@@ -252,8 +253,11 @@ class MlasNeonFp16DequantBTest : public MlasTestBase {
 
   MLAS_FORCEINLINE
   bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
-    float f0 = std::abs(v0.ToFloat()), f1 = std::abs(v1.ToFloat());
-    return std::abs(f0 - f1) <= f1 * rtol + atol;
+    float f0 = v0.ToFloat();
+    float f1 = v1.ToFloat();
+    float diff = std::abs(f0 - f1);
+    float max_abs = std::max(std::abs(f0), std::abs(f1));
+    return diff <= max_abs * rtol + atol;
   }
 
   template <size_t Ldb, size_t N, size_t K>
@@ -479,6 +483,253 @@ class MlasNeonFp16HQ4BitGemmKernelTest : public MlasTestBase {
   }
 };
 
+//
+// 8-bit prepack test: verifies 8N column interleaving for 8-bit weights.
+//
+class MlasNeonFp16Prepack8BitTest : public MlasTestBase {
+ private:
+  unsigned int seed_;
+  std::mt19937 gen_;
+  std::uniform_int_distribution<> distrib_;
+  MatrixGuardBuffer<uint8_t> input_, packed_;
+
+  template <size_t N, size_t K, size_t BlkLen>
+  void TestPrepack() {
+    constexpr size_t Bits = 8;
+    constexpr size_t BlockCountK = (K + BlkLen - 1) / BlkLen;
+    constexpr size_t Ldb = BlockCountK * BlkLen;
+    constexpr size_t BufferSize = N * Ldb;
+    auto InitializeBuffer = [this](uint8_t* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = static_cast<uint8_t>(distrib_(gen_));
+      }
+    };
+
+    const auto* input = input_.GetFilledBuffer(BufferSize, InitializeBuffer);
+    auto* packed = packed_.GetBuffer(BufferSize, true);
+    MlasQNBitGemmPackQuantBData(
+        N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::HQNBIT_CompFp16, input, packed,
+        nullptr, false, nullptr, nullptr, nullptr);
+
+    // Verify 8N-interleaved packing
+    size_t n = 0;
+    for (; n + 8 <= N; n += 8) {
+      size_t k_blk_num = MlasDivRoundup(K, 16);
+      for (size_t k_blk = 0; k_blk < k_blk_num; ++k_blk) {
+        for (size_t k = 0; k < 16; ++k) {
+          for (size_t col = 0; col < 8; ++col) {
+            size_t raw_k = k_blk * 16 + k;
+            if (raw_k >= K) continue;
+            uint8_t expected = input[(n + col) * Ldb + raw_k];
+            uint8_t actual = packed[n * Ldb + k_blk * 128 + k * 8 + col];
+            ASSERT_EQ(actual, expected)
+                << " seed " << seed_
+                << " n " << n << " col " << col << " k " << raw_k;
+          }
+        }
+      }
+    }
+
+    // Verify remainder columns (should be copied as-is for the logical K range)
+    for (; n < N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        ASSERT_EQ(packed[n * Ldb + k], input[n * Ldb + k])
+            << " seed " << seed_
+            << " n " << n << " k " << k;
+      }
+    }
+  }
+
+ public:
+  MlasNeonFp16Prepack8BitTest()
+      : seed_(19287), gen_(seed_), distrib_(0, 255) {
+  }
+
+  static const char* GetTestSuiteName() {
+    return "NeonFp16Prepack8Bit";
+  }
+
+  void ExecuteShort(void) override {
+    TestPrepack<1, 16, 16>();
+    TestPrepack<1, 32, 16>();
+    TestPrepack<8, 16, 16>();
+    TestPrepack<8, 32, 16>();
+    TestPrepack<9, 32, 16>();
+    TestPrepack<9, 48, 32>();
+    TestPrepack<15, 32, 16>();
+    TestPrepack<17, 64, 16>();
+    TestPrepack<17, 128, 128>();
+    TestPrepack<263, 256, 16>();
+  }
+};
+
+//
+// 8-bit dequant test: verifies dequantization of packed 8-bit data to fp16.
+//
+class MlasNeonFp16DequantB8BitTest : public MlasTestBase {
+ private:
+  unsigned int seed_;
+  std::mt19937 gen_;
+  std::uniform_int_distribution<> distrib_;
+  std::uniform_real_distribution<float> _distribFp;
+  MatrixGuardBuffer<uint8_t> input_, zero_points_;
+  MatrixGuardBuffer<MLAS_FP16> dequant_, ref_, scales_;
+
+  MLAS_FORCEINLINE
+  bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
+    float f0 = v0.ToFloat();
+    float f1 = v1.ToFloat();
+    float diff = std::abs(f0 - f1);
+    float max_abs = std::max(std::abs(f0), std::abs(f1));
+    return diff <= max_abs * rtol + atol;
+  }
+
+  // Reference dequantization for 8-bit packed data.
+  // Uses explicit position-based indexing to match the packed layout exactly.
+  //
+  // Packed layout for N>=8 group (8N-interleaved):
+  //   For each K position, 8 consecutive bytes hold one value per column.
+  //   byte[groupStart + k * 8 + col] = value for K=k, column=col
+  //
+  // Packed layout for remainder N<8 (sequential):
+  //   byte[colStart + k] = value for K=k
+  //
+  // Scale layout: scales[col * BlkNum + block] = scale for column col, block block
+  // ZP layout (8-bit): zero_points[col * BlkNum + block] = zp for column col, block block
+  template <size_t N, size_t K, size_t BlkLen, bool UseZeroPoints>
+  void DequantB8Bit(const uint8_t* src, MLAS_FP16* dst, const MLAS_FP16* scales, const uint8_t* zero_points) {
+    constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
+    constexpr size_t PaddedK = BlkNum * BlkLen;
+
+    size_t n = 0;
+    // N=8 groups: data is 8N-interleaved from Transpose8x8 packing
+    for (; n + 8 <= N; n += 8) {
+      const size_t groupStart = n * PaddedK;
+      for (size_t k = 0; k < PaddedK; ++k) {
+        const size_t block = k / BlkLen;
+        for (size_t col = 0; col < 8; ++col) {
+          const size_t absCol = n + col;
+          const size_t srcIdx = groupStart + k * 8 + col;
+          const size_t dstIdx = srcIdx;  // output has the same interleaved layout
+          const float value = static_cast<float>(src[srcIdx]);
+          const float scale = scales[absCol * BlkNum + block].ToFloat();
+          const float zp = static_cast<float>(
+              UseZeroPoints ? zero_points[absCol * BlkNum + block] : 128);
+          dst[dstIdx] = MLAS_FP16(value * scale - zp * scale);
+        }
+      }
+    }
+
+    // Remainder columns: data is sequential (not interleaved)
+    for (; n < N; ++n) {
+      const size_t colStart = n * PaddedK;
+      for (size_t k = 0; k < PaddedK; ++k) {
+        const size_t block = k / BlkLen;
+        const size_t srcIdx = colStart + k;
+        const size_t dstIdx = srcIdx;
+        const float value = static_cast<float>(src[srcIdx]);
+        const float scale = scales[n * BlkNum + block].ToFloat();
+        const float zp = static_cast<float>(
+            UseZeroPoints ? zero_points[n * BlkNum + block] : 128);
+        dst[dstIdx] = MLAS_FP16(value * scale - zp * scale);
+      }
+    }
+  }
+
+  template <size_t Ldb, size_t N, size_t K>
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* target, const MLAS_FP16* ref) {
+    size_t n = 0;
+    for (; n + 8 <= N; n += 8) {
+      for (size_t i = 0; i < K; ++i) {
+        for (size_t j = 0; j < 8; ++j) {
+          size_t idx = n * Ldb + i * 8 + j;
+          ASSERT_TRUE(FloatEqual(target[idx], ref[idx], 0.01f, 0.01f))
+              << " seed " << seed_
+              << " v0 " << target[idx] << " v1 " << ref[idx]
+              << " n " << n << " i " << i << " j " << j;
+        }
+      }
+    }
+
+    for (; n < N; ++n) {
+      for (size_t i = 0; i < K; ++i) {
+        size_t idx = n * Ldb + i;
+        ASSERT_TRUE(FloatEqual(target[idx], ref[idx], 0.01f, 0.01f))
+            << " seed " << seed_
+            << " v0 " << target[idx] << " v1 " << ref[idx]
+            << " n " << n << " i " << i;
+      }
+    }
+  }
+
+  template <size_t N, size_t K, size_t BlkLen, bool UseZeroPoints>
+  void TestDequant() {
+    constexpr size_t BlkNum = (K + BlkLen - 1) / BlkLen;
+    constexpr size_t BCount = BlkNum * BlkLen * N;
+    constexpr size_t ScaleCount = N * BlkNum;
+    constexpr size_t ZpSize = N * BlkNum;  // 8-bit: 1 byte per block per column
+
+    auto InitializeBuffer_i8 = [this](uint8_t* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = static_cast<uint8_t>(distrib_(gen_));
+      }
+    };
+
+    auto InitializeBuffer_fp16 = [this](MLAS_FP16* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = MLAS_FP16(_distribFp(gen_));
+      }
+    };
+
+    // For the dequant test, we pass pre-packed data directly.
+    // The random bytes represent valid packed data.
+    const auto* input = input_.GetFilledBuffer(BCount, InitializeBuffer_i8);
+    const auto* zero_points = zero_points_.GetFilledBuffer(ZpSize, InitializeBuffer_i8);
+    auto* dequant = dequant_.GetBuffer(BCount);
+    auto* ref = ref_.GetBuffer(BCount);
+    const auto* scales = scales_.GetFilledBuffer(ScaleCount, InitializeBuffer_fp16);
+
+    GetMlasPlatform().QNBitGemmDispatch->HQ8BitBlkDequantBForHgemm_CompFp16(
+        BlkLen, dequant, reinterpret_cast<const std::byte*>(input), scales,
+        UseZeroPoints ? reinterpret_cast<const std::byte*>(zero_points) : nullptr,
+        N, K, BlkNum);
+    DequantB8Bit<N, K, BlkLen, UseZeroPoints>(input, ref, scales, zero_points);
+    Check<BlkLen * BlkNum, N, K>(dequant, ref);
+  }
+
+ public:
+  MlasNeonFp16DequantB8BitTest()
+      : seed_(19287), gen_(seed_), distrib_(0, 255), _distribFp(0.5f, 2.0f) {
+  }
+
+  static const char* GetTestSuiteName() {
+    return "NeonFp16DequantB8Bit";
+  }
+
+  void ExecuteShort(void) override {
+    TestDequant<1, 16, 16, false>();
+    TestDequant<1, 16, 16, true>();
+    TestDequant<1, 32, 16, false>();
+    TestDequant<1, 32, 16, true>();
+    TestDequant<8, 16, 16, false>();
+    TestDequant<8, 16, 16, true>();
+    TestDequant<8, 32, 16, false>();
+    TestDequant<8, 32, 16, true>();
+    TestDequant<9, 32, 16, false>();
+    TestDequant<9, 32, 16, true>();
+    TestDequant<9, 48, 32, false>();
+    TestDequant<9, 48, 32, true>();
+    TestDequant<15, 32, 16, false>();
+    TestDequant<15, 32, 16, true>();
+    TestDequant<17, 64, 16, false>();
+    TestDequant<17, 64, 16, true>();
+    TestDequant<17, 128, 128, false>();
+    TestDequant<17, 128, 128, true>();
+    TestDequant<263, 256, 16, false>();
+    TestDequant<263, 256, 16, true>();
+  }
+};
+
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
@@ -492,6 +743,12 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
       }
       if (GetMlasPlatform().QNBitGemmDispatch->HQ4BitGemmKernel_CompFp16) {
         count += MlasDirectShortExecuteTests<MlasNeonFp16HQ4BitGemmKernelTest>::RegisterShortExecute();
+      }
+      if (GetMlasPlatform().QNBitGemmDispatch->HQ8BitGemmPackQuantBData) {
+        count += MlasDirectShortExecuteTests<MlasNeonFp16Prepack8BitTest>::RegisterShortExecute();
+      }
+      if (GetMlasPlatform().QNBitGemmDispatch->HQ8BitBlkDequantBForHgemm_CompFp16) {
+        count += MlasDirectShortExecuteTests<MlasNeonFp16DequantB8BitTest>::RegisterShortExecute();
       }
     }
   }

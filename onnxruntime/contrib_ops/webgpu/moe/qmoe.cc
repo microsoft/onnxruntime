@@ -184,12 +184,18 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* fc1_zero_points = context.Input<Tensor>(11);
   const Tensor* fc2_zero_points = context.Input<Tensor>(12);
   const Tensor* fc3_zero_points = context.Input<Tensor>(13);
+  const Tensor* router_weights = context.Input<Tensor>(14);
 
   MoEParameters moe_params;
 
   if (fc1_zero_points || fc2_zero_points || fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "zero_points for QMoE are not yet supported on WebGPU.");
+  }
+
+  if (router_weights) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Separate router_weights is not yet implemented on WebGPU for QMoE.");
   }
 
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
