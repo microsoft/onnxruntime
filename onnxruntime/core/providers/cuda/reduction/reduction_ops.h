@@ -19,7 +19,7 @@ template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_RED
 std::unique_ptr<Tensor> ReduceCompute(const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, Stream* stream, cudnnHandle_t cudnn_handle = nullptr,
+                                      bool fast_reduction, Stream* stream, cudnnHandle_t cudnn_handle,
                                       const TensorShape* input_shape_override = nullptr);
 
 }  // namespace ReductionOps

@@ -488,9 +488,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
         size_t indices_bytes_max = 0;
         CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(cudnn_handle, reduce_max_desc,
                                                            input_tensor, output_tensor, &indices_bytes_max));
-        auto indices_cuda_max = indices_bytes == 0
+        auto indices_cuda_max = indices_bytes_max == 0
                                     ? nullptr
-                                    : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream);
+                                    : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes_max, false, ort_stream);
         auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             cudnn_handle, reduce_max_desc, indices_cuda_max.get(), indices_bytes_max,

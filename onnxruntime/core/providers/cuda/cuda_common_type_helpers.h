@@ -4,6 +4,9 @@
 #define CUFFT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUFFT_CALL(expr))
 #endif
 
+namespace onnxruntime {
+namespace cuda {
+
 inline const char* CudaDataTypeToString(cudaDataType_t dt) {
   switch (dt) {
     case CUDA_R_16F:
@@ -89,3 +92,6 @@ inline cudaDataType_t ToCudaDataType(int32_t element_type) {
       ORT_THROW("Unexpected element_type=", element_type, ".");
   }
 }
+
+}  // namespace cuda
+}  // namespace onnxruntime

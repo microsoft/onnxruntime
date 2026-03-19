@@ -92,7 +92,9 @@ class CudaKernel : public OpKernel {
   }
 
   static inline cudnnHandle_t GetCudnnHandle(onnxruntime::Stream* stream) {
-    return GetCudnnHandle(static_cast<CudaStream*>(stream));
+    auto* cuda_stream = dynamic_cast<CudaStream*>(stream);
+    ORT_ENFORCE(cuda_stream != nullptr, "Stream is not a CudaStream.");
+    return GetCudnnHandle(cuda_stream);
   }
 
   inline cudnnHandle_t GetCudnnHandleOrDefault(onnxruntime::Stream* stream) const {
@@ -108,7 +110,9 @@ class CudaKernel : public OpKernel {
   }
 
   static inline cublasHandle_t GetCublasHandle(onnxruntime::Stream* stream) {
-    return GetCublasHandle(static_cast<CudaStream*>(stream));
+    auto* cuda_stream = dynamic_cast<CudaStream*>(stream);
+    ORT_ENFORCE(cuda_stream != nullptr, "Stream is not a CudaStream.");
+    return GetCublasHandle(cuda_stream);
   }
 
   inline cublasHandle_t GetCublasHandleOrDefault(onnxruntime::Stream* stream) const {

@@ -234,7 +234,7 @@ class HalfGemmOptions {
 
 #endif
 
-#include "core/providers/cuda/cuda_common_type_helpers.h"
-
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#include "core/providers/cuda/cuda_common_type_helpers.h"
