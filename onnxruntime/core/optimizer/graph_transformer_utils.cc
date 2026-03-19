@@ -392,7 +392,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
       // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
-      transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
       transformers.emplace_back(std::make_unique<BiasSkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_eps));
