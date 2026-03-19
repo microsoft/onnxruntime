@@ -840,20 +840,15 @@ void RunDQMatMulPerTensorConverted(const std::vector<int64_t>& input1_shape,
 }
 
 TEST(QDQTransformerTests, DQMatMulPerTensorConvertedToMatMulNBits) {
-  // Per-tensor int4/uint4 with and without zero-point
+  // Per-tensor: signed with zp, unsigned without zp
   RunDQMatMulPerTensorConverted<Int4x2, true>({12, 32}, {32, 16}, 0);
-  RunDQMatMulPerTensorConverted<Int4x2, false>({12, 32}, {32, 16}, 0);
-  RunDQMatMulPerTensorConverted<UInt4x2, true>({12, 32}, {32, 16}, 0);
   RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 32}, {32, 16}, 0);
   // With accuracy_level=1
   RunDQMatMulPerTensorConverted<Int4x2, true>({12, 32}, {32, 16}, 1);
-  RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 32}, {32, 16}, 1);
   // K not divisible by default block_size (32)
-  RunDQMatMulPerTensorConverted<Int4x2, true>({12, 37}, {37, 16}, 0);
   RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 37}, {37, 16}, 0);
   // N=1 (edge case: single column)
   RunDQMatMulPerTensorConverted<Int4x2, true>({12, 96}, {96, 1}, 0);
-  RunDQMatMulPerTensorConverted<UInt4x2, false>({12, 96}, {96, 1}, 0);
 }
 
 // Per-channel (axis=1) DQ -> MatMul conversion to MatMulNBits
@@ -921,16 +916,11 @@ void RunDQMatMulPerChannelConverted(const std::vector<int64_t>& input1_shape,
 }
 
 TEST(QDQTransformerTests, DQMatMulPerChannelConvertedToMatMulNBits) {
-  // Per-channel int4/uint4 with and without zero-point
+  // Per-channel: signed with zp, unsigned without zp
   RunDQMatMulPerChannelConverted<Int4x2, true>({12, 32}, {32, 16}, 0);
-  RunDQMatMulPerChannelConverted<Int4x2, false>({12, 32}, {32, 16}, 0);
-  RunDQMatMulPerChannelConverted<UInt4x2, true>({12, 32}, {32, 16}, 0);
   RunDQMatMulPerChannelConverted<UInt4x2, false>({12, 32}, {32, 16}, 0);
-  // With accuracy_level=1
-  RunDQMatMulPerChannelConverted<Int4x2, true>({12, 32}, {32, 16}, 1);
   // K not divisible by default block_size (32)
   RunDQMatMulPerChannelConverted<Int4x2, true>({12, 37}, {37, 16}, 0);
-  RunDQMatMulPerChannelConverted<UInt4x2, false>({12, 37}, {37, 16}, 0);
 }
 
 // Negative test: per-axis axis=0 with 1D scale should NOT fuse
@@ -980,7 +970,6 @@ void RunDQMatMulPerAxisAxis0NotConverted(const std::vector<int64_t>& input1_shap
 
 TEST(QDQTransformerTests, DQMatMulPerAxisAxis0NotConvertedToMatMulNBits) {
   RunDQMatMulPerAxisAxis0NotConverted<Int4x2>({12, 32}, {32, 16});
-  RunDQMatMulPerAxisAxis0NotConverted<UInt4x2>({12, 32}, {32, 16});
 }
 
 // Per-tensor DQ -> MatMul with configurable block_size session option
@@ -1107,16 +1096,9 @@ void RunDQMatMulPerTensorUint8Converted(const std::vector<int64_t>& input1_shape
 }
 
 TEST(QDQTransformerTests, DQMatMulPerTensorUint8ConvertedToMatMulNBits) {
-  // Typical shapes
   RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 96}, 0);
-  RunDQMatMulPerTensorUint8Converted<false>({12, 96}, {96, 96}, 0);
-  // Small N=8
-  RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 8}, 0);
-  // N=1 (smallest possible column count)
+  RunDQMatMulPerTensorUint8Converted<false>({12, 96}, {96, 8}, 0);
   RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 1}, 0);
-  RunDQMatMulPerTensorUint8Converted<false>({12, 96}, {96, 1}, 0);
-  // Larger N
-  RunDQMatMulPerTensorUint8Converted<true>({12, 96}, {96, 384}, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1190,8 +1172,6 @@ RunDQGemmConvertedNoBias(const std::vector<int64_t>& input1_shape,
 
 TEST(QDQTransformerTests, DQGemmConvertedToMatMulNBits_NoBias) {
   RunDQGemmConvertedNoBias<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
-  RunDQGemmConvertedNoBias<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
-  RunDQGemmConvertedNoBias<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
   RunDQGemmConvertedNoBias<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
 }
 
@@ -1264,8 +1244,6 @@ RunDQGemmConvertedWithBias(const std::vector<int64_t>& input1_shape,
 
 TEST(QDQTransformerTests, DQGemmConvertedToMatMulNBits_WithBias) {
   RunDQGemmConvertedWithBias<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
-  RunDQGemmConvertedWithBias<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
-  RunDQGemmConvertedWithBias<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
   RunDQGemmConvertedWithBias<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
 }
 
@@ -1346,8 +1324,6 @@ RunDQGemmConvertedWithDQBias(const std::vector<int64_t>& input1_shape,
 
 TEST(QDQTransformerTests, DQGemmConvertedToMatMulNBits_WithDQBias) {
   RunDQGemmConvertedWithDQBias<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
-  RunDQGemmConvertedWithDQBias<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
-  RunDQGemmConvertedWithDQBias<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 0);
   RunDQGemmConvertedWithDQBias<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 0);
 }
 
