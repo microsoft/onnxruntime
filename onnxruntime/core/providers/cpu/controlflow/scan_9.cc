@@ -106,7 +106,9 @@ class ScanImpl {
            const gsl::span<const int64_t>& output_directions,
            const gsl::span<const int64_t>& input_axes,
            const gsl::span<const int64_t>& output_axes,
-           const scan::detail::DeviceHelpers& device_helpers);
+           const scan::detail::DeviceHelpers& device_helpers,
+           bool use_var_len_output = false,
+           gsl::span<const int64_t> output_lengths = {});
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -129,6 +131,17 @@ class ScanImpl {
   Status CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables);
   Status TransposeOutput();
 
+  // Variable-length scan output methods: allows per-iteration scan outputs to differ
+  // in the concatenation-axis dimension.
+  Status AllocateLoopStateOutputs();
+  Status ExecuteVarLen(const FeedsFetchesManager& ffm);
+  Status ConcatenateScanOutputs(std::vector<std::vector<OrtValue>>& scan_output_per_iteration);
+
+  // Pre-allocated variable-length path: when output_lengths are provided, pre-allocates
+  // the final output before the scan loop and writes scan outputs in-place.
+  Status AllocatePreAllocOutputs();
+  Status ExecutePreAlloc(const FeedsFetchesManager& ffm);
+
   using ConstTensorSlicerIterators = std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>;
   using MutableTensorSlicerIterators = std::vector<OrtValueTensorSlicer<OrtValue>::Iterator>;
 
@@ -150,6 +163,19 @@ class ScanImpl {
   const std::vector<const OrtValue*>& implicit_inputs_;
 
   const scan::detail::DeviceHelpers& device_helpers_;
+
+  // Offset to add when accessing variadic inputs from the OpKernelContext.
+  // 0 for standard Scan; equals num_non_variadic_inputs for the contrib op.
+  int input_offset_;
+
+  // When true, uses the variable-length output implementation that collects per-iteration
+  // scan outputs and concatenates them at the end, allowing the concatenation-axis dimension
+  // to vary across iterations.
+  bool use_var_len_output_;
+
+  // When non-empty, specifies the expected total size of each scan output along the
+  // concatenation axis, enabling pre-allocation of the final output tensor.
+  gsl::span<const int64_t> output_lengths_;
 };
 
 template <>
@@ -164,11 +190,13 @@ void Scan<9>::Init(const OpKernelInfo& info) {
 
   ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
-  auto num_loop_state_vars = info.GetInputCount() - num_scan_inputs_;
+  auto num_loop_state_vars = info.GetInputCount() - num_non_variadic_inputs_ - num_scan_inputs_;
   auto num_scan_outputs = info.GetOutputCount() - num_loop_state_vars;
 
   ReadDirections(info, "scan_input_directions", input_directions_, onnxruntime::narrow<size_t>(num_scan_inputs_));
-  ReadDirections(info, "scan_output_directions", output_directions_, onnxruntime::narrow<size_t>(num_scan_outputs));
+  if (!use_var_len_output_) {
+    ReadDirections(info, "scan_output_directions", output_directions_, onnxruntime::narrow<size_t>(num_scan_outputs));
+  }
 
   if (info.GetAttrs("scan_input_axes", input_axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_axes_.size()) == num_scan_inputs_,
@@ -205,7 +233,8 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   const auto& node = Node();
   info_ = std::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                          static_cast<int>(num_scan_inputs_));
+                                          static_cast<int>(num_scan_inputs_),
+                                          num_non_variadic_inputs_);
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ false, feeds_fetches_manager_);
@@ -222,8 +251,17 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
+  // Read optional output_lengths input (only for contrib ScanVarLen with num_non_variadic_inputs_ > 0)
+  gsl::span<const int64_t> output_lengths;
+  if (num_non_variadic_inputs_ > 0 && use_var_len_output_) {
+    auto* output_lengths_tensor = ctx->Input<Tensor>(0);
+    if (output_lengths_tensor != nullptr) {
+      output_lengths = output_lengths_tensor->DataAsSpan<int64_t>();
+    }
+  }
+
   ScanImpl scan_impl{*ctx_internal, *session_state, *info_, input_directions_, output_directions_,
-                     input_axes_, output_axes_, device_helpers_};
+                     input_axes_, output_axes_, device_helpers_, use_var_len_output_, output_lengths};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -240,7 +278,9 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    const gsl::span<const int64_t>& output_directions,
                    const gsl::span<const int64_t>& input_axes,
                    const gsl::span<const int64_t>& output_axes,
-                   const scan::detail::DeviceHelpers& device_helpers)
+                   const scan::detail::DeviceHelpers& device_helpers,
+                   bool use_var_len_output,
+                   gsl::span<const int64_t> output_lengths)
     : context_(context),
       session_state_(session_state),
       info_(info),
@@ -249,7 +289,10 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
       input_axes_from_attribute_(input_axes),
       output_axes_from_attribute_(output_axes),
       implicit_inputs_(context_.GetImplicitInputs()),
-      device_helpers_(device_helpers) {
+      device_helpers_(device_helpers),
+      input_offset_(info_.num_non_variadic_inputs),
+      use_var_len_output_(use_var_len_output),
+      output_lengths_(output_lengths) {
   inputs_.reserve(info_.num_scan_inputs);
   input_axes_.reserve(info_.num_scan_inputs);
 }
@@ -261,7 +304,15 @@ Status ScanImpl::Initialize() {
   status = SetupInputs();
   ORT_RETURN_IF_ERROR(status);
 
-  status = AllocateOutputTensors();
+  if (use_var_len_output_) {
+    if (!output_lengths_.empty()) {
+      status = AllocatePreAllocOutputs();
+    } else {
+      status = AllocateLoopStateOutputs();
+    }
+  } else {
+    status = AllocateOutputTensors();
+  }
   ORT_RETURN_IF_ERROR(status);
 
   return Status::OK();
@@ -273,7 +324,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
   auto min_dims_required = 1;
 
   for (int i = start_input; i < end_input; ++i) {
-    auto& input_tensor = *context_.Input<Tensor>(i);
+    auto& input_tensor = *context_.Input<Tensor>(i + input_offset_);
     const auto& input_shape = input_tensor.Shape();
 
     if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
@@ -307,7 +358,7 @@ Status ScanImpl::ValidateInput() {
 
     // zero is always valid, so only do extra checks for non-zero values
     if (axis != 0) {
-      int64_t input_rank = context_.Input<Tensor>(i + info_.num_loop_state_variables)->Shape().NumDimensions();
+      int64_t input_rank = context_.Input<Tensor>(i + info_.num_loop_state_variables + input_offset_)->Shape().NumDimensions();
       // check axis is valid for input_rank and also handle any negative axis value
       if (axis >= -input_rank && axis < input_rank)
         axis = HandleNegativeAxis(axis, input_rank);
@@ -325,7 +376,8 @@ Status ScanImpl::ValidateInput() {
   // no validation for loop state variables.
 
   // validate the scan inputs
-  auto status = ValidateSubgraphInput(info_.num_loop_state_variables, info_.num_inputs, info_.subgraph.GetInputs());
+  auto status = ValidateSubgraphInput(info_.num_loop_state_variables, info_.num_variadic_inputs,
+                                      info_.subgraph.GetInputs());
   ORT_RETURN_IF_ERROR(status);
 
   return Status::OK();
@@ -340,9 +392,9 @@ Status ScanImpl::SetupInputs() {
 
     if (sequence_dim == 0) {
       // no transpose required
-      inputs_.push_back(*context_.GetInputMLValue(i + info_.num_loop_state_variables));
+      inputs_.push_back(*context_.GetInputMLValue(i + info_.num_loop_state_variables + input_offset_));
     } else {
-      auto& input_tensor = *context_.Input<Tensor>(i + info_.num_loop_state_variables);
+      auto& input_tensor = *context_.Input<Tensor>(i + info_.num_loop_state_variables + input_offset_);
       const auto& input_shape = input_tensor.Shape();
 
       InlinedVector<size_t> permutations;
@@ -380,7 +432,8 @@ Status ScanImpl::AllocateOutputTensors() {
 
   for (int i = 0; i < info_.num_loop_state_variables; ++i) {
     status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter,
-                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func,
+                            ScanDirection::kForward, false, input_offset_);
     ORT_RETURN_IF_ERROR(status);
     output_iterators_.push_back(std::move(output_iter));
   }
@@ -414,7 +467,7 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
   loop_state_variables.reserve(info_.num_loop_state_variables);
 
   for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-    const OrtValue& input_mlvalue = *context_.GetInputMLValue(i);
+    const OrtValue& input_mlvalue = *context_.GetInputMLValue(i + input_offset_);
     OrtValue* output_mlvalue = context_.GetOutputMLValue(i);
     ORT_ENFORCE(output_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
@@ -425,6 +478,13 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
 }
 
 Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
+  if (use_var_len_output_) {
+    if (!output_lengths_.empty()) {
+      return ExecutePreAlloc(ffm);
+    }
+    return ExecuteVarLen(ffm);
+  }
+
   Status status = Status::OK();
 
   std::vector<LoopStateVariable> loop_state_variables;
@@ -433,7 +493,7 @@ Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // Setup input OrtValue streams
   std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
-  scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_inputs) - info_.num_loop_state_variables);
+  scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_variadic_inputs) - info_.num_loop_state_variables);
 
   for (int i = 0, end = info_.num_scan_inputs; i < end; ++i) {
     const auto& ort_value = inputs_[i];
@@ -449,7 +509,7 @@ Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // Call the subgraph for each item in the sequence
   status = IterateSequence(context_, session_state_, loop_state_variables, scan_input_stream_iterators,
-                           sequence_len_, info_.num_loop_state_variables, info_.num_inputs, info_.num_outputs,
+                           sequence_len_, info_.num_loop_state_variables, info_.num_variadic_inputs, info_.num_outputs,
                            implicit_inputs_, output_iterators_, ffm);
 
   ORT_RETURN_IF_ERROR(status);
@@ -493,6 +553,373 @@ Status ScanImpl::TransposeOutput() {
   }
 
   return status;
+}
+
+Status ScanImpl::AllocateLoopStateOutputs() {
+  Status status = Status::OK();
+  auto& graph_outputs = info_.subgraph.GetOutputs();
+
+  if (graph_outputs.size() != static_cast<size_t>(info_.num_outputs)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
+                           " outputs but Scan expects ", info_.num_outputs);
+  }
+
+  std::unique_ptr<OutputIterator> output_iter;
+
+  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
+    status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func,
+                            ScanDirection::kForward, false, input_offset_);
+    ORT_RETURN_IF_ERROR(status);
+    output_iterators_.push_back(std::move(output_iter));
+  }
+
+  return Status::OK();
+}
+
+Status ScanImpl::ExecuteVarLen(const FeedsFetchesManager& ffm) {
+  Status status = Status::OK();
+
+  std::vector<LoopStateVariable> loop_state_variables;
+  status = CreateLoopStateVariables(loop_state_variables);
+  ORT_RETURN_IF_ERROR(status);
+
+  // Setup input OrtValue streams
+  std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
+  scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_variadic_inputs) - info_.num_loop_state_variables);
+
+  for (int i = 0, end = info_.num_scan_inputs; i < end; ++i) {
+    const auto& ort_value = inputs_[i];
+
+    if (input_directions_[i] == static_cast<int64_t>(ScanDirection::kForward)) {
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
+    } else {
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).rbegin());
+    }
+  }
+
+  // Iterate sequence, collecting per-iteration scan outputs
+  std::vector<std::vector<OrtValue>> scan_output_per_iteration;
+  status = IterateSequenceVarLen(context_, session_state_, loop_state_variables, scan_input_stream_iterators,
+                                 sequence_len_, info_.num_loop_state_variables, info_.num_variadic_inputs, info_.num_outputs,
+                                 implicit_inputs_, scan_output_per_iteration, ffm);
+  ORT_RETURN_IF_ERROR(status);
+
+  // Concatenate per-iteration outputs into final scan outputs (handles transpose and direction)
+  status = ConcatenateScanOutputs(scan_output_per_iteration);
+  ORT_RETURN_IF_ERROR(status);
+
+  return status;
+}
+
+Status ScanImpl::ConcatenateScanOutputs(std::vector<std::vector<OrtValue>>& scan_output_per_iteration) {
+  auto& graph_outputs = info_.subgraph.GetOutputs();
+
+  for (int i = 0; i < info_.num_scan_outputs; ++i) {
+    auto& per_iteration_outputs = scan_output_per_iteration[i];
+    int output_index = i + info_.num_loop_state_variables;
+
+    // Resolve the concat axis for this scan output
+    int64_t concat_axis = output_axes_from_attribute_[i];
+
+    if (per_iteration_outputs.empty()) {
+      // Zero iterations: create empty output with concat-axis dimension = 0
+      auto* graph_output = graph_outputs.at(output_index);
+      auto* graph_output_shape = graph_output->Shape();
+
+      TensorShapeVector output_dims;
+      if (graph_output_shape) {
+        auto tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+        auto dims = tensor_shape.GetDims();
+        output_dims.assign(dims.begin(), dims.end());
+
+        auto output_rank = static_cast<int64_t>(output_dims.size());
+        if (concat_axis < 0) concat_axis += output_rank;
+        if (concat_axis >= 0 && concat_axis < output_rank) {
+          output_dims[concat_axis] = 0;
+        }
+        // Replace symbolic dims with 0
+        for (auto& dim : output_dims) {
+          if (dim < 0) dim = 0;
+        }
+      }
+
+      if (output_dims.empty()) {
+        output_dims.push_back(0);
+      }
+
+      ORT_IGNORE_RETURN_VALUE(context_.Output(output_index, TensorShape(output_dims)));
+      continue;
+    }
+
+    // Get shape info from first per-iteration output
+    const auto& first_tensor = per_iteration_outputs.front().Get<Tensor>();
+    const auto& first_shape = first_tensor.Shape();
+    auto rank = static_cast<int64_t>(first_shape.NumDimensions());
+
+    ORT_RETURN_IF(rank == 0,
+                  "Scan output ", i, " has rank 0. Variable-length concatenation requires rank >= 1.");
+
+    // Resolve negative axis
+    if (concat_axis < 0) concat_axis += rank;
+    ORT_RETURN_IF(concat_axis < 0 || concat_axis >= rank,
+                  "Invalid value in scan_output_axes for output ", i,
+                  " of ", output_axes_from_attribute_[i], ". Output tensor rank was ", rank);
+
+    // Compute total size along concat axis and validate other dimensions match
+    int64_t total_concat_dim = 0;
+    for (size_t iter = 0; iter < per_iteration_outputs.size(); ++iter) {
+      const auto& iter_shape = per_iteration_outputs[iter].Get<Tensor>().Shape();
+
+      if (static_cast<int64_t>(iter_shape.NumDimensions()) != rank) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Scan output ", i, " has inconsistent rank across iterations. ",
+                               "Expected ", rank, " but iteration ", iter, " produced rank ",
+                               iter_shape.NumDimensions());
+      }
+
+      for (int64_t d = 0; d < rank; ++d) {
+        if (d == concat_axis) {
+          total_concat_dim += iter_shape[d];
+        } else if (iter_shape[d] != first_shape[d]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Scan output ", i, " has inconsistent shape in dimension ", d,
+                                 " across iterations. Expected ", first_shape[d],
+                                 " but iteration ", iter, " produced ", iter_shape[d]);
+        }
+      }
+    }
+
+    // Build concatenated output shape
+    TensorShapeVector concat_dims(first_shape.GetDims().begin(), first_shape.GetDims().end());
+    concat_dims[concat_axis] = total_concat_dim;
+    TensorShape concat_shape(concat_dims);
+
+    Tensor* output = context_.Output(output_index, concat_shape);
+    ORT_ENFORCE(output, "Failed to create output tensor for scan output ", i);
+
+    auto num_iters = static_cast<int64_t>(per_iteration_outputs.size());
+
+    // Compute strides for axis-aware concatenation.
+    // For axis 0 this reduces to sequential memcpy of whole tensors.
+    int64_t outer_size = 1;
+    for (int64_t d = 0; d < concat_axis; ++d) outer_size *= first_shape[d];
+
+    size_t elem_size = first_tensor.DataType()->Size();
+    int64_t inner_count = 1;
+    for (int64_t d = concat_axis + 1; d < rank; ++d) inner_count *= first_shape[d];
+    size_t inner_bytes = static_cast<size_t>(inner_count) * elem_size;
+    size_t dest_stride = static_cast<size_t>(total_concat_dim) * inner_bytes;
+
+    auto* dest = static_cast<uint8_t*>(output->MutableDataRaw());
+
+    for (int64_t outer = 0; outer < outer_size; ++outer) {
+      size_t dest_offset = outer * dest_stride;
+      for (int64_t iter = 0; iter < num_iters; ++iter) {
+        const auto& iter_tensor = per_iteration_outputs[iter].Get<Tensor>();
+        int64_t iter_concat_dim = iter_tensor.Shape()[concat_axis];
+        size_t chunk_bytes = static_cast<size_t>(iter_concat_dim) * inner_bytes;
+        size_t src_offset = outer * chunk_bytes;
+        memcpy(dest + dest_offset,
+               static_cast<const uint8_t*>(iter_tensor.DataRaw()) + src_offset,
+               chunk_bytes);
+        dest_offset += chunk_bytes;
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+Status ScanImpl::AllocatePreAllocOutputs() {
+  // Same as AllocateLoopStateOutputs: only allocate loop state variable outputs.
+  // Scan outputs are allocated in ExecutePreAlloc after the first iteration reveals
+  // the per-iteration output shapes (for non-concat dimensions).
+  Status status = Status::OK();
+  auto& graph_outputs = info_.subgraph.GetOutputs();
+
+  if (graph_outputs.size() != static_cast<size_t>(info_.num_outputs)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
+                           " outputs but Scan expects ", info_.num_outputs);
+  }
+
+  ORT_RETURN_IF(static_cast<int64_t>(output_lengths_.size()) != info_.num_scan_outputs,
+                "output_lengths has ", output_lengths_.size(), " entries but expected ", info_.num_scan_outputs);
+
+  std::unique_ptr<OutputIterator> output_iter;
+
+  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
+    status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func,
+                            ScanDirection::kForward, false, input_offset_);
+    ORT_RETURN_IF_ERROR(status);
+    output_iterators_.push_back(std::move(output_iter));
+  }
+
+  return Status::OK();
+}
+
+Status ScanImpl::ExecutePreAlloc(const FeedsFetchesManager& ffm) {
+  Status status = Status::OK();
+
+  std::vector<LoopStateVariable> loop_state_variables;
+  status = CreateLoopStateVariables(loop_state_variables);
+  ORT_RETURN_IF_ERROR(status);
+
+  // Setup input OrtValue streams
+  std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
+  scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_variadic_inputs) - info_.num_loop_state_variables);
+
+  for (int i = 0, end = info_.num_scan_inputs; i < end; ++i) {
+    const auto& ort_value = inputs_[i];
+
+    if (input_directions_[i] == static_cast<int64_t>(ScanDirection::kForward)) {
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
+    } else {
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).rbegin());
+    }
+  }
+
+  // Pre-allocated output tensors for each scan output.
+  // Allocated on the first iteration after we know the per-iteration shape.
+  struct PreAllocScanOutput {
+    Tensor* output_tensor = nullptr;
+    int64_t rank = 0;
+    int64_t concat_axis = 0;
+    int64_t outer_size = 1;       // product of dims before concat_axis
+    size_t inner_bytes = 0;       // bytes per inner unit (product of dims after concat_axis * elem_size)
+    size_t dest_stride = 0;       // bytes per outer block in the output
+    int64_t axis_offset = 0;      // sum of concat dims from iterations processed so far
+  };
+  std::vector<PreAllocScanOutput> prealloc_outputs(info_.num_scan_outputs);
+
+  auto num_implicit_inputs = implicit_inputs_.size();
+  auto num_inputs = info_.num_variadic_inputs + static_cast<int>(num_implicit_inputs);
+
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
+  std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
+
+  feeds.resize(num_inputs);
+
+  // add implicit inputs (constant across iterations)
+  for (size_t i = 0; i < num_implicit_inputs; ++i) {
+    feeds[info_.num_variadic_inputs + i] = *implicit_inputs_[i];
+  }
+
+  for (int64_t seq_no = 0; seq_no < sequence_len_; ++seq_no) {
+    for (int input = 0; input < info_.num_variadic_inputs; ++input) {
+      if (input < info_.num_loop_state_variables) {
+        feeds[input] = loop_state_variables[input].Input();
+      } else {
+        auto& iterator = scan_input_stream_iterators[static_cast<ptrdiff_t>(input) - info_.num_loop_state_variables];
+        feeds[input] = *iterator;
+        ++iterator;
+      }
+    }
+
+    fetches.clear();
+
+    for (int output = 0; output < info_.num_outputs; ++output) {
+      if (output < info_.num_loop_state_variables) {
+        fetches.push_back(loop_state_variables[output].Output());
+      } else {
+        // Leave empty: subgraph will allocate fresh memory
+        fetches.emplace_back();
+      }
+    }
+
+    status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, fetch_allocators,
+                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(),
+                                    context_.GetComputeStream());
+    ORT_RETURN_IF_ERROR(status);
+
+    // Cycle loop state variables
+    std::for_each(loop_state_variables.begin(), loop_state_variables.end(), [](LoopStateVariable& v) { v.Next(); });
+
+    // Process scan outputs
+    for (int i = 0; i < info_.num_scan_outputs; ++i) {
+      int fetch_index = i + info_.num_loop_state_variables;
+      int output_index = i + info_.num_loop_state_variables;
+      auto& pa = prealloc_outputs[i];
+      const auto& iter_tensor = fetches[fetch_index].Get<Tensor>();
+      const auto& iter_shape = iter_tensor.Shape();
+
+      if (seq_no == 0) {
+        // First iteration: determine shape and allocate
+        pa.rank = static_cast<int64_t>(iter_shape.NumDimensions());
+        ORT_RETURN_IF(pa.rank == 0,
+                      "Scan output ", i, " has rank 0. Variable-length concatenation requires rank >= 1.");
+
+        pa.concat_axis = output_axes_from_attribute_[i];
+        if (pa.concat_axis < 0) pa.concat_axis += pa.rank;
+        ORT_RETURN_IF(pa.concat_axis < 0 || pa.concat_axis >= pa.rank,
+                      "Invalid value in scan_output_axes for output ", i,
+                      " of ", output_axes_from_attribute_[i], ". Output tensor rank was ", pa.rank);
+
+        // Build the pre-allocated output shape: replace concat dim with output_lengths_[i]
+        TensorShapeVector concat_dims(iter_shape.GetDims().begin(), iter_shape.GetDims().end());
+        concat_dims[pa.concat_axis] = output_lengths_[i];
+        TensorShape concat_shape(concat_dims);
+
+        pa.output_tensor = context_.Output(output_index, concat_shape);
+        ORT_ENFORCE(pa.output_tensor, "Failed to create output tensor for scan output ", i);
+
+        // Compute strides for axis-aware writes
+        pa.outer_size = 1;
+        for (int64_t d = 0; d < pa.concat_axis; ++d) pa.outer_size *= iter_shape[d];
+
+        size_t elem_size = iter_tensor.DataType()->Size();
+        int64_t inner_count = 1;
+        for (int64_t d = pa.concat_axis + 1; d < pa.rank; ++d) inner_count *= iter_shape[d];
+        pa.inner_bytes = static_cast<size_t>(inner_count) * elem_size;
+        pa.dest_stride = static_cast<size_t>(output_lengths_[i]) * pa.inner_bytes;
+
+        pa.axis_offset = 0;
+      } else {
+        // Validate non-concat dims match first iteration
+        ORT_RETURN_IF(static_cast<int64_t>(iter_shape.NumDimensions()) != pa.rank,
+                      "Scan output ", i, " has inconsistent rank across iterations. ",
+                      "Expected ", pa.rank, " but iteration ", seq_no, " produced rank ",
+                      iter_shape.NumDimensions());
+
+        auto output_dims = pa.output_tensor->Shape().GetDims();
+        for (int64_t d = 0; d < pa.rank; ++d) {
+          if (d != pa.concat_axis && iter_shape[d] != output_dims[d]) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Scan output ", i, " has inconsistent shape in dimension ", d,
+                                   " across iterations. Expected ", output_dims[d],
+                                   " but iteration ", seq_no, " produced ", iter_shape[d]);
+          }
+        }
+      }
+
+      // Copy this iteration's data into the pre-allocated buffer at the right position
+      int64_t iter_concat_dim = iter_shape[pa.concat_axis];
+      size_t chunk_bytes = static_cast<size_t>(iter_concat_dim) * pa.inner_bytes;
+      auto* dest = static_cast<uint8_t*>(pa.output_tensor->MutableDataRaw());
+      auto* src = static_cast<const uint8_t*>(iter_tensor.DataRaw());
+
+      for (int64_t outer = 0; outer < pa.outer_size; ++outer) {
+        size_t dest_offset = outer * pa.dest_stride + static_cast<size_t>(pa.axis_offset) * pa.inner_bytes;
+        size_t src_offset = outer * chunk_bytes;
+        ORT_RETURN_IF(dest_offset + chunk_bytes > pa.output_tensor->SizeInBytes(),
+                      "Scan output ", i, " exceeded pre-allocated size.");
+        memcpy(dest + dest_offset, src + src_offset, chunk_bytes);
+      }
+      pa.axis_offset += iter_concat_dim;
+    }
+  }
+
+  // Verify scan outputs: axis_offset should match output_lengths
+  for (int i = 0; i < info_.num_scan_outputs; ++i) {
+    auto& pa = prealloc_outputs[i];
+    ORT_RETURN_IF(pa.output_tensor && pa.axis_offset != output_lengths_[i],
+                  "Scan output ", i, " size mismatch: total concat dim was ", pa.axis_offset,
+                  " but output_lengths specified ", output_lengths_[i], ".");
+  }
+
+  return Status::OK();
 }
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,

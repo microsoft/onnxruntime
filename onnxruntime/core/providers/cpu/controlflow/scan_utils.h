@@ -88,9 +88,11 @@ class OutputIterator {
                        std::unique_ptr<OutputIterator>& iterator,
                        ScanDirection direction = ScanDirection::kForward,
                        bool temporary = false,
-                       MLDataType data_type = nullptr) {
+                       MLDataType data_type = nullptr,
+                       int input_offset = 0) {
     iterator = std::make_unique<OutputIterator>(context, output_index, is_loop_state_var, is_v8, final_shape,
-                                                create_slicer_func, zero_data_func, direction, temporary, data_type);
+                                                create_slicer_func, zero_data_func, direction, temporary, data_type,
+                                                input_offset);
     return iterator->Initialize();
   }
 
@@ -126,7 +128,8 @@ class OutputIterator {
                  const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
                  ScanDirection direction,
                  bool temporary,
-                 MLDataType data_type);
+                 MLDataType data_type,
+                 int input_offset = 0);
 
  private:
   Status Initialize();
@@ -160,6 +163,9 @@ class OutputIterator {
 
   const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func_;
   const scan::detail::DeviceHelpers::ZeroData& zero_data_func_;
+
+  // Offset added when accessing inputs from context_ (for non-variadic inputs before the variadic ones)
+  int input_offset_;
 };
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
@@ -171,7 +177,8 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
                       const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
                       const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
                       ScanDirection direction = ScanDirection::kForward,
-                      bool temporary = false);
+                      bool temporary = false,
+                      int input_offset = 0);
 
 Status CreateFeedsFetchesManager(const Node& node, const Info& info,
                                  const SessionState& session_state,
@@ -186,6 +193,21 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
                        int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
                        std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
                        const FeedsFetchesManager& ffm);
+
+/**
+Alternative to IterateSequence that supports variable-length scan outputs.
+Instead of pre-allocating a single output buffer and writing per-iteration slices into it,
+this function collects each iteration's scan outputs into per_iteration_outputs.
+The caller is responsible for concatenating them into the final output.
+Loop state variables are handled identically to IterateSequence.
+*/
+Status IterateSequenceVarLen(OpKernelContextInternal& context, const SessionState& session_state,
+                             std::vector<LoopStateVariable>& loop_state_variables,
+                             std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
+                             int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
+                             int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
+                             std::vector<std::vector<OrtValue>>& per_iteration_outputs,
+                             const FeedsFetchesManager& ffm);
 
 OrtValue AllocateTensorInMLValue(MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
 

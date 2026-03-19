@@ -5,10 +5,15 @@
 #include "gmock/gmock.h"
 #include "core/framework/session_state.h"
 #include "core/session/inference_session.h"
+#include "core/graph/constants.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/controlflow/scan_utils.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "onnx/defs/parser.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -1192,6 +1197,215 @@ TEST(Scan, MixedExecutionProvidersUnknownDimInSubgraphOutput) {
 }
 
 #endif
+
+// ---------------------------------------------------------------------------
+// Tests for the com.microsoft domain Scan op with variable-length output
+// concatenation (ScanVarLen). These tests use the ONNX text-format parser
+// for self-contained, readable model definitions.
+// ---------------------------------------------------------------------------
+
+// Parse an ONNX text-format model, run it with the given feeds, and return the Run status.
+// Output names are extracted from the model's graph outputs.
+static common::Status RunOnnxTextModel(
+    const char* model_text,
+    const NameMLValMap& feeds,
+    std::vector<OrtValue>& fetches) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ONNX_NAMESPACE::OnnxParser parser(model_text);
+  auto parse_status = parser.Parse(model_proto);
+  EXPECT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  EXPECT_TRUE(parser.EndOfInput()) << "Extra unparsed input.";
+
+  std::vector<std::string> output_names;
+  for (const auto& output : model_proto.graph().output()) {
+    output_names.push_back(output.name());
+  }
+
+  std::string serialized_model;
+  EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
+
+  InferenceSession session{SessionOptions(), GetEnvironment()};
+  std::stringstream sstr(serialized_model);
+  auto status = session.Load(sstr);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = session.Initialize();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  return session.Run(feeds, output_names, &fetches);
+}
+
+// Convenience overload: asserts success and returns fetches.
+static std::vector<OrtValue> RunOnnxTextModel(
+    const char* model_text,
+    const NameMLValMap& feeds) {
+  std::vector<OrtValue> fetches;
+  auto status = RunOnnxTextModel(model_text, feeds, fetches);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  return fetches;
+}
+
+// Helper to create a CPU allocator for building OrtValue feeds.
+static AllocatorPtr GetCpuAllocator() {
+  auto provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  return provider->CreatePreferredAllocators()[0];
+}
+
+// Variable-length scan output: each iteration produces a different-sized output.
+// Scan inputs: values={1,2,3}, repeats={2,1,2}.
+// Body: Expand value to length given by repeat count.
+//   iter 0: Expand(1, [2]) → {1,1}
+//   iter 1: Expand(2, [1]) → {2}
+//   iter 2: Expand(3, [2]) → {3,3}
+// Concatenated scan output: {1,1,2,3,3}.
+TEST(ScanVarLen, VariableLengthExpand) {
+  const char* model_text = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (float[3] values, int64[3] repeats) => (float[?] scan_out)
+{
+  scan_out = com.microsoft.Scan (, values, repeats) <
+    num_scan_inputs = 2,
+    body = scan_body (float value_in, int64 repeat_in) => (float[?] out) {
+      one_shape = Constant <value = int64[1] {1}> ()
+      value_1d = Reshape (value_in, one_shape)
+      repeat_shape = Reshape (repeat_in, one_shape)
+      out = Expand (value_1d, repeat_shape)
+    }>
+}
+)ONNX";
+
+  auto alloc = GetCpuAllocator();
+
+  OrtValue values_val, repeats_val;
+  CreateMLValue<float>(alloc, {3}, {1.f, 2.f, 3.f}, &values_val);
+  CreateMLValue<int64_t>(alloc, {3}, {int64_t(2), int64_t(1), int64_t(2)}, &repeats_val);
+
+  NameMLValMap feeds;
+  feeds["values"] = values_val;
+  feeds["repeats"] = repeats_val;
+
+  auto fetches = RunOnnxTextModel(model_text, feeds);
+
+  auto& scan_out = fetches[0].Get<Tensor>();
+  EXPECT_EQ(scan_out.Shape(), TensorShape({5}));
+  auto* data = scan_out.Data<float>();
+  std::vector<float> expected = {1.f, 1.f, 2.f, 3.f, 3.f};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], expected[i]) << "at index " << i;
+  }
+}
+
+// 2D variable-length: repeat columns of a matrix by varying counts.
+// values = {{1,2,3},{4,5,6}} (shape [2,3]), repeats = {1,2,1}.
+// Scan iterates over columns (scan_input_axes=[1]):
+//   iter 0: column {1,4}, repeat 1 → [2,1]
+//   iter 1: column {2,5}, repeat 2 → [2,2]
+//   iter 2: column {3,6}, repeat 1 → [2,1]
+// Concatenated along axis 1 (scan_output_axes=[1]) → [2,4]:
+//   {{1,2,2,3},{4,5,5,6}}
+TEST(ScanVarLen, VariableLengthExpandColumns) {
+  const char* model_text = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (float[2, 3] values, int64[3] repeats) => (float[2, ?] scan_out)
+{
+  scan_out = com.microsoft.Scan (, values, repeats) <
+    num_scan_inputs = 2,
+    scan_input_axes = [1, 0],
+    scan_output_axes = [1],
+    body = scan_body (float[2] col_in, int64 repeat_in) => (float[2, ?] out) {
+      two_one = Constant <value = int64[2] {2, 1}> ()
+      col_2d = Reshape (col_in, two_one)
+      one_shape = Constant <value = int64[1] {1}> ()
+      repeat_1d = Reshape (repeat_in, one_shape)
+      two = Constant <value = int64[1] {2}> ()
+      target_shape = Concat <axis = 0> (two, repeat_1d)
+      out = Expand (col_2d, target_shape)
+    }>
+}
+)ONNX";
+
+  auto alloc = GetCpuAllocator();
+
+  OrtValue values_val, repeats_val;
+  CreateMLValue<float>(alloc, {2, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}, &values_val);
+  CreateMLValue<int64_t>(alloc, {3}, {int64_t(1), int64_t(2), int64_t(1)}, &repeats_val);
+
+  NameMLValMap feeds;
+  feeds["values"] = values_val;
+  feeds["repeats"] = repeats_val;
+
+  auto fetches = RunOnnxTextModel(model_text, feeds);
+
+  auto& scan_out = fetches[0].Get<Tensor>();
+  EXPECT_EQ(scan_out.Shape(), TensorShape({2, 4}));
+  auto* data = scan_out.Data<float>();
+  // Row 0: {1, 2, 2, 3}, Row 1: {4, 5, 5, 6}
+  std::vector<float> expected = {1.f, 2.f, 2.f, 3.f, 4.f, 5.f, 5.f, 6.f};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], expected[i]) << "at index " << i;
+  }
+}
+
+// Model text for VariableLengthExpand with output_lengths (pre-allocation).
+// Same subgraph as VariableLengthExpand, but with output_lengths as first input.
+static const char* kVariableLengthExpandPreAllocModel = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (int64[1] output_lengths, float[3] values, int64[3] repeats) => (float[?] scan_out)
+{
+  scan_out = com.microsoft.Scan (output_lengths, values, repeats) <
+    num_scan_inputs = 2,
+    body = scan_body (float value_in, int64 repeat_in) => (float[?] out) {
+      one_shape = Constant <value = int64[1] {1}> ()
+      value_1d = Reshape (value_in, one_shape)
+      repeat_shape = Reshape (repeat_in, one_shape)
+      out = Expand (value_1d, repeat_shape)
+    }>
+}
+)ONNX";
+
+// Pre-allocation with correct output_lengths: same result as VariableLengthExpand.
+TEST(ScanVarLen, VariableLengthExpand_PreAlloc) {
+  auto alloc = GetCpuAllocator();
+
+  OrtValue output_lengths_val, values_val, repeats_val;
+  CreateMLValue<int64_t>(alloc, {1}, {int64_t(5)}, &output_lengths_val);  // 2+1+2 = 5
+  CreateMLValue<float>(alloc, {3}, {1.f, 2.f, 3.f}, &values_val);
+  CreateMLValue<int64_t>(alloc, {3}, {int64_t(2), int64_t(1), int64_t(2)}, &repeats_val);
+
+  NameMLValMap feeds;
+  feeds["output_lengths"] = output_lengths_val;
+  feeds["values"] = values_val;
+  feeds["repeats"] = repeats_val;
+
+  auto fetches = RunOnnxTextModel(kVariableLengthExpandPreAllocModel, feeds);
+
+  auto& scan_out = fetches[0].Get<Tensor>();
+  EXPECT_EQ(scan_out.Shape(), TensorShape({5}));
+  auto* data = scan_out.Data<float>();
+  std::vector<float> expected = {1.f, 1.f, 2.f, 3.f, 3.f};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], expected[i]) << "at index " << i;
+  }
+}
+
+// Under-allocation: output_lengths is too small, should fail at runtime.
+TEST(ScanVarLen, VariableLengthExpand_UnderAlloc) {
+  auto alloc = GetCpuAllocator();
+
+  OrtValue output_lengths_val, values_val, repeats_val;
+  CreateMLValue<int64_t>(alloc, {1}, {int64_t(3)}, &output_lengths_val);  // too small (need 5)
+  CreateMLValue<float>(alloc, {3}, {1.f, 2.f, 3.f}, &values_val);
+  CreateMLValue<int64_t>(alloc, {3}, {int64_t(2), int64_t(1), int64_t(2)}, &repeats_val);
+
+  NameMLValMap feeds;
+  feeds["output_lengths"] = output_lengths_val;
+  feeds["values"] = values_val;
+  feeds["repeats"] = repeats_val;
+
+  std::vector<OrtValue> fetches;
+  auto status = RunOnnxTextModel(kVariableLengthExpandPreAllocModel, feeds, fetches);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeded pre-allocated size"));
+}
 
 }  // namespace test
 }  // namespace onnxruntime
