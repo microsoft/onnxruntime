@@ -8,8 +8,12 @@
 #include "core/graph/constants.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/controlflow/scan_utils.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "onnx/defs/parser.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -1607,6 +1611,93 @@ TEST(ScanVarLen, OutputAxis1) {
   test.AddOutput<float>("scan_out", {1, 4}, {1.f, 2.f, 3.f, 4.f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", RunOptions().excluded_provider_types);
+}
+
+// ---------------------------------------------------------------------------
+// Parser-based test: uses ONNX text format for a self-contained, readable test.
+// The entire model (including the Scan body subgraph) is expressed as a string.
+// ---------------------------------------------------------------------------
+
+// Parse an ONNX text-format model, run it with the given feeds, and return the output fetches.
+static std::vector<OrtValue> RunOnnxTextModel(
+    const char* model_text,
+    const NameMLValMap& feeds,
+    gsl::span<const std::string> output_names) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ONNX_NAMESPACE::OnnxParser parser(model_text);
+  auto parse_status = parser.Parse(model_proto);
+  EXPECT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  EXPECT_TRUE(parser.EndOfInput()) << "Extra unparsed input.";
+
+  std::string serialized_model;
+  EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
+
+  InferenceSession session{SessionOptions(), GetEnvironment()};
+  std::stringstream sstr(serialized_model);
+  auto status = session.Load(sstr);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = session.Initialize();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  std::vector<OrtValue> fetches;
+  status = session.Run(feeds, output_names, &fetches);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  return fetches;
+}
+
+TEST(ScanVarLen, OutputAxis1_Parsed) {
+  // The model has a single ScanVarLen node with:
+  //   - 1 loop state (scalar float, passed through via Identity)
+  //   - 1 scan input of shape [2, 1, 2] (2 iterations, each producing [1, 2])
+  //   - scan_output_axes = [1]: concatenation along axis 1 → final output [1, 4]
+  const char* model_text = R"ONNX(
+<ir_version: 8, opset_import: ["" : 20, "com.microsoft" : 1]>
+main_graph (float state_in, float[2, 1, 2] scan_input)
+    => (float state_out, float[1, 4] scan_out)
+{
+  state_out, scan_out = com.microsoft.Scan (, state_in, scan_input) <
+    num_scan_inputs = 1,
+    scan_output_axes = [1],
+    body = scan_body (float state_in_b, float[1, 2] scan_in_b)
+        => (float state_out_b, float[1, 2] scan_out_b)
+    {
+      state_out_b = Identity(state_in_b)
+      scan_out_b = Identity(scan_in_b)
+    }
+  >
+}
+)ONNX";
+
+  // Create input feeds.
+  auto provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  auto alloc = provider->CreatePreferredAllocators()[0];
+
+  OrtValue state_in_val;
+  CreateMLValue<float>(alloc, {}, {0.f}, &state_in_val);
+
+  OrtValue scan_input_val;
+  CreateMLValue<float>(alloc, {2, 1, 2}, {1.f, 2.f, 3.f, 4.f}, &scan_input_val);
+
+  NameMLValMap feeds;
+  feeds["state_in"] = state_in_val;
+  feeds["scan_input"] = scan_input_val;
+
+  auto fetches = RunOnnxTextModel(model_text, feeds,
+                                  AsSpan({std::string("state_out"), std::string("scan_out")}));
+
+  // Check loop state output (scalar, unchanged).
+  auto& state_out = fetches[0].Get<Tensor>();
+  EXPECT_EQ(state_out.Shape().Size(), 1);
+  EXPECT_FLOAT_EQ(*state_out.Data<float>(), 0.f);
+
+  // Check scan output: concatenated along axis 1 → [1, 4].
+  auto& scan_out = fetches[1].Get<Tensor>();
+  EXPECT_EQ(scan_out.Shape(), TensorShape({1, 4}));
+  auto* data = scan_out.Data<float>();
+  std::vector<float> expected = {1.f, 2.f, 3.f, 4.f};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], expected[i]) << "at index " << i;
+  }
 }
 
 }  // namespace test
