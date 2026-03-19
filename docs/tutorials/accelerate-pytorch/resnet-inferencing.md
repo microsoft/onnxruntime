@@ -242,41 +242,37 @@ ONNX Runtime CPU Inference time = 32.34 ms
 Use PyTorch to benchmark against ONNX Runtime CPU and GPU accuracy and latency.
 
 ```python
-# Inference with OpenVINO
-from openvino.runtime import Core
-
-ie = Core()
-onnx_model_path = "./resnet50.onnx"
-model_onnx = ie.read_model(model=onnx_model_path)
-compiled_model_onnx = ie.compile_model(model=model_onnx, device_name="CPU")
-
-# inference
-output_layer = next(iter(compiled_model_onnx.outputs))
-
+# Inference with PyTorch
 latency = []
-input_arr = input_batch.detach().numpy()
-inputs = {'input':input_arr}
 start = time.time()
-request = compiled_model_onnx.create_infer_request()
-output = request.infer(inputs=inputs)
-
-outputs = request.get_output_tensor(output_layer.index).data
+with torch.no_grad():
+    torch_output = resnet50(input_batch)
 latency.append(time.time() - start)
 
-print("OpenVINO CPU Inference time = {} ms".format(format(sum(latency) * 1000 / len(latency), '.2f')))
+# Convert to numpy
+torch_output_np = torch_output.cpu().detach().numpy()
+
+# Print classification results
+output = torch_output_np.flatten()
+output = softmax(output)
+top5_catid = np.argsort(-output)[:5]
+for catid in top5_catid:
+    print(categories[catid], output[catid])
+
+print("PyTorch CPU Inference time = {} ms".format(format(sum(latency) * 1000 / len(latency), '.2f')))
 
 print("***** Verifying correctness *****")
 for i in range(2):
-    print('OpenVINO and ONNX Runtime output {} are close:'.format(i), np.allclose(ort_output, outputs, rtol=1e-05, atol=1e-04))
+    print('PyTorch and ONNX Runtime output {} are close:'.format(i), np.allclose(ort_output, torch_output_np, rtol=1e-05, atol=1e-04))
 ```
 Sample output:
 ```console
-Egyptian cat 0.7820879
-tabby 0.113261245
-tiger cat 0.020114701
-Siamese cat 0.012514038
-plastic bag 0.0056432663
-OpenVINO CPU Inference time = 31.83 ms
+Egyptian cat 0.78605634
+tabby 0.117310025
+tiger cat 0.020089425
+Siamese cat 0.011728076
+plastic bag 0.0052174763
+PyTorch CPU Inference time = 34.56 ms
 ***** Verifying correctness *****
 PyTorch and ONNX Runtime output 0 are close: True
 PyTorch and ONNX Runtime output 1 are close: True
