@@ -248,12 +248,8 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     int add_non_bias_input_index = 1 - add_bias_index;
     int sln_skip_input_index = 1 - sln_add_input_index;
 
-    // Build the new 5-input SkipLayerNormalization:
-    //   input[0] = MatMul (or Cast) output   – the "input" tensor
-    //   input[1] = skip                       – the "skip" tensor
-    //   input[2] = gamma                      – unchanged
-    //   input[3] = beta                       – unchanged
-    //   input[4] = bias                       – absorbed from the Add node
+    // Snapshot all information we need from the original nodes before modifying the graph.
+    // Inputs from the Add and SkipLayerNormalization nodes.
     InlinedVector<NodeArg*> new_sln_inputs{
         p_add->MutableInputDefs()[add_non_bias_input_index],  // input (MatMul / Cast output)
         sln_inputs[sln_skip_input_index],                     // skip
@@ -262,17 +258,41 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
         p_add->MutableInputDefs()[add_bias_index]             // bias (1D constant)
     };
 
+    // Snapshot the outputs of the original SkipLayerNormalization so we can safely remove it
+    // before creating the replacement node while preserving the same graph outputs.
+    InlinedVector<NodeArg*> new_sln_outputs;
+    {
+      auto& sln_output_defs = sln_node.MutableOutputDefs();
+      new_sln_outputs.assign(sln_output_defs.begin(), sln_output_defs.end());
+    }
+
+    // Snapshot attributes and execution provider type from the original SLN node.
+    const NodeAttributes sln_attrs = sln_node.GetAttributes();
+    const std::string sln_ep = sln_node.GetExecutionProviderType();
+
+    // Remove the original Add and SkipLayerNormalization nodes (and their output edges)
+    // before adding the fused node to maintain the single-producer invariant for NodeArgs.
+    graph_utils::RemoveNodeOutputEdges(graph, *p_add);
+    graph.RemoveNode(p_add->Index());
+    graph_utils::RemoveNodeOutputEdges(graph, sln_node);
+    graph.RemoveNode(sln_node.Index());
+
+    // Build the new 5-input SkipLayerNormalization:
+    //   input[0] = MatMul (or Cast) output   – the "input" tensor
+    //   input[1] = skip                       – the "skip" tensor
+    //   input[2] = gamma                      – unchanged
+    //   input[3] = beta                       – unchanged
+    //   input[4] = bias                       – absorbed from the Add node
     Node& new_sln_node = graph.AddNode(
         graph.GenerateNodeName("SkipLayerNormalization"),
         "SkipLayerNormalization",
         "fused SkipLayerNormalization and bias Add",
         new_sln_inputs,
-        sln_node.MutableOutputDefs(),
+        new_sln_outputs,
         {},
         kMSDomain);
 
     // Copy all attributes from the original SkipLayerNormalization node, ensuring epsilon is set.
-    const NodeAttributes& sln_attrs = sln_node.GetAttributes();
 
     // First copy all non-epsilon attributes.
     for (const auto& attr_pair : sln_attrs) {
@@ -290,14 +310,29 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
       new_sln_node.AddAttribute("epsilon", contrib::kDefaultSkipLayerNormEpsilon);
     }
 
-    new_sln_node.SetExecutionProviderType(sln_node.GetExecutionProviderType());
+    new_sln_node.SetExecutionProviderType(sln_ep);
 
-    nodes_to_remove.push_back(*p_add);
-    nodes_to_remove.push_back(sln_node);
-    // Note: nodes are only actually removed after the full iteration (see below), so subsequent
-    // iterations in this loop will still see these nodes but will not fuse them again because
-    // (a) each node_index in node_topology_list is unique, and (b) the Add node's output edge
-    // count is 1, preventing it from being matched a second time as a consumer of another SLN.
+    // Rewire all downstream consumers from the original SLN node to the new fused node
+    // before scheduling the original node for removal.
+    for (auto it = sln_node.OutputEdgesBegin(); it != sln_node.OutputEdgesEnd();) {
+      auto& edge = *it;
+      Node& downstream_node = edge.GetNode();
+      int src_arg_index = edge.GetSrcArgIndex();
+      int dst_arg_index = edge.GetDstArgIndex();
+
+      // Remove the edge from the original SLN node to the downstream node.
+      graph.RemoveEdge(sln_node.Index(), downstream_node.Index(), src_arg_index, dst_arg_index);
+      // Add an equivalent edge from the new fused SLN node to the same downstream node.
+      graph.AddEdge(new_sln_node.Index(), downstream_node.Index(), src_arg_index, dst_arg_index);
+
+      // Restart iteration since the edge collection has changed.
+      it = sln_node.OutputEdgesBegin();
+    }
+
+    // The original Add and SkipLayerNormalization nodes have already been removed above,
+    // so we do not add them to nodes_to_remove here.
+    // Note: nodes in other fusion paths may still be collected in nodes_to_remove and
+    // removed after the full iteration (see below).
   }
 
   for (const auto& node : nodes_to_remove) {
