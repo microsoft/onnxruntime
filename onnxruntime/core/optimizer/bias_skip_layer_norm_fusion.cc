@@ -82,9 +82,16 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
 
             if (graph_utils::NodeArgIsConstant(graph, *bias_arg)) {
               bool is_1d_bias = false;
+              int64_t bias_hidden_size = -1;
               const TensorShapeProto* bias_shape = bias_arg->Shape();
               if (bias_shape != nullptr) {
                 is_1d_bias = (bias_shape->dim_size() == 1);
+                if (is_1d_bias) {
+                  const auto& dim0 = bias_shape->dim(0);
+                  if (dim0.has_dim_value()) {
+                    bias_hidden_size = dim0.dim_value();
+                  }
+                }
               } else {
                 // For constant initializers from an outer scope, NodeArg::Shape() may be null.
                 // Fall back to checking the TensorProto dims to confirm that the bias is 1D.
@@ -92,10 +99,57 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
                     graph_utils::GetConstantInitializer(graph, bias_arg->Name(), true);
                 if (bias_initializer != nullptr) {
                   is_1d_bias = (bias_initializer->dims_size() == 1);
+                  if (is_1d_bias && bias_initializer->dims_size() == 1) {
+                    bias_hidden_size = bias_initializer->dims(0);
+                  }
                 }
               }
 
+              // If we know the bias is 1D, additionally check that its length matches the
+              // hidden size expected by SkipLayerNormalization (gamma/beta) when that size
+              // can be determined. If the sizes are known and incompatible, skip fusion.
+              bool bias_matches_hidden = true;
               if (is_1d_bias) {
+                int64_t sln_hidden_size = -1;
+
+                auto get_sln_hidden_size_from_input = [&](size_t input_index) -> int64_t {
+                  if (sln_node.InputDefs().size() <= input_index) {
+                    return -1;
+                  }
+                  NodeArg* arg = sln_node.MutableInputDefs()[input_index];
+                  if (arg == nullptr) {
+                    return -1;
+                  }
+
+                  const TensorShapeProto* shape = arg->Shape();
+                  if (shape != nullptr && shape->dim_size() == 1) {
+                    const auto& dim0 = shape->dim(0);
+                    if (dim0.has_dim_value()) {
+                      return dim0.dim_value();
+                    }
+                  }
+
+                  const TensorProto* initializer =
+                      graph_utils::GetConstantInitializer(graph, arg->Name(), true);
+                  if (initializer != nullptr && initializer->dims_size() == 1) {
+                    return initializer->dims(0);
+                  }
+
+                  return -1;
+                };
+
+                // Try gamma (input index 2), then beta (input index 3) as the hidden-size source.
+                sln_hidden_size = get_sln_hidden_size_from_input(2);
+                if (sln_hidden_size == -1) {
+                  sln_hidden_size = get_sln_hidden_size_from_input(3);
+                }
+
+                if (sln_hidden_size != -1 && bias_hidden_size != -1 && sln_hidden_size != bias_hidden_size) {
+                  bias_matches_hidden = false;
+                }
+              }
+
+              if (is_1d_bias && bias_matches_hidden) {
                 p_add = candidate_add;
                 sln_add_input_index = sln_input_idx;
                 add_bias_index = bias_idx;
