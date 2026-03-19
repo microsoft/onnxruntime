@@ -34,7 +34,7 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
                                           const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
+  const size_t original_num_nodes = graph.NumberOfNodes();
 
   auto get_bias_info = [&](Graph& g, NodeArg& bias_arg, bool& is_1d_bias, int64_t& bias_hidden_size) {
     is_1d_bias = false;
@@ -56,7 +56,7 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
           graph_utils::GetConstantInitializer(g, bias_arg.Name(), true);
       if (bias_initializer != nullptr) {
         is_1d_bias = (bias_initializer->dims_size() == 1);
-        if (is_1d_bias && bias_initializer->dims_size() == 1) {
+        if (is_1d_bias) {
           bias_hidden_size = bias_initializer->dims(0);
         }
       }
@@ -185,27 +185,9 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
             if (graph_utils::NodeArgIsConstant(graph, *bias_arg)) {
               bool is_1d_bias = false;
               int64_t bias_hidden_size = -1;
-              const TensorShapeProto* bias_shape = bias_arg->Shape();
-              if (bias_shape != nullptr) {
-                is_1d_bias = (bias_shape->dim_size() == 1);
-                if (is_1d_bias) {
-                  const auto& dim0 = bias_shape->dim(0);
-                  if (dim0.has_dim_value()) {
-                    bias_hidden_size = dim0.dim_value();
-                  }
-                }
-              } else {
-                // For constant initializers from an outer scope, NodeArg::Shape() may be null.
-                // Fall back to checking the TensorProto dims to confirm that the bias is 1D.
-                const TensorProto* bias_initializer =
-                    graph_utils::GetConstantInitializer(graph, bias_arg->Name(), true);
-                if (bias_initializer != nullptr) {
-                  is_1d_bias = (bias_initializer->dims_size() == 1);
-                  if (is_1d_bias && bias_initializer->dims_size() == 1) {
-                    bias_hidden_size = bias_initializer->dims(0);
-                  }
-                }
-              }
+
+              // Reuse common bias shape extraction logic to ensure consistent behavior.
+              get_bias_info(graph, *bias_arg, is_1d_bias, bias_hidden_size);
 
               bool bias_matches_hidden = true;
               if (is_1d_bias) {
@@ -312,35 +294,39 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
 
     new_sln_node.SetExecutionProviderType(sln_ep);
 
-    // Rewire all downstream consumers from the original SLN node to the new fused node
-    // before scheduling the original node for removal.
-    for (auto it = sln_node.OutputEdgesBegin(); it != sln_node.OutputEdgesEnd();) {
+    // Rewire all downstream consumers from the original SLN node to the new fused node.
+    // Collect the outgoing edges first to avoid iterator invalidation or use-after-free
+    // when removing edges from the graph.
+    std::vector<std::tuple<NodeIndex, int, int>> sln_output_edges;
+    sln_output_edges.reserve(std::distance(sln_node.OutputEdgesBegin(), sln_node.OutputEdgesEnd()));
+    for (auto it = sln_node.OutputEdgesBegin(); it != sln_node.OutputEdgesEnd(); ++it) {
       auto& edge = *it;
       Node& downstream_node = edge.GetNode();
       int src_arg_index = edge.GetSrcArgIndex();
       int dst_arg_index = edge.GetDstArgIndex();
+      sln_output_edges.emplace_back(downstream_node.Index(), src_arg_index, dst_arg_index);
+    }
+
+    for (const auto& edge_info : sln_output_edges) {
+      NodeIndex downstream_node_index = std::get<0>(edge_info);
+      int src_arg_index = std::get<1>(edge_info);
+      int dst_arg_index = std::get<2>(edge_info);
 
       // Remove the edge from the original SLN node to the downstream node.
-      graph.RemoveEdge(sln_node.Index(), downstream_node.Index(), src_arg_index, dst_arg_index);
+      graph.RemoveEdge(sln_node.Index(), downstream_node_index, src_arg_index, dst_arg_index);
       // Add an equivalent edge from the new fused SLN node to the same downstream node.
-      graph.AddEdge(new_sln_node.Index(), downstream_node.Index(), src_arg_index, dst_arg_index);
-
-      // Restart iteration since the edge collection has changed.
-      it = sln_node.OutputEdgesBegin();
+      graph.AddEdge(new_sln_node.Index(), downstream_node_index, src_arg_index, dst_arg_index);
     }
 
     // The original Add and SkipLayerNormalization nodes have already been removed above,
     // so we do not add them to nodes_to_remove here.
     // Note: nodes in other fusion paths may still be collected in nodes_to_remove and
     // removed after the full iteration (see below).
+    modified = true;
   }
 
-  for (const auto& node : nodes_to_remove) {
-    graph_utils::RemoveNodeOutputEdges(graph, node);
-    graph.RemoveNode(node.get().Index());
-  }
-
-  if (!nodes_to_remove.empty()) {
+  // Set 'modified' based on whether the number of nodes in the graph changed.
+  if (graph.NumberOfNodes() != original_num_nodes) {
     modified = true;
   }
 
