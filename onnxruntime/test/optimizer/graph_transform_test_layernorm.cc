@@ -880,8 +880,8 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_AddAtSkipInput) {
 // Models using fp16 precision commonly insert a Cast between MatMul and the bias Add.
 TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_WithCast) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* matmul_a = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
-    auto* matmul_b = builder.MakeInitializer<float>({8, 4}, -1.0f, 1.0f);
+    auto* matmul_a = builder.MakeInput<onnxruntime::MLFloat16>({2, 4, 8}, -1.0f, 1.0f);
+    auto* matmul_b = builder.MakeInitializer<onnxruntime::MLFloat16>({8, 4}, -1.0f, 1.0f);
     auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
     auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
     auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
