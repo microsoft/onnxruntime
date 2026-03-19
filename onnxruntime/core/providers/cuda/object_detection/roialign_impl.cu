@@ -27,14 +27,14 @@ __device__ AccumulationType_t<T> bilinear_interpolate(
     const T* bottom_data,
     const int height,
     const int width,
-    T y,
-    T x,
+    AccumulationType_t<T> y,
+    AccumulationType_t<T> x,
     const bool is_mode_avg,
     const int index /* index for debug only*/) {
   using TAcc = AccumulationType_t<T>;
 
-  TAcc y_acc = static_cast<TAcc>(y);
-  TAcc x_acc = static_cast<TAcc>(x);
+  TAcc y_acc = y;
+  TAcc x_acc = x;
 
   // deal with cases that inverse elements are out of feature map boundary
   if (y_acc < static_cast<TAcc>(-1.0f) || y_acc > static_cast<TAcc>(height) ||
@@ -172,7 +172,7 @@ __global__ void RoIAlignForward(
                            static_cast<TAcc>(roi_bin_grid_w);
 
         const TAcc val = bilinear_interpolate(
-            offset_bottom_data, height, width, static_cast<T>(y), static_cast<T>(x), is_mode_avg, index);
+            offset_bottom_data, height, width, y, x, is_mode_avg, index);
 
         if (is_mode_avg) {
           output_val += val;
