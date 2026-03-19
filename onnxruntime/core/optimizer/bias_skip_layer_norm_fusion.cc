@@ -200,7 +200,7 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
                 // using the same logic as Path 1.
                 int64_t sln_hidden_size = get_sln_hidden_size(sln_node);
 
-                if (bias_hidden_size > 0 && sln_hidden_size > 0 && bias_hidden_size != sln_hidden_size) {
+                if (sln_hidden_size != -1 && bias_hidden_size != -1 && sln_hidden_size != bias_hidden_size) {
                   bias_matches_hidden = false;
                 }
               }
