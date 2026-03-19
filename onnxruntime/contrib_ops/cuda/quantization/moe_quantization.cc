@@ -162,7 +162,7 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
       activation_type_ == ort_fastertransformer::ActivationType::SwiGLU,
       block_size_));
 
-#if defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // Mute "maybe used uninitialized" warning for MoEParameters.
 #endif
@@ -183,7 +183,7 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
                                          GetDeviceProp());
   }
 
-#if defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
 }
