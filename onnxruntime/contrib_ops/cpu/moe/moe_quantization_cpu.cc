@@ -622,6 +622,8 @@ template <typename T>
 QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
       MoEBaseCPU(op_kernel_info) {
+  ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,
+              "CPU QMoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 4 or 8.");
