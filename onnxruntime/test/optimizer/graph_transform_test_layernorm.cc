@@ -821,7 +821,7 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_AddAtInput0) {
         const Node* input4_producer = graph.GetProducerNode(input4->Name());
         TEST_RETURN_IF_NOT(input4_producer == nullptr);
         const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
-        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input4->Name(), bias_initializer).IsOK());
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input4->Name(), bias_initializer));
         TEST_RETURN_IF_NOT(bias_initializer != nullptr);
       }
     }
@@ -889,7 +889,7 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_BiasAsFirstAddInput) {
         const Node* input4_producer = graph.GetProducerNode(input4->Name());
         TEST_RETURN_IF_NOT(input4_producer == nullptr);
         const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
-        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input4->Name(), bias_initializer).IsOK());
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input4->Name(), bias_initializer));
         TEST_RETURN_IF_NOT(bias_initializer != nullptr);
       }
     }
@@ -953,7 +953,7 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_AddAtSkipInput) {
         const Node* input4_producer = graph.GetProducerNode(input_defs[4]->Name());
         TEST_RETURN_IF_NOT(input4_producer == nullptr);
         const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
-        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input_defs[4]->Name(), bias_initializer).IsOK());
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input_defs[4]->Name(), bias_initializer));
         TEST_RETURN_IF_NOT(bias_initializer != nullptr);
       }
     }
@@ -1019,7 +1019,7 @@ TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_WithCast) {
         const Node* input4_producer = graph.GetProducerNode(input_defs[4]->Name());
         TEST_RETURN_IF_NOT(input4_producer == nullptr);
         const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
-        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input_defs[4]->Name(), bias_initializer).IsOK());
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input_defs[4]->Name(), bias_initializer));
         TEST_RETURN_IF_NOT(bias_initializer != nullptr);
       }
     }
