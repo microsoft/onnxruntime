@@ -1096,8 +1096,10 @@ extern "C" {
 #endif
 
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluKernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernel;
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32Kernel;
@@ -1116,7 +1118,10 @@ extern "C" {
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluKernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluKernelAvx512FMinimaxApprox;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeLogisticF32KernelFma3;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeTanhF32KernelFma3;
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelFma3;
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelAvx512F;
@@ -1470,7 +1475,10 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfMinimaxKernelRoutine{nullptr};
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* ReduceMaximumF32Kernel;
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* ComputeSumExpF32Kernel;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
@@ -1678,8 +1686,6 @@ MlasFp32FromBits(
 #endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
-
-
 void
 MLASCALL
 MlasConvDepthwiseFloat_CHW(
@@ -1692,6 +1698,23 @@ MlasConvDepthwiseFloat_CHW(
 
 #endif
 
+// void
+// MlasConvDepthwiseWithMultiplierFloat_CHW(
+//     const MLAS_CONV_PARAMETERS* Parameters,
+//     const float* Input,
+//     const float* Filter,
+//     float* Output
+//     );
+
+#if defined(MLAS_TARGET_AMD64)
+// void
+// MlasConvDepthwiseWithMultiplierFloatCHWKernel7x7Stride2DepthMultiplier2Avx512F(
+//     const MLAS_CONV_PARAMETERS* Parameters,
+//     const float* Input,
+//     const float* Filter,
+//     float* Output
+//     );
+#endif
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable

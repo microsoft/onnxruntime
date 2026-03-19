@@ -10,6 +10,10 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
  protected:
   bool UseBf16_ = false;
 
+  virtual const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* GetBackendKernelSelectorConfig() const {
+    return nullptr;
+  }
+
   void MlasConv2D(
       size_t BatchCount,
       size_t GroupCount,
@@ -134,7 +138,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
                   &Activation,
                   true,
                   MlasConv2DTest<Threaded>::threadpool_,
-                  nullptr,
+                  GetBackendKernelSelectorConfig(),
                   UseBf16_);
 
     //
@@ -227,6 +231,27 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
       }
     }
   }
+};
+
+template <bool Threaded>
+class MlasNchwcConv2DFilterSetTuningTest : public MlasNchwcConv2DTest<Threaded> {
+ public:
+  static const char* GetTestSuiteName() {
+    static const std::string suite_name(Threaded ? "Conv2dNchwcFilterSetTuning_Threaded"
+                                                 : "Conv2dNchwcFilterSetTuning_SingleThread");
+    return suite_name.c_str();
+  }
+
+ protected:
+  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* GetBackendKernelSelectorConfig() const override {
+    return &backend_kernel_selector_config_;
+  }
+
+ private:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG backend_kernel_selector_config_{
+      false,
+      true,
+  };
 };
 
 #if defined(__aarch64__) && defined(__linux__)

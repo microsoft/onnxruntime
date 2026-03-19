@@ -6,17 +6,18 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sconv_nchw_kernel_neon.cpp
+    sconv_nchw_depthwise_multiplier_1.cpp
 
 Abstract:
 
-    This module implements the single precision NCHW convolution kernels for ARM NEON.
+    This module implements the single precision NCHW depthwise convolution kernels
+    for depth multiplier 1.
 
 --*/
 
 
 #include "mlasi.h"
-#include <arm_neon.h>
+#include <cassert>
 
 MLAS_FORCEINLINE float DepthwiseSampleValue(
     const float* row,
@@ -50,7 +51,7 @@ MLAS_FORCEINLINE float DepthwiseAccumulateRowScalar(
 }
 
 MLAS_FORCEINLINE void DepthwiseAccumulateRowVector(
-    float32x4_t& acc,
+    MLAS_FLOAT32X4& acc,
     const float* row,
     size_t base,
     float w0,
@@ -63,9 +64,9 @@ MLAS_FORCEINLINE void DepthwiseAccumulateRowVector(
     }
 
     const float* r = row + base;
-    const float32x4_t c0 = MlasLoadFloat32x4(r);
-    const float32x4_t c1 = MlasLoadFloat32x4(r + 1);
-    const float32x4_t c2 = MlasLoadFloat32x4(r + 2);
+    const MLAS_FLOAT32X4 c0 = MlasLoadFloat32x4(r);
+    const MLAS_FLOAT32X4 c1 = MlasLoadFloat32x4(r + 1);
+    const MLAS_FLOAT32X4 c2 = MlasLoadFloat32x4(r + 2);
 
     acc = MlasMultiplyAddFloat32x4(c0, w0, acc);
     acc = MlasMultiplyAddFloat32x4(c1, w1, acc);
@@ -107,12 +108,31 @@ MLAS_FORCEINLINE float DepthwiseComputeEdge(
     return acc;
 }
 
-static void DepthwiseConv3x3Stride1PadLe1Neon(
+static
+void
+MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,
     float* Output
-)
+    )
+/*++
+
+Routine Description:
+
+    This routine is an inner kernel to compute convolution on one channel input with one filter channel.
+
+Arguments:
+
+    Parameters - conv parameters calculated based on conv parameters like padding, strides, dilations, etc.
+
+    Input - input channel data start. Input is NCHW, so this pointer points to single H x W image data.
+
+    Filter - Whole filters are of F x CpG x FH x FW, this filter points to single FH x FW filter data.
+
+    Output - whole output are of N x F x OH x OW. This pointer points to single OH x OW output image data.
+
+--*/
 {
     const size_t H = Parameters->InputShape[0];
     const size_t W = Parameters->InputShape[1];
@@ -185,14 +205,14 @@ static void DepthwiseConv3x3Stride1PadLe1Neon(
             }
 
             const size_t base = static_cast<size_t>(iw);
-            float32x4_t acc = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 acc = MlasZeroFloat32x4();
 
             DepthwiseAccumulateRowVector(acc, row0, base, w00, w01, w02);
             DepthwiseAccumulateRowVector(acc, row1, base, w10, w11, w12);
             DepthwiseAccumulateRowVector(acc, row2, base, w20, w21, w22);
 
             if (accumulate_output) {
-                const float32x4_t prev = MlasLoadFloat32x4(out_row + ow);
+                const MLAS_FLOAT32X4 prev = MlasLoadFloat32x4(out_row + ow);
                 acc = MlasMultiplyAddFloat32x4(prev, beta, acc);
             }
 
@@ -230,35 +250,6 @@ static void DepthwiseConv3x3Stride1PadLe1Neon(
     }
 }
 
-static
-void
-MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(
-    const MLAS_CONV_PARAMETERS* Parameters,
-    const float* Input,
-    const float* Filter,
-    float* Output
-    )
-/*++
-
-Routine Description:
-
-    This routine is an inner kernel to compute convolution on one channel input with one filter channel.
-
-Arguments:
-
-    Parameters - conv parameters calculated based on conv parameters like padding, strides, dilations, etc.
-
-    Input - input channel data start. Input is NCHW, so this pointer points to single H x W image data.
-
-    Filter - Whole filters are of F x CpG x FH x FW, this filter points to single FH x FW filter data.
-
-    Output - whole output are of N x F x OH x OW. This pointer points to single OH x OW output image data.
-
---*/
-{
-        DepthwiseConv3x3Stride1PadLe1Neon(Parameters, Input, Filter, Output);
-}
-
 void MlasConvDepthwiseFloat_CHW(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
@@ -292,6 +283,22 @@ Note:
 
 --*/
 {
+    assert(Parameters->Dimensions == 2);
+    assert(Parameters->FilterCount == 1);
+    assert(Parameters->InputChannels == 1);
+    assert(Parameters->KernelShape[0] == 3);
+    assert(Parameters->KernelShape[1] == 3);
+    assert(Parameters->StrideShape[0] == 1);
+    assert(Parameters->StrideShape[1] == 1);
+    assert(Parameters->DilationShape[0] == 1);
+    assert(Parameters->DilationShape[1] == 1);
+    assert(Parameters->Padding[0] <= 1);
+    assert(Parameters->Padding[1] <= 1);
+    assert(Parameters->Padding[2] <= 1);
+    assert(Parameters->Padding[3] <= 1);
+
     MLAS_UNREFERENCED_PARAMETER(Zeros);
+
+    // Kernel dispatch
     MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(Parameters, Input, Filter, Output);
 }

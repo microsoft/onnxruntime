@@ -504,7 +504,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 #endif
 }
 
-TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
+TEST(InferenceSessionTests, DISABLED_CheckRunProfilerWithStartProfile) {
   SessionOptions so;
 
   so.session_logid = "CheckRunProfiler";

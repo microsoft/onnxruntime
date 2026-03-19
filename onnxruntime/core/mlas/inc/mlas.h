@@ -204,6 +204,9 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    // bool enable_nchwc_conv_thread_capping = false; /**< Enable thread-capping heuristics for NCHWc regular/pointwise/depthwise convolution */
+    bool enable_nchwc_conv_filter_set_tuning = false; /**< Enable FilterSetSize tuning heuristics for NCHWc regular and pointwise convolution */
+    // bool enable_depthwise_with_multiplier_kernel = false; /**< Enable the specialized depthwise-with-multiplier convolution kernel */
 };
 
 //
@@ -877,6 +880,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
+    // MlasConvAlgorithmDepthwiseWithMultiplier,
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
     MlasConvAlgorithmDepthwise,
 #endif
@@ -1105,12 +1109,26 @@ MlasMaximumPool(
 // Miscellaneous compute routines.
 //
 
+enum MLAS_GELU_ERF_MODE {
+    MlasGeluErfModeExact = 0,
+    MlasGeluErfModeMinimaxApproximation = 1,
+};
+
 void
 MLASCALL
 MlasComputeErf(
     const float* Input,
     float* Output,
     size_t N
+    );
+
+void
+MLASCALL
+MlasComputeGeluErf(
+    const float* Input,
+    float* Output,
+    size_t N,
+    MLAS_GELU_ERF_MODE Mode
     );
 
 template <typename T>
@@ -1125,6 +1143,14 @@ MlasComputeExp(
 void
 MLASCALL
 MlasComputeLogistic(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasComputeSilu(
     const float* Input,
     float* Output,
     size_t N

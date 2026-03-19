@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/constants.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/random_generator.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -78,6 +81,108 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   excluded_providers.insert(kQnnExecutionProvider);
 
   test.Run(expect_result, err_str, excluded_providers);
+}
+
+std::vector<float> ComputeExpectedConv2D(const ConvOpAndTestAttributes& attributes,
+                                         const std::vector<float>& input,
+                                         const std::vector<int64_t>& input_shape,
+                                         const std::vector<float>& weights,
+                                         const std::vector<int64_t>& weight_shape,
+                                         const std::vector<int64_t>& output_shape,
+                                         const std::vector<float>* bias = nullptr) {
+  ORT_ENFORCE(input_shape.size() == 4);
+  ORT_ENFORCE(weight_shape.size() == 4);
+  ORT_ENFORCE(output_shape.size() == 4);
+  ORT_ENFORCE(attributes.group == 1, "This helper currently supports group=1 only.");
+
+  const int64_t batch = input_shape[0];
+  const int64_t input_channels = input_shape[1];
+  const int64_t input_height = input_shape[2];
+  const int64_t input_width = input_shape[3];
+  const int64_t output_channels = weight_shape[0];
+  const int64_t kernel_height = weight_shape[2];
+  const int64_t kernel_width = weight_shape[3];
+  const int64_t output_height = output_shape[2];
+  const int64_t output_width = output_shape[3];
+
+  const int64_t pad_top = attributes.pads[0];
+  const int64_t pad_left = attributes.pads[1];
+  const int64_t stride_h = attributes.strides[0];
+  const int64_t stride_w = attributes.strides[1];
+  const int64_t dilation_h = attributes.dilations[0];
+  const int64_t dilation_w = attributes.dilations[1];
+
+  std::vector<float> expected(static_cast<size_t>(batch * output_channels * output_height * output_width), 0.0f);
+
+  for (int64_t n = 0; n < batch; ++n) {
+    for (int64_t oc = 0; oc < output_channels; ++oc) {
+      for (int64_t oh = 0; oh < output_height; ++oh) {
+        for (int64_t ow = 0; ow < output_width; ++ow) {
+          float sum = bias != nullptr ? (*bias)[static_cast<size_t>(oc)] : 0.0f;
+
+          for (int64_t ic = 0; ic < input_channels; ++ic) {
+            for (int64_t kh = 0; kh < kernel_height; ++kh) {
+              for (int64_t kw = 0; kw < kernel_width; ++kw) {
+                const int64_t ih = oh * stride_h + kh * dilation_h - pad_top;
+                const int64_t iw = ow * stride_w + kw * dilation_w - pad_left;
+
+                if (ih < 0 || ih >= input_height || iw < 0 || iw >= input_width) {
+                  continue;
+                }
+
+                const size_t input_index = static_cast<size_t>(((n * input_channels + ic) * input_height + ih) * input_width + iw);
+                const size_t weight_index = static_cast<size_t>(((oc * input_channels + ic) * kernel_height + kh) * kernel_width + kw);
+                sum += input[input_index] * weights[weight_index];
+              }
+            }
+          }
+
+          const size_t output_index = static_cast<size_t>(((n * output_channels + oc) * output_height + oh) * output_width + ow);
+          expected[output_index] = sum;
+        }
+      }
+    }
+  }
+
+  return expected;
+}
+
+void TestCpuConvOpWithSessionOptions(const ConvOpAndTestAttributes& attributes,
+                                     const vector<vector<float>>& inputs,
+                                     const vector<vector<int64_t>>& input_shapes,
+                                     const vector<float>& expected_output,
+                                     const vector<int64_t>& expected_output_shape,
+                                     const SessionOptions& session_options,
+                                     bool weight_is_initializer = false,
+                                     int opset = 7) {
+  OpTester test("Conv", opset);
+  test.AddAttribute("group", attributes.group);
+  test.AddAttribute("kernel_shape", attributes.kernel_shape);
+
+  if (!attributes.dilations.empty()) {
+    test.AddAttribute("dilations", attributes.dilations);
+  }
+
+  if (!attributes.pads.empty()) {
+    test.AddAttribute("pads", attributes.pads);
+  } else {
+    test.AddAttribute("auto_pad", attributes.auto_pad);
+  }
+
+  if (!attributes.strides.empty()) {
+    test.AddAttribute("strides", attributes.strides);
+  }
+
+  ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
+  const char* szNames[] = {"X", "W", "B"};
+  test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
+  test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
+  if (inputs.size() == 3) {
+    test.AddInput<float>(szNames[2], input_shapes[2], inputs[2]);
+  }
+
+  test.AddOutput<float>("Y", expected_output_shape, expected_output);
+  test.Config(session_options).ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 }  // namespace
@@ -714,6 +819,36 @@ TEST(ConvTest, Conv2D_MatMul_SplitK_With_Bias) {
 
   // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Conv2D_NchwcFilterSetTuning_CPU_EP) {
+  if (MlasNchwcGetBlockSize() <= 1) {
+    GTEST_SKIP() << "NCHWc is not supported on this platform.";
+  }
+
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{1, 1, 1, 1},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<int64_t> X_shape = {1, 96, 8, 8};
+  vector<int64_t> W_shape = {96, 96, 3, 3};
+  vector<int64_t> Y_shape = {1, 96, 8, 8};
+
+  RandomValueGenerator random{1234};
+  vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+  vector<float> expected_vals = ComputeExpectedConv2D(attrs, X, X_shape, W, W_shape, Y_shape);
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasEnableNchwcConvFilterSetTuning, "1"));
+
+  TestCpuConvOpWithSessionOptions(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, so, true);
 }
 
 // Conv10

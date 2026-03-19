@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "activation_op_test.h"
+#include "core/mlas/lib/mlasi.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/cpu/activation/activations.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -752,6 +754,38 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
       {},
       {{"approximate", "tanh"}}, true, 20);
 }
+
+#if defined(MLAS_TARGET_AMD64)
+TEST_F(ActivationOpTest, ONNX_Gelu_MlasErfMinimaxApproximation) {
+  if (GetMlasPlatform().GeluErfMinimaxKernelRoutine == nullptr) {
+    GTEST_SKIP() << "MLAS GELU erf minimax kernel is not available on this machine.";
+  }
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsMlasGeluErfUseMinimaxApproximation, "1"));
+
+  for (const std::vector<float>& input_vals : input_values) {
+    OpTester test("Gelu", 20, kOnnxDomain);
+    test.AddAttribute("approximate", "none");
+
+    std::vector<int64_t> dims{static_cast<int64_t>(input_vals.size())};
+    std::vector<float> expected_vals;
+    expected_vals.reserve(input_vals.size());
+    for (const float x : input_vals) {
+      expected_vals.push_back(static_cast<float>(0.5 * x * (1 + erf(x * M_SQRT1_2))));
+    }
+
+    test.AddInput<float>("X", dims, input_vals);
+    test.AddOutput<float>("Y", dims, expected_vals, false, 2e-5f, 2e-6f);
+
+    test
+        .Config(session_options)
+        .ConfigEp(DefaultCpuExecutionProvider())
+        .RunWithConfig();
+  }
+}
+#endif
 #endif
 
 }  // namespace test

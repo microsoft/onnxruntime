@@ -710,7 +710,6 @@ ProcessPointwiseOutputCountN MACRO Isa, BlockSize, FilterCount, OutputCount
         LOCAL   SkipAccumulateOutput
         LOCAL   SkipBiasAddition
         LOCAL   SkipReluActivation
-
         mov     rcx,rdi
         mov     rdx,r12
         mov     r11,SconvKernelPointwiseFrame.InputChannels[rsp]
@@ -723,6 +722,11 @@ IF OutputCount GT 3
 ENDIF
 IF FilterCount GT 2
         lea     rbx,[rdx+rsi*2]             ; compute filter plus 2 rows
+ENDIF
+IFIDNI <Isa>, <Avx512F>
+IF BlockSize EQ 16
+;        prefetcht0 [rdx+BlockSize*BlockSize*4]
+ENDIF
 ENDIF
 IF BlockSize EQ 16
         IRP     Index, <0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15>

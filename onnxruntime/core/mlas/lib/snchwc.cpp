@@ -111,6 +111,8 @@ Return Value:
 #endif
 }
 
+static constexpr size_t MlasNchwcDefaultGroupedConvFilterSetSize = 4;
+
 void
 MlasNchwcPrepareWorkBlock(
     MLAS_NCHWC_WORK_BLOCK* WorkBlock,
@@ -349,6 +351,57 @@ struct MLAS_NCHWC_NN_ALGORITHM
 constexpr size_t MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex;
 constexpr size_t MLAS_NCHWC_NN_ALGORITHM::WidthShapeIndex;
 
+static size_t
+MlasNchwcSelectRegularConvFilterSetSize(
+    const MLAS_NCHWC_CONV_WORK_BLOCK& WorkBlock
+    )
+{
+    if (WorkBlock.BackendKernelSelectorConfig == nullptr ||
+        !WorkBlock.BackendKernelSelectorConfig->enable_nchwc_conv_filter_set_tuning) {
+        return MlasNchwcDefaultGroupedConvFilterSetSize;
+    }
+
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+    const size_t OutputChannelBlockCount =
+        (WorkBlock.OutputChannels + BlockSize - 1) / BlockSize;
+
+    if (WorkBlock.KernelShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex] == 3 &&
+        WorkBlock.KernelShape[MLAS_NCHWC_NN_ALGORITHM::WidthShapeIndex] == 3 &&
+        OutputChannelBlockCount >= 3 &&
+        (OutputChannelBlockCount % 3) == 0) {
+        return 3;
+    }
+
+    return MlasNchwcDefaultGroupedConvFilterSetSize;
+}
+
+static size_t
+MlasNchwcSelectPointwiseConvFilterSetSize(
+    const MLAS_NCHWC_CONV_WORK_BLOCK& WorkBlock
+    )
+{
+    if (WorkBlock.BackendKernelSelectorConfig == nullptr ||
+        !WorkBlock.BackendKernelSelectorConfig->enable_nchwc_conv_filter_set_tuning) {
+        return MlasNchwcDefaultGroupedConvFilterSetSize;
+    }
+
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+    const size_t OutputChannelBlockCount =
+        (WorkBlock.OutputChannels + BlockSize - 1) / BlockSize;
+
+    // Pointwise convolutions have historically used FilterSetSize=4. Only
+    // switch to FilterSetSize=3 when the output-channel block count is a
+    // multiple of 3 but not 4, so we avoid regressing shapes where both 3-way
+    // and 4-way partitioning are possible (for example 12, 24, 48, ... blocks).
+    if (OutputChannelBlockCount >= 3 &&
+        (OutputChannelBlockCount % 3) == 0 &&
+        (OutputChannelBlockCount % MlasNchwcDefaultGroupedConvFilterSetSize) != 0) {
+        return 3;
+    }
+
+    return MlasNchwcDefaultGroupedConvFilterSetSize;
+}
+
 template<typename AlgorithmType>
 void
 MlasNchwcThreaded(
@@ -358,6 +411,88 @@ MlasNchwcThreaded(
 {
     AlgorithmType((decltype(AlgorithmType::WorkBlock))Context).Execute(Index);
 }
+
+// static ptrdiff_t
+// MlasNchwcGetGroupedConvThreadCount(
+//     const MLAS_NCHWC_CONV_WORK_BLOCK& WorkBlock,
+//     ptrdiff_t MaximumThreadCount
+//     )
+// {
+//     if (WorkBlock.BatchCount != 1 || WorkBlock.GroupCount != 1) {
+//         return MaximumThreadCount;
+//     }
+//
+//     const size_t BlockSize = MlasNchwcGetBlockSize();
+//     const size_t FilterSetSize = MlasNchwcSelectRegularConvFilterSetSize(WorkBlock);
+//     const size_t FilterSetCount =
+//         (WorkBlock.OutputChannels + (BlockSize * FilterSetSize) - 1) / (BlockSize * FilterSetSize);
+//     const size_t TotalWork = FilterSetCount * WorkBlock.OutputShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex];
+//
+//     if (TotalWork <= 2) {
+//         return 1;
+//     }
+//
+//     if (TotalWork <= 4) {
+//         return std::min<ptrdiff_t>(MaximumThreadCount, 2);
+//     }
+//
+//     const size_t TargetThreadCount = (TotalWork + 1) / 2;
+//     return std::max<ptrdiff_t>(1, std::min<ptrdiff_t>(MaximumThreadCount, static_cast<ptrdiff_t>(TargetThreadCount)));
+// }
+//
+// static ptrdiff_t
+// MlasNchwcGetPointwiseConvThreadCount(
+//     const MLAS_NCHWC_CONV_WORK_BLOCK& WorkBlock,
+//     ptrdiff_t MaximumThreadCount
+//     )
+// {
+//     if (WorkBlock.BatchCount != 1 || WorkBlock.GroupCount != 1) {
+//         return MaximumThreadCount;
+//     }
+//
+//     const size_t BlockSize = MlasNchwcGetBlockSize();
+//     const size_t FilterSetSize = MlasNchwcDefaultGroupedConvFilterSetSize;
+//     const size_t FilterSetCount =
+//         (WorkBlock.OutputChannels + (BlockSize * FilterSetSize) - 1) / (BlockSize * FilterSetSize);
+//     size_t TotalWork = FilterSetCount * WorkBlock.OutputShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex];
+//
+//     if (TotalWork <= 2) {
+//         return 1;
+//     }
+//
+//     if (TotalWork <= 4) {
+//         return std::min<ptrdiff_t>(MaximumThreadCount, 2);
+//     }
+//
+//     const size_t TargetThreadCount = (TotalWork + 1) / 2;
+//     return std::max<ptrdiff_t>(1, std::min<ptrdiff_t>(MaximumThreadCount, static_cast<ptrdiff_t>(TargetThreadCount)));
+// }
+//
+// static ptrdiff_t
+// MlasNchwcGetDepthwiseThreadCount(
+//     const MLAS_NCHWC_CONV_WORK_BLOCK& WorkBlock,
+//     ptrdiff_t MaximumThreadCount
+//     )
+// {
+//     if (WorkBlock.BatchCount != 1) {
+//         return MaximumThreadCount;
+//     }
+//
+//     const size_t BlockSize = MlasNchwcGetBlockSize();
+//     const size_t GroupBlockCount = (WorkBlock.GroupCount + BlockSize - 1) / BlockSize;
+//     const size_t TotalWork = GroupBlockCount * WorkBlock.OutputShape[MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex];
+//
+//     if (TotalWork <= 2) {
+//         return 1;
+//     }
+//
+//     if (TotalWork <= 4) {
+//         return std::min<ptrdiff_t>(MaximumThreadCount, 2);
+//     }
+//
+//     const size_t TargetThreadCount = (TotalWork + 1) / 2;
+//     return std::max<ptrdiff_t>(1, std::min<ptrdiff_t>(MaximumThreadCount, static_cast<ptrdiff_t>(TargetThreadCount)));
+// }
 
 //
 // Base implementation for convolution algorithms.
@@ -525,8 +660,9 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     // reused for a given set of input inside the kernel.
     //
 
-    static constexpr size_t FilterSetSize = 4;
+    static constexpr size_t DefaultFilterSetSize = MlasNchwcDefaultGroupedConvFilterSetSize;
 
+    const size_t FilterSetSize;
     const size_t FilterSetCount;
 
     //
@@ -540,9 +676,10 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     size_t WorkRemaining;
     size_t FilterCount;
 
-    MLAS_NCHWC_GROUPED_CONV_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
+    MLAS_NCHWC_GROUPED_CONV_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock, size_t FilterSetSizeParam = DefaultFilterSetSize) :
         MLAS_NCHWC_CONV_ALGORITHM(WorkBlock),
-        FilterSetCount((OutputChannels + (BlockSize * FilterSetSize) - 1) / (BlockSize * FilterSetSize))
+        FilterSetSize(FilterSetSizeParam),
+        FilterSetCount((OutputChannels + (BlockSize * FilterSetSizeParam) - 1) / (BlockSize * FilterSetSizeParam))
     {
     }
 
@@ -647,7 +784,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     }
 };
 
-constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::FilterSetSize;
+constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::DefaultFilterSetSize;
 
 //
 // Implementation of the direct convolution algorithm where the input buffer is
@@ -656,8 +793,21 @@ constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::FilterSetSize;
 
 struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
+    //
+    // Prefer FilterSetSize=3 for 3x3 convolutions when the output-channel
+    // blocks divide evenly into 3-block waves. Otherwise, keep the default
+    // FilterSetSize of 4.
+    //
+
+    static size_t
+    ComputeFilterSetSize(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock)
+    {
+        return MlasNchwcSelectRegularConvFilterSetSize(*WorkBlock);
+    }
+
     MLAS_NCHWC_CONV_NCHWC_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
-        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock)
+        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock,
+            ComputeFilterSetSize(WorkBlock))
     {
     }
 
@@ -698,33 +848,40 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             size_t WorkThisIteration = std::min(WorkRemaining, OutputHeight - ph);
 
             //
-            // Walk over each input image organized as a set of NCHWc blocks.
+            // Apply the convolution kernel to each row of the output batch.
             //
 
-            for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
-
-                unsigned KernelFlags = ComputeKernelFlags(ic, BlockSize);
+            for (size_t work = 0; work < WorkThisIteration; work++) {
 
                 //
-                // Apply the convolution kernel to each row of the output batch.
+                // Constrain the effective kernel parameters once per output row.
+                // The input row and effective kernel height are shared across all
+                // input-channel blocks for this row.
                 //
 
-                const float* input = Input + ic * InputSize;
-                float* output = Output + ph * BlockedOutputWidth;
+                size_t ih;
+                size_t EffectiveKernelHeight;
+                const float* EffectiveFilterBase = Filter;
 
-                for (size_t work = 0; work < WorkThisIteration; work++) {
+                ComputeEffectiveKernel(ph + work, BlockSize * BlockSize * KernelWidth,
+                    &EffectiveFilterBase, &ih, &EffectiveKernelHeight);
+
+                //
+                // Walk over each input image organized as a set of NCHWc blocks.
+                //
+
+                for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
+
+                    unsigned KernelFlags = ComputeKernelFlags(ic, BlockSize);
+                    const float* input = Input + ic * InputSize;
+                    float* output = Output + (ph + work) * BlockedOutputWidth;
 
                     //
-                    // Constrain the effective kernel parameters if the output row
-                    // uses one or more input padding rows.
+                    // The input row and effective kernel height were computed
+                    // once for this output row.
                     //
 
-                    const float* filter = Filter + BlockSize * ic * KernelSize;
-                    size_t ih;
-                    size_t EffectiveKernelHeight;
-
-                    ComputeEffectiveKernel(ph + work, BlockSize * BlockSize * KernelWidth,
-                        &filter, &ih, &EffectiveKernelHeight);
+                    const float* filter = EffectiveFilterBase + BlockSize * ic * KernelSize;
 
                     //
                     // Invoke the convolution kernel.
@@ -745,8 +902,6 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
                         DoActivation(output, FilterCount, BlockedOutputWidth);
                     }
-
-                    output += BlockedOutputWidth;
                 }
             }
 
@@ -767,7 +922,8 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
     MLAS_NCHWC_CONV_NCHW_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
-        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock)
+        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock,
+            DefaultFilterSetSize)
     {
     }
 
@@ -866,23 +1022,32 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
+    static size_t SelectPointwiseFilterSetSize(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock)
+    {
+        // Pointwise kernels currently only support processing up to 4 filter
+        // blocks per call via FilterCount. Allow tuning between 3 and 4 while
+        // keeping the kernel contract unchanged.
+        return MlasNchwcSelectPointwiseConvFilterSetSize(*WorkBlock);
+    }
+
     MLAS_NCHWC_CONV_POINTWISE_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
-        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock)
+        MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock,
+            // Select the largest pointwise filter set size that preserves
+            // enough thread-level work while keeping the per-tile filter
+            // footprint in cache-friendly bounds.
+            SelectPointwiseFilterSetSize(WorkBlock))
     {
     }
 
-    void Execute(ptrdiff_t Index)
+    void ExecutePointwiseKernel(
+        const float* input,
+        const float* filter,
+        float* output,
+        size_t LocalFilterCount,
+        size_t OutputThisIteration,
+        const float* LocalBias
+        )
     {
-        //
-        // Setup the convolution state based on the thread index.
-        //
-
-        PrepareWork(Index);
-
-        //
-        // Loop until all of the work has been completed.
-        //
-
         const size_t StrideWidthBytes = BlockSize * StrideWidth * sizeof(float);
         const size_t InputStrideBytes = BlockSize * InputSize * sizeof(float);
         const size_t FilterStrideBytes = BlockSize * InputChannels * sizeof(float);
@@ -903,6 +1068,50 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 #else
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasConvPointwiseFloatKernel;
 #endif
+
+        constexpr size_t MaximumInputChannelBatch = 128;
+
+        size_t InputChannelBatch = 0;
+        for (size_t ic = 0; ic < InputChannels; ) {
+            const size_t RemainingInputChannels = InputChannels - ic;
+            InputChannelBatch = std::min(RemainingInputChannels, MaximumInputChannelBatch);
+
+            unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
+
+            MLAS_CONV_POINTWISE_FLOAT_KERNEL* KernelToUse = Kernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
+            // Heuristically select the AArch64 assembly kernel for larger convolutions
+            if (!WorkBlock->UseBf16 && OutputThisIteration >= 4 &&
+                StrideHeight == 1 && StrideWidth == 1) {
+                KernelToUse = KernelFast;
+            }
+#endif
+
+            KernelToUse(input, filter, output, StrideWidthBytes, InputChannelBatch /
+                BlockSize, LocalFilterCount, InputStrideBytes, FilterStrideBytes,
+                OutputStrideBytes, OutputThisIteration, LocalBias, KernelFlags);
+
+            if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
+                DoActivation(output, LocalFilterCount, BlockSize * OutputThisIteration);
+            }
+
+            input += InputChannelBatch * InputSize;
+            filter += BlockSize * InputChannelBatch;
+            ic += InputChannelBatch;
+        }
+    }
+
+    void Execute(ptrdiff_t Index)
+    {
+        //
+        // Setup the convolution state based on the thread index.
+        //
+
+        PrepareWork(Index);
+
+        //
+        // Loop until all of the work has been completed.
+        //
 
         while (WorkRemaining > 0) {
 
@@ -936,43 +1145,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             const float* filter = Filter;
             float* output = Output + BlockSize * ph * OutputWidth;
 
-            size_t InputChannelBatch = 0;
-            for (size_t ic = 0; ic < InputChannels; ) {
-
-                constexpr size_t MaximumInputChannelBatch = 128;
-
-                InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
-
-                unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
-
-                //
-                // Invoke the convolution kernel.
-                //
-
-                MLAS_CONV_POINTWISE_FLOAT_KERNEL* KernelToUse = Kernel;
-#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
-                // Heuristically select the AArch64 assembly kernel for larger convolutions
-                if (!WorkBlock->UseBf16 && OutputThisIteration >= 4 &&
-                    StrideHeight == 1 && StrideWidth == 1) {
-                    KernelToUse = KernelFast;
-                }
-#endif
-                KernelToUse(input, filter, output, StrideWidthBytes, InputChannelBatch /
-                    BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
-                    OutputStrideBytes, OutputThisIteration, Bias, KernelFlags);
-
-                //
-                // Test for fused non-ReLU activation.
-                //
-
-                if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
-                    DoActivation(output, FilterCount, BlockSize * OutputThisIteration);
-                }
-
-                input += InputChannelBatch * InputSize;
-                filter += BlockSize * InputChannelBatch;
-                ic += InputChannelBatch;
-            }
+            ExecutePointwiseKernel(input, filter, output, FilterCount, OutputThisIteration, Bias);
 
             //
             // Advance the convolution state based on the completed work.
@@ -1065,7 +1238,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             size_t ih;
             size_t EffectiveKernelHeight;
 
-            ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih, &EffectiveKernelHeight);
+            ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih   , &EffectiveKernelHeight);
 
             //
             // Invoke the convolution kernel.
@@ -1350,17 +1523,23 @@ Return Value:
     //
 
     MLAS_THREADED_ROUTINE* ThreadedRoutine;
+    bool IsPointwiseConvolution = false;
+    bool IsDepthwiseConvolution = false;
+    bool IsRegularNchwcConvolution = false;
 
     if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
         if (WorkBlock.KernelShape[0] == 1 && WorkBlock.KernelShape[1] == 1 &&
             WorkBlock.Padding[0] == 0 && WorkBlock.Padding[1] == 0 &&
             WorkBlock.Padding[2] == 0 && WorkBlock.Padding[3] == 0) {
             ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_POINTWISE_ALGORITHM>;
+            IsPointwiseConvolution = true;
         } else {
             ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_NCHWC_ALGORITHM>;
+            IsRegularNchwcConvolution = true;
         }
     } else if (WorkBlock.InputChannels == 1 && WorkBlock.OutputChannels == 1) {
         ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM>;
+        IsDepthwiseConvolution = true;
     } else {
         ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_NCHW_ALGORITHM>;
     }
@@ -1370,6 +1549,21 @@ Return Value:
     //
 
     WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
+
+    // if (WorkBlock.BackendKernelSelectorConfig != nullptr &&
+    //     WorkBlock.BackendKernelSelectorConfig->enable_nchwc_conv_thread_capping) {
+    //     if (IsPointwiseConvolution) {
+    //         WorkBlock.tids = MlasNchwcGetPointwiseConvThreadCount(WorkBlock, WorkBlock.tids);
+    //     } else if (IsRegularNchwcConvolution) {
+    //         WorkBlock.tids = MlasNchwcGetGroupedConvThreadCount(WorkBlock, WorkBlock.tids);
+    //     } else if (IsDepthwiseConvolution) {
+    //         WorkBlock.tids = MlasNchwcGetDepthwiseThreadCount(WorkBlock, WorkBlock.tids);
+    //     }
+    // }
+
+    MLAS_UNREFERENCED_PARAMETER(IsPointwiseConvolution);
+    MLAS_UNREFERENCED_PARAMETER(IsRegularNchwcConvolution);
+    MLAS_UNREFERENCED_PARAMETER(IsDepthwiseConvolution);
 
     MlasExecuteThreaded(ThreadedRoutine, &WorkBlock, WorkBlock.tids, ThreadPool);
 }

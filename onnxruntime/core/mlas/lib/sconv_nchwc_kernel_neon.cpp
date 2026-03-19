@@ -21,7 +21,7 @@ Abstract:
 
 constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;
 
-// Common implementation for NCHW and NCHWC convolution kernels
+// Common implementation for NCHW activation x  NCHWc weights and NCHWc activation x NCHWc weights convolution kernels
 template <bool IsNchwcFormat>
 void
     MLASCALL

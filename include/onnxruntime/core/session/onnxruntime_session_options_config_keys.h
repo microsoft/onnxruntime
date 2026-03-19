@@ -386,6 +386,23 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
 
+// Use the minimax erf approximation inside MLAS exact Gelu when available.
+// Some platforms may not have this approximation available, in which case this option will have no effect.
+// Option values:
+// - "0": Use the default exact erf-based Gelu path. [DEFAULT]
+// - "1": Use the AVX512 minimax erf approximation for exact Gelu.
+static const char* const kOrtSessionOptionsMlasGeluErfUseMinimaxApproximation =
+    "mlas.gelu_erf_use_minimax_approximation";
+
+// static const char* const kOrtSessionOptionsMlasEnableNchwcConvThreadCapping =
+//     "mlas.enable_nchwc_conv_thread_capping";
+
+static const char* const kOrtSessionOptionsMlasEnableNchwcConvFilterSetTuning =
+    "mlas.enable_nchwc_conv_filter_set_tuning";
+
+// static const char* const kOrtSessionOptionsMlasEnableDepthwiseWithMultiplierKernel =
+//     "mlas.enable_depthwise_with_multiplier_kernel";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.

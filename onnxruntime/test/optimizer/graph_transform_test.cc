@@ -73,6 +73,7 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/slice_concat_to_space_to_depth_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
@@ -4801,6 +4802,187 @@ TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Concat"] == 0);
   ASSERT_TRUE(op_to_count["Slice"] == 0);
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* ends00 = builder.Make1DInitializer<int64_t>({8, 8});
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* ends01 = builder.Make1DInitializer<int64_t>({8, 8});
+
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* ends10 = builder.Make1DInitializer<int64_t>({8, 8});
+
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+    auto* ends11 = builder.Make1DInitializer<int64_t>({8, 8});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends00, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts01, ends01, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts10, ends10, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts11, ends11, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(op_to_count.count("SpaceToDepth") != 0 && op_to_count.at("SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
+    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
+    TEST_RETURN_IF_NOT(op_to_count.at("SpaceToDepth") == 1);
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "SpaceToDepth") {
+        const auto* blocksize_attr = graph_utils::GetNodeAttribute(node, "blocksize");
+        TEST_RETURN_IF_NOT(blocksize_attr != nullptr && utils::HasInt(*blocksize_attr) && blocksize_attr->i() == 2);
+      }
+    }
+
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNodesTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto make_int64_constant = [&](const std::vector<int64_t>& values) -> NodeArg* {
+      ONNX_NAMESPACE::TensorProto tensor_proto;
+      tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      if (!values.empty()) {
+        tensor_proto.add_dims(gsl::narrow<int64_t>(values.size()));
+      }
+      utils::SetRawDataInTensorProto(tensor_proto,
+                                     reinterpret_cast<const char*>(values.data()),
+                                     values.size() * sizeof(int64_t));
+
+      NodeArg* output = builder.MakeIntermediate();
+      builder.AddNode("Constant", {}, {output}).AddAttribute("value", tensor_proto);
+      return output;
+    };
+
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+
+    auto* axes_hw = make_int64_constant({2, 3});
+    auto* steps2 = make_int64_constant({2, 2});
+    auto* ends = make_int64_constant({8, 8});
+
+    auto* starts00 = make_int64_constant({0, 0});
+    auto* starts01 = make_int64_constant({0, 1});
+    auto* starts10 = make_int64_constant({1, 0});
+    auto* starts11 = make_int64_constant({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("Constant") == 7);
+    TEST_RETURN_IF(op_to_count.count("SpaceToDepth") != 0 && op_to_count.at("SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
+    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
+    TEST_RETURN_IF_NOT(op_to_count.at("SpaceToDepth") == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithPermutedBlockOrderTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+    auto* ends = builder.Make1DInitializer<int64_t>({std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()});
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice10_out, slice01_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(op_to_count.count("SpaceToDepth") != 0 && op_to_count.at("SpaceToDepth") != 0);
+    TEST_RETURN_IF(op_to_count.count("Gather") != 0 && op_to_count.at("Gather") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
+    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
+    TEST_RETURN_IF_NOT(op_to_count.at("SpaceToDepth") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("Gather") == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
 }
 
 // Verifies that ConcatSliceElimination correctly defaults axes to {0} and steps to {1}

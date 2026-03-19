@@ -23,6 +23,15 @@ Abstract:
 #define MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD \
     (MLAS_SGEMM_STRIDEN * MLAS_SGEMM_STRIDEK)
 
+static size_t
+MlasConvGetWorkingBufferSizePerThread(
+    const MLAS_CONV_PARAMETERS* Parameters
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Parameters);
+    return MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+}
+
 //
 // Define the parameters to execute segments of a convolution operation on
 // worker threads.
@@ -635,7 +644,7 @@ Return Value:
     MLAS_CONV_WORK_BLOCK::SEGMENT* Segment = &WorkBlock->Segments[Index];
 
     float* ColumnBuffer =
-        WorkBlock->WorkingBuffer + Index * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+        WorkBlock->WorkingBuffer + Index * MlasConvGetWorkingBufferSizePerThread(WorkBlock->Parameters);
 
     MlasConvOperation(WorkBlock->Parameters, WorkBlock->Input, WorkBlock->Filter,
         WorkBlock->Bias, ColumnBuffer, WorkBlock->Output, Segment->StartN,
@@ -892,6 +901,36 @@ Return Value:
 
 #endif
 
+// void
+// MlasDepthwiseWithMultiplierThreaded(
+//     void* Context,
+//     ptrdiff_t Index
+//     )
+// /*++
+//
+// Routine Description:
+//
+//     This routine is invoked from a worker thread to execute a segment of a
+//     convolution operation.
+//
+//     If using this, the entire convolution operation is parallelized on the
+//     (batch size * group count) parameter and this routine has logic to
+//     perform a specific thread's shard of the entire Convolution operation.
+//
+// Arguments:
+//
+//     Context - Supplies the pointer to the context for the threaded operation.
+//
+//     Index - Supplies the current index of the threaded operation.
+//
+// Return Value:
+//
+//     None.
+//
+// --*/
+// {
+// }
+
 inline
 bool
 MlasConvTryMultithread(
@@ -1106,7 +1145,6 @@ Return Value:
         return;
     }
 
-
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 
     if (Algorithm == MlasConvAlgorithmDepthwise && ((BatchCount > 1) || (GroupCount > 1))) {
@@ -1134,6 +1172,28 @@ Return Value:
     }
 
 #endif
+
+    // if (Algorithm == MlasConvAlgorithmDepthwiseWithMultiplier && ((BatchCount > 1) || (GroupCount > 1))) {
+    //     const size_t BatchGroupCount = BatchCount * GroupCount;
+    //     ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    //
+    //     if (static_cast<size_t>(TargetThreadCount) >= BatchGroupCount) {
+    //         TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
+    //     }
+    //
+    //     MLAS_CONV_WORK_BLOCK WorkBlock;
+    //     WorkBlock.Parameters = Parameters;
+    //     WorkBlock.Input = Input;
+    //     WorkBlock.Filter = Filter;
+    //     WorkBlock.Bias = Bias;
+    //     WorkBlock.WorkingBuffer = nullptr;
+    //     WorkBlock.Output = Output;
+    //     WorkBlock.TargetThreadCount = TargetThreadCount;
+    //
+    //     MlasExecuteThreaded(MlasDepthwiseWithMultiplierThreaded, &WorkBlock,
+    //         TargetThreadCount, ThreadPool);
+    //     return;
+    // }
 
     //
     // Iterate over each batch and group.
@@ -1453,6 +1513,10 @@ Return Value:
 
     } else {
 
+        // A previously tested specialized depthwise-with-multiplier kernel for
+        // 7x7 stride-2 depth_multiplier=2 did not perform well enough to use
+        // by default. Keep these shapes on the generic grouped path.
+
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 
         // Scalar (WASM_SCALAR) / vectorized (ARM64) direct conv for depthwise convolution.
@@ -1468,12 +1532,12 @@ Return Value:
     #endif
 
         if (Dimensions == 2
-                && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
-                && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
-                && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
-                && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
-                && depthwise_conv_stride_support_check
-                && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
+            && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
+            && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
+            && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
+            && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
+            && depthwise_conv_stride_support_check
+            && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
 
             *WorkingBufferSize = Parameters->InputShape[1] + 2;
             Parameters->Algorithm = MlasConvAlgorithmDepthwise;
@@ -1532,13 +1596,13 @@ Return Value:
         Parameters->Algorithm = MlasConvAlgorithmExpandThenGemmSegmented;
         Parameters->u.ExpandThenGemmSegmented.ThreadStrideN = StrideN;
 
-        *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+        *WorkingBufferSize = TargetThreadCount * MlasConvGetWorkingBufferSizePerThread(Parameters);
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
             size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K,
                                                           Parameters->FilterCount * Parameters->OutputSize,
-                                                          static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)});
+                                                          MlasConvGetWorkingBufferSizePerThread(Parameters)});
             TargetThreadCount = MaximumThreadCount;
             if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
                 TargetThreadCount = static_cast<ptrdiff_t>(Parameters->BatchCount * Parameters->GroupCount);
