@@ -743,9 +743,6 @@ Abstract:
 
         FUNCTION_ENTRY MlasConvNchwcFloatKernelNeonAsm
 
-        // Prologue: save nonvolatile state and pin the base input/filter/
-        // output pointers in the stack frame so the kernel body can freely
-        // repurpose registers while iterating.
         stp     x19,x20,[sp,#-.LFrame_SavedRegs]!
         stp     x21,x22,[sp,#.LFrame_x21_x22]
         stp     x23,x24,[sp,#.LFrame_x23_x24]
@@ -760,9 +757,6 @@ Abstract:
         str     x2,[sp,#.LFrame_OutputBaseSaved]
         str     x30,[sp,#.LFrame_LrSaved]
 
-        // Load the parameters needed by the current bring-up implementation.
-        // This entry currently supports FilterCount <= 2 in the interior
-        // region with no left or right padding.
         ldr     x1,[sp,#.LFrame_FilterBaseSaved]
         ldr     x2,[sp,#.LFrame_OutputBaseSaved]
         ldr     x8,[sp,#.KO_OutputStride]
@@ -786,8 +780,6 @@ Abstract:
 
         mov     x20,#0
 
-        // Main output loop: process two output positions when possible and
-        // fall back to the single-output tail for the final odd element.
     .LNoPadLoop1:
         sub     x12,x15,x20
         cmp     x12,#2
@@ -828,7 +820,6 @@ Abstract:
         cmp     x20,x15
         blo     .LNoPadLoop1
 
-        // Unified exit path for unsupported shapes and completed work.
     .LKernelExit:
         RESTORE_NONVOLATILE_AND_RETURN
 
