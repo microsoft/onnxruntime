@@ -35,11 +35,11 @@ extern "C" {
 //
 EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
                                            const OrtLogger* default_logger,
-                                           OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
+                                           OrtEpFactory** factories, size_t max_factories, size_t* num_factories) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+
   // Manual init for the C++ API
   onnxruntime::ep::ApiInit(ort_api_base);
-
-  EXCEPTION_TO_RETURNED_STATUS_BEGIN
 
   if (max_factories < 1) {
     return onnxruntime::ep::Api().ort.CreateStatus(ORT_INVALID_ARGUMENT,
@@ -60,7 +60,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
-EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
+EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   // STEP.1 - Release the factory
   delete static_cast<onnxruntime::webgpu::ep::Factory*>(factory);
