@@ -218,6 +218,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(prefer_subgroupshuffle, !is_nvidia_),
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
+                             WGSL_TEMPLATE_PARAMETER(qkv_max_k_step, qkv_max_k_step_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_));
 }
@@ -414,7 +415,18 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k,
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink) {
-  constexpr uint32_t tile_size = 64;
+  // tile_size controls the workgroup size (number of Q rows processed per workgroup).
+  // Larger tile_size means fewer workgroups and barriers, which dominate runtime for long sequences.
+  // Shared memory budget (16KB Dawn limit):
+  //   k_tile + v_tile = 2 * max_k_step * (head_size/4) * sizeof(vec4<f16>)
+  //   Qualcomm o_tile_r = tile_size * (head_size/8) * sizeof(vec4<f16>)
+  // WebGPU guarantees maxComputeWorkgroupSizeX >= 256.
+  // On Qualcomm, o_tile_r shared memory constrains tile_size for larger head sizes.
+  const bool is_qualcomm_device = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
+  uint32_t tile_size = 256;
+  if (is_qualcomm_device && 256 * parameters.head_size_ > 8192) {
+    tile_size = 64;
+  }
 
   // Create present_key and present_value tensors if they are nullptr
   Tensor internal_present_key;
@@ -482,6 +494,15 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
     bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
     bool has_head_sink = head_sink != nullptr;
+
+    // Increase max_k_step to reduce loop iterations and barriers.
+    // max_k_step=32 works with subgroupShuffle on Apple GPUs (sg_size=32).
+    // Register pressure: max_k_step/4 vec4 qk variables × head_size_vec private registers.
+    // Shared memory: 2 × max_k_step × head_size_vec × 8 bytes (k_tile + v_tile).
+    // For head_size=64: 2 * 32 * 16 * 8 = 8KB (within 16KB limit).
+    // For head_size=128: 2 * 32 * 32 * 8 = 16KB (at limit, skip).
+    int max_k_step = (parameters.head_size_ <= 64) ? 32 : 16;
+
     FlashAttentionProgram program{"FlashAttention",
                                   has_attention_bias,
                                   is_qualcomm,
@@ -492,7 +513,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                   is_nvidia,
                                   q_BNSH,
                                   use_seqlen_k,
-                                  has_head_sink};
+                                  has_head_sink,
+                                  max_k_step};
     program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
@@ -521,7 +543,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
     program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
         .SetWorkgroupSize(tile_size)
-        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, q_BNSH, use_seqlen_k, has_head_sink)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, q_BNSH, use_seqlen_k, has_head_sink, max_k_step, tile_size)
         .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_)},
                               {static_cast<uint32_t>(present_sequence_length)},

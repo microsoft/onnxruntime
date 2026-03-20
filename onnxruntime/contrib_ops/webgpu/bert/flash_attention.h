@@ -78,7 +78,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool is_nvidia,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
-                        bool has_head_sink = false)
+                        bool has_head_sink = false,
+                        int qkv_max_k_step = 16)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
@@ -89,7 +90,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         is_nvidia_(is_nvidia),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
-        has_head_sink_(has_head_sink) {
+        has_head_sink_(has_head_sink),
+        qkv_max_k_step_(qkv_max_k_step) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -115,6 +117,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
+  int qkv_max_k_step_;
 };
 
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
