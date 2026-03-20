@@ -313,10 +313,91 @@ void
     )
 {
 #if !defined(_WIN32)
-    // The current asm path covers the interior no-padding case for up to two
-    // filter blocks. Padding and larger filter-count cases still fall back to
-    // C++.
-    if (FilterCount <= 2 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
+    if (FilterCount <= 2) {
+        const size_t StrideWidthElements = StrideWidth / sizeof(float);
+
+        if (OutputCountLeftPad != 0) {
+            MlasConvNchwcFloatKernelNeonCpp(
+                Input,
+                Filter,
+                Output,
+                StrideWidth,
+                DilationWidth,
+                FilterCount,
+                InputStride,
+                FilterStride,
+                OutputStride,
+                KernelHeight,
+                KernelWidth,
+                InputBase,
+                InputWidth,
+                DilatedInputWidth,
+                0,
+                OutputCountLeftPad,
+                0,
+                Bias,
+                KernelFlags
+            );
+        }
+
+        if (OutputCount != 0) {
+            const size_t InteriorOffsetElements = OutputCountLeftPad * StrideWidthElements;
+            const size_t InteriorOutputOffsetElements = OutputCountLeftPad * BlockSize;
+
+            MlasConvNchwcFloatKernelNeonAsm(
+                Input + InteriorOffsetElements,
+                Filter,
+                Output + InteriorOutputOffsetElements,
+                StrideWidth,
+                DilationWidth,
+                FilterCount,
+                InputStride,
+                FilterStride,
+                OutputStride,
+                KernelHeight,
+                KernelWidth,
+                InputBase,
+                InputWidth,
+                DilatedInputWidth,
+                0,
+                OutputCount,
+                0,
+                Bias,
+                KernelFlags
+            );
+        }
+
+        if (OutputCountRightPad != 0) {
+            const size_t RightOffset = (OutputCountLeftPad + OutputCount) * StrideWidthElements;
+            const size_t RightOutputOffsetElements = (OutputCountLeftPad + OutputCount) * BlockSize;
+
+            MlasConvNchwcFloatKernelNeonCpp(
+                Input + RightOffset,
+                Filter,
+                Output + RightOutputOffsetElements,
+                StrideWidth,
+                DilationWidth,
+                FilterCount,
+                InputStride,
+                FilterStride,
+                OutputStride,
+                KernelHeight,
+                KernelWidth,
+                InputBase,
+                InputWidth,
+                DilatedInputWidth,
+                0,
+                OutputCountRightPad,
+                0,
+                Bias,
+                KernelFlags
+            );
+        }
+
+        return;
+    }
+
+    if (OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
         MlasConvNchwcFloatKernelNeonAsm(
             Input,
             Filter,

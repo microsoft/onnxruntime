@@ -37,25 +37,30 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                               size_t DilationWidth,
                               size_t KernelHeight,
                               size_t KernelWidth,
+                              const float* InputBase,
                               size_t InputWidth,
                               size_t DilatedInputWidth,
                               size_t FilterCount,
                               size_t OutputStride,
+                              size_t OutputCountLeftPad,
                               size_t OutputCount,
+                              size_t OutputCountRightPad,
                               const float* Bias,
                               unsigned KernelFlags) {
     const size_t stride_width_elements = StrideWidth / sizeof(float);
     const size_t dilation_width_elements = DilationWidth / sizeof(float);
+    const size_t input_width_elements = InputWidth / sizeof(float);
     const size_t dilated_input_width_elements = DilatedInputWidth / sizeof(float);
     const size_t output_stride_elements = OutputStride / sizeof(float);
     const size_t filter_stride_elements = KernelHeight * KernelWidth * BlockSize * BlockSize;
+    const size_t total_output_count = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
     for (size_t filter_set = 0; filter_set < FilterCount; ++filter_set) {
       const float* filter_block = Filter + filter_set * filter_stride_elements;
       float* output_block_base = Output + filter_set * output_stride_elements;
       const float* bias_block = Bias + filter_set * BlockSize;
 
-      for (size_t output_idx = 0; output_idx < OutputCount; ++output_idx) {
+      for (size_t output_idx = 0; output_idx < total_output_count; ++output_idx) {
         float accumulator[BlockSize]{};
 
         for (size_t kh = 0; kh < KernelHeight; ++kh) {
@@ -65,9 +70,14 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                                       kw * dilation_width_elements;
             const size_t kernel_base_pos = kh * (KernelWidth * BlockSize * BlockSize) +
                                            kw * (BlockSize * BlockSize);
+            const float* input_row_start = InputBase + kh * dilated_input_width_elements;
+            const float* input_row_end = input_row_start + input_width_elements;
 
             for (size_t input_lane = 0; input_lane < BlockSize; ++input_lane) {
-              const float input_value = input_base[input_lane];
+              const float* input_element = input_base + input_lane;
+              const float input_value = (input_element >= input_row_start && input_element < input_row_end)
+                                            ? *input_element
+                                            : 0.0f;
               const float* filter_row = filter_block + kernel_base_pos + input_lane * BlockSize;
 
               for (size_t output_lane = 0; output_lane < BlockSize; ++output_lane) {
@@ -97,7 +107,6 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
       }
     }
 
-    MLAS_UNREFERENCED_PARAMETER(InputWidth);
   }
 
   void AssertClose(const float* actual,
@@ -106,7 +115,9 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                    const char* actual_label,
                    const char* expected_label,
                    size_t FilterCount,
+                   size_t OutputCountLeftPad,
                    size_t OutputCount,
+                   size_t OutputCountRightPad,
                    size_t KernelHeight,
                    size_t KernelWidth,
                    unsigned KernelFlags) {
@@ -117,7 +128,9 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
           << " got=" << actual[i]
           << " expected=" << expected[i]
           << " FilterCount=" << FilterCount
+          << " LeftPad=" << OutputCountLeftPad
           << " OutputCount=" << OutputCount
+          << " RightPad=" << OutputCountRightPad
           << "/KH=" << KernelHeight
           << "/KW=" << KernelWidth
           << "/Flags=" << KernelFlags;
@@ -128,25 +141,31 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                   size_t KernelHeight,
                   size_t KernelWidth,
                   unsigned KernelFlags,
-                  size_t FilterCount = 1) {
+                  size_t FilterCount = 1,
+                  size_t OutputCountLeftPad = 0,
+                  size_t OutputCountRightPad = 0) {
     std::fprintf(stderr,
-                 "Start case FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Start case FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
                  FilterCount,
+                 OutputCountLeftPad,
                  OutputCount,
+                 OutputCountRightPad,
                  KernelHeight,
                  KernelWidth,
                  KernelFlags);
     std::fflush(stderr);
 
     const size_t InputWidth = OutputCount + KernelWidth - 1;
-    const size_t InputElements = KernelHeight * InputWidth * BlockSize;
+    const size_t TotalInputWidth = OutputCountLeftPad + InputWidth + OutputCountRightPad;
+    const size_t InputElements = KernelHeight * TotalInputWidth * BlockSize;
     const size_t FilterElementsPerBlock = KernelHeight * KernelWidth * BlockSize * BlockSize;
     const size_t FilterElements = FilterCount * FilterElementsPerBlock;
-    const size_t OutputStrideElements = OutputCount * BlockSize;
+    const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
+    const size_t OutputStrideElements = TotalOutputCount * BlockSize;
     const size_t OutputElements = FilterCount * OutputStrideElements;
     const size_t BiasElements = FilterCount * BlockSize;
 
-    float* Input = BufferInput.GetFilledBuffer(InputElements, [](float* start, size_t count) {
+    float* InputStorage = BufferInput.GetFilledBuffer(InputElements, [](float* start, size_t count) {
       FillBuffer(start, count, [](size_t i) {
         return float((int(i * 7 % 23) - 11)) / 8.0f;
       });
@@ -184,11 +203,14 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
 
     const size_t StrideWidthBytes = BlockSize * sizeof(float);
     const size_t DilationWidthBytes = BlockSize * sizeof(float);
+    const size_t StrideWidthElements = StrideWidthBytes / sizeof(float);
     const size_t InputWidthBytes = BlockSize * InputWidth * sizeof(float);
-    const size_t DilatedInputWidthBytes = InputWidthBytes;
+    const size_t DilatedInputWidthBytes = BlockSize * TotalInputWidth * sizeof(float);
     const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
     const size_t FilterStrideBytes = FilterElementsPerBlock * sizeof(float);
     const size_t OutputStrideBytes = OutputStrideElements * sizeof(float);
+    const float* InputBase = InputStorage + OutputCountLeftPad * StrideWidthElements;
+    const float* Input = InputBase - OutputCountLeftPad * StrideWidthElements;
 
     ReferenceKernel(Input,
                     Filter,
@@ -197,86 +219,98 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     DilationWidthBytes,
                     KernelHeight,
                     KernelWidth,
+                    InputBase,
                     InputWidthBytes,
                     DilatedInputWidthBytes,
-                        FilterCount,
-                        OutputStrideBytes,
+                    FilterCount,
+                    OutputStrideBytes,
+                    OutputCountLeftPad,
                     OutputCount,
+                    OutputCountRightPad,
                     Bias,
                     KernelFlags);
 
-                    std::fprintf(stderr,
-                     "Completed reference FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                     FilterCount,
-                     OutputCount,
-                     KernelHeight,
-                     KernelWidth,
-                     KernelFlags);
-                    std::fflush(stderr);
+    std::fprintf(stderr,
+                 "Completed reference FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
+                 OutputCountLeftPad,
+                 OutputCount,
+                 OutputCountRightPad,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
 
     MlasConvNchwcFloatKernelNeonCpp(Input,
                     Filter,
                     OutputCpp,
                     StrideWidthBytes,
                     DilationWidthBytes,
-                        FilterCount,
+                    FilterCount,
                     InputStrideBytes,
                     FilterStrideBytes,
                     OutputStrideBytes,
                     KernelHeight,
                     KernelWidth,
-                    Input,
+                    InputBase,
                     InputWidthBytes,
                     DilatedInputWidthBytes,
-                    0,
+                    OutputCountLeftPad,
                     OutputCount,
-                    0,
+                    OutputCountRightPad,
                     Bias,
                     KernelFlags);
 
-                    std::fprintf(stderr,
-                     "Completed cpp FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                     FilterCount,
-                     OutputCount,
-                     KernelHeight,
-                     KernelWidth,
-                     KernelFlags);
-                    std::fflush(stderr);
+    std::fprintf(stderr,
+                 "Completed cpp FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
+                 OutputCountLeftPad,
+                 OutputCount,
+                 OutputCountRightPad,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
 
     MlasConvNchwcFloatKernelNeon(Input,
                    Filter,
                    Output,
                    StrideWidthBytes,
                    DilationWidthBytes,
-                       FilterCount,
+                   FilterCount,
                    InputStrideBytes,
                    FilterStrideBytes,
                    OutputStrideBytes,
                    KernelHeight,
                    KernelWidth,
-                   Input,
+                   InputBase,
                    InputWidthBytes,
                    DilatedInputWidthBytes,
-                   0,
+                   OutputCountLeftPad,
                    OutputCount,
-                   0,
+                   OutputCountRightPad,
                    Bias,
                    KernelFlags);
 
     std::fprintf(stderr,
-                 "Completed wrapper FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed wrapper FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
                  FilterCount,
+                 OutputCountLeftPad,
                  OutputCount,
+                 OutputCountRightPad,
                  KernelHeight,
                  KernelWidth,
                  KernelFlags);
     std::fflush(stderr);
 
   #if !defined(_WIN32)
+    if (OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
     std::fprintf(stderr,
-                 "Calling asm FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Calling asm FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
                  FilterCount,
+                 OutputCountLeftPad,
                  OutputCount,
+                 OutputCountRightPad,
                  KernelHeight,
                  KernelWidth,
                  KernelFlags);
@@ -293,53 +327,75 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     OutputStrideBytes,
                     KernelHeight,
                     KernelWidth,
-                    Input,
+                    InputBase,
                     InputWidthBytes,
                     DilatedInputWidthBytes,
-                    0,
+                    OutputCountLeftPad,
                     OutputCount,
-                    0,
+                    OutputCountRightPad,
                     Bias,
                     KernelFlags);
 
     std::fprintf(stderr,
-                 "Completed asm FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed asm FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
                  FilterCount,
+                 OutputCountLeftPad,
                  OutputCount,
+                 OutputCountRightPad,
                  KernelHeight,
                  KernelWidth,
                  KernelFlags);
     std::fflush(stderr);
+    } else {
+      std::fprintf(stderr,
+                   "Skipping direct asm FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                   FilterCount,
+                   OutputCountLeftPad,
+                   OutputCount,
+                   OutputCountRightPad,
+                   KernelHeight,
+                   KernelWidth,
+                   KernelFlags);
+      std::fflush(stderr);
+    }
   #endif
 
-    AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", FilterCount, OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", FilterCount, OutputCountLeftPad, OutputCount, OutputCountRightPad, KernelHeight, KernelWidth, KernelFlags);
     std::fprintf(stderr,
-                 "Completed cpp-vs-reference FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed cpp-vs-reference FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
                  FilterCount,
+                 OutputCountLeftPad,
                  OutputCount,
+                 OutputCountRightPad,
                  KernelHeight,
                  KernelWidth,
                  KernelFlags);
     std::fflush(stderr);
-    AssertClose(Output, OutputCpp, OutputElements, "wrapper", "cpp", FilterCount, OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    AssertClose(Output, OutputCpp, OutputElements, "wrapper", "cpp", FilterCount, OutputCountLeftPad, OutputCount, OutputCountRightPad, KernelHeight, KernelWidth, KernelFlags);
     std::fprintf(stderr,
-                 "Completed wrapper-vs-cpp FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed wrapper-vs-cpp FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
                  FilterCount,
+                 OutputCountLeftPad,
                  OutputCount,
+                 OutputCountRightPad,
                  KernelHeight,
                  KernelWidth,
                  KernelFlags);
     std::fflush(stderr);
   #if !defined(_WIN32)
-    AssertClose(OutputAsm, OutputCpp, OutputElements, "asm", "cpp", FilterCount, OutputCount, KernelHeight, KernelWidth, KernelFlags);
-    std::fprintf(stderr,
-                 "Completed asm-vs-cpp FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                 FilterCount,
-                 OutputCount,
-                 KernelHeight,
-                 KernelWidth,
-                 KernelFlags);
-    std::fflush(stderr);
+    if (OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
+      AssertClose(OutputAsm, OutputCpp, OutputElements, "asm", "cpp", FilterCount, OutputCountLeftPad, OutputCount, OutputCountRightPad, KernelHeight, KernelWidth, KernelFlags);
+      std::fprintf(stderr,
+                   "Completed asm-vs-cpp FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                   FilterCount,
+                   OutputCountLeftPad,
+                   OutputCount,
+                   OutputCountRightPad,
+                   KernelHeight,
+                   KernelWidth,
+                   KernelFlags);
+      std::fflush(stderr);
+    }
   #endif
   }
 
@@ -404,6 +460,15 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     // FC2 tail coverage: two-output fast path followed by one-output tail.
     TestKernel(3, 3, 3, 0, 2);
     TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 2);
+
+    // Padded wrapper coverage: C++ edges with asm interior.
+    TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 1, 1, 1);
+    TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
+                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
+                           MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
+               2,
+               1,
+               1);
   }
 };
 
