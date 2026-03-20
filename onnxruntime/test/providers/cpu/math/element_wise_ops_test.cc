@@ -3938,6 +3938,16 @@ TEST(MathOpTest, CosFloat16) {
   }
 }
 
+TEST(MathOpTest, Sin_Opset22) {
+  OpTester test("Sin", 22);
+  TrigFloatTest<::sinf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+}
+
+TEST(MathOpTest, Cos_Opset22) {
+  OpTester test("Cos", 22);
+  TrigFloatTest<::cosf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+}
+
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
   TrigFloatTest<::tanf>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});
