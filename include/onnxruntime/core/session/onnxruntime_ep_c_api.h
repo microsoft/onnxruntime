@@ -1444,6 +1444,131 @@ struct OrtEpApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
+
+  /** \brief Get an ONNX operator schema from the global registry.
+   *
+   * Looks up a schema by name, maximum inclusive version, and domain.
+   * The returned pointer is non-owning and must not be freed by the caller.
+   * It is valid as long as the schema remains registered.
+   *
+   * \param[in] name A null-terminated string for the operator name.
+   * \param[in] max_inclusive_version The maximum inclusive opset version.
+   * \param[in] domain A null-terminated string for the operator domain.
+   * \param[out] out_schema Output parameter set to the schema pointer, or nullptr if not found.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
+                  _In_ const char* domain, _Outptr_result_maybenull_ const OrtOpSchema** out_schema);
+
+  /** \brief Get the first ONNX opset version that introduced this operator schema.
+   *
+   * If an operator has had no changes that break backwards compatibility, the `since_version` is
+   * just the first opset version that introduced the operator. However, if the operator has had breaking changes,
+   * then `since_version` corresponds to the opset version that introduced the breaking change.
+   *
+   * For example, suppose operator "Foo" was added in version 3 and had a breaking change in version 6.
+   * Then, there will be an operator schema entry for "Foo" with a since_version of 3 and another updated
+   * operator schema entry for "Foo" with a since_version of 6.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out The ONNX opset version.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out);
+
+  /** \brief Get the number of inputs defined by the operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out The number of inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+
+  /** \brief Get the name of the i-th input formal parameter from an operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the input parameter.
+   * \param[out] out The name of the input parameter. Valid as long as the schema is registered.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_ const char** out);
+
+  /** \brief Get the type constraint string of the i-th input formal parameter from an operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the input parameter.
+   * \param[out] out The type constraint string (e.g., "T"). Valid as long as the schema is registered.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetInputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_ const char** out);
+
+  /** \brief Get the number of outputs defined by the operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out The number of outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+
+  /** \brief Get the name of the i-th output formal parameter from an operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the output parameter.
+   * \param[out] out The name of the output parameter. Valid as long as the schema is registered.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_ const char** out);
+
+  /** \brief Get the type constraint string of the i-th output formal parameter from an operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the output parameter.
+   * \param[out] out The type constraint string (e.g., "T"). Valid as long as the schema is registered.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_ const char** out);
+
+  /** \brief Check if a type constraint name exists in the schema's type constraint map.
+   *
+   * This is used to determine whether a formal parameter name or its type string should be used
+   * as the type constraint identifier when building kernel definitions.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] type_str A null-terminated string for the type constraint name to look up.
+   * \param[out] out Set to true if the type constraint exists in the schema's type constraint map, false otherwise.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str,
+                  _Out_ bool* out);
 };
 
 /**
