@@ -1016,7 +1016,12 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 
 std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   auto profiler = std::make_unique<WebGpuProfiler>(context_);
-  session_profiler_ = profiler.get();
+  // Only set session_profiler_ on the first call (session-level profiler).
+  // Subsequent calls from run-level profiling create temporary profilers that
+  // should not overwrite it, as those profilers have shorter lifetimes.
+  if (session_profiler_ == nullptr) {
+    session_profiler_ = profiler.get();
+  }
   return profiler;
 }
 
@@ -1065,7 +1070,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     // Session-level profiling: use keyed overload for per-session isolation.
     context_.CollectProfilingData(session_profiler_);
   } else if (run_options.enable_profiling) {
-    // Run-level profiling: use shared events vector (same as main branch).
+    // Run-level profiling: use shared events vector.
     context_.CollectProfilingData();
   }
 
