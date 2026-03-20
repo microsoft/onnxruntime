@@ -20,6 +20,7 @@ class IExecutionProvider;
 struct ConfigOptions;
 
 namespace logging {
+struct ConfigOptions;
 class Logger;
 }  // namespace logging
 
