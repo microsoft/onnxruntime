@@ -23,11 +23,15 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
   }
   inline bool Enabled() const { return enabled_; }
   // GPU events collected during session-level profiling.
-  profiling::Events& GpuEvents() { return gpu_events_; }
+  profiling::Events& GpuEvents() {
+    is_session_level_ = true;
+    return gpu_events_;
+  }
 
  private:
   WebGpuContext& context_;
   bool enabled_{false};
+  bool is_session_level_{false};
   profiling::Events gpu_events_;
 };
 
