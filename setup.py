@@ -15,7 +15,9 @@ from os import environ, getcwd, path, popen, remove
 from pathlib import Path
 from shutil import copyfile
 
+import setuptools
 from packaging.tags import sys_tags
+from packaging.version import Version
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext as _build_ext
 from setuptools.command.install import install as InstallCommandBase
@@ -863,30 +865,34 @@ if package_name == "onnxruntime-gpu" and cuda_major_version:
         }
     )
 
-setup(
-    name=package_name,
-    version=version_number,
-    description="ONNX Runtime is a runtime accelerator for Machine Learning models",
-    long_description=long_description,
-    author="Microsoft Corporation",
-    author_email="onnxruntime@microsoft.com",
-    cmdclass=cmd_classes,
-    license="MIT License",
-    license_files=["LICENSE", "ThirdPartyNotices.txt"],
-    packages=packages,
-    ext_modules=ext_modules,
-    package_data=package_data,
-    url="https://onnxruntime.ai",
-    download_url="https://github.com/microsoft/onnxruntime/tags",
-    data_files=data_files,
-    install_requires=install_requires,
-    extras_require=extras_require,
-    python_requires=">=3.11",
-    keywords="onnx machine learning",
-    entry_points={
+setup_kwargs = {
+    "name": package_name,
+    "version": version_number,
+    "description": "ONNX Runtime is a runtime accelerator for Machine Learning models",
+    "long_description": long_description,
+    "author": "Microsoft Corporation",
+    "author_email": "onnxruntime@microsoft.com",
+    "cmdclass": cmd_classes,
+    "license": "MIT License",
+    "packages": packages,
+    "ext_modules": ext_modules,
+    "package_data": package_data,
+    "url": "https://onnxruntime.ai",
+    "download_url": "https://github.com/microsoft/onnxruntime/tags",
+    "data_files": data_files,
+    "install_requires": install_requires,
+    "extras_require": extras_require,
+    "python_requires": ">=3.11",
+    "keywords": "onnx machine learning",
+    "entry_points": {
         "console_scripts": [
             "onnxruntime_test = onnxruntime.tools.onnxruntime_test:main",
         ]
     },
-    classifiers=classifiers,
-)
+    "classifiers": classifiers,
+}
+
+if Version(setuptools.__version__) >= Version("42"):
+    setup_kwargs["license_files"] = ["LICENSE", "ThirdPartyNotices.txt"]
+
+setup(**setup_kwargs)
