@@ -694,6 +694,7 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) 
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
   if (query_type_ != TimestampQueryType::None) {
+    // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
     ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
 
     events.insert(events.end(),
