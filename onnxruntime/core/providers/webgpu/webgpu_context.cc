@@ -701,7 +701,6 @@ void WebGpuContext::CollectProfilingData() {
 void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, const void* profiler_key) {
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
-  ORT_ENFORCE(profiler_key != nullptr, "profiler_key must not be null when ending profiling.");
 
   if (query_type_ != TimestampQueryType::None) {
     // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
