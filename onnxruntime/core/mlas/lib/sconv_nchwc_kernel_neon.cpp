@@ -264,10 +264,13 @@ void
     )
 {
 #if !defined(_WIN32)
+    // Force the existing C++ implementation until the asm kernel is fixed.
+    constexpr bool force_cpp_fallback = true;
+
     // Milestone 1 asm support only covers the interior no-padding case for a
     // single filter block. Everything else falls back to the existing C++
     // implementation.
-    if (FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
+    if (!force_cpp_fallback && FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
         MlasConvNchwcFloatKernelNeonAsm(
             Input,
             Filter,
