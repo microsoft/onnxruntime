@@ -78,8 +78,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool is_nvidia,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
-                        bool has_head_sink = false,
-                        int qkv_max_k_step = 16)
+                        bool has_head_sink = false)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
@@ -90,11 +89,30 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         is_nvidia_(is_nvidia),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
-        has_head_sink_(has_head_sink),
-        qkv_max_k_step_(qkv_max_k_step) {
+        has_head_sink_(has_head_sink) {
+    // Compute optimal max_k_step based on head_size and shared memory budget.
+    // SHM budget: 16KB = 16384 bytes.
+    // k_tile + v_tile = 2 * element_size * head_size * max_k_step
+    // element_size = 2 for f16, 4 for f32.
+    const int element_size = is_fp16 ? 2 : 4;
+    const int shm_budget = 16384;
+    // max_k_step from SHM: shm_budget / (2 * element_size * head_size)
+    int max_k_from_shm = shm_budget / (2 * element_size * qkv_head_size);
+    // Clamp to power of 2 and reasonable range [16, 128]
+    if (max_k_from_shm >= 128) {
+      max_k_step_ = 128;
+    } else if (max_k_from_shm >= 64) {
+      max_k_step_ = 64;
+    } else if (max_k_from_shm >= 32) {
+      max_k_step_ = 32;
+    } else {
+      max_k_step_ = 16;
+    }
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  int max_k_step() const { return max_k_step_; }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -117,7 +135,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
-  int qkv_max_k_step_;
+  int max_k_step_;
 };
 
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
