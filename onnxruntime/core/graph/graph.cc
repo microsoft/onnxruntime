@@ -6658,7 +6658,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
         const void* data_offset = t.DataRaw();  // address of memory not offset into file
         auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(data_offset));
 
-        ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoMemoryAddressTag,
+        ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                                                      offset, t.SizeInBytes(), tensor_proto);
 
         // add OrtValue to ortvalue_initializers_ to keep it alive and to store the deleter if provided.

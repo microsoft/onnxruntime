@@ -207,13 +207,23 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_byte_size));
 
-  if (external_file_path == kTensorProtoMemoryAddressTag) {
+  if (external_file_path == kTensorProtoNativeEndianMemoryAddressTag) {
     // The external data is in the same memory as the tensor proto.
     // The offset is the address of the data.
     // NOTE: this is an exception: data in memory is already in native endian format
     unpacked_tensor.resize(tensor_byte_size);
     std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
     return Status::OK();
+  } else if (external_file_path == kTensorProtoLittleEndianMemoryAddressTag) {
+    // The external data is in the same memory as the tensor proto.
+    // The offset is the address of the data.
+    unpacked_tensor.resize(tensor_byte_size);
+
+    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto.data_type()));
+    auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(file_offset), tensor_byte_size);
+    auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(unpacked_tensor.data()), tensor_byte_size);
+
+    return onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span);
   }
 
   // Validate that the external file is large enough before allocating.
@@ -305,7 +315,7 @@ bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
     for (const auto& entry : ten_proto.external_data()) {
       if (entry.key() == "location") {
         PathString location = ToWideString(entry.value());
-        return location == kTensorProtoMemoryAddressTag;
+        return ((location == kTensorProtoLittleEndianMemoryAddressTag) || (location == kTensorProtoNativeEndianMemoryAddressTag));
       }
     }
   }
@@ -439,8 +449,9 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
 
   const auto& location = external_data_info->GetRelPath();
 
-  external_file_path = location == kTensorProtoMemoryAddressTag ? std::filesystem::path(location)
-                                                                : (tensor_proto_dir / location);
+  external_file_path = ((location == kTensorProtoLittleEndianMemoryAddressTag) || (location == kTensorProtoNativeEndianMemoryAddressTag))
+                           ? std::filesystem::path(location)
+                           : (tensor_proto_dir / location);
 
   ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   const size_t external_data_length = external_data_info->GetLength();
@@ -1489,14 +1500,41 @@ Status GetExtDataFromTensorProto(const Env& env,
   MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
   const auto& name = tensor_proto.name();
 
-  if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+  if (external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag) {
     // the value in location is the memory address of the data
     void* ext_data_buf = reinterpret_cast<void*>(file_offset);
     auto tensor = Tensor{type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)};
     ORT_RETURN_IF(raw_data_safe_len != tensor.SizeInBytes(), "Weight: ", name,
-                  " kTensorProtoMemoryAddressTag address points to length: ", static_cast<size_t>(raw_data_safe_len),
+                  " kTensorProtoNativeEndianMemoryAddressTag address points to length: ", static_cast<size_t>(raw_data_safe_len),
                   " while shape has bytes size: ", tensor.SizeInBytes());
     Tensor::InitOrtValue(std::move(tensor), ort_value);
+  } else if (external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag) {
+    // the value in location is the memory address of the data
+    void* ext_data_buf = reinterpret_cast<void*>(file_offset);
+    if constexpr (endian::native != endian::little) {
+      auto allocator = CPUAllocator::DefaultInstance();
+
+      auto deleter = [&allocator](uint8_t* ptr) { allocator->Free(ptr); };
+      std::unique_ptr<uint8_t[], decltype(deleter)> native_data{reinterpret_cast<uint8_t*>(allocator->Alloc(static_cast<size_t>(raw_data_safe_len))), deleter};
+
+      size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto.data_type()));
+      auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(ext_data_buf), static_cast<size_t>(raw_data_safe_len));
+      auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(native_data.get()), static_cast<size_t>(raw_data_safe_len));
+
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span));
+
+      auto tensor = Tensor{type, tensor_shape, native_data.release(), allocator};
+      ORT_RETURN_IF(raw_data_safe_len != tensor.SizeInBytes(), "Weight: ", name,
+                    " kTensorProtoLittleEndianMemoryAddressTag address points to length: ", static_cast<size_t>(raw_data_safe_len),
+                    " while shape has bytes size: ", tensor.SizeInBytes());
+      Tensor::InitOrtValue(std::move(tensor), ort_value);
+    } else {
+      auto tensor = Tensor{type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)};
+      ORT_RETURN_IF(raw_data_safe_len != tensor.SizeInBytes(), "Weight: ", name,
+                    " kTensorProtoLittleEndianMemoryAddressTag address points to length: ", static_cast<size_t>(raw_data_safe_len),
+                    " while shape has bytes size: ", tensor.SizeInBytes());
+      Tensor::InitOrtValue(std::move(tensor), ort_value);
+    }
   } else {
 #if defined(__wasm__)
     ORT_RETURN_IF(file_offset < 0 || file_offset + raw_data_safe_len >= 4294967296,
@@ -1614,7 +1652,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
                 "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
                 " size to read: ", static_cast<size_t>(raw_data_safe_len),
                 " does not match the tensor size: ", tensor.SizeInBytes());
-  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag,
+  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
@@ -1849,7 +1887,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
     // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
     auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(raw_data));
 
-    ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoMemoryAddressTag,
+    ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                                                  offset, tensor.SizeInBytes(), tensor_proto);
 
   } else {
