@@ -312,10 +312,11 @@ void
     )
 {
 #if !defined(_WIN32)
-    // Milestone 1 asm support only covers the interior no-padding case for a
-    // single filter block. Everything else falls back to the existing C++
-    // implementation.
-    if (FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
+    // Keep the wrapper dispatch narrow while bringing up the asm path.
+    // The direct unit test can still call the asm entry point for broader
+    // cases, but the production wrapper should only use the validated shape.
+    if (FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0 &&
+        KernelHeight == 1 && KernelWidth == 1) {
         MlasConvNchwcFloatKernelNeonAsm(
             Input,
             Filter,
