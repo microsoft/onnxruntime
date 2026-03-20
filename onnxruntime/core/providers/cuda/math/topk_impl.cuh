@@ -170,6 +170,10 @@ __device__ __forceinline__ bool SamePrefix(const half* f0, const half* f1, int64
   return SamePrefix((const int16_t*)f0, (const int16_t*)f1, skip);
 }
 
+__device__ __forceinline__ bool SamePrefix(const BFloat16* f0, const BFloat16* f1, int64_t skip) {
+  return SamePrefix((const int16_t*)f0, (const int16_t*)f1, skip);
+}
+
 __device__ __forceinline__ bool SamePrefix(const float* f0, const float* f1, int64_t skip) {
   return SamePrefix((const int32_t*)f0, (const int32_t*)f1, skip);
 }
@@ -187,6 +191,10 @@ __device__ __forceinline__ int32_t Radix(const half* f, int64_t skip) {
   return Radix((const int16_t*)f, skip);
 }
 
+__device__ __forceinline__ int32_t Radix(const BFloat16* f, int64_t skip) {
+  return Radix((const int16_t*)f, skip);
+}
+
 __device__ __forceinline__ int32_t Radix(const float* f, int64_t skip) {
   return Radix((const int32_t*)f, skip);
 }
@@ -201,6 +209,10 @@ __device__ void SetByte(T* t, int64_t byte) {
 }
 
 __device__ __forceinline__ void SetByte(half* f, int64_t byte) {
+  SetByte((int16_t*)f, byte);
+}
+
+__device__ __forceinline__ void SetByte(BFloat16* f, int64_t byte) {
   SetByte((int16_t*)f, byte);
 }
 
