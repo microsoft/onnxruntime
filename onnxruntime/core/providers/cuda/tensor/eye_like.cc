@@ -11,10 +11,30 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     EyeLike,
     kOnnxDomain,
     9,
+    21,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(),
+                                                      DataTypeImpl::GetTensorType<double>(),
+                                                      DataTypeImpl::GetTensorType<uint64_t>(),
+                                                      DataTypeImpl::GetTensorType<int64_t>(),
+                                                      DataTypeImpl::GetTensorType<int32_t>()})
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(),
+                                                      DataTypeImpl::GetTensorType<double>(),
+                                                      DataTypeImpl::GetTensorType<uint64_t>(),
+                                                      DataTypeImpl::GetTensorType<int64_t>(),
+                                                      DataTypeImpl::GetTensorType<int32_t>()}),
+    EyeLike);
+
+// Opset 22 starts to support bfloat16
+ONNX_OPERATOR_KERNEL_EX(
+    EyeLike,
+    kOnnxDomain,
+    22,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(),
