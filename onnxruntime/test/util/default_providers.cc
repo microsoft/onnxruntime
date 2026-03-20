@@ -319,7 +319,7 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
 #if defined(USE_WEBGPU)
 #if defined(ORT_USE_EP_API_ADAPTERS)
   auto ep_name = dynamic_plugin_ep_infra::GetEpName();
-  ORT_ENFORCE(ep_name.has_value() && *ep_name == kWebGpuExecutionProvider,
+  ORT_ENFORCE(ep_name == kWebGpuExecutionProvider,
               "Dynamic plugin EP is not the WebGPU EP. Expected \"", kWebGpuExecutionProvider,
               "\", got \"", ep_name.value_or("<uninitialized>"), "\"");
   return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
