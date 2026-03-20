@@ -516,7 +516,7 @@ Abstract:
         fmla    v1.4s,v25.4s,\AReg\().s[\Lane]
         fmla    v2.4s,v26.4s,\AReg\().s[\Lane]
         fmla    v3.4s,v27.4s,\AReg\().s[\Lane]
-        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x19],#64
+        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x13],#64
         fmla    v4.4s,v24.4s,\AReg\().s[\Lane]
         fmla    v5.4s,v25.4s,\AReg\().s[\Lane]
         fmla    v6.4s,v26.4s,\AReg\().s[\Lane]
@@ -535,7 +535,7 @@ Abstract:
         fmla    v5.4s,v25.4s,\AReg1\().s[\Lane1]
         fmla    v6.4s,v26.4s,\AReg1\().s[\Lane1]
         fmla    v7.4s,v27.4s,\AReg1\().s[\Lane1]
-        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x19],#64
+        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x13],#64
         fmla    v8.4s,v24.4s,\AReg0\().s[\Lane0]
         fmla    v9.4s,v25.4s,\AReg0\().s[\Lane0]
         fmla    v10.4s,v26.4s,\AReg0\().s[\Lane0]
@@ -592,7 +592,7 @@ Abstract:
         .macro CONV_NCHWC_FC2_1OUTPUT_NOPAD
         CLEAR_ACCUM 2
         mov     x28,x1
-        add     x19,x1,x7
+        add     x13,x1,x7
         mov     x21,x0
         ldr     x9,[sp,#.KO_KernelHeight]
         cbz     x9,3f
@@ -679,7 +679,7 @@ Abstract:
         .macro CONV_NCHWC_FC2_2OUTPUTS_NOPAD
         CLEAR_ACCUM2 2
         mov     x28,x1
-        add     x19,x1,x7
+        add     x13,x1,x7
         mov     x21,x0
         add     x22,x0,x3
         ldr     x9,[sp,#.KO_KernelHeight]
