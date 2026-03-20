@@ -15,6 +15,8 @@ Abstract:
 
 #if defined(__aarch64__) && !defined(_WIN32)
 
+#include "asmmacro.h"
+
     .text
     .align 2
 
@@ -409,22 +411,24 @@ Abstract:
 //     );
 //
 
-    .global MlasConvNchwcFloatKernelNeonAsm
-    .type MlasConvNchwcFloatKernelNeonAsm, %function
-
-MlasConvNchwcFloatKernelNeonAsm:
+    FUNCTION_ENTRY MlasConvNchwcFloatKernelNeonAsm
 
     // Preserve the incoming stack pointer to access stack-passed arguments.
     mov     x9, sp
 
     // Prologue and callee-saved register spill.
-    stp     x29, x30, [sp, #-128]!
+    // Save callee-saved SIMD registers v8-v15 per AArch64 ABI.
+    stp     x29, x30, [sp, #-256]!
     mov     x29, sp
     stp     x19, x20, [sp, #16]
     stp     x21, x22, [sp, #32]
     stp     x23, x24, [sp, #48]
     stp     x25, x26, [sp, #64]
     stp     x27, x28, [sp, #80]
+    stp     q8, q9, [sp, #96]
+    stp     q10, q11, [sp, #128]
+    stp     q12, q13, [sp, #160]
+    stp     q14, q15, [sp, #192]
 
     // Move register arguments into callee-saved registers.
     mov     x19, x0                      // Input
@@ -455,9 +459,9 @@ MlasConvNchwcFloatKernelNeonAsm:
     cbz     x24, .Lepilogue
 
     // Spill the output counts so that x16/x17/x18 can be used as scratch.
-    str     x16, [sp, #96]
-    str     x17, [sp, #104]
-    str     x18, [sp, #112]
+    str     x16, [sp, #224]
+    str     x17, [sp, #232]
+    str     x18, [sp, #240]
 
     mov     x26, x10                     // OutputStride (bytes)
     mov     x27, x11                     // KernelHeight
@@ -479,7 +483,7 @@ MlasConvNchwcFloatKernelNeonAsm:
     b.eq    .Lkernel_flags0
 
     // Process the left padded output region with bounds checks.
-    ldr     x0, [sp, #96]
+    ldr     x0, [sp, #224]
     cbz     x0, .Loutput_mid_begin
 
 .Loutput_left_loop:
@@ -557,7 +561,7 @@ MlasConvNchwcFloatKernelNeonAsm:
 
     // Process the middle output region without bounds checks.
 .Loutput_mid_begin:
-    ldr     x0, [sp, #104]
+    ldr     x0, [sp, #232]
     cbz     x0, .Loutput_right_begin
 
     // Compute the number of output triads and spill the remaining outputs.
@@ -572,7 +576,7 @@ MlasConvNchwcFloatKernelNeonAsm:
     // Compute remainder = OutputCount - triads * 3.
     add     x16, x0, x0, lsl #1
     sub     x16, x12, x16
-    str     x16, [sp, #120]
+    str     x16, [sp, #248]
     cbz     x0, .Loutput_mid_pair_begin
 
 .Loutput_mid_triad_loop:
@@ -692,9 +696,9 @@ MlasConvNchwcFloatKernelNeonAsm:
     b.ne    .Loutput_mid_triad_loop
 
 .Loutput_mid_pair_begin:
-    ldr     x0, [sp, #120]
+    ldr     x0, [sp, #248]
     and     x16, x0, #1
-    str     x16, [sp, #120]
+    str     x16, [sp, #248]
     lsr     x0, x0, #1
     cbz     x0, .Loutput_mid_single_begin
 
@@ -793,7 +797,7 @@ MlasConvNchwcFloatKernelNeonAsm:
     b.ne    .Loutput_mid_pair_loop
 
 .Loutput_mid_single_begin:
-    ldr     x0, [sp, #120]
+    ldr     x0, [sp, #248]
     cbz     x0, .Loutput_right_begin
 
 .Loutput_mid_loop:
@@ -871,7 +875,7 @@ MlasConvNchwcFloatKernelNeonAsm:
 
     // Process the right padded output region with bounds checks.
 .Loutput_right_begin:
-    ldr     x0, [sp, #112]
+    ldr     x0, [sp, #240]
     cbz     x0, .Lepilogue
 
 .Loutput_right_loop:
@@ -955,7 +959,7 @@ MlasConvNchwcFloatKernelNeonAsm:
     // KernelFlags == 0 fast path: no accumulation, bias, or activation.
 
     // Process the left padded output region with bounds checks.
-    ldr     x0, [sp, #96]
+    ldr     x0, [sp, #224]
     cbz     x0, .Loutput_mid_begin_flags0
 
 .Loutput_left_loop_flags0:
@@ -997,12 +1001,12 @@ MlasConvNchwcFloatKernelNeonAsm:
 
     // Process the middle output region without bounds checks.
 .Loutput_mid_begin_flags0:
-    ldr     x0, [sp, #104]
+    ldr     x0, [sp, #232]
     cbz     x0, .Loutput_right_begin_flags0
 
     // Process four outputs at a time to amortize the filter loads.
     and     x16, x0, #3                  // Remainder outputs after quads.
-    str     x16, [sp, #120]
+    str     x16, [sp, #248]
     lsr     x0, x0, #2                   // Quad output count.
     cbz     x0, .Loutput_mid_remainder_begin_flags0
 
@@ -1065,7 +1069,7 @@ MlasConvNchwcFloatKernelNeonAsm:
     b.ne    .Loutput_mid_quad_loop_flags0
 
 .Loutput_mid_remainder_begin_flags0:
-    ldr     x0, [sp, #120]
+    ldr     x0, [sp, #248]
     cbz     x0, .Loutput_right_begin_flags0
     cmp     x0, #3
     b.ne    .Loutput_mid_remainder_not3_flags0
@@ -1142,7 +1146,7 @@ MlasConvNchwcFloatKernelNeonAsm:
 .Loutput_mid_pair_begin_flags0:
     ldr     x0, [sp, #120]
     and     x16, x0, #1
-    str     x16, [sp, #120]
+    str     x16, [sp, #248]
     lsr     x0, x0, #1
     cbz     x0, .Loutput_mid_single_begin_flags0
 
@@ -1191,7 +1195,7 @@ MlasConvNchwcFloatKernelNeonAsm:
     b.ne    .Loutput_mid_pair_loop_flags0
 
 .Loutput_mid_single_begin_flags0:
-    ldr     x0, [sp, #120]
+    ldr     x0, [sp, #248]
     cbz     x0, .Loutput_right_begin_flags0
 
 .Loutput_mid_loop_flags0:
@@ -1233,7 +1237,7 @@ MlasConvNchwcFloatKernelNeonAsm:
 
     // Process the right padded output region with bounds checks.
 .Loutput_right_begin_flags0:
-    ldr     x0, [sp, #112]
+    ldr     x0, [sp, #240]
     cbz     x0, .Lepilogue
 
 .Loutput_right_loop_flags0:
@@ -1278,14 +1282,16 @@ MlasConvNchwcFloatKernelNeonAsm:
 .Lepilogue:
 
     // Epilogue and callee-saved register restore.
+    ldp     q14, q15, [sp, #192]
+    ldp     q12, q13, [sp, #160]
+    ldp     q10, q11, [sp, #128]
+    ldp     q8, q9, [sp, #96]
     ldp     x27, x28, [sp, #80]
     ldp     x25, x26, [sp, #64]
     ldp     x23, x24, [sp, #48]
     ldp     x21, x22, [sp, #32]
     ldp     x19, x20, [sp, #16]
-    ldp     x29, x30, [sp], #128
+    ldp     x29, x30, [sp], #256
     ret
-
-    .size MlasConvNchwcFloatKernelNeonAsm, .-MlasConvNchwcFloatKernelNeonAsm
 
 #endif // defined(__aarch64__) && !defined(_WIN32)
