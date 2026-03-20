@@ -13,6 +13,7 @@
 #include "core/graph/constants.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ep_cache_versioning.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
@@ -196,6 +197,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
                                                                              ep_to_append.canonical_name));
 
+  // When session.ep_cache_use_ort_version is "1", use versioned cache paths for EPs that support them.
+  ProviderOptions provider_options_to_use = GetProviderOptionsWithVersionedCachePaths(
+      provider_options, options->value.config_options, ep_to_append.canonical_name);
+
   switch (ep_to_append.id) {
     case EpID::DML: {
 #if defined(USE_DML)
@@ -286,7 +291,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     case EpID::MIGraphX: {
 #if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
-      options->provider_factories.push_back(MIGraphXProviderFactoryCreator::Create(provider_options));
+      options->provider_factories.push_back(MIGraphXProviderFactoryCreator::Create(provider_options_to_use));
 #else
       status = create_not_supported_status();
 #endif
@@ -303,7 +308,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     case EpID::CoreML: {
 #if defined(USE_COREML)
-      options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
+      options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options_to_use));
 #else
       status = create_not_supported_status();
 #endif
@@ -311,7 +316,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     case EpID::NvTensorRtRtx: {
 #if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options, &(options->value));
+      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options_to_use, &(options->value));
       if (factory) {
         options->provider_factories.push_back(factory);
       } else {
