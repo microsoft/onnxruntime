@@ -1347,7 +1347,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
-    target_link_libraries(onnxruntime_benchmark PRIVATE onnx_test_runner_common benchmark::benchmark ${onnx_test_libs})
+      target_link_libraries(onnxruntime_benchmark PRIVATE benchmark::benchmark ${ONNXRUNTIME_TEST_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
     add_dependencies(onnxruntime_benchmark ${onnxruntime_EXTERNAL_DEPENDENCIES})
     set_target_properties(onnxruntime_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
 
