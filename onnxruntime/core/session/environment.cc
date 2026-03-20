@@ -444,19 +444,8 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 }
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-Status Environment::SetPerSessionWorkCallbacks(
-    OrtThreadPoolWorkEnqueueFn on_enqueue,
-    OrtThreadPoolWorkStartFn on_start,
-    OrtThreadPoolWorkStopFn on_stop,
-    OrtThreadPoolWorkAbandonFn on_abandon,
-    void* user_context) {
-  ThreadPoolWorkCallbacks cbs;
-  cbs.on_enqueue = on_enqueue;
-  cbs.on_start_work = on_start;
-  cbs.on_stop_work = on_stop;
-  cbs.on_abandon = on_abandon;
-  cbs.user_context = user_context;
-  per_session_work_callbacks_ = cbs;
+Status Environment::SetPerSessionWorkCallbacks(const OrtThreadPoolCallbacksConfig& config) {
+  per_session_work_callbacks_ = config;
   return Status::OK();
 }
 #endif

@@ -432,11 +432,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     auto apply_work_callbacks = [&session_env](OrtThreadPoolParams& params) {
       const auto* env_cbs = session_env.GetPerSessionWorkCallbacks();
       if (env_cbs != nullptr) {
-        params.work_enqueue_fn = env_cbs->on_enqueue;
-        params.work_start_fn = env_cbs->on_start_work;
-        params.work_stop_fn = env_cbs->on_stop_work;
-        params.work_abandon_fn = env_cbs->on_abandon;
-        params.work_callbacks_user_context = env_cbs->user_context;
+        params.work_callbacks = *env_cbs;
       }
     };
 #endif

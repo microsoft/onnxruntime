@@ -61,28 +61,6 @@ class EnvThread {
 /// Type that holds a collection of logical processors IDs used for setting affinities.
 using LogicalProcessors = std::vector<int>;
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-/// Callbacks for thread pool work scheduling.
-struct ThreadPoolWorkCallbacks {
-  /// Called when work is about to be enqueued. Runs on the submitting thread.
-  /// Returns callback-specific data that will be passed to OnStartWork/OnStopWork.
-  OrtThreadPoolWorkEnqueueFn on_enqueue = nullptr;
-
-  /// Called when a worker thread is about to start executing work.
-  OrtThreadPoolWorkStartFn on_start_work = nullptr;
-
-  /// Called when a worker thread has finished executing work.
-  /// Guaranteed to be called even if the work throws an exception.
-  OrtThreadPoolWorkStopFn on_stop_work = nullptr;
-
-  /// Called when enqueued work is abandoned (revoked or rejected) without execution.
-  /// Allows the caller to free any resources associated with enqueue_data.
-  OrtThreadPoolWorkAbandonFn on_abandon = nullptr;
-
-  /// User-provided context passed to all callbacks.
-  void* user_context = nullptr;
-};
-#endif
 
 // Parameters that are required to create a set of threads for a thread pool
 struct ThreadOptions {
@@ -118,7 +96,7 @@ struct ThreadOptions {
   // Optional callbacks for thread pool work scheduling.
   // The pointed-to struct must remain valid until the ThreadPool constructor returns
   // (the constructor copies the callback values).
-  const ThreadPoolWorkCallbacks* work_callbacks = nullptr;
+  const OrtThreadPoolCallbacksConfig* work_callbacks = nullptr;
 #endif
 };
 

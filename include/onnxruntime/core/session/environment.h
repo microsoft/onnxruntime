@@ -193,7 +193,7 @@ class Environment {
    * Not safe to call concurrently with SetPerSessionWorkCallbacks.
    * Must be called after callbacks have been set and before they are modified.
    */
-  const ThreadPoolWorkCallbacks* GetPerSessionWorkCallbacks() const {
+  const OrtThreadPoolCallbacksConfig* GetPerSessionWorkCallbacks() const {
     return per_session_work_callbacks_.has_value()
                ? &per_session_work_callbacks_.value()
                : nullptr;
@@ -206,11 +206,7 @@ class Environment {
    * Not safe to call concurrently with GetPerSessionWorkCallbacks or session creation.
    * Must be called before creating any sessions that should use the callbacks.
    */
-  Status SetPerSessionWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
-                                    OrtThreadPoolWorkStartFn on_start,
-                                    OrtThreadPoolWorkStopFn on_stop,
-                                    OrtThreadPoolWorkAbandonFn on_abandon,
-                                    void* user_context);
+  Status SetPerSessionWorkCallbacks(const OrtThreadPoolCallbacksConfig& config);
 #endif
 
   ~Environment();
@@ -321,7 +317,7 @@ class Environment {
   size_t num_allow_virtual_device_uses_{};
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-  std::optional<ThreadPoolWorkCallbacks> per_session_work_callbacks_;
+  std::optional<OrtThreadPoolCallbacksConfig> per_session_work_callbacks_;
 #endif
 };
 

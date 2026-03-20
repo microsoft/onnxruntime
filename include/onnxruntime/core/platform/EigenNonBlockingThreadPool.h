@@ -50,10 +50,10 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
+#include "core/session/onnxruntime_c_api.h"
 
-// Forward declarations for callback policy types
+// Forward declaration for callback policy types
 namespace onnxruntime {
-struct ThreadPoolWorkCallbacks;
 struct ThreadOptions;
 }  // namespace onnxruntime
 
@@ -412,7 +412,7 @@ class ThreadPoolLoop {
 
 // Callback policy that does not invoke callbacks. Work = std::function<void()>.
 // All methods are trivial no-ops; the compiler eliminates them entirely.
-struct NoWorkCallbackPolicy {
+struct WorkNoCallbackPolicy {
   using Task = std::function<void()>;
   using Work = Task;
 
@@ -430,15 +430,14 @@ struct NoWorkCallbackPolicy {
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
 // Callback-aware policy that invokes user-supplied callbacks around work items.
 // Work = WorkItem, a struct bundling a task with opaque callback data.
-struct WithWorkCallbackPolicy {
+struct WorkWithCallbackPolicy {
   using Task = std::function<void()>;
 
   struct WorkItem {
     Task task_;
     void* enqueue_data_ = nullptr;
 
-    WorkItem() = default;
-    explicit WorkItem(Task t, void* data = nullptr) : task_(std::move(t)), enqueue_data_(data) {}
+    explicit WorkItem(Task t = {}, void* data = nullptr) : task_(std::move(t)), enqueue_data_(data) {}
 
     explicit operator bool() const { return static_cast<bool>(task_); }
   };
@@ -489,7 +488,7 @@ struct WithWorkCallbackPolicy {
     }
   }
 
-  onnxruntime::ThreadPoolWorkCallbacks callbacks_{};
+  OrtThreadPoolCallbacksConfig callbacks_{};
 };
 #endif  // ORT_SESSION_THREADPOOL_CALLBACKS
 

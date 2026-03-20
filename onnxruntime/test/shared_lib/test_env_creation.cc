@@ -121,8 +121,8 @@ TEST(EnvCreation, SetPerSessionThreadPoolCallbacks) {
     OrtThreadPoolCallbacksConfig cb_config = {0};
     cb_config.version = ORT_API_VERSION;
     cb_config.on_enqueue = on_enqueue;
-    cb_config.on_start = on_start;
-    cb_config.on_stop = on_stop;
+    cb_config.on_start_work = on_start;
+    cb_config.on_stop_work = on_stop;
     cb_config.on_abandon = on_abandon;
     cb_config.user_context = &state;
     env.SetPerSessionThreadPoolCallbacks(cb_config);

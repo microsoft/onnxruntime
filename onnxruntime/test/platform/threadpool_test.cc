@@ -673,7 +673,7 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
 #endif
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-// Test for ThreadPoolWorkCallbacks - validates that callbacks are invoked
+// Test for OrtThreadPoolCallbacksConfig - validates that callbacks are invoked
 // when work is scheduled to the thread pool.
 namespace {
 
@@ -714,7 +714,7 @@ void CreateThreadPoolWithCallbacksAndTest(
     WorkCallbackTestContext& ctx,
     bool enable_start_stop,
     const std::function<void(ThreadPool*)>& test_body) {
-  onnxruntime::ThreadPoolWorkCallbacks callbacks;
+  OrtThreadPoolCallbacksConfig callbacks{};
   callbacks.on_enqueue = TestOnEnqueue;
   callbacks.on_start_work = enable_start_stop ? TestOnStart : nullptr;
   callbacks.on_stop_work = enable_start_stop ? TestOnStop : nullptr;
@@ -889,7 +889,7 @@ TEST(ThreadPoolTest, TestWorkCallbacks_EnqueueReturnsNull) {
   constexpr int num_tasks = 50;
   std::atomic<int> tasks_completed{0};
 
-  onnxruntime::ThreadPoolWorkCallbacks callbacks;
+  OrtThreadPoolCallbacksConfig callbacks{};
   callbacks.on_enqueue = [](void* user_context) noexcept -> void* {
     auto* c = static_cast<WorkCallbackTestContext*>(user_context);
     c->enqueue_count++;
@@ -934,7 +934,7 @@ TEST(ThreadPoolTest, TestWorkCallbacks_NoEnqueueWithStartStop) {
   constexpr int num_tasks = 50;
   std::atomic<int> tasks_completed{0};
 
-  onnxruntime::ThreadPoolWorkCallbacks callbacks;
+  OrtThreadPoolCallbacksConfig callbacks{};
   callbacks.on_enqueue = nullptr;
   callbacks.on_start_work = [](void* user_context, void* enqueue_data) noexcept {
     auto* c = static_cast<WorkCallbackTestContext*>(user_context);

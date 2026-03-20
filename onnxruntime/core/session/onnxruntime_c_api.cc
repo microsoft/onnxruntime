@@ -4273,8 +4273,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* o
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   auto& env = ort_env->GetEnvironment();
   return onnxruntime::ToOrtStatus(
-      env.SetPerSessionWorkCallbacks(config->on_enqueue, config->on_start, config->on_stop,
-                                     config->on_abandon, config->user_context));
+      env.SetPerSessionWorkCallbacks(*config));
 #else
   ORT_UNUSED_PARAMETER(ort_env);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,

@@ -391,9 +391,9 @@ ThreadPool::ThreadPool(Env* env,
     }
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-    using PoolType = ThreadPoolTempl<Env, WithWorkCallbackPolicy>;
+    using PoolType = ThreadPoolTempl<Env, WorkWithCallbackPolicy>;
 #else
-    using PoolType = ThreadPoolTempl<Env, NoWorkCallbackPolicy>;
+    using PoolType = ThreadPoolTempl<Env, WorkNoCallbackPolicy>;
 #endif
     extended_eigen_threadpool_ =
         std::make_unique<PoolType>(name, threads_to_create, low_latency_hint, *env, thread_options_);
