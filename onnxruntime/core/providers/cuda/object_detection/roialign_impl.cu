@@ -33,44 +33,41 @@ __device__ AccumulationType_t<T> bilinear_interpolate(
     const int index /* index for debug only*/) {
   using TAcc = AccumulationType_t<T>;
 
-  TAcc y_acc = y;
-  TAcc x_acc = x;
-
   // deal with cases that inverse elements are out of feature map boundary
-  if (y_acc < static_cast<TAcc>(-1.0f) || y_acc > static_cast<TAcc>(height) ||
-      x_acc < static_cast<TAcc>(-1.0f) || x_acc > static_cast<TAcc>(width)) {
+  if (y < static_cast<TAcc>(-1.0f) || y > static_cast<TAcc>(height) ||
+      x < static_cast<TAcc>(-1.0f) || x > static_cast<TAcc>(width)) {
     // empty
     return static_cast<TAcc>(0.0f);
   }
 
-  if (y_acc <= static_cast<TAcc>(0.0f)) {
-    y_acc = static_cast<TAcc>(0.0f);
+  if (y <= static_cast<TAcc>(0.0f)) {
+    y = static_cast<TAcc>(0.0f);
   }
-  if (x_acc <= static_cast<TAcc>(0.0f)) {
-    x_acc = static_cast<TAcc>(0.0f);
+  if (x <= static_cast<TAcc>(0.0f)) {
+    x = static_cast<TAcc>(0.0f);
   }
 
-  int y_low = static_cast<int>(y_acc);
-  int x_low = static_cast<int>(x_acc);
+  int y_low = static_cast<int>(y);
+  int x_low = static_cast<int>(x);
   int y_high;
   int x_high;
 
   if (y_low >= height - 1) {
     y_high = y_low = height - 1;
-    y_acc = static_cast<TAcc>(y_low);
+    y = static_cast<TAcc>(y_low);
   } else {
     y_high = y_low + 1;
   }
 
   if (x_low >= width - 1) {
     x_high = x_low = width - 1;
-    x_acc = static_cast<TAcc>(x_low);
+    x = static_cast<TAcc>(x_low);
   } else {
     x_high = x_low + 1;
   }
 
-  TAcc ly = y_acc - static_cast<TAcc>(y_low);
-  TAcc lx = x_acc - static_cast<TAcc>(x_low);
+  TAcc ly = y - static_cast<TAcc>(y_low);
+  TAcc lx = x - static_cast<TAcc>(x_low);
   TAcc hy = static_cast<TAcc>(1.0f) - ly;
   TAcc hx = static_cast<TAcc>(1.0f) - lx;
   // do bilinear interpolation

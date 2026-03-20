@@ -101,7 +101,10 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
 
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
-SPECIALIZED_COMPUTE(MLFloat16)
+// MLFloat16 is available for RoiAlign op from version 16 (not version 10):
+ADD_VERSIONED_TYPED_ROIALIGN_OP_16(MLFloat16)
+ADD_TYPED_ROIALIGN_OP_22(MLFloat16)
+template Status RoiAlign<MLFloat16>::ComputeInternal(OpKernelContext* ctx) const;
 
 // BFloat16 is available for RoiAlign op from version 22:
 ADD_TYPED_ROIALIGN_OP_22(BFloat16)
