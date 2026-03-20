@@ -1095,7 +1095,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUPositiveActivationAlphaBeta) {
   ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
-TEST(GruTest, GRU_ForwardDefaultActivations_LinearBeforeReset_OpSet22_CUDA) {
+TEST(GRUTest, GRU_ForwardDefaultActivations_LinearBeforeReset_OpSet22_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
     return;
