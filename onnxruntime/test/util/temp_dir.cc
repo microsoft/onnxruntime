@@ -3,8 +3,6 @@
 
 #include "test/util/include/temp_dir.h"
 
-#include "gtest/gtest.h"
-
 #include "core/platform/env.h"
 
 namespace onnxruntime {
@@ -12,10 +10,8 @@ namespace test {
 namespace {
 void CreateOrDeleteDirectory(const PathString& path, bool create, bool throw_on_fail = true) {
   const auto status = create ? Env::Default().CreateFolder(path) : Env::Default().DeleteFolder(path);
-  EXPECT_TRUE(status.IsOK()) << "Failed to " << (create ? "create" : "delete") << "temporary directory " << path;
-
   if (throw_on_fail) {
-    ORT_ENFORCE(status.IsOK());
+    ORT_ENFORCE(status.IsOK(), "Failed to ", (create ? "create" : "delete"), " temporary directory.");
   }
 }
 }  // namespace
@@ -26,8 +22,7 @@ TemporaryDirectory::TemporaryDirectory(const PathString& path, bool delete_if_ex
   const bool exists = Env::Default().FolderExists(path_);
   if (exists) {
     if (!delete_if_exists) {
-      EXPECT_FALSE(exists) << "Temporary directory " << path_ << " already exists.";
-      ORT_ENFORCE(!exists);
+      ORT_THROW("Temporary directory already exists.");
     }
 
     CreateOrDeleteDirectory(path_, /* create */ false);

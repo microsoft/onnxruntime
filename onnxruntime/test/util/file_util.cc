@@ -1,12 +1,13 @@
 #include "file_util.h"
 
-#include <gtest/gtest.h>
 #include <stdio.h>
 
 #ifdef _WIN32
 #include <io.h>
 #include <Windows.h>
 #include <fcntl.h>
+#else
+#include <unistd.h>
 #endif
 
 namespace onnxruntime {
@@ -26,9 +27,9 @@ PathString GetSharedLibraryFileName(const PathString& base_library_name) {
 
 void DeleteFileFromDisk(const ORTCHAR_T* path) {
 #ifdef _WIN32
-  ASSERT_EQ(TRUE, DeleteFileW(path));
+  ORT_ENFORCE(DeleteFileW(path) == TRUE, "DeleteFileW failed for path.");
 #else
-  ASSERT_EQ(0, unlink(path));
+  ORT_ENFORCE(unlink(path) == 0, "unlink failed for path.");
 #endif
 }
 void CreateTestFile(int& out, std::basic_string<ORTCHAR_T>& filename_template) {
@@ -37,7 +38,7 @@ void CreateTestFile(int& out, std::basic_string<ORTCHAR_T>& filename_template) {
 
   ORTCHAR_T* filename = const_cast<ORTCHAR_T*>(filename_template.c_str());
 #ifdef _WIN32
-  ASSERT_EQ(0, _wmktemp_s(filename, filename_template.length() + 1));
+  ORT_ENFORCE(_wmktemp_s(filename, filename_template.length() + 1) == 0, "_wmktemp_s failed.");
   int fd;
   int err = _wsopen_s(&fd, filename, _O_CREAT | _O_EXCL | _O_SEQUENTIAL | _O_BINARY | _O_WRONLY, _SH_DENYRW, _S_IREAD | _S_IWRITE);
   if (err != 0)
@@ -56,9 +57,9 @@ void CreateTestFile(FILE*& out, std::basic_string<ORTCHAR_T>& filename_template)
 
   ORTCHAR_T* filename = const_cast<ORTCHAR_T*>(filename_template.c_str());
 #ifdef _WIN32
-  ASSERT_EQ(0, _wmktemp_s(filename, filename_template.length() + 1));
+  ORT_ENFORCE(_wmktemp_s(filename, filename_template.length() + 1) == 0, "_wmktemp_s failed.");
   FILE* fp = nullptr;
-  ASSERT_EQ(0, _wfopen_s(&fp, filename, ORT_TSTR("wb")));
+  ORT_ENFORCE(_wfopen_s(&fp, filename, ORT_TSTR("wb")) == 0, "_wfopen_s failed.");
 #else
   int fd = mkstemp(filename);
   if (fd < 0) {
