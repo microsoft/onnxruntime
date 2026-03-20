@@ -154,7 +154,8 @@ __global__ void RoIAlignForward(
         (sampling_ratio > 0) ? sampling_ratio : static_cast<int>(_Ceil(roi_width / static_cast<TAcc>(pooled_width)));
 
     // We do average (integral) pooling inside a bin
-    const TAcc count = static_cast<TAcc>(roi_bin_grid_h * roi_bin_grid_w);  // e.g. = 4
+    const int grid_count = max(roi_bin_grid_h * roi_bin_grid_w, 1);
+    const TAcc count = static_cast<TAcc>(grid_count);  // e.g. = 4
 
     TAcc output_val = static_cast<TAcc>(0.0f);
     bool max_flag = false;
