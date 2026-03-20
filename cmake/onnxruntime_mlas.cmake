@@ -336,6 +336,7 @@ function (setup_arm_neon_nchwc)
      # separate assembly file allows tighter control over register allocation
      # and avoids the overhead of C++/intrinsics based code generation.
      ${MLAS_SRC_DIR}/aarch64/SconvKernelNeon.S
+     ${MLAS_SRC_DIR}/aarch64/SconvNchwcKernelNeon.S
      ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
      ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
     )
