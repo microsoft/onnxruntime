@@ -238,13 +238,11 @@ class WebGpuContext final {
   }
 
   void StartProfiling();
-  // Run-level profiling: collect GPU events into shared events_ vector.
+  // Collect pending GPU profiling data into the given events vector.
+  void CollectProfilingData(profiling::Events& events);
+  // Collect pending GPU profiling data into the shared events_ vector (run-level).
   void CollectProfilingData();
-  // Session-level profiling: collect GPU events into per-session storage keyed by profiler pointer.
-  void CollectProfilingData(const void* profiler_key);
-  // End profiling and drain GPU events. If profiler_key has per-session events,
-  // drain those (session-level); otherwise drain shared events_ (run-level).
-  void EndProfiling(TimePoint, profiling::Events& events, const void* profiler_key);
+  void EndProfiling(TimePoint, profiling::Events& events);
 
   //
   // Push error scope.
@@ -307,7 +305,6 @@ class WebGpuContext final {
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
   wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
-  void CollectProfilingDataImpl(profiling::Events& events);
 
   struct PendingQueryInfo {
     PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
@@ -362,12 +359,8 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
-  // Shared GPU profiling events for run-level profiling (no session key).
+  // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
-  // Per-session GPU profiling events for session-level profiling.
-  // When multiple sessions share a WebGpuContext, each session's events are
-  // stored separately so EndProfiling returns only that session's GPU events.
-  std::unordered_map<const void*, profiling::Events> per_session_events_;
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};

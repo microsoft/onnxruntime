@@ -1067,10 +1067,10 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   }
 
   if (session_profiler_ && session_profiler_->Enabled()) {
-    // Session-level profiling: use keyed overload for per-session isolation.
-    context_.CollectProfilingData(session_profiler_);
+    // Session-level profiling: collect into profiler's own events storage.
+    context_.CollectProfilingData(session_profiler_->GpuEvents());
   } else if (run_options.enable_profiling) {
-    // Run-level profiling: use shared events vector.
+    // Run-level profiling: collect into shared events vector.
     context_.CollectProfilingData();
   }
 
@@ -1103,8 +1103,8 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
   }
   context_.Replay(captured_commands_, *graph_buffer_mgr_);
   if (session_profiler_ && session_profiler_->Enabled()) {
-    // Session-level profiling: use keyed overload for per-session isolation.
-    context_.CollectProfilingData(session_profiler_);
+    // Session-level profiling: collect into profiler's own events storage.
+    context_.CollectProfilingData(session_profiler_->GpuEvents());
   }
   return Status::OK();
 }
