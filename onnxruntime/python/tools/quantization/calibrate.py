@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Sequence
 from enum import Enum
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import onnx
@@ -164,7 +165,7 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         return (hasattr(subclass, "get_next") and callable(subclass.get_next)) or NotImplemented
 
     @abc.abstractmethod
-    def get_next(self) -> dict:
+    def get_next(self) -> Optional[dict]:
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
 
