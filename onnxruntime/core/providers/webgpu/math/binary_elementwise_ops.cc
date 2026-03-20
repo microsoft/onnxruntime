@@ -307,12 +307,12 @@ WEBGPU_BINARY_KERNEL(Add, 14, Add, WebGpuSupportedNumberTypes())
 std::string GetDivImpl(int lhs_element_type, int /* rhs_element_type */) {
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
     return "fn precise_div(a: output_value_t, b: output_value_t) -> output_value_t {\n"
-        "  return select(a / b, round(a / b), (a % b) == output_value_t(0.0));\n"
-        "}\n";
+           "  return select(a / b, round(a / b), (a % b) == output_value_t(0.0));\n"
+           "}\n";
   }
   return "fn precise_div(a: output_value_t, b: output_value_t) -> output_value_t {\n"
-      "  return a / b;\n"
-      "}\n";
+         "  return a / b;\n"
+         "}\n";
 }
 
 WEBGPU_BINARY_IMPL(Div, "precise_div(a, b)", GetDivImpl)
