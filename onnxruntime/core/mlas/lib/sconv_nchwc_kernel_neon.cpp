@@ -189,6 +189,54 @@ void
 
 void
     MLASCALL
+    MlasConvNchwcFloatKernelNeonCpp(
+        const float* Input,
+        const float* Filter,
+        float* Output,
+        size_t StrideWidth,
+        size_t DilationWidth,
+        size_t FilterCount,
+        size_t InputStride,
+        size_t FilterStride,
+        size_t OutputStride,
+        size_t KernelHeight,
+        size_t KernelWidth,
+        const float* InputBase,
+        size_t InputWidth,
+        size_t DilatedInputWidth,
+        size_t OutputCountLeftPad,
+        size_t OutputCount,
+        size_t OutputCountRightPad,
+        const float* Bias,
+        unsigned KernelFlags
+    )
+{
+    MlasConvFloatKernelNeonImpl<true>(
+        Input,
+        Filter,
+        Output,
+        StrideWidth,
+        DilationWidth,
+        FilterCount,
+        InputStride,
+        FilterStride,
+        OutputStride,
+        KernelHeight,
+        KernelWidth,
+        InputBase,
+        InputWidth,
+        DilatedInputWidth,
+        OutputCountLeftPad,
+        OutputCount,
+        OutputCountRightPad,
+        Bias,
+        KernelFlags
+    );
+}
+
+
+void
+    MLASCALL
     MlasConvNchwFloatKernelNeon(
         const float* Input,
         const float* Filter,
@@ -264,13 +312,10 @@ void
     )
 {
 #if !defined(_WIN32)
-    // Force the existing C++ implementation until the asm kernel is fixed.
-    constexpr bool force_cpp_fallback = true;
-
     // Milestone 1 asm support only covers the interior no-padding case for a
     // single filter block. Everything else falls back to the existing C++
     // implementation.
-    if (!force_cpp_fallback && FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
+    if (FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
         MlasConvNchwcFloatKernelNeonAsm(
             Input,
             Filter,
@@ -296,7 +341,7 @@ void
     }
 #endif
 
-    MlasConvFloatKernelNeonImpl<true>(
+    MlasConvNchwcFloatKernelNeonCpp(
         Input,
         Filter,
         Output,

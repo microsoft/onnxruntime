@@ -18,6 +18,8 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferFilter;
   MatrixGuardBuffer<float> BufferBias;
   MatrixGuardBuffer<float> BufferOutput;
+  MatrixGuardBuffer<float> BufferOutputCpp;
+  MatrixGuardBuffer<float> BufferOutputAsm;
   MatrixGuardBuffer<float> BufferOutputReference;
 
   template <typename FillFunc>
@@ -87,6 +89,28 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     MLAS_UNREFERENCED_PARAMETER(InputWidth);
   }
 
+  void AssertClose(const float* actual,
+                   const float* expected,
+                   size_t count,
+                   const char* actual_label,
+                   const char* expected_label,
+                   size_t OutputCount,
+                   size_t KernelHeight,
+                   size_t KernelWidth,
+                   unsigned KernelFlags) {
+    for (size_t i = 0; i < count; ++i) {
+      ASSERT_TRUE(CloseEnough(actual[i], expected[i]))
+          << actual_label << " vs " << expected_label
+          << " @" << i
+          << " got=" << actual[i]
+          << " expected=" << expected[i]
+          << " OutputCount=" << OutputCount
+          << "/KH=" << KernelHeight
+          << "/KW=" << KernelWidth
+          << "/Flags=" << KernelFlags;
+    }
+  }
+
   void TestKernel(size_t OutputCount,
                   size_t KernelHeight,
                   size_t KernelWidth,
@@ -113,6 +137,16 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
       });
     });
     float* Output = BufferOutput.GetFilledBuffer(OutputElements, [](float* start, size_t count) {
+      FillBuffer(start, count, [](size_t i) {
+        return float((int(i * 3 % 17) - 8)) / 7.0f;
+      });
+    });
+    float* OutputCpp = BufferOutputCpp.GetFilledBuffer(OutputElements, [](float* start, size_t count) {
+      FillBuffer(start, count, [](size_t i) {
+        return float((int(i * 3 % 17) - 8)) / 7.0f;
+      });
+    });
+    float* OutputAsm = BufferOutputAsm.GetFilledBuffer(OutputElements, [](float* start, size_t count) {
       FillBuffer(start, count, [](size_t i) {
         return float((int(i * 3 % 17) - 8)) / 7.0f;
       });
@@ -144,31 +178,73 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     Bias,
                     KernelFlags);
 
-    MlasConvNchwcFloatKernelNeon(Input,
-                                 Filter,
-                                 Output,
-                                 StrideWidthBytes,
-                                 DilationWidthBytes,
-                                 1,
-                                 InputStrideBytes,
-                                 FilterStrideBytes,
-                                 OutputStrideBytes,
-                                 KernelHeight,
-                                 KernelWidth,
-                                 Input,
-                                 InputWidthBytes,
-                                 DilatedInputWidthBytes,
-                                 0,
-                                 OutputCount,
-                                 0,
-                                 Bias,
-                                 KernelFlags);
+    MlasConvNchwcFloatKernelNeonCpp(Input,
+                    Filter,
+                    OutputCpp,
+                    StrideWidthBytes,
+                    DilationWidthBytes,
+                    1,
+                    InputStrideBytes,
+                    FilterStrideBytes,
+                    OutputStrideBytes,
+                    KernelHeight,
+                    KernelWidth,
+                    Input,
+                    InputWidthBytes,
+                    DilatedInputWidthBytes,
+                    0,
+                    OutputCount,
+                    0,
+                    Bias,
+                    KernelFlags);
 
-    ASSERT_EQ(memcmp(Output, OutputReference, OutputElements * sizeof(float)), 0)
-        << "OutputCount=" << OutputCount
-        << "/KH=" << KernelHeight
-        << "/KW=" << KernelWidth
-        << "/Flags=" << KernelFlags;
+    MlasConvNchwcFloatKernelNeon(Input,
+                   Filter,
+                   Output,
+                   StrideWidthBytes,
+                   DilationWidthBytes,
+                   1,
+                   InputStrideBytes,
+                   FilterStrideBytes,
+                   OutputStrideBytes,
+                   KernelHeight,
+                   KernelWidth,
+                   Input,
+                   InputWidthBytes,
+                   DilatedInputWidthBytes,
+                   0,
+                   OutputCount,
+                   0,
+                   Bias,
+                   KernelFlags);
+
+  #if !defined(_WIN32)
+    MlasConvNchwcFloatKernelNeonAsm(Input,
+                    Filter,
+                    OutputAsm,
+                    StrideWidthBytes,
+                    DilationWidthBytes,
+                    1,
+                    InputStrideBytes,
+                    FilterStrideBytes,
+                    OutputStrideBytes,
+                    KernelHeight,
+                    KernelWidth,
+                    Input,
+                    InputWidthBytes,
+                    DilatedInputWidthBytes,
+                    0,
+                    OutputCount,
+                    0,
+                    Bias,
+                    KernelFlags);
+  #endif
+
+    AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    AssertClose(Output, OutputCpp, OutputElements, "wrapper", "cpp", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+  #if !defined(_WIN32)
+    AssertClose(OutputAsm, OutputCpp, OutputElements, "asm", "cpp", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+  #endif
   }
 
  public:
