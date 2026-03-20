@@ -30,6 +30,7 @@
 #include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/tensor/cast.h"
 #include "core/providers/webgpu/tensor/expand.h"
+#include "core/providers/webgpu/generator/constant_of_shape.h"
 #include "core/providers/webgpu/generator/range.h"
 #include "core/providers/webgpu/tensor/space_to_depth.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
@@ -839,6 +840,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
   // Register Expand kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
+
+  // Register ConstantOfShape kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConstantOfShapeVersionedKernelInfo<9, 19>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConstantOfShapeKernelInfo<20>(enable_int64)));
 
 #ifndef DISABLE_CONTRIB_OPS
   Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
