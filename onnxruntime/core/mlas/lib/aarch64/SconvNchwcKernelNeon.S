@@ -771,7 +771,73 @@ Abstract:
         cmp     x5,#1
         b.eq    .LFilterCountSupported
         cmp     x5,#2
+        b.eq    .LFilterCountSupported
+        cmp     x5,#3
         b.ne    .LKernelExit
+
+        cbnz    x14,.LKernelExit
+        cbnz    x16,.LKernelExit
+        cbz     x15,.LKernelExit
+
+        mov     x20,#0
+
+    .LNoPadLoopFC3Pass1:
+        sub     x12,x15,x20
+        cmp     x12,#2
+        b.lt    .LNoPadTailFC3Pass1
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_FC2_2OUTPUTS_NOPAD
+        add     x20,x20,#2
+        cmp     x20,x15
+        blo     .LNoPadLoopFC3Pass1
+        b       .LStartFC3Pass2
+
+    .LNoPadTailFC3Pass1:
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_FC2_1OUTPUT_NOPAD
+        add     x20,x20,#1
+        cmp     x20,x15
+        blo     .LNoPadLoopFC3Pass1
+
+    .LStartFC3Pass2:
+        ldr     x1,[sp,#.LFrame_FilterBaseSaved]
+        add     x1,x1,x7
+        add     x1,x1,x7
+        ldr     x2,[sp,#.LFrame_OutputBaseSaved]
+        add     x2,x2,#128
+        add     x17,x17,#128
+        mov     x20,#0
+
+    .LNoPadLoopFC3Pass2:
+        sub     x12,x15,x20
+        cmp     x12,#2
+        b.lt    .LNoPadTailFC3Pass2
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_FC1_2OUTPUTS_NOPAD
+        add     x20,x20,#2
+        cmp     x20,x15
+        blo     .LNoPadLoopFC3Pass2
+        b       .LKernelExit
+
+    .LNoPadTailFC3Pass2:
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_FC1_1OUTPUT_NOPAD
+        add     x20,x20,#1
+        cmp     x20,x15
+        blo     .LNoPadLoopFC3Pass2
+        b       .LKernelExit
 
     .LFilterCountSupported:
         cbnz    x14,.LKernelExit
