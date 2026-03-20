@@ -9,8 +9,6 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
-#include <type_traits>
-
 #pragma once
 #include "onnxruntime_config.h"
 // build/external/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h:162:71:
@@ -412,13 +410,6 @@ class ThreadPoolLoop {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLoop);
 };
 
-// Type trait to detect Work types that carry enqueue_data_ (used by RunQueue).
-template <typename T, typename = void>
-struct HasEnqueueData : std::false_type {};
-
-template <typename T>
-struct HasEnqueueData<T, std::void_t<decltype(std::declval<T>().enqueue_data_)>> : std::true_type {};
-
 // Callback policy that does not invoke callbacks. Work = std::function<void()>.
 // All methods are trivial no-ops; the compiler eliminates them entirely.
 struct NoWorkCallbackPolicy {
@@ -433,7 +424,7 @@ struct NoWorkCallbackPolicy {
 
   void* OnEnqueue() const { return nullptr; }
 
-  void OnAbandon(void*) const {}
+  void OnAbandon(const Work&) const {}
 };
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
@@ -492,9 +483,9 @@ struct WithWorkCallbackPolicy {
     return nullptr;
   }
 
-  void OnAbandon(void* data) const {
+  void OnAbandon(const Work& w) const {
     if (callbacks_.on_abandon) {
-      callbacks_.on_abandon(callbacks_.user_context, data);
+      callbacks_.on_abandon(callbacks_.user_context, w.enqueue_data_);
     }
   }
 
@@ -502,9 +493,13 @@ struct WithWorkCallbackPolicy {
 };
 #endif  // ORT_SESSION_THREADPOOL_CALLBACKS
 
-template <typename Work, typename Tag, unsigned kSize>
+template <typename CallbackPolicy, typename Tag, unsigned kSize>
 class RunQueue {
  public:
+  using Work = typename CallbackPolicy::Work;
+
+  void SetPolicy(CallbackPolicy* p) { policy_ = p; }
+
   RunQueue() : front_(0), back_(0) {
     // require power-of-two for fast masking
     assert((kSize & (kSize - 1)) == 0);
@@ -577,7 +572,7 @@ class RunQueue {
   // subsequent call to RevokeWithTag to remove the item from the queue in combination
   // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
   // submitted from different threads.
-  PushResult PushBackWithTag(Work w, Tag tag, unsigned& w_idx) {
+  PushResult PushBackWithTag(Work& w, Tag tag, unsigned& w_idx) {
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
 #else
@@ -647,11 +642,10 @@ class RunQueue {
   // the caller must assume that it may still execute, for instance because it
   // has been pop'd from the queue concurrent with the revocation request.
   //
-  // If out_enqueue_data is non-null and the Work type carries enqueue_data_,
-  // the revoked item's enqueue_data_ is written to *out_enqueue_data on success.
-  // This lets the caller invoke an abandon callback to free associated resources.
+  // On successful revocation the queue calls the policy's OnAbandon callback
+  // to free any resources associated with the work item.
 
-  bool RevokeWithTag(Tag tag, unsigned w_idx, void** out_enqueue_data = nullptr) {
+  bool RevokeWithTag(Tag tag, unsigned w_idx) {
     bool revoked = false;
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
@@ -670,11 +664,7 @@ class RunQueue {
       if (e.tag == tag) {
         unsigned back = back_.load(std::memory_order_relaxed);
         unsigned back_idx = back & kMask;
-        if constexpr (HasEnqueueData<Work>::value) {
-          if (out_enqueue_data) {
-            *out_enqueue_data = e.w.enqueue_data_;
-          }
-        }
+        policy_->OnAbandon(e.w);
         if (back_idx != w_idx) {
           // Item is not at the back of the queue, mark it in-place as revoked
           e.tag = Tag();
@@ -733,6 +723,8 @@ class RunQueue {
     Tag tag;
     Work w;
   };
+
+  CallbackPolicy* policy_ = nullptr;
 
 #ifdef USE_LOCK_FREE_QUEUE
   OrtSpinLock spin_lock_;
@@ -874,7 +866,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   using Work = typename CallbackPolicy::Work;
 
-  typedef RunQueue<Work, Tag, 1024> Queue;
+  typedef RunQueue<CallbackPolicy, Tag, 1024> Queue;
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
@@ -907,6 +899,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     ORT_TRY {
       worker_data_.resize(num_threads_);
       for (auto i = 0u; i < num_threads_; i++) {
+        worker_data_[i].queue.SetPolicy(&callback_policy_);
         worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
       }
     }
@@ -999,9 +992,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // then it cannot have pushed tasks.
     if (ps.dispatch_q_idx != -1) {
       Queue& q = worker_data_[ps.dispatch_q_idx].queue;
-      void* abandoned_data = nullptr;
-      if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx, &abandoned_data)) {
-        callback_policy_.OnAbandon(abandoned_data);
+      if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx)) {
         if (!ps.dispatch_started.load(std::memory_order_acquire)) {
           // We successfully revoked a task, and saw the dispatch task
           // not started.  Hence we know we revoked the dispatch task.
@@ -1037,9 +1028,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     while (!ps.tasks.empty()) {
       const auto& item = ps.tasks.back();
       Queue& q = worker_data_[item.first].queue;
-      void* abandoned_data = nullptr;
-      if (q.RevokeWithTag(pt.tag, item.second, &abandoned_data)) {
-        callback_policy_.OnAbandon(abandoned_data);
+      if (q.RevokeWithTag(pt.tag, item.second)) {
         ps.tasks_revoked++;
       }
       ps.tasks.pop_back();
@@ -1222,14 +1211,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         ps.tasks_finished++;
       });
 
-      // Capture enqueue_data before the work item is potentially moved
-      void* enqueue_data = nullptr;
-      if constexpr (HasEnqueueData<Work>::value) {
-        enqueue_data = work_item.enqueue_data_;
-      }
-
       // Attempt to enqueue the task
-      auto push_status = q.PushBackWithTag(std::move(work_item), pt.tag, w_idx);
+      auto push_status = q.PushBackWithTag(work_item, pt.tag, w_idx);
 
       // Queue accepted the task; wake the thread that owns the queue.
       // In addition, if the queue was non-empty, attempt to wake
@@ -1241,7 +1224,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
         }
       } else {
-        callback_policy_.OnAbandon(enqueue_data);
+        callback_policy_.OnAbandon(work_item);
       }
     }
   }
@@ -1332,19 +1315,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
         Work dispatch_work_item = callback_policy_.MakeWork(std::move(dispatch_task));
 
-        // Capture enqueue_data before the work item is potentially moved
-        void* dispatch_enqueue_data = nullptr;
-        if constexpr (HasEnqueueData<Work>::value) {
-          dispatch_enqueue_data = dispatch_work_item.enqueue_data_;
-        }
-
         profiler_.LogStart();
         ps.dispatch_q_idx = preferred_workers[current_dop] % num_threads_;
         WorkerData& dispatch_td = worker_data_[ps.dispatch_q_idx];
         Queue& dispatch_que = dispatch_td.queue;
 
         // assign dispatch task to selected dispatcher
-        auto push_status = dispatch_que.PushBackWithTag(std::move(dispatch_work_item), pt.tag, ps.dispatch_w_idx);
+        auto push_status = dispatch_que.PushBackWithTag(dispatch_work_item, pt.tag, ps.dispatch_w_idx);
         // Queue accepted the task; wake the thread that owns the queue.
         // In addition, if the queue was non-empty, attempt to wake
         // another thread (which may then steal the task).
@@ -1355,7 +1332,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           }
         } else {
           ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
-          callback_policy_.OnAbandon(dispatch_enqueue_data);
+          callback_policy_.OnAbandon(dispatch_work_item);
         }
         profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
       } else {
