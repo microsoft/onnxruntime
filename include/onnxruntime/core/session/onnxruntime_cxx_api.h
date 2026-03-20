@@ -1295,11 +1295,7 @@ struct Env : detail::Base<OrtEnv> {
   /// Stores work callbacks on the Env for per-session thread pools.
   /// Only affects sessions created after this call. Does not affect global thread pools.
   /// Requires ORT built with --session_threadpool_callbacks.
-  Env& SetPerSessionThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
-                                        OrtThreadPoolWorkStartFn on_start,
-                                        OrtThreadPoolWorkStopFn on_stop,
-                                        OrtThreadPoolWorkAbandonFn on_abandon,
-                                        void* user_context);
+  Env& SetPerSessionThreadPoolCallbacks(const OrtThreadPoolCallbacksConfig& config);
 };
 
 /** \brief Custom Op Domain

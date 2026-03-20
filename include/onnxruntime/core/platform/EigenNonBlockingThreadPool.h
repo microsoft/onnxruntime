@@ -419,7 +419,7 @@ struct HasEnqueueData : std::false_type {};
 template <typename T>
 struct HasEnqueueData<T, std::void_t<decltype(std::declval<T>().enqueue_data_)>> : std::true_type {};
 
-// Callback policy that does nothing. Work = std::function<void()>.
+// Callback policy that does not invoke callbacks. Work = std::function<void()>.
 // All methods are trivial no-ops; the compiler eliminates them entirely.
 struct NoWorkCallbackPolicy {
   using Task = std::function<void()>;
@@ -447,7 +447,7 @@ struct WithWorkCallbackPolicy {
     void* enqueue_data_ = nullptr;
 
     WorkItem() = default;
-    WorkItem(Task t, void* data = nullptr) : task_(std::move(t)), enqueue_data_(data) {}
+    explicit WorkItem(Task t, void* data = nullptr) : task_(std::move(t)), enqueue_data_(data) {}
 
     explicit operator bool() const { return static_cast<bool>(task_); }
   };
@@ -646,6 +646,10 @@ class RunQueue {
   // Return true iff the item is successfully revoked.  If the item is not revoked then
   // the caller must assume that it may still execute, for instance because it
   // has been pop'd from the queue concurrent with the revocation request.
+  //
+  // If out_enqueue_data is non-null and the Work type carries enqueue_data_,
+  // the revoked item's enqueue_data_ is written to *out_enqueue_data on success.
+  // This lets the caller invoke an abandon callback to free associated resources.
 
   bool RevokeWithTag(Tag tag, unsigned w_idx, void** out_enqueue_data = nullptr) {
     bool revoked = false;

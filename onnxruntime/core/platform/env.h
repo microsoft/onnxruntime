@@ -116,7 +116,8 @@ struct ThreadOptions {
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   // Optional callbacks for thread pool work scheduling.
-  // The pointed-to struct must outlive the ThreadPool.
+  // The pointed-to struct must remain valid until the ThreadPool constructor returns
+  // (the constructor copies the callback values).
   const ThreadPoolWorkCallbacks* work_callbacks = nullptr;
 #endif
 };

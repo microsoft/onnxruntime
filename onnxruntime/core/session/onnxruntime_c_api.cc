@@ -4261,23 +4261,22 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSessi
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
-                    _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
-                    _In_opt_ OrtThreadPoolWorkStartFn on_start,
-                    _In_opt_ OrtThreadPoolWorkStopFn on_stop,
-                    _In_opt_ OrtThreadPoolWorkAbandonFn on_abandon,
-                    _In_opt_ void* user_context) {
+                    _In_ const OrtThreadPoolCallbacksConfig* config) {
   API_IMPL_BEGIN
+  if (config == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config must not be null");
+  }
+  if (config->version == 0 || config->version > ORT_API_VERSION) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtThreadPoolCallbacksConfig requires version set to ORT_API_VERSION");
+  }
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   auto& env = ort_env->GetEnvironment();
   return onnxruntime::ToOrtStatus(
-      env.SetPerSessionWorkCallbacks(on_enqueue, on_start, on_stop, on_abandon, user_context));
+      env.SetPerSessionWorkCallbacks(config->on_enqueue, config->on_start, config->on_stop,
+                                     config->on_abandon, config->user_context));
 #else
   ORT_UNUSED_PARAMETER(ort_env);
-  ORT_UNUSED_PARAMETER(on_enqueue);
-  ORT_UNUSED_PARAMETER(on_start);
-  ORT_UNUSED_PARAMETER(on_stop);
-  ORT_UNUSED_PARAMETER(on_abandon);
-  ORT_UNUSED_PARAMETER(user_context);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
                                "SetPerSessionThreadPoolCallbacks requires ORT built with --session_threadpool_callbacks");
 #endif

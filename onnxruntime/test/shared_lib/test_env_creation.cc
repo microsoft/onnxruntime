@@ -118,7 +118,14 @@ TEST(EnvCreation, SetPerSessionThreadPoolCallbacks) {
     CallbackState state;
 
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "ThreadPoolCallbacksTest");
-    env.SetPerSessionThreadPoolCallbacks(on_enqueue, on_start, on_stop, on_abandon, &state);
+    OrtThreadPoolCallbacksConfig cb_config = {0};
+    cb_config.version = ORT_API_VERSION;
+    cb_config.on_enqueue = on_enqueue;
+    cb_config.on_start = on_start;
+    cb_config.on_stop = on_stop;
+    cb_config.on_abandon = on_abandon;
+    cb_config.user_context = &state;
+    env.SetPerSessionThreadPoolCallbacks(cb_config);
 
     Ort::SessionOptions session_options;
     session_options.SetIntraOpNumThreads(4);

@@ -427,11 +427,7 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
                     const char* affinity_string);
 
 ORT_API_STATUS_IMPL(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
-                    _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
-                    _In_opt_ OrtThreadPoolWorkStartFn on_start,
-                    _In_opt_ OrtThreadPoolWorkStopFn on_stop,
-                    _In_opt_ OrtThreadPoolWorkAbandonFn on_abandon,
-                    _In_opt_ void* user_context);
+                    _In_ const OrtThreadPoolCallbacksConfig* config);
 
 ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
                     _In_ const ORTCHAR_T* library_name);
