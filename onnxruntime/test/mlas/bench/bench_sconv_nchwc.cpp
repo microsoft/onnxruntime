@@ -218,10 +218,15 @@ BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC3_DirectCpp_NoPad, NchwcKernelBenchPath::D
 BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC3_Wrapper_NoPad, NchwcKernelBenchPath::WrapperNoPad, 3, 0, 56, 0, 3, 3)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC3_Wrapper_Padded, NchwcKernelBenchPath::WrapperPadded, 3, 1, 54, 1, 3, 3)->UseRealTime();
 
+BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC4_DirectCpp_NoPad, NchwcKernelBenchPath::DirectCpp, 4, 0, 56, 0, 3, 3)->UseRealTime();
+BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC4_Wrapper_NoPad, NchwcKernelBenchPath::WrapperNoPad, 4, 0, 56, 0, 3, 3)->UseRealTime();
+BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC4_Wrapper_Padded, NchwcKernelBenchPath::WrapperPadded, 4, 1, 54, 1, 3, 3)->UseRealTime();
+
 #if !defined(_WIN32)
 BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC1_DirectAsm_NoPad, NchwcKernelBenchPath::DirectAsmNoPad, 1, 0, 56, 0, 3, 3)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC2_DirectAsm_NoPad, NchwcKernelBenchPath::DirectAsmNoPad, 2, 0, 56, 0, 3, 3)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC3_DirectAsm_NoPad, NchwcKernelBenchPath::DirectAsmNoPad, 3, 0, 56, 0, 3, 3)->UseRealTime();
+BENCHMARK_CAPTURE(NCHWC_KERNEL_ROW, FC4_DirectAsm_NoPad, NchwcKernelBenchPath::DirectAsmNoPad, 4, 0, 56, 0, 3, 3)->UseRealTime();
 #endif
 
 #endif

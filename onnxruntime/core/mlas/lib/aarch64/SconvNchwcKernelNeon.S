@@ -773,7 +773,76 @@ Abstract:
         cmp     x5,#2
         b.eq    .LFilterCountSupported
         cmp     x5,#3
+        b.eq    .LFilterCountSupportedFC3
+        cmp     x5,#4
         b.ne    .LKernelExit
+
+        cbnz    x14,.LKernelExit
+        cbnz    x16,.LKernelExit
+        cbz     x15,.LKernelExit
+
+        mov     x20,#0
+
+    .LNoPadLoopFC4Pass1:
+        sub     x12,x15,x20
+        cmp     x12,#2
+        b.lt    .LNoPadTailFC4Pass1
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_FC2_2OUTPUTS_NOPAD
+        add     x20,x20,#2
+        cmp     x20,x15
+        blo     .LNoPadLoopFC4Pass1
+        b       .LStartFC4Pass2
+
+    .LNoPadTailFC4Pass1:
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_FC2_1OUTPUT_NOPAD
+        add     x20,x20,#1
+        cmp     x20,x15
+        blo     .LNoPadLoopFC4Pass1
+
+    .LStartFC4Pass2:
+        ldr     x1,[sp,#.LFrame_FilterBaseSaved]
+        add     x1,x1,x7
+        add     x1,x1,x7
+        ldr     x2,[sp,#.LFrame_OutputBaseSaved]
+        add     x2,x2,x8
+        add     x2,x2,x8
+        add     x17,x17,#128
+        mov     x20,#0
+
+    .LNoPadLoopFC4Pass2:
+        sub     x12,x15,x20
+        cmp     x12,#2
+        b.lt    .LNoPadTailFC4Pass2
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_FC2_2OUTPUTS_NOPAD
+        add     x20,x20,#2
+        cmp     x20,x15
+        blo     .LNoPadLoopFC4Pass2
+        b       .LKernelExit
+
+    .LNoPadTailFC4Pass2:
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_FC2_1OUTPUT_NOPAD
+        add     x20,x20,#1
+        cmp     x20,x15
+        blo     .LNoPadLoopFC4Pass2
+        b       .LKernelExit
+
+    .LFilterCountSupportedFC3:
 
         cbnz    x14,.LKernelExit
         cbnz    x16,.LKernelExit
@@ -810,7 +879,8 @@ Abstract:
         add     x1,x1,x7
         add     x1,x1,x7
         ldr     x2,[sp,#.LFrame_OutputBaseSaved]
-        add     x2,x2,#128
+        add     x2,x2,x8
+        add     x2,x2,x8
         add     x17,x17,#128
         mov     x20,#0
 

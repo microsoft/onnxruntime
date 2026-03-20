@@ -480,6 +480,25 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     TestKernel(3, 3, 3, 0, 3);
     TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 3);
 
+    // FC4 single-output coverage.
+    TestKernel(1, 1, 1, 0, 4);
+    TestKernel(1, 1, 1, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 4);
+    TestKernel(1, 3, 3, 0, 4);
+    TestKernel(1, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 4);
+
+    // FC4 multi-output and postprocess coverage.
+    TestKernel(2, 1, 1, 0, 4);
+    TestKernel(2, 1, 1, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 4);
+    TestKernel(2, 3, 3, 0, 4);
+    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
+                 MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
+                 MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
+           4);
+
+    // FC4 tail coverage.
+    TestKernel(3, 3, 3, 0, 4);
+    TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 4);
+
     // Padded wrapper coverage: C++ edges with asm interior.
     TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 1, 1, 1);
     TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
@@ -519,6 +538,15 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                            MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
                            MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
                3,
+               1,
+               0);
+
+    // FC4 padded coverage uses C++ edges with asm on the interior span.
+    TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 4, 1, 1);
+    TestKernel(4, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
+                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
+                           MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
+               4,
                1,
                0);
   }

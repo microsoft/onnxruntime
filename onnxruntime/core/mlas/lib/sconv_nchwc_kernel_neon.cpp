@@ -313,7 +313,7 @@ void
     )
 {
 #if !defined(_WIN32)
-    if (FilterCount <= 3) {
+    if (FilterCount <= 4) {
         const size_t StrideWidthElements = StrideWidth / sizeof(float);
 
         if (OutputCountLeftPad != 0) {
