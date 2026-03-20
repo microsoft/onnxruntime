@@ -305,8 +305,36 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     if (input_idx == InputIndex::scales && packed_b_ != nullptr &&
         MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_,
                                   has_zp_input_, &mlas_backend_kernel_selector_config_)) {
+      // For asymmetric quantization, we require zero_points to be a constant initializer
+      // in order to safely use the KleidiAI packed-scales path. If zero_points is not
+      // constant, fall back to the non-KleidiAI path by leaving scales unpacked.
+      if (has_zp_input_) {
+        const Tensor* zp_tensor = nullptr;
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+        if (zp_tensor == nullptr) {
+          // zero_points is dynamic: do not mark scales as packed so that the
+          // execution falls back to the non-KleidiAI path.
+          return Status::OK();
+        }
+      }
+
       scales_are_packed_ = true;
       is_packed = true;
+
+      // For KleidiAI asymmetric 4-bit path: compute BZpCorr now while scales are still accessible.
+      // After this PrePack returns is_packed=true, ORT may erase scales from the constant
+      // input table (use count drops to 0), making them unavailable in later PrePack calls.
+      // Zero points haven't been PrePacked yet so they are still accessible.
+      if (has_zp_input_ && nbits_ == 4) {
+        const Tensor* zp_tensor = nullptr;
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+        if (zp_tensor != nullptr) {
+          auto sptr = tensor.Data<float>();
+          auto zptr = zp_tensor->Data<uint8_t>();
+          MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
+                                      has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+        }
+      }
     }
 #endif  // MLAS_TARGET_ARM64
   } else if (compute_type_ == HQNBIT_CompInt8 && nbits_ == 8) {
@@ -404,6 +432,22 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
                                 scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
+
+#if defined(MLAS_TARGET_ARM64)
+    // For KleidiAI asymmetric 4-bit path: compute BZpCorr during B packing.
+    // The fp16 specialization packs B here (with scales already converted to fp32),
+    // so we also compute BZpCorr now while both scales and zero_points are accessible.
+    if (has_zp_input_ && nbits_ == 4 && scales_fp32_ != nullptr) {
+      const Tensor* zp_tensor = nullptr;
+      OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+      if (zp_tensor != nullptr) {
+        auto zptr = zp_tensor->Data<uint8_t>();
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
+                                    scales_fp32_.get(), has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+      }
+    }
+#endif  // MLAS_TARGET_ARM64
+
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
     bool should_pack_scale_and_zp = [&]() {
