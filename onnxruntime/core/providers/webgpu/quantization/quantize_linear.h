@@ -11,12 +11,15 @@ namespace webgpu {
 class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
  public:
   DequantizeLinearProgram(const bool packed, const bool issigned, const bool per_layer,
-                          const bool per_axis, bool has_zeropoint) : Program<DequantizeLinearProgram>{"DequantizeLinear"},
-                                                                     packed_{packed},
-                                                                     signed_{issigned},
-                                                                     per_layer_{per_layer},
-                                                                     per_axis_{per_axis},
-                                                                     has_zeropoint_{has_zeropoint} {}
+                          const bool per_axis, bool has_zeropoint, int rank = 0,
+                          bool packed_4bit = false) : Program<DequantizeLinearProgram>{"DequantizeLinear"},
+                                                      packed_{packed},
+                                                      signed_{issigned},
+                                                      per_layer_{per_layer},
+                                                      per_axis_{per_axis},
+                                                      has_zeropoint_{has_zeropoint},
+                                                      rank_{rank},
+                                                      packed_4bit_{packed_4bit} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -30,6 +33,8 @@ class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
   bool per_layer_;
   bool per_axis_;
   bool has_zeropoint_;
+  int rank_;
+  bool packed_4bit_;
 };
 
 class DequantizeLinear final : public WebGpuKernel {
