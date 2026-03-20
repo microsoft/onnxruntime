@@ -1467,7 +1467,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 
 
-  if(onnxruntime_USE_QNN)
+  if(onnxruntime_USE_QNN OR onnxruntime_USE_VITISAI)
     #qnn ctx generator
     set(ep_weight_sharing_ctx_gen_src_dir ${TEST_SRC_DIR}/ep_weight_sharing_ctx_gen)
     set(ep_weight_sharing_ctx_gen_src_patterns
