@@ -129,6 +129,61 @@ OrtKeyValuePairs GetModelMetadata(const InferenceSession& session) {
   return metadata;
 }
 
+Status GetSelectionEpInfo(const OrtSessionOptions* session_options,
+                          std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
+                          std::vector<SelectionEpInfo>& ep_infos) {
+  // For simplicity, there are some constraints in this initial implementation:
+  // - Only one EP/IExecutionProvider is supported
+  // - All devices should be supported by the same EP
+  ep_infos.push_back(SelectionEpInfo{});
+  auto& ep_info = ep_infos.back();
+
+  ORT_ENFORCE(!provider_list.empty(), "IExecutionProvider instances not available.");
+
+  auto& provider = provider_list.front();
+
+  // Add ep name to ep_info
+  if (!provider_list.empty()) {
+    ep_info.ep_name = provider_list.front()->Type();
+  }
+  ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
+
+  // Add ep devices to ep_info
+  auto& ep_devices = provider->GetEpDevices();
+  ep_info.ep_devices = ep_devices;
+
+  // Add ep factory to ep_info
+  ep_info.ep_factory = (ep_devices.empty()) ? nullptr : ep_devices.front()->ep_factory;
+
+  // Add hardware devices to ep_info
+  ep_info.hardware_devices.reserve(ep_devices.size());
+  for (const auto& ep_device : ep_devices) {
+    if (ep_device->device != nullptr) {
+      ep_info.hardware_devices.push_back(ep_device->device);
+    }
+  }
+
+  // Add ep metadata to ep_info
+  ep_info.ep_metadata.reserve(ep_devices.size());
+  for (const auto& ep_device : ep_devices) {
+    ep_info.ep_metadata.push_back(&ep_device->ep_metadata);
+  }
+
+  // Add ep provider options to ep_info
+  ProviderOptions provider_options;
+  const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_info.ep_name.c_str());
+  const auto& configs = session_options->value.config_options.configurations;
+
+  for (const auto& kv : configs) {
+    if (kv.first.rfind(ep_options_prefix, 0) == 0) {                                   // starts with prefix
+      provider_options.emplace(kv.first.substr(ep_options_prefix.size()), kv.second);  // strip prefix
+    }
+  }
+  ep_info.ep_options = std::move(provider_options);
+
+  return Status::OK();
+}
+
 Status GetCustomOpDomainsFromEpDevice(const OrtEpDevice& ep_device, InlinedVector<OrtCustomOpDomain*>& domains_out) {
   InlinedVector<OrtCustomOpDomain*> domains{};
 
@@ -246,61 +301,6 @@ static Status CreateAndRegisterExecutionProviders(_In_ const OrtSessionOptions* 
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-  return Status::OK();
-}
-
-static Status GetSelectionEpInfo(const OrtSessionOptions* session_options,
-                                 std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
-                                 std::vector<SelectionEpInfo>& ep_infos) {
-  // For simplicity, there are some constraints in this initial implementation:
-  // - Only one EP/IExecutionProvider is supported
-  // - All devices should be supported by the same EP
-  ep_infos.push_back(SelectionEpInfo{});
-  auto& ep_info = ep_infos.back();
-
-  ORT_ENFORCE(!provider_list.empty(), "IExecutionProvider instances not available.");
-
-  auto& provider = provider_list.front();
-
-  // Add ep name to ep_info
-  if (!provider_list.empty()) {
-    ep_info.ep_name = provider_list.front()->Type();
-  }
-  ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
-
-  // Add ep devices to ep_info
-  auto& ep_devices = provider->GetEpDevices();
-  ep_info.ep_devices = ep_devices;
-
-  // Add ep factory to ep_info
-  ep_info.ep_factory = (ep_devices.empty()) ? nullptr : ep_devices.front()->ep_factory;
-
-  // Add hardware devices to ep_info
-  ep_info.hardware_devices.reserve(ep_devices.size());
-  for (const auto& ep_device : ep_devices) {
-    if (ep_device->device != nullptr) {
-      ep_info.hardware_devices.push_back(ep_device->device);
-    }
-  }
-
-  // Add ep metadata to ep_info
-  ep_info.ep_metadata.reserve(ep_devices.size());
-  for (const auto& ep_device : ep_devices) {
-    ep_info.ep_metadata.push_back(&ep_device->ep_metadata);
-  }
-
-  // Add ep provider options to ep_info
-  ProviderOptions provider_options;
-  const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_info.ep_name.c_str());
-  const auto& configs = session_options->value.config_options.configurations;
-
-  for (const auto& kv : configs) {
-    if (kv.first.rfind(ep_options_prefix, 0) == 0) {                                   // starts with prefix
-      provider_options.emplace(kv.first.substr(ep_options_prefix.size()), kv.second);  // strip prefix
-    }
-  }
-  ep_info.ep_options = std::move(provider_options);
 
   return Status::OK();
 }
@@ -481,7 +481,7 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
     }
 
     Status status;
-    status = ToStatusAndRelease(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use, 
+    status = ToStatusAndRelease(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
                                                                     model_data, model_data_length, sess));
     ORT_API_RETURN_IF_STATUS_NOT_OK(status);
 

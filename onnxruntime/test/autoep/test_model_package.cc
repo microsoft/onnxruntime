@@ -21,6 +21,7 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
+/*
 OrtHardwareDevice MakeHardwareDevice(std::string vendor,
                                      OrtHardwareDeviceType type,
                                      uint32_t vendor_id,
@@ -56,6 +57,7 @@ EpContextVariantInfo MakeComponent(const std::string& ep,
   c.model_path = path;
   return c;
 }
+*/
 
 // ------------------------------------------------------------------
 // Helpers to build a test model package on disk
