@@ -97,10 +97,12 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
     const int element_size = is_fp16 ? 2 : 4;
     const int shm_budget = 16384;
     int max_k_from_shm = shm_budget / (2 * element_size * qkv_head_size);
-    // Clamp to power of 2 and reasonable range [16, 128]
-    if (max_k_from_shm >= 128) {
-      max_k_step_ = 128;
-    } else if (max_k_from_shm >= 64) {
+    // Cap max_k_step to avoid register spilling from the private qk_scores array.
+    // Qualcomm Adreno has limited register files: cap at 32.
+    // Other GPUs (Apple, Nvidia, Intel): cap at 64.
+    const int max_k_cap = is_qualcomm ? 32 : 64;
+    // Clamp to power of 2 in range [16, max_k_cap]
+    if (max_k_from_shm >= 64 && max_k_cap >= 64) {
       max_k_step_ = 64;
     } else if (max_k_from_shm >= 32) {
       max_k_step_ = 32;
