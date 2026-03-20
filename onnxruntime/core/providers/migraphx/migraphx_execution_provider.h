@@ -36,7 +36,7 @@ constexpr auto kINT8UseNativeMIGraphXCalibrationTable = "ORT_MIGRAPHX_INT8_USE_N
 constexpr auto kExhaustiveTune = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE"sv;
 constexpr auto kModelCachePath = "ORT_MIGRAPHX_MODEL_CACHE_PATH"sv;
 constexpr auto kModelMaxDynamicBatch = "ORT_MIGRAPHX_MAX_DYNAMIC_BATCH"sv;
-constexpr auto kMaxCompiledModels = "ORT_MIGRAPHX_MAX_COMPILED_MODELS"sv;
+constexpr auto kCompileBatches = "ORT_MIGRAPHX_COMPILE_BATCHES"sv;
 }  // namespace migraphx_env_vars
 
 // Tracks which dimensions are symbolic for a given input
@@ -67,7 +67,6 @@ struct MIGraphXFuncState {
   bool dump_model_ops = false;
   bool exhaustive_tune = false;
   size_t max_dynamic_batch;
-  size_t max_compiled_models = 1;  // Number of evenly-spaced batch sizes to compile (1 -> max only)
   // Reference to the cached programs map for this node (keyed by input shape hash)
   std::optional<std::reference_wrapper<std::unordered_map<std::string, migraphx::program>>> cached_programs_ref = std::nullopt;
   
@@ -209,7 +208,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
         {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache_)},
         {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_path_)},
         {std::string{migraphx_provider_option::kModelMaxDynamicBatch}, MakeStringWithClassicLocale(max_dynamic_batch_)},
-        {std::string{migraphx_provider_option::kMaxCompiledModels}, MakeStringWithClassicLocale(max_compiled_models_)}};
+        {std::string{migraphx_provider_option::kCompileBatches}, compile_batches_}};
    }
 
  private:
@@ -250,7 +249,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   void* external_empty_cache_{nullptr};
   bool first_start_ = true;
   size_t max_dynamic_batch_{0};
-  size_t max_compiled_models_{1};  // Number of evenly-spaced batch sizes to compile (1 -> max only)
+  std::string compile_batches_{};  // Comma-separated list of batch sizes to compile, e.g. "1,4,8,16,32"
 };
 
 }; // namespace onnxruntime

@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
@@ -827,7 +827,6 @@ typedef struct OrtMIGraphXProviderOptions {
    */
   int migraphx_arena_extend_strategy;
   size_t migraphx_max_dynamic_batch;                //Max Dynamic batch size. Default 0 = disabled, nonzero = enabled
-  size_t migraphx_max_compiled_models;              // Number of evenly-spaced batch sizes to compile (1 -> max only, default)
 
   // This is the legacy struct and don't add new fields here.
 } OrtMIGraphXProviderOptions;

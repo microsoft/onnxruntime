@@ -147,7 +147,6 @@ struct MIGraphX_Provider final : Provider {
     migx_options->migraphx_arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
     migx_options->migraphx_mem_limit = internal_options.mem_limit;
     migx_options->migraphx_max_dynamic_batch = internal_options.max_dynamic_batch;
-    migx_options->migraphx_max_compiled_models = internal_options.max_compiled_models;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
