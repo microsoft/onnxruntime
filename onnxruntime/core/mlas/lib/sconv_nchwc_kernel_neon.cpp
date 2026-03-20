@@ -263,6 +263,36 @@ void
         unsigned KernelFlags
     )
 {
+#if !defined(_WIN32)
+    // Milestone 1 asm support only covers the interior no-padding case for a
+    // single filter block. Everything else falls back to the existing C++
+    // implementation.
+    if (FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
+        MlasConvNchwcFloatKernelNeonAsm(
+            Input,
+            Filter,
+            Output,
+            StrideWidth,
+            DilationWidth,
+            FilterCount,
+            InputStride,
+            FilterStride,
+            OutputStride,
+            KernelHeight,
+            KernelWidth,
+            InputBase,
+            InputWidth,
+            DilatedInputWidth,
+            OutputCountLeftPad,
+            OutputCount,
+            OutputCountRightPad,
+            Bias,
+            KernelFlags
+        );
+        return;
+    }
+#endif
+
     MlasConvFloatKernelNeonImpl<true>(
         Input,
         Filter,

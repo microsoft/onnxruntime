@@ -46,6 +46,558 @@ Abstract:
 
         .text
 
+        // ---------------------------------------------------------------------
+        // Helper macros reused from the NCHW kernel.
+        // ---------------------------------------------------------------------
+
+        .macro CLEAR_ACCUM N
+        eor     v0.16b,v0.16b,v0.16b
+        eor     v1.16b,v1.16b,v1.16b
+        eor     v2.16b,v2.16b,v2.16b
+        eor     v3.16b,v3.16b,v3.16b
+    .if \N >= 2
+        eor     v4.16b,v4.16b,v4.16b
+        eor     v5.16b,v5.16b,v5.16b
+        eor     v6.16b,v6.16b,v6.16b
+        eor     v7.16b,v7.16b,v7.16b
+    .endif
+    .if \N >= 3
+        eor     v8.16b,v8.16b,v8.16b
+        eor     v9.16b,v9.16b,v9.16b
+        eor     v10.16b,v10.16b,v10.16b
+        eor     v11.16b,v11.16b,v11.16b
+    .endif
+    .if \N >= 4
+        eor     v12.16b,v12.16b,v12.16b
+        eor     v13.16b,v13.16b,v13.16b
+        eor     v14.16b,v14.16b,v14.16b
+        eor     v15.16b,v15.16b,v15.16b
+    .endif
+        .endm
+
+        // Post processing for a single output element working on N filter
+        // blocks. x27 points at output base for set0, x8 holds OutputStride,
+        // x17 contains the Bias pointer for set0, v31 is zero and w6 holds
+        // KernelFlags.
+        .macro POSTPROCESS_STORE N
+        tbz     w6,#0,1f
+        ldr     q16,[x27]
+        ldr     q17,[x27,#16]
+        ldr     q18,[x27,#32]
+        ldr     q19,[x27,#48]
+        fadd    v0.4s,v0.4s,v16.4s
+        fadd    v1.4s,v1.4s,v17.4s
+        fadd    v2.4s,v2.4s,v18.4s
+        fadd    v3.4s,v3.4s,v19.4s
+    .if \N >= 2
+        add     x24,x27,x8
+        ldr     q16,[x24]
+        ldr     q17,[x24,#16]
+        ldr     q18,[x24,#32]
+        ldr     q19,[x24,#48]
+        fadd    v4.4s,v4.4s,v16.4s
+        fadd    v5.4s,v5.4s,v17.4s
+        fadd    v6.4s,v6.4s,v18.4s
+        fadd    v7.4s,v7.4s,v19.4s
+    .endif
+    .if \N >= 3
+        add     x24,x27,x8,lsl #1
+        ldr     q16,[x24]
+        ldr     q17,[x24,#16]
+        ldr     q18,[x24,#32]
+        ldr     q19,[x24,#48]
+        fadd    v8.4s,v8.4s,v16.4s
+        fadd    v9.4s,v9.4s,v17.4s
+        fadd    v10.4s,v10.4s,v18.4s
+        fadd    v11.4s,v11.4s,v19.4s
+    .endif
+    .if \N >= 4
+        add     x24,x27,x8
+        add     x24,x24,x8,lsl #1
+        ldr     q16,[x24]
+        ldr     q17,[x24,#16]
+        ldr     q18,[x24,#32]
+        ldr     q19,[x24,#48]
+        fadd    v12.4s,v12.4s,v16.4s
+        fadd    v13.4s,v13.4s,v17.4s
+        fadd    v14.4s,v14.4s,v18.4s
+        fadd    v15.4s,v15.4s,v19.4s
+    .endif
+    1:
+        tbz     w6,#1,2f
+        ldr     q16,[x17]
+        ldr     q17,[x17,#16]
+        ldr     q18,[x17,#32]
+        ldr     q19,[x17,#48]
+        fadd    v0.4s,v0.4s,v16.4s
+        fadd    v1.4s,v1.4s,v17.4s
+        fadd    v2.4s,v2.4s,v18.4s
+        fadd    v3.4s,v3.4s,v19.4s
+    .if \N >= 2
+        add     x24,x17,#64
+        ldr     q16,[x24]
+        ldr     q17,[x24,#16]
+        ldr     q18,[x24,#32]
+        ldr     q19,[x24,#48]
+        fadd    v4.4s,v4.4s,v16.4s
+        fadd    v5.4s,v5.4s,v17.4s
+        fadd    v6.4s,v6.4s,v18.4s
+        fadd    v7.4s,v7.4s,v19.4s
+    .endif
+    .if \N >= 3
+        add     x24,x17,#128
+        ldr     q16,[x24]
+        ldr     q17,[x24,#16]
+        ldr     q18,[x24,#32]
+        ldr     q19,[x24,#48]
+        fadd    v8.4s,v8.4s,v16.4s
+        fadd    v9.4s,v9.4s,v17.4s
+        fadd    v10.4s,v10.4s,v18.4s
+        fadd    v11.4s,v11.4s,v19.4s
+    .endif
+    .if \N >= 4
+        add     x24,x17,#192
+        ldr     q16,[x24]
+        ldr     q17,[x24,#16]
+        ldr     q18,[x24,#32]
+        ldr     q19,[x24,#48]
+        fadd    v12.4s,v12.4s,v16.4s
+        fadd    v13.4s,v13.4s,v17.4s
+        fadd    v14.4s,v14.4s,v18.4s
+        fadd    v15.4s,v15.4s,v19.4s
+    .endif
+    2:
+        tbz     w6,#2,3f
+        fmax    v0.4s,v0.4s,v31.4s
+        fmax    v1.4s,v1.4s,v31.4s
+        fmax    v2.4s,v2.4s,v31.4s
+        fmax    v3.4s,v3.4s,v31.4s
+    .if \N >= 2
+        fmax    v4.4s,v4.4s,v31.4s
+        fmax    v5.4s,v5.4s,v31.4s
+        fmax    v6.4s,v6.4s,v31.4s
+        fmax    v7.4s,v7.4s,v31.4s
+    .endif
+    .if \N >= 3
+        fmax    v8.4s,v8.4s,v31.4s
+        fmax    v9.4s,v9.4s,v31.4s
+        fmax    v10.4s,v10.4s,v31.4s
+        fmax    v11.4s,v11.4s,v31.4s
+    .endif
+    .if \N >= 4
+        fmax    v12.4s,v12.4s,v31.4s
+        fmax    v13.4s,v13.4s,v31.4s
+        fmax    v14.4s,v14.4s,v31.4s
+        fmax    v15.4s,v15.4s,v31.4s
+    .endif
+    3:
+        str     q0,[x27]
+        str     q1,[x27,#16]
+        str     q2,[x27,#32]
+        str     q3,[x27,#48]
+    .if \N >= 2
+        add     x24,x27,x8
+        str     q4,[x24]
+        str     q5,[x24,#16]
+        str     q6,[x24,#32]
+        str     q7,[x24,#48]
+    .endif
+    .if \N >= 3
+        add     x24,x27,x8,lsl #1
+        str     q8,[x24]
+        str     q9,[x24,#16]
+        str     q10,[x24,#32]
+        str     q11,[x24,#48]
+    .endif
+    .if \N >= 4
+        add     x24,x27,x8
+        add     x24,x24,x8,lsl #1
+        str     q12,[x24]
+        str     q13,[x24,#16]
+        str     q14,[x24,#32]
+        str     q15,[x24,#48]
+    .endif
+        .endm
+
+        .macro CLEAR_ACCUM2 N
+        eor     v0.16b,v0.16b,v0.16b
+        eor     v1.16b,v1.16b,v1.16b
+        eor     v2.16b,v2.16b,v2.16b
+        eor     v3.16b,v3.16b,v3.16b
+        eor     v4.16b,v4.16b,v4.16b
+        eor     v5.16b,v5.16b,v5.16b
+        eor     v6.16b,v6.16b,v6.16b
+        eor     v7.16b,v7.16b,v7.16b
+    .if \N >= 2
+        eor     v8.16b,v8.16b,v8.16b
+        eor     v9.16b,v9.16b,v9.16b
+        eor     v10.16b,v10.16b,v10.16b
+        eor     v11.16b,v11.16b,v11.16b
+        eor     v12.16b,v12.16b,v12.16b
+        eor     v13.16b,v13.16b,v13.16b
+        eor     v14.16b,v14.16b,v14.16b
+        eor     v15.16b,v15.16b,v15.16b
+    .endif
+    .if \N >= 3
+        eor     v16.16b,v16.16b,v16.16b
+        eor     v17.16b,v17.16b,v17.16b
+        eor     v18.16b,v18.16b,v18.16b
+        eor     v19.16b,v19.16b,v19.16b
+        eor     v20.16b,v20.16b,v20.16b
+        eor     v21.16b,v21.16b,v21.16b
+        eor     v22.16b,v22.16b,v22.16b
+        eor     v23.16b,v23.16b,v23.16b
+    .endif
+        .endm
+
+        .macro POSTPROCESS_STORE2_1
+        add     x24,x27,#64
+        tbz     w6,#0,1f
+        ldr     q26,[x27]
+        ldr     q27,[x27,#16]
+        ldr     q28,[x27,#32]
+        ldr     q29,[x27,#48]
+        fadd    v0.4s,v0.4s,v26.4s
+        fadd    v1.4s,v1.4s,v27.4s
+        fadd    v2.4s,v2.4s,v28.4s
+        fadd    v3.4s,v3.4s,v29.4s
+        ldr     q26,[x24]
+        ldr     q27,[x24,#16]
+        ldr     q28,[x24,#32]
+        ldr     q29,[x24,#48]
+        fadd    v4.4s,v4.4s,v26.4s
+        fadd    v5.4s,v5.4s,v27.4s
+        fadd    v6.4s,v6.4s,v28.4s
+        fadd    v7.4s,v7.4s,v29.4s
+    1:
+        tbz     w6,#1,2f
+        ldr     q26,[x17]
+        ldr     q27,[x17,#16]
+        ldr     q28,[x17,#32]
+        ldr     q29,[x17,#48]
+        fadd    v0.4s,v0.4s,v26.4s
+        fadd    v1.4s,v1.4s,v27.4s
+        fadd    v2.4s,v2.4s,v28.4s
+        fadd    v3.4s,v3.4s,v29.4s
+        fadd    v4.4s,v4.4s,v26.4s
+        fadd    v5.4s,v5.4s,v27.4s
+        fadd    v6.4s,v6.4s,v28.4s
+        fadd    v7.4s,v7.4s,v29.4s
+    2:
+        tbz     w6,#2,3f
+        fmax    v0.4s,v0.4s,v31.4s
+        fmax    v1.4s,v1.4s,v31.4s
+        fmax    v2.4s,v2.4s,v31.4s
+        fmax    v3.4s,v3.4s,v31.4s
+        fmax    v4.4s,v4.4s,v31.4s
+        fmax    v5.4s,v5.4s,v31.4s
+        fmax    v6.4s,v6.4s,v31.4s
+        fmax    v7.4s,v7.4s,v31.4s
+    3:
+        str     q0,[x27]
+        str     q1,[x27,#16]
+        str     q2,[x27,#32]
+        str     q3,[x27,#48]
+        str     q4,[x24]
+        str     q5,[x24,#16]
+        str     q6,[x24,#32]
+        str     q7,[x24,#48]
+        .endm
+
+        .macro POSTPROCESS_STORE2_2
+        POSTPROCESS_STORE2_1
+        add     x24,x27,x8
+        add     x24,x24,#64
+        add     x27,x27,x8
+        tbz     w6,#0,1f
+        ldr     q26,[x27]
+        ldr     q27,[x27,#16]
+        ldr     q28,[x27,#32]
+        ldr     q29,[x27,#48]
+        fadd    v8.4s,v8.4s,v26.4s
+        fadd    v9.4s,v9.4s,v27.4s
+        fadd    v10.4s,v10.4s,v28.4s
+        fadd    v11.4s,v11.4s,v29.4s
+        ldr     q26,[x24]
+        ldr     q27,[x24,#16]
+        ldr     q28,[x24,#32]
+        ldr     q29,[x24,#48]
+        fadd    v12.4s,v12.4s,v26.4s
+        fadd    v13.4s,v13.4s,v27.4s
+        fadd    v14.4s,v14.4s,v28.4s
+        fadd    v15.4s,v15.4s,v29.4s
+    1:
+        tbz     w6,#1,2f
+        add     x23,x17,#64
+        ldr     q26,[x23]
+        ldr     q27,[x23,#16]
+        ldr     q28,[x23,#32]
+        ldr     q29,[x23,#48]
+        fadd    v8.4s,v8.4s,v26.4s
+        fadd    v9.4s,v9.4s,v27.4s
+        fadd    v10.4s,v10.4s,v28.4s
+        fadd    v11.4s,v11.4s,v29.4s
+        fadd    v12.4s,v12.4s,v26.4s
+        fadd    v13.4s,v13.4s,v27.4s
+        fadd    v14.4s,v14.4s,v28.4s
+        fadd    v15.4s,v15.4s,v29.4s
+    2:
+        tbz     w6,#2,3f
+        fmax    v8.4s,v8.4s,v31.4s
+        fmax    v9.4s,v9.4s,v31.4s
+        fmax    v10.4s,v10.4s,v31.4s
+        fmax    v11.4s,v11.4s,v31.4s
+        fmax    v12.4s,v12.4s,v31.4s
+        fmax    v13.4s,v13.4s,v31.4s
+        fmax    v14.4s,v14.4s,v31.4s
+        fmax    v15.4s,v15.4s,v31.4s
+    3:
+        str     q8,[x27]
+        str     q9,[x27,#16]
+        str     q10,[x27,#32]
+        str     q11,[x27,#48]
+        str     q12,[x24]
+        str     q13,[x24,#16]
+        str     q14,[x24,#32]
+        str     q15,[x24,#48]
+        sub     x27,x27,x8
+        .endm
+
+        .macro POSTPROCESS_STORE2_3
+        POSTPROCESS_STORE2_1
+        add     x24,x27,x8
+        add     x24,x24,#64
+        add     x27,x27,x8
+        tbz     w6,#0,1f
+        ldr     q26,[x27]
+        ldr     q27,[x27,#16]
+        ldr     q28,[x27,#32]
+        ldr     q29,[x27,#48]
+        fadd    v8.4s,v8.4s,v26.4s
+        fadd    v9.4s,v9.4s,v27.4s
+        fadd    v10.4s,v10.4s,v28.4s
+        fadd    v11.4s,v11.4s,v29.4s
+        ldr     q26,[x24]
+        ldr     q27,[x24,#16]
+        ldr     q28,[x24,#32]
+        ldr     q29,[x24,#48]
+        fadd    v12.4s,v12.4s,v26.4s
+        fadd    v13.4s,v13.4s,v27.4s
+        fadd    v14.4s,v14.4s,v28.4s
+        fadd    v15.4s,v15.4s,v29.4s
+    1:
+        tbz     w6,#1,2f
+        add     x23,x17,#64
+        ldr     q26,[x23]
+        ldr     q27,[x23,#16]
+        ldr     q28,[x23,#32]
+        ldr     q29,[x23,#48]
+        fadd    v8.4s,v8.4s,v26.4s
+        fadd    v9.4s,v9.4s,v27.4s
+        fadd    v10.4s,v10.4s,v28.4s
+        fadd    v11.4s,v11.4s,v29.4s
+        fadd    v12.4s,v12.4s,v26.4s
+        fadd    v13.4s,v13.4s,v27.4s
+        fadd    v14.4s,v14.4s,v28.4s
+        fadd    v15.4s,v15.4s,v29.4s
+    2:
+        tbz     w6,#2,3f
+        fmax    v8.4s,v8.4s,v31.4s
+        fmax    v9.4s,v9.4s,v31.4s
+        fmax    v10.4s,v10.4s,v31.4s
+        fmax    v11.4s,v11.4s,v31.4s
+        fmax    v12.4s,v12.4s,v31.4s
+        fmax    v13.4s,v13.4s,v31.4s
+        fmax    v14.4s,v14.4s,v31.4s
+        fmax    v15.4s,v15.4s,v31.4s
+    3:
+        str     q8,[x27]
+        str     q9,[x27,#16]
+        str     q10,[x27,#32]
+        str     q11,[x27,#48]
+        str     q12,[x24]
+        str     q13,[x24,#16]
+        str     q14,[x24,#32]
+        str     q15,[x24,#48]
+        add     x27,x27,x8
+        add     x24,x27,#64
+        tbz     w6,#0,4f
+        ldr     q26,[x27]
+        ldr     q27,[x27,#16]
+        ldr     q28,[x27,#32]
+        ldr     q29,[x27,#48]
+        fadd    v16.4s,v16.4s,v26.4s
+        fadd    v17.4s,v17.4s,v27.4s
+        fadd    v18.4s,v18.4s,v28.4s
+        fadd    v19.4s,v19.4s,v29.4s
+        ldr     q26,[x24]
+        ldr     q27,[x24,#16]
+        ldr     q28,[x24,#32]
+        ldr     q29,[x24,#48]
+        fadd    v20.4s,v20.4s,v26.4s
+        fadd    v21.4s,v21.4s,v27.4s
+        fadd    v22.4s,v22.4s,v28.4s
+        fadd    v23.4s,v23.4s,v29.4s
+    4:
+        tbz     w6,#1,5f
+        add     x23,x17,#128
+        ldr     q26,[x23]
+        ldr     q27,[x23,#16]
+        ldr     q28,[x23,#32]
+        ldr     q29,[x23,#48]
+        fadd    v16.4s,v16.4s,v26.4s
+        fadd    v17.4s,v17.4s,v27.4s
+        fadd    v18.4s,v18.4s,v28.4s
+        fadd    v19.4s,v19.4s,v29.4s
+        fadd    v20.4s,v20.4s,v26.4s
+        fadd    v21.4s,v21.4s,v27.4s
+        fadd    v22.4s,v22.4s,v28.4s
+        fadd    v23.4s,v23.4s,v29.4s
+    5:
+        tbz     w6,#2,6f
+        fmax    v16.4s,v16.4s,v31.4s
+        fmax    v17.4s,v17.4s,v31.4s
+        fmax    v18.4s,v18.4s,v31.4s
+        fmax    v19.4s,v19.4s,v31.4s
+        fmax    v20.4s,v20.4s,v31.4s
+        fmax    v21.4s,v21.4s,v31.4s
+        fmax    v22.4s,v22.4s,v31.4s
+        fmax    v23.4s,v23.4s,v31.4s
+    6:
+        str     q16,[x27]
+        str     q17,[x27,#16]
+        str     q18,[x27,#32]
+        str     q19,[x27,#48]
+        str     q20,[x24]
+        str     q21,[x24,#16]
+        str     q22,[x24,#32]
+        str     q23,[x24,#48]
+        sub     x27,x27,x8
+        sub     x27,x27,x8
+        .endm
+
+        // One weight row contributes to the current 16-lane output block.
+        .macro FMLA_ROW AReg, Lane
+        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x28],#64
+        fmla    v0.4s,v24.4s,\AReg\().s[\Lane]
+        fmla    v1.4s,v25.4s,\AReg\().s[\Lane]
+        fmla    v2.4s,v26.4s,\AReg\().s[\Lane]
+        fmla    v3.4s,v27.4s,\AReg\().s[\Lane]
+        .endm
+
+        // One weight row contributes to two 16-lane output blocks.
+        .macro FMLA_ROW2 AReg0, Lane0, AReg1, Lane1
+        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x28],#64
+        fmla    v0.4s,v24.4s,\AReg0\().s[\Lane0]
+        fmla    v1.4s,v25.4s,\AReg0\().s[\Lane0]
+        fmla    v2.4s,v26.4s,\AReg0\().s[\Lane0]
+        fmla    v3.4s,v27.4s,\AReg0\().s[\Lane0]
+        fmla    v4.4s,v24.4s,\AReg1\().s[\Lane1]
+        fmla    v5.4s,v25.4s,\AReg1\().s[\Lane1]
+        fmla    v6.4s,v26.4s,\AReg1\().s[\Lane1]
+        fmla    v7.4s,v27.4s,\AReg1\().s[\Lane1]
+        .endm
+
+        // Milestone 1: one output position, one filter block, no padding.
+        // x0 points at the current input block, x1 at the filter block, x27 at
+        // the output block and x17 at the bias block.
+        .macro CONV_NCHWC_NOPAD_1
+        CLEAR_ACCUM 1
+        mov     x28,x1
+        mov     x21,x0
+        ldr     x9,[sp,#.KO_KernelHeight]
+        cbz     x9,3f
+        ldr     x10,[sp,#.KO_KernelWidth]
+    1:      mov     x25,x21
+        mov     x11,x10
+    2:      prfm    pldl1keep,[x28,#192]
+        ldp     q20,q21,[x25]
+        ldp     q22,q23,[x25,#32]
+        FMLA_ROW v20,0
+        FMLA_ROW v20,1
+        FMLA_ROW v20,2
+        FMLA_ROW v20,3
+        FMLA_ROW v21,0
+        FMLA_ROW v21,1
+        FMLA_ROW v21,2
+        FMLA_ROW v21,3
+        FMLA_ROW v22,0
+        FMLA_ROW v22,1
+        FMLA_ROW v22,2
+        FMLA_ROW v22,3
+        FMLA_ROW v23,0
+        FMLA_ROW v23,1
+        FMLA_ROW v23,2
+        FMLA_ROW v23,3
+        add     x25,x25,x4
+        subs    x11,x11,#1
+        b.ne    2b
+        add     x21,x25,x6
+        subs    x9,x9,#1
+        b.ne    1b
+    3:      POSTPROCESS_STORE 1
+        .endm
+
+        // Milestone 2: two output positions, one filter block, no padding.
+        // x0 points at the current input block for output0, x1 at the filter
+        // block, x27 at the output block for output0 and x17 at the bias block.
+        .macro CONV_NCHWC_NOPAD_2
+        CLEAR_ACCUM2 1
+        mov     x28,x1
+        mov     x21,x0
+        add     x22,x0,x3
+        ldr     x9,[sp,#.KO_KernelHeight]
+        cbz     x9,3f
+        ldr     x10,[sp,#.KO_KernelWidth]
+    1:      mov     x25,x21
+        mov     x26,x22
+        mov     x11,x10
+    2:      prfm    pldl1keep,[x28,#192]
+        ldp     q16,q17,[x25]
+        ldp     q18,q19,[x25,#32]
+        ldp     q20,q21,[x26]
+        ldp     q22,q23,[x26,#32]
+        FMLA_ROW2 v16,0,v20,0
+        FMLA_ROW2 v16,1,v20,1
+        FMLA_ROW2 v16,2,v20,2
+        FMLA_ROW2 v16,3,v20,3
+        FMLA_ROW2 v17,0,v21,0
+        FMLA_ROW2 v17,1,v21,1
+        FMLA_ROW2 v17,2,v21,2
+        FMLA_ROW2 v17,3,v21,3
+        FMLA_ROW2 v18,0,v22,0
+        FMLA_ROW2 v18,1,v22,1
+        FMLA_ROW2 v18,2,v22,2
+        FMLA_ROW2 v18,3,v22,3
+        FMLA_ROW2 v19,0,v23,0
+        FMLA_ROW2 v19,1,v23,1
+        FMLA_ROW2 v19,2,v23,2
+        FMLA_ROW2 v19,3,v23,3
+        add     x25,x25,x4
+        add     x26,x26,x4
+        subs    x11,x11,#1
+        b.ne    2b
+        add     x21,x25,x6
+        add     x22,x26,x6
+        subs    x9,x9,#1
+        b.ne    1b
+    3:      POSTPROCESS_STORE2_1
+        .endm
+
+        .macro RESTORE_NONVOLATILE_AND_RETURN
+        ldp     q14,q15,[sp,#.LFrame_q14_q15]
+        ldp     q12,q13,[sp,#.LFrame_q12_q13]
+        ldp     q10,q11,[sp,#.LFrame_q10_q11]
+        ldp     q8,q9,[sp,#.LFrame_q8_q9]
+        ldp     x27,x28,[sp,#.LFrame_x27_x28]
+        ldp     x25,x26,[sp,#.LFrame_x25_x26]
+        ldp     x23,x24,[sp,#.LFrame_x23_x24]
+        ldp     x21,x22,[sp,#.LFrame_x21_x22]
+        ldr     x30,[sp,#.LFrame_LrSaved]
+        ldp     x19,x20,[sp],#.LFrame_SavedRegs
+        ret
+        .endm
+
 // -----------------------------------------------------------------------------
 // void MlasConvNchwcFloatKernelNeonAsm(...)
 // Implements the convolution micro-kernel for the NCHWc input format.
@@ -68,19 +620,51 @@ Abstract:
         str     x2,[sp,#.LFrame_OutputBaseSaved]
         str     x30,[sp,#.LFrame_LrSaved]
 
-        // TODO: implement kernel body
+        // Milestone 1 implementation: one filter block, one output at a time,
+        // and only for the interior no-padding region.
+        ldr     x1,[sp,#.LFrame_FilterBaseSaved]
+        ldr     x2,[sp,#.LFrame_OutputBaseSaved]
+        ldr     x8,[sp,#.KO_OutputStride]
+        ldr     x14,[sp,#.KO_OutputCountLeftPad]
+        ldr     x15,[sp,#.KO_OutputCount]
+        ldr     x16,[sp,#.KO_OutputCountRightPad]
+        ldr     x17,[sp,#.KO_Bias]
+        ldr     w6,[sp,#.KO_Flags]
 
-        // epilogue -------------------------------------------------------------
-        ldp     q14,q15,[sp,#.LFrame_q14_q15]
-        ldp     q12,q13,[sp,#.LFrame_q12_q13]
-        ldp     q10,q11,[sp,#.LFrame_q10_q11]
-        ldp     q8,q9,[sp,#.LFrame_q8_q9]
-        ldp     x27,x28,[sp,#.LFrame_x27_x28]
-        ldp     x25,x26,[sp,#.LFrame_x25_x26]
-        ldp     x23,x24,[sp,#.LFrame_x23_x24]
-        ldp     x21,x22,[sp,#.LFrame_x21_x22]
-        ldr     x30,[sp,#.LFrame_LrSaved]
-        ldp     x19,x20,[sp],#.LFrame_SavedRegs
-        ret
+        eor     v31.16b,v31.16b,v31.16b
+
+        cmp     x5,#1
+        b.ne    .LKernelExit
+        cbnz    x14,.LKernelExit
+        cbnz    x16,.LKernelExit
+        cbz     x15,.LKernelExit
+
+        ldr     x22,[sp,#.LFrame_InputBaseSaved]
+        mov     x20,#0
+
+    .LNoPadLoop1:
+        sub     x12,x15,x20
+        cmp     x12,#2
+        b.lt    .LNoPadTail1
+        madd    x0,x20,x3,x22
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_NOPAD_2
+        add     x20,x20,#2
+        cmp     x20,x15
+        blo     .LNoPadLoop1
+        b       .LKernelExit
+
+    .LNoPadTail1:
+        madd    x0,x20,x3,x22
+        lsl     x23,x20,#6
+        add     x27,x2,x23
+        CONV_NCHWC_NOPAD_1
+        add     x20,x20,#1
+        cmp     x20,x15
+        blo     .LNoPadLoop1
+
+    .LKernelExit:
+        RESTORE_NONVOLATILE_AND_RETURN
 
         .end
