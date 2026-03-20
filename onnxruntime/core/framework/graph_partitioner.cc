@@ -760,12 +760,12 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 }
 
 // expand any nodes that have an ONNX function definition but no matching ORT kernel
-static Status InlineNodes(Graph& graph, bool& modified_graph) {
+static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* layering_index) {
   // recurse into nested graphs first so we process from bottom up
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
-      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph));
+      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph, layering_index));
     }
   }
 
@@ -780,14 +780,37 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
     }
   }
 
+  // Collect new node indices for nodes inlined from annotated parents so we can
+  // update the LayeringIndex in one batch.
+  InlinedVector<NodeIndex> new_node_indices;
+
   for (auto* node : nodes_to_inline) {
+    // Only track new nodes when the parent has an annotation that will be inherited.
+    const bool has_annotation = layering_index != nullptr &&
+                                !node->GetLayeringAnnotation().empty();
+    const int max_before = has_annotation ? graph.MaxNodeIndex() : 0;
+
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
     modified_graph = true;
+
+    if (has_annotation) {
+      const int max_after = graph.MaxNodeIndex();
+      for (int i = max_before; i < max_after; ++i) {
+        if (graph.GetNode(static_cast<NodeIndex>(i)) != nullptr) {
+          new_node_indices.push_back(static_cast<NodeIndex>(i));
+        }
+      }
+    }
+  }
+
+  // Update the LayeringIndex so the next partitioning round filters correctly
+  // for the newly inlined nodes that inherited their parent's annotation.
+  if (layering_index != nullptr && !new_node_indices.empty()) {
+    layering_index->Update(graph, new_node_indices);
   }
 
   return Status::OK();
 }
-
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,
@@ -1158,7 +1181,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
     modified_graph = false;
-    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
+    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph, partition_params.layering_index));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
     if (modified_graph) {
