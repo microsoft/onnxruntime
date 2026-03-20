@@ -121,8 +121,8 @@ class EpProfiler {
 
   /// <summary>
   /// Optionally called when an ORT event (e.g., session initialization, node kernel execution, etc.) ends.
-  /// ORT pairs every StartEvent call with a corresponding call to StopEvent with the same ORT event ID.
-  /// EP profiler implementations may use the calls to StartEvent and StopEvent to maintain a stack of ORT event IDs
+  /// ORT pairs every Start call with a corresponding call to Stop with the same ORT event ID.
+  /// EP profiler implementations may use the calls to Start and Stop to maintain a stack of ORT event IDs
   /// that can be correlated with EP events (e.g., GPU kernel events).
   /// </summary>
   /// <param name="ort_event_id">

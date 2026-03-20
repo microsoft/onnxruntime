@@ -562,7 +562,7 @@ struct OrtEpProfilerImpl {
    * An EP profiler converts its events to OrtEpProfilingEvent instances and adds them into the provided
    * OrtEpProfilingEventsContainer container. Call OrtEpApi::CreateEpProfilingEvent to create a new
    * OrtEpProfilingEvent instance that is optionally tagged with a correlated ORT event ID.
-   * Then call OrtEpApi::EpProfilerEventsContainer_AddEvents to add one or more events to the container.
+   * Then call OrtEpApi::EpProfilingEventsContainer_AddEvents to add one or more events to the container.
    *
    * Refer to the OrtEpProfilerImpl::StartEvent documentation for a description of ORT event IDs and how they can
    * be correlated with EP events.
@@ -1635,8 +1635,8 @@ struct OrtEpApi {
    *
    * \param[in] category The event category (e.g., session, node, kernel, or API).
    * \param[in] ort_event_id The ID of the ORT event that this EP event is correlated with. ORT assumes that
-   *                         this EP event occurred between calls to `OrtEpProfilerImpl::Start(ort_event_id)` and
-   *                         `OrtEpProfilerImpl::Stop(ort_event_id)`. Set to 0 if this EP event is uncorrelated.
+   *                         this EP event occurred between calls to `OrtEpProfilerImpl::StartEvent(ort_event_id)` and
+   *                         `OrtEpProfilerImpl::StopEvent(ort_event_id)`. Set to 0 if this EP event is uncorrelated.
    * \param[in] process_id Process ID. Set to -1 if does not apply.
    * \param[in] thread_id Thread ID. Set to -1 if does not apply.
    * \param[in] event_name Null-terminated string representing the event name. ORT copies this string.

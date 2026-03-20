@@ -132,8 +132,10 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetProfilerImpl(OrtEp* this_ptr,
   ExampleKernelEp* ep = static_cast<ExampleKernelEp*>(this_ptr);
   auto profiler_unique_ptr = std::make_unique<ExampleKernelEpProfiler>(ep->ep_api_);
 
-  // Store the EP profiler's client ID in the EP state to allow kernel implementations to access
-  // the profiler's client ID. With this ID, a kernal can create timing events.
+  // Store the EP profiler's client ID in the EP so that EP Kernels can access it.
+  // With this profiler client ID, a kernel can create kernel timing events that are associated with this EP profiler.
+  // For example (in an OrtEpKernelImpl::Compute() implementation):
+  //    ep_event_manager.AddEpEvent(ep->GetProfilerClientId(), EpEventManager::Event("Mul", ..., timestamp, duration));
   ep->profiler_client_id_ = profiler_unique_ptr->client_id;
 
   *profiler = profiler_unique_ptr.release();

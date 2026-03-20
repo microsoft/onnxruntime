@@ -90,8 +90,11 @@ void EpEventManager::PopOrtEventId(uint64_t client_id) {
 
 void EpEventManager::AddEpEvent(uint64_t client_id, Event event) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto iter = client_state_.find(client_id);
+  if (!enabled_) {
+    return;
+  }
 
+  auto iter = client_state_.find(client_id);
   if (iter == client_state_.end()) {
     return;
   }
@@ -187,23 +190,24 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
   auto& ep_event_manager = EpEventManager::GetInstance();
 
   std::vector<EpEventManager::Event> raw_ep_events;
-  ep_event_manager.ConsumeEvents(self->client_id, raw_ep_events);
-
-  if (raw_ep_events.empty()) {
-    return nullptr;
-  }
-
   std::vector<OrtEpProfilingEvent*> events;
-  events.reserve(raw_ep_events.size());
-
-  auto cleanup_resources = [&]() {
+  auto cleanup_resources_fn = [&]() {
     for (auto* ev : events) {
       self->ep_api.ReleaseEpProfilingEvent(ev);
     }
 
     events.clear();
+    ep_event_manager.UnregisterClient(self->client_id);
   };
 
+  ep_event_manager.ConsumeEvents(self->client_id, raw_ep_events);
+
+  if (raw_ep_events.empty()) {
+    cleanup_resources_fn();
+    return nullptr;
+  }
+
+  events.reserve(raw_ep_events.size());
   OrtStatus* status = nullptr;
 
   for (EpEventManager::Event& raw_ep_event : raw_ep_events) {
@@ -220,7 +224,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
         ts_us, dur_us, nullptr, nullptr, 0, &ev);
 
     if (status != nullptr) {
-      cleanup_resources();
+      cleanup_resources_fn();
       return status;
     }
     events.push_back(ev);
@@ -229,6 +233,6 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
   status = self->ep_api.EpProfilingEventsContainer_AddEvents(
       events_container, events.data(), events.size());
 
-  cleanup_resources();
+  cleanup_resources_fn();
   return status;
 }

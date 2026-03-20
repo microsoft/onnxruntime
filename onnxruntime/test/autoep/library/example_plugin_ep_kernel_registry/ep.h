@@ -27,7 +27,7 @@ class ExampleKernelEp : public OrtEp {
   const OrtEpApi& GetEpApi() const { return ep_api_; }
   const Config& GetConfig() const { return config_; }
 
-  std::optional<uint64_t> GetActiveProfilerClientId() const { return profiler_client_id_; }
+  std::optional<uint64_t> GetProfilerClientId() const { return profiler_client_id_; }
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;

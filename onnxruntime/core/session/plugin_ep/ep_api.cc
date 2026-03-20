@@ -814,7 +814,7 @@ ORT_API_STATUS_IMPL(EpProfilingEventsContainer_AddEvents,
                     _In_ size_t num_events) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(events_container == nullptr, ORT_INVALID_ARGUMENT,
-                    "OrtEpProfilingEpEventsContainer instance is NULL");
+                    "OrtEpProfilingEventsContainer instance is NULL");
   ORT_API_RETURN_IF(events == nullptr || num_events == 0, ORT_INVALID_ARGUMENT,
                     "Must provide at least one event to add to OrtEpProfilingEventsContainer.");
 
