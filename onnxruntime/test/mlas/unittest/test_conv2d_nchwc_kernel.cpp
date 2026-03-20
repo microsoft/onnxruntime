@@ -243,13 +243,13 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                    Bias,
                    KernelFlags);
 
-            std::fprintf(stderr,
-                   "Completed wrapper OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                   OutputCount,
-                   KernelHeight,
-                   KernelWidth,
-                   KernelFlags);
-            std::fflush(stderr);
+    std::fprintf(stderr,
+                 "Completed wrapper OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 OutputCount,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
 
   #if !defined(_WIN32)
     std::fprintf(stderr,
@@ -280,13 +280,13 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     Bias,
                     KernelFlags);
 
-            std::fprintf(stderr,
-                   "Completed asm OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                   OutputCount,
-                   KernelHeight,
-                   KernelWidth,
-                   KernelFlags);
-            std::fflush(stderr);
+    std::fprintf(stderr,
+                 "Completed asm OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 OutputCount,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
   #endif
 
     AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", OutputCount, KernelHeight, KernelWidth, KernelFlags);
@@ -328,14 +328,35 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
       return;
     }
 
+    // TestKernel(OutputCount, KernelHeight, KernelWidth, KernelFlags)
+
+    // Single-output microkernel coverage.
     TestKernel(1, 1, 1, 0);
     TestKernel(1, 1, 1, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION);
+
+    // Two-output fast path with and without bias.
+    TestKernel(2, 1, 1, 0);
+    TestKernel(2, 1, 1, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION);
+
+    // Single-output multi-row and multi-column coverage.
     TestKernel(1, 3, 3, 0);
     TestKernel(1, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION);
+
+    // Two-output fast path on a larger spatial kernel.
+    TestKernel(2, 3, 3, 0);
+    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION);
+
+    // Two-output postprocess coverage: accumulate only and accumulate+bias+ReLU.
     TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT);
     TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
                            MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
                            MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION);
+
+    // Three outputs exercise the two-output fast path followed by the one-output tail.
+    TestKernel(3, 3, 3, 0);
+    TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION);
+
+    // Three outputs on a 1x3 kernel with full postprocess coverage.
     TestKernel(3, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
                            MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
                            MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION);

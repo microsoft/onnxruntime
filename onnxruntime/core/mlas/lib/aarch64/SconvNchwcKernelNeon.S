@@ -656,7 +656,6 @@ Abstract:
         cbnz    x16,.LKernelExit
         cbz     x15,.LKernelExit
 
-        ldr     x22,[sp,#.LFrame_InputBaseSaved]
         mov     x20,#0
 
         // Main output loop: process two output positions when possible and
@@ -665,7 +664,8 @@ Abstract:
         sub     x12,x15,x20
         cmp     x12,#2
         b.lt    .LNoPadTail1
-        madd    x0,x20,x3,x22
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
         lsl     x23,x20,#6
         add     x27,x2,x23
         CONV_NCHWC_FC1_2OUTPUTS_NOPAD
@@ -675,7 +675,8 @@ Abstract:
         b       .LKernelExit
 
     .LNoPadTail1:
-        madd    x0,x20,x3,x22
+        ldr     x21,[sp,#.LFrame_InputBaseSaved]
+        madd    x0,x20,x3,x21
         lsl     x23,x20,#6
         add     x27,x2,x23
         CONV_NCHWC_FC1_1OUTPUT_NOPAD

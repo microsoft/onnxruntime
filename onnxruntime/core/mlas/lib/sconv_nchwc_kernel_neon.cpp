@@ -53,6 +53,7 @@ void
     const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-static_cast<int>(BiasAddition)));
     const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION)));
 
+
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
     const size_t FilterStrideElements = FilterStride / sizeof(float);
@@ -312,11 +313,9 @@ void
     )
 {
 #if !defined(_WIN32)
-    // Keep the wrapper dispatch narrow while bringing up the asm path.
-    // The direct unit test can still call the asm entry point for broader
-    // cases, but the production wrapper should only use the validated shape.
-    if (FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0 &&
-        KernelHeight == 1 && KernelWidth == 1) {
+    // The current asm path covers the interior no-padding case for a single
+    // filter block. Padding and multi-filter cases still fall back to C++.
+    if (FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
         MlasConvNchwcFloatKernelNeonAsm(
             Input,
             Filter,
