@@ -39,37 +39,6 @@
 using namespace onnxruntime;
 #if !defined(ORT_MINIMAL_BUILD)
 namespace {
-// Choose a component: prefer no-constraint entries; else first that matches available EP devices; else first.
-/*
-std::optional<std::filesystem::path> SelectModelPackageComponent(
-    const std::filesystem::path& package_root,
-    const std::vector<EpContextVariantInfo>& components,
-    const Environment& env) {
-  if (components.empty()) {
-    return std::nullopt;
-  }
-  auto it_no_constraints = std::find_if(
-      components.begin(), components.end(),
-      [](const EpContextVariantInfo& c) {
-        return c.device.empty() && c.architecture.empty();
-      });
-
-  if (it_no_constraints != components.end()) {
-    return package_root / it_no_constraints->file;
-  }
-  const auto& ep_devices = env.GetOrtEpDevices();
-  auto it_match = std::find_if(
-      components.begin(), components.end(),
-      [&](const EpContextVariantInfo& c) {
-        return MatchesComponent(c, ep_devices);
-      });
-  if (it_match != components.end()) {
-    return package_root / it_match->file;
-  }
-  return package_root / components.front().file;  // fallback
-}
-*/
-
 // temporary implementation for testing. EP to 'select' is specified in config option
 Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, const std::string& ep_to_select) {
   const auto& execution_devices = env.GetOrtEpDevices();
@@ -377,19 +346,19 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   }
 
   // Model path could be an onnx model file, or a model package directory.
+  //
+  // To support model package, ORT allows the model path to be a directory
+  // with a manifest.json describing the components of the package.
   const ORTCHAR_T* model_path_to_use = model_path;
 
-  // To support model package, ORT allows the input model path to be a directory with a manifest.json
-  // describing the components of the package.
-  // If the model path is a directory and such a manifest is found and successfully parsed, ORT selects the appropriate model
-  // file from the package to load based on the session options and EP availability.
-  // If any step of this process fails, ORT logs a warning and falls back to treating the input path as a regular model file path.
-
+  // Following variables are used for handling model package.
+  bool is_a_model_package = false;
   std::optional<std::filesystem::path> component_path;
+  std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
   ProviderPolicyContext context;
   std::vector<const OrtEpDevice*> execution_devices;
   std::vector<const OrtEpDevice*> devices_selected;
-  bool autoep_selection_for_model_package = false;
+  bool model_package_with_autoep_selection = false;
 
 #if !defined(ORT_MINIMAL_BUILD)
   if (model_path != nullptr) {
@@ -397,8 +366,8 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
     std::filesystem::path package_root{model_path};
 
     if (std::filesystem::is_directory(package_root, ec) && !ec) {
+      is_a_model_package = true;
       const bool has_provider_factories = options != nullptr && !options->provider_factories.empty();
-      std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
 
       // Creates the IExecutionProvider instances.
       // The reason to get the IExecutionProviders is to get the EP name and OrtEpDevices associate with the EP.
@@ -414,45 +383,31 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       } else {
         if (options != nullptr &&
             options->value.ep_selection_policy.enable) {
-
           // No model is loaded yet, so we don't know the model's metadata.
           // Simply pass an empty OrtKeyValuePairs object for now.
           // TODO: Pass metadata from manifest json to delegate policy?
           OrtKeyValuePairs model_metadata;
 
           ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForModelPackage(env, *options, model_metadata, execution_devices,
-                                          devices_selected, provider_list));
+                                                                           devices_selected, provider_list));
 
-          // TODO: Configure the session options for the devices after session is created.
-          autoep_selection_for_model_package = true;
+          model_package_with_autoep_selection = true;
         }
       }
 
-      // Get the EP info from finalized EPs.
-      //
-      // Note: The EP info could be different depending on how the EP is added.
-      // - provider-bridge EP:
-      //   - Using SessionOptionsAppendExecutionProvider_XXX: Only EP name, no OrtEpDevice info is available.
-      //   - Using SessionOptionsAppendExecutionprovider_V2 : Both EP name and OrtEpDevice info are available.
-      //                                                      provider-bridge EP needs to implement OrtEpFactory,
-      //                                                      and applications need to call RegisterExecutionProviderLibrary to register EP dll.
-      //   - autoep selection: same as above.
-      //
-      // - plugin EP:
-      //   - Using SessionOptionsAppendExecutionprovider_V2:  Both EP name and OrtEpDevice info are available.
-      //   - autoep selection: same as above.
-      //
+      // Get the EP info from IExecutionProvider instances.
       std::vector<SelectionEpInfo> ep_infos;
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(options, provider_list, ep_infos));
 
-      // Once EPs are determined, parse the manifest json.
+      // Parse the manifest json.
       ModelPackageManifestParser parser(logging::LoggingManager::DefaultLogger());
       std::vector<EpContextVariantInfo> components;
       ORT_API_RETURN_IF_STATUS_NOT_OK(parser.ParseManifest(package_root, components));
 
-      // Select the appropriate component based on the session options and EP availability.
+      // Select the appropriate component from a collection of compoments based on EP info
       ModelPackageContext context;
-      ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectComponent(env, components, ep_infos, component_path));
+      std::optional<std::filesystem::path> component_path;
+      ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectComponent(components, ep_infos, component_path));
       if (component_path.has_value()) {
         model_path_to_use = component_path->c_str();
       }
@@ -527,15 +482,23 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
     }
   }
 
-  // If this is a model package, register execution providers here
-  // because the devices have already been selected if auto EP selection is enabled.
-  if (autoep_selection_for_model_package) {
-    // Log telemetry for auto EP selection
-    ORT_API_RETURN_IF_STATUS_NOT_OK(context.LogTelemetry(*sess, *options, execution_devices, devices_selected));
+  // If this is a model package workflow, register execution providers here
+  if (is_a_model_package) {
+    for (auto& provider : provider_list) {
+      if (provider) {
+        ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
+      }
+    }
 
-    // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
-    // EP options that have not been overridden by the user.
-    ORT_API_RETURN_IF_STATUS_NOT_OK(context.AddEpDefaultOptionsToSession(*sess, devices_selected));
+    // For autoep selection
+    if (model_package_with_autoep_selection) {
+      // Log telemetry for auto EP selection
+      ORT_API_RETURN_IF_STATUS_NOT_OK(context.LogTelemetry(*sess, *options, execution_devices, devices_selected));
+
+      // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
+      // EP options that have not been overridden by the user.
+      ORT_API_RETURN_IF_STATUS_NOT_OK(context.AddEpDefaultOptionsToSession(*sess, devices_selected));
+    }
   }
 
   return nullptr;
@@ -752,7 +715,7 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
-  if (!sess.GetRegisteredProviderTypes().empty()) {
+  if (sess.GetRegisteredProviderTypes().empty()) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(options, sess));
   }
 

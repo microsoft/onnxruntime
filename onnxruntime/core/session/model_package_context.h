@@ -49,8 +49,7 @@ struct SelectionEpInfo {
 
 class ModelPackageManifestParser {
  public:
-  ModelPackageManifestParser(const logging::Logger& logger) : logger_(logger) {
-  }
+  explicit ModelPackageManifestParser(const logging::Logger& logger) : logger_(logger) {}
 
   Status ParseManifest(const std::filesystem::path& package_root,
                        /*out*/ std::vector<EpContextVariantInfo>& components);
@@ -63,10 +62,15 @@ class ModelPackageContext {
  public:
   ModelPackageContext() = default;
 
-  Status SelectComponent(const Environment& env,
-                         gsl::span<EpContextVariantInfo> components,
+  // Select components that match the provided EP/device info. If multiple
+  // components match, the one with the highest device score is chosen.
+  Status SelectComponent(gsl::span<EpContextVariantInfo> components,
                          gsl::span<SelectionEpInfo> ep_infos,
-                         std::optional<std::filesystem::path>& selected_component_path);
+                         std::optional<std::filesystem::path>& selected_component_path) const;
+
+ private:
+  // Compute a score for a component relative to an EP/device selection.
+  int CalculateComponentScore(const EpContextVariantInfo& component) const;
 };
 
 }  // namespace onnxruntime

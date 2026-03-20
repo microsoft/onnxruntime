@@ -84,9 +84,9 @@ class IExecutionProvider {
       : default_device_(device), type_{type}, logger_{&logger} {
   }
 
-  IExecutionProvider(const std::string& type, OrtDevice device, 
+  IExecutionProvider(const std::string& type, OrtDevice device,
                      std::vector<const OrtEpDevice*> ep_devices, const logging::Logger& logger)
-      : default_device_(device), ep_devices_{ep_devices} , type_{type}, logger_{&logger} {
+      : default_device_(device), ep_devices_{ep_devices}, type_{type}, logger_{&logger} {
   }
 
   /*

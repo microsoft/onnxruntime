@@ -3,11 +3,14 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-#include <fstream>
 #include <algorithm>
-#include <string>
 #include <cctype>
+#include <fstream>
+#include <limits>
+#include <sstream>
+#include <string>
 
+#include "core/common/logging/logging.h"
 #include "core/session/model_package_context.h"
 
 namespace onnxruntime {
@@ -19,13 +22,12 @@ std::string ToLower(std::string_view s) {
   return result;
 }
 
-bool MatchesDevice(const OrtHardwareDevice* hd,
-                   std::string_view value) {
+bool MatchesDevice(const OrtHardwareDevice* hd, std::string_view value) {
   if (value.empty() || hd == nullptr) {
     return value.empty();
   }
 
-  std::string device_type = ToLower(value);
+  const std::string device_type = ToLower(value);
   switch (hd->type) {
     case OrtHardwareDeviceType::OrtHardwareDeviceType_CPU:
       return device_type == "cpu";
@@ -36,47 +38,35 @@ bool MatchesDevice(const OrtHardwareDevice* hd,
     default:
       return false;
   }
-
-  return false;
 }
 
-bool MatchesArchitecture(const OrtHardwareDevice* hd,
-                         std::string_view value) {
+bool MatchesArchitecture(const OrtHardwareDevice* hd, std::string_view value) {
   if (value.empty() || hd == nullptr) {
     return value.empty();
   }
 
-  // For architecture, we check against a specific key in hardware device metadata
-  // since there's no standard key for it in OrtHardwareDevice. Skipping this check for now.
-
+  // No standardized architecture key today. Assume match if provided.
   return true;
 }
 
 bool MatchesProviderOptionsSpecificKeyForDeviceType(std::string_view provider_option_key,
                                                     std::string_view provider_option_value,
                                                     std::string_view value) {
-  // Currently, the provider option key is not standardized.
-  // So we hardcode well-known keys for device matching for different EPs.
-  // TODO: In the future, we may want to standardize some common keys like "device_type" and only check those.
+  const auto key_lower = ToLower(provider_option_key);
 
-  if (ToLower(provider_option_key) == "device_type") {
-    return ToLower(provider_option_value) == ToLower(value);
-  } else if (ToLower(provider_option_key) == "backend_type") {
+  // If provider option key is related to device type, then its value must match the device constraint value.
+  if (key_lower == "device_type" || key_lower == "backend_type") {
     return ToLower(provider_option_value) == ToLower(value);
   }
 
-  return false;
+  return true;
 }
 
 bool MatchesComponent(const EpContextVariantInfo& component, const SelectionEpInfo& ep_info) {
-  // EP constraint
   if (!component.ep.empty() && component.ep != ep_info.ep_name) {
     return false;
   }
 
-  // Device constraint
-  // - Check "device" field against EP's hardware devices' OrtHardwareDeviceType
-  // - Check "device" field against EP provider options. (currently the provider options key is not standardized).
   bool device_ok = component.device.empty();
   if (!device_ok) {
     for (const auto* hd : ep_info.hardware_devices) {
@@ -103,7 +93,6 @@ bool MatchesComponent(const EpContextVariantInfo& component, const SelectionEpIn
     return false;
   }
 
-  // Architecture constraint
   bool arch_ok = component.architecture.empty();
   if (!arch_ok) {
     for (const auto* hd : ep_info.hardware_devices) {
@@ -194,42 +183,94 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
   return Status::OK();
 }
 
-Status ModelPackageContext::SelectComponent(const Environment& env,
-                                            gsl::span<EpContextVariantInfo> components,
-                                            gsl::span<SelectionEpInfo> ep_infos,
-                                            std::optional<std::filesystem::path>& selected_component_path) {
-  ORT_UNUSED_PARAMETER(env);
+int ModelPackageContext::CalculateComponentScore(const EpContextVariantInfo& component) const {
+  int score = 0;
 
-  selected_component_path = std::nullopt;
+  (void)component;
+  // TODO: Add scoring rules based on maybe EP metadata.
+
+  return score;
+}
+
+Status ModelPackageContext::SelectComponent(gsl::span<EpContextVariantInfo> components,
+                                            gsl::span<SelectionEpInfo> ep_infos,
+                                            std::optional<std::filesystem::path>& selected_component_path) const {
+  selected_component_path.reset();
 
   if (components.empty()) {
     return Status::OK();
   }
 
-  // 1) Check a component with no constraints.
-  auto it_no_constraints = std::find_if(
-      components.begin(), components.end(),
-      [](const EpContextVariantInfo& c) {
-        return c.ep.empty() && c.device.empty() && c.architecture.empty();
-      });
+  // For simplicity, this is the constraint in this initial implementation:
+  // - Only one SelectionEpInfo in `ep_infos` is supported
 
-  if (it_no_constraints != components.end()) {
-    selected_component_path = it_no_constraints->model_path;
-    return Status::OK();
+  std::unordered_set<size_t> candidate_indices_set;
+
+  // 1) Check unconstrained components (ep/device/arch all empty).
+  for (size_t i = 0, end = components.size(); i < end; ++i) {
+    const auto& c = components[i];
+    if (c.ep.empty() && c.device.empty() && c.architecture.empty()) {
+      candidate_indices_set.insert(i);
+    }
   }
 
-  // 2) Try to find the first component that matches the available EP/device selection.
-  for (const auto& c : components) {
+  // 2) Check all components that match any EP/device selection.
+  for (size_t i = 0, end = components.size(); i < end; ++i) {
+    if (candidate_indices_set.count(i) > 0) {
+      continue;
+    }
+    const auto& c = components[i];
     for (const auto& ep_info : ep_infos) {
       if (MatchesComponent(c, ep_info)) {
-        selected_component_path = c.model_path;
-        return Status::OK();
+        candidate_indices_set.insert(i);
+        break;
       }
     }
   }
 
-  // 3) Fallback to the first component.
-  selected_component_path = components.front().model_path;
+  if (candidate_indices_set.empty()) {
+    return Status::OK();
+  }
+
+  // If only one candidate, select it.
+  if (candidate_indices_set.size() == 1) {
+    selected_component_path = components[*candidate_indices_set.begin()].model_path;
+    return Status::OK();
+  }
+
+  // Log all matched candidates.
+  {
+    std::ostringstream oss;
+    oss << "Multiple components matched manifest constraints (" << candidate_indices_set.size() << "): ";
+    size_t i = 0;
+    for (size_t idx : candidate_indices_set) {
+      const auto& path = components[idx].model_path;
+      oss << path.string();
+      if (i + 1 < candidate_indices_set.size()) {
+        oss << "; ";
+      }
+      ++i;
+    }
+    LOGS_DEFAULT(INFO) << oss.str();
+  }
+
+  // 4) Choose highest-score component among candidates.
+  int best_score = std::numeric_limits<int>::min();
+  size_t best_index = *candidate_indices_set.begin();
+
+  for (size_t idx : candidate_indices_set) {
+    const auto& c = components[idx];
+    int component_best_score = std::numeric_limits<int>::min();
+    component_best_score = std::max(component_best_score, CalculateComponentScore(c));
+
+    if (component_best_score > best_score) {
+      best_score = component_best_score;
+      best_index = idx;
+    }
+  }
+
+  selected_component_path = components[best_index].model_path;
+
   return Status::OK();
 }
 
