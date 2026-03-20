@@ -14,9 +14,8 @@ class ConstantOfShapeProgram final : public Program<ConstantOfShapeProgram> {
  public:
   ConstantOfShapeProgram() : Program{"ConstantOfShape"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"value", ProgramUniformVariableDataType::Float32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"value", ProgramUniformVariableDataType::Float32});
 };
 
 class ConstantOfShape final : public WebGpuKernel {
