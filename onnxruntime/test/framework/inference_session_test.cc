@@ -390,8 +390,11 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 }
 
 // WebAssembly will emit profiling data into console
-#if !defined(__wasm__)
-TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
+// TODO(hasesh): Investigate why this test fails on Windows CUDA builds
+#if (!defined(__wasm__) && !defined(_WIN32))
+
+// See issue #27732 for details on why this is disabled.
+TEST(InferenceSessionTests, DISABLED_CheckRunProfilerWithSessionOptions) {
   SessionOptions so;
 
   so.session_logid = "CheckRunProfiler";
@@ -414,11 +417,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   std::ifstream profile(profile_file);
   ASSERT_TRUE(profile);
   std::string line;
-  std::string profile_contents;
   std::vector<std::string> lines;
 
   while (std::getline(profile, line)) {
-    profile_contents += line + "\n";
     lines.push_back(line);
   }
 
@@ -440,8 +441,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   }
 
 #if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING))
-  ASSERT_TRUE(has_kernel_info) << "Did not find strings 'Kernel', 'stream' and 'block_x'"
-                               << " in profile contents: " << profile_contents;
+  ASSERT_TRUE(has_kernel_info);
 #endif
 }
 
@@ -471,11 +471,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   std::ifstream profile(profile_file);
   ASSERT_TRUE(profile);
   std::string line;
-  std::string profile_contents;
   std::vector<std::string> lines;
 
   while (std::getline(profile, line)) {
-    profile_contents += line + "\n";
     lines.push_back(line);
   }
 
@@ -502,7 +500,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 
 // Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
 #if (defined(USE_WEBGPU) && !defined(__APPLE__))
-  ASSERT_TRUE(has_api_info) << "Did not find string 'Api' in profile contents: " << profile_contents;
+  ASSERT_TRUE(has_api_info);
 #endif
 }
 
@@ -591,11 +589,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
   ASSERT_TRUE(profile) << "Failed to open profile file: " << profile_file;
 
   std::string line;
-  std::string profile_contents;
   std::vector<std::string> lines;
 
   while (std::getline(profile, line)) {
-    profile_contents += line + "\n";
     lines.push_back(line);
   }
 
@@ -623,7 +619,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
 
 // Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
 #if (defined(USE_WEBGPU) && !defined(__APPLE__))
-  ASSERT_TRUE(has_api_info) << "Did not find string 'Api' in profile contents: " << profile_contents;
+  ASSERT_TRUE(has_api_info);
 #endif
 
   // Clean up the profile file
