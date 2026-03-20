@@ -540,14 +540,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
         return true;
       }
     }
-
-    auto mode_attr = attributes.find("mode");
-    if (mode_attr != attributes.end()) {
-      auto mode = (*mode_attr).second.s();
-      if (mode == "cubic") {
-        return true;
-      }
-    }
   } else if (optype == "ReduceSum") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
