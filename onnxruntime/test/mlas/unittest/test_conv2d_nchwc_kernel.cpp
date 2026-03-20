@@ -116,6 +116,14 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                   size_t KernelHeight,
                   size_t KernelWidth,
                   unsigned KernelFlags) {
+    std::fprintf(stderr,
+                 "Start case OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 OutputCount,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
+
     const size_t InputWidth = OutputCount + KernelWidth - 1;
     const size_t InputElements = KernelHeight * InputWidth * BlockSize;
     const size_t FilterElements = KernelHeight * KernelWidth * BlockSize * BlockSize;
@@ -179,6 +187,14 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     Bias,
                     KernelFlags);
 
+            std::fprintf(stderr,
+                   "Completed reference OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                   OutputCount,
+                   KernelHeight,
+                   KernelWidth,
+                   KernelFlags);
+            std::fflush(stderr);
+
     MlasConvNchwcFloatKernelNeonCpp(Input,
                     Filter,
                     OutputCpp,
@@ -199,6 +215,14 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     Bias,
                     KernelFlags);
 
+            std::fprintf(stderr,
+                   "Completed cpp OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                   OutputCount,
+                   KernelHeight,
+                   KernelWidth,
+                   KernelFlags);
+            std::fflush(stderr);
+
     MlasConvNchwcFloatKernelNeon(Input,
                    Filter,
                    Output,
@@ -218,6 +242,14 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                    0,
                    Bias,
                    KernelFlags);
+
+            std::fprintf(stderr,
+                   "Completed wrapper OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                   OutputCount,
+                   KernelHeight,
+                   KernelWidth,
+                   KernelFlags);
+            std::fflush(stderr);
 
   #if !defined(_WIN32)
     std::fprintf(stderr,
@@ -258,9 +290,30 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
   #endif
 
     AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    std::fprintf(stderr,
+                 "Completed cpp-vs-reference OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 OutputCount,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
     AssertClose(Output, OutputCpp, OutputElements, "wrapper", "cpp", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    std::fprintf(stderr,
+                 "Completed wrapper-vs-cpp OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 OutputCount,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
   #if !defined(_WIN32)
     AssertClose(OutputAsm, OutputCpp, OutputElements, "asm", "cpp", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    std::fprintf(stderr,
+                 "Completed asm-vs-cpp OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 OutputCount,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
   #endif
   }
 
