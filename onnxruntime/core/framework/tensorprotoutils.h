@@ -167,7 +167,7 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
 
 /// The threshold for small tensors. If the size of the tensor is LE to this value,
 /// The data will stay in the TensorProto. Otherwise, the data will be moved to a Tensor instance
-/// and TensorProto will contain a kTensorProtoMemoryAddressTag reference as a result of
+/// and TensorProto will contain a kTensorProtoNativeEndianMemoryAddressTag reference as a result of
 /// TensorToTensorProto() below. This is because shape inferencing code in onnx for
 /// like Reshape parses weights data and it needs to be in the TensorProto.
 /// The value of 127 was chosen empirically to be the smallest value that is required
@@ -188,7 +188,7 @@ constexpr const size_t kMaxEmbeddedInitializerSizeInBytes = size_t{2} * 1024 * 1
  * @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
  * @param[in] tensor_proto_name the name of the TensorProto.
  * @param[in] use_tensor_buffer the tensor proto is set to use external location, with
- *                              'location' set to onnxruntime::utils::kTensorProtoMemoryAddressTag
+ *                              'location' set to onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag
  *                              'offset' set to tensor's memory location, and 'length' set to tensor's
  *                              memory size. The caller is responsible to maintain the lifetime of
  *                              the allocated memory buffer. Use with caution.
@@ -226,8 +226,19 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
 Special marker used to indicate an existing memory buffer contains the TensorProto external data.
 If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
 address of the memory containing the data.
+
+This marker is used when data is always in little endian format.
 */
-constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
+constexpr const ORTCHAR_T* kTensorProtoLittleEndianMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
+
+/**
+Special marker used to indicate an existing memory buffer contains the TensorProto external data.
+If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
+address of the memory containing the data.
+
+This marker is used when data is in native endian format, i.e. big endian on big endian systems.
+*/
+constexpr const ORTCHAR_T* kTensorProtoNativeEndianMemoryAddressTag = ORT_TSTR("*/_ORT_NATIVE_ENDIAN_MEM_ADDR_/*");
 
 /// <summary>
 /// Creates a OrtValue with a tensor on top of the external data.

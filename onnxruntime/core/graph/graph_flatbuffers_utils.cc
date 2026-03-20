@@ -320,7 +320,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
         // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
         auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(data_offset));
 
-        ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoMemoryAddressTag,
+        ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag,
                                                      offset, fbs_raw_data->size(), initializer);
 
       } else {
