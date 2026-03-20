@@ -4,6 +4,7 @@
 #pragma once
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/math/clip.h"
+#include <limits>
 
 namespace onnxruntime {
 namespace cuda {
