@@ -213,7 +213,7 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   int pack_factor = packed_4bit ? 8 : 4;
 
   DequantizeLinearProgram program{packed, is_signed, per_layer, per_axis, x_zeropoint != nullptr,
-                                   static_cast<int>(x_shape.NumDimensions()), packed_4bit};
+                                  static_cast<int>(x_shape.NumDimensions()), packed_4bit};
 
   program
       .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, packed ? pack_factor : input_component}})
