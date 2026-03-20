@@ -13,9 +13,10 @@ Abstract:
 
 #include "asmmacro.h"
 
-        // Stack layout for parameters passed on the stack.  The first eight
-        // integer parameters follow the AArch64 calling convention and are in
-        // x0-x7.  Remaining parameters are spilled by the C++ caller.
+        // Stack layout for the callee-saved register frame plus the spilled
+        // tail of the convolution parameter list. The first eight integer
+        // arguments arrive in x0-x7 and everything after that is read back
+        // from fixed offsets relative to sp.
 
         .equ    .LFrame_SavedRegs,         (5*16 + 4*32 + 16 + 32)
         .equ    .LFrame_x19_x20,           0
@@ -47,9 +48,11 @@ Abstract:
         .text
 
         // ---------------------------------------------------------------------
-        // Helper macros reused from the NCHW kernel.
+        // Helper macros that build the computation, postprocess, and store
+        // phases used by the NCHWc kernel body.
         // ---------------------------------------------------------------------
 
+        // Zero the accumulator vectors for a 1-4 filter-block microkernel.
         .macro CLEAR_ACCUM N
         eor     v0.16b,v0.16b,v0.16b
         eor     v1.16b,v1.16b,v1.16b
@@ -75,12 +78,12 @@ Abstract:
     .endif
         .endm
 
-        // Post processing for a single output element working on N filter
-        // blocks. x27 points at output base for set0, x8 holds OutputStride,
-        // x17 contains the Bias pointer for set0, v31 is zero and w6 holds
-        // KernelFlags.
-        .macro POSTPROCESS_STORE N
-        tbz     w6,#0,1f
+        // Finalize one output position for N filter blocks by optionally
+        // adding the prior output, adding bias, applying ReLU, and storing.
+        // x27 points at the first output block, x8 is the output stride,
+        // x17 is the bias pointer, v31 is zero, and w19 holds KernelFlags.
+        .macro POSTPROCESS_STORE_1OUTPUT_NFILTERS N
+        tbz     w19,#0,1f
         ldr     q16,[x27]
         ldr     q17,[x27,#16]
         ldr     q18,[x27,#32]
@@ -124,7 +127,7 @@ Abstract:
         fadd    v15.4s,v15.4s,v19.4s
     .endif
     1:
-        tbz     w6,#1,2f
+        tbz     w19,#1,2f
         ldr     q16,[x17]
         ldr     q17,[x17,#16]
         ldr     q18,[x17,#32]
@@ -167,7 +170,7 @@ Abstract:
         fadd    v15.4s,v15.4s,v19.4s
     .endif
     2:
-        tbz     w6,#2,3f
+        tbz     w19,#2,3f
         fmax    v0.4s,v0.4s,v31.4s
         fmax    v1.4s,v1.4s,v31.4s
         fmax    v2.4s,v2.4s,v31.4s
@@ -219,6 +222,8 @@ Abstract:
     .endif
         .endm
 
+        // Zero the wider accumulator set used when computing two outputs at
+        // once for the same filter block.
         .macro CLEAR_ACCUM2 N
         eor     v0.16b,v0.16b,v0.16b
         eor     v1.16b,v1.16b,v1.16b
@@ -250,9 +255,10 @@ Abstract:
     .endif
         .endm
 
-        .macro POSTPROCESS_STORE2_1
+        // Finalize and store two output positions for a single filter block.
+        .macro POSTPROCESS_STORE_2OUTPUTS_FC1_NOPAD
         add     x24,x27,#64
-        tbz     w6,#0,1f
+        tbz     w19,#0,1f
         ldr     q26,[x27]
         ldr     q27,[x27,#16]
         ldr     q28,[x27,#32]
@@ -270,7 +276,7 @@ Abstract:
         fadd    v6.4s,v6.4s,v28.4s
         fadd    v7.4s,v7.4s,v29.4s
     1:
-        tbz     w6,#1,2f
+        tbz     w19,#1,2f
         ldr     q26,[x17]
         ldr     q27,[x17,#16]
         ldr     q28,[x17,#32]
@@ -284,7 +290,7 @@ Abstract:
         fadd    v6.4s,v6.4s,v28.4s
         fadd    v7.4s,v7.4s,v29.4s
     2:
-        tbz     w6,#2,3f
+        tbz     w19,#2,3f
         fmax    v0.4s,v0.4s,v31.4s
         fmax    v1.4s,v1.4s,v31.4s
         fmax    v2.4s,v2.4s,v31.4s
@@ -304,12 +310,13 @@ Abstract:
         str     q7,[x24,#48]
         .endm
 
-        .macro POSTPROCESS_STORE2_2
-        POSTPROCESS_STORE2_1
+        // Finalize and store two output positions for two filter blocks.
+        .macro POSTPROCESS_STORE_2OUTPUTS_FC2_NOPAD
+        POSTPROCESS_STORE_2OUTPUTS_FC1_NOPAD
         add     x24,x27,x8
         add     x24,x24,#64
         add     x27,x27,x8
-        tbz     w6,#0,1f
+        tbz     w19,#0,1f
         ldr     q26,[x27]
         ldr     q27,[x27,#16]
         ldr     q28,[x27,#32]
@@ -327,7 +334,7 @@ Abstract:
         fadd    v14.4s,v14.4s,v28.4s
         fadd    v15.4s,v15.4s,v29.4s
     1:
-        tbz     w6,#1,2f
+        tbz     w19,#1,2f
         add     x23,x17,#64
         ldr     q26,[x23]
         ldr     q27,[x23,#16]
@@ -342,7 +349,7 @@ Abstract:
         fadd    v14.4s,v14.4s,v28.4s
         fadd    v15.4s,v15.4s,v29.4s
     2:
-        tbz     w6,#2,3f
+        tbz     w19,#2,3f
         fmax    v8.4s,v8.4s,v31.4s
         fmax    v9.4s,v9.4s,v31.4s
         fmax    v10.4s,v10.4s,v31.4s
@@ -363,12 +370,13 @@ Abstract:
         sub     x27,x27,x8
         .endm
 
-        .macro POSTPROCESS_STORE2_3
-        POSTPROCESS_STORE2_1
+        // Finalize and store two output positions for three filter blocks.
+        .macro POSTPROCESS_STORE_2OUTPUTS_FC3_NOPAD
+        POSTPROCESS_STORE_2OUTPUTS_FC1_NOPAD
         add     x24,x27,x8
         add     x24,x24,#64
         add     x27,x27,x8
-        tbz     w6,#0,1f
+        tbz     w19,#0,1f
         ldr     q26,[x27]
         ldr     q27,[x27,#16]
         ldr     q28,[x27,#32]
@@ -386,7 +394,7 @@ Abstract:
         fadd    v14.4s,v14.4s,v28.4s
         fadd    v15.4s,v15.4s,v29.4s
     1:
-        tbz     w6,#1,2f
+        tbz     w19,#1,2f
         add     x23,x17,#64
         ldr     q26,[x23]
         ldr     q27,[x23,#16]
@@ -401,7 +409,7 @@ Abstract:
         fadd    v14.4s,v14.4s,v28.4s
         fadd    v15.4s,v15.4s,v29.4s
     2:
-        tbz     w6,#2,3f
+        tbz     w19,#2,3f
         fmax    v8.4s,v8.4s,v31.4s
         fmax    v9.4s,v9.4s,v31.4s
         fmax    v10.4s,v10.4s,v31.4s
@@ -421,7 +429,7 @@ Abstract:
         str     q15,[x24,#48]
         add     x27,x27,x8
         add     x24,x27,#64
-        tbz     w6,#0,4f
+        tbz     w19,#0,4f
         ldr     q26,[x27]
         ldr     q27,[x27,#16]
         ldr     q28,[x27,#32]
@@ -439,7 +447,7 @@ Abstract:
         fadd    v22.4s,v22.4s,v28.4s
         fadd    v23.4s,v23.4s,v29.4s
     4:
-        tbz     w6,#1,5f
+        tbz     w19,#1,5f
         add     x23,x17,#128
         ldr     q26,[x23]
         ldr     q27,[x23,#16]
@@ -454,7 +462,7 @@ Abstract:
         fadd    v22.4s,v22.4s,v28.4s
         fadd    v23.4s,v23.4s,v29.4s
     5:
-        tbz     w6,#2,6f
+        tbz     w19,#2,6f
         fmax    v16.4s,v16.4s,v31.4s
         fmax    v17.4s,v17.4s,v31.4s
         fmax    v18.4s,v18.4s,v31.4s
@@ -476,7 +484,8 @@ Abstract:
         sub     x27,x27,x8
         .endm
 
-        // One weight row contributes to the current 16-lane output block.
+        // Consume one 16x16 weight row and accumulate it into one output
+        // position using a selected lane from the loaded activation row.
         .macro FMLA_ROW AReg, Lane
         ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x28],#64
         fmla    v0.4s,v24.4s,\AReg\().s[\Lane]
@@ -485,7 +494,8 @@ Abstract:
         fmla    v3.4s,v27.4s,\AReg\().s[\Lane]
         .endm
 
-        // One weight row contributes to two 16-lane output blocks.
+        // Consume one 16x16 weight row and accumulate it into two output
+        // positions, reusing the same filter load for both outputs.
         .macro FMLA_ROW2 AReg0, Lane0, AReg1, Lane1
         ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x28],#64
         fmla    v0.4s,v24.4s,\AReg0\().s[\Lane0]
@@ -498,10 +508,11 @@ Abstract:
         fmla    v7.4s,v27.4s,\AReg1\().s[\Lane1]
         .endm
 
-        // Milestone 1: one output position, one filter block, no padding.
-        // x0 points at the current input block, x1 at the filter block, x27 at
-        // the output block and x17 at the bias block.
-        .macro CONV_NCHWC_NOPAD_1
+        // Compute one output position for the interior no-padding case. The
+        // outer loop walks kernel rows, the inner loop walks kernel columns,
+        // and each iteration multiplies one 16-lane input block by one 16x16
+        // filter tile before handing off to the single-output postprocess path.
+        .macro CONV_NCHWC_FC1_1OUTPUT_NOPAD
         CLEAR_ACCUM 1
         mov     x28,x1
         mov     x21,x0
@@ -535,13 +546,14 @@ Abstract:
         add     x21,x25,x6
         subs    x9,x9,#1
         b.ne    1b
-    3:      POSTPROCESS_STORE 1
+    3:      POSTPROCESS_STORE_1OUTPUT_NFILTERS 1
         .endm
 
-        // Milestone 2: two output positions, one filter block, no padding.
-        // x0 points at the current input block for output0, x1 at the filter
-        // block, x27 at the output block for output0 and x17 at the bias block.
-        .macro CONV_NCHWC_NOPAD_2
+        // Compute two adjacent output positions together for the interior
+        // no-padding case. The loops are the same as the single-output form,
+        // but each filter load is shared across two activation positions to
+        // improve throughput before the paired postprocess/store step.
+        .macro CONV_NCHWC_FC1_2OUTPUTS_NOPAD
         CLEAR_ACCUM2 1
         mov     x28,x1
         mov     x21,x0
@@ -581,9 +593,11 @@ Abstract:
         add     x22,x26,x6
         subs    x9,x9,#1
         b.ne    1b
-    3:      POSTPROCESS_STORE2_1
+    3:      POSTPROCESS_STORE_2OUTPUTS_FC1_NOPAD
         .endm
 
+        // Restore the nonvolatile general-purpose and vector registers and
+        // return to the C++ caller.
         .macro RESTORE_NONVOLATILE_AND_RETURN
         ldp     q14,q15,[sp,#.LFrame_q14_q15]
         ldp     q12,q13,[sp,#.LFrame_q12_q13]
@@ -605,7 +619,9 @@ Abstract:
 
         FUNCTION_ENTRY MlasConvNchwcFloatKernelNeonAsm
 
-        // prologue -------------------------------------------------------------
+        // Prologue: save nonvolatile state and pin the base input/filter/
+        // output pointers in the stack frame so the kernel body can freely
+        // repurpose registers while iterating.
         stp     x19,x20,[sp,#-.LFrame_SavedRegs]!
         stp     x21,x22,[sp,#.LFrame_x21_x22]
         stp     x23,x24,[sp,#.LFrame_x23_x24]
@@ -620,8 +636,9 @@ Abstract:
         str     x2,[sp,#.LFrame_OutputBaseSaved]
         str     x30,[sp,#.LFrame_LrSaved]
 
-        // Milestone 1 implementation: one filter block, one output at a time,
-        // and only for the interior no-padding region.
+        // Load the parameters needed by the current bring-up implementation.
+        // This entry currently supports only FilterCount == 1 and the interior
+        // region with no left or right padding.
         ldr     x1,[sp,#.LFrame_FilterBaseSaved]
         ldr     x2,[sp,#.LFrame_OutputBaseSaved]
         ldr     x8,[sp,#.KO_OutputStride]
@@ -629,7 +646,7 @@ Abstract:
         ldr     x15,[sp,#.KO_OutputCount]
         ldr     x16,[sp,#.KO_OutputCountRightPad]
         ldr     x17,[sp,#.KO_Bias]
-        ldr     w6,[sp,#.KO_Flags]
+        ldr     w19,[sp,#.KO_Flags]
 
         eor     v31.16b,v31.16b,v31.16b
 
@@ -642,6 +659,8 @@ Abstract:
         ldr     x22,[sp,#.LFrame_InputBaseSaved]
         mov     x20,#0
 
+        // Main output loop: process two output positions when possible and
+        // fall back to the single-output tail for the final odd element.
     .LNoPadLoop1:
         sub     x12,x15,x20
         cmp     x12,#2
@@ -649,7 +668,7 @@ Abstract:
         madd    x0,x20,x3,x22
         lsl     x23,x20,#6
         add     x27,x2,x23
-        CONV_NCHWC_NOPAD_2
+        CONV_NCHWC_FC1_2OUTPUTS_NOPAD
         add     x20,x20,#2
         cmp     x20,x15
         blo     .LNoPadLoop1
@@ -659,11 +678,12 @@ Abstract:
         madd    x0,x20,x3,x22
         lsl     x23,x20,#6
         add     x27,x2,x23
-        CONV_NCHWC_NOPAD_1
+        CONV_NCHWC_FC1_1OUTPUT_NOPAD
         add     x20,x20,#1
         cmp     x20,x15
         blo     .LNoPadLoop1
 
+        // Unified exit path for unsupported shapes and completed work.
     .LKernelExit:
         RESTORE_NONVOLATILE_AND_RETURN
 
