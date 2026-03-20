@@ -15,6 +15,8 @@ namespace onnxruntime {
 namespace ep {
 
 struct ApiPtrs {
+  ApiPtrs(const OrtApi& ort_, const OrtEpApi& ep_, const OrtModelEditorApi& model_editor_)
+      : ort(ort_), ep(ep_), model_editor(model_editor_) {}
   const OrtApi& ort;
   const OrtEpApi& ep;
   const OrtModelEditorApi& model_editor;

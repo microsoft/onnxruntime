@@ -3,6 +3,8 @@
 
 #pragma once
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
@@ -11,6 +13,11 @@
 
 namespace onnxruntime {
 namespace cuda {
+
+#ifndef CUDA_STREAM_FROM_CTX
+// Helper for kernels that need a cudaStream_t from OpKernelContext in both framework and plugin builds.
+#define CUDA_STREAM_FROM_CTX(ctx) static_cast<cudaStream_t>(GetComputeStream(ctx))
+#endif
 
 // -----------------------------------------------------------------------
 // Base class for CUDA kernels
@@ -49,6 +56,19 @@ class CudaKernel : public OpKernel {
                                         stream);
   }
 
+  // void* overload for dual-build compatibility with the plugin EP.
+  // In the framework build, the void* is always a static_cast<void*>(onnxruntime::Stream*).
+  template <typename T>
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, void* stream) const {
+    return GetScratchBuffer<T>(count_or_bytes, static_cast<onnxruntime::Stream*>(stream));
+  }
+
+  // Resolve nullptr ambiguity between Stream* and void* overloads.
+  template <typename T>
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, std::nullptr_t) const {
+    return GetScratchBuffer<T>(count_or_bytes, static_cast<onnxruntime::Stream*>(nullptr));
+  }
+
   // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
   // this GetTransientScratchBuffer will call IAllocator::Reserve() to allocate memory.
   // IAllocator::Reserve() optionally implement some allocation logic that by-passes any arena-based
@@ -63,6 +83,11 @@ class CudaKernel : public OpKernel {
     ORT_ENFORCE(ort_stream->GetDevice().Type() == OrtDevice::GPU);
     auto* cuda_ep_stream = static_cast<CudaStream*>(ort_stream);
     cuda_ep_stream->EnqueDeferredCPUBuffer(p);
+  }
+
+  // void* overload for dual-build compatibility with the plugin EP.
+  inline void AddDeferredReleaseCPUPtr(void* p, void* stream) const {
+    AddDeferredReleaseCPUPtr(p, static_cast<onnxruntime::Stream*>(stream));
   }
 
   template <typename T>
@@ -174,6 +199,11 @@ class CudaKernel : public OpKernel {
       return Status::OK();
     }
 
+    // void* overload for dual-build compatibility with the plugin EP.
+    Status CopyToGpu(void* stream) {
+      return CopyToGpu(static_cast<onnxruntime::Stream*>(stream));
+    }
+
     T* CpuPtr() const {
       return cpu_pinned_copy_.get();
     }
@@ -234,3 +264,7 @@ class CudaKernel : public OpKernel {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#else
+#include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#endif

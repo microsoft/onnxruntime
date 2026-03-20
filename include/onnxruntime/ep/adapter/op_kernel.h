@@ -35,7 +35,7 @@ struct OpKernel {
   explicit OpKernel(const OpKernelInfo& info) : op_kernel_info_{info} {}
   virtual ~OpKernel() {}
 
-  Node Node() const {
+  adapter::Node Node() const {
     return op_kernel_info_.node();
   }
   const OpKernelInfo& Info() const {
@@ -93,6 +93,13 @@ struct OpKernelContext {
     input_tensors_[index] = CreateTensorFromApiValue(const_cast<OrtValue*>(static_cast<const OrtValue*>(input)));
     return &input_tensors_[index];
   }
+  template <typename T,
+            typename = std::enable_if_t<std::is_same_v<T, Tensor>>>
+  const T& RequiredInput(int index) const {
+    auto* input = Input<T>(index);
+    ORT_ENFORCE(input != nullptr, "Required input ", index, " is null");
+    return *input;
+  }
   Tensor* Output(int index, const TensorShape& shape) {
     if (index < 0 || static_cast<size_t>(index) >= output_tensors_.size()) {
       return nullptr;
@@ -108,6 +115,11 @@ struct OpKernelContext {
 
     output_tensors_[index] = CreateTensorFromApiValue(output);
     return &output_tensors_[index];
+  }
+  Tensor& RequiredOutput(int index, const TensorShape& shape) {
+    auto* output = Output(index, shape);
+    ORT_ENFORCE(output != nullptr, "Required output ", index, " is null");
+    return *output;
   }
   Tensor* Output(int index, const std::vector<int64_t>& shape) {
     return Output(index, TensorShape{shape});
@@ -131,7 +143,6 @@ struct OpKernelContext {
     // TODO(fs-eire): Implement GetUseDeterministicCompute().
     return false;
   }
-
   void* GetGPUComputeStream() const {
     return context_.GetGPUComputeStream();
   }
@@ -146,7 +157,7 @@ struct OpKernelContext {
 };
 
 /// <summary>
-/// A bridge class between `onnxruntime::ep::adapter::OpKernel` and `::OrtKernelImpl`.
+/// A bridge class between `onnxruntime::ep::adapter::OpKernel` and `onnxruntime::OrtKernelImpl`.
 /// </summary>
 struct KernelImpl : OrtKernelImpl {
   explicit KernelImpl(std::unique_ptr<OpKernel> impl)
