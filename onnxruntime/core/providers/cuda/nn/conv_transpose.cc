@@ -24,14 +24,16 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Op Set 11 for ConvTranspose only update document to clarify default dilations and strides value.
-// which are already covered by op set 11 cpu version, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                           \
-      ConvTranspose, DOMAIN, 1, 10, T, kCudaExecutionProvider,                                                       \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), ConvTranspose<T, NHWC>);  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(ConvTranspose, DOMAIN, 11, T, kCudaExecutionProvider,                                \
-                                (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+// ConvTranspose opsets 11-22 share the same CUDA implementation for the currently supported types.
+#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                     \
+      ConvTranspose, DOMAIN, 1, 10, T, kCudaExecutionProvider,                                                                 \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), ConvTranspose<T, NHWC>);            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(ConvTranspose, DOMAIN, 11, 21, T, kCudaExecutionProvider,                            \
+                                          (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+                                          ConvTranspose<T, NHWC>);                                                             \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(ConvTranspose, DOMAIN, 22, T, kCudaExecutionProvider,                                          \
+                                (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),           \
                                 ConvTranspose<T, NHWC>);
 
 REGISTER_KERNEL_TYPED(float, kOnnxDomain, false)

@@ -473,6 +473,38 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
                       {kOpenVINOExecutionProvider, kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("ConvTranspose", 22);
+  test.AddAttribute("kernel_shape", vector<int64_t>{1, 5});
+  test.AddAttribute("group", int64_t{1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("output_shape", vector<int64_t>{1, 1, 1, 14});
+  test.AddAttribute("strides", vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", vector<int64_t>{1, 1});
+
+  vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  vector<int64_t> X_shape = {1, 1, 1, 10};
+  vector<float> W = {1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 1, 1, 5};
+  vector<float> B = {1.0f};
+  vector<int64_t> B_shape = {1};
+  vector<float> expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
+
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W, true);
+  test.AddInput<float>("B", B_shape, B, true);
+  test.AddOutput<float>("Y", {1, 1, 1, 14}, expected_vals);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 5},         // kernel_shape
