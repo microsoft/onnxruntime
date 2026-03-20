@@ -742,8 +742,10 @@ Do not modify directly.*
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[9, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
-|GlobalAveragePool|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(double), tensor(float), tensor(float16)|
-|GlobalMaxPool|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(double), tensor(float), tensor(float16)|
+|GlobalAveragePool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(double), tensor(float), tensor(float16)|
+|||[1, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
+|GlobalMaxPool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(double), tensor(float), tensor(float16)|
+|||[1, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Greater|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
 |||[9, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
@@ -1070,8 +1072,10 @@ Do not modify directly.*
 |DepthToSpace|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
-|GlobalAveragePool|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
-|GlobalMaxPool|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
+|GlobalAveragePool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
+|||[1, 21]|**T** = tensor(float), tensor(float16)|
+|GlobalMaxPool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
+|||[1, 21]|**T** = tensor(float), tensor(float16)|
 |GridSample|*in* X:**T1**<br> *in* grid:**T2**<br> *out* Y:**T1**|22+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
 |||[20, 21]|**T1** = tensor(float)<br/> **T2** = tensor(float)|
 |||[16, 19]|**T1** = tensor(float)<br/> **T2** = tensor(float)|
