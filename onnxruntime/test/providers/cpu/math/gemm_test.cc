@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/run_options.h"
+#include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -1516,29 +1517,19 @@ TEST_P(GemmOptimizePackedTest, TestVariants) {
 // Test parameter generation
 std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
   std::vector<GemmOptimizePackedParams> params;
- 
+
   std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {{1, 1, 1}, {1, 64, 448}, {2, 3, 4}, {8, 8, 8}, {31, 31, 31}, {32, 32, 32}, {33, 67, 99}, {37, 64, 256}, {48, 48, 120}, {60, 16, 92}, {63, 64, 65}, {64, 64, 64}, {64, 64, 65}, {72, 80, 84}, {96, 24, 48}, {128, 32, 64}, {128, 128, 128}, {129, 129, 129}, {256, 64, 1024}, {16, 768, 192}, {15, 768, 192}, {16, 768, 191}};
- 
-  // Invalid/edge-case B matrix dimensions: regression test for out-of-bounds
-  // read in MlasSgemmTransposePackB when GemmPackBFp32 received invalid
-  // dimensions. B is always 2D with shape {K,N} or {N,K} (transposed).
-  // M only affects A, so only K and N variations exercise our fix.
-  std::vector<std::tuple<int64_t, int64_t, int64_t>> invalid_dim_sizes = {
-      {2, 0, 4},                                           // K=0
-      {2, 4, 0},                                           // N=0
-      {0, 4, 4},                                           // M=0 (A is empty)
-      {2, -1, 4},                                          // Negative K
-      {2, 4, -1},                                          // Negative N
-      {2, -1, -1},                                         // Both K and N negative
-      {2, std::numeric_limits<int64_t>::max(), 4},         // Huge K
-      {2, 4, std::numeric_limits<int64_t>::max()},         // Huge N
-      {2, std::numeric_limits<int64_t>::min(), 4},         // INT64_MIN K
-      {2, 4, std::numeric_limits<int64_t>::min()},         // INT64_MIN N
+
+  // Zero-dimension edge cases that can go through OpTester.
+  std::vector<std::tuple<int64_t, int64_t, int64_t>> zero_dim_sizes = {
+      {2, 0, 4},   // K=0
+      {2, 4, 0},   // N=0
+      {0, 4, 4},   // M=0 (A is empty)
   };
- 
+
   std::vector<BiasType>
       bias_types = {BiasType::noBias, BiasType::MBias, BiasType::ScalarBias, BiasType::MNBias, BiasType::NBias};
- 
+
   // Test all four transpose combinations: (transA, transB)
   std::vector<std::pair<bool, bool>> transpose_combinations = {
       {false, false},  // No transpose
@@ -1546,7 +1537,7 @@ std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
       {false, true},   // Transpose B
       {true, true}     // Transpose A and B
   };
- 
+
   // Generate all combinations
   for (const auto& [transA, transB] : transpose_combinations) {
     for (const auto& size : test_sizes) {
@@ -1555,9 +1546,8 @@ std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
                           bias_type, transA, transB});
       }
     }
-    // Invalid dimension tests only with noBias to avoid initialize_bias
-    // trying to allocate based on negative/huge dimension values.
-    for (const auto& size : invalid_dim_sizes) {
+    // Zero-dimension tests only with noBias.
+    for (const auto& size : zero_dim_sizes) {
       params.push_back({std::get<0>(size), std::get<1>(size), std::get<2>(size),
                         BiasType::noBias, transA, transB});
     }
@@ -1572,6 +1562,79 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<GemmOptimizePackedParams>& info) {
       return info.param.ToString();
     });
+
+// Regression test for GemmPackBFp32 with invalid B-matrix dimensions.
+// These shapes cannot go through OpTester (which must construct real tensors),
+// so we call GemmPackBFp32 directly and verify it returns false or throws.
+TEST(GemmOpTest, GemmPackBFp32_InvalidDimensions) {
+  auto allocator = std::make_shared<CPUAllocator>();
+  // A small valid buffer — GemmPackBFp32 should reject the shape before
+  // reading any data, so the actual contents don't matter.
+  float dummy = 0.0f;
+
+  struct InvalidCase {
+    int64_t dim0;
+    int64_t dim1;
+    const char* tag;
+  };
+
+  // Negative dimensions: TensorShape::Size() returns -1, so GemmPackBFp32
+  // hits its b_shape.Size() < 0 guard and returns false.
+  std::vector<InvalidCase> negative_cases = {
+      {-1, 4, "negative K"},
+      {4, -1, "negative N"},
+      {-1, -1, "both negative"},
+      {std::numeric_limits<int64_t>::min(), 4, "INT64_MIN K"},
+      {4, std::numeric_limits<int64_t>::min(), "INT64_MIN N"},
+  };
+
+  for (const auto& [d0, d1, tag] : negative_cases) {
+    Tensor tensor_b(DataTypeImpl::GetType<float>(), TensorShape({d0, d1}),
+                    &dummy, allocator->Info());
+
+    IAllocatorUniquePtr<void> packed_b;
+    size_t packed_b_size = 0;
+    TensorShape b_shape;
+
+    for (bool trans_a : {false, true}) {
+      for (bool trans_b : {false, true}) {
+        AllocatorPtr alloc_ptr = allocator;
+        bool result = GemmPackBFp32(alloc_ptr, tensor_b, trans_a, trans_b,
+                                    packed_b, packed_b_size, b_shape, nullptr);
+        EXPECT_FALSE(result)
+            << "GemmPackBFp32 should return false for " << tag
+            << " (transA=" << trans_a << ", transB=" << trans_b << ")";
+      }
+    }
+  }
+
+  // Overflow dimensions: TensorShape::Size() uses SafeInt which throws on
+  // overflow (e.g. INT64_MAX * 4). Verify GemmPackBFp32 doesn't silently
+  // proceed with corrupted sizes.
+  std::vector<InvalidCase> overflow_cases = {
+      {std::numeric_limits<int64_t>::max(), 4, "huge K"},
+      {4, std::numeric_limits<int64_t>::max(), "huge N"},
+  };
+
+  for (const auto& [d0, d1, tag] : overflow_cases) {
+    Tensor tensor_b(DataTypeImpl::GetType<float>(), TensorShape({d0, d1}),
+                    &dummy, allocator->Info());
+
+    IAllocatorUniquePtr<void> packed_b;
+    size_t packed_b_size = 0;
+    TensorShape b_shape;
+
+    for (bool trans_a : {false, true}) {
+      for (bool trans_b : {false, true}) {
+        AllocatorPtr alloc_ptr = allocator;
+        EXPECT_ANY_THROW(GemmPackBFp32(alloc_ptr, tensor_b, trans_a, trans_b,
+                                       packed_b, packed_b_size, b_shape, nullptr))
+            << "GemmPackBFp32 should throw for " << tag
+            << " (transA=" << trans_a << ", transB=" << trans_b << ")";
+      }
+    }
+  }
+}
 
 #if defined(USE_WEBGPU)
 // Test int32 with M=128, K=128, N=128, transA=True
