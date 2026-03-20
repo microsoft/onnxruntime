@@ -208,11 +208,11 @@ Status BiasSkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int grap
     // because SkipLayerNormalization derives its output shape from input[0] while input[1]
     // supports broadcasting; swapping them would silently change semantics.
     InlinedVector<NodeArg*> new_sln_inputs{
-        sln_inputs[0],                                         // original input[0] (replaced below if needed)
-        sln_inputs[1],                                         // original input[1] (replaced below if needed)
-        sln_inputs[2],                                         // gamma – unchanged
-        sln_inputs[3],                                         // beta – unchanged
-        p_add->MutableInputDefs()[add_bias_index]              // bias (1D constant) – absorbed from Add
+        sln_inputs[0],                             // original input[0] (replaced below if needed)
+        sln_inputs[1],                             // original input[1] (replaced below if needed)
+        sln_inputs[2],                             // gamma – unchanged
+        sln_inputs[3],                             // beta – unchanged
+        p_add->MutableInputDefs()[add_bias_index]  // bias (1D constant) – absorbed from Add
     };
     // Replace only the SLN slot that was connected to the bias-Add.
     new_sln_inputs[sln_add_input_index] = p_add->MutableInputDefs()[add_non_bias_input_index];
