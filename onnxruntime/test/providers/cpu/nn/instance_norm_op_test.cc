@@ -337,5 +337,47 @@ TEST(InstanceNormalizationOpTest, InstanceNormNCHW_webgpu_2) {
 }
 #endif
 
+TEST(InstanceNormalizationOpTest, InstanceNorm_Opset22_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("InstanceNormalization", 22);
+  test.AddAttribute("epsilon", 0.3F);
+
+  vector<float> input = {3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F,
+
+                         3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F};
+  vector<int64_t> input_dims = {2, 3, 4};
+  test.AddInput<float>("input", input_dims, input);
+
+  vector<float> scale = {1.0F, 1.0F, 1.F};
+  vector<int64_t> scale_dims = {3};
+  test.AddInput<float>("scale", scale_dims, scale);
+
+  vector<float> B = {0.0F, 0.0F, 0.F};
+  vector<int64_t> B_dims = {3};
+  test.AddInput<float>("B", B_dims, B);
+
+  vector<float> expected_output = {-0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F,
+
+                                   -0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
+
+  test.AddOutput<float>("Y", input_dims, expected_output);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
