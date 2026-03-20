@@ -335,6 +335,24 @@ static void TeamsModel(benchmark::internal::Benchmark* b) {
 BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 
+static void NchwcInteriorVsPadded(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  // These shapes are intended to exercise the NCHWC direct-convolution path on
+  // ARM builds where MLAS selects it. The paired no-pad/pad=1 cases make it
+  // easy to compare fully-interior rows against rows that require edge peeling.
+  // Rank, N, G, Cpg, Fpg,  I,  I,  K, K, P, P, P, P, S, S, D, D
+  b->Args({2, 1, 1, 16, 16, 56, 56, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1});
+  b->Args({2, 1, 1, 16, 16, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+  b->Args({2, 1, 1, 16, 32, 56, 56, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1});
+  b->Args({2, 1, 1, 16, 32, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+  b->Args({2, 1, 1, 16, 32, 112, 112, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+  b->Args({2, 1, 1, 16, 32, 28, 28, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+}
+
+BENCHMARK_CAPTURE(SCONV_NCHW, NchwcInteriorVsPadded, "")->Apply(NchwcInteriorVsPadded)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, NchwcInteriorVsPadded, "")->Apply(NchwcInteriorVsPadded)->UseRealTime();
+
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
   b->ArgsProduct(
