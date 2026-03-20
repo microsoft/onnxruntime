@@ -238,7 +238,12 @@ class WebGpuContext final {
   }
 
   void StartProfiling();
+  // Run-level profiling: collect GPU events into shared events_ vector.
+  void CollectProfilingData();
+  // Session-level profiling: collect GPU events into per-session storage keyed by profiler pointer.
   void CollectProfilingData(const void* profiler_key);
+  // End profiling and drain GPU events. If profiler_key has per-session events,
+  // drain those (session-level); otherwise drain shared events_ (run-level).
   void EndProfiling(TimePoint, profiling::Events& events, const void* profiler_key);
 
   //
@@ -302,6 +307,7 @@ class WebGpuContext final {
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
   wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
+  void CollectProfilingDataImpl(profiling::Events& events);
 
   struct PendingQueryInfo {
     PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
@@ -356,7 +362,9 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
-  // GPU profiling events, keyed by profiler pointer for per-session isolation.
+  // Shared GPU profiling events for run-level profiling (no session key).
+  profiling::Events events_;
+  // Per-session GPU profiling events for session-level profiling.
   // When multiple sessions share a WebGpuContext, each session's events are
   // stored separately so EndProfiling returns only that session's GPU events.
   std::unordered_map<const void*, profiling::Events> per_session_events_;

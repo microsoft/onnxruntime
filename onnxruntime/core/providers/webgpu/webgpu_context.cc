@@ -625,10 +625,8 @@ void WebGpuContext::StartProfiling() {
   }
 }
 
-void WebGpuContext::CollectProfilingData(const void* profiler_key) {
-  ORT_ENFORCE(profiler_key != nullptr, "profiler_key must be non-null when collecting profiling data.");
+void WebGpuContext::CollectProfilingDataImpl(profiling::Events& events) {
   if (!pending_queries_.empty()) {
-    auto& events = per_session_events_[profiler_key];
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
       const auto& query_read_buffer = pending_query.query_buffer;
@@ -687,6 +685,19 @@ void WebGpuContext::CollectProfilingData(const void* profiler_key) {
   is_profiling_ = false;
 }
 
+// Session-level profiling: collect GPU events keyed by profiler pointer.
+void WebGpuContext::CollectProfilingData(const void* profiler_key) {
+  ORT_ENFORCE(profiler_key != nullptr, "profiler_key must be non-null when collecting profiling data.");
+  CollectProfilingDataImpl(per_session_events_[profiler_key]);
+}
+
+// Run-level profiling: collect GPU events into shared events_ vector.
+void WebGpuContext::CollectProfilingData() {
+  CollectProfilingDataImpl(events_);
+}
+
+// End profiling: if profiler_key has per-session events, drain those (session-level);
+// otherwise drain shared events_ (run-level).
 void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, const void* profiler_key) {
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
@@ -698,10 +709,17 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
 
     auto it = per_session_events_.find(profiler_key);
     if (it != per_session_events_.end()) {
+      // Session-level profiling: drain per-session events.
       events.insert(events.end(),
                     std::make_move_iterator(it->second.begin()),
                     std::make_move_iterator(it->second.end()));
       per_session_events_.erase(it);
+    } else {
+      // Run-level profiling: drain shared events.
+      events.insert(events.end(),
+                    std::make_move_iterator(events_.begin()),
+                    std::make_move_iterator(events_.end()));
+      events_.clear();
     }
   } else {
     LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
