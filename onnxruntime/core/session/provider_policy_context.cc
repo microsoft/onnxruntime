@@ -301,7 +301,7 @@ Status ProviderPolicyContext::CreateExecutionProviders(const Environment& env, I
 }
 
 Status ProviderPolicyContext::SelectEpsForModelPackage(const Environment& env,
-                                                       const OrtSessionOptions& options,
+                                                       OrtSessionOptions& options,
                                                        OrtKeyValuePairs& model_metadata,
                                                        std::vector<const OrtEpDevice*>& execution_devices,
                                                        std::vector<const OrtEpDevice*>& devices_selected,
@@ -312,6 +312,10 @@ Status ProviderPolicyContext::SelectEpsForModelPackage(const Environment& env,
   execution_devices = OrderDevices(env.GetOrtEpDevices());
 
   ORT_RETURN_IF_ERROR(SelectEpDevices(execution_devices, options, model_metadata, devices_selected));
+
+  // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
+  // EP options that have not been overridden by the user.
+  ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(options.value, devices_selected));
 
   // Remove the ORT CPU EP if configured to do so
   bool disable_ort_cpu_ep = options.value.config_options.GetConfigEntry(kOrtSessionOptionsDisableCPUEPFallback) == "1";
@@ -358,7 +362,7 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
 
   // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
   // EP options that have not been overridden by the user.
-  ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(sess, devices_selected));
+  ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(sess.GetMutableSessionOptions(), devices_selected));
 
   // Create OrtSessionOptions for the CreateEp call.
   // Once the InferenceSession is created, its SessionOptions is the source of truth and contains all the values from
@@ -445,9 +449,9 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
   return Status::OK();
 }
 
-Status ProviderPolicyContext::AddEpDefaultOptionsToSession(InferenceSession& sess,
+Status ProviderPolicyContext::AddEpDefaultOptionsToSession(SessionOptions& sess_options,
                                                            std::vector<const OrtEpDevice*> devices) {
-  auto& config_options = sess.GetMutableSessionOptions().config_options;
+  auto& config_options = sess_options.config_options;
   for (auto device : devices) {
     const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(device->ep_name.c_str());
     for (const auto& [key, value] : device->ep_options.Entries()) {
