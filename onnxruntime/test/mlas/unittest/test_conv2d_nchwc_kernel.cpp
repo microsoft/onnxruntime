@@ -6,6 +6,7 @@
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
 
 #include <algorithm>
+#include <cstdio>
 
 #include "../../../core/mlas/lib/mlasi.h"
 #include "../../../core/mlas/lib/sconv_nchwc_kernel_neon.h"
@@ -219,6 +220,14 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                    KernelFlags);
 
   #if !defined(_WIN32)
+    std::fprintf(stderr,
+                 "Calling asm OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 OutputCount,
+                 KernelHeight,
+                 KernelWidth,
+                 KernelFlags);
+    std::fflush(stderr);
+
     MlasConvNchwcFloatKernelNeonAsm(Input,
                     Filter,
                     OutputAsm,
@@ -238,6 +247,14 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     0,
                     Bias,
                     KernelFlags);
+
+            std::fprintf(stderr,
+                   "Completed asm OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                   OutputCount,
+                   KernelHeight,
+                   KernelWidth,
+                   KernelFlags);
+            std::fflush(stderr);
   #endif
 
     AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", OutputCount, KernelHeight, KernelWidth, KernelFlags);
