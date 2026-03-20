@@ -510,7 +510,7 @@ Abstract:
         ldr     x10,[sp,#.KO_KernelWidth]
     1:      mov     x25,x21
         mov     x11,x10
-    2:      prfm    pldl1keep,[x28,#192]
+    2:
         ldp     q20,q21,[x25]
         ldp     q22,q23,[x25,#32]
         FMLA_ROW v20,0
@@ -552,7 +552,7 @@ Abstract:
     1:      mov     x25,x21
         mov     x26,x22
         mov     x11,x10
-    2:      prfm    pldl1keep,[x28,#192]
+    2:
         ldp     q16,q17,[x25]
         ldp     q18,q19,[x25,#32]
         ldp     q20,q21,[x26]
