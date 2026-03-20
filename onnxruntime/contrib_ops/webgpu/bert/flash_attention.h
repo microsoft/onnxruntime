@@ -96,7 +96,6 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
     // element_size = 2 for f16, 4 for f32.
     const int element_size = is_fp16 ? 2 : 4;
     const int shm_budget = 16384;
-    // max_k_step from SHM: shm_budget / (2 * element_size * head_size)
     int max_k_from_shm = shm_budget / (2 * element_size * qkv_head_size);
     // Clamp to power of 2 and reasonable range [16, 128]
     if (max_k_from_shm >= 128) {
