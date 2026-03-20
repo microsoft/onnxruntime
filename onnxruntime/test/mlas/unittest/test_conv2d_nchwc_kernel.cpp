@@ -39,51 +39,61 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                               size_t KernelWidth,
                               size_t InputWidth,
                               size_t DilatedInputWidth,
+                              size_t FilterCount,
+                              size_t OutputStride,
                               size_t OutputCount,
                               const float* Bias,
                               unsigned KernelFlags) {
     const size_t stride_width_elements = StrideWidth / sizeof(float);
     const size_t dilation_width_elements = DilationWidth / sizeof(float);
     const size_t dilated_input_width_elements = DilatedInputWidth / sizeof(float);
+    const size_t output_stride_elements = OutputStride / sizeof(float);
+    const size_t filter_stride_elements = KernelHeight * KernelWidth * BlockSize * BlockSize;
 
-    for (size_t output_idx = 0; output_idx < OutputCount; ++output_idx) {
-      float accumulator[BlockSize]{};
+    for (size_t filter_set = 0; filter_set < FilterCount; ++filter_set) {
+      const float* filter_block = Filter + filter_set * filter_stride_elements;
+      float* output_block_base = Output + filter_set * output_stride_elements;
+      const float* bias_block = Bias + filter_set * BlockSize;
 
-      for (size_t kh = 0; kh < KernelHeight; ++kh) {
-        for (size_t kw = 0; kw < KernelWidth; ++kw) {
-          const float* input_base = Input + output_idx * stride_width_elements +
-                                    kh * dilated_input_width_elements +
-                                    kw * dilation_width_elements;
-          const size_t kernel_base_pos = kh * (KernelWidth * BlockSize * BlockSize) +
-                                         kw * (BlockSize * BlockSize);
+      for (size_t output_idx = 0; output_idx < OutputCount; ++output_idx) {
+        float accumulator[BlockSize]{};
 
-          for (size_t input_lane = 0; input_lane < BlockSize; ++input_lane) {
-            const float input_value = input_base[input_lane];
-            const float* filter_row = Filter + kernel_base_pos + input_lane * BlockSize;
+        for (size_t kh = 0; kh < KernelHeight; ++kh) {
+          for (size_t kw = 0; kw < KernelWidth; ++kw) {
+            const float* input_base = Input + output_idx * stride_width_elements +
+                                      kh * dilated_input_width_elements +
+                                      kw * dilation_width_elements;
+            const size_t kernel_base_pos = kh * (KernelWidth * BlockSize * BlockSize) +
+                                           kw * (BlockSize * BlockSize);
 
-            for (size_t output_lane = 0; output_lane < BlockSize; ++output_lane) {
-              accumulator[output_lane] += input_value * filter_row[output_lane];
+            for (size_t input_lane = 0; input_lane < BlockSize; ++input_lane) {
+              const float input_value = input_base[input_lane];
+              const float* filter_row = filter_block + kernel_base_pos + input_lane * BlockSize;
+
+              for (size_t output_lane = 0; output_lane < BlockSize; ++output_lane) {
+                accumulator[output_lane] += input_value * filter_row[output_lane];
+              }
             }
           }
         }
-      }
 
-      float* output_block = Output + output_idx * BlockSize;
+        float* output_block = output_block_base + output_idx * BlockSize;
 
-      for (size_t output_lane = 0; output_lane < BlockSize; ++output_lane) {
-        float value = accumulator[output_lane];
+        for (size_t output_lane = 0; output_lane < BlockSize; ++output_lane) {
+          float value = accumulator[output_lane];
 
-        if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0) {
-          value += output_block[output_lane];
+          if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0) {
+            value += output_block[output_lane];
+          }
+          if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0) {
+            value += bias_block[output_lane];
+          }
+          if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0) {
+            value = std::max(value, 0.0f);
+          }
+
+          output_block[output_lane] = value;
         }
-        if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0) {
-          value += Bias[output_lane];
-        }
-        if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0) {
-          value = std::max(value, 0.0f);
-        }
-
-        output_block[output_lane] = value;
       }
     }
 
@@ -95,6 +105,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                    size_t count,
                    const char* actual_label,
                    const char* expected_label,
+                   size_t FilterCount,
                    size_t OutputCount,
                    size_t KernelHeight,
                    size_t KernelWidth,
@@ -105,6 +116,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
           << " @" << i
           << " got=" << actual[i]
           << " expected=" << expected[i]
+          << " FilterCount=" << FilterCount
           << " OutputCount=" << OutputCount
           << "/KH=" << KernelHeight
           << "/KW=" << KernelWidth
@@ -115,9 +127,11 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
   void TestKernel(size_t OutputCount,
                   size_t KernelHeight,
                   size_t KernelWidth,
-                  unsigned KernelFlags) {
+                  unsigned KernelFlags,
+                  size_t FilterCount = 1) {
     std::fprintf(stderr,
-                 "Start case OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Start case FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
                  OutputCount,
                  KernelHeight,
                  KernelWidth,
@@ -126,9 +140,11 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
 
     const size_t InputWidth = OutputCount + KernelWidth - 1;
     const size_t InputElements = KernelHeight * InputWidth * BlockSize;
-    const size_t FilterElements = KernelHeight * KernelWidth * BlockSize * BlockSize;
-    const size_t OutputElements = OutputCount * BlockSize;
-    const size_t BiasElements = BlockSize;
+    const size_t FilterElementsPerBlock = KernelHeight * KernelWidth * BlockSize * BlockSize;
+    const size_t FilterElements = FilterCount * FilterElementsPerBlock;
+    const size_t OutputStrideElements = OutputCount * BlockSize;
+    const size_t OutputElements = FilterCount * OutputStrideElements;
+    const size_t BiasElements = FilterCount * BlockSize;
 
     float* Input = BufferInput.GetFilledBuffer(InputElements, [](float* start, size_t count) {
       FillBuffer(start, count, [](size_t i) {
@@ -171,8 +187,8 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     const size_t InputWidthBytes = BlockSize * InputWidth * sizeof(float);
     const size_t DilatedInputWidthBytes = InputWidthBytes;
     const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
-    const size_t FilterStrideBytes = FilterElements * sizeof(float);
-    const size_t OutputStrideBytes = OutputCount * BlockSize * sizeof(float);
+    const size_t FilterStrideBytes = FilterElementsPerBlock * sizeof(float);
+    const size_t OutputStrideBytes = OutputStrideElements * sizeof(float);
 
     ReferenceKernel(Input,
                     Filter,
@@ -183,24 +199,27 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     KernelWidth,
                     InputWidthBytes,
                     DilatedInputWidthBytes,
+                        FilterCount,
+                        OutputStrideBytes,
                     OutputCount,
                     Bias,
                     KernelFlags);
 
-            std::fprintf(stderr,
-                   "Completed reference OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                   OutputCount,
-                   KernelHeight,
-                   KernelWidth,
-                   KernelFlags);
-            std::fflush(stderr);
+                    std::fprintf(stderr,
+                     "Completed reference FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                     FilterCount,
+                     OutputCount,
+                     KernelHeight,
+                     KernelWidth,
+                     KernelFlags);
+                    std::fflush(stderr);
 
     MlasConvNchwcFloatKernelNeonCpp(Input,
                     Filter,
                     OutputCpp,
                     StrideWidthBytes,
                     DilationWidthBytes,
-                    1,
+                        FilterCount,
                     InputStrideBytes,
                     FilterStrideBytes,
                     OutputStrideBytes,
@@ -215,20 +234,21 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     Bias,
                     KernelFlags);
 
-            std::fprintf(stderr,
-                   "Completed cpp OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                   OutputCount,
-                   KernelHeight,
-                   KernelWidth,
-                   KernelFlags);
-            std::fflush(stderr);
+                    std::fprintf(stderr,
+                     "Completed cpp FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                     FilterCount,
+                     OutputCount,
+                     KernelHeight,
+                     KernelWidth,
+                     KernelFlags);
+                    std::fflush(stderr);
 
     MlasConvNchwcFloatKernelNeon(Input,
                    Filter,
                    Output,
                    StrideWidthBytes,
                    DilationWidthBytes,
-                   1,
+                       FilterCount,
                    InputStrideBytes,
                    FilterStrideBytes,
                    OutputStrideBytes,
@@ -244,7 +264,8 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                    KernelFlags);
 
     std::fprintf(stderr,
-                 "Completed wrapper OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed wrapper FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
                  OutputCount,
                  KernelHeight,
                  KernelWidth,
@@ -253,7 +274,8 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
 
   #if !defined(_WIN32)
     std::fprintf(stderr,
-                 "Calling asm OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Calling asm FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
                  OutputCount,
                  KernelHeight,
                  KernelWidth,
@@ -265,7 +287,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     OutputAsm,
                     StrideWidthBytes,
                     DilationWidthBytes,
-                    1,
+                    FilterCount,
                     InputStrideBytes,
                     FilterStrideBytes,
                     OutputStrideBytes,
@@ -281,7 +303,8 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                     KernelFlags);
 
     std::fprintf(stderr,
-                 "Completed asm OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed asm FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
                  OutputCount,
                  KernelHeight,
                  KernelWidth,
@@ -289,26 +312,29 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     std::fflush(stderr);
   #endif
 
-    AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", FilterCount, OutputCount, KernelHeight, KernelWidth, KernelFlags);
     std::fprintf(stderr,
-                 "Completed cpp-vs-reference OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed cpp-vs-reference FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
                  OutputCount,
                  KernelHeight,
                  KernelWidth,
                  KernelFlags);
     std::fflush(stderr);
-    AssertClose(Output, OutputCpp, OutputElements, "wrapper", "cpp", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    AssertClose(Output, OutputCpp, OutputElements, "wrapper", "cpp", FilterCount, OutputCount, KernelHeight, KernelWidth, KernelFlags);
     std::fprintf(stderr,
-                 "Completed wrapper-vs-cpp OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed wrapper-vs-cpp FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
                  OutputCount,
                  KernelHeight,
                  KernelWidth,
                  KernelFlags);
     std::fflush(stderr);
   #if !defined(_WIN32)
-    AssertClose(OutputAsm, OutputCpp, OutputElements, "asm", "cpp", OutputCount, KernelHeight, KernelWidth, KernelFlags);
+    AssertClose(OutputAsm, OutputCpp, OutputElements, "asm", "cpp", FilterCount, OutputCount, KernelHeight, KernelWidth, KernelFlags);
     std::fprintf(stderr,
-                 "Completed asm-vs-cpp OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 "Completed asm-vs-cpp FilterCount=%zu/OutputCount=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                 FilterCount,
                  OutputCount,
                  KernelHeight,
                  KernelWidth,
@@ -328,7 +354,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
       return;
     }
 
-    // TestKernel(OutputCount, KernelHeight, KernelWidth, KernelFlags)
+    // TestKernel(OutputCount, KernelHeight, KernelWidth, KernelFlags, FilterCount)
 
     // Single-output microkernel coverage.
     TestKernel(1, 1, 1, 0);
@@ -360,6 +386,24 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     TestKernel(3, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
                            MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
                            MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION);
+
+    // FC2 single-output coverage.
+    TestKernel(1, 1, 1, 0, 2);
+    TestKernel(1, 1, 1, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 2);
+    TestKernel(1, 3, 3, 0, 2);
+    TestKernel(1, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 2);
+
+    // FC2 two-output fast path.
+    TestKernel(2, 1, 1, 0, 2);
+    TestKernel(2, 1, 1, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 2);
+    TestKernel(2, 3, 3, 0, 2);
+    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
+                 MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
+                 MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION, 2);
+
+    // FC2 tail coverage: two-output fast path followed by one-output tail.
+    TestKernel(3, 3, 3, 0, 2);
+    TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 2);
   }
 };
 

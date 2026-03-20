@@ -313,9 +313,10 @@ void
     )
 {
 #if !defined(_WIN32)
-    // The current asm path covers the interior no-padding case for a single
-    // filter block. Padding and multi-filter cases still fall back to C++.
-    if (FilterCount == 1 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
+    // The current asm path covers the interior no-padding case for up to two
+    // filter blocks. Padding and larger filter-count cases still fall back to
+    // C++.
+    if (FilterCount <= 2 && OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
         MlasConvNchwcFloatKernelNeonAsm(
             Input,
             Filter,

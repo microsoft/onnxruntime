@@ -508,6 +508,44 @@ Abstract:
         fmla    v7.4s,v27.4s,\AReg1\().s[\Lane1]
         .endm
 
+        // Consume one 16x16 weight row for two filter blocks and accumulate it
+        // into one output position.
+        .macro FMLA_ROW_FC2 AReg, Lane
+        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x28],#64
+        fmla    v0.4s,v24.4s,\AReg\().s[\Lane]
+        fmla    v1.4s,v25.4s,\AReg\().s[\Lane]
+        fmla    v2.4s,v26.4s,\AReg\().s[\Lane]
+        fmla    v3.4s,v27.4s,\AReg\().s[\Lane]
+        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x19],#64
+        fmla    v4.4s,v24.4s,\AReg\().s[\Lane]
+        fmla    v5.4s,v25.4s,\AReg\().s[\Lane]
+        fmla    v6.4s,v26.4s,\AReg\().s[\Lane]
+        fmla    v7.4s,v27.4s,\AReg\().s[\Lane]
+        .endm
+
+        // Consume one 16x16 weight row for two filter blocks and accumulate it
+        // into two output positions.
+        .macro FMLA_ROW2_FC2 AReg0, Lane0, AReg1, Lane1
+        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x28],#64
+        fmla    v0.4s,v24.4s,\AReg0\().s[\Lane0]
+        fmla    v1.4s,v25.4s,\AReg0\().s[\Lane0]
+        fmla    v2.4s,v26.4s,\AReg0\().s[\Lane0]
+        fmla    v3.4s,v27.4s,\AReg0\().s[\Lane0]
+        fmla    v4.4s,v24.4s,\AReg1\().s[\Lane1]
+        fmla    v5.4s,v25.4s,\AReg1\().s[\Lane1]
+        fmla    v6.4s,v26.4s,\AReg1\().s[\Lane1]
+        fmla    v7.4s,v27.4s,\AReg1\().s[\Lane1]
+        ld1     {v24.4s,v25.4s,v26.4s,v27.4s},[x19],#64
+        fmla    v8.4s,v24.4s,\AReg0\().s[\Lane0]
+        fmla    v9.4s,v25.4s,\AReg0\().s[\Lane0]
+        fmla    v10.4s,v26.4s,\AReg0\().s[\Lane0]
+        fmla    v11.4s,v27.4s,\AReg0\().s[\Lane0]
+        fmla    v12.4s,v24.4s,\AReg1\().s[\Lane1]
+        fmla    v13.4s,v25.4s,\AReg1\().s[\Lane1]
+        fmla    v14.4s,v26.4s,\AReg1\().s[\Lane1]
+        fmla    v15.4s,v27.4s,\AReg1\().s[\Lane1]
+        .endm
+
         // Compute one output position for the interior no-padding case. The
         // outer loop walks kernel rows, the inner loop walks kernel columns,
         // and each iteration multiplies one 16-lane input block by one 16x16
@@ -547,6 +585,46 @@ Abstract:
         subs    x9,x9,#1
         b.ne    1b
     3:      POSTPROCESS_STORE_1OUTPUT_NFILTERS 1
+        .endm
+
+        // Compute one output position for two filter blocks in the interior
+        // no-padding case.
+        .macro CONV_NCHWC_FC2_1OUTPUT_NOPAD
+        CLEAR_ACCUM 2
+        mov     x28,x1
+        add     x19,x1,x7
+        mov     x21,x0
+        ldr     x9,[sp,#.KO_KernelHeight]
+        cbz     x9,3f
+        ldr     x10,[sp,#.KO_KernelWidth]
+    1:  mov     x25,x21
+        mov     x11,x10
+    2:
+        ldp     q20,q21,[x25]
+        ldp     q22,q23,[x25,#32]
+        FMLA_ROW_FC2 v20,0
+        FMLA_ROW_FC2 v20,1
+        FMLA_ROW_FC2 v20,2
+        FMLA_ROW_FC2 v20,3
+        FMLA_ROW_FC2 v21,0
+        FMLA_ROW_FC2 v21,1
+        FMLA_ROW_FC2 v21,2
+        FMLA_ROW_FC2 v21,3
+        FMLA_ROW_FC2 v22,0
+        FMLA_ROW_FC2 v22,1
+        FMLA_ROW_FC2 v22,2
+        FMLA_ROW_FC2 v22,3
+        FMLA_ROW_FC2 v23,0
+        FMLA_ROW_FC2 v23,1
+        FMLA_ROW_FC2 v23,2
+        FMLA_ROW_FC2 v23,3
+        add     x25,x25,x4
+        subs    x11,x11,#1
+        b.ne    2b
+        add     x21,x25,x6
+        subs    x9,x9,#1
+        b.ne    1b
+    3:  POSTPROCESS_STORE_1OUTPUT_NFILTERS 2
         .endm
 
         // Compute two adjacent output positions together for the interior
@@ -596,6 +674,52 @@ Abstract:
     3:      POSTPROCESS_STORE_2OUTPUTS_FC1_NOPAD
         .endm
 
+        // Compute two adjacent output positions together for two filter blocks
+        // in the interior no-padding case.
+        .macro CONV_NCHWC_FC2_2OUTPUTS_NOPAD
+        CLEAR_ACCUM2 2
+        mov     x28,x1
+        add     x19,x1,x7
+        mov     x21,x0
+        add     x22,x0,x3
+        ldr     x9,[sp,#.KO_KernelHeight]
+        cbz     x9,3f
+        ldr     x10,[sp,#.KO_KernelWidth]
+    1:  mov     x25,x21
+        mov     x26,x22
+        mov     x11,x10
+    2:
+        ldp     q16,q17,[x25]
+        ldp     q18,q19,[x25,#32]
+        ldp     q20,q21,[x26]
+        ldp     q22,q23,[x26,#32]
+        FMLA_ROW2_FC2 v16,0,v20,0
+        FMLA_ROW2_FC2 v16,1,v20,1
+        FMLA_ROW2_FC2 v16,2,v20,2
+        FMLA_ROW2_FC2 v16,3,v20,3
+        FMLA_ROW2_FC2 v17,0,v21,0
+        FMLA_ROW2_FC2 v17,1,v21,1
+        FMLA_ROW2_FC2 v17,2,v21,2
+        FMLA_ROW2_FC2 v17,3,v21,3
+        FMLA_ROW2_FC2 v18,0,v22,0
+        FMLA_ROW2_FC2 v18,1,v22,1
+        FMLA_ROW2_FC2 v18,2,v22,2
+        FMLA_ROW2_FC2 v18,3,v22,3
+        FMLA_ROW2_FC2 v19,0,v23,0
+        FMLA_ROW2_FC2 v19,1,v23,1
+        FMLA_ROW2_FC2 v19,2,v23,2
+        FMLA_ROW2_FC2 v19,3,v23,3
+        add     x25,x25,x4
+        add     x26,x26,x4
+        subs    x11,x11,#1
+        b.ne    2b
+        add     x21,x25,x6
+        add     x22,x26,x6
+        subs    x9,x9,#1
+        b.ne    1b
+    3:  POSTPROCESS_STORE_2OUTPUTS_FC2_NOPAD
+        .endm
+
         // Restore the nonvolatile general-purpose and vector registers and
         // return to the C++ caller.
         .macro RESTORE_NONVOLATILE_AND_RETURN
@@ -637,7 +761,7 @@ Abstract:
         str     x30,[sp,#.LFrame_LrSaved]
 
         // Load the parameters needed by the current bring-up implementation.
-        // This entry currently supports only FilterCount == 1 and the interior
+        // This entry currently supports FilterCount <= 2 in the interior
         // region with no left or right padding.
         ldr     x1,[sp,#.LFrame_FilterBaseSaved]
         ldr     x2,[sp,#.LFrame_OutputBaseSaved]
@@ -651,7 +775,11 @@ Abstract:
         eor     v31.16b,v31.16b,v31.16b
 
         cmp     x5,#1
+        b.eq    .LFilterCountSupported
+        cmp     x5,#2
         b.ne    .LKernelExit
+
+    .LFilterCountSupported:
         cbnz    x14,.LKernelExit
         cbnz    x16,.LKernelExit
         cbz     x15,.LKernelExit
@@ -668,7 +796,15 @@ Abstract:
         madd    x0,x20,x3,x21
         lsl     x23,x20,#6
         add     x27,x2,x23
+        cmp     x5,#1
+        b.eq    .LNoPad2FC1
+        CONV_NCHWC_FC2_2OUTPUTS_NOPAD
+        b       .LNoPad2Done
+
+    .LNoPad2FC1:
         CONV_NCHWC_FC1_2OUTPUTS_NOPAD
+
+    .LNoPad2Done:
         add     x20,x20,#2
         cmp     x20,x15
         blo     .LNoPadLoop1
@@ -679,7 +815,15 @@ Abstract:
         madd    x0,x20,x3,x21
         lsl     x23,x20,#6
         add     x27,x2,x23
+        cmp     x5,#1
+        b.eq    .LNoPad1FC1
+        CONV_NCHWC_FC2_1OUTPUT_NOPAD
+        b       .LNoPad1Done
+
+    .LNoPad1FC1:
         CONV_NCHWC_FC1_1OUTPUT_NOPAD
+
+    .LNoPad1Done:
         add     x20,x20,#1
         cmp     x20,x15
         blo     .LNoPadLoop1
