@@ -287,6 +287,33 @@ void addOrtValueMethods(pybind11::module& m) {
         return OrtValueFromShapeAndType(shape, element_type, device);
       })
 
+      // Factory method to create an OrtValue (Tensor) wrapping pre-allocated memory described by OrtMemoryInfo.
+      // The caller is responsible for keeping the memory alive while the OrtValue is in use.
+      .def_static("ortvalue_from_memory_info", [](const OrtMemoryInfo& mem_info, uintptr_t data_ptr,
+                                                   py::object& element_type,
+                                                   const std::vector<int64_t>& shape) -> std::unique_ptr<OrtValue> {
+        ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+
+        MLDataType ml_type;
+        if (py::isinstance<py::int_>(element_type)) {
+          // ONNX element type integer
+          int32_t onnx_element_type = element_type.cast<int32_t>();
+          ml_type = OnnxTypeToOnnxRuntimeTensorType(onnx_element_type);
+        } else {
+          // numpy dtype
+          PyArray_Descr* dtype;
+          if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
+            throw std::runtime_error("Not a valid numpy type");
+          }
+          int type_num = dtype->type_num;
+          Py_DECREF(dtype);
+          ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
+        }
+
+        auto ml_value = std::make_unique<OrtValue>();
+        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), mem_info, *ml_value);
+        return ml_value;
+      })
 #if !defined(DISABLE_SPARSE_TENSORS)
       .def_static("ort_value_from_sparse_tensor", [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
         return py_sparse_tensor->AsOrtValue();

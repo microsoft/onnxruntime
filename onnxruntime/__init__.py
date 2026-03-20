@@ -85,6 +85,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     OrtDevice,  # noqa: F401
     OrtDeviceVendorId,  # noqa: F401
     OrtValue,  # noqa: F401
+    SessionAllocator,  # noqa: F401
     SparseTensor,  # noqa: F401
     copy_tensors,  # noqa: F401
 )

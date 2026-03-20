@@ -2940,7 +2940,30 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_UNUSED_PARAMETER(error_on_invalid);
         ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
 #endif
-      });
+      })
+      .def("get_allocator", [](PyInferenceSession* sess, const OrtMemoryInfo& mem_info) -> AllocatorPtr {
+        auto allocator = sess->GetSessionHandle()->GetAllocator(mem_info);
+        if (!allocator) {
+          throw std::runtime_error("No allocator available for the specified memory info");
+        }
+        return allocator;
+      },
+           R"pbdoc(Get an allocator from the session for the given OrtMemoryInfo.)pbdoc");
+
+  py::class_<IAllocator, AllocatorPtr>(m, "SessionAllocator")
+      .def("alloc", [](IAllocator* allocator, size_t size) -> uintptr_t {
+        void* p = allocator->Alloc(size);
+        return reinterpret_cast<uintptr_t>(p);
+      },
+           R"pbdoc(Allocate memory of the given size in bytes. Returns a memory pointer as an integer.)pbdoc")
+      .def("free", [](IAllocator* allocator, uintptr_t p) {
+        allocator->Free(reinterpret_cast<void*>(p));
+      },
+           R"pbdoc(Free memory previously allocated by this allocator.)pbdoc")
+      .def("memory_info", [](const IAllocator* allocator) -> const OrtMemoryInfo& {
+        return allocator->Info();
+      }, py::return_value_policy::reference_internal,
+           R"pbdoc(Returns the OrtMemoryInfo for this allocator.)pbdoc");
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)

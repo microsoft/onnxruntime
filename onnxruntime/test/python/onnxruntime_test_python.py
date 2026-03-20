@@ -1699,6 +1699,153 @@ class TestInferenceSession(unittest.TestCase):
                 providers=onnxrt.get_available_providers(),
             )
 
+    def test_get_session_allocator_cpu(self):
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+
+        cpu_mem_info = onnxrt.OrtMemoryInfo(
+            "Cpu",
+            onnxrt.OrtAllocatorType.ORT_DEVICE_ALLOCATOR,
+            0,
+            onnxrt.OrtMemType.DEFAULT,
+        )
+
+        allocator = sess.get_allocator(cpu_mem_info)
+        self.assertIsNotNone(allocator)
+        self.assertEqual(allocator.memory_info.name, "Cpu")
+
+        # Allocate and free memory
+        ptr = allocator.alloc(1024)
+        self.assertNotEqual(ptr, 0)
+        allocator.free(ptr)
+
+    def test_get_session_allocator_ortvalue(self):
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+
+        cpu_mem_info = onnxrt.OrtMemoryInfo(
+            "Cpu",
+            onnxrt.OrtAllocatorType.ORT_DEVICE_ALLOCATOR,
+            0,
+            onnxrt.OrtMemType.DEFAULT,
+        )
+
+        allocator = sess.get_allocator(cpu_mem_info)
+
+        # Allocate memory for input tensor (shape {3, 2}, float32)
+        num_elements = 3 * 2
+        element_size = np.dtype(np.float32).itemsize
+        ptr = allocator.alloc(num_elements * element_size)
+        self.assertNotEqual(ptr, 0)
+
+        # Copy data into allocated memory
+        x_values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], dtype=np.float32)
+        ctypes.memmove(ptr, x_values.ctypes.data, x_values.nbytes)
+
+        # Create OrtValue wrapping the allocated memory
+        ortvalue = onnxrt.OrtValue.ortvalue_from_memory_info(
+            cpu_mem_info, ptr, np.float32, [3, 2]
+        )
+        self.assertTrue(ortvalue.is_tensor())
+        self.assertEqual(ortvalue.shape(), [3, 2])
+        self.assertEqual(ortvalue.data_ptr(), ptr)
+
+        # Use with IOBinding
+        io_binding = sess.io_binding()
+        io_binding.bind_ortvalue_input("X", ortvalue)
+        io_binding.bind_output("Y", "cpu")
+        sess.run_with_iobinding(io_binding)
+
+        output = io_binding.copy_outputs_to_cpu()[0]
+        expected_y = np.array([1.0, 4.0, 9.0, 16.0, 25.0, 36.0], dtype=np.float32).reshape(3, 2)
+        np.testing.assert_allclose(output, expected_y)
+
+        allocator.free(ptr)
+
+    def test_get_session_allocator_qnn_htp_shared(self):
+        providers = onnxrt.get_available_providers()
+        if "QNNExecutionProvider" not in providers:
+            self.skipTest("QNNExecutionProvider not available")
+
+        import platform as pf
+        machine = pf.machine().lower()
+        use_htp = machine in ("aarch64", "arm64")
+        backend_path = "QnnHtp.dll" if sys.platform == "win32" else "libQnnHtp.so"
+        if not use_htp:
+            backend_path = "QnnCpu.dll" if sys.platform == "win32" else "libQnnCpu.so"
+
+        so = onnxrt.SessionOptions()
+        try:
+            sess = onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so,
+                providers=[
+                    (
+                        "QNNExecutionProvider",
+                        {
+                            "backend_path": backend_path,
+                            "enable_htp_shared_memory_allocator": "1",
+                        },
+                    )
+                ],
+            )
+        except Exception:
+            self.skipTest("QNN EP with HTP shared memory allocator not available")
+
+        qnn_mem_info = onnxrt.OrtMemoryInfo(
+            "QnnHtpShared",
+            onnxrt.OrtAllocatorType.ORT_DEVICE_ALLOCATOR,
+            0,
+            onnxrt.OrtMemType.DEFAULT,
+        )
+
+        try:
+            allocator = sess.get_allocator(qnn_mem_info)
+        except RuntimeError:
+            self.skipTest("QNN HTP shared memory allocator not available")
+
+        # Allocate input memory
+        num_elements = 3 * 2
+        element_size = np.dtype(np.float32).itemsize
+        input_ptr = allocator.alloc(num_elements * element_size)
+        self.assertNotEqual(input_ptr, 0)
+
+        # Copy input data
+        x_values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], dtype=np.float32)
+        ctypes.memmove(input_ptr, x_values.ctypes.data, x_values.nbytes)
+
+        # Create input OrtValue on QNN HTP shared memory
+        bound_x = onnxrt.OrtValue.ortvalue_from_memory_info(
+            qnn_mem_info, input_ptr, np.float32, [3, 2]
+        )
+
+        # Allocate output memory
+        output_ptr = allocator.alloc(num_elements * element_size)
+        self.assertNotEqual(output_ptr, 0)
+
+        # Create output OrtValue on QNN HTP shared memory
+        bound_y = onnxrt.OrtValue.ortvalue_from_memory_info(
+            qnn_mem_info, output_ptr, np.float32, [3, 2]
+        )
+
+        # Run with IOBinding
+        io_binding = sess.io_binding()
+        io_binding.bind_ortvalue_input("X", bound_x)
+        io_binding.bind_ortvalue_output("Y", bound_y)
+        sess.run_with_iobinding(io_binding)
+
+        # Verify output
+        expected_y = np.array([1.0, 4.0, 9.0, 16.0, 25.0, 36.0], dtype=np.float32)
+        output_array = np.frombuffer(
+            (ctypes.c_char * (num_elements * element_size)).from_address(output_ptr),
+            dtype=np.float32,
+        )
+        np.testing.assert_allclose(output_array, expected_y, atol=1e-5)
+
+        # Clean up
+        io_binding.clear_binding_inputs()
+        io_binding.clear_binding_outputs()
+        allocator.free(input_ptr)
+        allocator.free(output_ptr)
+
     def test_memory_arena_shrinkage(self):
         if (
             platform.architecture()[0] == "32bit"

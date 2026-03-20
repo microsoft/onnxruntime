@@ -460,6 +460,18 @@ class Session:
         """
         self._sess.run_with_ortvaluevector(run_options, feed_names, feeds, fetch_names, fetches, fetch_devices)
 
+    def get_allocator(self, mem_info) -> SessionAllocator:
+        """
+        Get an allocator associated with this session for the given OrtMemoryInfo.
+
+        This allows allocating memory on the device specified by the OrtMemoryInfo,
+        e.g., QNN HTP shared memory.
+
+        :param mem_info: An OrtMemoryInfo specifying the desired memory type and device.
+        :returns: A :class:`SessionAllocator` that can allocate/free memory.
+        """
+        return SessionAllocator(self._sess.get_allocator(mem_info))
+
 
 class InferenceSession(Session):
     """
@@ -880,6 +892,40 @@ class ModelCompiler:
         self._model_compiler.compile_to_stream(write_function)
 
 
+class SessionAllocator:
+    """
+    Wraps an allocator obtained from a session. Allows allocating and freeing memory
+    on a specific device (e.g., QNN HTP shared memory).
+    """
+
+    def __init__(self, c_allocator):
+        self._allocator = c_allocator
+
+    def alloc(self, size: int) -> int:
+        """
+        Allocate memory of the given size in bytes.
+
+        :param size: Number of bytes to allocate.
+        :returns: A memory pointer (integer) to the allocated buffer.
+        """
+        return self._allocator.alloc(size)
+
+    def free(self, ptr: int):
+        """
+        Free memory previously allocated by this allocator.
+
+        :param ptr: Memory pointer (integer) previously returned by :meth:`alloc`.
+        """
+        self._allocator.free(ptr)
+
+    @property
+    def memory_info(self):
+        """
+        Returns the OrtMemoryInfo for this allocator.
+        """
+        return self._allocator.memory_info()
+
+
 class IOBinding:
     """
     This class provides API to bind input/output to a specified device, e.g. GPU.
@@ -1113,6 +1159,28 @@ class OrtValue:
                 device,
             )
         )
+
+    @classmethod
+    def ortvalue_from_memory_info(
+        cls,
+        memory_info,
+        data_ptr: int,
+        element_type,
+        shape: Sequence[int],
+    ) -> OrtValue:
+        """
+        Factory method to construct an OrtValue (Tensor) wrapping pre-allocated memory.
+
+        The caller is responsible for ensuring the memory stays alive while the OrtValue is in use.
+        This is useful for creating tensors backed by device-specific memory, e.g., QNN HTP shared memory.
+
+        :param memory_info: An OrtMemoryInfo describing where the memory resides.
+        :param data_ptr: Integer memory pointer to the pre-allocated buffer.
+        :param element_type: The data type of the elements. It can be either a numpy type
+            (like numpy.float32) or an integer for ONNX type (like onnx.TensorProto.FLOAT).
+        :param shape: List of integers indicating the shape of the tensor.
+        """
+        return cls(C.OrtValue.ortvalue_from_memory_info(memory_info, data_ptr, element_type, shape))
 
     @classmethod
     def ort_value_from_sparse_tensor(cls, sparse_tensor: SparseTensor) -> OrtValue:
