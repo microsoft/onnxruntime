@@ -1316,6 +1316,87 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample5dTest_WithSizes_CeilMode) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 
+TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_5D_CudaRegression_Optimized3DMapping) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 1.5f, 1.5f, 1.5f};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+  test.AddAttribute("nearest_mode", "floor");
+
+  constexpr int64_t N = 1, C = 1, D = 2, H = 2, W = 2;
+  std::vector<float> X = {
+      1.0f, 2.0f,
+      3.0f, 4.0f,
+      5.0f, 6.0f,
+      7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, C, D, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {5}, scales);
+
+  std::vector<float> Y = {
+      1.0f, 1.0f, 2.0f,
+      1.0f, 1.0f, 2.0f,
+      3.0f, 3.0f, 4.0f,
+
+      1.0f, 1.0f, 2.0f,
+      1.0f, 1.0f, 2.0f,
+      3.0f, 3.0f, 4.0f,
+
+      5.0f, 5.0f, 6.0f,
+      5.0f, 5.0f, 6.0f,
+      7.0f, 7.0f, 8.0f};
+
+  test.AddOutput<float>("Y", {N, C, 3, 3, 3}, Y);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_5D_CudaRegression_Optimized3DMapping) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 0.5f, 0.5f, 0.5f};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+  test.AddAttribute("nearest_mode", "floor");
+
+  constexpr int64_t N = 1, C = 1, D = 4, H = 4, W = 4;
+  std::vector<float> X(64);
+  std::iota(X.begin(), X.end(), 1.0f);
+
+  test.AddInput<float>("X", {N, C, D, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {5}, scales);
+
+  std::vector<float> Y = {
+      1.0f, 3.0f,
+      9.0f, 11.0f,
+
+      33.0f, 35.0f,
+      41.0f, 43.0f};
+
+  test.AddOutput<float>("Y", {N, C, 2, 2, 2}, Y);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
   OpTester test("Resize", 13);
 

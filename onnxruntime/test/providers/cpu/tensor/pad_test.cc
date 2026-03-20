@@ -1404,5 +1404,186 @@ TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
   test.RunWithConfig();
 }
 
+// =====================================================================
+// Regression tests for reflect-mode pad-size validation (CVE / heap OOB)
+// ONNX spec: reflect pads must not exceed extent - 1 on each side.
+// =====================================================================
+
+// Bug repro: data_shape=[3], pads=[10,0] — pre-pad 10 > extent-1 (2)
+TEST(PadOpTest, Pad_Reflect_PrePadExceedsExtent_1D) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> pads = {10, 0};  // pre=10 > extent-1=2
+
+  // Output dims don't matter because we expect failure before any computation.
+  const std::vector<int64_t> expected_shape = {13};
+  const std::vector<float> expected_data(13, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: pre-pad");
+  test.RunWithConfig();
+}
+
+// Post-pad exceeds extent - 1
+TEST(PadOpTest, Pad_Reflect_PostPadExceedsExtent_1D) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> pads = {0, 10};  // post=10 > extent-1=2
+
+  const std::vector<int64_t> expected_shape = {13};
+  const std::vector<float> expected_data(13, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: post-pad");
+  test.RunWithConfig();
+}
+
+// Both pre and post exceed extent - 1
+TEST(PadOpTest, Pad_Reflect_BothPadsExceedExtent_1D) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> pads = {5, 5};  // both > extent-1=2
+
+  const std::vector<int64_t> expected_shape = {13};
+  const std::vector<float> expected_data(13, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  // Pre-pad is checked first, so expect that message
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: pre-pad");
+  test.RunWithConfig();
+}
+
+// 2D: pre-pad exceeds extent-1 on one axis only
+TEST(PadOpTest, Pad_Reflect_PrePadExceedsExtent_2D) {
+  const std::vector<int64_t> input_shape = {3, 3};
+  const std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  // pads: [start_dim0, start_dim1, end_dim0, end_dim1]
+  // dim0 extent=3 → max pad=2, but we request 5
+  const std::vector<int64_t> pads = {5, 0, 0, 0};
+
+  const std::vector<int64_t> expected_shape = {8, 3};
+  const std::vector<float> expected_data(24, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: pre-pad");
+  test.RunWithConfig();
+}
+
+// 2D: post-pad exceeds extent-1 on second axis
+TEST(PadOpTest, Pad_Reflect_PostPadExceedsExtent_2D) {
+  const std::vector<int64_t> input_shape = {3, 3};
+  const std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  // dim1 extent=3 → max pad=2, but post-pad on dim1 is 5
+  const std::vector<int64_t> pads = {0, 0, 0, 5};
+
+  const std::vector<int64_t> expected_shape = {3, 8};
+  const std::vector<float> expected_data(24, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: post-pad");
+  test.RunWithConfig();
+}
+
+// Boundary: pad == extent - 1 should SUCCEED (max legal value)
+TEST(PadOpTest, Pad_Reflect_PadEqualsExtentMinus1_Succeeds) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  // extent=3, extent-1=2 -> pad=2 is the maximum legal value
+  const std::vector<int64_t> pads = {2, 2};
+
+  const std::vector<int64_t> expected_shape = {7};
+  // reflect of [1,2,3] with pre=2, post=2:  3,2, 1,2,3, 2,1
+  const std::vector<float> expected_data = {3.0f, 2.0f, 1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.RunWithConfig();
+}
+
+// Boundary: pad == extent is one past the legal limit → should FAIL
+TEST(PadOpTest, Pad_Reflect_PadEqualsExtent_Fails) {
+  const std::vector<int64_t> input_shape = {3};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  // extent=3 -> pad=3 exceeds the limit of 2
+  const std::vector<int64_t> pads = {3, 0};
+
+  const std::vector<int64_t> expected_shape = {6};
+  const std::vector<float> expected_data(6, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: pre-pad");
+  test.RunWithConfig();
+}
+
+// Negative slice + positive pad: extent after slicing is 2, pad=2 > extent-1=1 → FAIL
+TEST(PadOpTest, Pad_Reflect_SlicedExtentExceeded) {
+  const std::vector<int64_t> input_shape = {4};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  // slice -2 from start → effective extent = 2, extent-1 = 1
+  // then pre-pad 2 > 1 → must fail
+  const std::vector<int64_t> pads = {-2, 4};  // net: -2 + 4 = +2, but reflect pad 4 > extent-1=1
+
+  const std::vector<int64_t> expected_shape = {6};
+  const std::vector<float> expected_data(6, 0.0f);
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.ConfigExcludeEps({kDmlExecutionProvider, kQnnExecutionProvider,
+                         kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect: post-pad");
+  test.RunWithConfig();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
