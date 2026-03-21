@@ -304,16 +304,16 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
 
 #if !defined(_WIN32)
     if (OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
-    std::fprintf(stderr,
-                 "Calling asm FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                 FilterCount,
-                 OutputCountLeftPad,
-                 OutputCount,
-                 OutputCountRightPad,
-                 KernelHeight,
-                 KernelWidth,
-                 KernelFlags);
-    std::fflush(stderr);
+      std::fprintf(stderr,
+                   "Calling asm FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                   FilterCount,
+                   OutputCountLeftPad,
+                   OutputCount,
+                   OutputCountRightPad,
+                   KernelHeight,
+                   KernelWidth,
+                   KernelFlags);
+      std::fflush(stderr);
 
     MlasConvNchwcFloatKernelNeonAsm(Input,
                     Filter,
