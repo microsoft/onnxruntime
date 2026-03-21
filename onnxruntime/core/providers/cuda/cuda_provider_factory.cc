@@ -946,8 +946,8 @@ struct CudaEpFactory : OrtEpFactory {
   CudaEpFactory(const CudaEpFactory&) = delete;
   CudaEpFactory& operator=(const CudaEpFactory&) = delete;
 
-  CudaEpFactory(CudaEpFactory&&) = default;
-  CudaEpFactory& operator=(CudaEpFactory&&) = default;
+  CudaEpFactory(CudaEpFactory&&) = delete;
+  CudaEpFactory& operator=(CudaEpFactory&&) = delete;
 };
 
 extern "C" {
