@@ -716,20 +716,20 @@ TEST(NchwcOptimizerTests, ConvBinaryBroadcast) {
 }
 
 TEST(NchwcOptimizerTests, ConvMulChannelScale) {
-  const int64_t channels = static_cast<int64_t>(MlasNchwcGetBlockSize()) * 2;
+  const int64_t input_channels = static_cast<int64_t>(MlasNchwcGetBlockSize()) * 2;
 
-  auto test_case = [&](bool use_explicit_batch_dim, bool scale_first) {
+  auto test_case = [&](int64_t output_channels, bool use_explicit_batch_dim, bool scale_first) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, channels, 25, 21});
+      auto* input_arg = helper.MakeInput<float>({1, input_channels, 25, 21});
       auto* conv_output_arg = helper.MakeIntermediate();
       auto* quickgelu_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
 
-      helper.AddConvNode(input_arg, conv_output_arg, {channels, channels, 3, 3});
+      helper.AddConvNode(input_arg, conv_output_arg, {output_channels, input_channels, 3, 3});
       helper.AddNode("QuickGelu", {conv_output_arg}, {quickgelu_output_arg}, kMSDomain);
       const std::vector<int64_t> scale_shape = use_explicit_batch_dim
-                                                   ? std::vector<int64_t>{1, channels, 1, 1}
-                                                   : std::vector<int64_t>{channels, 1, 1};
+                                                   ? std::vector<int64_t>{1, output_channels, 1, 1}
+                                                   : std::vector<int64_t>{output_channels, 1, 1};
       auto* scale_arg = helper.MakeInitializer<float>(scale_shape, helper.FillRandomData<float>(scale_shape));
       if (scale_first) {
         helper.AddNode("Mul", {scale_arg, quickgelu_output_arg}, {output_arg});
@@ -760,11 +760,15 @@ TEST(NchwcOptimizerTests, ConvMulChannelScale) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph, 13, check_pre_optimization_graph);
   };
 
-  // Valid ONNX channel broadcast forms for NCHW tensors.
-  test_case(false, false);
-  test_case(false, true);
-  test_case(true, false);
-  test_case(true, true);
+  // Keep Conv input channels aligned so the initial NCHWc transform still
+  // applies, and vary only the logical output channel count to cover both the
+  // aligned path and the padded scale path in the Mul rewrite.
+  for (int64_t output_channels : {input_channels, input_channels + 1}) {
+    test_case(output_channels, false, false);
+    test_case(output_channels, false, true);
+    test_case(output_channels, true, false);
+    test_case(output_channels, true, true);
+  }
 }
 
 TEST(NchwcOptimizerTests, ConvConcat) {

@@ -786,7 +786,7 @@ void NchwcTransformerImpl::TransformMul(Node& node) {
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
   const int64_t nchwc_channels = (channels + static_cast<int64_t>(nchwc_block_size) - 1) & ~static_cast<int64_t>(nchwc_block_size - 1);
 
-  InlinedVector<float> padded_scale(gsl::narrow<size_t>(nchwc_channels));
+  InlinedVector<float> padded_scale(gsl::narrow<size_t>(nchwc_channels), 1.0f);
   std::copy_n(mul_scale.data<float>(), channels, padded_scale.data());
 
   ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
