@@ -473,11 +473,13 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
     space_to_depth_outputs.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("space_to_depth_out"), &space_to_depth_output_type));
   }
 
+  NodeArg* space_to_depth_input = graph.GetNodeArg(common_input->Name());
+
   Node& space_to_depth = graph.AddNode(graph.GenerateNodeName("SpaceToDepth"),
                                        "SpaceToDepth",
                                        is_canonical_order ? "Fused Slice*4 + Concat into SpaceToDepth"
                                                           : "Fused Slice*4 + Concat into SpaceToDepth + channel permutation",
-                                       {const_cast<NodeArg*>(common_input)},
+                                       {space_to_depth_input},
                                        space_to_depth_outputs,
                                        nullptr,
                                        kOnnxDomain);
