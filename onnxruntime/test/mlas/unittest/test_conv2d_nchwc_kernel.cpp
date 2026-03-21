@@ -481,10 +481,8 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     TestKernel(2, 1, 1, 0, 4);
     TestKernel(2, 1, 1, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 4);
     TestKernel(2, 3, 3, 0, 4);
-    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                 MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
-                 MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
-           4);
+    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION | MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
+               4);
 
     // FC4 tail coverage.
     TestKernel(3, 3, 3, 0, 4);
