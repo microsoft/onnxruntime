@@ -517,27 +517,17 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
     replacement_end = &gather;
   }
 
-  // `FinalizeNodeFusion()` moves all input edges from the first fused node to
-  // the replacement start node by matching input names. Slice nodes in this
-  // pattern may take additional non-data inputs via `Constant` nodes
-  // (starts/ends/axes/steps). Remove those auxiliary input edges from the
-  // first slice so only the shared data input edge is transferred to
-  // `SpaceToDepth`.
+  // Explicitly transfer the shared data-input edge from the first Slice to
+  // SpaceToDepth. This avoids graph_utils::MoveAllNodeInputEdges(), which is
+  // not defined in extended minimal builds.
   {
-    auto slice_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*slice_nodes[0]);
-    std::vector<graph_utils::GraphEdge> auxiliary_input_edges;
-    auxiliary_input_edges.reserve(slice_input_edges.size());
-
-    for (const auto& edge : slice_input_edges) {
-      if (edge.arg_name != common_input->Name()) {
-        auxiliary_input_edges.push_back(edge);
-      }
+    const auto data_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*slice_nodes[0], 0);
+    if (!data_input_edges.empty()) {
+      ORT_ENFORCE(data_input_edges.size() == 1, "Expected a single data input edge for Slice node.");
+      const auto& data_input_edge = data_input_edges[0];
+      graph.AddEdge(data_input_edge.src_node, space_to_depth.Index(), data_input_edge.src_arg_index, 0);
     }
-
-    graph_utils::GraphEdge::RemoveGraphEdges(graph, auxiliary_input_edges);
   }
-
-  graph_utils::MoveAllNodeInputEdges(graph, *slice_nodes[0], space_to_depth);
 
   auto concat_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(concat);
   replacement_end->MutableOutputDefs() = concat.MutableOutputDefs();
