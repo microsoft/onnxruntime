@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "mlas.h"
-#include "test/mlas/bench/bench_util.h"
+#include "bench_util.h"
 
 namespace {
 
