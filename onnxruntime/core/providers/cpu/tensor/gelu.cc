@@ -88,8 +88,7 @@ Status Gelu<T>::Compute(OpKernelContext* context) const {
           T* p_output = output_data + start;
           int64_t count = std::min(length_per_task, elem_count - start);
 
-          MlasComputeGeluErf(p_input, p_output, narrow<size_t>(count),
-                             use_gelu_erf_minimax_approximation_ ? MlasGeluErfModeMinimaxApproximation : MlasGeluErfModeExact);
+          MlasComputeGeluErf(p_input, p_output, narrow<size_t>(count));
         },
         0);
     return Status::OK();

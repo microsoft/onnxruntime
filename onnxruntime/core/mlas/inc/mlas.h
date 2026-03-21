@@ -1105,11 +1105,6 @@ MlasMaximumPool(
 // Miscellaneous compute routines.
 //
 
-enum MLAS_GELU_ERF_MODE {
-    MlasGeluErfModeExact = 0,
-    MlasGeluErfModeMinimaxApproximation = 1,
-};
-
 void
 MLASCALL
 MlasComputeErf(
@@ -1127,8 +1122,7 @@ MLASCALL
 MlasComputeGeluErf(
     const float* Input,
     float* Output,
-    size_t N,
-    MLAS_GELU_ERF_MODE Mode
+    size_t N
     );
 
 //

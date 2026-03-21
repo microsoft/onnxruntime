@@ -28,8 +28,12 @@ constexpr std::array<size_t, 27> kLongTestSizes = {
     1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 31, 32, 33, 63,
     64, 65, 127, 128, 129, 255, 511, 512, 513, 1023, 1024, 1025, 4095};
 
-bool IsAvx512Available() {
-  return GetMlasPlatform().Avx512Supported_;
+bool IsGeluAvx512Dispatched() {
+  return GetMlasPlatform().GeluKernelRoutine == MlasGeluKernelAvx512F;
+}
+
+bool IsSiluAvx512Dispatched() {
+  return GetMlasPlatform().SiluKernelRoutine == MlasSiluKernelAvx512F;
 }
 
 bool UnaryOutputsMatch(float actual, float expected, float absolute_tolerance, float relative_tolerance,
@@ -139,8 +143,8 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
   MatrixGuardBuffer<float> avx512_output_buffer_;
 
   void ExecuteCommon(const std::vector<size_t>& sizes, size_t iterations) {
-    if (!IsAvx512Available()) {
-      GTEST_SKIP() << "AVX512 is not available on this machine.";
+    if (!IsGeluAvx512Dispatched()) {
+      GTEST_SKIP() << "AVX512F GELU dispatch is not available on this machine.";
     }
 
     for (size_t size : sizes) {
@@ -188,8 +192,8 @@ class MlasComputeSiluAvx512Test : public MlasTestBase {
   MatrixGuardBuffer<float> avx512_output_buffer_;
 
   void ExecuteCommon(const std::vector<size_t>& sizes, size_t iterations) {
-    if (!IsAvx512Available()) {
-      GTEST_SKIP() << "AVX512 is not available on this machine.";
+    if (!IsSiluAvx512Dispatched()) {
+      GTEST_SKIP() << "AVX512F SiLU dispatch is not available on this machine.";
     }
 
     for (size_t size : sizes) {

@@ -755,31 +755,5 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
 }
 #endif
 
-TEST_F(ActivationOpTest, ONNX_Gelu_MlasErfMinimaxApproximation) {
-  SessionOptions session_options;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsMlasGeluErfUseMinimaxApproximation, "1"));
-
-  for (const std::vector<float>& input_vals : input_values) {
-    OpTester test("Gelu", 20, kOnnxDomain);
-    test.AddAttribute("approximate", "none");
-
-    std::vector<int64_t> dims{static_cast<int64_t>(input_vals.size())};
-    std::vector<float> expected_vals;
-    expected_vals.reserve(input_vals.size());
-    for (const float x : input_vals) {
-      expected_vals.push_back(static_cast<float>(0.5 * x * (1 + erf(x * M_SQRT1_2))));
-    }
-
-    test.AddInput<float>("X", dims, input_vals);
-    test.AddOutput<float>("Y", dims, expected_vals, false, 2e-5f, 2e-6f);
-
-    test
-        .Config(session_options)
-        .ConfigEp(DefaultCpuExecutionProvider())
-        .RunWithConfig();
-  }
-}
-
 }  // namespace test
 }  // namespace onnxruntime

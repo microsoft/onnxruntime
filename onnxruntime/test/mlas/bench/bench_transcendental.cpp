@@ -118,7 +118,7 @@ void BM_GeluErfDispatchExact(benchmark::State& state) {
   RunDispatchedUnaryBenchmark(
       state,
       [](const float* input, float* output, size_t n) {
-        MlasComputeGeluErf(input, output, n, MlasGeluErfModeExact);
+        MlasComputeGeluErf(input, output, n);
       },
       kGeluMinValue,
       kGeluMaxValue);
@@ -145,23 +145,9 @@ void BM_GeluErfUnfusedExact(benchmark::State& state) {
       kGeluUnfusedBytesPerElement);
 }
 
-void BM_GeluErfDispatchMinimax(benchmark::State& state) {
-  // Fused MLAS GELU(erf) entry point requesting the minimax erf mode. MLAS
-  // falls back to the exact GELU path when a platform-specific minimax kernel
-  // is not available.
-  RunDispatchedUnaryBenchmark(
-      state,
-      [](const float* input, float* output, size_t n) {
-        MlasComputeGeluErf(input, output, n, MlasGeluErfModeMinimaxApproximation);
-      },
-      kGeluMinValue,
-      kGeluMaxValue);
-}
-
 }  // namespace
 
 BENCHMARK(BM_SiluDispatch)->Apply(UnaryKernelArgs)->UseRealTime();
 BENCHMARK(BM_SiluUnfusedDispatch)->Apply(UnaryKernelArgs)->UseRealTime();
 BENCHMARK(BM_GeluErfDispatchExact)->Apply(UnaryKernelArgs)->UseRealTime();
 BENCHMARK(BM_GeluErfUnfusedExact)->Apply(UnaryKernelArgs)->UseRealTime();
-BENCHMARK(BM_GeluErfDispatchMinimax)->Apply(UnaryKernelArgs)->UseRealTime();

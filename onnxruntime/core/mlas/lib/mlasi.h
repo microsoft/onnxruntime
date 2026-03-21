@@ -1096,7 +1096,6 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluKernelAvx512F;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluKernelAvx512FMinimaxApprox;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelAvx512F;
 #endif
 
@@ -1443,7 +1442,6 @@ struct MLAS_PLATFORM {
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfMinimaxKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
