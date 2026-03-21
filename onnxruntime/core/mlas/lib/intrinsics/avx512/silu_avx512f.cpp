@@ -56,7 +56,7 @@ MlasExpApproxAvx512(
     const __m512 P5 = _mm512_set1_ps(SiluAvx512Constants::P5);
     const __m512i ExponentBias = _mm512_set1_epi32(127);
 
-    const __mmask16 UnderflowMask = _mm512_cmp_ps_mask(Value, ExpLnFltMin, _CMP_LT_OS);
+    const __mmask16 UnderflowMask = _mm512_cmp_ps_mask(Value, ExpLnFltMin, _CMP_LT_OQ);
 
     Value = _mm512_min_ps(Value, ExpLnFltMax);
     Value = _mm512_max_ps(Value, ExpLnFltMin);
