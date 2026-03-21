@@ -563,7 +563,7 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
   const bool set_denormal_as_zero =
       session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
 
-  LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
+  LOGS(*session_logger_, INFO) << "Ensuring per session threadpools are initialized since use_per_session_threads_ is true";
   if (!external_intra_op_thread_pool_ && !thread_pool_) {
     bool allow_intra_op_spinning =
 #if !defined(ORT_CLIENT_PACKAGE_BUILD)
@@ -2393,8 +2393,6 @@ common::Status InferenceSession::Initialize() {
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, saving_ort_format));
-
-      InitializeThreadPoolsIfNeeded();
 
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
