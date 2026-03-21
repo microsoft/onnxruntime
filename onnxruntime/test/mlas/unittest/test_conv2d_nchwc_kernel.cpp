@@ -448,9 +448,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     TestKernel(2, 1, 1, 0, 2);
     TestKernel(2, 1, 1, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 2);
     TestKernel(2, 3, 3, 0, 2);
-    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                 MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
-                 MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION, 2);
+    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION | MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION, 2);
 
     // FC2 tail coverage: two-output fast path followed by one-output tail.
     TestKernel(3, 3, 3, 0, 2);
