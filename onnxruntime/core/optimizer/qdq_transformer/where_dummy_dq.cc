@@ -137,6 +137,8 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
           nullptr,
           dq_node->Domain());
 
+  optimizer_utils::DuplicateNodeAnnotation(node, dummy_dq_node);
+
   node.MutableInputDefs()[const_idx] = &dummy_dq_arg;
   if (graph.GetConsumerNodes(where_inputs[const_idx]->Name()).size() == 0) {
     graph.RemoveInitializedTensor(where_inputs[const_idx]->Name());

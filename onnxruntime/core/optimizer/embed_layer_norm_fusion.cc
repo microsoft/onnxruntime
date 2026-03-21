@@ -17,7 +17,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 // Add a Cast to convert Input from int64 to int32.
-static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
+static NodeArg* CastToInt32(Graph& graph, NodeArg* input, const Node& source_node) {
   auto data_type = input->TypeAsProto()->tensor_type().elem_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     return input;
@@ -42,7 +42,8 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_
   // Add attribute: "to" = 6
   node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
 
-  node.SetExecutionProviderType(provider_type);
+  optimizer_utils::DuplicateNodeAnnotation(source_node, node);
+  node.SetExecutionProviderType(source_node.GetExecutionProviderType());
   return &cast32;
 }
 
@@ -487,9 +488,9 @@ static void CreateEmbedLayernormNode(Graph& graph,
                                      NodeArg* segment_embedding,
                                      Node& layer_norm_node) {
   // Cast input_ids and segment_ids to int32 if needed.
-  input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
+  input_ids = CastToInt32(graph, input_ids, layer_norm_node);
   if (segment_ids != nullptr && segment_embedding != nullptr) {
-    segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
+    segment_ids = CastToInt32(graph, segment_ids, layer_norm_node);
   }
 
   NodeArg place_holder("", nullptr);
@@ -527,6 +528,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
   }
 
   // Assign provider to this new node. Provider should be same as the provider for old node.
+  optimizer_utils::DuplicateNodeAnnotation(layer_norm_node, embed_layer_norm_node);
   embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
 }
 

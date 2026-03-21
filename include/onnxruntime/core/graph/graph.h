@@ -174,7 +174,12 @@ class Node {
   */
   void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
 
+  void SetLayeringAnnotation(std::string annotation) { layering_annotation_ = std::move(annotation); }
+
+  const std::string& GetLayeringAnnotation() const noexcept { return layering_annotation_; }
+
 #if !defined(ORT_MINIMAL_BUILD)
+
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
@@ -256,6 +261,13 @@ class Node {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Make sure that the annotation does not occupy memory after partitioning is done.
+  void ClearLayeringAnnotation() {
+    std::string t;
+    layering_annotation_.swap(t);
+  }
+
   /** Gets a modifiable count of arguments for each of the Node's explicit inputs.
   @todo This should be removed in favor of a method that updates the input args and the count.
         Currently these operations are separate which is not a good setup. */
@@ -568,6 +580,8 @@ class Node {
   friend class Graph;
   Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
 
+  const Graph* GetContainingGraph() const noexcept { return graph_; }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
@@ -684,6 +698,8 @@ class Node {
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
+
+  std::string layering_annotation_;
 
   // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
   bool can_be_saved_;
@@ -1569,6 +1585,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // compiled model during partitioning, leaving them unused in the ORT Graph. To allow the memory to be freed
   // we need to manually run the cleanup that would usually happen as part of Graph::Resolve.
   Status RemovedUnusedInitializersOrtFormat();
+
+  // This examines all the nodes and removes any annotations that are only used for layering.
+  // This potentially saves memory.
+  Status RemoveAllLayeringAnnotations();
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and

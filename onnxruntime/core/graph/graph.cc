@@ -3935,6 +3935,20 @@ Status Graph::RemovedUnusedInitializersOrtFormat() {
   auto result = ForThisAndAllSubgraphs(all_subgraphs, cleanup_func);
   return result;
 }
+
+Status Graph::RemoveAllLayeringAnnotations() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+  auto cleanup_func = [](Graph& graph) {
+    for (auto& node : graph.Nodes()) {
+      node.ClearLayeringAnnotation();
+    }
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, cleanup_func);
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 const std::string& Graph::Name() const noexcept {
@@ -4371,6 +4385,13 @@ Node& Graph::AddNode(const Node& other) {
                            &other.GetAttributes(),
                            other.Domain());
 
+  // Preserve layering annotation from the source node so that graph transformers
+  // that reconstruct nodes (or function inlining) retain the EP assignment hint.
+  const auto& annotation = other.GetLayeringAnnotation();
+  if (!annotation.empty()) {
+    new_node.SetLayeringAnnotation(annotation);
+  }
+
   return new_node;
 }
 
@@ -4395,6 +4416,13 @@ Node& Graph::AddNode(const NodeProto& node_proto,
                            output_defs,
                            &attributes,
                            node_proto.domain());
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  auto maybe_annotation = utils::GetNodeProtoLayeringAnnotation(node_proto);
+  if (maybe_annotation) {
+    new_node.SetLayeringAnnotation(std::move(*maybe_annotation));
+  }
+#endif  //
 
   // Perf optimization: temporarily set NodeProto in Node so we don't need to call Node::ToProto prior to
   // calling onnx::check_node
@@ -6131,6 +6159,13 @@ Status Graph::InlineFunction(Node& callnode) {
   base_uniq_identifier.append(callnode.OpType());
   const auto uniq_identifier = GenerateNodeName(base_uniq_identifier);
 
+  // Capture the parent function node's layering annotation before inlining.
+  // Inlined nodes that don't already have their own annotation will inherit this.
+  const std::string parent_annotation = callnode.GetLayeringAnnotation();
+
+  // Record the current max node index so we can identify newly inlined nodes afterward.
+  const int max_node_index_before_inline = MaxNodeIndex();
+
   // Replace a (function-call) node by an inlined graph.
   if (!callnode.GetFunctionBody()) {
     // This is the normal use-case: inlining a FunctionProto (representing
@@ -6192,13 +6227,24 @@ Status Graph::InlineFunction(Node& callnode) {
     }
   }
 
+  // Propagate the parent function node's layering annotation to all newly inlined nodes
+  // that don't already have their own annotation.
+  if (!parent_annotation.empty()) {
+    const int max_node_index_after_inline = MaxNodeIndex();
+    for (int i = max_node_index_before_inline; i < max_node_index_after_inline; ++i) {
+      Node* node = GetNode(static_cast<NodeIndex>(i));
+      if (node != nullptr && node->GetLayeringAnnotation().empty()) {
+        node->SetLayeringAnnotation(parent_annotation);
+      }
+    }
+  }
+
   RemoveNode(callnode.Index());
 
   // std::cout << "Graph after inlining\n\n" << *this << std::endl << std::flush;
 
   return Status::OK();
 }
-
 void Graph::SetInputs(gsl::span<const NodeArg* const> inputs) {
   graph_inputs_including_initializers_.clear();
   graph_inputs_excluding_initializers_.clear();

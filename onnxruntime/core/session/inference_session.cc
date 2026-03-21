@@ -29,6 +29,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/kernel_type_str_resolver_utils.h"
+#include "core/framework/layering_annotations.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
@@ -1518,10 +1519,32 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 
+  LayeringIndex* layering_index = nullptr;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  std::optional<LayeringIndex> layering_index_storage;
+  const auto layering_config = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsLayerAssignmentSettings, "");
+  if (!layering_config.empty()) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(LayeringIndex::Create(graph, layering_config, {}, execution_providers_,
+                                                         *session_logger_, layering_index_storage));
+    if (layering_index_storage) {
+      layering_index = &layering_index_storage.value();
+    }
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
-                                                       session_options_.config_options, *session_logger_,
+                                                       session_options_.config_options, *session_logger_, layering_index,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (layering_index) {
+    // Layering annotations maybe present even if index is not built although unlikely.
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph.RemoveAllLayeringAnnotations());
+    // We are currently not using it beyond this point. Clear it to free up memory.
+    layering_index = nullptr;
+    layering_index_storage.reset();
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
   // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
@@ -2039,6 +2062,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             transform_layout_fn,
                                             sess_options.config_options,
                                             logger,
+                                            nullptr /*layering_index*/,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

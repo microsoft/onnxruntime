@@ -9,6 +9,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/layering_annotations.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/ep_context_options.h"
@@ -280,7 +281,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
                 graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
           },
           sess_options.config_options,
-          DefaultLoggingManager().DefaultLogger()));
+          DefaultLoggingManager().DefaultLogger(), nullptr /*layering_index*/));
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
@@ -367,7 +368,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
                                                              cpu_allocator, debug_graph_fn);
         },
         sess_options.config_options,
-        default_logger));
+        default_logger,
+        nullptr /*layering_index*/));
 
     EXPECT_STATUS_OK(session_state.FinalizeSessionState(model.ModelPath(), krm));
 
@@ -416,7 +418,8 @@ using ParitionVerifierFn = std::function<void(const Graph&)>;
 
 void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
                                        const SessionOptions& sess_options,
-                                       const ParitionVerifierFn& verifier_fn) {
+                                       const ParitionVerifierFn& verifier_fn,
+                                       const std::string& layering_config = std::string()) {
   const auto& log_manager = DefaultLoggingManager();
   log_manager.SetDefaultLoggerSeverity(onnxruntime::logging::Severity::kVERBOSE);
   const auto& default_logger = log_manager.DefaultLogger();
@@ -431,9 +434,12 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
 
   ExecutionProviders execution_providers;
-  auto tmp_cpu_execution_provider = DefaultCudaExecutionProvider();
-  tmp_cpu_execution_provider->SetLogger(&default_logger);
-  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(tmp_cpu_execution_provider)));
+  auto tmp_execution_provider = DefaultCudaExecutionProvider();
+  tmp_execution_provider->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(tmp_execution_provider)));
+  tmp_execution_provider = DefaultCpuExecutionProvider();
+  tmp_execution_provider->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_execution_provider)));
 
   KernelRegistryManager krm;
   ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
@@ -445,6 +451,14 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   SessionState session_state(model->MainGraph(), execution_providers, tp.get(), nullptr, dtm, edlm,
                              default_logger, profiler, sess_options);
 
+  LayeringIndex* layering_index = nullptr;
+  std::optional<LayeringIndex> layering_index_storage;
+  if (!layering_config.empty()) {
+    ASSERT_STATUS_OK(LayeringIndex::Create(graph, layering_config, {}, execution_providers,
+                                           default_logger, layering_index_storage));
+    layering_index = &layering_index_storage.value();
+  }
+
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
                                                                            execution_providers.Get(onnxruntime::kCpuExecutionProvider),
@@ -455,7 +469,8 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   layout_transformation::DebugGraphFn debug_graph_fn;
   ASSERT_STATUS_OK(
       partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
-                            sess_options.config_options, default_logger, GraphPartitioner::Mode::kNormal,
+                            sess_options.config_options, default_logger, layering_index,
+                            GraphPartitioner::Mode::kNormal,
                             epctx::ModelGenOptions{},
                             debug_graph_fn));
 
@@ -507,7 +522,7 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
   constexpr const char* limit_setting = "5000,tiny_gpt2_beamsearch_node_stats.txt";
 
-  // Large limit, all nodes are still assigned
+  // Limit is smaller, we expect some nodes to be offloaded to CPU.
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = false;
   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
@@ -527,6 +542,35 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
     }
     EXPECT_TRUE(cpu_node_found);
   });
+}
+
+TEST(SessionStateTest, TestLayeringPartitioning) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/layering/tiny_gpt2_beamsearch_layering.onnx");
+  constexpr const char* layering_setting =
+      "cpu(Embed,Decode);gpu(GptAttention0,GptAttention1,GptAttention2,GptAttention3,GptAttention4)";
+
+  // Set the session options for layering
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = false;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = false;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsLayerAssignmentSettings, layering_setting));
+
+  LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
+     const auto& graph_nodes = graph.Nodes();
+     for (const auto& node : graph_nodes) {
+       const std::string& name = node.Name();
+       const bool expected_on_cpu = (name.find("EmbedLayer") == 0) || (name == "LayerNorm_10") || (name == "MatMul_1165");
+
+       const std::string& ep = node.GetExecutionProviderType();
+       if (expected_on_cpu) {
+         EXPECT_EQ(ep, kCpuExecutionProvider) << "Node " << name << " expected on CPU but found on " << ep;
+       } else {
+         EXPECT_EQ(ep, kCudaExecutionProvider) << "Node " << name << " expected on CUDA but found on " << ep;
+       }
+     } }, layering_setting);
 }
 
 #endif  // USE_CUDA
@@ -909,9 +953,8 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
   std::vector<float> float_data(1, 1);
   auto value = std::make_unique<OrtValue>();
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
-                       TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()),
-                       mem_info, *value);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                       float_data.data(), mem_info, *value);
 
   ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
 
@@ -1379,6 +1422,5 @@ INSTANTIATE_TEST_SUITE_P(SessionStateTests,
                                          PrepackingTestParam{true, false},
                                          PrepackingTestParam{true, true}));
 #endif
-
 }  // namespace test
 }  // namespace onnxruntime
