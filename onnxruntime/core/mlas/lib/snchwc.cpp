@@ -716,6 +716,8 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 ComputeEffectiveKernel(ph + work, BlockSize * BlockSize * KernelWidth,
                     &EffectiveFilterBase, &ih, &EffectiveKernelHeight);
 
+                float* output = Output + (ph + work) * BlockedOutputWidth;
+
                 //
                 // Walk over each input image organized as a set of NCHWc blocks.
                 //
@@ -724,7 +726,6 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                     unsigned KernelFlags = ComputeKernelFlags(ic, BlockSize);
                     const float* input = Input + ic * InputSize;
-                    float* output = Output + (ph + work) * BlockedOutputWidth;
 
                     //
                     // The input row and effective kernel height were computed
