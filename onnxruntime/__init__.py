@@ -58,8 +58,10 @@ try:
         get_build_info,  # noqa: F401
         get_device,  # noqa: F401
         get_ep_devices,  # noqa: F401
+        get_usable_providers,  # noqa: F401
         get_version_string,  # noqa: F401
         has_collective_ops,  # noqa: F401
+        is_provider_usable,  # noqa: F401
         register_execution_provider_library,  # noqa: F401
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
