@@ -66,6 +66,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateConvOpBuilder("Conv", op_registrations);
   CreateConvTransposeOpBuilder("ConvTranspose", op_registrations);
   CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
+  CreateExpandOpBuilder("Expand", op_registrations);
   CreateFlattenOpBuilder("Flatten", op_registrations);
   CreateGatherOpBuilder("Gather", op_registrations);
   CreateGemmOpBuilder("Gemm", op_registrations);
@@ -82,6 +83,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateSqueezeOpBuilder("Squeeze", op_registrations);
   CreateTransposeOpBuilder("Transpose", op_registrations);
   CreateSqueezeOpBuilder("Unsqueeze", op_registrations);
+  CreateWhereOpBuilder("Where", op_registrations);
 
   return op_registrations;
 }
