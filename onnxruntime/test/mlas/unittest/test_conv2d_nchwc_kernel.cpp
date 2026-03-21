@@ -335,16 +335,16 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                                       Bias,
                                       KernelFlags);
 
-    std::fprintf(stderr,
-                 "Completed asm FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
-                 FilterCount,
-                 OutputCountLeftPad,
-                 OutputCount,
-                 OutputCountRightPad,
-                 KernelHeight,
-                 KernelWidth,
-                 KernelFlags);
-    std::fflush(stderr);
+      std::fprintf(stderr,
+                   "Completed asm FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
+                   FilterCount,
+                   OutputCountLeftPad,
+                   OutputCount,
+                   OutputCountRightPad,
+                   KernelHeight,
+                   KernelWidth,
+                   KernelFlags);
+      std::fflush(stderr);
     } else {
       std::fprintf(stderr,
                    "Skipping direct asm FilterCount=%zu/LeftPad=%zu/OutputCount=%zu/RightPad=%zu/KH=%zu/KW=%zu/Flags=%u\n",
