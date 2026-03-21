@@ -522,25 +522,30 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
 
   std::ifstream profile(profile_file);
   std::string line;
+  std::string profile_contents;
+  std::vector<std::string> lines;
+
+  while (std::getline(profile, line)) {
+    profile_contents += line + "\n";
+    lines.push_back(line);
+  }
+
+  auto size = lines.size();
+  ASSERT_TRUE(size > 1);
+  ASSERT_TRUE(lines[0].find("[") != std::string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != std::string::npos);
 
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
-  int count = 0;
-  while (std::getline(profile, line)) {
-    if (count == 0) {
-      ASSERT_TRUE(line.find("[") != std::string::npos);
-    } else if (count <= 3) {
-      for (auto& s : tags) {
-        ASSERT_TRUE(line.find(s) != std::string::npos);
-      }
-    } else {
-      ASSERT_TRUE(line.find("]") != std::string::npos);
+  bool has_mul_kernel_info = false;
+  const char* target_string = "mul_1_kernel_time";
+  for (size_t i = 1; i < size - 1; ++i) {
+    for (auto& s : tags) {
+      ASSERT_TRUE(lines[i].find(s) != std::string::npos);
+      has_mul_kernel_info = has_mul_kernel_info || lines[i].find(target_string) != std::string::npos;
     }
-
-    if (count == 1) {
-      ASSERT_TRUE(line.find("mul_1_kernel_time") != std::string::npos);
-    }
-    count++;
   }
+  ASSERT_TRUE(has_mul_kernel_info) << "Did not find string '" << target_string
+                                   << "' in profile contents: " << profile_contents;
 }
 
 TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
@@ -564,7 +569,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
   RunOptions run_options;
   run_options.run_tag = "RunTag";
   run_options.enable_profiling = true;
-  run_options.profile_file_prefix = "ort_run_profile_test";
+  run_options.profile_file_prefix = ORT_TSTR("ort_run_profile_test");
 
   RunModel(session_object, run_options);
 
