@@ -1245,6 +1245,62 @@ Return Value:
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
+
+namespace {
+
+static constexpr size_t ComputeChannelsLastDilatedKernelSize(size_t dilation, size_t kernel) {
+    return (dilation * kernel) - (dilation - 1);
+}
+
+static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kernel, size_t padding, size_t stride) {
+    if (stride > 0 && (input + 2 * padding) >= kernel) {
+        return (((input - kernel) + (2 * padding)) / stride) + 1;
+    }
+
+    return 0;
+}
+
+}  // namespace
+
+bool
+MLASCALL
+MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta)
+{
+    if (Dimensions != 2 || BatchCount != 1 || GroupCount != 1 || Beta != 0.0f) {
+        return false;
+    }
+
+    if (Padding[0] != Padding[2] || Padding[1] != Padding[3]) {
+        return false;
+    }
+
+    const size_t output_h =
+        ComputeChannelsLastConvOutSize(InputShape[0], ComputeChannelsLastDilatedKernelSize(DilationShape[0], KernelShape[0]),
+                                       Padding[0], StrideShape[0]);
+    const size_t output_w =
+        ComputeChannelsLastConvOutSize(InputShape[1], ComputeChannelsLastDilatedKernelSize(DilationShape[1], KernelShape[1]),
+                                       Padding[1], StrideShape[1]);
+    if (output_h == 0 || output_w == 0) {
+        return false;
+    }
+
+    if (FilterCount <= 1 || KernelShape[0] < 3 || KernelShape[1] < 3) {
+        return false;
+    }
+
+    return true;
+}
+
 void
 MLASCALL
 MlasConvPrepare(
@@ -1262,6 +1318,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    bool ChannelsLast,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
     )
@@ -1320,7 +1377,7 @@ Return Value:
     if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
         GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
-        Activation, WorkingBufferSize, Beta, ThreadPool)){
+        Activation, WorkingBufferSize, ChannelsLast, Beta, ThreadPool)){
         return;
     }
     //
@@ -1331,6 +1388,7 @@ Return Value:
     Parameters->BatchCount = BatchCount;
     Parameters->GroupCount = GroupCount;
     Parameters->InputChannels = InputChannels;
+    Parameters->ChannelsLast = ChannelsLast;
     Parameters->FilterCount = FilterCount;
     Parameters->Beta = Beta;
 
