@@ -543,9 +543,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
 
     // FC4 padded coverage uses C++ edges with asm on the interior span.
     TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 4, 1, 1);
-    TestKernel(4, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
-                           MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
+    TestKernel(4, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION | MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
                4,
                1,
                0);
