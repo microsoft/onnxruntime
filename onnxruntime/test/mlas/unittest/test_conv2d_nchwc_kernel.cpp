@@ -514,9 +514,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                2,
                1,
                0);
-    TestKernel(4, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
-                           MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
+    TestKernel(4, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION | MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
                2,
                0,
                1);
