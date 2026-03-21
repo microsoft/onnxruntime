@@ -114,10 +114,19 @@ MlasComputeSiluVectorAvx512(
     __m512 X
     )
 {
+    const __m512 PositiveInfinity = _mm512_set1_ps(std::numeric_limits<float>::infinity());
+    const __m512 NegativeInfinity = _mm512_set1_ps(-std::numeric_limits<float>::infinity());
+
     __m512 Result = _mm512_mul_ps(X, MlasLogisticApproxAvx512(X));
 
     const __mmask16 NaNMask = _mm512_cmp_ps_mask(X, X, _CMP_UNORD_Q);
     Result = _mm512_mask_mov_ps(Result, NaNMask, X);
+
+    const __mmask16 PositiveInfinityMask = _mm512_cmp_ps_mask(X, PositiveInfinity, _CMP_EQ_OQ);
+    Result = _mm512_mask_mov_ps(Result, PositiveInfinityMask, PositiveInfinity);
+
+    const __mmask16 NegativeInfinityMask = _mm512_cmp_ps_mask(X, NegativeInfinity, _CMP_EQ_OQ);
+    Result = _mm512_mask_mov_ps(Result, NegativeInfinityMask, NegativeInfinity);
 
     return Result;
 }
