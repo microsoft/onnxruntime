@@ -1009,15 +1009,15 @@ typedef void (*OrtThreadPoolWorkAbandonFn)(_In_opt_ void* user_context, _In_opt_
  * \since Version 1.25.
  */
 typedef struct OrtThreadPoolCallbacksConfig {
-  uint32_t version;                          /**< Must be ORT_API_VERSION */
-  OrtThreadPoolWorkEnqueueFn on_enqueue;     /**< Called when work is enqueued. May be NULL. */
-  OrtThreadPoolWorkStartFn on_start_work;    /**< Called when work starts. May be NULL. */
-  OrtThreadPoolWorkStopFn on_stop_work;      /**< Called when work completes. May be NULL. */
-  OrtThreadPoolWorkAbandonFn on_abandon;     /**< Called when work is abandoned. May be NULL. */
-  void* user_context;                        /**< User-provided context passed to all callbacks. May be NULL.
-                                                  Must remain valid for the lifetime of the session.
-                                                  Subject to concurrent invocations from multiple threads
-                                                  and must be thread-safe. May affect inference performance. */
+  uint32_t version;                       /**< Must be ORT_API_VERSION */
+  OrtThreadPoolWorkEnqueueFn on_enqueue;  /**< Called when work is enqueued. May be NULL. */
+  OrtThreadPoolWorkStartFn on_start_work; /**< Called when work starts. May be NULL. */
+  OrtThreadPoolWorkStopFn on_stop_work;   /**< Called when work completes. May be NULL. */
+  OrtThreadPoolWorkAbandonFn on_abandon;  /**< Called when work is abandoned. May be NULL. */
+  void* user_context;                     /**< User-provided context passed to all callbacks. May be NULL.
+                                               Must remain valid for the lifetime of the session.
+                                               Subject to concurrent invocations from multiple threads
+                                               and must be thread-safe. May affect inference performance. */
 } OrtThreadPoolCallbacksConfig;
 
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
