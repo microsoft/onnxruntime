@@ -500,9 +500,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
 
     // Padded wrapper coverage: C++ edges with asm interior.
     TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 1, 1, 1);
-    TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
-                           MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
+    TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION | MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
                2,
                1,
                1);
