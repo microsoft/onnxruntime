@@ -163,7 +163,8 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices), logger),
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices),
+                         std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()),
