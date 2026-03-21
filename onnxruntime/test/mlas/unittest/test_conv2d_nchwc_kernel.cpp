@@ -429,9 +429,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
 
     // Two-output postprocess coverage: accumulate only and accumulate+bias+ReLU.
     TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT);
-    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
-                           MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION);
+    TestKernel(2, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION | MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION);
 
     // Three outputs exercise the two-output fast path followed by the one-output tail.
     TestKernel(3, 3, 3, 0);
