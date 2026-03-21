@@ -168,16 +168,16 @@ bool IsSupportedSpaceToDepthInputType(const NodeArg& input) {
     return false;
   }
 
-  const int32_t elem_type = type_proto->tensor_type().elem_type();
+  const auto& tensor_type = type_proto->tensor_type();
+  if (!tensor_type.has_shape() || tensor_type.shape().dim_size() != kRank) {
+    return false;
+  }
+
+  const int32_t elem_type = tensor_type.elem_type();
 
   // TODO(hasesh): Consider supporting float16 too ?
   if (elem_type != TensorProto::FLOAT && elem_type != TensorProto::DOUBLE) {
     return false;
-  }
-
-  const auto& tensor_type = type_proto->tensor_type();
-  if (tensor_type.has_shape()) {
-    return tensor_type.shape().dim_size() == kRank;
   }
 
   return true;
