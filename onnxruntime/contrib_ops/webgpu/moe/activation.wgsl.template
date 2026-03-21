@@ -1,0 +1,36 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+
+// Generic element-wise activation shader for MoE.
+// activation_type: 0=relu, 1=gelu, 2=silu, 3=identity, 4=relu2
+
+#param activation_type
+
+$MAIN {
+  let total = uniforms.size;
+  guardAgainstOutOfBoundsWorkgroupSizes(total);
+
+  let val = f32(input[global_idx]);
+
+#if activation_type == 0
+  // relu
+  let result = max(0.0f, val);
+#elif activation_type == 1
+  // gelu (tanh approximation)
+  let result = 0.5f * val * (1.0f + tanh(0.7978845608f * (val + 0.044715f * val * val * val)));
+#elif activation_type == 2
+  // silu
+  let result = val / (1.0f + exp(-val));
+#elif activation_type == 3
+  // identity
+  let result = val;
+#elif activation_type == 4
+  // relu2 (relu squared)
+  let r = max(0.0f, val);
+  let result = r * r;
+#endif
+
+  output[global_idx] = output_element_t(result);
+} // MAIN
