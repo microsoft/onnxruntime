@@ -957,7 +957,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   ONNX_NAMESPACE::ModelProto model_proto;
   ORT_RETURN_IF_ERROR(EpContextModelToProto(ep_context_model, valid_output_model_path, ep_context_gen_options,
                                             /*out*/ model_proto));
-
+  bool serialize_result = false;
   if (output_buffer_holder != nullptr) {
     // Write output model into a buffer ORT allocates for the user.
     size_t buffer_size = model_proto.ByteSizeLong();
@@ -966,7 +966,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
     AllocatorPtr allocator = output_buffer_holder->buffer_allocator;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
-    model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
+    serialize_result = model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
 
     *output_buffer_holder->buffer_size_ptr = buffer_size;
     *output_buffer_holder->buffer_ptr = buffer.release();
@@ -979,7 +979,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_write_func_holder);
     std::ostream out_stream(out_stream_buf.get());
 
-    model_proto.SerializeToOstream(&out_stream);
+    serialize_result = model_proto.SerializeToOstream(&out_stream);
     out_stream.flush();
     ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
   } else {
@@ -990,17 +990,17 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
     ORT_TRY {
       google::protobuf::io::FileOutputStream output(fd);
-      bool serialize_result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-      if (!serialize_result) {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF,
-                                 "Protobuf serialization failed when generating EPContext model ",
-                                 valid_output_model_path);
-      }
+      serialize_result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
         status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
       });
+    }
+    if (!serialize_result) {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF,
+                               "Protobuf serialization failed when generating EPContext model ",
+                               valid_output_model_path);
     }
     if (!status.IsOK()) {
       GSL_SUPPRESS(es .84)
