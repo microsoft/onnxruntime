@@ -34,6 +34,7 @@
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/div_ceil_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
 #include "core/optimizer/dropout_elimination.h"
@@ -377,6 +378,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_acl_eps));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_acl_eps));
 
+      const InlinedHashSet<std::string_view> webgpu_eps = {onnxruntime::kWebGpuExecutionProvider};
+
+      transformers.emplace_back(std::make_unique<DivCeilFusion>(webgpu_eps));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_acl_js_webgpu_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_eps, level));
