@@ -14,6 +14,8 @@ Abstract:
 
 --*/
 
+#include <limits>
+
 #include "mlasi.h"
 
 void
@@ -26,8 +28,19 @@ MlasSiluKernel(
 {
     // This kernel is not buffer alias safe, as the computation is not elementwise.
     // Callers must guarantee that Input and Output do not overlap (see mlas.h for aliasing requirements).
+    const float PositiveInfinity = std::numeric_limits<float>::infinity();
+    const float NegativeInfinity = -std::numeric_limits<float>::infinity();
+
     MlasComputeLogistic(Input, Output, N);
     MlasEltwiseMul<float>(Input, Output, Output, N);
+
+    for (size_t i = 0; i < N; ++i) {
+        if (Input[i] == PositiveInfinity) {
+            Output[i] = PositiveInfinity;
+        } else if (Input[i] == NegativeInfinity) {
+            Output[i] = -0.0f;
+        }
+    }
 }
 
 void

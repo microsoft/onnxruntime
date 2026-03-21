@@ -18,6 +18,12 @@ Abstract:
 
 #include "mlasi.h"
 
+namespace {
+
+constexpr float kInvSqrt2 = 0.70710678118654752440f;
+
+}  // namespace
+
 
 void
 MLASCALL
@@ -31,7 +37,7 @@ MlasGeluKernel(
     // Callers must guarantee that Input and Output do not overlap (see mlas.h for aliasing requirements).
     //
     for (size_t i = 0; i < N; ++i) {
-        Output[i] = Input[i] * static_cast<float>(M_SQRT1_2);
+        Output[i] = Input[i] * kInvSqrt2;
     }
 
     MlasComputeErf(Output, Output, N);
