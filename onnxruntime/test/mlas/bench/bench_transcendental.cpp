@@ -5,7 +5,7 @@
 
 #include <vector>
 
-#include "core/mlas/lib/mlasi.h"
+#include "mlas.h"
 #include "test/mlas/bench/bench_util.h"
 
 namespace {
