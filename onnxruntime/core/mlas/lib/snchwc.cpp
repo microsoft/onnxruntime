@@ -698,33 +698,41 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             size_t WorkThisIteration = std::min(WorkRemaining, OutputHeight - ph);
 
             //
-            // Walk over each input image organized as a set of NCHWc blocks.
+            // Apply the convolution kernel to each row of the output batch.
             //
 
-            for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
-
-                unsigned KernelFlags = ComputeKernelFlags(ic, BlockSize);
+            for (size_t work = 0; work < WorkThisIteration; work++) {
 
                 //
-                // Apply the convolution kernel to each row of the output batch.
+                // Constrain the effective kernel parameters once per output row.
+                // The input row and effective kernel height are shared across all
+                // input-channel blocks for this row.
                 //
 
-                const float* input = Input + ic * InputSize;
-                float* output = Output + ph * BlockedOutputWidth;
+                size_t ih;
+                size_t EffectiveKernelHeight;
+                const float* EffectiveFilterBase = Filter;
 
-                for (size_t work = 0; work < WorkThisIteration; work++) {
+                ComputeEffectiveKernel(ph + work, BlockSize * BlockSize * KernelWidth,
+                    &EffectiveFilterBase, &ih, &EffectiveKernelHeight);
+
+                float* output = Output + (ph + work) * BlockedOutputWidth;
+
+                //
+                // Walk over each input image organized as a set of NCHWc blocks.
+                //
+
+                for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
+
+                    unsigned KernelFlags = ComputeKernelFlags(ic, BlockSize);
+                    const float* input = Input + ic * InputSize;
 
                     //
-                    // Constrain the effective kernel parameters if the output row
-                    // uses one or more input padding rows.
+                    // The input row and effective kernel height were computed
+                    // once for this output row.
                     //
 
-                    const float* filter = Filter + BlockSize * ic * KernelSize;
-                    size_t ih;
-                    size_t EffectiveKernelHeight;
-
-                    ComputeEffectiveKernel(ph + work, BlockSize * BlockSize * KernelWidth,
-                        &filter, &ih, &EffectiveKernelHeight);
+                    const float* filter = EffectiveFilterBase + BlockSize * ic * KernelSize;
 
                     //
                     // Invoke the convolution kernel.
@@ -745,8 +753,6 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
                         DoActivation(output, FilterCount, BlockedOutputWidth);
                     }
-
-                    output += BlockedOutputWidth;
                 }
             }
 
