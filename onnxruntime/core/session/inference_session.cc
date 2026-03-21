@@ -254,6 +254,9 @@ Status GetMinimalBuildOptimizationHandling(
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+// Note: this check is based on finalized EP assignment and may not detect
+// cases where a non-CPU execution provider falls back to CPU internally,
+// or where control-flow subgraphs are hidden by a compiled/fused parent node.
 static bool GraphHasCpuNodesInternal(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
@@ -549,9 +552,16 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
     return;
   }
 
-  if (!GraphHasCpuNodes()) {
+  const bool create_threadpools_only_for_cpu_nodes =
+      session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "0") == "1";
+
+  if (create_threadpools_only_for_cpu_nodes && !GraphHasCpuNodes()) {
     return;
   }
+  
+  const bool set_denormal_as_zero =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
 
   LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
   if (!external_intra_op_thread_pool_ && !thread_pool_) {
@@ -580,7 +590,7 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
 
     // Set custom threading functions
     to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
-    to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+    to.custom_thread_creation_options = session_options_.custom_thread_creation_options;
     to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
     if (session_options_.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, to.affinity_str)) {
       ORT_ENFORCE(!to.affinity_str.empty(), "Affinity string must not be empty");
@@ -622,7 +632,7 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
 
       // Set custom threading functions
       to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
-      to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+      to.custom_thread_creation_options = session_options_.custom_thread_creation_options;
       to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
 
       if (to.custom_create_thread_fn) {
@@ -638,8 +648,12 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
   }
 
   if (session_state_) {
-    session_state_->SetThreadPool(GetIntraOpThreadPoolToUse());
-    session_state_->SetInterOpThreadPool(GetInterOpThreadPoolToUse());
+    session_state_->InitializeThreadPools(GetIntraOpThreadPoolToUse(),
+                                          GetInterOpThreadPoolToUse());
+  } else if (thread_pool_ || inter_op_thread_pool_ ||
+             external_intra_op_thread_pool_ || external_inter_op_thread_pool_) {
+    LOGS(*session_logger_, WARNING)
+        << "SessionState is null when per-session thread pools are initialized";
   }
 }
 

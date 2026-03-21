@@ -2417,13 +2417,91 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Test 5: per session threadpools should not be created when all nodes are assigned to a non-CPU EP
+static void CreateIfModelWithCpuNodeInSubgraph(const PathString& model_file_name) {
+  // Main graph: one If node only.
+  // We will assign the If node to InternalTestingEP, while the nodes inside the subgraphs
+  // remain on CPU. This allows testing recursion in GraphHasCpuNodesInternal.
+  onnxruntime::Model model("if_subgraph_cpu_model", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_tensor_input;
+  float_tensor_input.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor_input.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  ONNX_NAMESPACE::TypeProto float_tensor_unknown;
+  float_tensor_unknown.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor_unknown.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("N");
+
+  ONNX_NAMESPACE::TypeProto bool_tensor_input;
+  bool_tensor_input.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor_input.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // Main graph inputs/outputs
+  auto& input_x = graph.GetOrCreateNodeArg("input_x", &float_tensor_input);
+  auto& cond = graph.GetOrCreateNodeArg("cond", &bool_tensor_input);
+  auto& output_y = graph.GetOrCreateNodeArg("output_y", &float_tensor_unknown);
+
+  auto create_branch = [&](const std::string& graph_name) -> ONNX_NAMESPACE::GraphProto {
+    onnxruntime::Model sub_model(graph_name, false, ModelMetaData(), PathString(),
+                                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+                                 DefaultLoggingManager().DefaultLogger());
+    auto& subgraph = sub_model.MainGraph();
+
+    // implicit outer-scope input
+    auto& sub_input = subgraph.GetOrCreateNodeArg("input_x", &float_tensor_input);
+    subgraph.AddOuterScopeNodeArg("input_x");
+
+    auto& sub_output = subgraph.GetOrCreateNodeArg("subgraph_output", &float_tensor_unknown);
+
+    {
+      // Relu is intentionally not claimed by InternalTestingEP in the subgraph,
+      // so it stays on CPU.
+      std::vector<onnxruntime::NodeArg*> inputs = {&sub_input};
+      std::vector<onnxruntime::NodeArg*> outputs = {&sub_output};
+      subgraph.AddNode(graph_name + "_relu", "Relu", "cpu node in subgraph", inputs, outputs);
+    }
+
+    auto status = subgraph.Resolve();
+    EXPECT_TRUE(status.IsOK()) << status;
+    return subgraph.ToGraphProto();
+  };
+
+  auto then_branch = create_branch("then_branch_graph");
+  auto else_branch = create_branch("else_branch_graph");
+
+  {
+    std::vector<onnxruntime::NodeArg*> inputs = {&cond};
+    std::vector<onnxruntime::NodeArg*> outputs = {&output_y};
+    auto& if_node = graph.AddNode("if_node", "If", "main graph if node", inputs, outputs);
+    if_node.AddAttribute("then_branch", then_branch);
+    if_node.AddAttribute("else_branch", else_branch);
+  }
+
+  {
+    std::vector<const onnxruntime::NodeArg*> inputs = {&input_x, &cond};
+    graph.SetInputs(inputs);
+  }
+  {
+    std::vector<const onnxruntime::NodeArg*> outputs = {&output_y};
+    graph.SetOutputs(outputs);
+  }
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+}
+
+// Test 5a: with the optimization enabled, per-session threadpools should not be created
+// when all nodes are assigned to a non-CPU EP.
 TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsNoCpuNodes) {
   PathString model_file_name = ORT_TSTR("lazy_init_all_internal.onnx");
   CreateAddSubModel(model_file_name);
 
   SessionOptions so;
   so.use_per_session_threads = true;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
 
   so.session_logid = "LazyInitPerSessionThreadPoolsNoCpuNodes";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
@@ -2456,7 +2534,57 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsNoCpuNodes) {
   ASSERT_TRUE(inter_tp_from_session_state == nullptr);
 }
 
-// Test 6: per session threadpools should be created when any nodes remain on CPU
+// Test 5b: default behavior should remain unchanged when the optimization config is not enabled.
+// Even if all nodes are assigned to a non-CPU EP, per-session threadpools should still be created.
+TEST(InferenceSessionTests, PerSessionThreadPoolsStillCreatedByDefaultWithoutCpuNodes) {
+  PathString model_file_name = ORT_TSTR("lazy_init_all_internal_default.onnx");
+  CreateAddSubModel(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  // ensure threadpools are created even on single-core machines
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  // Intentionally do NOT set:
+  // kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes
+
+  so.session_logid = "PerSessionThreadPoolsStillCreatedByDefaultWithoutCpuNodes";
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set{};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set);
+  internal_testing_ep->TakeAllNodes();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session != nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state != nullptr);
+  ASSERT_TRUE(inter_tp_from_session != nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state != nullptr);
+  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
+  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
+}
+
+// Test 6a: with the optimization enabled, per-session threadpools should be created
+// when any nodes remain on CPU in the main graph.
 TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodes) {
   PathString model_file_name = ORT_TSTR("lazy_init_add_sub.onnx");
   CreateAddSubModel(model_file_name);
@@ -2467,6 +2595,8 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodes) {
   // ensure threadpools are created even on single-core machines
   so.intra_op_param.thread_pool_size = 2;
   so.inter_op_param.thread_pool_size = 2;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
 
   so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodes";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
@@ -2480,6 +2610,100 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodes) {
   InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
 
   using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> ops = {"Add"};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(ops);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session != nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state != nullptr);
+  ASSERT_TRUE(inter_tp_from_session != nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state != nullptr);
+  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
+  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
+}
+
+// Test 6b: with the optimization enabled, a control-flow node claimed by a non-CPU EP can be
+// compiled into a fused node without visible subgraphs. In that case CPU nodes in the original
+// subgraphs are not visible to GraphHasCpuNodesInternal, so per-session threadpools are skipped.
+TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph) {
+  PathString model_file_name = ORT_TSTR("lazy_init_if_cpu_subgraph.onnx");
+  CreateIfModelWithCpuNodeInSubgraph(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  // ensure threadpools are created even on single-core machines
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
+
+  so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph";
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  // Claim only the If node in the main graph. The Relu in the subgraphs stays on CPU.
+  const std::unordered_set<std::string> ops = {"If"};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(ops);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session == nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state == nullptr);
+  ASSERT_TRUE(inter_tp_from_session == nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state == nullptr);
+}
+
+TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph_RecursiveDetection) {
+  PathString model_file_name = ORT_TSTR("lazy_init_if_cpu_subgraph_recursive.onnx");
+  CreateIfModelWithCpuNodeInSubgraph(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
+
+  so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph_RecursiveDetection";
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // Intentionally do not claim "If" and do not call TakeAllNodes().
+  // This keeps the control-flow node/subgraphs visible so recursive CPU-node detection is exercised.
   const std::unordered_set<std::string> ops = {"Add"};
   auto internal_testing_ep = std::make_unique<InternalTestingEP>(ops);
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));

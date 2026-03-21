@@ -41,6 +41,10 @@ static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save
 // and that's recommended because turning this option on may hurt model accuracy.
 static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.set_denormal_as_zero";
 
+// If set to "1", thread pools will only be created if the graph has CPU-assigned nodes.
+// This is an optimization based on EP assignment and may not detect CPU fallback within non-CPU EPs.
+static const char* const kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes = "session.create_threadpools_only_for_cpu_nodes";
+
 // It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.
 // "0": enable. ORT does fusion logic for QDQ format.
 // "1": disable. ORT doesn't do fusion logic for QDQ format.
