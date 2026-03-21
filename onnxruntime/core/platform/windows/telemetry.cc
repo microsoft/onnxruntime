@@ -7,6 +7,7 @@
 #include <vector>
 #include <cwchar>
 #include <winsvc.h>
+#include <psapi.h>
 #include "core/common/logging/logging.h"
 #include "onnxruntime_config.h"
 
@@ -779,6 +780,33 @@ void WindowsTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_n
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
                     TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
+void WindowsTelemetry::LogMemoryUsage(uint32_t session_id) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  PROCESS_MEMORY_COUNTERS_EX mem_counters = {};
+  mem_counters.cb = sizeof(mem_counters);
+  if (!GetProcessMemoryInfo(GetCurrentProcess(),
+                            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&mem_counters),
+                            sizeof(mem_counters)))
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "MemoryUsage",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingUInt64(mem_counters.PrivateUsage, "privateUsage"),
+                    TraceLoggingUInt64(0, "sharedCommitUsage"),
+                    TraceLoggingUInt64(mem_counters.WorkingSetSize, "workingSetSize"),
+                    TraceLoggingUInt64(0, "privateWorkingSetSize"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 

@@ -3258,9 +3258,17 @@ Status InferenceSession::Run(const RunOptions& run_options,
         telemetry_.total_run_duration_since_last_ = 0;
         telemetry_.duration_per_batch_size_.clear();
 
-        // Double the interval, capping at kRuntimePerfMaxInterval
+        // Double the interval, capping at kTelemetryMaxInterval
         telemetry_.runtime_perf_interval_ = std::min(telemetry_.runtime_perf_interval_ * 2,
-                                                     Telemetry::kRuntimePerfMaxInterval);
+                                                     Telemetry::kTelemetryMaxInterval);
+      }
+
+      // Emit MemoryUsage every kTelemetryMaxInterval (10 min).
+      // memory_telemetry_time_sent_last_ is default-constructed to epoch,
+      // so this will always fire on the first run.
+      if (TimeDiffMicroSeconds(telemetry_.memory_telemetry_time_sent_last_) > Telemetry::kTelemetryMaxInterval) {
+        env.GetTelemetryProvider().LogMemoryUsage(session_id_);
+        telemetry_.memory_telemetry_time_sent_last_ = std::chrono::high_resolution_clock::now();
       }
     }
   }

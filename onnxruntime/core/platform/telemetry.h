@@ -116,6 +116,8 @@ class Telemetry {
   virtual void LogRegisterEpLibraryEnd(const std::string& registration_name,
                                        const common::Status& status) const;
 
+  virtual void LogMemoryUsage(uint32_t session_id) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);
 };
