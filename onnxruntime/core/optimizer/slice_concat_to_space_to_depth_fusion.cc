@@ -563,17 +563,10 @@ Status SliceConcatToSpaceToDepthFusion::ApplyImpl(Graph& graph,
                                                   bool& modified,
                                                   int graph_level,
                                                   const logging::Logger& logger) const {
-  bool fused_any = false;
   bool local_modified = false;
 
   do {
     local_modified = false;
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-    // Previous optimizers, or an earlier iteration of this pass, may have
-    // updated the graph without rebuilding the producer/consumer lookup tables.
-    ORT_RETURN_IF_ERROR(graph.PopulateNodeArgToProducerConsumerLookupsFromNodes());
-#endif
 
     GraphViewer graph_viewer(graph);
     const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -593,18 +586,11 @@ Status SliceConcatToSpaceToDepthFusion::ApplyImpl(Graph& graph,
 
       if (FuseSliceConcatToSpaceToDepth(node, graph, logger)) {
         modified = true;
-        fused_any = true;
         local_modified = true;
         break;
       }
     }
   } while (local_modified);
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  if (fused_any) {
-    ORT_RETURN_IF_ERROR(graph.PopulateNodeArgToProducerConsumerLookupsFromNodes());
-  }
-#endif
 
   return Status::OK();
 }
