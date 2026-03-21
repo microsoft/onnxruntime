@@ -436,9 +436,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     TestKernel(3, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION);
 
     // Three outputs on a 1x3 kernel with full postprocess coverage.
-    TestKernel(3, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
-                           MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION);
+    TestKernel(3, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION | MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION);
 
     // FC2 single-output coverage.
     TestKernel(1, 1, 1, 0, 2);
