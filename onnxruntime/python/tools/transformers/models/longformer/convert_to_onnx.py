@@ -19,7 +19,7 @@
 #   conda activate longformer
 #   python3 -m pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
 #   python3 -m pip install flatbuffers numpy packaging sympy protobuf==3.20.1 onnx==1.12.0 transformers==4.18.0
-#   python3 -m pip install -i https://test.pypi.org/simple/ ort-nightly-gpu
+#   python3 -m pip install onnxruntime-gpu
 #   cd ./torch_extensions
 #   rm -rf build
 #   python setup.py install
