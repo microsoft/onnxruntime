@@ -106,7 +106,6 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
         }
       }
     }
-
   }
 
   void AssertClose(const float* actual,
