@@ -63,7 +63,34 @@ bool GetInitializerIntValues(const Graph& graph, const TensorProto* initializer,
   return false;
 }
 
-bool GetConstantInputIntValues(const Graph& graph, const NodeArg* input, IntValues& values) {
+const Node* GetInputProducerNode(const Node& node, size_t input_index) {
+  const int input_arg_index = onnxruntime::narrow<int>(input_index);
+  for (auto edge_it = node.InputEdgesBegin(), edge_end = node.InputEdgesEnd(); edge_it != edge_end; ++edge_it) {
+    if (edge_it->GetDstArgIndex() == input_arg_index) {
+      return &edge_it->GetNode();
+    }
+  }
+
+  return nullptr;
+}
+
+Node* GetMutableInputProducerNode(Graph& graph, Node& node, size_t input_index) {
+  const Node* producer = GetInputProducerNode(node, input_index);
+  return producer == nullptr ? nullptr : graph.GetNode(producer->Index());
+}
+
+bool HasSingleOutputEdgeToNode(const Node& node, const Node& consumer) {
+  if (node.GetOutputEdgesCount() != 1) {
+    return false;
+  }
+
+  const auto edge_it = node.OutputEdgesBegin();
+  return edge_it != node.OutputEdgesEnd() && &edge_it->GetNode() == &consumer;
+}
+
+bool GetConstantInputIntValues(const Graph& graph, const Node& node, size_t input_index, IntValues& values) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input = input_defs.size() > input_index ? input_defs[input_index] : nullptr;
   if (input == nullptr || !input->Exists()) {
     return false;
   }
@@ -72,7 +99,7 @@ bool GetConstantInputIntValues(const Graph& graph, const NodeArg* input, IntValu
     return GetInitializerIntValues(graph, initializer, values);
   }
 
-  const Node* producer = graph.GetProducerNode(input->Name());
+  const Node* producer = GetInputProducerNode(node, input_index);
   if (producer == nullptr || producer->OpType() != "Constant" || producer->Domain() != kOnnxDomain) {
     return false;
   }
@@ -106,8 +133,8 @@ bool GetSliceInfo(const Graph& graph,
     return (input == nullptr || !input->Exists()) ? nullptr : input;
   };
 
-  if (!GetConstantInputIntValues(graph, get_input_if_exists(1), starts) ||
-      !GetConstantInputIntValues(graph, get_input_if_exists(2), ends) ||
+  if (!GetConstantInputIntValues(graph, node, 1, starts) ||
+      !GetConstantInputIntValues(graph, node, 2, ends) ||
       starts.empty() || starts.size() != ends.size()) {
     return false;
   }
@@ -116,7 +143,7 @@ bool GetSliceInfo(const Graph& graph,
   steps.clear();
 
   if (const NodeArg* axes_input = get_input_if_exists(3); axes_input != nullptr) {
-    if (!GetConstantInputIntValues(graph, axes_input, axes) || axes.size() != starts.size()) {
+    if (!GetConstantInputIntValues(graph, node, 3, axes) || axes.size() != starts.size()) {
       return false;
     }
   } else {
@@ -125,7 +152,7 @@ bool GetSliceInfo(const Graph& graph,
   }
 
   if (const NodeArg* steps_input = get_input_if_exists(4); steps_input != nullptr) {
-    if (!GetConstantInputIntValues(graph, steps_input, steps) || steps.size() != starts.size()) {
+    if (!GetConstantInputIntValues(graph, node, 4, steps) || steps.size() != starts.size()) {
       return false;
     }
   } else {
@@ -206,7 +233,7 @@ bool IsFullExtentEnd(const NodeArg& input, int64_t axis, int64_t end) {
   }
 
   int64_t dim_value = 0;
-  return TryGetStaticInputDim(input, axis, dim_value) && end == dim_value;
+  return TryGetStaticInputDim(input, axis, dim_value) && end >= dim_value;
 }
 
 TypeProto MakeSpaceToDepthOutputTypeProto(const NodeArg& input) {
@@ -322,9 +349,8 @@ bool TryMatchSlicePhase(const Graph& graph,
   return true;
 }
 
-bool IsSingleConsumerOfConcat(const Graph& graph, const Node& slice, const Node& concat) {
-  const auto consumers = graph.GetConsumerNodes(slice.OutputDefs()[0]->Name());
-  return consumers.size() == 1 && consumers.front() == &concat;
+bool IsSingleConsumerOfConcat(const Node& slice, const Node& concat) {
+  return HasSingleOutputEdgeToNode(slice, concat);
 }
 
 bool TryGetPhasePermutation(const std::array<SlicePhase, 4>& actual_phases,
@@ -393,9 +419,9 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
       return false;
     }
 
-    Node* slice = graph.GetMutableProducerNode(concat_input->Name());
+    Node* slice = GetMutableInputProducerNode(graph, concat, i);
     if (slice == nullptr || slice == &concat || slice->GetExecutionProviderType() != provider_type ||
-        !IsSingleConsumerOfConcat(graph, *slice, concat)) {
+        !IsSingleConsumerOfConcat(*slice, concat)) {
       return false;
     }
 
@@ -487,6 +513,7 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
                                  kOnnxDomain);
     gather.AddAttribute("axis", static_cast<int64_t>(kChannelAxis));
     gather.SetExecutionProviderType(provider_type);
+    graph.AddEdge(space_to_depth.Index(), gather.Index(), 0, 0);
     replacement_end = &gather;
   }
 
@@ -536,26 +563,48 @@ Status SliceConcatToSpaceToDepthFusion::ApplyImpl(Graph& graph,
                                                   bool& modified,
                                                   int graph_level,
                                                   const logging::Logger& logger) const {
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  bool fused_any = false;
+  bool local_modified = false;
 
-  for (auto node_index : node_topology_list) {
-    auto* p_node = graph.GetNode(node_index);
-    if (p_node == nullptr) {
-      continue;
+  do {
+    local_modified = false;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    // Previous optimizers, or an earlier iteration of this pass, may have
+    // updated the graph without rebuilding the producer/consumer lookup tables.
+    ORT_RETURN_IF_ERROR(graph.PopulateNodeArgToProducerConsumerLookupsFromNodes());
+#endif
+
+    GraphViewer graph_viewer(graph);
+    const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+    for (auto node_index : node_topology_list) {
+      auto* p_node = graph.GetNode(node_index);
+      if (p_node == nullptr) {
+        continue;
+      }
+
+      Node& node = *p_node;
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+      if (!graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
+        continue;
+      }
+
+      if (FuseSliceConcatToSpaceToDepth(node, graph, logger)) {
+        modified = true;
+        fused_any = true;
+        local_modified = true;
+        break;
+      }
     }
+  } while (local_modified);
 
-    Node& node = *p_node;
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-
-    if (!graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
-      continue;
-    }
-
-    if (FuseSliceConcatToSpaceToDepth(node, graph, logger)) {
-      modified = true;
-    }
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (fused_any) {
+    ORT_RETURN_IF_ERROR(graph.PopulateNodeArgToProducerConsumerLookupsFromNodes());
   }
+#endif
 
   return Status::OK();
 }
