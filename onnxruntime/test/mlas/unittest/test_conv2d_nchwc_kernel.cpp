@@ -395,7 +395,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                    KernelFlags);
       std::fflush(stderr);
     }
-  #endif
+#endif
   }
 
  public:
