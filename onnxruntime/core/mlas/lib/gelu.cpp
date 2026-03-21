@@ -28,8 +28,8 @@ MlasGeluKernel(
     )
 {
     // This kernel is not buffer alias safe, as the computation is not elementwise.
-    // The caller should guarantee Input and Output do not overlap.
-    // The current CPU EP kernel where we call this from guarantees that.
+    // Callers must guarantee that Input and Output do not overlap (see mlas.h for aliasing requirements).
+    //
     for (size_t i = 0; i < N; ++i) {
         Output[i] = Input[i] * static_cast<float>(M_SQRT1_2);
     }
