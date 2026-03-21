@@ -21,14 +21,10 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                                       ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
-  const ShaderVariableHelper* bias = nullptr;
-  if (has_bias_) {
-    bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
-  MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, /*is_channels_last = */ false);
+  MatMulWriteFnSourceForMatMul(shader, output, nullptr, apply_activation, {});
   // generate the main function
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_));
   return Status::OK();
@@ -44,7 +40,6 @@ Status ApplyMatMulIntel(ComputeContext& context,
                         Tensor* output) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
-  bool has_bias = inputs.size() > 2;
   TensorShape a_shape = a->Shape();
   TensorShape b_shape = b->Shape();
 
@@ -108,7 +103,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, b_components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  MatMulSubgroupProgram program{activation, has_bias, is_vec4, elements_per_thread};
+  MatMulSubgroupProgram program{activation, is_vec4, elements_per_thread};
   program
       .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
@@ -118,13 +113,6 @@ Status ApplyMatMulIntel(ComputeContext& context,
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1);
-
-  if (has_bias) {
-    auto bias_components = 1;
-    const auto* bias = inputs[2];
-    TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
-  }
 
   return context.RunProgram(program);
 }

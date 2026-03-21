@@ -13,13 +13,12 @@ namespace onnxruntime {
 namespace webgpu {
 class MatMulProgram final : public Program<MatMulProgram> {
  public:
-  MatMulProgram(const Activation& activation, bool bias, bool is_vec4, const gsl::span<int64_t>& elements_per_thread, bool is_channels_last = false, uint32_t split_dim_inner = 1) : Program{"MatMul"},
-                                                                                                                                                                                     activation_(activation),
-                                                                                                                                                                                     has_bias_{bias},
-                                                                                                                                                                                     is_vec4_{is_vec4},
-                                                                                                                                                                                     elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()),
-                                                                                                                                                                                     is_channels_last_(is_channels_last),
-                                                                                                                                                                                     split_dim_inner_(split_dim_inner) {}
+  MatMulProgram(const Activation& activation, bool is_vec4, const gsl::span<int64_t>& elements_per_thread, std::optional<bool> is_channels_last, uint32_t split_dim_inner = 1) : Program{"MatMul"},
+                                                                                                                                                                                 activation_(activation),
+                                                                                                                                                                                 is_vec4_{is_vec4},
+                                                                                                                                                                                 elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()),
+                                                                                                                                                                                 is_channels_last_(is_channels_last),
+                                                                                                                                                                                 split_dim_inner_(split_dim_inner) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
@@ -33,10 +32,9 @@ class MatMulProgram final : public Program<MatMulProgram> {
 
  private:
   const Activation activation_;
-  const bool has_bias_;
   const bool is_vec4_;
   const InlinedVector<int64_t> elements_per_thread_;
-  bool is_channels_last_ = false;
+  std::optional<bool> is_channels_last_;
   uint32_t split_dim_inner_ = 1;
 };
 

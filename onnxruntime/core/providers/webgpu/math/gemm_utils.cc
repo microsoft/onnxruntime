@@ -41,11 +41,12 @@ void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
 void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                               const ShaderVariableHelper& output,
                               const ShaderVariableHelper* bias,
-                              std::string activation_snippet,
-                              bool is_channels_last) {
+                              std::string_view activation_snippet,
+                              std::optional<bool> is_channels_last) {
   shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
   if (bias != nullptr) {
-    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? bias->GetByOffset("colIn") : bias->GetByOffset("row")) << ");\n";
+    ORT_ENFORCE(is_channels_last.has_value(), "is_channels_last must be set when bias is used");
+    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last.value() ? bias->GetByOffset("colIn") : bias->GetByOffset("row")) << ");\n";
   }
   shader.AdditionalImplementation() << "    " << activation_snippet << "\n"
                                     << "    " << output.SetByIndices("coords", "value") << "\n";
@@ -192,8 +193,8 @@ void MatMulReadFnSource(ShaderHelper& shader,
 void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
                                   const ShaderVariableHelper& output,
                                   const ShaderVariableHelper* bias,
-                                  std::string activation_snippet,
-                                  bool is_channels_last) {
+                                  std::string_view activation_snippet,
+                                  std::optional<bool> is_channels_last) {
   EmitMatMulWriteFnHeader(shader, output);
   HandleMaybeBiasForMatMul(shader, output, bias, activation_snippet, is_channels_last);
   EmitMatMulWriteFnFooter(shader);

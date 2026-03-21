@@ -14,7 +14,8 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
+Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output,
+                     std::optional<bool> is_channels_last = {},
                      const TensorShape& input_a_reshape = TensorShape(),
                      const TensorShape& input_b_reshape = TensorShape());
 
