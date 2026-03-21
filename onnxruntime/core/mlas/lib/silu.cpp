@@ -25,7 +25,7 @@ MlasSiluKernel(
     )
 {
     // This kernel is not buffer alias safe, as the computation is not elementwise.
-    // Callers must ensure that Input and Output do not overlap (see mlas.h for details).
+    // Callers must guarantee that Input and Output do not overlap (see mlas.h for aliasing requirements).
     MlasComputeLogistic(Input, Output, N);
     MlasEltwiseMul<float>(Input, Output, Output, N);
 }
