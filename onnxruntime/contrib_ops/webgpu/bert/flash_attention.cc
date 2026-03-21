@@ -215,7 +215,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
-                             WGSL_TEMPLATE_PARAMETER(prefer_subgroupshuffle, !is_nvidia_),
+                             WGSL_TEMPLATE_PARAMETER(max_k_step_param, max_k_step_),
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
@@ -478,7 +478,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   if (parameters.sequence_length_ > 1) {
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
-    bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
     bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
     bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
     bool has_head_sink = head_sink != nullptr;
@@ -489,7 +488,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                   parameters.head_size_,
                                   parameters.num_heads_,
                                   parameters.is_unidirectional_,
-                                  is_nvidia,
                                   q_BNSH,
                                   use_seqlen_k,
                                   has_head_sink};
@@ -508,7 +506,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
     const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                   : parameters.scale_;
-    const uint32_t num_seq_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
+
+    // Use larger workgroup for prefill to improve cooperative data loading.
+    const uint32_t prefill_tile_size = 128;
+    const uint32_t num_seq_tile = (parameters.sequence_length_ + prefill_tile_size - 1) / prefill_tile_size;
 
     // Get attention bias dimensions for broadcasting
     uint32_t attn_bias_dim0 = 1;
@@ -520,8 +521,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     }
 
     program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
-        .SetWorkgroupSize(tile_size)
-        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, q_BNSH, use_seqlen_k, has_head_sink)
+        .SetWorkgroupSize(prefill_tile_size)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, q_BNSH, use_seqlen_k, has_head_sink, program.max_k_step())
         .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_)},
                               {static_cast<uint32_t>(present_sequence_length)},
