@@ -3,7 +3,6 @@
 
 #include "activation_op_test.h"
 #include "core/providers/cpu/activation/activations.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
