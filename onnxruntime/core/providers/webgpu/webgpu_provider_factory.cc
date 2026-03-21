@@ -362,11 +362,11 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
         auto& context = WebGpuContextFactory::DefaultContext();
 
-        // Create the DataTransfer instance
-        // Note: The DataTransfer holds a const reference to BufferManager. The BufferManager's lifecycle
+        // Create the DataTransferImpl instance
+        // Note: The DataTransferImpl holds a const reference to BufferManager. The BufferManager's lifecycle
         // is managed by the WebGpuContext, which is stored in a static WebGpuContextFactory and persists
         // for the lifetime of the application, ensuring the reference remains valid.
-        impl.data_transfer_ = std::make_unique<DataTransfer>(context.BufferManager());
+        impl.data_transfer_ = std::make_unique<DataTransferImpl>(context.BufferManager());
       }
     }
 
@@ -391,11 +391,11 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       void* dst_data = dst_tensor.MutableDataRaw();
       bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
 #endif
-      auto status = impl.data_transfer_->CopyTensorImpl(src_data,
-                                                        src_is_gpu,
-                                                        dst_data,
-                                                        dst_is_gpu,
-                                                        size);
+      auto status = impl.data_transfer_->CopyTensor(src_data,
+                                                    src_is_gpu,
+                                                    dst_data,
+                                                    dst_is_gpu,
+                                                    size);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }
@@ -419,9 +419,9 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
-  std::unique_ptr<DataTransfer> data_transfer_;  // Lazy-initialized
-  int context_id_;                               // Track which context we're using
-  std::mutex init_mutex_;                        // Protects lazy initialization
+  std::unique_ptr<DataTransferImpl> data_transfer_;  // Lazy-initialized
+  int context_id_;                                   // Track which context we're using
+  std::mutex init_mutex_;                            // Protects lazy initialization
 };
 
 OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {

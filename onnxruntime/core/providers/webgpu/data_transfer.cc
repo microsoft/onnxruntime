@@ -7,13 +7,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  return (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::CPU) ||
-         (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::GPU) ||
-         (dst_device.Type() == OrtDevice::CPU && src_device.Type() == OrtDevice::GPU);
-}
-
-common::Status DataTransfer::CopyTensorImpl(void const* src_data,
+common::Status DataTransferImpl::CopyTensor(void const* src_data,
                                             bool src_is_gpu,
                                             void* dst_data,
                                             bool dst_is_gpu,
@@ -42,15 +36,18 @@ common::Status DataTransfer::CopyTensorImpl(void const* src_data,
   return Status::OK();
 }
 
-common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
-  void const* src_data = src.DataRaw();
-  void* dst_data = dst.MutableDataRaw();
+bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+  return (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::CPU) ||
+         (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::GPU) ||
+         (dst_device.Type() == OrtDevice::CPU && src_device.Type() == OrtDevice::GPU);
+}
 
-  return CopyTensorImpl(src_data,
-                        src.Location().device.Type() == OrtDevice::GPU,
-                        dst_data,
-                        dst.Location().device.Type() == OrtDevice::GPU,
-                        src.SizeInBytes());
+common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+  return impl_.CopyTensor(src.DataRaw(),
+                          src.Location().device.Type() == OrtDevice::GPU,
+                          dst.MutableDataRaw(),
+                          dst.Location().device.Type() == OrtDevice::GPU,
+                          src.SizeInBytes());
 }
 
 }  // namespace webgpu
