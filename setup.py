@@ -872,6 +872,7 @@ setup(
     author_email="onnxruntime@microsoft.com",
     cmdclass=cmd_classes,
     license="MIT License",
+    license_files=["LICENSE", "ThirdPartyNotices.txt"],
     packages=packages,
     ext_modules=ext_modules,
     package_data=package_data,
