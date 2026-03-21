@@ -510,8 +510,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
     // Asymmetric padded wrapper coverage.
     TestKernel(4, 3, 3, 0, 1, 1, 0);
     TestKernel(4, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 1, 0, 1);
-    TestKernel(4, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION,
+    TestKernel(4, 1, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION,
                2,
                1,
                0);
