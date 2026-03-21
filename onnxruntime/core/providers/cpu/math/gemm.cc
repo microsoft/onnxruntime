@@ -113,7 +113,11 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   if (tensor_b.Shape().NumDimensions() != 2) {
     return false;
   }
+
   b_shape = tensor_b.Shape();
+  if (b_shape.Size() < 0) {
+    return false;
+  }
 
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
