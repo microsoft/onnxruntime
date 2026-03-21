@@ -524,9 +524,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
 
     // Wider padded rows make the interior asm span non-trivial.
     TestKernel(8, 3, 3, MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION, 1, 1, 1);
-    TestKernel(8, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT |
-                           MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION |
-                           MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
+    TestKernel(8, 3, 3, MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT | MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION | MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION,
                2,
                1,
                1);
