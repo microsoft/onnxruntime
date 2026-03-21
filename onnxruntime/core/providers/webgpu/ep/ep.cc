@@ -63,6 +63,7 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
   }
 
   std::vector<const OrtNode*> candidate_nodes;
+  std::vector<const OrtNode*> tentative_candidate_nodes;
 
   // For each node, check if we have a registered kernel for it
   for (const auto& node : all_nodes) {
@@ -140,13 +141,14 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
     }
 
     candidate_nodes.push_back(node);
+    tentative_candidate_nodes.push_back(node);
   }
 
   std::unordered_set<const OrtNode*> cpu_preferred_nodes;
   RETURN_IF_ERROR(onnxruntime::ep::GetCpuPreferredNodes(*ort_graph,
                                                         *graph_support_info,
                                                         static_cast<Ep*>(this_ptr)->GetOrtLogger(),
-                                                        candidate_nodes,
+                                                        tentative_candidate_nodes,
                                                         cpu_preferred_nodes));
 
   for (const auto& node : candidate_nodes) {
