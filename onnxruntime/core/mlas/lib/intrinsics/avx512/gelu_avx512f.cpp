@@ -15,8 +15,6 @@ Abstract:
 
 --*/
 
-#include <cmath>
-
 #include "mlasi.h"
 
 namespace {
@@ -182,10 +180,12 @@ MlasGeluKernelAvx512FExactImpl(
         N -= 16;
     }
 
-    while (N > 0) {
-        const float X = *Input++;
-        *Output++ = GeluAvx512Constants::Half * X * (std::erff(X * GeluAvx512Constants::InvSqrt2) + GeluAvx512Constants::One);
-        N -= 1;
+    if (N > 0) {
+        const __mmask16 TailMask = __mmask16((1u << static_cast<unsigned>(N)) - 1u);
+        const __m512 X = _mm512_maskz_loadu_ps(TailMask, Input);
+        const __m512 Result = MlasComputeGeluVectorExactAvx512(X);
+
+        _mm512_mask_storeu_ps(Output, TailMask, Result);
     }
 }
 
