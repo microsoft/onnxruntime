@@ -89,7 +89,9 @@ async function resolveModelPath() {
     if (info.exists) return bundlePath;
   }
 
-  // Fallback: Metro asset system (dev server / simulator)
+  // Fallback: Metro asset system (dev server / simulator).
+  // On Android this works in both dev and production — the plugin copies
+  // models to assets/ which is where the Android native code already looks.
   const [asset] = await Asset.loadAsync(
     require("./assets/models/my_model.onnx")
   );
