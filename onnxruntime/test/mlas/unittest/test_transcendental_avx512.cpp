@@ -140,6 +140,7 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> input_buffer_;
   MatrixGuardBuffer<float> generic_output_buffer_;
+  MatrixGuardBuffer<float> public_output_buffer_;
   MatrixGuardBuffer<float> avx512_output_buffer_;
 
   void ExecuteCommon(const std::vector<size_t>& sizes, size_t iterations) {
@@ -151,15 +152,25 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
       for (size_t iteration = 0; iteration < iterations; ++iteration) {
         float* input = input_buffer_.GetBuffer(size);
         float* generic_output = generic_output_buffer_.GetBuffer(size);
+        float* public_output = public_output_buffer_.GetBuffer(size);
         float* avx512_output = avx512_output_buffer_.GetBuffer(size);
 
         FillInput(input, size, kGeluMinValue, kGeluMaxValue, GetGeluSpecialValues(),
                   static_cast<uint32_t>(size * 131u + iteration * 977u + 17u));
 
         MlasGeluKernel(input, generic_output, size);
+        MlasComputeGeluErf(input, public_output, size);
         MlasGeluKernelAvx512F(input, avx512_output, size);
 
         for (size_t i = 0; i < size; ++i) {
+          ASSERT_TRUE(UnaryOutputsMatch(public_output[i], generic_output[i],
+                                        kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
+              << "Public Gelu mismatch at index " << i << " of " << size
+              << ", input=" << input[i]
+              << ", public=" << public_output[i]
+              << ", generic=" << generic_output[i]
+              << ", abs_diff=" << std::fabs(public_output[i] - generic_output[i]);
+
           ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], generic_output[i],
                                         kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
               << "Gelu mismatch at index " << i << " of " << size
@@ -189,6 +200,7 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
 class MlasComputeSiluAvx512Test : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> input_buffer_;
+  MatrixGuardBuffer<float> public_output_buffer_;
   MatrixGuardBuffer<float> avx512_output_buffer_;
 
   void ExecuteCommon(const std::vector<size_t>& sizes, size_t iterations) {
@@ -199,15 +211,25 @@ class MlasComputeSiluAvx512Test : public MlasTestBase {
     for (size_t size : sizes) {
       for (size_t iteration = 0; iteration < iterations; ++iteration) {
         float* input = input_buffer_.GetBuffer(size);
+        float* public_output = public_output_buffer_.GetBuffer(size);
         float* avx512_output = avx512_output_buffer_.GetBuffer(size);
 
         FillInput(input, size, kSiluMinValue, kSiluMaxValue, GetSiluSpecialValues(),
                   static_cast<uint32_t>(size * 149u + iteration * 991u + 31u));
 
+        MlasComputeSilu(input, public_output, size);
         MlasSiluKernelAvx512F(input, avx512_output, size);
 
         for (size_t i = 0; i < size; ++i) {
           const float expected = ComputeReferenceSilu(input[i]);
+          ASSERT_TRUE(UnaryOutputsMatch(public_output[i], expected,
+                                        kSiluAbsoluteTolerance, kSiluRelativeTolerance, true))
+              << "Public Silu mismatch at index " << i << " of " << size
+              << ", input=" << input[i]
+              << ", public=" << public_output[i]
+              << ", expected=" << expected
+              << ", abs_diff=" << std::fabs(public_output[i] - expected);
+
           ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], expected,
                                         kSiluAbsoluteTolerance, kSiluRelativeTolerance, true))
               << "Silu mismatch at index " << i << " of " << size
@@ -215,6 +237,14 @@ class MlasComputeSiluAvx512Test : public MlasTestBase {
               << ", avx512=" << avx512_output[i]
               << ", expected=" << expected
               << ", abs_diff=" << std::fabs(avx512_output[i] - expected);
+
+          ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], public_output[i],
+                                        kSiluAbsoluteTolerance, kSiluRelativeTolerance, true))
+              << "Public/API Silu dispatch mismatch at index " << i << " of " << size
+              << ", input=" << input[i]
+              << ", avx512=" << avx512_output[i]
+              << ", public=" << public_output[i]
+              << ", abs_diff=" << std::fabs(avx512_output[i] - public_output[i]);
         }
       }
     }

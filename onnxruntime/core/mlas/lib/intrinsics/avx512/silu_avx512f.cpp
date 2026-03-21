@@ -15,6 +15,7 @@ Abstract:
 
 --*/
 
+#include <cstdint>
 #include <limits>
 
 #include "mlasi.h"
@@ -22,6 +23,8 @@ Abstract:
 namespace {
 
 struct SiluAvx512Constants {
+    static constexpr int32_t SignBitMask = INT32_MIN;
+    static constexpr int32_t PositiveMask = INT32_MAX;
     static constexpr float Half = 0.5f;
     static constexpr float One = 1.0f;
     static constexpr float Two = 2.0f;
@@ -92,8 +95,8 @@ MlasLogisticApproxAvx512(
 {
     const __m512 One = _mm512_set1_ps(1.0f);
     const __m512 Zero = _mm512_setzero_ps();
-    const __m512 SignMask = _mm512_castsi512_ps(_mm512_set1_epi32(int(0x80000000u)));
-    const __m512 PositiveMask = _mm512_castsi512_ps(_mm512_set1_epi32(0x7fffffffu));
+    const __m512 SignMask = _mm512_castsi512_ps(_mm512_set1_epi32(SiluAvx512Constants::SignBitMask));
+    const __m512 PositiveMask = _mm512_castsi512_ps(_mm512_set1_epi32(SiluAvx512Constants::PositiveMask));
 
     const __m512 XAbs = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(Value), _mm512_castps_si512(PositiveMask)));
     const __m512 XNeg = _mm512_castsi512_ps(_mm512_or_si512(_mm512_castps_si512(XAbs), _mm512_castps_si512(SignMask)));
@@ -113,7 +116,7 @@ MlasComputeSiluVectorAvx512(
 {
     const __m512 PositiveInfinity = _mm512_set1_ps(std::numeric_limits<float>::infinity());
     const __m512 NegativeInfinity = _mm512_set1_ps(-std::numeric_limits<float>::infinity());
-    const __m512 NegativeZero = _mm512_castsi512_ps(_mm512_set1_epi32(int(0x80000000u)));
+    const __m512 NegativeZero = _mm512_castsi512_ps(_mm512_set1_epi32(SiluAvx512Constants::SignBitMask));
 
     __m512 Result = _mm512_mul_ps(X, MlasLogisticApproxAvx512(X));
 

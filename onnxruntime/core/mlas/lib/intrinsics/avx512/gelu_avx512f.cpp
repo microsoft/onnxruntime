@@ -15,11 +15,14 @@ Abstract:
 
 --*/
 
+#include <cstdint>
+
 #include "mlasi.h"
 
 namespace {
 
 struct GeluAvx512Constants {
+    static constexpr int32_t SignBitMask = INT32_MIN;
     static constexpr float InvSqrt2 = 0.70710678118654752440f;
     static constexpr float Half = 0.5f;
     static constexpr float One = 1.0f;
@@ -94,7 +97,7 @@ MlasGeluErfAvx512(
     __m512 Value
     )
 {
-    const __m512 NegZero = _mm512_castsi512_ps(_mm512_set1_epi32(int(0x80000000u)));
+    const __m512 NegZero = _mm512_castsi512_ps(_mm512_set1_epi32(GeluAvx512Constants::SignBitMask));
     const __m512 Zero = _mm512_setzero_ps();
     const __m512 ErfUpperAbsRange = _mm512_set1_ps(GeluAvx512Constants::ErfUpperAbsRange);
     const __m512 ErfSplitBoundary = _mm512_set1_ps(GeluAvx512Constants::ErfSplitBoundary);
