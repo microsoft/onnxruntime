@@ -357,7 +357,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                    KernelFlags);
       std::fflush(stderr);
     }
-  #endif
+#endif
 
     AssertClose(OutputCpp, OutputReference, OutputElements, "cpp", "reference", FilterCount, OutputCountLeftPad, OutputCount, OutputCountRightPad, KernelHeight, KernelWidth, KernelFlags);
     std::fprintf(stderr,
