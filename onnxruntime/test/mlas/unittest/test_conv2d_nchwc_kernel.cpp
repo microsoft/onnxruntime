@@ -381,7 +381,7 @@ class MlasNchwcConvKernelTest : public MlasTestBase {
                  KernelWidth,
                  KernelFlags);
     std::fflush(stderr);
-  #if !defined(_WIN32)
+#if !defined(_WIN32)
     if (OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
       AssertClose(OutputAsm, OutputCpp, OutputElements, "asm", "cpp", FilterCount, OutputCountLeftPad, OutputCount, OutputCountRightPad, KernelHeight, KernelWidth, KernelFlags);
       std::fprintf(stderr,
