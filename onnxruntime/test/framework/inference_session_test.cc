@@ -2255,6 +2255,15 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
       : InferenceSessionWrapper(session_options, env) {
   }
 
+  InferenceSessionTestGlobalThreadPools(const SessionOptions& session_options,
+                                        const Environment& env,
+                                        onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
+                                        onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool)
+      : InferenceSessionWrapper(session_options, env,
+                                external_intra_op_thread_pool,
+                                external_inter_op_thread_pool) {
+  }
+
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
     return InferenceSession::GetIntraOpThreadPoolToUse();
   }
@@ -2341,6 +2350,40 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
   RunModel(session_object, run_options);
 }
 
+// Test 2b: lazy-init config should not change the env threadpool behavior when per-session threadpools are disabled.
+TEST(InferenceSessionTests, LazyInitConfigWithGlobalThreadPoolsAndNoPerSessionThreads) {
+  SessionOptions so;
+  so.use_per_session_threads = false;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
+
+  so.session_logid = "LazyInitConfigWithGlobalThreadPoolsAndNoPerSessionThreads";
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  OrtThreadingOptions tp_options;
+  auto st = Environment::Create(std::move(logging_manager), env, &tp_options, true /*create_global_thread_pools*/);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+  auto intra_tp_from_env = env->GetIntraOpThreadPool();
+  auto inter_tp_from_env = env->GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_env);
+  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_env);
+  ASSERT_TRUE(intra_tp_from_session_state == intra_tp_from_env);
+  ASSERT_TRUE(inter_tp_from_session_state == inter_tp_from_env);
+}
+
 // Test 3: env created with global tp / use per session tp: in this case per session tps should be in use
 TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   SessionOptions so;
@@ -2386,6 +2429,52 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   run_options.run_tag = "RunTag";
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModel(session_object, run_options);
+}
+
+TEST(InferenceSessionTests, LazyInitConfigWithExternalThreadPoolsUsesExternalPools) {
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
+
+  so.session_logid = "LazyInitConfigWithExternalThreadPoolsUsesExternalPools";
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  OrtThreadPoolParams intra_tp_params;
+  intra_tp_params.thread_pool_size = 2;
+  auto external_intra_op_thread_pool =
+      concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params, concurrency::ThreadPoolType::INTRA_OP);
+
+  OrtThreadPoolParams inter_tp_params;
+  inter_tp_params.thread_pool_size = 2;
+  auto external_inter_op_thread_pool =
+      concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params, concurrency::ThreadPoolType::INTER_OP);
+
+  ASSERT_TRUE(external_intra_op_thread_pool != nullptr);
+  ASSERT_TRUE(external_inter_op_thread_pool != nullptr);
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get(),
+                                                       external_intra_op_thread_pool.get(),
+                                                       external_inter_op_thread_pool.get()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session == external_intra_op_thread_pool.get());
+  ASSERT_TRUE(inter_tp_from_session == external_inter_op_thread_pool.get());
+  ASSERT_TRUE(intra_tp_from_session_state == external_intra_op_thread_pool.get());
+  ASSERT_TRUE(inter_tp_from_session_state == external_inter_op_thread_pool.get());
 }
 
 // Test 4: env created WITHOUT global tp / DONT use per session tp --> this should throw an exception
@@ -2500,12 +2589,14 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsNoCpuNodes) {
 
   SessionOptions so;
   so.use_per_session_threads = true;
+  so.session_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
 
   so.session_logid = "LazyInitPerSessionThreadPoolsNoCpuNodes";
+  auto capturing_sink = new CapturingSink();
   auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
@@ -2532,6 +2623,19 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsNoCpuNodes) {
   ASSERT_TRUE(intra_tp_from_session_state == nullptr);
   ASSERT_TRUE(inter_tp_from_session == nullptr);
   ASSERT_TRUE(inter_tp_from_session_state == nullptr);
+
+  const std::string config_flag_entry =
+      std::string(kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes) + "=1";
+  const auto& msgs = capturing_sink->Messages();
+  const bool has_skip_log =
+      std::find_if(msgs.begin(), msgs.end(),
+                   [&config_flag_entry](const std::string& msg) {
+                     return msg.find("Skipping per-session thread-pool creation.") != std::string::npos &&
+                            msg.find("use_per_session_threads=true") != std::string::npos &&
+                            msg.find("has_cpu_nodes=false") != std::string::npos &&
+                            msg.find(config_flag_entry) != std::string::npos;
+                   }) != msgs.end();
+  ASSERT_TRUE(has_skip_log);
 }
 
 // Test 5b: default behavior should remain unchanged when the optimization config is not enabled.

@@ -254,9 +254,11 @@ Status GetMinimalBuildOptimizationHandling(
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-// Note: this check is based on finalized EP assignment and may not detect
-// cases where a non-CPU execution provider falls back to CPU internally,
-// or where control-flow subgraphs are hidden by a compiled/fused parent node.
+// Note: this check is based on visible, finalized EP assignment in the Graph and may not detect:
+// 1) CPU fallback performed internally by a non-CPU execution provider.
+// 2) CPU work hidden inside a compiled/fused kernel where subgraphs are no longer visible.
+// This heuristic is only used for the opt-in
+// `session.create_threadpools_only_for_cpu_nodes` behavior, so default configuration is unchanged.
 static bool GraphHasCpuNodesInternal(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
@@ -554,12 +556,22 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
 
   const bool create_threadpools_only_for_cpu_nodes =
       session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "0") == "1";
+          kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1") == "1";
 
-  if (create_threadpools_only_for_cpu_nodes && !GraphHasCpuNodes()) {
-    return;
+  bool has_cpu_nodes = true;
+  if (create_threadpools_only_for_cpu_nodes) {
+    has_cpu_nodes = GraphHasCpuNodes();
+    if (!has_cpu_nodes) {
+      LOGS(*session_logger_, VERBOSE)
+          << "Skipping per-session thread-pool creation. "
+          << "use_per_session_threads=" << (use_per_session_threads_ ? "true" : "false")
+          << ", has_cpu_nodes=" << (has_cpu_nodes ? "true" : "false")
+          << ", " << kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes
+          << "=" << (create_threadpools_only_for_cpu_nodes ? "1" : "0");
+      return;
+    }
   }
-  
+
   const bool set_denormal_as_zero =
       session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
 
@@ -3992,6 +4004,10 @@ common::Status InferenceSession::AddPredefinedTransformers(
     RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
     const logging::Logger& logger) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
+  // With lazy per-session thread-pool initialization, transformer generation may happen before
+  // the per-session intra-op pool exists. Transformer factories/transformers must treat this as
+  // an optional pointer and handle nullptr.
+  auto* transformer_intra_op_thread_pool = GetIntraOpThreadPoolToUse();
   for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
     std::function<onnxruntime::InlinedVector<std::unique_ptr<GraphTransformer>>()> transformers_to_register;
@@ -4003,7 +4019,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
         transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
-                                                       GetIntraOpThreadPoolToUse());
+                                                       transformer_intra_op_thread_pool);
         };
       }
     } else {
@@ -4017,7 +4033,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
           if (use_full_build_optimizations) {
             return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                          optimizers_to_disable_,
-                                                         GetIntraOpThreadPoolToUse());
+                                                         transformer_intra_op_thread_pool);
           } else {
             const auto sat_context =
                 minimal_build_optimization_handling ==
@@ -4028,7 +4044,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
             return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
                                                                         logger,
                                                                         optimizers_to_disable_,
-                                                                        GetIntraOpThreadPoolToUse());
+                                                                        transformer_intra_op_thread_pool);
           }
         };
       }
