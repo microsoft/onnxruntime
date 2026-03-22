@@ -1471,7 +1471,7 @@ TEST(NchwcOptimizerTests, ActivationSingleConsumerConvGuard) {
 
       for (const auto& node : graph.Nodes()) {
         if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
-          EXPECT_EQ(graph_utils::GetNodeAttribute(node, "activation"), nullptr)
+          EXPECT_EQ(node.GetAttributes().count("activation"), 0U)
               << activation_op_type << " should not fuse into a single-consumer NCHWc Conv";
         }
       }
