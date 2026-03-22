@@ -2722,6 +2722,24 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgr
   ASSERT_TRUE(inter_tp_from_session_state != nullptr);
   ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
   ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
+
+  std::vector<int64_t> dims = {1};
+  OrtValue input_x_mlvalue;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, std::vector<float>{1.0f},
+                       &input_x_mlvalue);
+  OrtValue cond_mlvalue;
+  CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, std::vector<bool>{true},
+                      &cond_mlvalue);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("input_x", input_x_mlvalue));
+  feeds.insert(std::make_pair("cond", cond_mlvalue));
+  std::vector<std::string> output_names = {"output_y"};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  run_options.run_tag = "LazyInitSubgraphExecution";
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), 1U);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

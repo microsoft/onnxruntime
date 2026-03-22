@@ -2536,6 +2536,8 @@ common::Status InferenceSession::Initialize() {
 
       // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
       ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
+
+      InitializeThreadPoolsIfNeeded();
 #else   // !defined(ORT_MINIMAL_BUILD)
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

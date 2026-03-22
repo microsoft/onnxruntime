@@ -1133,6 +1133,21 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
   return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
 }
 
+void SessionState::InitializeThreadPools(concurrency::ThreadPool* intra, concurrency::ThreadPool* inter) {
+  ORT_ENFORCE((thread_pool_ == nullptr || thread_pool_ == intra) &&
+              (inter_op_thread_pool_ == nullptr || inter_op_thread_pool_ == inter));
+
+  thread_pool_ = intra;
+  inter_op_thread_pool_ = inter;
+
+  for (auto& node_to_subgraph_ss : subgraph_session_states_) {
+    for (auto& attr_to_subgraph_ss : node_to_subgraph_ss.second) {
+      ORT_ENFORCE(attr_to_subgraph_ss.second != nullptr);
+      attr_to_subgraph_ss.second->InitializeThreadPools(intra, inter);
+    }
+  }
+}
+
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   ORT_ENFORCE(node_index_info_.has_value(), "SetGraphAndCreateKernels must be called prior to GetExecutionInfo.");
   return *node_index_info_;

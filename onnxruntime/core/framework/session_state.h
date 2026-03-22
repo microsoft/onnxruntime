@@ -297,12 +297,7 @@ class SessionState {
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
-  void InitializeThreadPools(concurrency::ThreadPool* intra, concurrency::ThreadPool* inter) {
-    ORT_ENFORCE((thread_pool_ == nullptr || thread_pool_ == intra) &&
-                (inter_op_thread_pool_ == nullptr || inter_op_thread_pool_ == inter));
-    thread_pool_ = intra;
-    inter_op_thread_pool_ = inter;
-  }
+  void InitializeThreadPools(concurrency::ThreadPool* intra, concurrency::ThreadPool* inter);
 
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() noexcept { return fused_funcs_mgr_; }
