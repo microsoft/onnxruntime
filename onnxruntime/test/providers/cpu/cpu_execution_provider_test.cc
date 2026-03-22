@@ -21,6 +21,7 @@ TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorDefaultsToKleidiAiEnable
   SetupMlasBackendKernelSelectorFromConfigOptions(config, config_options);
 
   EXPECT_TRUE(config.use_kleidiai);
+  EXPECT_FALSE(config.use_nchwc_pointwise_filter_repacking);
 }
 
 TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorCanDisableKleidiAi) {
@@ -32,6 +33,19 @@ TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorCanDisableKleidiAi) {
   SetupMlasBackendKernelSelectorFromConfigOptions(config, config_options);
 
   EXPECT_FALSE(config.use_kleidiai);
+}
+
+TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorCanEnableNchwcPointwiseFilterRepacking) {
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
+  ConfigOptions config_options;
+  const Status add_config_status = config_options.AddConfigEntry(
+      kOrtSessionOptionsMlasEnableNchwcPointwiseFilterRepacking, "1");
+  ASSERT_TRUE(add_config_status.IsOK()) << add_config_status.ErrorMessage();
+
+  SetupMlasBackendKernelSelectorFromConfigOptions(config, config_options);
+
+  EXPECT_TRUE(config.use_kleidiai);
+  EXPECT_TRUE(config.use_nchwc_pointwise_filter_repacking);
 }
 }  // namespace test
 }  // namespace onnxruntime

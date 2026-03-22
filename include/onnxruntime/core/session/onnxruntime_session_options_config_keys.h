@@ -386,6 +386,12 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
 
+// Enable pointwise NCHWc filter panel repacking in MLAS.
+// Option values:
+// - "0": Do not use pointwise NCHWc filter panel repacking. [DEFAULT]
+// - "1": Enable pointwise NCHWc filter panel repacking for eligible convolutions.
+static const char* const kOrtSessionOptionsMlasEnableNchwcPointwiseFilterRepacking = "mlas.enable_nchwc_pointwise_filter_repacking";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.

@@ -866,9 +866,63 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
+    static constexpr size_t MaximumInputChannelBatch = 128;
+    static constexpr size_t MinimumInputChannelBatchForPacking = 64;
+    static constexpr size_t MinimumInputChannelsForPacking = 256;
+    static constexpr size_t MinimumOutputElementsForPacking = 8;
+    static constexpr size_t MinimumFilterSetsForPacking = 2;
+
     MLAS_NCHWC_CONV_POINTWISE_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
         MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock)
     {
+    }
+
+    bool
+    UsePointwiseFilterPacking() const
+    {
+        return WorkBlock->BackendKernelSelectorConfig != nullptr &&
+            WorkBlock->BackendKernelSelectorConfig->use_nchwc_pointwise_filter_repacking;
+    }
+
+    bool
+    ShouldTryPackPointwiseFilter() const
+    {
+        return UsePointwiseFilterPacking() &&
+            InputChannels >= MinimumInputChannelsForPacking &&
+            OutputChannels >= BlockSize * FilterSetSize * MinimumFilterSetsForPacking;
+    }
+
+    bool
+    ShouldPackPointwiseFilter(
+        size_t InputChannelBatch,
+        size_t OutputThisIteration
+        ) const
+    {
+        return FilterCount > 1 &&
+            InputChannelBatch >= MinimumInputChannelBatchForPacking &&
+            OutputThisIteration >= MinimumOutputElementsForPacking &&
+            ShouldTryPackPointwiseFilter();
+    }
+
+    const float*
+    PackPointwiseFilter(
+        const float* FilterSource,
+        float* PackedFilter,
+        size_t InputChannelBatch,
+        size_t SourceFilterStrideBytes,
+        size_t* PackedFilterStrideBytes
+        ) const
+    {
+        const size_t SourceFilterStride = SourceFilterStrideBytes / sizeof(float);
+        const size_t PackedFilterStride = BlockSize * InputChannelBatch;
+
+        for (size_t filter_index = 0; filter_index < FilterCount; filter_index++) {
+            std::copy_n(FilterSource + filter_index * SourceFilterStride,
+                PackedFilterStride, PackedFilter + filter_index * PackedFilterStride);
+        }
+
+        *PackedFilterStrideBytes = PackedFilterStride * sizeof(float);
+        return PackedFilter;
     }
 
     void Execute(ptrdiff_t Index)
@@ -904,6 +958,14 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasConvPointwiseFloatKernel;
 #endif
 
+    float* PackedFilterScratch = nullptr;
+    if (ShouldTryPackPointwiseFilter()) {
+        const size_t PackedFilterScratchBytes = UpAlignSize(
+        FilterSetSize * BlockSize * MaximumInputChannelBatch * sizeof(float));
+        MlasThreadedBufAlloc(PackedFilterScratchBytes);
+        PackedFilterScratch = reinterpret_cast<float*>(ThreadedBufHolder.get());
+    }
+
         while (WorkRemaining > 0) {
 
             //
@@ -938,9 +1000,6 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
             size_t InputChannelBatch = 0;
             for (size_t ic = 0; ic < InputChannels; ) {
-
-                constexpr size_t MaximumInputChannelBatch = 128;
-
                 InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
 
                 unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
@@ -957,8 +1016,17 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     KernelToUse = KernelFast;
                 }
 #endif
-                KernelToUse(input, filter, output, StrideWidthBytes, InputChannelBatch /
-                    BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
+                const float* KernelFilter = filter;
+                size_t KernelFilterStrideBytes = FilterStrideBytes;
+
+                if (PackedFilterScratch != nullptr &&
+                    ShouldPackPointwiseFilter(InputChannelBatch, OutputThisIteration)) {
+                    KernelFilter = PackPointwiseFilter(filter, PackedFilterScratch,
+                        InputChannelBatch, FilterStrideBytes, &KernelFilterStrideBytes);
+                }
+
+                KernelToUse(input, KernelFilter, output, StrideWidthBytes, InputChannelBatch /
+                    BlockSize, FilterCount, InputStrideBytes, KernelFilterStrideBytes,
                     OutputStrideBytes, OutputThisIteration, Bias, KernelFlags);
 
                 //
