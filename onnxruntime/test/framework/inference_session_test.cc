@@ -2350,14 +2350,13 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
   RunModel(session_object, run_options);
 }
 
-// Test 2b: lazy-init config should not change the env threadpool behavior when per-session threadpools are disabled.
-TEST(InferenceSessionTests, LazyInitConfigWithGlobalThreadPoolsAndNoPerSessionThreads) {
+// Test 2b: default lazy-init behavior should not change env threadpool behavior
+// when per-session threadpools are disabled.
+TEST(InferenceSessionTests, DefaultLazyInitWithGlobalThreadPoolsAndNoPerSessionThreads) {
   SessionOptions so;
   so.use_per_session_threads = false;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
 
-  so.session_logid = "LazyInitConfigWithGlobalThreadPoolsAndNoPerSessionThreads";
+  so.session_logid = "DefaultLazyInitWithGlobalThreadPoolsAndNoPerSessionThreads";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2431,14 +2430,12 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   RunModel(session_object, run_options);
 }
 
-TEST(InferenceSessionTests, LazyInitConfigWithExternalThreadPoolsUsesExternalPools) {
+TEST(InferenceSessionTests, DefaultLazyInitWithExternalThreadPoolsUsesExternalPools) {
   SessionOptions so;
   so.use_per_session_threads = true;
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
 
-  so.session_logid = "LazyInitConfigWithExternalThreadPoolsUsesExternalPools";
+  so.session_logid = "DefaultLazyInitWithExternalThreadPoolsUsesExternalPools";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2581,19 +2578,17 @@ static void CreateIfModelWithCpuNodeInSubgraph(const PathString& model_file_name
   ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
 }
 
-// Test 5a: with the optimization enabled, per-session threadpools should not be created
-// when all nodes are assigned to a non-CPU EP.
-TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsNoCpuNodes) {
+// Test 5a: default behavior (kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes defaults to "1"):
+// per-session threadpools are skipped when all nodes are assigned to a non-CPU EP.
+TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsNoCpuNodes) {
   PathString model_file_name = ORT_TSTR("lazy_init_all_internal.onnx");
   CreateAddSubModel(model_file_name);
 
   SessionOptions so;
   so.use_per_session_threads = true;
   so.session_log_severity_level = static_cast<int>(Severity::kVERBOSE);
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
 
-  so.session_logid = "LazyInitPerSessionThreadPoolsNoCpuNodes";
+  so.session_logid = "DefaultLazyInitPerSessionThreadPoolsNoCpuNodes";
   auto capturing_sink = new CapturingSink();
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
@@ -2630,7 +2625,7 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsNoCpuNodes) {
   const bool has_skip_log =
       std::find_if(msgs.begin(), msgs.end(),
                    [&config_flag_entry](const std::string& msg) {
-                     return msg.find("Skipping per-session thread-pool creation.") != std::string::npos &&
+                     return msg.find("Skipping per-session thread-pool creation (default lazy-init behavior)") != std::string::npos &&
                             msg.find("use_per_session_threads=true") != std::string::npos &&
                             msg.find("has_cpu_nodes=false") != std::string::npos &&
                             msg.find(config_flag_entry) != std::string::npos;
@@ -2638,9 +2633,9 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsNoCpuNodes) {
   ASSERT_TRUE(has_skip_log);
 }
 
-// Test 5b: default behavior should remain unchanged when the optimization config is not enabled.
-// Even if all nodes are assigned to a non-CPU EP, per-session threadpools should still be created.
-TEST(InferenceSessionTests, PerSessionThreadPoolsStillCreatedByDefaultWithoutCpuNodes) {
+// Test 5b: explicit legacy mode (kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes="0"):
+// per-session threadpools are always created even if all nodes are assigned to a non-CPU EP.
+TEST(InferenceSessionTests, LegacyPerSessionThreadPoolsAlwaysCreatedWithoutCpuNodes) {
   PathString model_file_name = ORT_TSTR("lazy_init_all_internal_default.onnx");
   CreateAddSubModel(model_file_name);
 
@@ -2651,10 +2646,10 @@ TEST(InferenceSessionTests, PerSessionThreadPoolsStillCreatedByDefaultWithoutCpu
   so.intra_op_param.thread_pool_size = 2;
   so.inter_op_param.thread_pool_size = 2;
 
-  // Intentionally do NOT set:
-  // kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "0"));
 
-  so.session_logid = "PerSessionThreadPoolsStillCreatedByDefaultWithoutCpuNodes";
+  so.session_logid = "LegacyPerSessionThreadPoolsAlwaysCreatedWithoutCpuNodes";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2687,9 +2682,9 @@ TEST(InferenceSessionTests, PerSessionThreadPoolsStillCreatedByDefaultWithoutCpu
   ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
 }
 
-// Test 6a: with the optimization enabled, per-session threadpools should be created
-// when any nodes remain on CPU in the main graph.
-TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodes) {
+// Test 6a: default behavior (kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes defaults to "1"):
+// per-session threadpools are created when CPU-assigned nodes are present.
+TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsWithCpuNodes) {
   PathString model_file_name = ORT_TSTR("lazy_init_add_sub.onnx");
   CreateAddSubModel(model_file_name);
 
@@ -2699,10 +2694,7 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodes) {
   // ensure threadpools are created even on single-core machines
   so.intra_op_param.thread_pool_size = 2;
   so.inter_op_param.thread_pool_size = 2;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
-
-  so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodes";
+  so.session_logid = "DefaultLazyInitPerSessionThreadPoolsWithCpuNodes";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2734,7 +2726,7 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodes) {
   ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
 }
 
-// Test 6b: with the optimization enabled, a control-flow node claimed by a non-CPU EP can be
+// Test 6b: with default lazy-init behavior, a control-flow node claimed by a non-CPU EP can be
 // compiled into a fused node without visible subgraphs. In that case CPU nodes in the original
 // subgraphs are not visible to GraphHasCpuNodesInternal, so per-session threadpools are skipped.
 TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph) {
@@ -2747,9 +2739,6 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgr
   // ensure threadpools are created even on single-core machines
   so.intra_op_param.thread_pool_size = 2;
   so.inter_op_param.thread_pool_size = 2;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
-
   so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
@@ -2790,9 +2779,6 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgr
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
   so.intra_op_param.thread_pool_size = 2;
   so.inter_op_param.thread_pool_size = 2;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1"));
-
   so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph_RecursiveDetection";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,

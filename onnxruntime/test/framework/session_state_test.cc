@@ -786,7 +786,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   ASSERT_EQ(const_initialized_tensors.size(), size_t(test_param.test_prepacking ? 0 : 1));
 }
 
-TEST(SessionStateTest, InitializeThreadPoolsPropagatesToSubgraphSessionStates) {
+TEST(SessionStateTest, InitializeThreadPoolsUpdatesCurrentSessionStateOnly) {
   OrtThreadPoolParams intra_tp_params;
   auto intra_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
                                                 concurrency::ThreadPoolType::INTRA_OP);
@@ -871,8 +871,8 @@ TEST(SessionStateTest, InitializeThreadPoolsPropagatesToSubgraphSessionStates) {
     for (const auto& attr_to_subgraph_ss : node_to_subgraph_ss.second) {
       const auto* subgraph_ss = attr_to_subgraph_ss.second.get();
       ASSERT_TRUE(subgraph_ss != nullptr);
-      ASSERT_TRUE(subgraph_ss->GetThreadPool() == intra_tp.get());
-      ASSERT_TRUE(subgraph_ss->GetInterOpThreadPool() == inter_tp.get());
+      ASSERT_TRUE(subgraph_ss->GetThreadPool() == nullptr);
+      ASSERT_TRUE(subgraph_ss->GetInterOpThreadPool() == nullptr);
     }
   }
 }

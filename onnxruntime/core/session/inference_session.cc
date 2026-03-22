@@ -254,11 +254,13 @@ Status GetMinimalBuildOptimizationHandling(
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-// Note: this check is based on visible, finalized EP assignment in the Graph and may not detect:
+// Note: this check is used by the default lazy per-session thread-pool behavior
+// (`session.create_threadpools_only_for_cpu_nodes=1`).
+// It is based on visible, finalized EP assignment in the Graph and may not detect:
 // 1) CPU fallback performed internally by a non-CPU execution provider.
 // 2) CPU work hidden inside a compiled/fused kernel where subgraphs are no longer visible.
-// This heuristic is only used for the opt-in
-// `session.create_threadpools_only_for_cpu_nodes` behavior, so default configuration is unchanged.
+// Set `session.create_threadpools_only_for_cpu_nodes=0` to restore legacy behavior
+// (always create per-session thread pools when use_per_session_threads is enabled).
 static bool GraphHasCpuNodesInternal(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
@@ -563,7 +565,8 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
     has_cpu_nodes = GraphHasCpuNodes();
     if (!has_cpu_nodes) {
       LOGS(*session_logger_, VERBOSE)
-          << "Skipping per-session thread-pool creation. "
+          << "Skipping per-session thread-pool creation (default lazy-init behavior) because finalized graph "
+             "has no CPU-assigned nodes. "
           << "use_per_session_threads=" << (use_per_session_threads_ ? "true" : "false")
           << ", has_cpu_nodes=" << (has_cpu_nodes ? "true" : "false")
           << ", " << kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes
@@ -2549,6 +2552,8 @@ common::Status InferenceSession::Initialize() {
       // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
       ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
 
+      // Must run before FinalizeSessionState() so subgraph SessionStates created during finalization
+      // inherit the thread pools via SessionState construction.
       InitializeThreadPoolsIfNeeded();
 #else   // !defined(ORT_MINIMAL_BUILD)
       ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -2559,6 +2564,8 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
                                                              *session_state_, session_options_, *session_logger_));
 
+      // Must run before FinalizeSessionState() so subgraph SessionStates created during finalization
+      // inherit the thread pools via SessionState construction.
       InitializeThreadPoolsIfNeeded();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

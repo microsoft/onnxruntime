@@ -41,8 +41,13 @@ static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save
 // and that's recommended because turning this option on may hurt model accuracy.
 static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.set_denormal_as_zero";
 
-// If set to "1", thread pools will only be created if the graph has CPU-assigned nodes.
-// This is an optimization based on EP assignment and may not detect CPU fallback within non-CPU EPs.
+// Controls lazy creation of per-session thread pools.
+// Default is "1":
+// - "1": create per-session thread pools only if the finalized graph contains CPU-assigned nodes.
+// - "0": legacy behavior. Always create per-session thread pools when use_per_session_threads is enabled.
+// The CPU-node check is based on finalized, visible EP assignment and may not detect:
+// - CPU fallback performed internally by a non-CPU EP.
+// - CPU work hidden inside compiled/fused kernels.
 static const char* const kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes = "session.create_threadpools_only_for_cpu_nodes";
 
 // It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.

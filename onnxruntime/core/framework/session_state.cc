@@ -1139,13 +1139,6 @@ void SessionState::InitializeThreadPools(concurrency::ThreadPool* intra, concurr
 
   thread_pool_ = intra;
   inter_op_thread_pool_ = inter;
-
-  for (auto& node_to_subgraph_ss : subgraph_session_states_) {
-    for (auto& attr_to_subgraph_ss : node_to_subgraph_ss.second) {
-      ORT_ENFORCE(attr_to_subgraph_ss.second != nullptr);
-      attr_to_subgraph_ss.second->InitializeThreadPools(intra, inter);
-    }
-  }
 }
 
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
