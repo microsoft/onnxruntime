@@ -786,6 +786,97 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   ASSERT_EQ(const_initialized_tensors.size(), size_t(test_param.test_prepacking ? 0 : 1));
 }
 
+TEST(SessionStateTest, InitializeThreadPoolsUpdatesCurrentSessionStateOnly) {
+  OrtThreadPoolParams intra_tp_params;
+  auto intra_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
+                                                concurrency::ThreadPoolType::INTRA_OP);
+
+  OrtThreadPoolParams inter_tp_params;
+  inter_tp_params.thread_pool_size = 1;
+  auto inter_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params,
+                                                concurrency::ThreadPoolType::INTER_OP);
+
+  ONNX_OPERATOR_SCHEMA(PrePackingTest)
+      .SetDoc("Faking Node for PrePacking")
+      .Input(0, "Input_0", "input 0", "tensor(float)")
+      .Input(1, "Input_1", "input 1", "tensor(float)")
+      .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+
+  ExecutionProviders execution_providers;
+  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
+
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 11;
+  Model model("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateGraphWithSubgraph(model.MainGraph());
+
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_PARALLEL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             nullptr,  // intra-op thread pool initialized later
+                             nullptr,  // inter-op thread pool initialized later
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  auto kernel_def = KernelDefBuilder().SetName("PrePackingTest").Provider(kCpuExecutionProvider).SinceVersion(1).Build();
+  ASSERT_STATUS_OK(kernel_registry->Register(
+      KernelCreateInfo(std::move(kernel_def),
+                       [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                         out = std::make_unique<PrePackingTestOpKernel>(info);
+                         return Status::OK();
+                       })));
+  kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
+
+  PlaceAllNodesToCPUEP(model.MainGraph());
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager));
+
+  ASSERT_TRUE(session_state.GetThreadPool() == nullptr);
+  ASSERT_TRUE(session_state.GetInterOpThreadPool() == nullptr);
+
+  const auto& subgraph_ss_map = session_state.GetSubgraphSessionStateMap();
+  ASSERT_FALSE(subgraph_ss_map.empty());
+  for (const auto& node_to_subgraph_ss : subgraph_ss_map) {
+    for (const auto& attr_to_subgraph_ss : node_to_subgraph_ss.second) {
+      const auto* subgraph_ss = attr_to_subgraph_ss.second.get();
+      ASSERT_TRUE(subgraph_ss != nullptr);
+      ASSERT_TRUE(subgraph_ss->GetThreadPool() == nullptr);
+      ASSERT_TRUE(subgraph_ss->GetInterOpThreadPool() == nullptr);
+    }
+  }
+
+  session_state.InitializeThreadPools(intra_tp.get(), inter_tp.get());
+
+  ASSERT_TRUE(session_state.GetThreadPool() == intra_tp.get());
+  ASSERT_TRUE(session_state.GetInterOpThreadPool() == inter_tp.get());
+  for (const auto& node_to_subgraph_ss : subgraph_ss_map) {
+    for (const auto& attr_to_subgraph_ss : node_to_subgraph_ss.second) {
+      const auto* subgraph_ss = attr_to_subgraph_ss.second.get();
+      ASSERT_TRUE(subgraph_ss != nullptr);
+      ASSERT_TRUE(subgraph_ss->GetThreadPool() == nullptr);
+      ASSERT_TRUE(subgraph_ss->GetInterOpThreadPool() == nullptr);
+    }
+  }
+}
+
 class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
  protected:
   ExecutionProviders execution_providers;
