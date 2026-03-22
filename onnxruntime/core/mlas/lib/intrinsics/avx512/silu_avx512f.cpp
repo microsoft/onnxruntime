@@ -15,7 +15,6 @@ Abstract:
 
 --*/
 
-#include <cstdint>
 #include <limits>
 
 #include "mlasi.h"
@@ -23,99 +22,65 @@ Abstract:
 namespace {
 
 struct SiluAvx512Constants {
-    static constexpr int32_t SignBitMask = INT32_MIN;
-    static constexpr int32_t PositiveMask = INT32_MAX;
-    static constexpr float Half = 0.5f;
-    static constexpr float One = 1.0f;
-    static constexpr float Two = 2.0f;
     static constexpr float LogisticLowerRange = -18.0f;
     static constexpr float LogisticUpperRange = 18.0f;
-    static constexpr float Ln2 = 0.693147182f;
-    static constexpr float Log2EF = 1.44269502f;
-    static constexpr float ExpLnFltMax = 88.3762589f;
-    static constexpr float ExpLnFltMin = -87.3365479f;
-
-    static constexpr float P1 = 0.999999701f;
-    static constexpr float P2 = 0.499991506f;
-    static constexpr float P3 = 0.166676521f;
-    static constexpr float P4 = 0.0418978221f;
-    static constexpr float P5 = 0.00828929059f;
+    static constexpr float Alpha9 = 4.37031012579801e-11f;
+    static constexpr float Alpha7 = 1.15627324459942e-07f;
+    static constexpr float Alpha5 = 6.08574864600143e-05f;
+    static constexpr float Alpha3 = 8.51377133304701e-03f;
+    static constexpr float Alpha1 = 2.48287947061529e-01f;
+    static constexpr float Beta10 = 6.10247389755681e-13f;
+    static constexpr float Beta8 = 5.76102136993427e-09f;
+    static constexpr float Beta6 = 6.29106785017040e-06f;
+    static constexpr float Beta4 = 1.70198817374094e-03f;
+    static constexpr float Beta2 = 1.16817656904453e-01f;
+    static constexpr float Beta0 = 9.93151921023180e-01f;
+    static constexpr float OneHalf = 0.5f;
 };
-
-MLAS_FORCEINLINE __m512
-MlasExpApproxAvx512(
-    __m512 Value
-    )
-{
-    const __m512 Half = _mm512_set1_ps(SiluAvx512Constants::Half);
-    const __m512 One = _mm512_set1_ps(SiluAvx512Constants::One);
-    const __m512 Two = _mm512_set1_ps(SiluAvx512Constants::Two);
-    const __m512 Ln2 = _mm512_set1_ps(SiluAvx512Constants::Ln2);
-    const __m512 Log2EF = _mm512_set1_ps(SiluAvx512Constants::Log2EF);
-    const __m512 ExpLnFltMax = _mm512_set1_ps(SiluAvx512Constants::ExpLnFltMax);
-    const __m512 ExpLnFltMin = _mm512_set1_ps(SiluAvx512Constants::ExpLnFltMin);
-    const __m512 P1 = _mm512_set1_ps(SiluAvx512Constants::P1);
-    const __m512 P2 = _mm512_set1_ps(SiluAvx512Constants::P2);
-    const __m512 P3 = _mm512_set1_ps(SiluAvx512Constants::P3);
-    const __m512 P4 = _mm512_set1_ps(SiluAvx512Constants::P4);
-    const __m512 P5 = _mm512_set1_ps(SiluAvx512Constants::P5);
-    const __m512i ExponentBias = _mm512_set1_epi32(127);
-
-    const __mmask16 UnderflowMask = _mm512_cmp_ps_mask(Value, ExpLnFltMin, _CMP_LT_OQ);
-
-    Value = _mm512_min_ps(Value, ExpLnFltMax);
-    Value = _mm512_max_ps(Value, ExpLnFltMin);
-
-    __m512 Fx = _mm512_fmadd_ps(Value, Log2EF, Half);
-    Fx = _mm512_floor_ps(Fx);
-
-    const __m512 R = _mm512_fnmadd_ps(Fx, Ln2, Value);
-
-    const __m512 NMinusOne = _mm512_sub_ps(Fx, One);
-    __m512i Exponent = _mm512_cvttps_epi32(NMinusOne);
-    Exponent = _mm512_add_epi32(Exponent, ExponentBias);
-    Exponent = _mm512_slli_epi32(Exponent, 23);
-    Exponent = _mm512_mask_mov_epi32(Exponent, UnderflowMask, _mm512_setzero_si512());
-    const __m512 Pow2NMinusOne = _mm512_castsi512_ps(Exponent);
-
-    __m512 Y = P5;
-    Y = _mm512_fmadd_ps(Y, R, P4);
-    Y = _mm512_fmadd_ps(Y, R, P3);
-    Y = _mm512_fmadd_ps(Y, R, P2);
-    Y = _mm512_fmadd_ps(Y, R, P1);
-    Y = _mm512_fmadd_ps(Y, R, One);
-
-    Y = _mm512_mul_ps(Y, Pow2NMinusOne);
-    Y = _mm512_mul_ps(Y, Two);
-    return Y;
-}
 
 MLAS_FORCEINLINE __m512
 MlasLogisticApproxAvx512(
     __m512 Value
     )
 {
-    const __m512 One = _mm512_set1_ps(1.0f);
-    const __m512 Zero = _mm512_setzero_ps();
     const __m512 LogisticLowerRange = _mm512_set1_ps(SiluAvx512Constants::LogisticLowerRange);
     const __m512 LogisticUpperRange = _mm512_set1_ps(SiluAvx512Constants::LogisticUpperRange);
-    const __m512 SignMask = _mm512_castsi512_ps(_mm512_set1_epi32(SiluAvx512Constants::SignBitMask));
-    const __m512 PositiveMask = _mm512_castsi512_ps(_mm512_set1_epi32(SiluAvx512Constants::PositiveMask));
+    const __m512 Alpha9 = _mm512_set1_ps(SiluAvx512Constants::Alpha9);
+    const __m512 Alpha7 = _mm512_set1_ps(SiluAvx512Constants::Alpha7);
+    const __m512 Alpha5 = _mm512_set1_ps(SiluAvx512Constants::Alpha5);
+    const __m512 Alpha3 = _mm512_set1_ps(SiluAvx512Constants::Alpha3);
+    const __m512 Alpha1 = _mm512_set1_ps(SiluAvx512Constants::Alpha1);
+    const __m512 Beta10 = _mm512_set1_ps(SiluAvx512Constants::Beta10);
+    const __m512 Beta8 = _mm512_set1_ps(SiluAvx512Constants::Beta8);
+    const __m512 Beta6 = _mm512_set1_ps(SiluAvx512Constants::Beta6);
+    const __m512 Beta4 = _mm512_set1_ps(SiluAvx512Constants::Beta4);
+    const __m512 Beta2 = _mm512_set1_ps(SiluAvx512Constants::Beta2);
+    const __m512 Beta0 = _mm512_set1_ps(SiluAvx512Constants::Beta0);
+    const __m512 OneHalf = _mm512_set1_ps(SiluAvx512Constants::OneHalf);
+    const __m512 Zero = _mm512_setzero_ps();
+    const __m512 One = _mm512_set1_ps(1.0f);
 
-    // Mirror MlasComputeLogistic clamping so the AVX512 SiLU path matches the
-    // existing MLAS semantics for large finite inputs and avoids x * 0 invalid
-    // behavior when the exp approximation underflows.
+    // Mirror MlasComputeLogistic by evaluating the same clamped rational
+    // approximation in-register and then multiplying by x for SiLU.
     const __m512 ClampedValue = _mm512_max_ps(_mm512_min_ps(Value, LogisticUpperRange), LogisticLowerRange);
+    const __m512 ValueSquared = _mm512_mul_ps(ClampedValue, ClampedValue);
 
-    const __m512 XAbs = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(ClampedValue), _mm512_castps_si512(PositiveMask)));
-    const __m512 XNeg = _mm512_castsi512_ps(_mm512_or_si512(_mm512_castps_si512(XAbs), _mm512_castps_si512(SignMask)));
+    __m512 P = _mm512_fmadd_ps(ValueSquared, Alpha9, Alpha7);
+    P = _mm512_fmadd_ps(P, ValueSquared, Alpha5);
+    P = _mm512_fmadd_ps(P, ValueSquared, Alpha3);
+    P = _mm512_fmadd_ps(P, ValueSquared, Alpha1);
+    P = _mm512_mul_ps(P, ClampedValue);
 
-    const __m512 E = MlasExpApproxAvx512(XNeg);
-    const __m512 Y = _mm512_div_ps(E, _mm512_add_ps(E, One));
-    const __m512 OneMinusY = _mm512_sub_ps(One, Y);
-    const __mmask16 NegativeMask = _mm512_cmp_ps_mask(ClampedValue, Zero, _CMP_LT_OQ);
+    __m512 Q = _mm512_fmadd_ps(ValueSquared, Beta10, Beta8);
+    Q = _mm512_fmadd_ps(Q, ValueSquared, Beta6);
+    Q = _mm512_fmadd_ps(Q, ValueSquared, Beta4);
+    Q = _mm512_fmadd_ps(Q, ValueSquared, Beta2);
+    Q = _mm512_fmadd_ps(Q, ValueSquared, Beta0);
 
-    return _mm512_mask_blend_ps(NegativeMask, OneMinusY, Y);
+    __m512 Logistic = _mm512_add_ps(_mm512_div_ps(P, Q), OneHalf);
+    Logistic = _mm512_min_ps(_mm512_max_ps(Logistic, Zero), One);
+
+    return Logistic;
 }
 
 MLAS_FORCEINLINE __m512
@@ -123,19 +88,13 @@ MlasComputeSiluVectorAvx512(
     __m512 X
     )
 {
-    const __m512 PositiveInfinity = _mm512_set1_ps(std::numeric_limits<float>::infinity());
-    const __m512 NegativeInfinity = _mm512_set1_ps(-std::numeric_limits<float>::infinity());
-
     __m512 Result = _mm512_mul_ps(X, MlasLogisticApproxAvx512(X));
 
+    // Preserve NaN payload/sign behavior explicitly because the clamped
+    // logistic approximation uses min/max operations that do not reliably
+    // propagate NaNs the same way as the existing MLAS SiLU semantics.
     const __mmask16 NaNMask = _mm512_cmp_ps_mask(X, X, _CMP_UNORD_Q);
     Result = _mm512_mask_mov_ps(Result, NaNMask, X);
-
-    const __mmask16 PositiveInfinityMask = _mm512_cmp_ps_mask(X, PositiveInfinity, _CMP_EQ_OQ);
-    Result = _mm512_mask_mov_ps(Result, PositiveInfinityMask, PositiveInfinity);
-
-    const __mmask16 NegativeInfinityMask = _mm512_cmp_ps_mask(X, NegativeInfinity, _CMP_EQ_OQ);
-    Result = _mm512_mask_mov_ps(Result, NegativeInfinityMask, NegativeInfinity);
 
     return Result;
 }
