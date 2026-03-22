@@ -2255,15 +2255,6 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
       : InferenceSessionWrapper(session_options, env) {
   }
 
-  InferenceSessionTestGlobalThreadPools(const SessionOptions& session_options,
-                                        const Environment& env,
-                                        onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
-                                        onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool)
-      : InferenceSessionWrapper(session_options, env,
-                                external_intra_op_thread_pool,
-                                external_inter_op_thread_pool) {
-  }
-
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
     return InferenceSession::GetIntraOpThreadPoolToUse();
   }
@@ -2350,39 +2341,6 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
   RunModel(session_object, run_options);
 }
 
-// Test 2b: default lazy-init behavior should not change env threadpool behavior
-// when per-session threadpools are disabled.
-TEST(InferenceSessionTests, DefaultLazyInitWithGlobalThreadPoolsAndNoPerSessionThreads) {
-  SessionOptions so;
-  so.use_per_session_threads = false;
-
-  so.session_logid = "DefaultLazyInitWithGlobalThreadPoolsAndNoPerSessionThreads";
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
-
-  std::unique_ptr<Environment> env;
-  OrtThreadingOptions tp_options;
-  auto st = Environment::Create(std::move(logging_manager), env, &tp_options, true /*create_global_thread_pools*/);
-  ASSERT_TRUE(st.IsOK());
-
-  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
-  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_STATUS_OK(session_object.Initialize());
-
-  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
-  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
-  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
-  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
-  auto intra_tp_from_env = env->GetIntraOpThreadPool();
-  auto inter_tp_from_env = env->GetInterOpThreadPool();
-
-  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_env);
-  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_env);
-  ASSERT_TRUE(intra_tp_from_session_state == intra_tp_from_env);
-  ASSERT_TRUE(inter_tp_from_session_state == inter_tp_from_env);
-}
-
 // Test 3: env created with global tp / use per session tp: in this case per session tps should be in use
 TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   SessionOptions so;
@@ -2428,50 +2386,6 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   run_options.run_tag = "RunTag";
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModel(session_object, run_options);
-}
-
-TEST(InferenceSessionTests, DefaultLazyInitWithExternalThreadPoolsUsesExternalPools) {
-  SessionOptions so;
-  so.use_per_session_threads = true;
-  so.execution_mode = ExecutionMode::ORT_PARALLEL;
-
-  so.session_logid = "DefaultLazyInitWithExternalThreadPoolsUsesExternalPools";
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
-
-  std::unique_ptr<Environment> env;
-  auto st = Environment::Create(std::move(logging_manager), env);
-  ASSERT_TRUE(st.IsOK());
-
-  OrtThreadPoolParams intra_tp_params;
-  intra_tp_params.thread_pool_size = 2;
-  auto external_intra_op_thread_pool =
-      concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params, concurrency::ThreadPoolType::INTRA_OP);
-
-  OrtThreadPoolParams inter_tp_params;
-  inter_tp_params.thread_pool_size = 2;
-  auto external_inter_op_thread_pool =
-      concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params, concurrency::ThreadPoolType::INTER_OP);
-
-  ASSERT_TRUE(external_intra_op_thread_pool != nullptr);
-  ASSERT_TRUE(external_inter_op_thread_pool != nullptr);
-
-  InferenceSessionTestGlobalThreadPools session_object{so, *env.get(),
-                                                       external_intra_op_thread_pool.get(),
-                                                       external_inter_op_thread_pool.get()};
-  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_STATUS_OK(session_object.Initialize());
-
-  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
-  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
-  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
-  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
-
-  ASSERT_TRUE(intra_tp_from_session == external_intra_op_thread_pool.get());
-  ASSERT_TRUE(inter_tp_from_session == external_inter_op_thread_pool.get());
-  ASSERT_TRUE(intra_tp_from_session_state == external_intra_op_thread_pool.get());
-  ASSERT_TRUE(inter_tp_from_session_state == external_inter_op_thread_pool.get());
 }
 
 // Test 4: env created WITHOUT global tp / DONT use per session tp --> this should throw an exception
@@ -2726,51 +2640,8 @@ TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsWithCpuNodes) {
   ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
 }
 
-// Test 6b: with default lazy-init behavior, a control-flow node claimed by a non-CPU EP can be
-// compiled into a fused node without visible subgraphs. In that case CPU nodes in the original
-// subgraphs are not visible to GraphHasCpuNodesInternal, so per-session threadpools are skipped.
-TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph) {
-  PathString model_file_name = ORT_TSTR("lazy_init_if_cpu_subgraph.onnx");
-  CreateIfModelWithCpuNodeInSubgraph(model_file_name);
-
-  SessionOptions so;
-  so.use_per_session_threads = true;
-  so.execution_mode = ExecutionMode::ORT_PARALLEL;
-  // ensure threadpools are created even on single-core machines
-  so.intra_op_param.thread_pool_size = 2;
-  so.inter_op_param.thread_pool_size = 2;
-  so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph";
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
-      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
-      LoggingManager::InstanceType::Temporal);
-
-  std::unique_ptr<Environment> env;
-  auto st = Environment::Create(std::move(logging_manager), env);
-  ASSERT_TRUE(st.IsOK());
-
-  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
-
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
-  // Claim only the If node in the main graph. The Relu in the subgraphs stays on CPU.
-  const std::unordered_set<std::string> ops = {"If"};
-  auto internal_testing_ep = std::make_unique<InternalTestingEP>(ops);
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
-
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-
-  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
-  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
-  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
-  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
-
-  ASSERT_TRUE(intra_tp_from_session == nullptr);
-  ASSERT_TRUE(intra_tp_from_session_state == nullptr);
-  ASSERT_TRUE(inter_tp_from_session == nullptr);
-  ASSERT_TRUE(inter_tp_from_session_state == nullptr);
-}
-
-TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph_RecursiveDetection) {
+// Test 6b: default behavior with recursive subgraph CPU-node detection should create threadpools.
+TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsWithCpuNodesInSubgraph) {
   PathString model_file_name = ORT_TSTR("lazy_init_if_cpu_subgraph_recursive.onnx");
   CreateIfModelWithCpuNodeInSubgraph(model_file_name);
 
@@ -2779,7 +2650,7 @@ TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgr
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
   so.intra_op_param.thread_pool_size = 2;
   so.inter_op_param.thread_pool_size = 2;
-  so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodesOnlyInSubgraph_RecursiveDetection";
+  so.session_logid = "DefaultLazyInitPerSessionThreadPoolsWithCpuNodesInSubgraph";
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
