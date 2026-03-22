@@ -7,6 +7,7 @@
 
 #include "mlas.h"
 #include "bench_util.h"
+#include "core/mlas/lib/mlasi.h"
 
 namespace {
 
@@ -21,6 +22,35 @@ constexpr float kInvSqrt2 = 0.7071067811865475244f;
 constexpr int64_t kFusedBytesPerElement = 2;
 constexpr int64_t kSiluUnfusedBytesPerElement = 5;
 constexpr int64_t kGeluUnfusedBytesPerElement = 7;
+
+struct DispatchedUnaryPathInfo {
+  int64_t bytes_per_element;
+  const char* label;
+};
+
+DispatchedUnaryPathInfo GetSiluDispatchPathInfo() {
+#if defined(MLAS_TARGET_AMD64)
+  if (GetMlasPlatform().SiluKernelRoutine == MlasSiluKernelAvx512F) {
+    return {kFusedBytesPerElement, "avx512_fused"};
+  }
+#endif
+
+  // The current non-AVX512 dispatch target falls back to the generic path,
+  // which materializes the logistic result before the final multiply.
+  return {kSiluUnfusedBytesPerElement, "generic_fallback"};
+}
+
+DispatchedUnaryPathInfo GetGeluDispatchPathInfo() {
+#if defined(MLAS_TARGET_AMD64)
+  if (GetMlasPlatform().GeluKernelRoutine == MlasGeluKernelAvx512F) {
+    return {kFusedBytesPerElement, "avx512_fused"};
+  }
+#endif
+
+  // The current non-AVX512 dispatch target falls back to the generic exact
+  // GELU(erf) implementation, which uses separate scale, erf, and final passes.
+  return {kGeluUnfusedBytesPerElement, "generic_fallback"};
+}
 
 std::vector<float> MakeInput(size_t n, float min_value, float max_value) {
   auto data = RandomVectorUniform<float>(n, min_value, max_value);
@@ -45,10 +75,13 @@ template <typename KernelFn>
 void RunDispatchedUnaryBenchmark(benchmark::State& state,
                                  KernelFn&& kernel,
                                  float min_value,
-                                 float max_value) {
+                                 float max_value,
+                                 DispatchedUnaryPathInfo path_info) {
   const auto n = static_cast<size_t>(state.range(0));
   auto input = MakeInput(n, min_value, max_value);
   std::vector<float> output(n);
+
+  state.SetLabel(path_info.label);
 
   kernel(input.data(), output.data(), n);
 
@@ -59,7 +92,7 @@ void RunDispatchedUnaryBenchmark(benchmark::State& state,
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(n));
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(n * sizeof(float) * kFusedBytesPerElement));
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(n * sizeof(float) * path_info.bytes_per_element));
 }
 
 template <typename KernelFn>
@@ -94,7 +127,7 @@ void BM_SiluDispatch(benchmark::State& state) {
   // Fused MLAS SiLU entry point. On supported platforms this may dispatch to a
   // specialized implementation that combines the activation into a single
   // kernel instead of exposing intermediate results.
-  RunDispatchedUnaryBenchmark(state, MlasComputeSilu, kSiluMinValue, kSiluMaxValue);
+  RunDispatchedUnaryBenchmark(state, MlasComputeSilu, kSiluMinValue, kSiluMaxValue, GetSiluDispatchPathInfo());
 }
 
 void BM_SiluUnfusedDispatch(benchmark::State& state) {
@@ -121,7 +154,8 @@ void BM_GeluErfDispatchExact(benchmark::State& state) {
         MlasComputeGeluErf(input, output, n);
       },
       kGeluMinValue,
-      kGeluMaxValue);
+      kGeluMaxValue,
+      GetGeluDispatchPathInfo());
 }
 
 void BM_GeluErfUnfusedExact(benchmark::State& state) {
