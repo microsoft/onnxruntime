@@ -1446,6 +1446,47 @@ TEST(NchwcOptimizerTests, Activation) {
   test_case("QuickGelu", kMSDomain);
 }
 
+TEST(NchwcOptimizerTests, ActivationSingleConsumerConvGuard) {
+  auto test_case = [&](const std::string& activation_op_type, const std::string& domain = kOnnxDomain) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* activation_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
+      helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg}, domain);
+      helper.AddConvNode(activation_output_arg, output_arg, {16, 32, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto& graph = session.GetGraph();
+      auto op_to_count = CountOpsInGraph(graph);
+      const std::string activation_key = domain.empty() ? activation_op_type : domain + "." + activation_op_type;
+
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count[activation_key], 1);
+
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+          EXPECT_EQ(graph_utils::GetNodeAttribute(node, "activation"), nullptr)
+              << activation_op_type << " should not fuse into a single-consumer NCHWc Conv";
+        }
+      }
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  // Gelu/QuickGelu must remain separate even with a single-consumer Conv input,
+  // because the NCHWc Conv activation fuse guard only allows a fixed subset of
+  // activations.
+  test_case("Gelu", kMSDomain);
+  test_case("QuickGelu", kMSDomain);
+}
+
 TEST(NchwcOptimizerTests, MaxPoolTypeCheck) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
     auto add_pool_node = [&](NchwcTestHelper& helper, NodeArg* input_arg) {
