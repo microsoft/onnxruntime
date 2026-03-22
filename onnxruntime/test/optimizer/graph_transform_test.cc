@@ -5122,6 +5122,63 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithPermutedBloc
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForDynamicChannelPermutedBlockOrderTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{1, -1, 8, 8}});
+
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+    auto* ends = builder.Make1DInitializer<int64_t>({std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()});
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice10_out, slice01_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    TEST_RETURN_IF(get_op_count(op_to_count, "Gather") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    TEST_RETURN_IF(get_op_count(op_to_count, "Gather") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForSpatialCropTest) {
   auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
     const auto it = op_to_count.find(std::string(op_type));
