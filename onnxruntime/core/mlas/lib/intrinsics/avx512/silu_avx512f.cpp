@@ -28,6 +28,8 @@ struct SiluAvx512Constants {
     static constexpr float Half = 0.5f;
     static constexpr float One = 1.0f;
     static constexpr float Two = 2.0f;
+    static constexpr float LogisticLowerRange = -18.0f;
+    static constexpr float LogisticUpperRange = 18.0f;
     static constexpr float Ln2 = 0.693147182f;
     static constexpr float Log2EF = 1.44269502f;
     static constexpr float ExpLnFltMax = 88.3762589f;
@@ -95,16 +97,23 @@ MlasLogisticApproxAvx512(
 {
     const __m512 One = _mm512_set1_ps(1.0f);
     const __m512 Zero = _mm512_setzero_ps();
+    const __m512 LogisticLowerRange = _mm512_set1_ps(SiluAvx512Constants::LogisticLowerRange);
+    const __m512 LogisticUpperRange = _mm512_set1_ps(SiluAvx512Constants::LogisticUpperRange);
     const __m512 SignMask = _mm512_castsi512_ps(_mm512_set1_epi32(SiluAvx512Constants::SignBitMask));
     const __m512 PositiveMask = _mm512_castsi512_ps(_mm512_set1_epi32(SiluAvx512Constants::PositiveMask));
 
-    const __m512 XAbs = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(Value), _mm512_castps_si512(PositiveMask)));
+    // Mirror MlasComputeLogistic clamping so the AVX512 SiLU path matches the
+    // existing MLAS semantics for large finite inputs and avoids x * 0 invalid
+    // behavior when the exp approximation underflows.
+    const __m512 ClampedValue = _mm512_max_ps(_mm512_min_ps(Value, LogisticUpperRange), LogisticLowerRange);
+
+    const __m512 XAbs = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(ClampedValue), _mm512_castps_si512(PositiveMask)));
     const __m512 XNeg = _mm512_castsi512_ps(_mm512_or_si512(_mm512_castps_si512(XAbs), _mm512_castps_si512(SignMask)));
 
     const __m512 E = MlasExpApproxAvx512(XNeg);
     const __m512 Y = _mm512_div_ps(E, _mm512_add_ps(E, One));
     const __m512 OneMinusY = _mm512_sub_ps(One, Y);
-    const __mmask16 NegativeMask = _mm512_cmp_ps_mask(Value, Zero, _CMP_LT_OQ);
+    const __mmask16 NegativeMask = _mm512_cmp_ps_mask(ClampedValue, Zero, _CMP_LT_OQ);
 
     return _mm512_mask_blend_ps(NegativeMask, OneMinusY, Y);
 }
