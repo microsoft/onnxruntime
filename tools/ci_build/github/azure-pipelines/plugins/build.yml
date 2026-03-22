@@ -1,0 +1,39 @@
+parameters:
+- name: platform
+  type: string
+  values:
+  - win_x64
+  - win_arm64
+  - linux_x64
+  - macos_arm64
+- name: api_version
+  type: number
+- name: package_version
+  type: string
+
+stages:
+- stage: Build_WebGPU_Plugin_${{ parameters.platform }}
+  displayName: 'Build WebGPU Plugin - ${{ parameters.platform }}'
+  ${{ if eq(parameters.platform, 'win_arm64') }}:
+    dependsOn:
+    - Build_WebGPU_Plugin_win_x64
+  ${{ else }}:
+    dependsOn: []
+  jobs:
+  - job: Build
+    displayName: 'Build ${{ parameters.platform }}'
+    pool:
+      ${{ if or(eq(parameters.platform, 'win_x64'), eq(parameters.platform, 'win_arm64')) }}:
+        name: 'onnxruntime-Win-CPU-VS2022-Latest'
+        os: windows
+      ${{ elseif eq(parameters.platform, 'linux_x64') }}:
+        name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+        os: linux
+      ${{ elseif eq(parameters.platform, 'macos_arm64') }}:
+        name: 'AcesShared'
+        os: macOS
+        demands:
+        - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+    steps:
+    - script: echo "TODO - Build WebGPU plugin for ${{ parameters.platform }} (API ${{ parameters.api_version }}, ${{ parameters.package_version }})"
+      displayName: 'Placeholder'
