@@ -33,6 +33,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -2417,10 +2418,75 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+namespace {
+constexpr const char* kMainGraphIfOnlyExecutionProvider = "MainGraphIfOnlyExecutionProvider";
+
+common::Status CreateMainGraphIfKernel(FuncManager& /*func_mgr*/, const OpKernelInfo& info,
+                                       std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<onnxruntime::If>(info);
+  return Status::OK();
+}
+}  // namespace
+
+class MainGraphIfOnlyExecutionProvider final : public IExecutionProvider {
+ public:
+  MainGraphIfOnlyExecutionProvider() : IExecutionProvider{kMainGraphIfOnlyExecutionProvider} {
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                const IKernelLookup& /*kernel_lookup*/,
+                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                IResourceAccountant* /* resource_accountant */) const override {
+    // Keep subgraph nodes on CPU so recursive traversal is required to detect them.
+    if (graph_viewer.IsSubgraph()) {
+      return {};
+    }
+
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.OpType() == "If" && node.GetExecutionProviderType().empty()) {
+        auto sub_graph = std::make_unique<IndexedSubGraph>();
+        sub_graph->nodes.push_back(node.Index());
+        capabilities.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      }
+    }
+
+    return capabilities;
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    static std::shared_ptr<KernelRegistry> kernel_registry = []() {
+      auto registry = std::make_shared<KernelRegistry>();
+      KernelDefBuilder kernel_def_builder;
+      kernel_def_builder.SetName("If")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(11, 12)
+          .Provider(kMainGraphIfOnlyExecutionProvider)
+          .InputMemoryType(OrtMemTypeCPUInput, 0)
+          .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+          .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes());
+      ORT_THROW_IF_ERROR(registry->Register(kernel_def_builder, CreateMainGraphIfKernel));
+      return registry;
+    }();
+
+    return kernel_registry;
+  }
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override {
+    AllocatorCreationInfo allocator_info(
+        [](int) {
+          return std::make_unique<CPUAllocator>(OrtMemoryInfo(kMainGraphIfOnlyExecutionProvider,
+                                                              OrtAllocatorType::OrtDeviceAllocator));
+        });
+    return std::vector<AllocatorPtr>{CreateAllocator(allocator_info)};
+  }
+};
+
 static void CreateIfModelWithCpuNodeInSubgraph(const PathString& model_file_name) {
   // Main graph: one If node only.
-  // We will assign the If node to InternalTestingEP, while the nodes inside the subgraphs
-  // remain on CPU. This allows testing recursion in GraphHasCpuNodesInternal.
+  // The test config assigns the main-graph If node to MainGraphIfOnlyExecutionProvider while keeping
+  // subgraph nodes on CPU. This forces GraphHasCpuNodesInternal to recurse into subgraphs.
   onnxruntime::Model model("if_subgraph_cpu_model", false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
                            DefaultLoggingManager().DefaultLogger());
@@ -2661,16 +2727,39 @@ TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsWithCpuNodesInSu
 
   InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
 
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
-
-  // Intentionally do not claim "If" and do not call TakeAllNodes().
-  // This keeps the control-flow node/subgraphs visible so recursive CPU-node detection is exercised.
-  const std::unordered_set<std::string> ops = {"Add"};
-  auto internal_testing_ep = std::make_unique<InternalTestingEP>(ops);
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<MainGraphIfOnlyExecutionProvider>()));
 
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
+  const auto init_status = session_object.Initialize();
+  ASSERT_STATUS_NOT_OK(init_status);
+  ASSERT_THAT(init_status.ErrorMessage(), testing::HasSubstr("specific_subgraph_kernel_create_info_map"));
+
+  const auto& main_graph = session_object.GetGraph();
+  ASSERT_EQ(main_graph.NumberOfNodes(), 1);
+  const auto node_it = main_graph.Nodes().begin();
+  ASSERT_NE(node_it, main_graph.Nodes().end());
+  const auto* if_node = &(*node_it);
+  ASSERT_TRUE(if_node != nullptr);
+  ASSERT_EQ(if_node->OpType(), "If");
+  ASSERT_EQ(if_node->GetExecutionProviderType(), kMainGraphIfOnlyExecutionProvider);
+  ASSERT_TRUE(if_node->ContainsSubgraph());
+
+  bool found_cpu_node_in_subgraph = false;
+  for (const auto& subgraph : if_node->GetSubgraphs()) {
+    for (const auto& subgraph_node : subgraph->Nodes()) {
+      const auto& node_provider = subgraph_node.GetExecutionProviderType();
+      if (node_provider.empty() || node_provider == kCpuExecutionProvider) {
+        found_cpu_node_in_subgraph = true;
+        break;
+      }
+    }
+
+    if (found_cpu_node_in_subgraph) {
+      break;
+    }
+  }
+
+  ASSERT_TRUE(found_cpu_node_in_subgraph);
 
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
   auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
@@ -2684,23 +2773,6 @@ TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsWithCpuNodesInSu
   ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
   ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
 
-  std::vector<int64_t> dims = {1};
-  OrtValue input_x_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, std::vector<float>{1.0f},
-                       &input_x_mlvalue);
-  OrtValue cond_mlvalue;
-  CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, std::vector<bool>{true},
-                      &cond_mlvalue);
-
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("input_x", input_x_mlvalue));
-  feeds.insert(std::make_pair("cond", cond_mlvalue));
-  std::vector<std::string> output_names = {"output_y"};
-  std::vector<OrtValue> fetches;
-  RunOptions run_options;
-  run_options.run_tag = "LazyInitSubgraphExecution";
-  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
-  ASSERT_EQ(fetches.size(), 1U);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
