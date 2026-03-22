@@ -14,8 +14,6 @@ Abstract:
 
 --*/
 
-#include <cmath>
-
 #include "mlasi.h"
 
 namespace {

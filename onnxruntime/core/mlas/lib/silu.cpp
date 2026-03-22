@@ -14,8 +14,6 @@ Abstract:
 
 --*/
 
-#include <limits>
-
 #include "mlasi.h"
 
 void
