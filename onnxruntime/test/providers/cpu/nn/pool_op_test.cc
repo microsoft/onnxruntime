@@ -1209,6 +1209,31 @@ TEST(PoolTest, GlobalAveragePool) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
 }
 
+TEST(PoolTest, GlobalAveragePool_22_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("GlobalAveragePool", 22);
+
+  std::vector<float> x_vals = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {8.5f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(PoolTest, GlobalAveragePool_Large_128) {
   OpTester test("GlobalAveragePool");
 
