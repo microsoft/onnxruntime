@@ -36,6 +36,13 @@ constexpr int64_t kRank = 4;
 constexpr int64_t kChannelAxis = 1;
 constexpr int64_t kHeightAxis = 2;
 constexpr int64_t kWidthAxis = 3;
+// This fusion currently only recognizes the common blocksize=2 pattern used by
+// YOLO-style focus layers: 4 Slice nodes with offsets in {0,1}x{0,1}, step=2,
+// followed by channel-axis Concat. The same idea generalizes to arbitrary
+// blocksize b by matching b^2 Slice nodes with offsets in {0..b-1}x{0..b-1},
+// step=b, and extending the phase-permutation/channel-reorder logic
+// accordingly. For now we intentionally keep the implementation limited to the
+// blocksize=2 case.
 constexpr int64_t kBlockSize = 2;
 
 int64_t NormalizeAxis(int64_t axis, int64_t rank) {
@@ -464,6 +471,10 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
   }
 
   const bool is_canonical_order = phase_permutation == std::array<int64_t, 4>{0, 1, 2, 3};
+  int64_t channel_count = 0;
+  if (!is_canonical_order && !TryGetStaticChannelCount(*common_input, channel_count)) {
+    return false;
+  }
 
   InlinedVector<NodeArg*> space_to_depth_outputs;
   if (is_canonical_order) {
@@ -488,11 +499,6 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
 
   Node* replacement_end = &space_to_depth;
   if (!is_canonical_order) {
-    int64_t channel_count = 0;
-    if (!TryGetStaticChannelCount(*common_input, channel_count)) {
-      return false;
-    }
-
     InlinedVector<int64_t> gather_indices;
     gather_indices.reserve(onnxruntime::narrow<size_t>(channel_count * kBlockSize * kBlockSize));
     for (const int64_t source_block_index : phase_permutation) {
