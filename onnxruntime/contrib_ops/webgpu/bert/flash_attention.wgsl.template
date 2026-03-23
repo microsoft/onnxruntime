@@ -58,7 +58,6 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
 }
 
 #if is_apple
-// Apple GPU optimized path: loop-based implementation with dynamic max_k_step.
 
 var<private> qk_scores : array<q_element_t, max_k_step>;
 
@@ -91,7 +90,7 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
   }
 }
 
- #if has_attention_bias
+#if has_attention_bias
 fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> q_element_t {
   if (k_idx_global >= get_total_sequence_length()) {
     return q_element_t(0);
@@ -102,10 +101,9 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
                     bias_head_idx * uniforms.new_sequence_length * get_total_sequence_length() + q_idx_global * get_total_sequence_length();
   return q_element_t(attention_bias[min(offset_base + k_idx_global, offset_base + get_total_sequence_length())]);
 }
- #endif
+#endif
 
 #else
-// Original path for Qualcomm, Nvidia, Intel, and other GPUs.
 
 fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
   let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
@@ -127,7 +125,7 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
   }
 }
 
- #if is_qualcomm
+#if is_qualcomm
 const half_head_size_vec = head_size_vec / 2u;
 // Move half of o_tile from private memory into workgroup memory to reduce register pressure.
 var<workgroup> o_tile_r : array<array<q_value_t, half_head_size_vec>, workgroup_size_x>;
@@ -140,7 +138,7 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32, local_idx : u32) 
     output[offset + idx + half_head_size_vec] = o_tile_r[local_idx][idx];
   }
 }
- #else
+#else
 var<private> o_tile : array<q_value_t, head_size_vec>;
 fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
   let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
@@ -149,9 +147,9 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
     output[offset + idx] = o_tile[idx];
   }
 }
- #endif
+#endif
 
- #if has_attention_bias
+#if has_attention_bias
 fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
   if (k_idx_global >= get_total_sequence_length()) {
     return vec4<q_element_t>(0);
@@ -168,26 +166,26 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
   let c4 = q_element_t(attention_bias[min(offset + 3, offset_max)]);
   return vec4<q_element_t>(c1, c2, c3, c4);
 }
- #else
+#else
 fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
   return vec4<q_element_t>(0);
 }
- #endif
+#endif
 
 fn fetchKTile(k_idx: u32, vec_idx: u32, k_val: q_value_t) -> q_value_t {
- #if prefer_subgroupshuffle
+#if prefer_subgroupshuffle
     return subgroupShuffle(k_val, k_idx);
- #else
+#else
     return k_tile[k_idx][vec_idx];
- #endif
+#endif
 }
 
 fn fetchVTile(k_idx: u32, vec_idx: u32, v_val: q_value_t) -> q_value_t {
- #if prefer_subgroupshuffle
+#if prefer_subgroupshuffle
     return subgroupShuffle(v_val, k_idx);
- #else
+#else
     return v_tile[k_idx][vec_idx];
- #endif
+#endif
 }
 
 #endif
@@ -229,7 +227,6 @@ $MAIN {
 #endif
 
 #if is_apple
-  // Apple GPU optimized path: loop-based with dynamic max_k_step and larger workgroup
 
   for (var k_start = 0u; k_start < loop_bound; k_start += max_k_step) {
     workgroupBarrier();
@@ -242,9 +239,9 @@ $MAIN {
       for (var i = 0u; i < head_size_vec; i++) {
         score += dot(q_tile[i], k_tile[k][i]);
       }
- #if has_attention_bias
+#if has_attention_bias
       score += loadAttentionBias(batch_idx, q_idx_global, k_start + k, head_idx);
- #endif
+#endif
       qk_scores[k] = select(min_value, score, k_start + k < seq_causal_length);
     }
 
@@ -286,7 +283,6 @@ $MAIN {
   }
 
 #else
-  // Original path for all other GPUs (Qualcomm, Nvidia, Intel, etc.)
   let capped_sg_id = min(sg_id, max_k_step - 1u);
   let capped_sg_size = min(sg_size, max_k_step);
 
@@ -302,18 +298,18 @@ $MAIN {
     var qk_4 : vec4<q_element_t>;
     if (sg_size > 8) {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
- #if prefer_subgroupshuffle
-  #if is_qualcomm
+#if prefer_subgroupshuffle
+#if is_qualcomm
         var k_local = q_value_t(0);
         if (sg_id < max_k_step) {
           k_local = k_tile[sg_id][i];
         }
-  #else
+#else
         var k_local = k_tile[capped_sg_id][i];
-  #endif
- #else
+#endif
+#else
         var k_local = q_value_t(0);
- #endif
+#endif
         var q_own = q_tile[i];
         qk_1[0] += dot(q_own, fetchKTile(0, i, k_local));
         qk_1[1] += dot(q_own, fetchKTile(1, i, k_local));
@@ -334,11 +330,11 @@ $MAIN {
       }
     } else {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
- #if prefer_subgroupshuffle
+#if prefer_subgroupshuffle
         var k_local = k_tile[capped_sg_id][i];
- #else
+#else
         var k_local = q_value_t(0);
- #endif
+#endif
         var q_own = q_tile[i];
         qk_1[0] += dot(q_own, fetchKTile(0, i, k_local));
         qk_1[1] += dot(q_own, fetchKTile(1, i, k_local));
@@ -405,7 +401,7 @@ $MAIN {
     previous_denom = d;
     let o_ratio = dleft / d;
 
- #if is_qualcomm
+#if is_qualcomm
     if (sg_size > 8) {
       for (var i : u32 = 0; i < half_head_size_vec; i++) {
         var val = q_value_t(0);
@@ -481,14 +477,14 @@ $MAIN {
   if (valid_q) {
     writeo(batch_idx, q_idx_global, head_idx, local_idx);
   }
- #else
+#else
     if (sg_size > 8) {
       for (var i : u32 = 0; i < head_size_vec; i++) {
-  #if prefer_subgroupshuffle
+#if prefer_subgroupshuffle
         var val = v_tile[capped_sg_id][i];
-  #else
+#else
         var val = q_value_t(0);
-  #endif
+#endif
         var sum = fetchVTile(0, i, val) * qk_1[0];
         sum += fetchVTile(1, i, val) * qk_1[1];
         sum += fetchVTile(2, i, val) * qk_1[2];
@@ -509,11 +505,11 @@ $MAIN {
       }
     } else {
       for (var i : u32 = 0; i < head_size_vec; i++) {
-  #if prefer_subgroupshuffle
+#if prefer_subgroupshuffle
         var val = v_tile[capped_sg_id][i];
-  #else
+#else
         var val = q_value_t(0);
-  #endif
+#endif
         var sum = fetchVTile(0, i, val) * qk_1[0];
         sum += fetchVTile(1, i, val) * qk_1[1];
         sum += fetchVTile(2, i, val) * qk_1[2];
@@ -530,6 +526,6 @@ $MAIN {
   if (valid_q) {
     writeo(batch_idx, q_idx_global, head_idx);
   }
- #endif
+#endif
 #endif
 }  // MAIN
