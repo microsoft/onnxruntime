@@ -46,6 +46,7 @@
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
+#include "core/session/ort_apis.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
@@ -2611,6 +2612,103 @@ TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsNoCpuNodes) {
                             msg.find(config_flag_entry) != std::string::npos;
                    }) != msgs.end();
   ASSERT_TRUE(has_skip_log);
+}
+
+namespace {
+struct RunAsyncCompletionState {
+  std::promise<Status> result_promise;
+};
+
+void CaptureRunAsyncStatus(void* user_data, OrtValue** /*outputs*/, size_t /*num_outputs*/, OrtStatusPtr status_ptr) {
+  auto* completion_state = reinterpret_cast<RunAsyncCompletionState*>(user_data);
+  if (status_ptr == nullptr) {
+    completion_state->result_promise.set_value(Status::OK());
+    return;
+  }
+
+  const char* error_message = OrtApis::GetErrorMessage(status_ptr);
+  Status callback_status(common::ONNXRUNTIME, common::FAIL,
+                         error_message == nullptr ? "RunAsync callback received an unknown error." : error_message);
+  OrtApis::ReleaseStatus(status_ptr);
+  completion_state->result_promise.set_value(std::move(callback_status));
+}
+}  // namespace
+
+// Test 5a.1: default lazy-init with no CPU-assigned nodes should still support RunAsync.
+TEST(InferenceSessionTests, DefaultLazyInitNoCpuNodesRunAsyncCreatesIntraOpThreadPoolOnFirstUse) {
+  PathString model_file_name = ORT_TSTR("lazy_init_all_internal_run_async.onnx");
+  CreateAddSubModel(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  // Ensure RunAsync has a worker thread on single-core machines.
+  so.intra_op_param.thread_pool_size = 2;
+  so.session_logid = "DefaultLazyInitNoCpuNodesRunAsyncCreatesIntraOpThreadPoolOnFirstUse";
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set{};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set);
+  internal_testing_ep->TakeAllNodes();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
+
+  std::vector<int64_t> dims = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<float> values_y = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+
+  OrtValue ml_value_x;
+  OrtValue ml_value_y;
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  CreateMLValue<float>(allocator, dims, values_x, &ml_value_x);
+  CreateMLValue<float>(allocator, dims, values_y, &ml_value_y);
+
+  const char* input_names[] = {"X", "Y"};
+  const OrtValue* input_values[] = {&ml_value_x, &ml_value_y};
+  const char* output_names[] = {"M"};
+  OrtValue* output_values[] = {nullptr};
+
+  RunAsyncCompletionState completion_state;
+  auto completion_future = completion_state.result_promise.get_future();
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.RunAsync(&run_options,
+                                           input_names,
+                                           input_values,
+                                           output_names,
+                                           output_values,
+                                           CaptureRunAsyncStatus,
+                                           &completion_state));
+
+  ASSERT_EQ(completion_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+  ASSERT_STATUS_OK(completion_future.get());
+
+  ASSERT_TRUE(output_values[0] != nullptr);
+  std::unique_ptr<OrtValue> output_owner(output_values[0]);
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session != nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state != nullptr);
+  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
+  ASSERT_TRUE(inter_tp_from_session == nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state == nullptr);
 }
 
 // Test 5b: explicit legacy mode (kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes="0"):
