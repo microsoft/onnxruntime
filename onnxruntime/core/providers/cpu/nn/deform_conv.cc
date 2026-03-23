@@ -87,10 +87,17 @@ void DeformableIm2col(
 
   // Parallelize over (channel, kernel_position) so each task processes one full row of data_col.
   // This yields channels*kernel_size tasks, better CPU utilization and cache-friendly sequential writes.
+  //
+  // Cost hint tuning:
+  // per-unit work is dominated by iterating over output_size spatial points.
+  // Keep cost proportional to output_size and apply only a small scale delta for mask usage.
+  const double output_size_f64 = static_cast<double>(output_size);
+  const double output_work_scale = UseMask ? 12.0 : 10.0;
+  const double parallel_cost = output_size_f64 * output_work_scale;
   concurrency::ThreadPool::TryParallelFor(
       thread_pool,
       static_cast<std::ptrdiff_t>(channels * kernel_size),
-      static_cast<double>(output_size) * 10.0,
+      parallel_cost,
       [&](ptrdiff_t begin, ptrdiff_t end) {
         for (ptrdiff_t idx = begin; idx < end; ++idx) {
           // Decompose idx into (c_im, i, j): which channel and kernel position.
