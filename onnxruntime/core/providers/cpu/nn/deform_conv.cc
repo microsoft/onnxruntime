@@ -20,7 +20,7 @@ namespace onnxruntime {
 
 namespace {
 
-constexpr int64_t kPlanAoSoALanesForCompute = 8;
+constexpr int64_t kPlanAoSoALanes = 8;
 
 ORT_FORCEINLINE size_t CheckedMulSizeT(size_t a, size_t b, size_t max_size_t, const char* err) {
   ORT_ENFORCE(a == 0 || b <= max_size_t / a, err);
@@ -60,11 +60,11 @@ inline CpuDeformConvExecutionDims ComputeCpuDeformConvExecutionDims(const Deform
   const int64_t plan_rows = params.offset_group * common_dims.kernel_size;
 
   ORT_ENFORCE(plan_rows > 0 && common_dims.output_image_size > 0, "Invalid plan dimensions.");
-  ORT_ENFORCE(common_dims.output_image_size <= int64_max - (kPlanAoSoALanesForCompute - 1),
+  ORT_ENFORCE(common_dims.output_image_size <= int64_max - (kPlanAoSoALanes - 1),
               "output_image_size is too large and will overflow.");
-  const int64_t padded_spatial_count = (common_dims.output_image_size + kPlanAoSoALanesForCompute - 1) /
-                                       kPlanAoSoALanesForCompute * kPlanAoSoALanesForCompute;
-  const size_t blocks_per_row = static_cast<size_t>(padded_spatial_count) / kPlanAoSoALanesForCompute;
+  const int64_t padded_spatial_count = (common_dims.output_image_size + kPlanAoSoALanes - 1) /
+                                       kPlanAoSoALanes * kPlanAoSoALanes;
+  const size_t blocks_per_row = static_cast<size_t>(padded_spatial_count) / kPlanAoSoALanes;
   ORT_ENFORCE(blocks_per_row <= (max_size_t / static_cast<size_t>(plan_rows)),
               "Sampling plan size overflows size_t.");
   const size_t block_count = static_cast<size_t>(plan_rows) * blocks_per_row;
@@ -128,8 +128,6 @@ inline CpuDeformConvStrides ComputeCpuDeformConvStrides(const DeformConvParams& 
 }
 
 namespace sampling_plan_internal {
-
-constexpr int64_t kPlanAoSoALanes = 8;
 
 template <typename T>
 struct alignas(64) BilinearSamplePlanBlock {
@@ -252,7 +250,7 @@ void BuildAllBilinearSamplingPlansImpl(
     int64_t dilation_h,
     int64_t dilation_w,
     int64_t offset_groups,
-    int64_t output_size,
+    size_t output_size,
     int64_t padded_spatial_count,
     int64_t height_col,
     int64_t width_col,
@@ -260,6 +258,7 @@ void BuildAllBilinearSamplingPlansImpl(
     BilinearSamplePlanBlock<T>* sampling_plan_blocks,
     concurrency::ThreadPool* thread_pool) {
   const int64_t plan_rows = offset_groups * kernel_size;
+  const size_t kernel_size_sz = static_cast<size_t>(kernel_size);
   const double plan_parallel_cost = static_cast<double>(output_size) * 12.0;
   concurrency::ThreadPool::TryParallelFor(
       thread_pool,
@@ -273,7 +272,7 @@ void BuildAllBilinearSamplingPlansImpl(
           const int64_t i = kernel_idx / kernel_w;
           const int64_t j = kernel_idx % kernel_w;
 
-          const int64_t offset_base = offset_grp * 2 * kernel_size + 2 * kernel_idx;
+          const size_t offset_base = static_cast<size_t>(offset_grp) * 2 * kernel_size_sz + 2 * static_cast<size_t>(kernel_idx);
           const T* ptr_offset_h = data_offset + offset_base * output_size;
           const T* ptr_offset_w = data_offset + (offset_base + 1) * output_size;
           const T base_h = -pad_h + static_cast<T>(i) * dilation_h;
@@ -296,7 +295,7 @@ void FillColRowFromSamplingPlanImpl(
     const T* im_ptr,
     const BilinearSamplePlanBlock<T>* plan_blocks,
     int64_t spatial_count,
-    int64_t mask_row_base,
+    size_t mask_row_base,
     const T* ptr_mask,
     T* col_ptr) {
   const int64_t block_count = spatial_count / kPlanAoSoALanes;
@@ -367,6 +366,7 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
   const int64_t channel_per_offset_group = ctx.channels / ctx.offset_groups;
   const int64_t kernel_size = ctx.kernel_h * ctx.kernel_w;
   const int64_t output_size = ctx.height_col * ctx.width_col;
+  const size_t output_size_sz = static_cast<size_t>(output_size);
 
   BuildAllBilinearSamplingPlansImpl(
       ctx.data_offset, ctx.height, ctx.width,
@@ -374,7 +374,7 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
       ctx.stride_h, ctx.stride_w,
       ctx.dilation_h, ctx.dilation_w,
       ctx.offset_groups,
-      output_size, ctx.padded_spatial_count, ctx.height_col, ctx.width_col, kernel_size,
+      output_size_sz, ctx.padded_spatial_count, ctx.height_col, ctx.width_col, kernel_size,
       ctx.sampling_plan_blocks, ctx.thread_pool);
 
   const double parallel_cost = static_cast<double>(output_size) * (UseMask ? 12.0 : 10.0);
@@ -398,10 +398,10 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
           const BilinearSamplePlanBlock<T>* row_plan = ctx.sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
 
           const T* ptr_mask = nullptr;
-          int64_t mask_row_base = 0;
+          size_t mask_row_base = 0;
           if constexpr (UseMask) {
             ptr_mask = ctx.data_mask;
-            mask_row_base = row * output_size;
+            mask_row_base = static_cast<size_t>(row) * output_size_sz;
           }
 
           FillColRowFromSamplingPlanImpl<T, UseMask>(
@@ -486,6 +486,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   // 4) Pointer-stride precompute (validated once, reused in hot loop).
   const CpuDeformConvStrides strides = ComputeCpuDeformConvStrides(params, common_dims, max_size_t);
+  const size_t output_image_size_sz = static_cast<size_t>(output_image_size);
   const size_t x_batch_stride = strides.x_batch_stride;
   const size_t y_batch_stride = strides.y_batch_stride;
   const size_t w_group_stride = strides.w_group_stride;
@@ -577,7 +578,9 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
           for (ptrdiff_t idx = first; idx < last; ++idx) {
             int64_t n_idx = idx / M;
             int64_t m_idx = idx % M;
-            T* Y_ptr = Ydata + n_idx * M * output_image_size + m_idx * output_image_size;
+            const size_t n_idx_sz = static_cast<size_t>(n_idx);
+            const size_t m_idx_sz = static_cast<size_t>(m_idx);
+            T* Y_ptr = Ydata + n_idx_sz * y_batch_stride + m_idx_sz * output_image_size_sz;
             // Eigen vectorized add: Y_ptr += Bdata[m_idx] over all spatial positions.
             EigenVectorArrayMap<T>(Y_ptr, static_cast<ptrdiff_t>(output_image_size)) += Bdata[m_idx];
           }
