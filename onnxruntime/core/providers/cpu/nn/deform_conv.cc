@@ -30,8 +30,20 @@ constexpr int64_t kStreamingSpatialTileSize = 4096;
 
 namespace sampling_plan_internal {
 
+constexpr int64_t kPlanAoSoALanes = 8;
+
 template <typename T>
-struct BilinearSamplePlanArrays;
+struct alignas(64) BilinearSamplePlanBlock {
+  int32_t idx[4][kPlanAoSoALanes];
+  T w[4][kPlanAoSoALanes];
+  uint8_t flags[kPlanAoSoALanes];
+};
+
+template <typename T>
+struct BilinearSamplePlanArrays {
+  BilinearSamplePlanBlock<T>* blocks = nullptr;
+  int64_t sample_offset = 0;
+};
 
 constexpr size_t AlignUp(size_t value, size_t alignment) {
   return (value + alignment - 1) / alignment * alignment;
@@ -46,21 +58,17 @@ inline void AddAlignedRegion(size_t alignment, size_t bytes, size_t max_size_t, 
 template <typename T>
 size_t ComputeSamplingPlanWorkspaceBytes(size_t plan_size, size_t max_size_t,
                                          size_t& idx_bytes, size_t& weight_bytes, size_t& flag_bytes) {
-  ORT_ENFORCE(plan_size <= max_size_t / sizeof(int32_t), "Sampling plan idx bytes overflows size_t.");
-  ORT_ENFORCE(plan_size <= max_size_t / sizeof(T), "Sampling plan weight bytes overflows size_t.");
-  ORT_ENFORCE(plan_size <= max_size_t / sizeof(uint8_t), "Sampling plan flag bytes overflows size_t.");
-  idx_bytes = plan_size * sizeof(int32_t);
-  weight_bytes = plan_size * sizeof(T);
-  flag_bytes = plan_size * sizeof(uint8_t);
+  const size_t lanes = static_cast<size_t>(kPlanAoSoALanes);
+  ORT_ENFORCE(plan_size <= max_size_t - (lanes - 1), "Sampling plan block count overflows size_t.");
+  const size_t block_count = (plan_size + lanes - 1) / lanes;
+  ORT_ENFORCE(block_count <= max_size_t / sizeof(BilinearSamplePlanBlock<T>), "Sampling plan bytes overflows size_t.");
+
+  idx_bytes = block_count * sizeof(BilinearSamplePlanBlock<T>);
+  weight_bytes = 0;
+  flag_bytes = 0;
 
   size_t bytes_total = 0;
-  for (int i = 0; i < 4; ++i) {
-    AddAlignedRegion(alignof(int32_t), idx_bytes, max_size_t, bytes_total);
-  }
-  for (int i = 0; i < 4; ++i) {
-    AddAlignedRegion(alignof(T), weight_bytes, max_size_t, bytes_total);
-  }
-  AddAlignedRegion(alignof(uint8_t), flag_bytes, max_size_t, bytes_total);
+  AddAlignedRegion(alignof(BilinearSamplePlanBlock<T>), idx_bytes, max_size_t, bytes_total);
   return bytes_total;
 }
 
@@ -79,44 +87,69 @@ void InitializeSamplingPlanViewsFromBuffer(uint8_t* plan_base,
     return ptr;
   };
 
-  sampling_plan.idx00 = reinterpret_cast<int32_t*>(take_region(alignof(int32_t), idx_bytes));
-  sampling_plan.idx01 = reinterpret_cast<int32_t*>(take_region(alignof(int32_t), idx_bytes));
-  sampling_plan.idx10 = reinterpret_cast<int32_t*>(take_region(alignof(int32_t), idx_bytes));
-  sampling_plan.idx11 = reinterpret_cast<int32_t*>(take_region(alignof(int32_t), idx_bytes));
-  sampling_plan.w00 = reinterpret_cast<T*>(take_region(alignof(T), weight_bytes));
-  sampling_plan.w01 = reinterpret_cast<T*>(take_region(alignof(T), weight_bytes));
-  sampling_plan.w10 = reinterpret_cast<T*>(take_region(alignof(T), weight_bytes));
-  sampling_plan.w11 = reinterpret_cast<T*>(take_region(alignof(T), weight_bytes));
-  sampling_plan.flags = reinterpret_cast<uint8_t*>(take_region(alignof(uint8_t), flag_bytes));
+  ORT_UNUSED_PARAMETER(weight_bytes);
+  ORT_UNUSED_PARAMETER(flag_bytes);
+  sampling_plan.blocks = reinterpret_cast<BilinearSamplePlanBlock<T>*>(
+      take_region(alignof(BilinearSamplePlanBlock<T>), idx_bytes));
+  sampling_plan.sample_offset = 0;
 
   ORT_ENFORCE(cursor <= bytes_total, "Sampling plan buffer layout exceeds allocated workspace.");
 }
 
+ORT_FORCEINLINE int64_t PlanGlobalIndex(int64_t sample_offset, int64_t pidx) {
+  return sample_offset + pidx;
+}
+
+ORT_FORCEINLINE int64_t PlanBlockIndex(int64_t global_idx) {
+  return global_idx / kPlanAoSoALanes;
+}
+
+ORT_FORCEINLINE int64_t PlanLaneIndex(int64_t global_idx) {
+  return global_idx % kPlanAoSoALanes;
+}
+
 template <typename T>
-struct BilinearSamplePlanArrays {
-  int32_t* idx00 = nullptr;
-  int32_t* idx01 = nullptr;
-  int32_t* idx10 = nullptr;
-  int32_t* idx11 = nullptr;
-  T* w00 = nullptr;
-  T* w01 = nullptr;
-  T* w10 = nullptr;
-  T* w11 = nullptr;
-  uint8_t* flags = nullptr;
+ORT_FORCEINLINE void PlanStoreSample(BilinearSamplePlanArrays<T>& plan, int64_t pidx,
+                                     int32_t idx00, int32_t idx01, int32_t idx10, int32_t idx11,
+                                     T w00, T w01, T w10, T w11, uint8_t flag) {
+  const int64_t global_idx = PlanGlobalIndex(plan.sample_offset, pidx);
+  const int64_t block = PlanBlockIndex(global_idx);
+  const int64_t lane = PlanLaneIndex(global_idx);
+  auto& dst = plan.blocks[block];
+  dst.idx[0][lane] = idx00;
+  dst.idx[1][lane] = idx01;
+  dst.idx[2][lane] = idx10;
+  dst.idx[3][lane] = idx11;
+  dst.w[0][lane] = w00;
+  dst.w[1][lane] = w01;
+  dst.w[2][lane] = w10;
+  dst.w[3][lane] = w11;
+  dst.flags[lane] = flag;
+}
+
+template <typename T>
+struct LoadedPlanSample {
+  int32_t idx[4];
+  T w[4];
+  uint8_t flag;
 };
 
 template <typename T>
+ORT_FORCEINLINE LoadedPlanSample<T> PlanLoadSample(const BilinearSamplePlanArrays<T>& plan, int64_t pidx) {
+  const int64_t global_idx = PlanGlobalIndex(plan.sample_offset, pidx);
+  const int64_t block = PlanBlockIndex(global_idx);
+  const int64_t lane = PlanLaneIndex(global_idx);
+  const auto& src = plan.blocks[block];
+  LoadedPlanSample<T> out{
+      {src.idx[0][lane], src.idx[1][lane], src.idx[2][lane], src.idx[3][lane]},
+      {src.w[0][lane], src.w[1][lane], src.w[2][lane], src.w[3][lane]},
+      src.flags[lane]};
+  return out;
+}
+
+template <typename T>
 ORT_FORCEINLINE BilinearSamplePlanArrays<T> SlicePlanArrays(BilinearSamplePlanArrays<T>& sampling_plan, int64_t base) {
-  return BilinearSamplePlanArrays<T>{
-      sampling_plan.idx00 + base,
-      sampling_plan.idx01 + base,
-      sampling_plan.idx10 + base,
-      sampling_plan.idx11 + base,
-      sampling_plan.w00 + base,
-      sampling_plan.w01 + base,
-      sampling_plan.w10 + base,
-      sampling_plan.w11 + base,
-      sampling_plan.flags + base};
+  return BilinearSamplePlanArrays<T>{sampling_plan.blocks, sampling_plan.sample_offset + base};
 }
 
 template <typename T>
@@ -139,9 +172,8 @@ void BuildBilinearSamplingPlanImpl(
     const T w_im = w_col * stride_w + base_w + ptr_offset_w[spatial_idx];
 
     if (h_im <= static_cast<T>(-1) || h_im >= height || w_im <= static_cast<T>(-1) || w_im >= width) {
-      plan.idx00[pidx] = plan.idx01[pidx] = plan.idx10[pidx] = plan.idx11[pidx] = 0;
-      plan.w00[pidx] = plan.w01[pidx] = plan.w10[pidx] = plan.w11[pidx] = static_cast<T>(0);
-      plan.flags[pidx] = 0;
+      PlanStoreSample(plan, pidx, 0, 0, 0, 0,
+                      static_cast<T>(0), static_cast<T>(0), static_cast<T>(0), static_cast<T>(0), 0);
       return;
     }
 
@@ -157,10 +189,10 @@ void BuildBilinearSamplingPlanImpl(
     const T hh = static_cast<T>(1) - lh;
     const T hw = static_cast<T>(1) - lw;
 
-    plan.w00[pidx] = hh * hw;
-    plan.w01[pidx] = hh * lw;
-    plan.w10[pidx] = lh * hw;
-    plan.w11[pidx] = lh * lw;
+    const T plan_w00 = hh * hw;
+    const T plan_w01 = hh * lw;
+    const T plan_w10 = lh * hw;
+    const T plan_w11 = lh * lw;
 
     uint8_t mask = 0;
     if (static_cast<unsigned>(h_low) < static_cast<unsigned>(height - 1) &&
@@ -183,11 +215,13 @@ void BuildBilinearSamplingPlanImpl(
 
     const int base_low = h_low * width;
     const int base_high = h_high * width;
-    plan.idx00[pidx] = base_low + w_low;
-    plan.idx01[pidx] = base_low + w_high;
-    plan.idx10[pidx] = base_high + w_low;
-    plan.idx11[pidx] = base_high + w_high;
-    plan.flags[pidx] = mask;
+    PlanStoreSample(
+        plan, pidx,
+        base_low + w_low,
+        base_low + w_high,
+        base_high + w_low,
+        base_high + w_high,
+        plan_w00, plan_w01, plan_w10, plan_w11, mask);
   };
 
   ORT_ENFORCE(spatial_begin >= 0 && spatial_count >= 0 && spatial_begin + spatial_count <= height_col * width_col,
@@ -269,27 +303,35 @@ template <typename T>
 ORT_FORCEINLINE T EvalSampleFromPlan(const T* im_ptr,
                                      const BilinearSamplePlanArrays<T>& sampling_plan,
                                      int64_t pidx) {
-  const uint8_t flag = sampling_plan.flags[pidx];
+  const LoadedPlanSample<T> sample = PlanLoadSample(sampling_plan, pidx);
+  const uint8_t flag = sample.flag;
+  const int32_t idx00 = sample.idx[0];
+  const int32_t idx01 = sample.idx[1];
+  const int32_t idx10 = sample.idx[2];
+  const int32_t idx11 = sample.idx[3];
+  const T w00 = sample.w[0];
+  const T w01 = sample.w[1];
+  const T w10 = sample.w[2];
+  const T w11 = sample.w[3];
   if (flag == kAllNeighborsMask) {
-    return sampling_plan.w00[pidx] * im_ptr[sampling_plan.idx00[pidx]] +
-           sampling_plan.w01[pidx] * im_ptr[sampling_plan.idx01[pidx]] +
-           sampling_plan.w10[pidx] * im_ptr[sampling_plan.idx10[pidx]] +
-           sampling_plan.w11[pidx] * im_ptr[sampling_plan.idx11[pidx]];
+    const Eigen::Matrix<T, 4, 1> weights(w00, w01, w10, w11);
+    const Eigen::Matrix<T, 4, 1> samples(im_ptr[idx00], im_ptr[idx01], im_ptr[idx10], im_ptr[idx11]);
+    return weights.dot(samples);
   }
 
   T val = static_cast<T>(0);
   if (flag != 0) {
     if (flag & kTopLeftMask) {
-      val += sampling_plan.w00[pidx] * im_ptr[sampling_plan.idx00[pidx]];
+      val += w00 * im_ptr[idx00];
     }
     if (flag & kTopRightMask) {
-      val += sampling_plan.w01[pidx] * im_ptr[sampling_plan.idx01[pidx]];
+      val += w01 * im_ptr[idx01];
     }
     if (flag & kBottomLeftMask) {
-      val += sampling_plan.w10[pidx] * im_ptr[sampling_plan.idx10[pidx]];
+      val += w10 * im_ptr[idx10];
     }
     if (flag & kBottomRightMask) {
-      val += sampling_plan.w11[pidx] * im_ptr[sampling_plan.idx11[pidx]];
+      val += w11 * im_ptr[idx11];
     }
   }
   return val;
