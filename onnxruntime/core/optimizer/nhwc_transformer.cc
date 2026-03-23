@@ -168,7 +168,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
           OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, false, filter});
       conv_table_.emplace(
           OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, false, filter});
+          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, true, filter});
     }
   }
 
