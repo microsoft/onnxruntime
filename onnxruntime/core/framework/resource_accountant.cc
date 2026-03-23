@@ -92,7 +92,27 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
           }
         }
       }
-      return static_cast<size_t>(total_size);
+
+      // Account for intermediate output tensors when shape info is available.
+      // GetSizeInBytesFromTensorTypeProto will only succeed when all dims are known
+      // (static shape) and a valid element type is present, so dynamic outputs are
+      // naturally skipped.
+      SafeInt<size_t> output_size = 0;
+      for (const auto* output_def : node.OutputDefs()) {
+        if (!output_def->Exists() || !output_def->HasTensorOrScalarShape()) continue;
+        const auto* type_proto = output_def->TypeAsProto();
+        if (!type_proto || !utils::HasTensorType(*type_proto)) continue;
+
+        size_t size = 0;
+        if (utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK()) {
+          output_size += size;
+        }
+      }
+
+      // Apply a safety multiplier for workspace/temp allocations we can't see
+      constexpr size_t kAdHocSafetyMultiplierPercent = 150;  // 1.5x
+      SafeInt<size_t> estimated = total_size + output_size;
+      return static_cast<size_t>(estimated * kAdHocSafetyMultiplierPercent / 100);
     }
   }
 
