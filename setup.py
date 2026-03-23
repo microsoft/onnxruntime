@@ -399,6 +399,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libHtpPrepare.so",
     ]
     dl_libs.extend(qnn_deps)
+    libs.extend(qnn_deps)
     # NV TensorRT RTX
     nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
     dl_libs.extend(nv_tensorrt_rtx_deps)
