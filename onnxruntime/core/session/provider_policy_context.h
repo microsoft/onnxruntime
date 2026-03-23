@@ -42,8 +42,7 @@ class ProviderPolicyContext {
 
   Status SelectEpDevices(std::vector<const OrtEpDevice*>& execution_devices, const OrtSessionOptions& options,
                          OrtKeyValuePairs& model_metadata, std::vector<const OrtEpDevice*> devices_selected);
-  Status SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
-                             InferenceSession& sess, OrtKeyValuePairs& model_metadata);
+  Status SelectEpsForSession(const Environment& env, const OrtSessionOptions& options, InferenceSession& sess);
   Status SelectEpsForModelPackage(const Environment& env,
                                   OrtSessionOptions& options,
                                   OrtKeyValuePairs& model_metadata,

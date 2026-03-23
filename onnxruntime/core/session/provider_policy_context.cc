@@ -50,6 +50,30 @@ bool IsDefaultCpuEp(const OrtEpDevice* d) {
   return d->device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU &&
          d->ep_vendor == "Microsoft";
 }
+
+OrtKeyValuePairs GetModelMetadata(const InferenceSession& session) {
+  OrtKeyValuePairs metadata;
+  auto status_and_metadata = session.GetModelMetadata();
+
+  if (!status_and_metadata.first.IsOK()) {
+    return metadata;
+  }
+
+  // use field names from onnx.proto
+  const auto& model_metadata = *status_and_metadata.second;
+  metadata.Add("producer_name", model_metadata.producer_name);
+  metadata.Add("producer_version", model_metadata.producer_version);
+  metadata.Add("domain", model_metadata.domain);
+  metadata.Add("model_version", std::to_string(model_metadata.version));
+  metadata.Add("doc_string", model_metadata.description);
+  metadata.Add("graph_name", model_metadata.graph_name);                // name from main GraphProto
+  metadata.Add("graph_description", model_metadata.graph_description);  // descriptions from main GraphProto
+  for (const auto& entry : model_metadata.custom_metadata_map) {
+    metadata.Add(entry.first, entry.second);
+  }
+
+  return metadata;
+}
 }  // namespace
 
 // Sort devices. NPU -> GPU -> CPU
@@ -337,7 +361,7 @@ Status ProviderPolicyContext::SelectEpsForModelPackage(const Environment& env,
 
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
-                                                  InferenceSession& sess, OrtKeyValuePairs& model_metadata) {
+                                                  InferenceSession& sess) {
   // Get the list of devices from the environment and order them.
   // Ordered by preference within each type. NPU -> GPU -> NPU
   // TODO: Should environment.cc do the ordering?
@@ -346,6 +370,7 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
   // The list of devices selected by policies
   std::vector<const OrtEpDevice*> devices_selected;
 
+  auto model_metadata = GetModelMetadata(sess);
   ORT_RETURN_IF_ERROR(SelectEpDevices(execution_devices, options, model_metadata, devices_selected));
 
   // Log telemetry for auto EP selection

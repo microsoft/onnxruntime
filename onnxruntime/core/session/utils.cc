@@ -105,30 +105,6 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
   return Status::OK();
 }
 
-OrtKeyValuePairs GetModelMetadata(const InferenceSession& session) {
-  OrtKeyValuePairs metadata;
-  auto status_and_metadata = session.GetModelMetadata();
-
-  if (!status_and_metadata.first.IsOK()) {
-    return metadata;
-  }
-
-  // use field names from onnx.proto
-  const auto& model_metadata = *status_and_metadata.second;
-  metadata.Add("producer_name", model_metadata.producer_name);
-  metadata.Add("producer_version", model_metadata.producer_version);
-  metadata.Add("domain", model_metadata.domain);
-  metadata.Add("model_version", std::to_string(model_metadata.version));
-  metadata.Add("doc_string", model_metadata.description);
-  metadata.Add("graph_name", model_metadata.graph_name);                // name from main GraphProto
-  metadata.Add("graph_description", model_metadata.graph_description);  // descriptions from main GraphProto
-  for (const auto& entry : model_metadata.custom_metadata_map) {
-    metadata.Add(entry.first, entry.second);
-  }
-
-  return metadata;
-}
-
 Status GetSelectionEpInfo(const OrtSessionOptions* session_options,
                           std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
                           std::vector<SelectionEpInfo>& ep_infos) {
@@ -296,8 +272,7 @@ static Status CreateAndRegisterExecutionProviders(_In_ const OrtSessionOptions* 
     // note: the model has already been loaded so model metadata should be available to the policy delegate callback.
     if (options != nullptr && options->value.ep_selection_policy.enable) {
       ProviderPolicyContext context;
-      auto model_metadata = GetModelMetadata(sess);
-      ORT_RETURN_IF_ERROR(context.SelectEpsForSession(sess.GetEnvironment(), *options, sess, model_metadata));
+      ORT_RETURN_IF_ERROR(context.SelectEpsForSession(sess.GetEnvironment(), *options, sess));
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
