@@ -74,6 +74,35 @@ TEST(DequantizeLinearOpTest, Int4_LargeInitializerInput) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Regression test: int8 tensor whose byte size is not a multiple of 4.
+// DML graph fusion rounds tensor sizes to a multiple of 4 via AlignToPow2.
+// If the original buffer is not padded, the subsequent memcpy reads past the
+// allocation boundary (heap-buffer-overflow detectable with ASan).
+// Mirrors the WebNN PoC: dequantizeLinear with int8[135] (135 % 4 != 0).
+TEST(DequantizeLinearOpTest, Int8_NonAlignedSize_Initializer) {
+  OpTester test("DequantizeLinear", 10);
+  constexpr int64_t kNumElements = 135;  // 135 bytes, AlignToPow2(135,4)=136
+
+  std::vector<int8_t> x_data(kNumElements);
+  std::vector<float> y_expected(kNumElements);
+  const float scale = 0.5f;
+  const int8_t zero_point = 0;
+  for (int64_t i = 0; i < kNumElements; ++i) {
+    x_data[i] = static_cast<int8_t>(i % 127);
+    y_expected[i] = (x_data[i] - zero_point) * scale;
+  }
+
+  // Mark all inputs as initializers so they go through DML's ProcessInputData
+  // → UnpackInitializer → AlignToPow2 code path during graph fusion.
+  test.AddInput<int8_t>("x", {kNumElements}, x_data, /*is_initializer=*/true);
+  test.AddInput<float>("x_scale", {1}, {scale}, /*is_initializer=*/true);
+  test.AddInput<int8_t>("x_zero_point", {1}, {zero_point}, /*is_initializer=*/true);
+  test.AddOutput<float>("y", {kNumElements}, y_expected);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
 // scalar zero & scale with int4
 TEST(DequantizeLinearOpTest, Int4) {
   OpTester test("DequantizeLinear", 21);
