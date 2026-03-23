@@ -111,18 +111,18 @@ Abstract:
         mov     x9, x13                      // Row start pointer
         mov     x10, x27                     // KernelHeight counter
 
-        cbz     x10, .Lconv_done_pad_\@
-        cbz     x28, .Lconv_done_pad_\@
+        cbz     x10, 90f
+        cbz     x28, 90f
 
-    .Lkh_loop_pad_\@:
+    91:
         mov     x12, x8                      // Input pointer for width
         mov     x16, x28                     // KernelWidth counter
 
-    .Lkw_loop_pad_\@:
+    92:
         // Branch if the input pointer lies outside [row_start, row_start + row_width).
         sub     x11, x12, x9
         cmp     x11, x14
-        b.hs    .Lkw_skip_pad_\@
+        b.hs    93f
 
         ldp     q4, q5, [x12, #0]
         ldp     q6, q7, [x12, #32]
@@ -144,18 +144,18 @@ Abstract:
         PROCESS_LANE 896, 928, v7, 2
         PROCESS_LANE 960, 992, v7, 3
 
-    .Lkw_skip_pad_\@:
+    93:
         add     x7, x7, #1024
         add     x12, x12, x23
         subs    x16, x16, #1
-        b.ne    .Lkw_loop_pad_\@
+        b.ne    92b
 
         add     x9, x9, x15
         add     x8, x8, x15
         subs    x10, x10, #1
-        b.ne    .Lkh_loop_pad_\@
+        b.ne    91b
 
-    .Lconv_done_pad_\@:
+    90:
     .endm
 
 //
@@ -168,14 +168,14 @@ Abstract:
         mov     x8, x1                       // Input row pointer
         mov     x10, x27                     // KernelHeight counter
 
-        cbz     x10, .Lconv_done_mid_\@
-        cbz     x28, .Lconv_done_mid_\@
+        cbz     x10, 100f
+        cbz     x28, 100f
 
-    .Lkh_loop_mid_\@:
+    101:
         mov     x12, x8                      // Input pointer for width
         mov     x16, x28                     // KernelWidth counter
 
-    .Lkw_loop_mid_\@:
+    102:
         ldp     q4, q5, [x12, #0]
         ldp     q6, q7, [x12, #32]
 
@@ -199,13 +199,13 @@ Abstract:
         add     x7, x7, #1024
         add     x12, x12, x23
         subs    x16, x16, #1
-        b.ne    .Lkw_loop_mid_\@
+        b.ne    102b
 
         add     x8, x8, x15
         subs    x10, x10, #1
-        b.ne    .Lkh_loop_mid_\@
+        b.ne    101b
 
-    .Lconv_done_mid_\@:
+    100:
     .endm
 
 //
@@ -218,14 +218,14 @@ Abstract:
         mov     x8, x1                       // Input row pointer (output 0)
         mov     x9, x27                      // KernelHeight counter
 
-        cbz     x9, .Lconv_done_mid3_\@
-        cbz     x28, .Lconv_done_mid3_\@
+        cbz     x9, 110f
+        cbz     x28, 110f
 
-    .Lkh_loop_mid3_\@:
+    111:
         mov     x12, x8                      // Input pointer for width (output 0)
         mov     x16, x28                     // KernelWidth counter
 
-    .Lkw_loop_mid3_\@:
+    112:
         add     x11, x12, x22                // Output 1 input pointer
         add     x10, x12, x22, lsl #1        // Output 2 input pointer
 
@@ -256,13 +256,13 @@ Abstract:
         add     x7, x7, #1024
         add     x12, x12, x23
         subs    x16, x16, #1
-        b.ne    .Lkw_loop_mid3_\@
+        b.ne    112b
 
         add     x8, x8, x15
         subs    x9, x9, #1
-        b.ne    .Lkh_loop_mid3_\@
+        b.ne    111b
 
-    .Lconv_done_mid3_\@:
+    110:
     .endm
 
 //
@@ -276,15 +276,15 @@ Abstract:
         add     x9, x1, x22                  // Input row pointer (output 1)
         mov     x10, x27                     // KernelHeight counter
 
-        cbz     x10, .Lconv_done_mid2_\@
-        cbz     x28, .Lconv_done_mid2_\@
+        cbz     x10, 120f
+        cbz     x28, 120f
 
-    .Lkh_loop_mid2_\@:
+    121:
         mov     x12, x8                      // Input pointer for width (output 0)
         mov     x11, x9                      // Input pointer for width (output 1)
         mov     x16, x28                     // KernelWidth counter
 
-    .Lkw_loop_mid2_\@:
+    122:
         ldp     q4,  q5,  [x12, #0]
         ldp     q6,  q7,  [x12, #32]
         ldp     q24, q25, [x11, #0]
@@ -311,14 +311,14 @@ Abstract:
         add     x12, x12, x23
         add     x11, x11, x23
         subs    x16, x16, #1
-        b.ne    .Lkw_loop_mid2_\@
+        b.ne    122b
 
         add     x8, x8, x15
         add     x9, x9, x15
         subs    x10, x10, #1
-        b.ne    .Lkh_loop_mid2_\@
+        b.ne    121b
 
-    .Lconv_done_mid2_\@:
+    120:
     .endm
 
 //
@@ -332,14 +332,14 @@ Abstract:
         mov     x8, x1                       // Input row pointer (output 0)
         mov     x6, x27                      // KernelHeight counter (x6 is scratch in this path)
 
-        cbz     x6, .Lconv_done_mid4_\@
-        cbz     x28, .Lconv_done_mid4_\@
+        cbz     x6, 130f
+        cbz     x28, 130f
 
-    .Lkh_loop_mid4_\@:
+    131:
         mov     x12, x8                      // Input pointer for width (output 0)
         mov     x16, x28                     // KernelWidth counter
 
-    .Lkw_loop_mid4_\@:
+    132:
         add     x9,  x12, x22                // Output 1 input pointer
         add     x10, x9,  x22                // Output 2 input pointer
         add     x11, x10, x22                // Output 3 input pointer
@@ -377,13 +377,13 @@ Abstract:
         add     x7, x7, #1024
         add     x12, x12, x23
         subs    x16, x16, #1
-        b.ne    .Lkw_loop_mid4_\@
+        b.ne    132b
 
         add     x8, x8, x15
         subs    x6, x6, #1
-        b.ne    .Lkh_loop_mid4_\@
+        b.ne    131b
 
-    .Lconv_done_mid4_\@:
+    130:
     .endm
 
 //
@@ -1074,7 +1074,7 @@ Abstract:
     cmp     x0, #3
     b.ne    .Loutput_mid_remainder_not3_flags0
     // Exactly three outputs remain.
-    str     xzr, [sp, #120]
+    str     xzr, [sp, #248]
     mov     x0, #1
     b       .Loutput_mid_triad_loop_flags0
 
@@ -1082,7 +1082,7 @@ Abstract:
     cmp     x0, #2
     b.ne    .Loutput_mid_remainder_single_flags0
     // Exactly two outputs remain.
-    str     xzr, [sp, #120]
+    str     xzr, [sp, #248]
     mov     x0, #1
     b       .Loutput_mid_pair_loop_flags0
 
@@ -1144,7 +1144,7 @@ Abstract:
     b.ne    .Loutput_mid_triad_loop_flags0
 
 .Loutput_mid_pair_begin_flags0:
-    ldr     x0, [sp, #120]
+    ldr     x0, [sp, #248]
     and     x16, x0, #1
     str     x16, [sp, #248]
     lsr     x0, x0, #1
