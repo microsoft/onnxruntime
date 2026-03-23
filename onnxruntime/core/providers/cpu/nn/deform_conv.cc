@@ -25,7 +25,6 @@ constexpr uint8_t kTopRightMask = 1u << 1;
 constexpr uint8_t kBottomLeftMask = 1u << 2;
 constexpr uint8_t kBottomRightMask = 1u << 3;
 constexpr uint8_t kAllNeighborsMask = kTopLeftMask | kTopRightMask | kBottomLeftMask | kBottomRightMask;
-constexpr int kTile = 256;
 constexpr size_t kMaxSamplingPlanWorkspaceBytes = 256ull * 1024ull * 1024ull;
 constexpr int64_t kStreamingSpatialTileSize = 4096;
 
@@ -106,7 +105,7 @@ struct BilinearSamplePlanArrays {
   uint8_t* flags = nullptr;
 };
 
-template <bool RangeMode, typename T>
+template <typename T>
 void BuildBilinearSamplingPlanImpl(
     const T* ptr_offset_h,
     const T* ptr_offset_w,
@@ -120,8 +119,7 @@ void BuildBilinearSamplingPlanImpl(
     T base_w,
     int64_t spatial_begin,
     int64_t spatial_count,
-    BilinearSamplePlanArrays<T>& plan,
-    int64_t plan_base) {
+    BilinearSamplePlanArrays<T>& plan) {
   auto process_sample = [&](int64_t spatial_idx, int64_t pidx) {
     const int64_t h_col = spatial_idx / width_col;
     const int64_t w_col = spatial_idx - h_col * width_col;
@@ -181,24 +179,27 @@ void BuildBilinearSamplingPlanImpl(
     plan.flags[pidx] = mask;
   };
 
-  if constexpr (RangeMode) {
-    for (int64_t local_idx = 0; local_idx < spatial_count; ++local_idx) {
-      process_sample(spatial_begin + local_idx, plan_base + local_idx);
-    }
-  } else {
-    for (int64_t h_tile_begin = 0; h_tile_begin < height_col; h_tile_begin += kTile) {
-      const int64_t h_tile_end = std::min<int64_t>(h_tile_begin + kTile, height_col);
-      for (int64_t h_col = h_tile_begin; h_col < h_tile_end; ++h_col) {
-        for (int64_t w_col = 0; w_col < width_col; ++w_col) {
-          const int64_t spatial_idx = h_col * width_col + w_col;
-          process_sample(spatial_idx, plan_base + spatial_idx);
-        }
-      }
+  ORT_ENFORCE(spatial_begin >= 0 && spatial_count >= 0 && spatial_begin + spatial_count <= height_col * width_col,
+              "Invalid spatial range for sampling plan.");
+
+  const int64_t end = spatial_begin + spatial_count;
+  int64_t local_idx = 0;
+  const int64_t first_h = spatial_begin / width_col;
+  const int64_t last_h = (end - 1) / width_col;
+  for (int64_t h_col = first_h; h_col <= last_h; ++h_col) {
+    const int64_t w_begin = (h_col == first_h) ? (spatial_begin - h_col * width_col) : 0;
+    const int64_t w_end = (h_col == last_h) ? (end - h_col * width_col) : width_col;
+    for (int64_t w_col = w_begin; w_col < w_end; ++w_col) {
+      const int64_t spatial_idx = h_col * width_col + w_col;
+      process_sample(spatial_idx, local_idx);
+      ++local_idx;
     }
   }
+
+  ORT_ENFORCE(local_idx == spatial_count, "Sampling plan fill count mismatch.");
 }
 
-template <bool RangeMode, typename T>
+template <typename T>
 void BuildAllBilinearSamplingPlansImpl(
     const T* data_offset,
     int height,
@@ -220,7 +221,7 @@ void BuildAllBilinearSamplingPlansImpl(
     BilinearSamplePlanArrays<T>& sampling_plan,
     concurrency::ThreadPool* thread_pool) {
   const int64_t plan_rows = offset_groups * kernel_size;
-  const double plan_parallel_cost = static_cast<double>(RangeMode ? spatial_count : output_size) * 12.0;
+  const double plan_parallel_cost = static_cast<double>(spatial_count) * 12.0;
   concurrency::ThreadPool::TryParallelFor(
       thread_pool,
       static_cast<std::ptrdiff_t>(plan_rows),
@@ -239,20 +240,24 @@ void BuildAllBilinearSamplingPlansImpl(
           const T base_h = -pad_h + static_cast<T>(i) * dilation_h;
           const T base_w = -pad_w + static_cast<T>(j) * dilation_w;
 
-          if constexpr (RangeMode) {
-            BuildBilinearSamplingPlanImpl<true>(
-                ptr_offset_h, ptr_offset_w,
-                height, width, 0, width_col,
-                stride_h, stride_w, base_h, base_w,
-                spatial_begin, spatial_count,
-                sampling_plan, row * spatial_count);
-          } else {
-            BuildBilinearSamplingPlanImpl<false>(
-                ptr_offset_h, ptr_offset_w,
-                height, width, height_col, width_col,
-                stride_h, stride_w, base_h, base_w,
-                0, 0, sampling_plan, row * output_size);
-          }
+          const int64_t plan_row_base = row * spatial_count;
+          BilinearSamplePlanArrays<T> row_plan{
+              sampling_plan.idx00 + plan_row_base,
+              sampling_plan.idx01 + plan_row_base,
+              sampling_plan.idx10 + plan_row_base,
+              sampling_plan.idx11 + plan_row_base,
+              sampling_plan.w00 + plan_row_base,
+              sampling_plan.w01 + plan_row_base,
+              sampling_plan.w10 + plan_row_base,
+              sampling_plan.w11 + plan_row_base,
+              sampling_plan.flags + plan_row_base};
+
+          BuildBilinearSamplingPlanImpl(
+              ptr_offset_h, ptr_offset_w,
+              height, width, height_col, width_col,
+              stride_h, stride_w, base_h, base_w,
+              spatial_begin, spatial_count,
+              row_plan);
         }
       });
 }
@@ -287,47 +292,27 @@ ORT_FORCEINLINE T EvalSampleFromPlan(const T* im_ptr,
   return val;
 }
 
-template <bool RangeMode, typename T, bool UseMask>
+template <typename T, bool UseMask>
 void FillColRowFromSamplingPlanImpl(
     const T* im_ptr,
     const BilinearSamplePlanArrays<T>& sampling_plan,
-    int64_t plan_row_base,
     int64_t spatial_begin,
     int64_t spatial_count,
     int64_t mask_row_base,
     const T* ptr_mask,
     T* col_ptr) {
-  if constexpr (RangeMode) {
-    for (int64_t local_idx = 0; local_idx < spatial_count; ++local_idx) {
-      const int64_t pidx = plan_row_base + local_idx;
-      T val = EvalSampleFromPlan(im_ptr, sampling_plan, pidx);
-
-      if constexpr (UseMask) {
-        val *= ptr_mask[mask_row_base + local_idx];
-      }
-
-      col_ptr[spatial_begin + local_idx] = val;
+  for (int64_t local_idx = 0; local_idx < spatial_count; ++local_idx) {
+    T val = EvalSampleFromPlan(im_ptr, sampling_plan, local_idx);
+    if constexpr (UseMask) {
+      val *= ptr_mask[mask_row_base + local_idx];
     }
-  } else {
-    for (int64_t tile_begin = 0; tile_begin < spatial_count; tile_begin += kTile) {
-      const int64_t tile_end = std::min<int64_t>(tile_begin + kTile, spatial_count);
-      for (int64_t local_idx = tile_begin; local_idx < tile_end; ++local_idx) {
-        const int64_t pidx = plan_row_base + local_idx;
-        T val = EvalSampleFromPlan(im_ptr, sampling_plan, pidx);
-
-        if constexpr (UseMask) {
-          val *= ptr_mask[local_idx];
-        }
-
-        col_ptr[local_idx] = val;
-      }
-    }
+    col_ptr[spatial_begin + local_idx] = val;
   }
 }
 
-// Deformable Im2Col for a SINGLE image.
-// Streamed=false builds full plan once; Streamed=true builds per spatial tile.
-template <bool Streamed, typename T, bool UseMask>
+// Deformable Im2Col for a SINGLE image. A single implementation handles
+// both full-plan and streamed-plan modes via spatial_tile_size.
+template <typename T, bool UseMask>
 void DeformableIm2colPlanned(
     const T* data_im,
     const T* data_offset,
@@ -348,30 +333,17 @@ void DeformableIm2colPlanned(
   const int64_t kernel_size = kernel_h * kernel_w;
   const int64_t output_size = height_col * width_col;
 
-  const int64_t effective_tile = Streamed ? spatial_tile_size : output_size;
-  for (int64_t spatial_begin = 0; spatial_begin < output_size; spatial_begin += effective_tile) {
-    const int64_t spatial_count = std::min<int64_t>(effective_tile, output_size - spatial_begin);
-    if constexpr (Streamed) {
-      BuildAllBilinearSamplingPlansImpl<true>(
-          data_offset, height, width,
-          kernel_w, pad_h, pad_w,
-          stride_h, stride_w,
-          dilation_h, dilation_w,
-          offset_groups,
-          output_size, height_col, width_col, kernel_size,
-          spatial_begin, spatial_count,
-          sampling_plan, thread_pool);
-    } else {
-      BuildAllBilinearSamplingPlansImpl<false>(
-          data_offset, height, width,
-          kernel_w, pad_h, pad_w,
-          stride_h, stride_w,
-          dilation_h, dilation_w,
-          offset_groups,
-          output_size, height_col, width_col, kernel_size,
-          0, 0,
-          sampling_plan, thread_pool);
-    }
+  for (int64_t spatial_begin = 0; spatial_begin < output_size; spatial_begin += spatial_tile_size) {
+    const int64_t spatial_count = std::min<int64_t>(spatial_tile_size, output_size - spatial_begin);
+    BuildAllBilinearSamplingPlansImpl(
+        data_offset, height, width,
+        kernel_w, pad_h, pad_w,
+        stride_h, stride_w,
+        dilation_h, dilation_w,
+        offset_groups,
+        output_size, height_col, width_col, kernel_size,
+        spatial_begin, spatial_count,
+        sampling_plan, thread_pool);
 
     const double parallel_cost = static_cast<double>(spatial_count) * (UseMask ? 12.0 : 10.0);
     concurrency::ThreadPool::TryParallelFor(
@@ -387,33 +359,31 @@ void DeformableIm2colPlanned(
 
             T* col_ptr = data_col + static_cast<int64_t>(idx) * output_size;
             const T* im_ptr = data_im + c_im * static_cast<int64_t>(height) * width;
-            const int64_t plan_stride = Streamed ? spatial_count : output_size;
-            const int64_t plan_row_base = (offset_grp * kernel_size + (i * kernel_w + j)) * plan_stride;
+            const int64_t plan_row_base = (offset_grp * kernel_size + (i * kernel_w + j)) * spatial_count;
+            BilinearSamplePlanArrays<T> row_plan{
+                sampling_plan.idx00 + plan_row_base,
+                sampling_plan.idx01 + plan_row_base,
+                sampling_plan.idx10 + plan_row_base,
+                sampling_plan.idx11 + plan_row_base,
+                sampling_plan.w00 + plan_row_base,
+                sampling_plan.w01 + plan_row_base,
+                sampling_plan.w10 + plan_row_base,
+                sampling_plan.w11 + plan_row_base,
+                sampling_plan.flags + plan_row_base};
             [[maybe_unused]] const T* ptr_mask = nullptr;
             const int64_t mask_row_base = (offset_grp * kernel_size + i * kernel_w + j) * output_size + spatial_begin;
             if constexpr (UseMask) {
               ptr_mask = data_mask;
             }
 
-            if constexpr (Streamed) {
-              FillColRowFromSamplingPlanImpl<true, T, UseMask>(
-                  im_ptr, sampling_plan, plan_row_base,
-                  spatial_begin, spatial_count, mask_row_base, ptr_mask, col_ptr);
-            } else {
-              FillColRowFromSamplingPlanImpl<false, T, UseMask>(
-                  im_ptr, sampling_plan, plan_row_base,
-                  0, output_size, 0, ptr_mask, col_ptr);
-            }
+            FillColRowFromSamplingPlanImpl<T, UseMask>(
+                im_ptr, row_plan, spatial_begin, spatial_count, mask_row_base, ptr_mask, col_ptr);
           }
         });
-
-    if constexpr (!Streamed) {
-      break;
-    }
   }
 }
 
-template <bool Streamed, typename T>
+template <typename T>
 ORT_FORCEINLINE void DispatchDeformableIm2colPlanned(
     bool use_mask,
     const T* X_curr,
@@ -438,14 +408,14 @@ ORT_FORCEINLINE void DispatchDeformableIm2colPlanned(
     T* col_buffer_ptr,
     concurrency::ThreadPool* thread_pool) {
   if (use_mask) {
-    DeformableIm2colPlanned<Streamed, T, true>(
+    DeformableIm2colPlanned<T, true>(
         X_curr, offset_curr, mask_curr,
         H, W_in, kH, kW,
         pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
         C, offset_group, out_h, out_w, sampling_plan, tile_size,
         col_buffer_ptr, thread_pool);
   } else {
-    DeformableIm2colPlanned<Streamed, T, false>(
+    DeformableIm2colPlanned<T, false>(
         X_curr, offset_curr, nullptr,
         H, W_in, kH, kW,
         pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
@@ -560,21 +530,13 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
     const T* mask_curr = use_mask ? (mask_data + n * (offset_group * kernel_size * output_image_size)) : nullptr;
     T* col_buffer_ptr = col_buffer.get();
 
-    if (use_streamed_plan) {
-      sampling_plan_internal::DispatchDeformableIm2colPlanned<true, T>(
-          use_mask, X_curr, offset_curr, mask_curr,
-          static_cast<int>(H), static_cast<int>(W_in), kH, kW,
-          pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
-          C, offset_group, out_h, out_w, sampling_plan, spatial_tile_size,
-          col_buffer_ptr, thread_pool);
-    } else {
-      sampling_plan_internal::DispatchDeformableIm2colPlanned<false, T>(
-          use_mask, X_curr, offset_curr, mask_curr,
-          static_cast<int>(H), static_cast<int>(W_in), kH, kW,
-          pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
-          C, offset_group, out_h, out_w, sampling_plan, output_image_size,
-          col_buffer_ptr, thread_pool);
-    }
+    const int64_t tile_size = use_streamed_plan ? spatial_tile_size : output_image_size;
+    sampling_plan_internal::DispatchDeformableIm2colPlanned<T>(
+        use_mask, X_curr, offset_curr, mask_curr,
+        static_cast<int>(H), static_cast<int>(W_in), kH, kW,
+        pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w,
+        C, offset_group, out_h, out_w, sampling_plan, tile_size,
+        col_buffer_ptr, thread_pool);
 
     // Step 2: GEMM for each group. Y = W * Col (per group).
     for (int64_t g = 0; g < group; ++g) {
