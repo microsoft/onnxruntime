@@ -4613,7 +4613,7 @@ TEST(TransposeOptimizerTests, LayoutTransformDoesNotRetargetNhwcFusedConv) {
   ModelTestBuilder builder(graph);
 
   auto* input_arg = builder.MakeInput<float>({1, 7, 7, 8}, -1.0f, 1.0f);
-  auto* weight_arg = builder.MakeInitializer<float>({16, 3, 3, 8}, -1.0f, 1.0f);
+  auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
   auto* bias_arg = builder.MakeInitializer<float>({16}, -0.5f, 0.5f);
   auto* output_arg = builder.MakeOutput();
 
