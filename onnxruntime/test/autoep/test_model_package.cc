@@ -12,53 +12,14 @@
 #include "core/session/model_package_context.h"
 #include "core/session/abi_devices.h"
 #include "test/autoep/test_autoep_utils.h"
-
 #include "test/util/include/asserts.h"
+#include "test/util/include/api_asserts.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
 namespace {
-
-/*
-OrtHardwareDevice MakeHardwareDevice(std::string vendor,
-                                     OrtHardwareDeviceType type,
-                                     uint32_t vendor_id,
-                                     uint32_t device_id,
-                                     std::map<std::string, std::string> metadata_entries = {}) {
-  OrtHardwareDevice hd{};
-  hd.type = type;
-  hd.vendor_id = vendor_id;
-  hd.device_id = device_id;
-  hd.vendor = std::move(vendor);
-  hd.metadata.CopyFromMap(std::move(metadata_entries));
-  return hd;
-}
-
-SelectionEpInfo MakeSelectionEpInfo(const std::string& ep_name,
-                                    const OrtHardwareDevice* hw) {
-  SelectionEpInfo info{};
-  info.ep_name = ep_name;
-  info.ep_factory = nullptr;
-  info.hardware_devices.push_back(hw);
-  info.ep_metadata.push_back(nullptr);
-  return info;
-}
-
-EpContextVariantInfo MakeComponent(const std::string& ep,
-                                   const std::string& device,
-                                   const std::string& arch,
-                                   const std::filesystem::path& path) {
-  EpContextVariantInfo c{};
-  c.ep = ep;
-  c.device = device;
-  c.architecture = arch;
-  c.model_path = path;
-  return c;
-}
-*/
-
 // ------------------------------------------------------------------
 // Helpers to build a test model package on disk
 // ------------------------------------------------------------------
@@ -76,6 +37,8 @@ std::filesystem::path CreateManifestJson(const std::filesystem::path& package_ro
 std::filesystem::path CreateModelPackage(
     const std::filesystem::path& package_root,
     std::string_view manifest_json,
+    std::string_view variant_name_1,
+    std::string_view variant_name_2,
     const std::filesystem::path& source_model_1,
     const std::filesystem::path& source_model_2) {
   std::error_code ec;
@@ -85,8 +48,8 @@ std::filesystem::path CreateModelPackage(
   CreateManifestJson(package_root, manifest_json);
 
   const auto models_root = package_root / "models" / "test_model";
-  const auto variant1_dir = models_root / "variant_1";
-  const auto variant2_dir = models_root / "variant_2";
+  const auto variant1_dir = models_root / variant_name_1;
+  const auto variant2_dir = models_root / variant_name_2;
 
   std::filesystem::create_directories(variant1_dir);
   std::filesystem::create_directories(variant2_dir);
@@ -104,6 +67,78 @@ std::filesystem::path CreateModelPackage(
 // ------------------------------------------------------------------
 // Model package end-to-end test
 // ------------------------------------------------------------------
+
+TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_compat_test.onnx");
+  std::filesystem::remove(output_model_file);
+
+  // Compile the model
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  // Build model package on disk
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
+  constexpr std::string_view manifest_json = R"({
+    "name": "test_model",
+    "components": [
+      {
+        "variant_name": "variant_2",
+        "file": "mul_16.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "cpu",
+          "architecture": "arch2",
+          "ep_compatibility_info": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2"
+        }
+      },
+      {
+        "variant_name": "variant_1",
+        "file": "plugin_ep_compat_test.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "cpu",
+          "architecture": "arch1",
+          "ep_compatibility_info": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1"
+        }
+      }
+    ]
+  })";
+
+  CreateModelPackage(package_root, manifest_json,
+                     "variant_2", "variant_1",
+                     std::filesystem::path{"testdata/mul_16.onnx"}, std::filesystem::path{"plugin_ep_compat_test.onnx"});
+
+  // Prepare session options with ExampleEP appended
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  // Create session from package root (directory)
+  // ORT should pick the variant_1 model since it has OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL for the example EP,
+  // while variant_2 is only OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION.
+  // If variant_2 was selected and loaded, i.e. mul_16.onnx, session initialization would fail with error "Error No Op registered for Mul16".
+  Ort::Session session(*ort_env, package_root.c_str(), session_options);
+
+  // Cleanup
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
 
 TEST(ModelPackageTest, LoadModelPackageAndRunInference_Basic) {
   // Build model package on disk
@@ -133,6 +168,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_Basic) {
   })";
 
   CreateModelPackage(package_root, manifest_json,
+                     "variant_1", "variant_2",
                      std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
   // Register example EP and get its device

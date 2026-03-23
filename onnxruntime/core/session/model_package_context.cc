@@ -11,6 +11,7 @@
 #include <string>
 
 #include "core/common/logging/logging.h"
+#include "core/framework/error_code_helper.h"
 #include "core/session/model_package_context.h"
 
 namespace onnxruntime {
@@ -62,11 +63,36 @@ bool MatchesProviderOptionsSpecificKeyForDeviceType(std::string_view provider_op
   return true;
 }
 
-bool MatchesComponent(const EpContextVariantInfo& component, const SelectionEpInfo& ep_info) {
+Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
+                                              const std::string& compatibility_info,
+                                              OrtCompiledModelCompatibility* compiled_model_compatibility) {
+  if (compatibility_info.empty()) {
+    return Status::OK();
+  }
+
+  auto* ep_factory = ep_info.ep_factory;
+
+  if (ep_factory &&
+      ep_factory->ort_version_supported >= 23 &&
+      ep_factory->ValidateCompiledModelCompatibilityInfo != nullptr) {
+    auto status = ep_factory->ValidateCompiledModelCompatibilityInfo(ep_factory,
+                                                                     ep_info.hardware_devices.data(),
+                                                                     ep_info.hardware_devices.size(),
+                                                                     compatibility_info.c_str(),
+                                                                     compiled_model_compatibility);
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(status));
+  }
+
+  return Status::OK();
+}
+
+bool MatchesComponent(EpContextVariantInfo& component, const SelectionEpInfo& ep_info) {
+  // Check EP constraint
   if (!component.ep.empty() && component.ep != ep_info.ep_name) {
     return false;
   }
 
+  // Check device constraints
   bool device_ok = component.device.empty();
   if (!device_ok) {
     for (const auto* hd : ep_info.hardware_devices) {
@@ -81,10 +107,10 @@ bool MatchesComponent(const EpContextVariantInfo& component, const SelectionEpIn
     return false;
   }
 
-  device_ok = component.device.empty();
+  // If provider options contain keys related to device type, then the value must match the device constraint value.
   for (const auto& [key, value] : ep_info.ep_options) {
-    if (MatchesProviderOptionsSpecificKeyForDeviceType(key, value, component.device)) {
-      device_ok = true;
+    if (!MatchesProviderOptionsSpecificKeyForDeviceType(key, value, component.device)) {
+      device_ok = false;
       break;
     }
   }
@@ -93,6 +119,22 @@ bool MatchesComponent(const EpContextVariantInfo& component, const SelectionEpIn
     return false;
   }
 
+  // Check compatibility info constraint and save the compatibility result for later use if needed.
+  auto status = ValidateCompiledModelCompatibilityInfo(ep_info, component.compatibility_info,
+                                                       &component.compiled_model_compatibility);
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(WARNING) << "Failed to validate compatibility info for component with EP constraint '"
+                          << component.ep << "': " << status.ToString()
+                          << ". Simply skip this compatibility validation.";
+
+    component.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  }
+
+  if (component.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_UNSUPPORTED) {
+    return false;
+  }
+
+  // Check hardware architecture constraint
   bool arch_ok = component.architecture.empty();
   if (!arch_ok) {
     for (const auto* hd : ep_info.hardware_devices) {
@@ -103,7 +145,11 @@ bool MatchesComponent(const EpContextVariantInfo& component, const SelectionEpIn
     }
   }
 
-  return arch_ok;
+  if (!arch_ok) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace
@@ -151,7 +197,6 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
 
       // variant name
       std::string variant_name = comp[kVariantNameKey].get<std::string>();
-      c.metadata.Add(kVariantNameKey, variant_name);
 
       // Build model path: package_root / "models" / model_name / variant_name / file
       std::filesystem::path model_dir = package_root / "models" / model_name / variant_name;
@@ -163,6 +208,12 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
         if (cons.contains(kDeviceKey) && cons[kDeviceKey].is_string()) c.device = cons[kDeviceKey].get<std::string>();
         if (cons.contains(kArchitectureKey) && cons[kArchitectureKey].is_string()) {
           c.architecture = cons[kArchitectureKey].get<std::string>();
+        }
+        if (cons.contains(kEpCompatibilityInfoKey) && cons[kEpCompatibilityInfoKey].is_string()) {
+          c.compatibility_info = cons[kEpCompatibilityInfoKey].get<std::string>();
+        }
+        if (cons.contains(kSdkVersionKey) && cons[kSdkVersionKey].is_string()) {
+          c.metadata[kSdkVersionKey] = cons[kSdkVersionKey].get<std::string>();
         }
       }
 
@@ -183,11 +234,26 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
   return Status::OK();
 }
 
+// Calculate a score for the component based on its constraints and metadata.
+//
+// It's only used to choose the best component among multiple candidates that match constraints.
+// Higher score means more preferred.
+//
+// For example:
+// If one component/EPContext is compatible with the EP and has compatiliby value indicating optimal compatibility
+// (e.g. compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL) while another component/EPContext
+// is also compatible with the EP but has compatibility value indicating prefer recompilation
+// (e.g. compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION),
+// the former will have a higher score and thus be selected.
+//
 int ModelPackageContext::CalculateComponentScore(const EpContextVariantInfo& component) const {
   int score = 0;
 
-  (void)component;
-  // TODO: Add scoring rules based on maybe EP metadata.
+  if (component.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL) {
+    score += 100;
+  } else if (component.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION) {
+    score += 50;
+  }
 
   return score;
 }
@@ -201,7 +267,7 @@ Status ModelPackageContext::SelectComponent(gsl::span<EpContextVariantInfo> comp
     return Status::OK();
   }
 
-  // For simplicity, this is the constraint in this initial implementation:
+  // For simplicity, there is a constraint in this initial implementation:
   // - Only one SelectionEpInfo in `ep_infos` is supported
 
   std::unordered_set<size_t> candidate_indices_set;
@@ -219,7 +285,7 @@ Status ModelPackageContext::SelectComponent(gsl::span<EpContextVariantInfo> comp
     if (candidate_indices_set.count(i) > 0) {
       continue;
     }
-    const auto& c = components[i];
+    auto& c = components[i];
     for (const auto& ep_info : ep_infos) {
       if (MatchesComponent(c, ep_info)) {
         candidate_indices_set.insert(i);
@@ -228,20 +294,10 @@ Status ModelPackageContext::SelectComponent(gsl::span<EpContextVariantInfo> comp
     }
   }
 
-  if (candidate_indices_set.empty()) {
-    return Status::OK();
-  }
-
-  // If only one candidate, select it.
-  if (candidate_indices_set.size() == 1) {
-    selected_component_path = components[*candidate_indices_set.begin()].model_path;
-    return Status::OK();
-  }
-
   // Log all matched candidates.
   {
     std::ostringstream oss;
-    oss << "Multiple components matched manifest constraints (" << candidate_indices_set.size() << "): ";
+    oss << candidate_indices_set.size() << " Component(s) matched manifest constraints: ";
     size_t i = 0;
     for (size_t idx : candidate_indices_set) {
       const auto& path = components[idx].model_path;
@@ -254,7 +310,17 @@ Status ModelPackageContext::SelectComponent(gsl::span<EpContextVariantInfo> comp
     LOGS_DEFAULT(INFO) << oss.str();
   }
 
-  // 4) Choose highest-score component among candidates.
+  if (candidate_indices_set.empty()) {
+    return Status::OK();
+  }
+
+  // 3) If only one candidate, select it.
+  if (candidate_indices_set.size() == 1) {
+    selected_component_path = components[*candidate_indices_set.begin()].model_path;
+    return Status::OK();
+  }
+
+  // 4) If there are multiple candidates, choose the highest-score component among them.
   int best_score = std::numeric_limits<int>::min();
   size_t best_index = *candidate_indices_set.begin();
 

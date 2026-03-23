@@ -27,17 +27,19 @@ static constexpr const char* kConstraintsKey = "constraints";
 static constexpr const char* kEpKey = "ep";
 static constexpr const char* kDeviceKey = "device";
 static constexpr const char* kArchitectureKey = "architecture";
+static constexpr const char* kEpCompatibilityInfoKey = "ep_compatibility_info";
+static constexpr const char* kSdkVersionKey = "sdk_version";
 
 struct EpContextVariantInfo {
   std::string ep;
   std::string device;
   std::string architecture;
-  OrtKeyValuePairs metadata;
+  std::string compatibility_info;
+  std::unordered_map<std::string, std::string> metadata;
+  OrtCompiledModelCompatibility compiled_model_compatibility;
   std::filesystem::path model_path;
 };
 
-// Same as the `SelecionInfo` in provider_policy_context.h but with
-// additional fields for ep name and provider options.
 struct SelectionEpInfo {
   std::string ep_name;
   OrtEpFactory* ep_factory;
