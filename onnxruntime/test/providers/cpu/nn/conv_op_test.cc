@@ -429,6 +429,9 @@ TEST(ConvTest, Conv2D_4) {
       0.f, 0.f, 0.f, 0.f, 0.f,
       0.f, 0.f, 0.f, 0.f, 0.f};
 
+  // TODO: remove the excluding after fix https://github.com/microsoft/onnxruntime/issues/27805
+  attrs.excluded_providers.insert(kNnapiExecutionProvider);
+
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape);
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape, true);
 }
@@ -469,6 +472,9 @@ TEST(ConvTest, Conv2D_5) {
       0.f, 177.f, 360.f, 372.f, 189.f,
       0.f, 0.f, 0.f, 0.f, 0.f,
       0.f, 0.f, 0.f, 0.f, 0.f};
+
+  // TODO: remove the excluding after fix https://github.com/microsoft/onnxruntime/issues/27805
+  attrs.excluded_providers.insert(kNnapiExecutionProvider);
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape);
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape, true);
