@@ -49,7 +49,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_full_ort # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
@@ -103,7 +103,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_minimal_exceptions_disabled # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - name: Get Docker Image using Action
@@ -180,7 +180,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_minimal_custom_ops # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
@@ -232,7 +232,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_minimal_type_reduction # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
@@ -283,7 +283,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_minimal_globally_allowed_types # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
@@ -335,7 +335,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_extended_minimal # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - name: Get Docker Image using Action
@@ -436,7 +436,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_regular_no_optional # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - name: Run Build 6a (Update)
@@ -534,7 +534,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_minimal_no_optional # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - name: Run Build 6b (Update)
@@ -627,7 +627,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_extended_minimal_no_optional # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - name: Run Build 6c (Update)
@@ -724,7 +724,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache # same cache for all jobs in minimal build; they should be using the same toolchain
+          key: vcpkg-cache | build_extended_minimal_android # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
           path: ~/.cache/vcpkg
 
       - name: Run Build 7 (Using docker run)
