@@ -43,9 +43,12 @@ SkipLayerNorm<T, Simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) 
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  strict_ = onnxruntime::cuda::GetCudaKernelAdapterSkipLayerNormStrictMode();
+#else
   const CUDAExecutionProvider* cuda_ep = static_cast<const CUDAExecutionProvider*>(op_kernel_info.GetExecutionProvider());
-
   strict_ = cuda_ep->IsSkipLayerNormInStrictMode();
+#endif
 }
 
 template <typename T, bool Simplified>

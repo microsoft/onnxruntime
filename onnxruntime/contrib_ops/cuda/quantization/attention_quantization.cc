@@ -149,7 +149,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                weights->Data<int8_t>(), n,
                                gemm_buffer_quantized.get(), n,
                                this,
-                               context->GetComputeStream()));
+                               GetComputeStream(context), Stream(context),
+                               GetCublasHandle(context)));
 
   CudaT dequant_scale;
   CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->Data<T>()));

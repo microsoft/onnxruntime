@@ -48,8 +48,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
   TensorShapeVector w_dims = w_shape.AsShapeVector();
   auto w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
 
-  size_t num_inputs = OpKernel::Node().InputDefs().size();
-  bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
+  const Tensor* B_tensor = context->Input<Tensor>(dynamic_padding ? 3 : 2);
+  bool has_bias = B_tensor != nullptr;
 
   CudaT* y_data = nullptr;
 
@@ -190,7 +190,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
       if (!s_.cached_benchmark_results.contains(x_dims)) {
         IAllocatorUniquePtr<void> algo_search_workspace =
-            GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
+            GetScratchBuffer<void>(AlgoSearchWorkspaceSize, GetComputeStream(context));
 
         // set math type to tensor core before algorithm search
         if constexpr (std::is_same<T, MLFloat16>::value) {
@@ -241,7 +241,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     const auto alpha = Consts<CudaT>::One;
     const auto beta = Consts<CudaT>::Zero;
 
-    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, context->GetComputeStream());
+    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, GetComputeStream(context));
 
     CUDNN_RETURN_IF_ERROR(cudnnConvolutionBackwardData(GetCudnnHandle(context), &alpha, s_.w_desc, w_data,
                                                        s_.x_tensor, x_data, s_.conv_desc, s_.algo, workspace.get(),

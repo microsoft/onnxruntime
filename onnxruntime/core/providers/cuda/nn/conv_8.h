@@ -189,7 +189,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
     if (post_slicing_required) {
       // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
+      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size, GetComputeStream(context));
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       // No post slicing needed. Fill the output tensor's buffer directly.
@@ -376,7 +376,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       return Status::OK();
     }
     if (s_.post_slicing_required) {
-      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
+      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, GetComputeStream(context));
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
@@ -394,7 +394,7 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
   }
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
-  IAllocatorUniquePtr<void> workspace = GetWorkSpace(context->GetComputeStream());
+  IAllocatorUniquePtr<void> workspace = GetWorkSpace(GetComputeStream(context));
   auto cudnn_handle = GetCudnnHandle(context);
   CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(cudnn_handle,
                                                 &alpha,

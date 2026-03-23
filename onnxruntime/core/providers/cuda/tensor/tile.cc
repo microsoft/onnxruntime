@@ -9,6 +9,40 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
+namespace {
+
+bool IsTileMemcpyForPlugin(const TensorShape& input_shape,
+                           const int64_t* repeats,
+                           size_t rank,
+                           /*out*/ bool& is_batched_memcpy,
+                           /*out*/ size_t& num_of_elements_per_batch,
+                           /*out*/ size_t& num_of_copies_per_batch,
+                           /*out*/ size_t& num_of_batch_copies) {
+  for (int64_t i = static_cast<int64_t>(rank) - 1; i >= 0; --i) {
+    if (repeats[i] != 1) {
+      if (input_shape.SizeToDimension(onnxruntime::narrow<size_t>(i)) == 1) {
+        num_of_copies_per_batch = 1;
+        for (int64_t j = 0; j <= i; ++j) {
+          num_of_copies_per_batch *= onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(j)]);
+        }
+        is_batched_memcpy = false;
+        return true;
+      } else if (i == 1) {
+        num_of_elements_per_batch = static_cast<size_t>(input_shape.SizeFromDimension(1));
+        num_of_copies_per_batch = onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(i)]);
+        num_of_batch_copies = onnxruntime::narrow<size_t>(repeats[0]);
+        is_batched_memcpy = true;
+        return true;
+      } else {
+        break;
+      }
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Tile,
     kOnnxDomain,

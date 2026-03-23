@@ -41,16 +41,7 @@ REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
-Upsample<T>::Upsample(const OpKernelInfo& info) : UpsampleBase(info), CudaKernel(info) {
-  if (UpsampleBase::antialias_) {
-    // Copy the table on DEVICE
-    const uint8_t* lookup_table = GetLookupTableShared();
-    auto alloc = info.GetAllocator(OrtMemTypeDefault);
-    shared_lookup_table_ondevice_ = IAllocator::MakeUniquePtr<uint8_t>(std::move(alloc), kLookupTableSize);
-    CUDA_CALL_THROW(cudaMemcpyAsync(shared_lookup_table_ondevice_.get(), lookup_table, kLookupTableSize,
-                                    cudaMemcpyHostToDevice, nullptr));
-  }
-}
+Upsample<T>::Upsample(const OpKernelInfo& info) : UpsampleBase(info), CudaKernel(info) {}
 
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
@@ -104,8 +95,13 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     }
 
     if (antialias_) {
+      const uint8_t* lookup_table = GetLookupTableShared();
+      auto shared_lookup_table_ondevice = GetScratchBuffer<uint8_t>(kLookupTableSize, GetComputeStream(context));
+      CUDA_CALL_THROW(cudaMemcpyAsync(shared_lookup_table_ondevice.get(), lookup_table, kLookupTableSize,
+                                      cudaMemcpyHostToDevice, Stream(context)));
+
       TempSpaceAllocateFunc allocate_temp_space = [&](size_t bytes_size) {
-        return GetScratchBuffer<uint8_t>(bytes_size, context->GetComputeStream());
+        return GetScratchBuffer<uint8_t>(bytes_size, GetComputeStream(context));
       };
 
       std::optional<float> extrapolation_value;
@@ -170,7 +166,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 extrapolation_value,
                                 exclude_outside_,
                                 allocate_temp_space,
-                                shared_lookup_table_ondevice_.get(),
+                                shared_lookup_table_ondevice.get(),
                                 reinterpret_cast<const CudaT*>(X->Data<T>()),
                                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                                 output_count);
@@ -213,7 +209,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 extrapolation_value,
                                 exclude_outside_,
                                 allocate_temp_space,
-                                shared_lookup_table_ondevice_.get(),
+                                shared_lookup_table_ondevice.get(),
                                 reinterpret_cast<const CudaT*>(X->Data<T>()),
                                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                                 output_count);
@@ -259,7 +255,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                               extrapolation_value,
                               exclude_outside_,
                               allocate_temp_space,
-                              shared_lookup_table_ondevice_.get(),
+                              shared_lookup_table_ondevice.get(),
                               reinterpret_cast<const CudaT*>(X->Data<T>()),
                               reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                               output_count);
@@ -274,7 +270,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       TArray<float> scales_vals(scales);
 
       size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
-      auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, context->GetComputeStream());
+      auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, GetComputeStream(context));
       void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
       ResizeImpl(Stream(context), mode_, rank, input_shape, output_shape,
                  input_strides, output_div_pitches, scales_vals, roi_vals,
@@ -341,7 +337,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
 
   InlinedVector<float> scales_array(input_dims.size());
   // opset < 10
-  if (OpKernel::Node().InputDefs().size() == 1) {
+  if (context->InputCount() == 1) {
     // Compute output shape from scales attributes and input dims
     scales_array = scales_;
 
