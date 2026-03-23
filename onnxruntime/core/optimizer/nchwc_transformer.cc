@@ -325,6 +325,14 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
+  // The internal NCHWc Conv kernel can consume an optional fused Sum input, but it expects
+  // that tensor to already be in NCHWc layout. This transform only legalizes the main Conv
+  // input and static weights/bias, so a pre-existing FusedConv(X, W, B, Sum) would feed a
+  // plain NCHW tensor into the NCHWc kernel and produce incorrect results.
+  if (node.OpType() == "FusedConv" && input_defs.size() >= 4 && input_defs[3] != nullptr && input_defs[3]->Exists()) {
+    return;
+  }
+
   // Require that the weights tensor be static.
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
   if (!graph_utils::NodeArgIsConstant(graph_, *input_defs[1]) ||
