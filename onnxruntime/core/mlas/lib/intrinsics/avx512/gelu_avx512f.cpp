@@ -166,11 +166,19 @@ MlasComputeGeluVectorExactAvx512(
 {
     const __m512 ErfInput = _mm512_mul_ps(X, Constants.InvSqrt2);
     const __m512 ErfValue = MlasGeluErfAvx512(ErfInput, Constants);
-    return _mm512_mul_ps(_mm512_mul_ps(Constants.Half, X), _mm512_add_ps(ErfValue, Constants.One));
+    __m512 Result = _mm512_mul_ps(_mm512_mul_ps(Constants.Half, X), _mm512_add_ps(ErfValue, Constants.One));
+
+    // Preserve NaN payload/sign behavior explicitly because the erf
+    // approximation uses min/max style range limiting that is not guaranteed to
+    // preserve NaNs the same way as the existing MLAS GELU semantics.
+    const __mmask16 NaNMask = _mm512_cmp_ps_mask(X, X, _CMP_UNORD_Q);
+    Result = _mm512_mask_mov_ps(Result, NaNMask, X);
+
+    return Result;
 }
 
 void
-MlasGeluKernelAvx512FExactImpl(
+MlasGeluErfKernelAvx512FExactImpl(
     const float* Input,
     float* Output,
     size_t N
@@ -201,11 +209,11 @@ MlasGeluKernelAvx512FExactImpl(
 
 void
 MLASCALL
-MlasGeluKernelAvx512F(
+MlasGeluErfKernelAvx512F(
     const float* Input,
     float* Output,
     size_t N
     )
 {
-    MlasGeluKernelAvx512FExactImpl(Input, Output, N);
+    MlasGeluErfKernelAvx512FExactImpl(Input, Output, N);
 }

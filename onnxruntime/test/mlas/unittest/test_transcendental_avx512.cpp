@@ -28,8 +28,8 @@ constexpr std::array<size_t, 27> kLongTestSizes = {
     1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 31, 32, 33, 63,
     64, 65, 127, 128, 129, 255, 511, 512, 513, 1023, 1024, 1025, 4095};
 
-bool IsGeluAvx512Dispatched() {
-  return GetMlasPlatform().GeluKernelRoutine == MlasGeluKernelAvx512F;
+bool IsGeluErfAvx512Dispatched() {
+  return GetMlasPlatform().GeluErfKernelRoutine == MlasGeluErfKernelAvx512F;
 }
 
 bool IsSiluAvx512Dispatched() {
@@ -124,7 +124,7 @@ void FillInput(float* input, size_t n, float minimum_value, float maximum_value,
   }
 }
 
-class MlasComputeGeluAvx512Test : public MlasTestBase {
+class MlasComputeGeluErfAvx512Test : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> input_buffer_;
   MatrixGuardBuffer<float> generic_output_buffer_;
@@ -132,7 +132,7 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
   MatrixGuardBuffer<float> avx512_output_buffer_;
 
   void ExecuteCommon(const std::vector<size_t>& sizes, size_t iterations) {
-    if (!IsGeluAvx512Dispatched()) {
+    if (!IsGeluErfAvx512Dispatched()) {
       GTEST_SKIP() << "AVX512F GELU dispatch is not available on this machine.";
     }
 
@@ -146,9 +146,9 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
         FillInput(input, size, kGeluMinValue, kGeluMaxValue, GetGeluSpecialValues(),
                   static_cast<uint32_t>(size * 131u + iteration * 977u + 17u));
 
-        MlasGeluKernel(input, generic_output, size);
+        MlasGeluErfKernel(input, generic_output, size);
         MlasComputeGeluErf(input, public_output, size);
-        MlasGeluKernelAvx512F(input, avx512_output, size);
+        MlasGeluErfKernelAvx512F(input, avx512_output, size);
 
         for (size_t i = 0; i < size; ++i) {
           ASSERT_TRUE(UnaryOutputsMatch(public_output[i], generic_output[i],
@@ -267,10 +267,10 @@ class MlasComputeSiluAvx512Test : public MlasTestBase {
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
-    count += MlasDirectShortExecuteTests<MlasComputeGeluAvx512Test>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasComputeGeluErfAvx512Test>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasComputeSiluAvx512Test>::RegisterShortExecute();
   } else {
-    count += MlasLongExecuteTests<MlasComputeGeluAvx512Test>::RegisterLongExecute();
+    count += MlasLongExecuteTests<MlasComputeGeluErfAvx512Test>::RegisterLongExecute();
     count += MlasLongExecuteTests<MlasComputeSiluAvx512Test>::RegisterLongExecute();
   }
   return count;
