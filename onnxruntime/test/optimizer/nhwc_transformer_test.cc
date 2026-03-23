@@ -59,6 +59,32 @@ static bool HasFloatNhwcFusedConvKernel() {
   return status.IsOK() && kernel_create_info != nullptr;
 }
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+static bool HasFp16NhwcFusedConvKernel() {
+  auto* cpu_ep = TestCPUExecutionProvider();
+  auto kernel_registry = cpu_ep->GetKernelRegistry();
+  if (!kernel_registry) {
+    return false;
+  }
+
+  KernelRegistry::TypeConstraintMap type_constraints{
+      {"T", DataTypeImpl::GetTensorType<MLFloat16>()},
+  };
+
+  const KernelCreateInfo* kernel_create_info{};
+  const auto status = kernel_registry->TryFindKernel(
+      kCpuExecutionProvider,
+      "NhwcFusedConv",
+      kMSDomain,
+      1,
+      type_constraints,
+      DefaultLoggingManager().DefaultLogger(),
+      &kernel_create_info);
+
+  return status.IsOK() && kernel_create_info != nullptr;
+}
+#endif
+
 #ifndef DISABLE_CONTRIB_OPS
 
 TEST(NhwcTransformerTests, Conv) {
@@ -768,6 +794,35 @@ TEST_F(NhwcTransformerTestsFp16, ConvFp16) {
   test_case({1, 12, 37}, {32, 12, 5});
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
+}
+
+TEST_F(NhwcTransformerTestsFp16, FusedConvWithSumFp16) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = MakeInputARangeFP16(builder, {1, 8, 7, 7}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* weight_arg = MakeInitializerARangeFP16(builder, {16, 8, 3, 3}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* bias_arg = MakeInitializerARangeFP16(builder, {16}, MLFloat16(-0.5f), MLFloat16(0.5f));
+    auto* sum_arg = MakeInputARangeFP16(builder, {1, 16, 5, 5}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const int expected_nhwc_fused_conv = HasFp16NhwcFusedConvKernel() ? 1 : 0;
+    const int expected_transposes = HasFp16NhwcFusedConvKernel() ? 3 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
 }
 
 TEST_F(NhwcTransformerTestsFp16, ConvMaxPoolFp16) {
