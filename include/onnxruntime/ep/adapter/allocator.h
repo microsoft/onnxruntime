@@ -23,6 +23,7 @@ class Allocator : public OrtAllocator {
    */
   explicit Allocator(const OrtMemoryInfo* memory_info, AllocatorPtr impl)
       : Allocator{memory_info} {
+    ORT_ENFORCE(impl != nullptr, "Allocator implementation cannot be null.");
     impl_ = impl;
   }
 

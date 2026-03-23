@@ -11,6 +11,7 @@
 #include "nlohmann/json.hpp"
 
 #include "core/common/common.h"
+#include "core/framework/config_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_env.h"
