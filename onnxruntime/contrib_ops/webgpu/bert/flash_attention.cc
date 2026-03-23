@@ -508,7 +508,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                   : parameters.scale_;
 
     // Use larger workgroup for prefill to improve cooperative data loading.
-    const uint32_t prefill_tile_size = 128;
+    // On Qualcomm, keep original workgroup size to avoid shared memory pressure from o_tile_r.
+    const uint32_t prefill_tile_size = is_qualcomm ? tile_size : 128;
     const uint32_t num_seq_tile = (parameters.sequence_length_ + prefill_tile_size - 1) / prefill_tile_size;
 
     // Get attention bias dimensions for broadcasting

@@ -40,7 +40,6 @@ var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 
 // Private memory per lane.
 var<private> q_tile : array<q_value_t, head_size_vec>;
-var<private> qk_scores : array<q_element_t, max_k_step>;
 
 fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_t) {
 #if q_BNSH
@@ -56,6 +55,68 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
     q_tile[idx] = q[idx + offset] * alpha;
   }
 }
+
+#if is_qualcomm
+
+fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
+               k_start * head_size_vec;
+  for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
+    let slot = u32(idx / head_size_vec);
+    let val = select(q_value_t(0), present_key[offset + idx], k_start + slot < get_total_sequence_length());
+    k_tile[slot][idx % head_size_vec] = val;
+  }
+}
+
+fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
+               v_start * head_size_vec;
+  for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
+    let slot = u32(idx / head_size_vec);
+    let val = select(q_value_t(0), present_value[offset + idx], v_start + slot < get_total_sequence_length());
+    v_tile[slot][idx % head_size_vec] = val;
+  }
+}
+
+const half_head_size_vec = head_size_vec / 2u;
+var<workgroup> o_tile_r : array<array<q_value_t, half_head_size_vec>, workgroup_size_x>;
+var<private> o_tile : array<q_value_t, half_head_size_vec>;
+
+fn writeo_qualcomm(batch_idx : u32, o_idx_global : u32, head_idx : u32, local_idx : u32) {
+  let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
+               o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
+  for (var idx : u32 = 0; idx < half_head_size_vec; idx++) {
+    output[offset + idx] = o_tile[idx];
+    output[offset + idx + half_head_size_vec] = o_tile_r[local_idx][idx];
+  }
+}
+
+ #if has_attention_bias
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
+  if (k_idx_global >= get_total_sequence_length()) {
+    return vec4<q_element_t>(0);
+  }
+  let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
+  let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
+  let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * get_total_sequence_length() +
+                    bias_head_idx * uniforms.new_sequence_length * get_total_sequence_length() + q_idx_global * get_total_sequence_length();
+  let offset = offset_base + k_idx_global;
+  let offset_max = offset_base + get_total_sequence_length();
+  let c1 = q_element_t(attention_bias[min(offset, offset_max)]);
+  let c2 = q_element_t(attention_bias[min(offset + 1, offset_max)]);
+  let c3 = q_element_t(attention_bias[min(offset + 2, offset_max)]);
+  let c4 = q_element_t(attention_bias[min(offset + 3, offset_max)]);
+  return vec4<q_element_t>(c1, c2, c3, c4);
+}
+ #else
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
+  return vec4<q_element_t>(0);
+}
+ #endif
+
+#else
+
+var<private> qk_scores : array<q_element_t, max_k_step>;
 
 fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32) {
   let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
@@ -77,19 +138,6 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32) {
   }
 }
 
-#if is_qualcomm
-const half_head_size_vec = head_size_vec / 2u;
-var<workgroup> o_tile_r : array<array<q_value_t, half_head_size_vec>, workgroup_size_x>;
-var<private> o_tile : array<q_value_t, half_head_size_vec>;
-fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32, local_idx : u32) {
-  let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
-               o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
-  for (var idx : u32 = 0; idx < half_head_size_vec; idx++) {
-    output[offset + idx] = o_tile[idx];
-    output[offset + idx + half_head_size_vec] = o_tile_r[local_idx][idx];
-  }
-}
-#else
 var<private> o_tile : array<q_value_t, head_size_vec>;
 fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
   let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
@@ -98,9 +146,8 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
     output[offset + idx] = o_tile[idx];
   }
 }
-#endif
 
-#if has_attention_bias
+ #if has_attention_bias
 fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> q_element_t {
   if (k_idx_global >= get_total_sequence_length()) {
     return q_element_t(0);
@@ -111,6 +158,8 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
                     bias_head_idx * uniforms.new_sequence_length * get_total_sequence_length() + q_idx_global * get_total_sequence_length();
   return q_element_t(attention_bias[min(offset_base + k_idx_global, offset_base + get_total_sequence_length())]);
 }
+ #endif
+
 #endif
 
 $MAIN {
@@ -149,6 +198,191 @@ $MAIN {
   let seq_causal_length = total_sequence_length;
 #endif
 
+#if is_qualcomm
+  let capped_sg_id = min(sg_id, max_k_step - 1u);
+  let capped_sg_size = min(sg_size, max_k_step);
+
+  for (var k_start = 0u; k_start < loop_bound; k_start += capped_sg_size) {
+    workgroupBarrier();
+    loadk(k_start, batch_head_idx, local_idx, capped_sg_size);
+    loadv(k_start, batch_head_idx, local_idx, capped_sg_size);
+    workgroupBarrier();
+
+    var qk_1 : vec4<q_element_t>;
+    var qk_2 : vec4<q_element_t>;
+    var qk_3 : vec4<q_element_t>;
+    var qk_4 : vec4<q_element_t>;
+    if (sg_size > 8) {
+      for (var i : u32 = 0u; i < head_size_vec; i++) {
+        var k_local = q_value_t(0);
+        if (sg_id < max_k_step) {
+          k_local = k_tile[sg_id][i];
+        }
+        var q_own = q_tile[i];
+        qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
+        qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
+        qk_1[2] += dot(q_own, subgroupShuffle(k_local, 2));
+        qk_1[3] += dot(q_own, subgroupShuffle(k_local, 3));
+        qk_2[0] += dot(q_own, subgroupShuffle(k_local, 4));
+        qk_2[1] += dot(q_own, subgroupShuffle(k_local, 5));
+        qk_2[2] += dot(q_own, subgroupShuffle(k_local, 6));
+        qk_2[3] += dot(q_own, subgroupShuffle(k_local, 7));
+        qk_3[0] += dot(q_own, subgroupShuffle(k_local, 8));
+        qk_3[1] += dot(q_own, subgroupShuffle(k_local, 9));
+        qk_3[2] += dot(q_own, subgroupShuffle(k_local, 10));
+        qk_3[3] += dot(q_own, subgroupShuffle(k_local, 11));
+        qk_4[0] += dot(q_own, subgroupShuffle(k_local, 12));
+        qk_4[1] += dot(q_own, subgroupShuffle(k_local, 13));
+        qk_4[2] += dot(q_own, subgroupShuffle(k_local, 14));
+        qk_4[3] += dot(q_own, subgroupShuffle(k_local, 15));
+      }
+    } else {
+      for (var i : u32 = 0u; i < head_size_vec; i++) {
+        var k_local = k_tile[capped_sg_id][i];
+        var q_own = q_tile[i];
+        qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
+        qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
+        qk_1[2] += dot(q_own, subgroupShuffle(k_local, 2));
+        qk_1[3] += dot(q_own, subgroupShuffle(k_local, 3));
+        qk_2[0] += dot(q_own, subgroupShuffle(k_local, 4));
+        qk_2[1] += dot(q_own, subgroupShuffle(k_local, 5));
+        qk_2[2] += dot(q_own, subgroupShuffle(k_local, 6));
+        qk_2[3] += dot(q_own, subgroupShuffle(k_local, 7));
+      }
+    }
+    qk_1 = qk_1 + loadAttentionBias(batch_idx, q_idx_global, k_start, head_idx);
+    qk_2 = qk_2 + loadAttentionBias(batch_idx, q_idx_global, k_start + 4, head_idx);
+    if (sg_size > 8) {
+      qk_3 = qk_3 + loadAttentionBias(batch_idx, q_idx_global, k_start + 8, head_idx);
+      qk_4 = qk_4 + loadAttentionBias(batch_idx, q_idx_global, k_start + 12, head_idx);
+    }
+
+    qk_1[0] = select(min_value, qk_1[0], k_start + 0 < seq_causal_length);
+    qk_1[1] = select(min_value, qk_1[1], k_start + 1 < seq_causal_length);
+    qk_1[2] = select(min_value, qk_1[2], k_start + 2 < seq_causal_length);
+    qk_1[3] = select(min_value, qk_1[3], k_start + 3 < seq_causal_length);
+    qk_2[0] = select(min_value, qk_2[0], k_start + 4 < seq_causal_length);
+    qk_2[1] = select(min_value, qk_2[1], k_start + 5 < seq_causal_length);
+    qk_2[2] = select(min_value, qk_2[2], k_start + 6 < seq_causal_length);
+    qk_2[3] = select(min_value, qk_2[3], k_start + 7 < seq_causal_length);
+    if (sg_size > 8) {
+      qk_3[0] = select(min_value, qk_3[0], k_start + 8 < seq_causal_length);
+      qk_3[1] = select(min_value, qk_3[1], k_start + 9 < seq_causal_length);
+      qk_3[2] = select(min_value, qk_3[2], k_start + 10 < seq_causal_length);
+      qk_3[3] = select(min_value, qk_3[3], k_start + 11 < seq_causal_length);
+      qk_4[0] = select(min_value, qk_4[0], k_start + 12 < seq_causal_length);
+      qk_4[1] = select(min_value, qk_4[1], k_start + 13 < seq_causal_length);
+      qk_4[2] = select(min_value, qk_4[2], k_start + 14 < seq_causal_length);
+      qk_4[3] = select(min_value, qk_4[3], k_start + 15 < seq_causal_length);
+    }
+
+    var local_max_temp = max(qk_1, qk_2);
+    if (sg_size > 8) {
+      local_max_temp = max(local_max_temp, qk_3);
+      local_max_temp = max(local_max_temp, qk_4);
+    }
+    let local_max = max(max(local_max_temp.x, local_max_temp.y), max(local_max_temp.z, local_max_temp.w));
+    let new_max = max(previous_max, local_max);
+    qk_1 = q_value_t(exp(vec4<f32>(qk_1) - f32(new_max)));
+    qk_2 = q_value_t(exp(vec4<f32>(qk_2) - f32(new_max)));
+    if (sg_size > 8) {
+      qk_3 = q_value_t(exp(vec4<f32>(qk_3) - f32(new_max)));
+      qk_4 = q_value_t(exp(vec4<f32>(qk_4) - f32(new_max)));
+    }
+    let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
+    let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
+
+    let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
+    var d = dleft + sum;
+    d = select(d, q_element_t(0.0000001), d == 0);
+    qk_1 = qk_1 / d;
+    qk_2 = qk_2 / d;
+    if (sg_size > 8) {
+      qk_3 = qk_3 / d;
+      qk_4 = qk_4 / d;
+    }
+    previous_max = new_max;
+    previous_denom = d;
+    let o_ratio = dleft / d;
+
+    if (sg_size > 8) {
+      for (var i : u32 = 0; i < half_head_size_vec; i++) {
+        var val = q_value_t(0);
+        if (sg_id < max_k_step) {
+          val = v_tile[sg_id][i];
+        }
+        var sum = subgroupShuffle(val, 0) * qk_1[0];
+        sum += subgroupShuffle(val, 1) * qk_1[1];
+        sum += subgroupShuffle(val, 2) * qk_1[2];
+        sum += subgroupShuffle(val, 3) * qk_1[3];
+        sum += subgroupShuffle(val, 4) * qk_2[0];
+        sum += subgroupShuffle(val, 5) * qk_2[1];
+        sum += subgroupShuffle(val, 6) * qk_2[2];
+        sum += subgroupShuffle(val, 7) * qk_2[3];
+        sum += subgroupShuffle(val, 8) * qk_3[0];
+        sum += subgroupShuffle(val, 9) * qk_3[1];
+        sum += subgroupShuffle(val, 10) * qk_3[2];
+        sum += subgroupShuffle(val, 11) * qk_3[3];
+        sum += subgroupShuffle(val, 12) * qk_4[0];
+        sum += subgroupShuffle(val, 13) * qk_4[1];
+        sum += subgroupShuffle(val, 14) * qk_4[2];
+        sum += subgroupShuffle(val, 15) * qk_4[3];
+        o_tile[i] = o_tile[i] * o_ratio + sum;
+
+        if (sg_id < max_k_step) {
+          val = v_tile[sg_id][half_head_size_vec + i];
+        }
+        sum = subgroupShuffle(val, 0) * qk_1[0];
+        sum += subgroupShuffle(val, 1) * qk_1[1];
+        sum += subgroupShuffle(val, 2) * qk_1[2];
+        sum += subgroupShuffle(val, 3) * qk_1[3];
+        sum += subgroupShuffle(val, 4) * qk_2[0];
+        sum += subgroupShuffle(val, 5) * qk_2[1];
+        sum += subgroupShuffle(val, 6) * qk_2[2];
+        sum += subgroupShuffle(val, 7) * qk_2[3];
+        sum += subgroupShuffle(val, 8) * qk_3[0];
+        sum += subgroupShuffle(val, 9) * qk_3[1];
+        sum += subgroupShuffle(val, 10) * qk_3[2];
+        sum += subgroupShuffle(val, 11) * qk_3[3];
+        sum += subgroupShuffle(val, 12) * qk_4[0];
+        sum += subgroupShuffle(val, 13) * qk_4[1];
+        sum += subgroupShuffle(val, 14) * qk_4[2];
+        sum += subgroupShuffle(val, 15) * qk_4[3];
+        o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + sum;
+      }
+    } else {
+      for (var i : u32 = 0; i < half_head_size_vec; i++) {
+        var val = v_tile[capped_sg_id][i];
+        var sum = subgroupShuffle(val, 0) * qk_1[0];
+        sum += subgroupShuffle(val, 1) * qk_1[1];
+        sum += subgroupShuffle(val, 2) * qk_1[2];
+        sum += subgroupShuffle(val, 3) * qk_1[3];
+        sum += subgroupShuffle(val, 4) * qk_2[0];
+        sum += subgroupShuffle(val, 5) * qk_2[1];
+        sum += subgroupShuffle(val, 6) * qk_2[2];
+        sum += subgroupShuffle(val, 7) * qk_2[3];
+        o_tile[i] = o_tile[i] * o_ratio + sum;
+
+        val = v_tile[capped_sg_id][half_head_size_vec + i];
+        sum = subgroupShuffle(val, 0) * qk_1[0];
+        sum += subgroupShuffle(val, 1) * qk_1[1];
+        sum += subgroupShuffle(val, 2) * qk_1[2];
+        sum += subgroupShuffle(val, 3) * qk_1[3];
+        sum += subgroupShuffle(val, 4) * qk_2[0];
+        sum += subgroupShuffle(val, 5) * qk_2[1];
+        sum += subgroupShuffle(val, 6) * qk_2[2];
+        sum += subgroupShuffle(val, 7) * qk_2[3];
+        o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + sum;
+      }
+    }
+  }
+
+  if (valid_q) {
+    writeo_qualcomm(batch_idx, q_idx_global, head_idx, local_idx);
+  }
+
+#else
+
   for (var k_start = 0u; k_start < loop_bound; k_start += max_k_step) {
     workgroupBarrier();
     loadk(k_start, batch_head_idx, local_idx);
@@ -161,9 +395,9 @@ $MAIN {
       for (var i = 0u; i < head_size_vec; i++) {
         score += dot(q_tile[i], k_tile[k][i]);
       }
-#if has_attention_bias
+ #if has_attention_bias
       score += loadAttentionBias(batch_idx, q_idx_global, k_start + k, head_idx);
-#endif
+ #endif
       qk_scores[k] = select(min_value, score, k_start + k < seq_causal_length);
     }
 
@@ -193,21 +427,6 @@ $MAIN {
     let o_ratio = dleft / d;
 
     // Accumulate O = O * o_ratio + sum(qk_scores[k] * V[k])
-#if is_qualcomm
-    for (var i : u32 = 0; i < half_head_size_vec; i++) {
-      var acc = q_value_t(0);
-      for (var k = 0u; k < max_k_step; k++) {
-        acc += v_tile[k][i] * qk_scores[k];
-      }
-      o_tile[i] = o_tile[i] * o_ratio + acc;
-
-      acc = q_value_t(0);
-      for (var k = 0u; k < max_k_step; k++) {
-        acc += v_tile[k][half_head_size_vec + i] * qk_scores[k];
-      }
-      o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + acc;
-    }
-#else
     for (var i : u32 = 0; i < head_size_vec; i++) {
       var acc = q_value_t(0);
       for (var k = 0u; k < max_k_step; k++) {
@@ -215,14 +434,10 @@ $MAIN {
       }
       o_tile[i] = o_tile[i] * o_ratio + acc;
     }
-#endif
   }
 
   if (valid_q) {
-#if is_qualcomm
-    writeo(batch_idx, q_idx_global, head_idx, local_idx);
-#else
     writeo(batch_idx, q_idx_global, head_idx);
-#endif
   }
+#endif
 }  // MAIN
