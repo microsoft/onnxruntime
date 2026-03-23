@@ -75,6 +75,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         int qkv_head_size,
                         int qkv_num_heads,
                         bool is_unidirectional,
+                        bool is_nvidia,
+                        bool is_apple,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
                         bool has_head_sink = false)
@@ -85,24 +87,23 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
+        is_nvidia_(is_nvidia),
+        is_apple_(is_apple),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
         has_head_sink_(has_head_sink) {
-    // Compute optimal max_k_step based on head_size and shared memory budget.
-    // SHM budget: 16KB = 16384 bytes.
-    // k_tile + v_tile = 2 * element_size * head_size * max_k_step
-    // element_size = 2 for f16, 4 for f32.
-    const int element_size = is_fp16 ? 2 : 4;
-    const int shm_budget = 16384;
-    int max_k_from_shm = shm_budget / (2 * element_size * qkv_head_size);
-    // On Qualcomm, keep max_k_step=16 to avoid register spilling.
-    // Other GPUs (Apple, Nvidia, Intel): use a dynamic qk_scores array, cap at 64.
-    if (is_qualcomm) {
-      max_k_step_ = 16;
-    } else if (max_k_from_shm >= 64) {
-      max_k_step_ = 64;
-    } else if (max_k_from_shm >= 32) {
-      max_k_step_ = 32;
+    if (is_apple) {
+      // On Apple GPUs, use an optimized loop-based path with dynamic max_k_step.
+      // Compute max_k_step from shared memory budget: k_tile + v_tile = 2 * element_size * head_size * max_k_step
+      const int element_size = is_fp16 ? 2 : 4;
+      int max_k_from_shm = 16384 / (2 * element_size * qkv_head_size);
+      if (max_k_from_shm >= 64) {
+        max_k_step_ = 64;
+      } else if (max_k_from_shm >= 32) {
+        max_k_step_ = 32;
+      } else {
+        max_k_step_ = 16;
+      }
     } else {
       max_k_step_ = 16;
     }
@@ -129,6 +130,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_head_size_;
   int qkv_num_heads_;
   bool is_unidirectional_;
+  bool is_nvidia_;
+  bool is_apple_;
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
