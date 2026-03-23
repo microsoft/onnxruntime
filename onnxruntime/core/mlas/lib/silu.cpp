@@ -24,8 +24,10 @@ MlasSiluKernel(
     size_t N
     )
 {
-    // This kernel is not buffer alias safe, as the computation is not elementwise.
-    // Callers must guarantee that Input and Output do not overlap (see mlas.h for aliasing requirements).
+    // This kernel is not buffer alias safe because it is implemented in two
+    // passes: first compute logistic(Input) into Output, then multiply that
+    // intermediate by the original Input values. Callers must guarantee that
+    // Input and Output do not overlap (see mlas.h for aliasing requirements).
     MlasComputeLogistic(Input, Output, N);
     MlasEltwiseMul<float>(Input, Output, Output, N);
 }
@@ -39,6 +41,9 @@ MlasComputeSilu(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
+    // TODO: Add an intermediate fused AVX2/FMA3 SiLU path on AMD64. Today the
+    // dispatch jumps from the generic two-pass implementation to AVX512F, so
+    // non-AVX512 x64 machines fall back to the generic kernel.
     GetMlasPlatform().SiluKernelRoutine(Input, Output, N);
 #else
     MlasSiluKernel(Input, Output, N);

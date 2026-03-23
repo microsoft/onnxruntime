@@ -40,9 +40,9 @@ DispatchedUnaryPathInfo GetSiluDispatchPathInfo() {
   return {kSiluUnfusedBytesPerElement, "generic_fallback"};
 }
 
-DispatchedUnaryPathInfo GetGeluDispatchPathInfo() {
+DispatchedUnaryPathInfo GetGeluErfDispatchPathInfo() {
 #if defined(MLAS_TARGET_AMD64)
-  if (GetMlasPlatform().GeluKernelRoutine == MlasGeluKernelAvx512F) {
+  if (GetMlasPlatform().GeluErfKernelRoutine == MlasGeluErfKernelAvx512F) {
     return {kFusedBytesPerElement, "avx512_fused"};
   }
 #endif
@@ -157,11 +157,11 @@ void BM_GeluErfDispatchExact(benchmark::State& state) {
       },
       kGeluMinValue,
       kGeluMaxValue,
-      GetGeluDispatchPathInfo());
+      GetGeluErfDispatchPathInfo());
 }
 
 void BM_GeluErfUnfusedExact(benchmark::State& state) {
-  // Unfused exact GELU baseline: scale by 1/sqrt(2), run erf, then apply the
+  // Unfused exact GELU(erf) baseline: scale by 1/sqrt(2), run erf, then apply the
   // final 0.5 * x * (erf(x / sqrt(2)) + 1) transform in a separate pass.
   RunUnfusedUnaryBenchmark(
       state,

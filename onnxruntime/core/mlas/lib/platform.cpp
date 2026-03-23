@@ -283,7 +283,7 @@ Return Value:
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
     this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
-    this->GeluKernelRoutine = MlasGeluKernel;
+    this->GeluErfKernelRoutine = MlasGeluErfKernel;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->SiluKernelRoutine = MlasSiluKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
@@ -461,7 +461,7 @@ Return Value:
                 //
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
-                    this->GeluKernelRoutine = MlasGeluKernelAvx512F;
+                    this->GeluErfKernelRoutine = MlasGeluErfKernelAvx512F;
                     this->SiluKernelRoutine = MlasSiluKernelAvx512F;
                     this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
                     this->GemmDoubleKernel = MlasGemmDoubleKernelAvx512F;
