@@ -864,6 +864,8 @@ inline Status ProfilingEventsContainerImpl<T>::AddEvents(const OrtProfilingEvent
 
 template <typename T>
 inline Status ProfilingEventsContainerImpl<T>::AddEvents(const std::vector<ProfilingEvent>& events) {
+  static_assert(sizeof(ProfilingEvent) == sizeof(const OrtProfilingEvent*),
+                "ProfilingEvent must have the same size as a raw pointer for reinterpret_cast");
   const auto* event_ptrs = reinterpret_cast<const OrtProfilingEvent* const*>(events.data());
   return AddEvents(event_ptrs, events.size());
 }
