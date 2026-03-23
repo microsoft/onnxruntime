@@ -43,13 +43,15 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_full_ort
+          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          key: ccache | linux_minimal_build.yml | build_full_ort
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_full_ort # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          # ostensibly should be able to use the same cache for most of these, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_full_ort
           path: ~/.cache/vcpkg
 
       - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
@@ -97,13 +99,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_minimal_exceptions_disabled
+          key: ccache | linux_minimal_build.yml | build_minimal_exceptions_disabled
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_minimal_exceptions_disabled # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_exceptions_disabled
           path: ~/.cache/vcpkg
 
       - name: Get Docker Image using Action
@@ -174,13 +176,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_minimal_custom_ops
+          key: ccache | linux_minimal_build.yml | build_minimal_custom_ops
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_minimal_custom_ops # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_custom_ops
           path: ~/.cache/vcpkg
 
       - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
@@ -226,13 +228,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_minimal_type_reduction
+          key: ccache | linux_minimal_build.yml | build_minimal_type_reduction
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_minimal_type_reduction # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_type_reduction
           path: ~/.cache/vcpkg
 
       - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
@@ -277,13 +279,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_minimal_globally_allowed_types
+          key: ccache | linux_minimal_build.yml | build_minimal_globally_allowed_types
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_minimal_globally_allowed_types # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_globally_allowed_types
           path: ~/.cache/vcpkg
 
       - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
@@ -329,13 +331,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_extended_minimal
+          key: ccache | linux_minimal_build.yml | build_extended_minimal
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_extended_minimal # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal
           path: ~/.cache/vcpkg
 
       - name: Get Docker Image using Action
@@ -430,13 +432,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_regular_no_optional
+          key: ccache | linux_minimal_build.yml | build_regular_no_optional
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_regular_no_optional # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_regular_no_optional
           path: ~/.cache/vcpkg
 
       - name: Run Build 6a (Update)
@@ -528,13 +530,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_minimal_no_optional
+          key: ccache | linux_minimal_build.yml | build_minimal_no_optional
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_minimal_no_optional # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_no_optional
           path: ~/.cache/vcpkg
 
       - name: Run Build 6b (Update)
@@ -621,13 +623,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_extended_minimal_no_optional
+          key: ccache | linux_minimal_build.yml | build_extended_minimal_no_optional
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_extended_minimal_no_optional # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal_no_optional
           path: ~/.cache/vcpkg
 
       - name: Run Build 6c (Update)
@@ -718,13 +720,13 @@ jobs:
       - name: Setup CCache
         uses: actions/cache@v4
         with:
-          key: ccache | build_extended_minimal_android
+          key: ccache | linux_minimal_build.yml | build_extended_minimal_android
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | build_extended_minimal_android # ostensibly should be able to use the same cache for each minimal, but in practice the hash does not match.
+          key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal_android
           path: ~/.cache/vcpkg
 
       - name: Run Build 7 (Using docker run)
