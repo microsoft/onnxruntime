@@ -390,7 +390,7 @@ ThreadPool::ThreadPool(Env* env,
       assert(thread_options_.affinities.size() >= size_t(threads_to_create));
     }
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
     using PoolType = ThreadPoolTempl<Env, WorkWithCallbackPolicy>;
 #else
     using PoolType = ThreadPoolTempl<Env, WorkNoCallbackPolicy>;

@@ -4270,14 +4270,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* o
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "OrtThreadPoolCallbacksConfig requires version set to ORT_API_VERSION");
   }
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
-  auto& env = ort_env->GetEnvironment();
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
   return onnxruntime::ToOrtStatus(
-      env.SetPerSessionWorkCallbacks(*config));
+      ort_env->GetEnvironment().SetPerSessionWorkCallbacks(*config));
 #else
   ORT_UNUSED_PARAMETER(ort_env);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
-                               "SetPerSessionThreadPoolCallbacks requires ORT built with --session_threadpool_callbacks");
+                               "SetPerSessionThreadPoolCallbacks requires ORT built with --enable_session_threadpool_callbacks");
 #endif
   API_IMPL_END
 }

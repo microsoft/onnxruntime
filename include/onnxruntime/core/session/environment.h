@@ -186,12 +186,11 @@ class Environment {
   /// <returns></returns>
   OrtKeyValuePairs GetConfigEntries() const;
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
   /**
    * Returns the per-session thread pool work callbacks, or nullptr if not set.
    *
    * Not safe to call concurrently with SetPerSessionWorkCallbacks.
-   * Must be called after callbacks have been set and before they are modified.
    */
   const OrtThreadPoolCallbacksConfig* GetPerSessionWorkCallbacks() const {
     return per_session_work_callbacks_.has_value()
@@ -316,7 +315,7 @@ class Environment {
   // to prevent removal of the config entry in that case.
   size_t num_allow_virtual_device_uses_{};
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
   std::optional<OrtThreadPoolCallbacksConfig> per_session_work_callbacks_;
 #endif
 };

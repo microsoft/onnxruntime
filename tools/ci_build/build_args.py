@@ -578,7 +578,7 @@ def add_client_package_args(parser: argparse.ArgumentParser) -> None:
 def add_threadpool_callback_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for per-session thread pool work callbacks."""
     parser.add_argument(
-        "--session_threadpool_callbacks",
+        "--enable_session_threadpool_callbacks",
         action="store_true",
         help="Enable per-session thread pool work callbacks.",
     )

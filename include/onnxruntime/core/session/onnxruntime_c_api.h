@@ -964,7 +964,9 @@ typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_ha
  * Called when work is about to be enqueued to a thread pool worker thread.
  * This runs on the thread that is submitting the work.
  * \param[in] user_context The user-provided context passed when configuring callbacks
- * \return Callback-specific data that will be passed to OnStartWork and OnStopWork. May return NULL.
+ * \return Callback-specific data that will be passed to the configured
+ *         OrtThreadPoolCallbacksConfig::on_start_work and OrtThreadPoolCallbacksConfig::on_stop_work.
+ *         May return NULL.
  */
 typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context)NO_EXCEPTION;
 
@@ -974,7 +976,7 @@ typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_
  * This typically runs on a worker thread, but may also run on the submitting thread
  * when the work queue is full and work is executed synchronously.
  * \param[in] user_context The user-provided context passed when configuring callbacks
- * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
  */
 typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 
@@ -985,7 +987,7 @@ typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ v
  * when the work queue is full and work is executed synchronously.
  * Guaranteed to be called regardless of whether the work finishes successfully or not.
  * \param[in] user_context The user-provided context passed when configuring callbacks
- * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
  */
 typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 
@@ -994,7 +996,7 @@ typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ vo
  * Called when enqueued work is abandoned (revoked or rejected) without execution.
  * This allows the caller to free any resources associated with enqueue_data.
  * \param[in] user_context The user-provided context passed when configuring callbacks
- * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
  */
 typedef void (*OrtThreadPoolWorkAbandonFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 
@@ -7399,10 +7401,13 @@ struct OrtApi {
    * created by subsequent sessions. Does not affect sessions already created or
    * global thread pools created via OrtApi::CreateEnvWithGlobalThreadPools.
    *
-   * Requires ORT built with --session_threadpool_callbacks.
+   * Requires ORT built with --enable_session_threadpool_callbacks.
    *
    * \param[in] env OrtEnv instance.
-   * \param[in] config Versioned callbacks configuration. ORT copies the struct contents.
+   * \param[in] config Versioned callbacks configuration. ORT copies the struct contents;
+   *                   the caller does not need to keep the struct alive after this call returns.
+   *                   However, all pointers within the struct must remain valid for the
+   *                   lifetime of any session that uses these callbacks.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

@@ -672,7 +672,7 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
 #endif
 #endif
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
 // Test for OrtThreadPoolCallbacksConfig - validates that callbacks are invoked
 // when work is scheduled to the thread pool.
 namespace {
@@ -968,6 +968,6 @@ TEST(ThreadPoolTest, TestWorkCallbacks_NoEnqueueWithStartStop) {
   ASSERT_EQ(ctx.stop_count.load(), num_tasks);
 }
 
-#endif  // ORT_SESSION_THREADPOOL_CALLBACKS
+#endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
 
 }  // namespace onnxruntime

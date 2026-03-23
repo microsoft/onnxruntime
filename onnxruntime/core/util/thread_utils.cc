@@ -155,7 +155,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set");
   }
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
   if (options.work_callbacks.on_enqueue || options.work_callbacks.on_start_work ||
       options.work_callbacks.on_stop_work || options.work_callbacks.on_abandon) {
     to.work_callbacks = &options.work_callbacks;

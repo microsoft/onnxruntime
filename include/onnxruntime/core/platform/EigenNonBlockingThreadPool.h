@@ -416,18 +416,19 @@ struct WorkNoCallbackPolicy {
   using Task = std::function<void()>;
   using Work = Task;
 
-  void Init(const onnxruntime::ThreadOptions&) {}
+  explicit WorkNoCallbackPolicy(const onnxruntime::ThreadOptions&) {}
 
   Work MakeWork(Task fn) const { return fn; }
 
   void Execute(const Work& w) const { w(); }
 
-  void* OnEnqueue() const { return nullptr; }
+  void OnAbandon(const Work&) const noexcept {}
 
-  void OnAbandon(const Work&) const {}
+ private:
+  void* OnEnqueue() const noexcept { return nullptr; }
 };
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
 // Callback-aware policy that invokes user-supplied callbacks around work items.
 // Work = WorkItem, a struct bundling a task with opaque callback data.
 struct WorkWithCallbackPolicy {
@@ -444,9 +445,7 @@ struct WorkWithCallbackPolicy {
 
   using Work = WorkItem;
 
-  // Init is called from the ThreadPoolTempl constructor.
-  // Only instantiated when ORT_SESSION_THREADPOOL_CALLBACKS is defined.
-  void Init(const onnxruntime::ThreadOptions& opts) {
+  explicit WorkWithCallbackPolicy(const onnxruntime::ThreadOptions& opts) {
     if (opts.work_callbacks) {
       callbacks_ = *opts.work_callbacks;
     }
@@ -475,22 +474,23 @@ struct WorkWithCallbackPolicy {
     }
   }
 
-  void* OnEnqueue() const {
+  void OnAbandon(const Work& w) const noexcept {
+    if (callbacks_.on_abandon) {
+      callbacks_.on_abandon(callbacks_.user_context, w.enqueue_data_);
+    }
+  }
+
+ private:
+  void* OnEnqueue() const noexcept {
     if (callbacks_.on_enqueue) {
       return callbacks_.on_enqueue(callbacks_.user_context);
     }
     return nullptr;
   }
 
-  void OnAbandon(const Work& w) const {
-    if (callbacks_.on_abandon) {
-      callbacks_.on_abandon(callbacks_.user_context, w.enqueue_data_);
-    }
-  }
-
   OrtThreadPoolCallbacksConfig callbacks_{};
 };
-#endif  // ORT_SESSION_THREADPOOL_CALLBACKS
+#endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
 
 template <typename CallbackPolicy, typename Tag, unsigned kSize>
 class RunQueue {
@@ -874,11 +874,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
+        callback_policy_(thread_options),
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
         done_(false) {
-    callback_policy_.Init(thread_options);
 
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal

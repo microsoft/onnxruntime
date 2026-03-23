@@ -428,7 +428,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
     auto apply_work_callbacks = [&session_env](OrtThreadPoolParams& params) {
       const auto* env_cbs = session_env.GetPerSessionWorkCallbacks();
       if (env_cbs != nullptr) {
@@ -477,7 +477,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
         }
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
         apply_work_callbacks(to);
 #endif
 
@@ -517,7 +517,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
         }
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
         apply_work_callbacks(to);
 #endif
 

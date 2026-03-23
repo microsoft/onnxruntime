@@ -91,7 +91,7 @@ struct ThreadOptions {
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
   // Optional callbacks for thread pool work scheduling.
   // The pointed-to struct must remain valid until the ThreadPool constructor returns
   // (the constructor copies the callback values).

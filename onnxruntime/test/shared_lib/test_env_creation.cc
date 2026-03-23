@@ -88,7 +88,7 @@ TEST(EnvCreation, CreateEnvWithOptions) {
   ortenv_setup();  // Restore OrtEnv
 }
 
-#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
 // End-to-end test: SetPerSessionThreadPoolCallbacks -> session creation -> inference -> callbacks invoked.
 TEST(EnvCreation, SetPerSessionThreadPoolCallbacks) {
   struct CallbackState {
@@ -186,4 +186,4 @@ TEST(EnvCreation, SetPerSessionThreadPoolCallbacks) {
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();
 }
-#endif  // ORT_SESSION_THREADPOOL_CALLBACKS
+#endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS

@@ -1294,7 +1294,7 @@ struct Env : detail::Base<OrtEnv> {
   /// \brief Wraps OrtApi::SetPerSessionThreadPoolCallbacks
   /// Stores work callbacks on the Env for per-session thread pools.
   /// Only affects sessions created after this call. Does not affect global thread pools.
-  /// Requires ORT built with --session_threadpool_callbacks.
+  /// Requires ORT built with --enable_session_threadpool_callbacks.
   Env& SetPerSessionThreadPoolCallbacks(const OrtThreadPoolCallbacksConfig& config);
 };
 
