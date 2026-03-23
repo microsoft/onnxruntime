@@ -2772,7 +2772,6 @@ TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsWithCpuNodesInSu
   ASSERT_TRUE(inter_tp_from_session_state != nullptr);
   ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
   ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
-
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
