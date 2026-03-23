@@ -16,10 +16,12 @@ const head_size : u32 = qkv_head_size;
 const num_heads : u32 = qkv_num_heads;
 
 #if use_seqlen_k
+// When graph capture is enabled, total_sequence_length is read from GPU buffer
 fn get_total_sequence_length() -> u32 {
   return u32(seqlens_k[0]) + 1u;
 }
 #else
+// When graph capture is disabled, total_sequence_length comes from uniforms
 fn get_total_sequence_length() -> u32 {
   return uniforms.total_sequence_length;
 }
@@ -44,10 +46,12 @@ var<private> q_tile : array<q_value_t, head_size_vec>;
 
 fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_t) {
 #if q_BNSH
+  // Stored as BNSH - float16[batch_size, num_heads, sequence_length, head_size]
   let offset = batch_idx * num_heads * uniforms.new_sequence_length * head_size_vec +
                head_idx * uniforms.new_sequence_length * head_size_vec +
                q_idx_global * head_size_vec;
 #else
+  // Stored as BSNH - float16[batch_size, sequence_length, num_heads, head_size]
   let offset = batch_idx * uniforms.new_sequence_length * head_size_vec * num_heads +
                q_idx_global * head_size_vec * num_heads +
                head_idx * head_size_vec;
@@ -104,8 +108,12 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
 #endif
 
 #else
+// Original path for Qualcomm, Nvidia, Intel, and other GPUs.
+// For max performance max_k_step should be the same as sg_size, however we might run out of registers
+// for qk_1, qk_2 .. qk_(sg_size). So we cap it at max_k_step (16).
 
 fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
+  // Stored as float16[batch_size,num_heads,present_sequence_length,head_size]
   let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
                k_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
@@ -116,6 +124,7 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
 }
 
 fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
+  // Stored as float16[batch_size,num_heads,present_sequence_length,head_size]
   let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
                v_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
@@ -128,6 +137,8 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
 #if is_qualcomm
 const half_head_size_vec = head_size_vec / 2u;
 // Move half of o_tile from private memory into workgroup memory to reduce register pressure.
+// Note that register spill was observed on Qualcomm if whole o_tile is on private memory.
+// vec4<f16> * half_head_size_vec * workgroup_size_x = 8 * (128/4/2) * 64 = 8KB.
 var<workgroup> o_tile_r : array<array<q_value_t, half_head_size_vec>, workgroup_size_x>;
 var<private> o_tile : array<q_value_t, half_head_size_vec>;
 fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32, local_idx : u32) {
@@ -151,9 +162,11 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
 
 #if has_attention_bias
 fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
+  // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
   if (k_idx_global >= get_total_sequence_length()) {
     return vec4<q_element_t>(0);
   }
+  // Handle broadcasting: if dimension size is 1, use index 0
   let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
   let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
   let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * get_total_sequence_length() +
@@ -216,6 +229,7 @@ $MAIN {
   let total_sequence_length = get_total_sequence_length();
 
 #if is_unidirectional
+  // If attention is unidirectional, set the loop bound to enforce causal masking.
   let past_sequence_length = total_sequence_length - uniforms.new_sequence_length;
   let max_causal_len_for_workgroup = past_sequence_length +
                                      (workgroup_idx % uniforms.num_seq_tile + 1) * workgroup_size_x;
@@ -292,6 +306,7 @@ $MAIN {
     loadv(k_start, batch_head_idx, local_idx, capped_sg_size);
     workgroupBarrier();
 
+    // Compute QKt
     var qk_1 : vec4<q_element_t>;
     var qk_2 : vec4<q_element_t>;
     var qk_3 : vec4<q_element_t>;
@@ -353,6 +368,7 @@ $MAIN {
       qk_4 = qk_4 + loadAttentionBias(batch_idx, q_idx_global, k_start + 12, head_idx);
     }
 
+    // Neuter qk values where K is out of bounds.
     qk_1[0] = select(min_value, qk_1[0], k_start + 0 < seq_causal_length);
     qk_1[1] = select(min_value, qk_1[1], k_start + 1 < seq_causal_length);
     qk_1[2] = select(min_value, qk_1[2], k_start + 2 < seq_causal_length);
@@ -388,6 +404,7 @@ $MAIN {
     let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
+    // Compute lhs term of update di prime and the compute di prime.
     let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
     var d = dleft + sum;
     d = select(d, q_element_t(0.0000001), d == 0);
