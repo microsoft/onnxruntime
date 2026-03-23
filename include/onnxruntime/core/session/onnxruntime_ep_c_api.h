@@ -1608,26 +1608,6 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
 
-  /** \brief Add EP profiling events to an events container.
-   *
-   * An EP profiler calls this function to report new EP profiling events (e.g., GPU kernel timings) during
-   * OrtEpProfilerImpl::EndProfiling(). ORT copies the EP event data during this call. The EP retains ownership of the
-   * OrtProfilingEvent instances and must release them via ReleaseProfilingEvent after this call returns.
-   * This function may be called multiple times within a single EndProfiling call to add EP events in batches.
-   *
-   * \param[in] events_container The OrtProfilingEventsContainer instance provided by ORT
-   *                             to OrtEpProfilerImpl::EndProfiling().
-   * \param[in] events Array of pointers to opaque OrtProfilingEvent instances.
-   * \param[in] num_events Number of events in the `events` array. Must be greater than 0.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.25.
-   */
-  ORT_API2_STATUS(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
-                  _In_reads_(num_events) const OrtProfilingEvent* const* events,
-                  _In_ size_t num_events);
-
   /** \brief Create a profiling event.
    *
    * An EP profiler calls this to create an event to pass to OrtEpApi::ProfilingEventsContainer_AddEvents.
@@ -1721,6 +1701,26 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
                   _Outptr_result_maybenull_ const char** out);
+
+  /** \brief Add EP profiling events to an events container.
+   *
+   * An EP profiler calls this function to report new EP profiling events (e.g., GPU kernel timings) during
+   * OrtEpProfilerImpl::EndProfiling(). ORT copies the EP event data during this call. The EP retains ownership of the
+   * OrtProfilingEvent instances and must release them via ReleaseProfilingEvent after this call returns.
+   * This function may be called multiple times within a single EndProfiling call to add EP events in batches.
+   *
+   * \param[in] events_container The OrtProfilingEventsContainer instance provided by ORT
+   *                             to OrtEpProfilerImpl::EndProfiling().
+   * \param[in] events Array of pointers to opaque OrtProfilingEvent instances.
+   * \param[in] num_events Number of events in the `events` array. Must be greater than 0.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
+                  _In_reads_(num_events) const OrtProfilingEvent* const* events,
+                  _In_ size_t num_events);
 };
 
 /**

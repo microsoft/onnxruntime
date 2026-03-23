@@ -74,7 +74,7 @@ class EpEventManager {
   void StartProfiling();
 
   void PushOrtEvent(uint64_t client_id);
-  void PopOrtEvent(uint64_t client_id, std::string ort_event_name);
+  void PopOrtEvent(uint64_t client_id, const std::string& ort_event_name);
 
   void AddEpEvent(uint64_t client_id, Event event);
 

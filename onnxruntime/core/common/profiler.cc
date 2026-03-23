@@ -83,7 +83,6 @@ void Profiler::EndTimeAndRecordEvent(
   EventRecord event(category, logging::GetProcessId(),
                     logging::GetThreadId(), event_name, ts, dur, std::move(event_args));
 
-  // Notify EP profilers BEFORE moving event into events_ list so the reference remains valid.
   for (const auto& ep_profiler : ep_profilers_) {
     ep_profiler->Stop(ts, event);
   }
@@ -120,14 +119,6 @@ std::string Profiler::EndProfiling() {
 
   std::lock_guard<std::mutex> lock(mutex_);
   profile_stream_ << "[\n";
-
-  // This ORT profiler inserts events in order of end time (in Profiler::EndTimeAndRecordEvent). However,
-  // current EP profilers (see GPUProfilerBase::MergeEvents in common/gpu_profiler_common.h) merge their EP events
-  // into this `events_` list assuming that events are sorted by non-decreasing start time.
-  // Therefore, we must sort the events list here by non-decreasing start time.
-  std::sort(events_.begin(), events_.end(), [](const profiling::EventRecord& a, const profiling::EventRecord& b) {
-    return a.ts < b.ts;
-  });
 
   for (const auto& ep_profiler : ep_profilers_) {
     ep_profiler->EndProfiling(profiling_start_time_, events_);

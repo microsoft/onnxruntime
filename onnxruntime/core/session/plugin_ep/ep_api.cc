@@ -808,29 +808,6 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
-                    _In_ OrtProfilingEventsContainer* events_container,
-                    _In_reads_(num_events) const OrtProfilingEvent* const* events,
-                    _In_ size_t num_events) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(events_container == nullptr, ORT_INVALID_ARGUMENT,
-                    "OrtProfilingEventsContainer instance is NULL");
-  ORT_API_RETURN_IF(events == nullptr || num_events == 0, ORT_INVALID_ARGUMENT,
-                    "Must provide at least one event to add to OrtProfilingEventsContainer.");
-
-  auto& all_events = events_container->events;
-  all_events.reserve(all_events.size() + num_events);
-
-  for (size_t i = 0; i < num_events; ++i) {
-    ORT_API_RETURN_IF(events[i] == nullptr, ORT_INVALID_ARGUMENT,
-                      "OrtProfilingEvent instance at index ", i, " is NULL");
-    all_events.push_back(*FromOpaqueProfilingEvent(events[i]));
-  }
-
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(CreateProfilingEvent,
                     _In_ OrtProfilingEventCategory category,
                     _In_ int32_t process_id,
@@ -924,6 +901,29 @@ ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
+                    _In_ OrtProfilingEventsContainer* events_container,
+                    _In_reads_(num_events) const OrtProfilingEvent* const* events,
+                    _In_ size_t num_events) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(events_container == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtProfilingEventsContainer instance is NULL");
+  ORT_API_RETURN_IF(events == nullptr || num_events == 0, ORT_INVALID_ARGUMENT,
+                    "Must provide at least one event to add to OrtProfilingEventsContainer.");
+
+  auto& all_events = events_container->events;
+  all_events.reserve(all_events.size() + num_events);
+
+  for (size_t i = 0; i < num_events; ++i) {
+    ORT_API_RETURN_IF(events[i] == nullptr, ORT_INVALID_ARGUMENT,
+                      "OrtProfilingEvent instance at index ", i, " is NULL");
+    all_events.push_back(*FromOpaqueProfilingEvent(events[i]));
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -988,7 +988,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::GetEnvConfigEntries,
     // End of Version 24 - DO NOT MODIFY ABOVE
 
-    &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     &OrtExecutionProviderApi::CreateProfilingEvent,
     &OrtExecutionProviderApi::ReleaseProfilingEvent,
     &OrtExecutionProviderApi::ProfilingEvent_GetCategory,
@@ -996,6 +995,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEvent_GetTimestampUs,
     &OrtExecutionProviderApi::ProfilingEvent_GetDurationUs,
     &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
+    &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

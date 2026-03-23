@@ -802,6 +802,73 @@ inline std::string EpAssignedNodeImpl<T>::GetOperatorType() const {
 }
 }  // namespace detail
 
+// ProfilingEvent implementations
+namespace detail {
+template <typename T>
+inline OrtProfilingEventCategory ConstProfilingEventImpl<T>::GetCategory() const {
+  return GetEpApi().ProfilingEvent_GetCategory(this->p_);
+}
+
+template <typename T>
+inline const char* ConstProfilingEventImpl<T>::GetName() const {
+  return GetEpApi().ProfilingEvent_GetName(this->p_);
+}
+
+template <typename T>
+inline int64_t ConstProfilingEventImpl<T>::GetTimestampUs() const {
+  return GetEpApi().ProfilingEvent_GetTimestampUs(this->p_);
+}
+
+template <typename T>
+inline int64_t ConstProfilingEventImpl<T>::GetDurationUs() const {
+  return GetEpApi().ProfilingEvent_GetDurationUs(this->p_);
+}
+
+template <typename T>
+inline const char* ConstProfilingEventImpl<T>::GetArgValue(const char* key) const {
+  const char* value = nullptr;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetArgValue(this->p_, key, &value));
+  return value;
+}
+}  // namespace detail
+
+inline ProfilingEvent::ProfilingEvent(OrtProfilingEventCategory category,
+                                      int32_t process_id,
+                                      int32_t thread_id,
+                                      const char* event_name,
+                                      int64_t timestamp_us,
+                                      int64_t duration_us,
+                                      const std::unordered_map<std::string, std::string>& args) {
+  const size_t num_args = args.size();
+  std::vector<const char*> arg_keys;
+  std::vector<const char*> arg_vals;
+
+  arg_keys.reserve(num_args);
+  arg_vals.reserve(num_args);
+  for (const auto& [k, v] : args) {
+    arg_keys.push_back(k.c_str());
+    arg_vals.push_back(v.c_str());
+  }
+
+  ThrowOnError(GetEpApi().CreateProfilingEvent(category, process_id, thread_id, event_name,
+                                               timestamp_us, duration_us,
+                                               arg_keys.data(), arg_vals.data(), num_args, &p_));
+}
+
+// ProfilingEventsContainer implementations
+namespace detail {
+template <typename T>
+inline Status ProfilingEventsContainerImpl<T>::AddEvents(const OrtProfilingEvent* const* events, size_t num_events) {
+  return Status{GetEpApi().ProfilingEventsContainer_AddEvents(this->p_, events, num_events)};
+}
+
+template <typename T>
+inline Status ProfilingEventsContainerImpl<T>::AddEvents(const std::vector<ProfilingEvent>& events) {
+  const auto* event_ptrs = reinterpret_cast<const OrtProfilingEvent* const*>(events.data());
+  return AddEvents(event_ptrs, events.size());
+}
+}  // namespace detail
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
