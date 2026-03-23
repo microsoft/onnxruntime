@@ -21,18 +21,6 @@ Status DeformConvAddBiasImpl(
     int64_t out_h,
     int64_t out_w);
 
-// Copies GEMM output (row-major [M_per_group, cur_parallel*output_image_size]) to NCHW slice at Y_g.
-// T may be float, double, MLFloat16 (FP16), or BFloat16.
-template <typename T>
-Status DeformConvCopyGemmOutputRowMajorToNCHW(
-    cudaStream_t stream,
-    const T* gemm_output,
-    T* Y_g,
-    int64_t M,
-    int64_t M_per_group,
-    int64_t output_image_size,
-    int64_t cur_parallel);
-
 // Fills col_buffer with deformable im2col. col_buffer layout: row-major [C*kH*kW, parallel_imgs*out_h*out_w].
 // Called once per batch block; caller does GEMM and bias. T may be float, double, MLFloat16 (FP16), or BFloat16.
 template <typename T>
