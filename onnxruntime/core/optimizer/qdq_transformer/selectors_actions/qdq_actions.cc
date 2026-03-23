@@ -140,8 +140,10 @@ Status TransposeDQWeightsForMatMulNBits(
     graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto);
   }
 
-  auto K = weight_arg->Shape()->dim(0).dim_value();
-  auto N = weight_arg->Shape()->dim(1).dim_value();
+  ORT_RETURN_IF_NOT(weight_tensor_proto->dims_size() >= 2,
+                    "Weight tensor for node ", dq_node.Name(), " must be at least 2D.");
+  auto K = weight_tensor_proto->dims(0);
+  auto N = weight_tensor_proto->dims(1);
   auto block_size = effective_block_size;
   int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
   auto bits = DQWeightBits(dt_weight);
