@@ -1139,6 +1139,17 @@ void SessionState::InitializeThreadPools(concurrency::ThreadPool* intra, concurr
 
   thread_pool_ = intra;
   inter_op_thread_pool_ = inter;
+
+  // Propagate thread pools to all finalized subgraph SessionStates so lazily initialized
+  // pools on the current SessionState also reach nested graphs.
+  for (auto& node_to_subgraph_ss : subgraph_session_states_) {
+    for (auto& attr_to_subgraph_ss : node_to_subgraph_ss.second) {
+      auto* subgraph_ss = attr_to_subgraph_ss.second.get();
+      if (subgraph_ss != nullptr) {
+        subgraph_ss->InitializeThreadPools(intra, inter);
+      }
+    }
+  }
 }
 
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {

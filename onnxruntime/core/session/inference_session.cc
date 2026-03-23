@@ -261,6 +261,8 @@ Status GetMinimalBuildOptimizationHandling(
 // 2) CPU work hidden inside a compiled/fused kernel where subgraphs are no longer visible.
 // Set `session.create_threadpools_only_for_cpu_nodes=0` to restore legacy behavior
 // (always create per-session thread pools when use_per_session_threads is enabled).
+// This recursive traversal runs once during Initialize(). That is acceptable for startup,
+// but it may be expensive for models with deeply nested subgraphs.
 static bool GraphHasCpuNodesInternal(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
@@ -606,6 +608,8 @@ void InferenceSession::EnsureIntraOpThreadPoolInitialized() {
     return;
   }
 
+  // `use_per_session_threads_` and `force_spinning_stop_between_runs_` are immutable
+  // after session construction, so reading them outside this lock is safe.
   std::lock_guard<std::mutex> l(session_mutex_);
 
   if (external_intra_op_thread_pool_ || thread_pool_) {
@@ -654,9 +658,6 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
   }
 
   if (should_create_per_session_threadpools) {
-    const bool set_denormal_as_zero =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
-
     LOGS(*session_logger_, INFO) << "Ensuring per session threadpools are initialized since use_per_session_threads_ is true";
     CreateIntraOpThreadPoolIfNeeded();
 
@@ -679,7 +680,8 @@ void InferenceSession::InitializeThreadPoolsIfNeeded() {
         ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-inter-op");
         inter_thread_pool_name_ = ss.str();
         to.name = inter_thread_pool_name_.c_str();
-        to.set_denormal_as_zero = set_denormal_as_zero;
+        to.set_denormal_as_zero =
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
         to.allow_spinning = allow_inter_op_spinning;
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
 

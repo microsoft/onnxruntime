@@ -867,12 +867,13 @@ TEST(SessionStateTest, InitializeThreadPoolsUpdatesCurrentSessionStateOnly) {
 
   ASSERT_TRUE(session_state.GetThreadPool() == intra_tp.get());
   ASSERT_TRUE(session_state.GetInterOpThreadPool() == inter_tp.get());
+  // Thread pools should also propagate recursively to finalized subgraph SessionStates.
   for (const auto& node_to_subgraph_ss : subgraph_ss_map) {
     for (const auto& attr_to_subgraph_ss : node_to_subgraph_ss.second) {
       const auto* subgraph_ss = attr_to_subgraph_ss.second.get();
       ASSERT_TRUE(subgraph_ss != nullptr);
-      ASSERT_TRUE(subgraph_ss->GetThreadPool() == nullptr);
-      ASSERT_TRUE(subgraph_ss->GetInterOpThreadPool() == nullptr);
+      ASSERT_TRUE(subgraph_ss->GetThreadPool() == intra_tp.get());
+      ASSERT_TRUE(subgraph_ss->GetInterOpThreadPool() == inter_tp.get());
     }
   }
 }

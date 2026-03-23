@@ -2829,6 +2829,9 @@ TEST(InferenceSessionTests, DefaultLazyInitPerSessionThreadPoolsWithCpuNodesInSu
 
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   const auto init_status = session_object.Initialize();
+  // This failure is intentional for this synthetic EP configuration:
+  // MainGraphIfOnlyExecutionProvider does not populate required subgraph kernel create info,
+  // and that limitation is unrelated to the thread-pool behavior under test here.
   ASSERT_STATUS_NOT_OK(init_status);
   ASSERT_THAT(init_status.ErrorMessage(), testing::HasSubstr("specific_subgraph_kernel_create_info_map"));
 
