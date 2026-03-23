@@ -148,10 +148,12 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
 
   const int n_parallel_imgs = GetNParallelImgs<T>(params, GetDeviceProp().totalGlobalMem);
 
-  const int64_t kernel_size = kH * kW;
-  const int64_t output_image_size = out_h * out_w;
-  const int64_t input_image_size = H * W_in;
-  const int64_t kernel_dim = (C / group) * kernel_size;
+  DeformConvCommonDims common_dims;
+  ORT_RETURN_IF_ERROR(DeformConvValidateAndComputeCommonDims(params, common_dims));
+  const int64_t kernel_size = common_dims.kernel_size;
+  const int64_t output_image_size = common_dims.output_image_size;
+  const int64_t input_image_size = common_dims.input_image_size;
+  const int64_t kernel_dim = common_dims.kernel_dim;
 
   const int64_t col_stride = static_cast<int64_t>(n_parallel_imgs) * output_image_size;
   const int64_t col_buffer_size = (C * kernel_size) * col_stride;
