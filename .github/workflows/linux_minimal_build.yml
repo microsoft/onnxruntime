@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_full_ort
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -98,7 +98,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_minimal_exceptions_disabled
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -175,7 +175,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_minimal_custom_ops
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -227,7 +227,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_minimal_type_reduction
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -278,7 +278,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_minimal_globally_allowed_types
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -330,7 +330,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_extended_minimal
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -431,7 +431,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_regular_no_optional
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -529,7 +529,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_minimal_no_optional
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -622,7 +622,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_extended_minimal_no_optional
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
@@ -719,7 +719,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: ccache | build_extended_minimal_android
-          path: ~/.ccache
+          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: actions/cache@v4

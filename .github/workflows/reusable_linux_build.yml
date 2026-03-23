@@ -107,7 +107,7 @@ jobs:
         uses: actions/cache@v4
         with:
           key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
-          path: ~/.ccache
+          path: ~/.cache/cache
 
       # same idea as ccache, but for vcpkg artifacts. ideally we'd use vcpkg's nuget remote cache facility instead.
       - name: Setup VCPKG Cache
