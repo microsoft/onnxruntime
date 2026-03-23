@@ -108,7 +108,6 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
  #endif
 
 #else
-// Original path for Qualcomm, Nvidia, Intel, and other GPUs.
 // For max performance max_k_step should be the same as sg_size, however we might run out of registers
 // for qk_1, qk_2 .. qk_(sg_size). So we cap it at max_k_step (16).
 
