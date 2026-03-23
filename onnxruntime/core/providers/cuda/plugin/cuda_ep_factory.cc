@@ -113,8 +113,14 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
     auto hw_type = factory->ort_api_.HardwareDevice_Type(&device);
 
     if (hw_type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
-      // Check if this GPU is an NVIDIA GPU by trying to match vendor ID
-      // For now, accept all GPU devices and let CUDA runtime handle validation
+      // Filter by vendor ID to avoid claiming non-NVIDIA GPUs on mixed-vendor hosts.
+      // vendor_id == 0 means the hardware enumeration did not provide a vendor ID,
+      // in which case we fall through and let the CUDA runtime validate the device.
+      uint32_t hw_vendor_id = factory->ort_api_.HardwareDevice_VendorId(&device);
+      if (hw_vendor_id != 0 && hw_vendor_id != factory->vendor_id_) {
+        continue;  // Skip non-NVIDIA GPUs
+      }
+
       OrtKeyValuePairs* ep_metadata = nullptr;
       factory->ort_api_.CreateKeyValuePairs(&ep_metadata);
 
@@ -231,8 +237,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   read_session_config_bool("ep.cuda.enable_skip_layer_norm_strict_mode", config.enable_skip_layer_norm_strict_mode);
   read_session_config_bool("ep.cuda.cudnn_conv1d_pad_to_nc1d", config.cudnn_conv1d_pad_to_nc1d);
   read_session_config_int("ep.cuda.cudnn_conv_algo", config.cudnn_conv_algo);
-  read_session_config_bool("ep.cuda.enable_cuda_graph", config.enable_cuda_graph);
-  read_session_config_int("ep.cuda.min_num_runs_before_cuda_graph_capture", config.min_num_runs_before_cuda_graph_capture);
 
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
@@ -329,10 +333,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
 
   // Initialize CUDA handles (stream, cuBLAS, cuDNN)
   RETURN_IF_ERROR(cuda_stream->InitHandles());
-
-  // Track the compute stream for CUDA graph integration.
-  // The factory does NOT own this stream — ORT manages its lifetime.
-  factory->compute_stream_ = cuda_stream.get();
 
   *stream = cuda_stream.release();
   return nullptr;

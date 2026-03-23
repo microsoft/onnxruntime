@@ -33,10 +33,6 @@ class CudaEpFactory : public OrtEpFactory {
   OrtStatus* GetKernelRegistryForEp(CudaEp& ep,
                                     const OrtKernelRegistry** out_kernel_registry);
 
-  /// Get the compute stream (set by CreateSyncStreamForDevice).
-  /// Returns nullptr if no stream has been created yet.
-  CudaSyncStream* GetComputeStream() const { return compute_stream_; }
-
  private:
   // OrtEpFactory callback implementations
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -99,9 +95,6 @@ class CudaEpFactory : public OrtEpFactory {
   // Kernel registry (cached, shared across EP instances)
   OrtKernelRegistry* kernel_registry_ = nullptr;
   std::mutex registry_mutex_;
-
-  // Compute stream (set by CreateSyncStreamForDevice, non-owning).
-  CudaSyncStream* compute_stream_ = nullptr;
 };
 
 }  // namespace cuda_plugin

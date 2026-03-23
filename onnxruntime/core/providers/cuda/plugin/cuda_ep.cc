@@ -20,9 +20,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       factory_(factory),
       name_(factory.GetEpName()),
       config_(config),
-      logger_(logger),
-      cuda_graph_enabled_(config.enable_cuda_graph),
-      min_runs_before_capture_(config.min_num_runs_before_cuda_graph_capture) {
+      logger_(logger) {
   ort_version_supported = ORT_API_VERSION;
 
   // Set function pointers for kernel-registry-based EP
@@ -31,8 +29,8 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   GetKernelRegistry = GetKernelRegistryImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
-  OnRunStart = OnRunStartImpl;
-  OnRunEnd = OnRunEndImpl;
+  OnRunStart = nullptr;
+  OnRunEnd = nullptr;
 
   // Not a compile-based EP
   Compile = nullptr;
@@ -176,133 +174,6 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
 
   *should_convert = -1;  // Let ORT decide for other ops
   return nullptr;
-}
-
-// ---------------------------------------------------------------------------
-// CUDA Graph helpers
-// ---------------------------------------------------------------------------
-
-CudaGraphAnnotation_t CudaEp::GetAnnotationId(const ::OrtRunOptions* run_options) const {
-  const OrtApi& ort_api = factory_.GetOrtApi();
-  // Use the same key as the bundled CUDA EP: "gpu_graph_id"
-  const char* val = ort_api.GetRunConfigEntry(run_options, "gpu_graph_id");
-  if (val == nullptr) {
-    return kCudaGraphAnnotationDefault;
-  }
-  try {
-    return std::stoi(val);
-  } catch (...) {
-    return kCudaGraphAnnotationDefault;
-  }
-}
-
-bool CudaEp::IsGraphCaptureAllowed(CudaGraphAnnotation_t annotation_id) const {
-  if (!cuda_graph_manager_.IsGraphCaptureAllowedOnRun(annotation_id)) {
-    return false;
-  }
-  auto it = graph_id_to_run_count_.find(annotation_id);
-  if (it == graph_id_to_run_count_.end()) {
-    return false;
-  }
-  return it->second >= min_runs_before_capture_;
-}
-
-// ---------------------------------------------------------------------------
-// OnRunStart — manage CUDA graph capture/replay state machine
-// ---------------------------------------------------------------------------
-
-/*static*/
-OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
-    OrtEp* this_ptr, const ::OrtRunOptions* run_options) noexcept {
-  EXCEPTION_TO_STATUS_BEGIN
-
-  auto* ep = static_cast<CudaEp*>(this_ptr);
-
-  if (!ep->cuda_graph_enabled_.load(std::memory_order_relaxed)) {
-    return nullptr;  // Graph capture not enabled — no-op
-  }
-
-  // gpu_graph_id == -1 means skip capture/replay for this run
-  // (matches bundled CUDA EP behavior via kOrtRunOptionsConfigCudaGraphAnnotation)
-  CudaGraphAnnotation_t annotation_id = ep->GetAnnotationId(run_options);
-  if (annotation_id == kCudaGraphAnnotationSkip) {
-    return nullptr;
-  }
-
-  // Lazily set the graph manager's stream from the factory's compute stream.
-  CudaSyncStream* compute_stream = ep->factory_.GetComputeStream();
-  if (compute_stream == nullptr) {
-    // Stream not yet created — skip graph capture for this run.
-    // This can happen if OnRunStart is called before CreateSyncStreamForDevice.
-    return nullptr;
-  }
-  ep->cuda_graph_manager_.SetStream(compute_stream->GetCudaStream());
-
-  if (ep->cuda_graph_manager_.IsGraphCaptured(annotation_id)) {
-    // Already captured — replay happens in OnRunEnd for the plugin EP.
-    // ORT runtime will still dispatch kernels normally; the captured graph
-    // replays the actual GPU work. For the plugin EP without stream executor
-    // hooks, we replay at OnRunEnd after kernel dispatch completes.
-    return nullptr;
-  }
-
-  if (!ep->cuda_graph_manager_.IsGraphCaptured(annotation_id) &&
-      ep->IsGraphCaptureAllowed(annotation_id)) {
-    // Warm-up period complete — begin capture
-    ep->cuda_graph_manager_.CaptureBegin(annotation_id);
-    ep->is_capturing_ = true;
-    ep->capturing_annotation_id_ = annotation_id;
-  }
-
-  return nullptr;
-
-  EXCEPTION_TO_STATUS_END
-}
-
-// ---------------------------------------------------------------------------
-// OnRunEnd — end capture or handle replay
-// ---------------------------------------------------------------------------
-
-/*static*/
-OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
-    OrtEp* this_ptr, const ::OrtRunOptions* run_options, bool sync_stream) noexcept {
-  EXCEPTION_TO_STATUS_BEGIN
-
-  auto* ep = static_cast<CudaEp*>(this_ptr);
-
-  if (!ep->cuda_graph_enabled_.load(std::memory_order_relaxed)) {
-    return nullptr;
-  }
-
-  // gpu_graph_id == -1 means skip capture/replay for this run
-  CudaGraphAnnotation_t annotation_id = ep->GetAnnotationId(run_options);
-  if (annotation_id == kCudaGraphAnnotationSkip) {
-    return nullptr;
-  }
-
-  if (!ep->cuda_graph_manager_.IsGraphCaptured(annotation_id)) {
-    if (ep->is_capturing_ && ep->capturing_annotation_id_ == annotation_id) {
-      // Was capturing — end capture and replay the first time
-      ep->cuda_graph_manager_.CaptureEnd(annotation_id);
-      ep->is_capturing_ = false;
-
-      // CUDA work issued to a capturing stream doesn't actually run on the GPU,
-      // so replay the captured graph to actually execute the work.
-      OrtStatus* replay_status = ep->cuda_graph_manager_.Replay(annotation_id, sync_stream);
-      if (replay_status != nullptr) return replay_status;
-    } else {
-      // Still in warm-up period — increment run count
-      ep->graph_id_to_run_count_[annotation_id]++;
-    }
-  }
-  // Note: For subsequent runs after capture, the captured graph is not replayed
-  // here. The ORT framework dispatches kernels normally (it does not know about
-  // CUDA graph capture). Full graph-only replay (with kernel dispatch bypass)
-  // requires stream executor support which is not yet available in the plugin EP.
-
-  return nullptr;
-
-  EXCEPTION_TO_STATUS_END
 }
 
 }  // namespace cuda_plugin
