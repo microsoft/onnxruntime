@@ -84,8 +84,8 @@ size_t GetDeformConvEffectiveMaxTempBytes(size_t total_global_mem) {
 // Formulas:
 //   kernel_size = kH * kW
 //   output_image_size = out_h * out_w
-//   bytes_per_image = output_image_size * (C * kernel_size + M / group) * sizeof(T)
-//     (temp bytes per image: im2col col buffer + GEMM output buffer per output position)
+//   bytes_per_image = output_image_size * C * kernel_size * sizeof(T)
+//     (temp bytes per image: im2col col buffer only; GEMM writes directly to Y)
 //   max_parallel_imgs_mem = max(1, floor(effective_max_temp / bytes_per_image))
 //   target_parallel_imgs = min(kMaxParallelImgs, max_parallel_imgs_mem)
 //   return GetGreatestDivisorBelowBound(N, target_parallel_imgs)
@@ -94,7 +94,7 @@ int GetNParallelImgs(const DeformConvParams& params, size_t total_global_mem) {
   const size_t effective_max_temp = GetDeformConvEffectiveMaxTempBytes(total_global_mem);
   const int64_t kernel_size = params.kH * params.kW;
   const int64_t output_image_size = params.out_h * params.out_w;
-  const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * (params.C * kernel_size + params.M / params.group) * sizeof(T);
+  const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * params.C * kernel_size * sizeof(T);
   const int max_parallel_imgs_mem = std::max(1, static_cast<int>(effective_max_temp / std::max(size_t(1), bytes_per_image)));
   const int target_parallel_imgs = std::min(kMaxParallelImgs, max_parallel_imgs_mem);
   return GetGreatestDivisorBelowBound(static_cast<int>(params.N), target_parallel_imgs);
@@ -159,8 +159,6 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   auto col_buffer = IAllocator::MakeUniquePtr<T>(alloc, SafeInt<size_t>(col_buffer_size));
-  // Removed col_transposed allocation as we avoid physical transpose.
-  auto gemm_output_buffer = IAllocator::MakeUniquePtr<T>(alloc, SafeInt<size_t>((M / group) * col_stride));
 
   const T* Xdata = X->Data<T>();
   const T* Wdata = W->Data<T>();
@@ -215,16 +213,15 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     //   - W (row [M/group, kernel_dim]) -> cuBLAS interprets as col-major [kernel_dim, M/group] = W^T
     //   - C = A*B = Col^T * W^T = (W*Col)^T = Y^T; C is col-major [cur_out_size, M/group] = Y in row-major
     //
-    // m=cur_out_size, n=M/group, k=kernel_dim; lda=cur_out_size, ldb=kernel_dim, ldc=cur_out_size.
+    // Per batch image: m=output_image_size, n=M/group, k=kernel_dim; lda=cur_out_size, ldb=kernel_dim,
+    // ldc=output_image_size (row-major Y slice [M/group, OH*OW]).
     //
-    // cur_parallel==1: cur_out_size==output_image_size, C layout (pos, channel) matches NCHW Y_g[0,ch,pos] -> write
-    // directly into Y_g. Use strided batched for all groups in one call.
-    // cur_parallel>1: layouts differ -> write to gemm_output_buffer, then DeformConvCopyGemmOutputRowMajorToNCHW.
+    // cur_parallel==1: one strided-batched GEMM over all groups (single launch).
+    // cur_parallel>1: per group, strided-batched GEMM with batch_count=cur_parallel; each batch writes one image
+    // directly into NCHW Y (strideC = M * output_image_size), avoiding a temp buffer + scatter kernel.
 
-    const bool gemm_writes_directly = (cur_parallel == 1);
-    if (gemm_writes_directly) {
-      // Strided batched: one call for all groups. Strides between batches:
-      const int64_t stride_col = kernel_dim * col_stride;  // = kernel_dim * output_image_size when cur_parallel==1
+    if (cur_parallel == 1) {
+      const int64_t stride_col = kernel_dim * col_stride;
       const int64_t stride_weight = (M / group) * kernel_dim;
       const int64_t stride_y = (M / group) * output_image_size;
       CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
@@ -249,38 +246,35 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
           device_prop,
           UseTF32()));
     } else {
-      // cur_parallel>1: GEMM output layout differs from NCHW; write to buffer then copy per group.
+      const int64_t stride_a_col = output_image_size;
+      const int64_t stride_b = 0;
+      const int64_t stride_c_y = M * output_image_size;
       for (int64_t g = 0; g < group; ++g) {
         const T* W_g = Wdata + g * (M / group) * kernel_dim;
         const T* col_g = col_buffer.get() + g * kernel_dim * col_stride;
         T* Y_g = Ydata + b * M * output_image_size + g * (M / group) * output_image_size;
 
-        CUBLAS_RETURN_IF_ERROR((cublasGemmHelper(
+        CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
             cublas,
             CUBLAS_OP_N,
             CUBLAS_OP_N,
-            narrow<int>(cur_out_size),
+            narrow<int>(output_image_size),
             narrow<int>(M / group),
             narrow<int>(kernel_dim),
             &alpha,
             reinterpret_cast<const CudaT*>(col_g),
             narrow<int>(cur_out_size),
+            stride_a_col,
             reinterpret_cast<const CudaT*>(W_g),
             narrow<int>(kernel_dim),
+            stride_b,
             &beta,
-            reinterpret_cast<CudaT*>(gemm_output_buffer.get()),
-            narrow<int>(cur_out_size),
+            reinterpret_cast<CudaT*>(Y_g),
+            narrow<int>(output_image_size),
+            stride_c_y,
+            narrow<int>(cur_parallel),
             device_prop,
-            UseTF32())));
-
-        ORT_RETURN_IF_ERROR(DeformConvCopyGemmOutputRowMajorToNCHW<T>(
-            stream,
-            gemm_output_buffer.get(),
-            Y_g,
-            M,
-            M / group,
-            output_image_size,
-            cur_parallel));
+            UseTF32()));
       }
     }
   }
