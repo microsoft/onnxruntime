@@ -261,8 +261,9 @@ Status GetMinimalBuildOptimizationHandling(
 // 2) CPU work hidden inside a compiled/fused kernel where subgraphs are no longer visible.
 // Set `session.create_threadpools_only_for_cpu_nodes=0` to restore legacy behavior
 // (always create per-session thread pools when use_per_session_threads is enabled).
-// This recursive traversal runs once during Initialize(). That is acceptable for startup,
-// but it may be expensive for models with deeply nested subgraphs.
+// NOTE: This recursive traversal visits all nodes and subgraphs.
+// It runs once during Initialize() so the cost is acceptable,
+// but may be non-trivial for models with deeply nested subgraphs.
 static bool GraphHasCpuNodesInternal(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
@@ -608,8 +609,8 @@ void InferenceSession::EnsureIntraOpThreadPoolInitialized() {
     return;
   }
 
-  // `use_per_session_threads_` and `force_spinning_stop_between_runs_` are immutable
-  // after session construction, so reading them outside this lock is safe.
+  // `use_per_session_threads_` and `force_spinning_stop_between_runs_` are safe
+  // to read without a lock - they are immutable after construction.
   std::lock_guard<std::mutex> l(session_mutex_);
 
   if (external_intra_op_thread_pool_ || thread_pool_) {

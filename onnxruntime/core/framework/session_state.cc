@@ -1134,6 +1134,9 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
 }
 
 void SessionState::InitializeThreadPools(concurrency::ThreadPool* intra, concurrency::ThreadPool* inter) {
+  // NOTE: This enforce also runs recursively for each subgraph SessionState
+  // via the loop below. All subgraph SessionStates are expected to hold nullptr
+  // or the same pool pointers as the parent - never a different non-null pool.
   ORT_ENFORCE((thread_pool_ == nullptr || thread_pool_ == intra) &&
               (inter_op_thread_pool_ == nullptr || inter_op_thread_pool_ == inter));
 
