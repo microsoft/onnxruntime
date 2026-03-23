@@ -171,6 +171,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   aggregate_function_ = MakeAggregateFunction(attributes.aggregate_function);
   post_transform_ = MakeTransform(attributes.post_transform);
+  n_targets_or_classes_ = attributes.n_targets_or_classes;
   if (!attributes.base_values_as_tensor.empty()) {
     ORT_ENFORCE(attributes.base_values.empty());
     base_values_ = attributes.base_values_as_tensor;
@@ -180,7 +181,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       base_values_.push_back(static_cast<ThresholdType>(attributes.base_values[i]));
     }
   }
-  n_targets_or_classes_ = attributes.n_targets_or_classes;
   max_tree_depth_ = 1000;
 
   // Additional members
