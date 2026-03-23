@@ -385,8 +385,10 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
           output_span[i] += sum_span[i];
         }
 
-        MlasActivation(&activation_, output_compute, nullptr, narrow<size_t>(M),
-                       narrow<size_t>(output_shape.Size()), narrow<size_t>(output_shape.Size()));
+        const auto activation_rows = narrow<size_t>(SafeInt<int64_t>(y_dims[0]) * y_dims[3]);
+        const auto activation_cols = narrow<size_t>(output_shape.Size());
+        MlasActivation(&activation_, output_compute, nullptr, activation_rows,
+                       activation_cols, activation_cols);
       }
 
       ConvertNCHWToNHWC(output_compute,

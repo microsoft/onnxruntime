@@ -493,7 +493,7 @@ TEST(TransformerTest, FuseFp16InitializersWithGraphOutputs) {
   so.graph_optimization_level = TransformerLevel::MaxLevel;
   // Create session and check graph before / after initiation
   InferenceSessionWrapper session{so, GetEnvironment()};
-  // Disabling ConstantFolding optimizer as it will remove the Cast node
+  // Disabling ConstantFolding and NhwcTransformer optimizer as it will remove the Cast node
   // by folding it with Add node. This will not allow us to test the
   // scenario where Cast node is producing graph output and need to
   // kept untouched by FuseInitializersTransformer.
