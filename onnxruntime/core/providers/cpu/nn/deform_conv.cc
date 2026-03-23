@@ -19,6 +19,20 @@
 
 namespace onnxruntime {
 
+template <typename T>
+struct DeformConvKernelMetaCacheData {
+  int64_t kH = 0;
+  int64_t kW = 0;
+  int64_t pad_h = 0;
+  int64_t pad_w = 0;
+  int64_t dilation_h = 0;
+  int64_t dilation_w = 0;
+  int64_t kernel_size = 0;
+  std::vector<size_t> offset_base_delta;
+  std::vector<T> base_h;
+  std::vector<T> base_w;
+};
+
 namespace {
 
 constexpr int64_t kPlanAoSoALanes = 8;
@@ -128,14 +142,53 @@ inline CpuDeformConvStrides ComputeCpuDeformConvStrides(const DeformConvParams& 
   return strides;
 }
 
-namespace sampling_plan_internal {
-
 template <typename T>
-struct KernelMetaEntry {
-  size_t offset_base_delta = 0;  // 2 * kernel_idx
-  T base_h{};
-  T base_w{};
-};
+std::shared_ptr<const DeformConvKernelMetaCacheData<T>> GetOrCreateKernelMetaCache(
+    const DeformConvParams& params,
+    const DeformConvCommonDims& common_dims,
+    std::mutex& cache_mu,
+    std::shared_ptr<const DeformConvKernelMetaCacheData<T>>& cache_slot) {
+  std::shared_ptr<const DeformConvKernelMetaCacheData<T>> cache_out;
+  {
+    std::lock_guard<std::mutex> lock(cache_mu);
+    const bool cache_hit = cache_slot != nullptr &&
+                           cache_slot->kH == params.kH &&
+                           cache_slot->kW == params.kW &&
+                           cache_slot->pad_h == params.pad_h &&
+                           cache_slot->pad_w == params.pad_w &&
+                           cache_slot->dilation_h == params.dilation_h &&
+                           cache_slot->dilation_w == params.dilation_w &&
+                           cache_slot->kernel_size == common_dims.kernel_size;
+    if (!cache_hit) {
+      auto cache = std::make_shared<DeformConvKernelMetaCacheData<T>>();
+      cache->kH = params.kH;
+      cache->kW = params.kW;
+      cache->pad_h = params.pad_h;
+      cache->pad_w = params.pad_w;
+      cache->dilation_h = params.dilation_h;
+      cache->dilation_w = params.dilation_w;
+      cache->kernel_size = common_dims.kernel_size;
+
+      const size_t kernel_size_sz = static_cast<size_t>(common_dims.kernel_size);
+      cache->offset_base_delta.resize(kernel_size_sz);
+      cache->base_h.resize(kernel_size_sz);
+      cache->base_w.resize(kernel_size_sz);
+      for (int64_t kernel_idx = 0; kernel_idx < common_dims.kernel_size; ++kernel_idx) {
+        const int64_t i = kernel_idx / params.kW;
+        const int64_t j = kernel_idx % params.kW;
+        const size_t kernel_idx_sz = static_cast<size_t>(kernel_idx);
+        cache->offset_base_delta[kernel_idx_sz] = static_cast<size_t>(2) * kernel_idx_sz;
+        cache->base_h[kernel_idx_sz] = static_cast<T>(-params.pad_h + i * params.dilation_h);
+        cache->base_w[kernel_idx_sz] = static_cast<T>(-params.pad_w + j * params.dilation_w);
+      }
+      cache_slot = cache;
+    }
+    cache_out = cache_slot;
+  }
+  return cache_out;
+}
+
+namespace sampling_plan_internal {
 
 template <typename T>
 struct alignas(64) BilinearSamplePlanBlock {
@@ -159,7 +212,9 @@ struct DeformableIm2colContext {
   int64_t height_col = 0;
   int64_t width_col = 0;
   int64_t padded_spatial_count = 0;
-  const KernelMetaEntry<T>* kernel_meta = nullptr;
+  const size_t* kernel_offset_base_delta = nullptr;
+  const T* kernel_base_h = nullptr;
+  const T* kernel_base_w = nullptr;
   BilinearSamplePlanBlock<T>* sampling_plan_blocks = nullptr;
   T* data_col = nullptr;
   concurrency::ThreadPool* thread_pool = nullptr;
@@ -280,11 +335,15 @@ void BuildAllBilinearSamplingPlansImpl(
     int64_t height_col,
     int64_t width_col,
     int64_t kernel_size,
-    const KernelMetaEntry<T>* kernel_meta,
+    const size_t* kernel_offset_base_delta,
+    const T* kernel_base_h,
+    const T* kernel_base_w,
     BilinearSamplePlanBlock<T>* sampling_plan_blocks,
     concurrency::ThreadPool* thread_pool) {
   const int64_t plan_rows = offset_groups * kernel_size;
-  ORT_ENFORCE(kernel_meta != nullptr, "kernel_meta must not be null.");
+  ORT_ENFORCE(kernel_offset_base_delta != nullptr, "kernel_offset_base_delta must not be null.");
+  ORT_ENFORCE(kernel_base_h != nullptr, "kernel_base_h must not be null.");
+  ORT_ENFORCE(kernel_base_w != nullptr, "kernel_base_w must not be null.");
   const size_t kernel_size_sz = static_cast<size_t>(kernel_size);
   const size_t offset_group_stride = static_cast<size_t>(2) * kernel_size_sz;
   const double plan_parallel_cost = static_cast<double>(output_size) * 12.0;
@@ -299,9 +358,9 @@ void BuildAllBilinearSamplingPlansImpl(
         size_t offset_grp_base = static_cast<size_t>(offset_grp) * offset_group_stride;
 
         for (ptrdiff_t plan_row = begin; plan_row < end; ++plan_row, ++row) {
-          const auto& kernel_meta_entry = kernel_meta[static_cast<size_t>(kernel_idx)];
+          const size_t kernel_idx_sz = static_cast<size_t>(kernel_idx);
 
-          const size_t offset_base = offset_grp_base + kernel_meta_entry.offset_base_delta;
+          const size_t offset_base = offset_grp_base + kernel_offset_base_delta[kernel_idx_sz];
           const T* ptr_offset_h = data_offset + offset_base * output_size;
           const T* ptr_offset_w = data_offset + (offset_base + 1) * output_size;
 
@@ -311,7 +370,7 @@ void BuildAllBilinearSamplingPlansImpl(
           BuildBilinearSamplingPlanImpl(
               ptr_offset_h, ptr_offset_w,
               height, width, height_col, width_col,
-              stride_h, stride_w, kernel_meta_entry.base_h, kernel_meta_entry.base_w,
+              stride_h, stride_w, kernel_base_h[kernel_idx_sz], kernel_base_w[kernel_idx_sz],
               row_plan);
 
           if (++kernel_idx == kernel_size) {
@@ -381,7 +440,7 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
       ctx.stride_h, ctx.stride_w,
       ctx.offset_groups,
       output_size_sz, ctx.padded_spatial_count, ctx.height_col, ctx.width_col, kernel_size,
-      ctx.kernel_meta,
+      ctx.kernel_offset_base_delta, ctx.kernel_base_h, ctx.kernel_base_w,
       ctx.sampling_plan_blocks, ctx.thread_pool);
 
   const double parallel_cost = static_cast<double>(output_size) * (UseMask ? 12.0 : 10.0);
@@ -454,12 +513,8 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const int64_t M = params.M;
   const int64_t kH = params.kH;
   const int64_t kW = params.kW;
-  const int64_t pad_h = params.pad_h;
-  const int64_t pad_w = params.pad_w;
   const int64_t stride_h = params.stride_h;
   const int64_t stride_w = params.stride_w;
-  const int64_t dilation_h = params.dilation_h;
-  const int64_t dilation_w = params.dilation_w;
   const int64_t group = params.group;
   const int64_t offset_group = params.offset_group;
   const int64_t out_h = params.out_h;
@@ -478,24 +533,15 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   DeformConvCommonDims common_dims;
   ORT_RETURN_IF_ERROR(DeformConvValidateAndComputeCommonDims(params, common_dims));
-  const int64_t kernel_size = common_dims.kernel_size;
   const int64_t output_image_size = common_dims.output_image_size;
-  const int64_t input_image_size = common_dims.input_image_size;
   const int64_t kernel_dim = common_dims.kernel_dim;  // K dimension for GEMM: C/group * kH * kW
   const size_t max_size_t = std::numeric_limits<size_t>::max();
   const CpuDeformConvExecutionDims exec_dims = ComputeCpuDeformConvExecutionDims(params, common_dims, ptrdiff_max, max_size_t);
   const int64_t padded_spatial_count = exec_dims.padded_spatial_count;
   const size_t block_count = exec_dims.block_count;
   const int64_t total_work = exec_dims.total_work;
-  std::vector<sampling_plan_internal::KernelMetaEntry<T>> kernel_meta(static_cast<size_t>(kernel_size));
-  for (int64_t kernel_idx = 0; kernel_idx < kernel_size; ++kernel_idx) {
-    const int64_t i = kernel_idx / kW;
-    const int64_t j = kernel_idx % kW;
-    auto& entry = kernel_meta[static_cast<size_t>(kernel_idx)];
-    entry.offset_base_delta = static_cast<size_t>(2) * static_cast<size_t>(kernel_idx);
-    entry.base_h = static_cast<T>(-pad_h + i * dilation_h);
-    entry.base_w = static_cast<T>(-pad_w + j * dilation_w);
-  }
+  const auto kernel_meta_cache = GetOrCreateKernelMetaCache<T>(
+      params, common_dims, kernel_meta_cache_mu_, kernel_meta_cache_);
   // Col buffer: shape [C*kH*kW, out_h*out_w]. Allocate per-image (process one image at a time)
   // to reduce peak memory when N is large; im2col is implemented per-image anyway.
   const int64_t col_buffer_size = exec_dims.col_buffer_size;
@@ -548,7 +594,9 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
         static_cast<int>(H), static_cast<int>(W_in),
         kH, kW, stride_h, stride_w, C, offset_group, out_h, out_w,
         padded_spatial_count,
-        kernel_meta.data(),
+        kernel_meta_cache->offset_base_delta.data(),
+        kernel_meta_cache->base_h.data(),
+        kernel_meta_cache->base_w.data(),
         plan_blocks.get(),
         col_buffer_ptr,
         thread_pool};
