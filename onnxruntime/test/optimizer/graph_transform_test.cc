@@ -98,6 +98,10 @@
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 
+#if !defined(DISABLE_CONTRIB_OPS)
+#include "core/optimizer/nchwc_transformer.h"
+#endif
+
 using namespace std;
 using namespace ONNX_NAMESPACE;
 
@@ -9317,6 +9321,5 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
-
 }  // namespace test
 }  // namespace onnxruntime
