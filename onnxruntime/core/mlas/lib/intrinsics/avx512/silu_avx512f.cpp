@@ -15,8 +15,6 @@ Abstract:
 
 --*/
 
-#include <limits>
-
 #include "mlasi.h"
 
 namespace {
