@@ -38,11 +38,7 @@ struct SiluAvx512Constants {
     static constexpr float OneHalf = 0.5f;
 };
 
-MLAS_FORCEINLINE __m512
-MlasLogisticApproxAvx512(
-    __m512 Value
-    )
-{
+struct SiluAvx512BroadcastConstants {
     const __m512 LogisticLowerRange = _mm512_set1_ps(SiluAvx512Constants::LogisticLowerRange);
     const __m512 LogisticUpperRange = _mm512_set1_ps(SiluAvx512Constants::LogisticUpperRange);
     const __m512 Alpha9 = _mm512_set1_ps(SiluAvx512Constants::Alpha9);
@@ -59,36 +55,44 @@ MlasLogisticApproxAvx512(
     const __m512 OneHalf = _mm512_set1_ps(SiluAvx512Constants::OneHalf);
     const __m512 Zero = _mm512_setzero_ps();
     const __m512 One = _mm512_set1_ps(1.0f);
+};
 
+MLAS_FORCEINLINE __m512
+MlasLogisticApproxAvx512(
+    __m512 Value,
+    const SiluAvx512BroadcastConstants& Constants
+    )
+{
     // Mirror MlasComputeLogistic by evaluating the same clamped rational
     // approximation in-register and then multiplying by x for SiLU.
-    const __m512 ClampedValue = _mm512_max_ps(_mm512_min_ps(Value, LogisticUpperRange), LogisticLowerRange);
+    const __m512 ClampedValue = _mm512_max_ps(_mm512_min_ps(Value, Constants.LogisticUpperRange), Constants.LogisticLowerRange);
     const __m512 ValueSquared = _mm512_mul_ps(ClampedValue, ClampedValue);
 
-    __m512 P = _mm512_fmadd_ps(ValueSquared, Alpha9, Alpha7);
-    P = _mm512_fmadd_ps(P, ValueSquared, Alpha5);
-    P = _mm512_fmadd_ps(P, ValueSquared, Alpha3);
-    P = _mm512_fmadd_ps(P, ValueSquared, Alpha1);
+    __m512 P = _mm512_fmadd_ps(ValueSquared, Constants.Alpha9, Constants.Alpha7);
+    P = _mm512_fmadd_ps(P, ValueSquared, Constants.Alpha5);
+    P = _mm512_fmadd_ps(P, ValueSquared, Constants.Alpha3);
+    P = _mm512_fmadd_ps(P, ValueSquared, Constants.Alpha1);
     P = _mm512_mul_ps(P, ClampedValue);
 
-    __m512 Q = _mm512_fmadd_ps(ValueSquared, Beta10, Beta8);
-    Q = _mm512_fmadd_ps(Q, ValueSquared, Beta6);
-    Q = _mm512_fmadd_ps(Q, ValueSquared, Beta4);
-    Q = _mm512_fmadd_ps(Q, ValueSquared, Beta2);
-    Q = _mm512_fmadd_ps(Q, ValueSquared, Beta0);
+    __m512 Q = _mm512_fmadd_ps(ValueSquared, Constants.Beta10, Constants.Beta8);
+    Q = _mm512_fmadd_ps(Q, ValueSquared, Constants.Beta6);
+    Q = _mm512_fmadd_ps(Q, ValueSquared, Constants.Beta4);
+    Q = _mm512_fmadd_ps(Q, ValueSquared, Constants.Beta2);
+    Q = _mm512_fmadd_ps(Q, ValueSquared, Constants.Beta0);
 
-    __m512 Logistic = _mm512_add_ps(_mm512_div_ps(P, Q), OneHalf);
-    Logistic = _mm512_min_ps(_mm512_max_ps(Logistic, Zero), One);
+    __m512 Logistic = _mm512_add_ps(_mm512_div_ps(P, Q), Constants.OneHalf);
+    Logistic = _mm512_min_ps(_mm512_max_ps(Logistic, Constants.Zero), Constants.One);
 
     return Logistic;
 }
 
 MLAS_FORCEINLINE __m512
 MlasComputeSiluVectorAvx512(
-    __m512 X
+    __m512 X,
+    const SiluAvx512BroadcastConstants& Constants
     )
 {
-    __m512 Result = _mm512_mul_ps(X, MlasLogisticApproxAvx512(X));
+    __m512 Result = _mm512_mul_ps(X, MlasLogisticApproxAvx512(X, Constants));
 
     // Preserve NaN payload/sign behavior explicitly because the clamped
     // logistic approximation uses min/max operations that do not reliably
@@ -109,11 +113,22 @@ MlasSiluKernelAvx512F(
     size_t N
     )
 {
+    const SiluAvx512BroadcastConstants Constants;
     size_t Offset = 0;
+
+    while (Offset + 32 <= N) {
+        const __m512 X0 = _mm512_loadu_ps(Input + Offset);
+        const __m512 X1 = _mm512_loadu_ps(Input + Offset + 16);
+        const __m512 Result0 = MlasComputeSiluVectorAvx512(X0, Constants);
+        const __m512 Result1 = MlasComputeSiluVectorAvx512(X1, Constants);
+        _mm512_storeu_ps(Output + Offset, Result0);
+        _mm512_storeu_ps(Output + Offset + 16, Result1);
+        Offset += 32;
+    }
 
     while (Offset + 16 <= N) {
         const __m512 X = _mm512_loadu_ps(Input + Offset);
-        const __m512 Result = MlasComputeSiluVectorAvx512(X);
+        const __m512 Result = MlasComputeSiluVectorAvx512(X, Constants);
         _mm512_storeu_ps(Output + Offset, Result);
         Offset += 16;
     }
@@ -121,7 +136,7 @@ MlasSiluKernelAvx512F(
     if (Offset < N) {
         const __mmask16 TailMask = static_cast<__mmask16>((1u << (N - Offset)) - 1u);
         const __m512 X = _mm512_maskz_loadu_ps(TailMask, Input + Offset);
-        const __m512 Result = MlasComputeSiluVectorAvx512(X);
+        const __m512 Result = MlasComputeSiluVectorAvx512(X, Constants);
         _mm512_mask_storeu_ps(Output + Offset, TailMask, Result);
     }
 }
