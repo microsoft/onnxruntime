@@ -20,7 +20,7 @@ bool WhereDummyDq::SatisfyCondition(const Graph& graph, const Node& node) const 
   //   cond, const_scalar, DQ(xq)  -> Where -> Q(yq)
   //
   // When one `Where` branch is a scalar initializer (no producer node), WhereNodeGroupSelector
-  // require both data branches to be produced by DQ nodes so the `Where` can be grouped into a
+  // requires both data branches to be produced by DQ nodes so the `Where` can be grouped into a
   // single node-unit. We insert a "dummy" DQ for the scalar branch to satisfy that requirement.
   if (!(node.OpType() == "Where")) {
     return false;
@@ -46,10 +46,10 @@ bool WhereDummyDq::SatisfyCondition(const Graph& graph, const Node& node) const 
 
   // We require exactly one branch to be fed by a DQ and the other branch to be a scalar initializer
   // (represented as a NodeArg with rank 0 shape and no producer node).
-  if (is_p1_dq && !parent_node_2) {
+  if (is_p1_dq && graph_utils::IsConstantInitializer(graph, where_inputs[2]->Name(), true)) {
     return (where_inputs[2]->Shape()->dim_size() == 0);
   }
-  if (!parent_node_1 && is_p2_dq) {
+  if (graph_utils::IsConstantInitializer(graph, where_inputs[1]->Name(), true) && is_p2_dq) {
     return (where_inputs[1]->Shape()->dim_size() == 0);
   }
 
