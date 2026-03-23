@@ -35,6 +35,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/float4.h"
+#include "core/util/math.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
@@ -231,14 +232,9 @@ class HalfGemmOptions {
   static HalfGemmOptions instance;
 };
 
-const char* cublasGetErrorEnum(cublasStatus_t error);
-
-const char* CudaDataTypeToString(cudaDataType_t dt);
-
-const char* CublasComputeTypeToString(cublasComputeType_t ct);
 #endif
-
-cudaDataType_t ToCudaDataType(int32_t element_type);
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#include "core/providers/cuda/cuda_common_type_helpers.h"

@@ -120,8 +120,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   const T* R_data = R->Data<T>();
   const T* B_data = B == nullptr ? nullptr : B->Data<T>();
 
-  auto* ort_cuda_stream = dynamic_cast<CudaStream*>(ort_stream);
-  cudnnHandle_t cudnn_handle = ort_cuda_stream ? ort_cuda_stream->cudnn_handle_ : DefaultCudnnHandle();
+  cudnnHandle_t cudnn_handle = GetCudnnHandleOrDefault(ort_stream);
   ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(cudnn_handle, rnn_desc,
                                             reorganized_w_data_size_in_bytes, reorganized_w_data.get(),
                                             W_data, R_data, B_data, cuda_stream));

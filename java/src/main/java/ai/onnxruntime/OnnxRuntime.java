@@ -307,26 +307,22 @@ final class OnnxRuntime {
     if (extractedSharedProviders.contains(libraryName)) {
       return true;
     }
-    // Otherwise extract the file from the classpath resources
+    // If a native library directory is configured, prefer it and skip extraction when present.
+    if (libraryDirPathProperty != null) {
+      String libraryFileName = mapLibraryName(libraryName);
+      File libraryFile = Paths.get(libraryDirPathProperty, libraryFileName).toFile();
+      if (libraryFile.exists()) {
+        extractedSharedProviders.add(libraryName);
+        return true;
+      }
+    }
+    // Otherwise extract the file from the classpath resources.
     Optional<File> file = extractFromResources(libraryName);
     if (file.isPresent()) {
       extractedSharedProviders.add(libraryName);
       return true;
     } else {
-      // If we failed to extract it, check if there is a valid cache directory
-      // that contains it
-      if (libraryDirPathProperty != null) {
-        String libraryFileName = mapLibraryName(libraryName);
-        File libraryFile = Paths.get(libraryDirPathProperty, libraryFileName).toFile();
-        if (libraryFile.exists()) {
-          extractedSharedProviders.add(libraryName);
-          return true;
-        } else {
-          return false;
-        }
-      } else {
-        return false;
-      }
+      return false;
     }
   }
 

@@ -46,8 +46,7 @@ Status GemmInt8(int m, int n, int k,
     cudaMemcpy2DAsync(b_padded.get(), ldb_aligned, b, ldb, n, k, cudaMemcpyDeviceToDevice, stream);
   }
 
-  auto* ort_cuda_stream = dynamic_cast<CudaStream*>(ort_stream);
-  auto cublas = ort_cuda_stream->cublas_handle_;
+  auto cublas = cuda_kernel->GetCublasHandleOrDefault(ort_stream);
 
   CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
       cublas,
