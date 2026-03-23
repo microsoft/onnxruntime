@@ -82,6 +82,12 @@ void Profiler::EndTimeAndRecordEvent(
 
   EventRecord event(category, logging::GetProcessId(),
                     logging::GetThreadId(), event_name, ts, dur, std::move(event_args));
+
+  // Notify EP profilers BEFORE moving event into events_ list so the reference remains valid.
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->Stop(ts, event);
+  }
+
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
   } else {
@@ -96,10 +102,6 @@ void Profiler::EndTimeAndRecordEvent(
         max_events_reached = true;
       }
     }
-  }
-
-  for (const auto& ep_profiler : ep_profilers_) {
-    ep_profiler->Stop(ts);
   }
 }
 

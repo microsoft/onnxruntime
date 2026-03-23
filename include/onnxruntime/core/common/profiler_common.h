@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace profiling {
 
 // Profiling event categories.
-// Note: Keep in sync with OrtEpProfilingEventCategory in onnxruntime_ep_c_api.h.
+// Note: Keep in sync with OrtProfilingEventCategory in onnxruntime_ep_c_api.h.
 enum EventCategory {
   SESSION_EVENT = 0,
   NODE_EVENT,
@@ -124,11 +124,18 @@ class EpProfiler {
   /// ORT pairs every Start call with a corresponding call to Stop with the same ORT event ID.
   /// EP profiler implementations may use the calls to Start and Stop to maintain a stack of ORT event IDs
   /// that can be correlated with EP events (e.g., GPU kernel events).
+  ///
+  /// The ort_event parameter provides the full ORT event record including metadata such as op_name
+  /// (in event args), event name, category, timestamps, etc. EP profilers can use this to annotate
+  /// their own events with ORT event context.
   /// </summary>
   /// <param name="ort_event_id">
   /// ID of the ORT event that is ending. The same value is passed to a corresponding call to Start.
   /// </param>
-  virtual void Stop(uint64_t /*ort_event_id*/) {}
+  /// <param name="ort_event">
+  /// The ORT event record containing metadata for this event.
+  /// </param>
+  virtual void Stop(uint64_t /*ort_event_id*/, const EventRecord& /*ort_event*/) {}
 };
 
 // Demangle C++ symbols

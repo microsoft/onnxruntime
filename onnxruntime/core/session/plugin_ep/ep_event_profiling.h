@@ -7,21 +7,29 @@
 #include "core/common/profiler_common.h"
 #include "core/session/onnxruntime_c_api.h"
 
-/// <summary>
-/// Definition of the opaque OrtEpProfilingEvent type declared in the public C EP API.
-/// An EP profiler creates instances via OrtEpApi::CreateEpProfilingEvent.
-/// </summary>
-struct OrtEpProfilingEvent {
-  uint64_t ort_event_id;  // The ID of the ORT event to which this EP event is correlated.
-  onnxruntime::profiling::EventRecord record;
-};
+// OrtProfilingEvent is an opaque C alias for profiling::EventRecord.
+// The C API forward-declares it as an incomplete type. Internally, we convert between
+// the two via reinterpret_cast using the helpers below.
 
-// Definition of the opaque OrtEpProfilingEventsContainer type declared in the public C EP API.
+inline const OrtProfilingEvent* ToOpaqueProfilingEvent(const onnxruntime::profiling::EventRecord* r) {
+  return reinterpret_cast<const OrtProfilingEvent*>(r);
+}
+inline OrtProfilingEvent* ToOpaqueProfilingEvent(onnxruntime::profiling::EventRecord* r) {
+  return reinterpret_cast<OrtProfilingEvent*>(r);
+}
+inline const onnxruntime::profiling::EventRecord* FromOpaqueProfilingEvent(const OrtProfilingEvent* e) {
+  return reinterpret_cast<const onnxruntime::profiling::EventRecord*>(e);
+}
+inline onnxruntime::profiling::EventRecord* FromOpaqueProfilingEvent(OrtProfilingEvent* e) {
+  return reinterpret_cast<onnxruntime::profiling::EventRecord*>(e);
+}
+
+// Definition of the opaque OrtProfilingEventsContainer type declared in the public C EP API.
 // ORT creates an instance wrapping a profiling::Events vector and passes it to the EP's
 // OrtEpProfilerImpl::EndProfiling() function.
-// The EP calls OrtEpApi::EpProfilingEventsContainer_AddEvents to push events into this container.
-struct OrtEpProfilingEventsContainer {
-  std::vector<OrtEpProfilingEvent> ep_events;
+// The EP calls OrtEpApi::ProfilingEventsContainer_AddEvents to push events into this container.
+struct OrtProfilingEventsContainer {
+  onnxruntime::profiling::Events events;
 };
 
 namespace onnxruntime {
@@ -49,7 +57,7 @@ class PluginEpProfiler final : public profiling::EpProfiler {
   void EndProfiling(TimePoint start_time, profiling::Events& events) override;
 
   void Start(uint64_t ort_event_id) override;
-  void Stop(uint64_t ort_event_id) override;
+  void Stop(uint64_t ort_event_id, const profiling::EventRecord& ort_event) override;
 
  private:
   OrtEpProfilerImpl& profiler_impl_;

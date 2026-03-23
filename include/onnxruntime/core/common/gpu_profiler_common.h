@@ -457,7 +457,7 @@ class GPUProfilerBase : public EpProfiler {
     manager.PushCorrelation(client_handle_, id, profiling_start_time_);
   }
 
-  virtual void Stop(uint64_t) override {
+  virtual void Stop(uint64_t, const EventRecord&) override {
     auto& manager = TManager::GetInstance();
     manager.PopCorrelation();
   }

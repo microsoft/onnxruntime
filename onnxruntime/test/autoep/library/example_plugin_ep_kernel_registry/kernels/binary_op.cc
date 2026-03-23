@@ -5,6 +5,7 @@
 #include <chrono>
 #include <gsl/span>
 #include <sstream>
+#include <utility>
 #include "binary_op.h"
 #include "utils.h"
 #include "../ep.h"
@@ -136,13 +137,15 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
     kernel_end_ts = std::chrono::high_resolution_clock::now();
 
     auto& ep_event_manager = EpEventManager::GetInstance();
-    uint64_t ort_event_id = ep_event_manager.PeekOrtEventId(*profiler_client_id);
     int64_t ts_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel_start_ts.time_since_epoch()).count();
     int64_t dur_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                          kernel_end_ts.time_since_epoch() - kernel_start_ts.time_since_epoch())
                          .count();
 
-    EpEventManager::Event event = {op_type, ort_event_id, ts_ns, dur_ns};
+    std::string event_name = "ExampleKernelEp_";
+    event_name += op_type;
+
+    EpEventManager::Event event(std::move(event_name), ts_ns, dur_ns);
     ep_event_manager.AddEpEvent(*profiler_client_id, std::move(event));
   }
   return nullptr;

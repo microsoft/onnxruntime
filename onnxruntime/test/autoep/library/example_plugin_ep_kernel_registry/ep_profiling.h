@@ -32,35 +32,38 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
                                               int64_t profiling_start_time_ns) noexcept;
 
   static void ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept;
-  static void ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept;
+  static void ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id,
+                                         const OrtProfilingEvent* ort_event) noexcept;
   static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
                                                   int64_t profiling_start_time_ns,
-                                                  OrtEpProfilingEventsContainer* events_container) noexcept;
+                                                  OrtProfilingEventsContainer* events_container) noexcept;
 };
 
 /// <summary>
-/// Singleton object that stores events from this EP's kernels and manages the stack of ORT event IDs
-/// used for correlating EP events with ORT events.
+/// Singleton object that stores events from this EP's kernels and manages a stack of ORT event boundaries
+/// used for annotating EP events with metadata from correlated ORT events.
 ///
 /// This singleton maintains state per profiling session (i.e., a client). An OrtEpProfilerImpl must register itself
 /// as a client via RegisterClient().
 ///
 /// An OrtEpProfilerImpl performs the following operations:
 ///   - RegisterClient()
-///   - PushOrtEventId() / PopOrtEventId() as ORT provides events
+///   - PushOrtEvent() / PopOrtEvent() as ORT provides StartEvent / StopEvent callbacks
 ///   - ConsumeEvents() to get all EP events when ORT calls OrtEpProfilerImpl::EndProfiling()
 ///
 /// An EP kernel performs the following operations:
-///   - PeekOrtEventId() to get the ID of the ORT event with which an EP event is correlated.
 ///   - AddEvent() to add a new EP event (e.g., kernel execution start and duration)
 /// </summary>
 class EpEventManager {
  public:
   struct Event {
+    Event(std::string event_name, int64_t timestamp_ns, int64_t duration_ns)
+        : name(std::move(event_name)), ts_ns(timestamp_ns), dur_ns(duration_ns) {}
+
     std::string name;
-    uint64_t ort_event_id;
     int64_t ts_ns;
     int64_t dur_ns;
+    std::string ort_event_name;  // Set from the correlated ORT event
   };
 
   static EpEventManager& GetInstance();
@@ -70,9 +73,8 @@ class EpEventManager {
 
   void StartProfiling();
 
-  uint64_t PeekOrtEventId(uint64_t client_id);
-  void PushOrtEventId(uint64_t client_id, uint64_t ort_event_id);
-  void PopOrtEventId(uint64_t client_id);
+  void PushOrtEvent(uint64_t client_id);
+  void PopOrtEvent(uint64_t client_id, std::string ort_event_name);
 
   void AddEpEvent(uint64_t client_id, Event event);
 
@@ -83,7 +85,7 @@ class EpEventManager {
   void Shutdown();
 
   struct ClientState {
-    std::vector<uint64_t> ort_event_id_stack;
+    std::vector<size_t> ort_event_start_indices;  // Stack of event indices at push time
     std::vector<Event> events;
   };
 

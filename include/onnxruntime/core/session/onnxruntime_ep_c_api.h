@@ -26,8 +26,8 @@ ORT_RUNTIME_CLASS(SyncStreamImpl);
 
 ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
 
-ORT_RUNTIME_CLASS(EpProfilingEventsContainer);
-ORT_RUNTIME_CLASS(EpProfilingEvent);
+ORT_RUNTIME_CLASS(ProfilingEventsContainer);
+ORT_RUNTIME_CLASS(ProfilingEvent);
 
 /** \brief Base struct for imported external memory handles.
  *
@@ -430,12 +430,12 @@ struct OrtExternalResourceImporterImpl {
  *
  * \since Version 1.25.
  */
-typedef enum OrtEpProfilingEventCategory {
-  OrtEpProfilingEventCategory_SESSION = 0,  ///< Session-level event
-  OrtEpProfilingEventCategory_NODE = 1,     ///< Node-level event
-  OrtEpProfilingEventCategory_KERNEL = 2,   ///< Kernel-level event
-  OrtEpProfilingEventCategory_API = 3,      ///< API-level event
-} OrtEpProfilingEventCategory;
+typedef enum OrtProfilingEventCategory {
+  OrtProfilingEventCategory_SESSION = 0,  ///< Session-level event
+  OrtProfilingEventCategory_NODE = 1,     ///< Node-level event
+  OrtProfilingEventCategory_KERNEL = 2,   ///< Kernel-level event
+  OrtProfilingEventCategory_API = 3,      ///< API-level event
+} OrtProfilingEventCategory;
 
 struct OrtEpProfilerImpl;
 typedef struct OrtEpProfilerImpl OrtEpProfilerImpl;
@@ -501,8 +501,8 @@ struct OrtEpProfilerImpl {
    *   OrtEpProfilerImpl::StopEvent(z) ->  EP ort event stack: [x]    <- top of stack
    *   OrtEpProfilerImpl::StopEvent(x) ->  EP ort event stack: [ ]    <- top of stack
    *
-   * Tagging EP events with the correlated ORT event ID enables ORT to link EP events with
-   * a parent ORT event and annotate the EP event with metadata from the parent ORT event (e.g., operator name).
+   * Tagging EP events with the correlated ORT event ID enables the EP to annotate its own events
+   * with metadata from the parent ORT event (e.g., operator name).
    *
    * \note An ORT event ID is internally computed as a timestamp offset (in microseconds) relative to the
    *       profiling start time: ort_event_id = ort_event_start_us - profiling_start_time_us.
@@ -537,8 +537,8 @@ struct OrtEpProfilerImpl {
    *   OrtEpProfilerImpl::StopEvent(z) ->  EP ort event stack: [x]    <- top of stack
    *   OrtEpProfilerImpl::StopEvent(x) ->  EP ort event stack: [ ]    <- top of stack
    *
-   * Tagging EP events with the correlated ORT event ID enables ORT to link EP events with
-   * a parent ORT event and annotate the EP event with metadata from the parent ORT event (e.g., operator name).
+   * Tagging EP events with the correlated ORT event ID enables the EP to annotate its own events
+   * with metadata from the parent ORT event (e.g., operator name).
    *
    * \note An ORT event ID is internally computed as a timestamp offset (in microseconds) relative to the
    *       profiling start time: ort_event_id = ort_event_start_us - profiling_start_time_us.
@@ -550,24 +550,24 @@ struct OrtEpProfilerImpl {
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
    * \param[in] ort_event_id The ID of the ORT event that is ending.
    *                         The same value was passed to the corresponding StartEvent call.
+   * \param[in] ort_event Opaque pointer to the ORT profiling event. Valid only during this call.
+   *                      Use OrtEpApi accessor functions to read event fields.
    *
    * \note Implementation of this function is optional. If set to NULL, it is not called.
    *
    * \since Version 1.25.
    */
-  ORT_API_T(void, StopEvent, _In_ OrtEpProfilerImpl* this_ptr, _In_ uint64_t ort_event_id);
+  ORT_API_T(void, StopEvent, _In_ OrtEpProfilerImpl* this_ptr, _In_ uint64_t ort_event_id,
+            _In_ const OrtProfilingEvent* ort_event);
 
   /** \brief Called when profiling ends to collect the EP's new profiling events since the call to StartProfiling.
    *
-   * An EP profiler converts its events to OrtEpProfilingEvent instances and adds them into the provided
-   * OrtEpProfilingEventsContainer container. Call OrtEpApi::CreateEpProfilingEvent to create a new
-   * OrtEpProfilingEvent instance that is optionally tagged with a correlated ORT event ID.
-   * Then call OrtEpApi::EpProfilingEventsContainer_AddEvents to add one or more events to the container.
+   * An EP profiler converts its events to OrtProfilingEvent instances and adds them into the provided
+   * OrtProfilingEventsContainer container. Call OrtEpApi::CreateProfilingEvent to create a new
+   * OrtProfilingEvent instance. Then call OrtEpApi::ProfilingEventsContainer_AddEvents to add one or more
+   * events to the container.
    *
-   * Refer to the OrtEpProfilerImpl::StartEvent documentation for a description of ORT event IDs and how they can
-   * be correlated with EP events.
-   *
-   * After this function returns, ORT merges the EP's events into the existing profiling timeline.
+   * After this function returns, ORT appends the EP's events to the profiling timeline.
    *
    * \param[in] this_ptr The OrtEpProfilerImpl instance.
    * \param[in] profiling_start_time_ns The profiling start time in nanoseconds since epoch
@@ -583,7 +583,7 @@ struct OrtEpProfilerImpl {
    */
   ORT_API2_STATUS(EndProfiling, _In_ OrtEpProfilerImpl* this_ptr,
                   _In_ int64_t profiling_start_time_ns,
-                  _In_ OrtEpProfilingEventsContainer* events_container);
+                  _In_ OrtProfilingEventsContainer* events_container);
 };
 
 struct OrtNodeFusionOptions;
@@ -1612,31 +1612,28 @@ struct OrtEpApi {
    *
    * An EP profiler calls this function to report new EP profiling events (e.g., GPU kernel timings) during
    * OrtEpProfilerImpl::EndProfiling(). ORT copies the EP event data during this call. The EP retains ownership of the
-   * OrtEpProfilingEvent instances and must release them via ReleaseEpProfilingEvent after this call returns.
+   * OrtProfilingEvent instances and must release them via ReleaseProfilingEvent after this call returns.
    * This function may be called multiple times within a single EndProfiling call to add EP events in batches.
    *
-   * \param[in] events_container The OrtEpProfilingEventsContainer instance provided by ORT
+   * \param[in] events_container The OrtProfilingEventsContainer instance provided by ORT
    *                             to OrtEpProfilerImpl::EndProfiling().
-   * \param[in] events Array of pointers to opaque OrtEpProfilingEvent instances.
+   * \param[in] events Array of pointers to opaque OrtProfilingEvent instances.
    * \param[in] num_events Number of events in the `events` array. Must be greater than 0.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.25.
    */
-  ORT_API2_STATUS(EpProfilingEventsContainer_AddEvents, _In_ OrtEpProfilingEventsContainer* events_container,
-                  _In_reads_(num_events) const OrtEpProfilingEvent* const* events,
+  ORT_API2_STATUS(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
+                  _In_reads_(num_events) const OrtProfilingEvent* const* events,
                   _In_ size_t num_events);
 
-  /** \brief Create an EP profiling event.
+  /** \brief Create a profiling event.
    *
-   * An EP profiler calls this to create an EP event to pass to OrtEpApi::EpProfilingEventsContainer_AddEvents.
-   * The returned event must be released via OrtEpApi::ReleaseEpProfilingEvent after it has been added.
+   * An EP profiler calls this to create an event to pass to OrtEpApi::ProfilingEventsContainer_AddEvents.
+   * The returned event must be released via OrtEpApi::ReleaseProfilingEvent after it has been added.
    *
    * \param[in] category The event category (e.g., session, node, kernel, or API).
-   * \param[in] ort_event_id The ID of the ORT event that this EP event is correlated with. ORT assumes that
-   *                         this EP event occurred between calls to `OrtEpProfilerImpl::StartEvent(ort_event_id)` and
-   *                         `OrtEpProfilerImpl::StopEvent(ort_event_id)`. Set to 0 if this EP event is uncorrelated.
    * \param[in] process_id Process ID. Set to -1 if does not apply.
    * \param[in] thread_id Thread ID. Set to -1 if does not apply.
    * \param[in] event_name Null-terminated string representing the event name. ORT copies this string.
@@ -1654,9 +1651,8 @@ struct OrtEpApi {
    *
    * \since Version 1.25.
    */
-  ORT_API2_STATUS(CreateEpProfilingEvent,
-                  _In_ OrtEpProfilingEventCategory category,
-                  _In_ uint64_t ort_event_id,
+  ORT_API2_STATUS(CreateProfilingEvent,
+                  _In_ OrtProfilingEventCategory category,
                   _In_ int32_t process_id,
                   _In_ int32_t thread_id,
                   _In_ const char* event_name,
@@ -1665,13 +1661,66 @@ struct OrtEpApi {
                   _In_reads_(num_args) const char* const* arg_keys,
                   _In_reads_(num_args) const char* const* arg_values,
                   _In_ size_t num_args,
-                  _Outptr_ OrtEpProfilingEvent** out);
+                  _Outptr_ OrtProfilingEvent** out);
 
-  /** \brief Release an opaque profiling event created via CreateEpProfilingEvent.
+  /** \brief Release an opaque profiling event created via CreateProfilingEvent.
    *
    * \since Version 1.25.
    */
-  ORT_CLASS_RELEASE(EpProfilingEvent);
+  ORT_CLASS_RELEASE(ProfilingEvent);
+
+  /** \brief Get the event category of a profiling event.
+   *
+   * \param[in] event The OrtProfilingEvent instance.
+   * \return The event category.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(OrtProfilingEventCategory, ProfilingEvent_GetCategory, _In_ const OrtProfilingEvent* event);
+
+  /** \brief Get the event name of a profiling event.
+   *
+   * \param[in] event The OrtProfilingEvent instance.
+   * \return The event name as a null-terminated UTF-8 string. Do not free as it is owned by
+   *         the OrtProfilingEvent instance.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(const char*, ProfilingEvent_GetName, _In_ const OrtProfilingEvent* event);
+
+  /** \brief Get the start timestamp of a profiling event in microseconds.
+   *
+   * \param[in] event The OrtProfilingEvent instance.
+   * \return The start timestamp of the profiling event in microseconds relative to the profiling start time.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(int64_t, ProfilingEvent_GetTimestampUs, _In_ const OrtProfilingEvent* event);
+
+  /** \brief Get the duration of a profiling event in microseconds.
+   *
+   * \param[in] event The OrtProfilingEvent instance.
+   * \return The event duration in microseconds.
+   *
+   * \since Version 1.25.
+   */
+  ORT_API_T(int64_t, ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* event);
+
+  /** \brief Get the value of an event argument by its key.
+   *
+   * The value is set to NULL if the key is not found.
+   *
+   * \param[in] event The OrtProfilingEvent instance.
+   * \param[in] key Null-terminated argument key to look up.
+   * \param[out] out Output parameter set to the argument value string, or NULL if not found.
+   *                 The value is a null-terminated UTF-8 string.
+   *                 Do not free as the string is owned by the OrtProfilingEvent instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
+                  _Outptr_result_maybenull_ const char** out);
 };
 
 /**

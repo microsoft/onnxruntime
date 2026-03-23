@@ -46,21 +46,7 @@ void EpEventManager::StartProfiling() {
   enabled_ = true;
 }
 
-uint64_t EpEventManager::PeekOrtEventId(uint64_t client_id) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (!enabled_) {
-    return 0;
-  }
-
-  auto iter = client_state_.find(client_id);
-  if (iter == client_state_.end() || iter->second.ort_event_id_stack.empty()) {
-    return 0;
-  }
-
-  return iter->second.ort_event_id_stack.back();
-}
-
-void EpEventManager::PushOrtEventId(uint64_t client_id, uint64_t ort_event_id) {
+void EpEventManager::PushOrtEvent(uint64_t client_id) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!enabled_) {
     return;
@@ -71,21 +57,28 @@ void EpEventManager::PushOrtEventId(uint64_t client_id, uint64_t ort_event_id) {
     return;
   }
 
-  iter->second.ort_event_id_stack.push_back(ort_event_id);
+  // Record the current event count so we can annotate events added during this ORT event.
+  iter->second.ort_event_start_indices.push_back(iter->second.events.size());
 }
 
-void EpEventManager::PopOrtEventId(uint64_t client_id) {
+void EpEventManager::PopOrtEvent(uint64_t client_id, std::string ort_event_name) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!enabled_) {
     return;
   }
 
   auto iter = client_state_.find(client_id);
-  if (iter == client_state_.end() || iter->second.ort_event_id_stack.empty()) {
+  if (iter == client_state_.end() || iter->second.ort_event_start_indices.empty()) {
     return;
   }
 
-  iter->second.ort_event_id_stack.pop_back();
+  size_t start_index = iter->second.ort_event_start_indices.back();
+  iter->second.ort_event_start_indices.pop_back();
+
+  // Annotate EP events added since StartEvent with metadata from the correlated ORT event.
+  for (size_t i = start_index; i < iter->second.events.size(); ++i) {
+    iter->second.events[i].ort_event_name = std::move(ort_event_name);
+  }
 }
 
 void EpEventManager::AddEpEvent(uint64_t client_id, Event event) {
@@ -165,35 +158,38 @@ bool ORT_API_CALL ExampleKernelEpProfiler::StartProfilingImpl(OrtEpProfilerImpl*
 }
 
 /*static*/
-void ORT_API_CALL ExampleKernelEpProfiler::StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept {
+void ORT_API_CALL ExampleKernelEpProfiler::StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t /*ort_event_id*/) noexcept {
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
   auto& ep_event_manager = EpEventManager::GetInstance();
 
-  ep_event_manager.PushOrtEventId(self->client_id, ort_event_id);
+  ep_event_manager.PushOrtEvent(self->client_id);
 }
 
 /*static*/
 void ORT_API_CALL ExampleKernelEpProfiler::StopEventImpl(OrtEpProfilerImpl* this_ptr,
-                                                         uint64_t /*ort_event_id*/) noexcept {
+                                                         uint64_t /*ort_event_id*/,
+                                                         const OrtProfilingEvent* ort_event) noexcept {
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
   auto& ep_event_manager = EpEventManager::GetInstance();
+  const char* ort_event_name = self->ep_api.ProfilingEvent_GetName(ort_event);
 
-  ep_event_manager.PopOrtEventId(self->client_id);
+  // Annotate all EP events that were collected during this ORT event with metadata from the ORT event.
+  ep_event_manager.PopOrtEvent(self->client_id, ort_event_name);
 }
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
     OrtEpProfilerImpl* this_ptr,
     int64_t profiling_start_time_ns,
-    OrtEpProfilingEventsContainer* events_container) noexcept {
+    OrtProfilingEventsContainer* events_container) noexcept {
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
   auto& ep_event_manager = EpEventManager::GetInstance();
 
   std::vector<EpEventManager::Event> raw_ep_events;
-  std::vector<OrtEpProfilingEvent*> events;
+  std::vector<OrtProfilingEvent*> events;
   auto cleanup_resources_fn = [&]() {
     for (auto* ev : events) {
-      self->ep_api.ReleaseEpProfilingEvent(ev);
+      self->ep_api.ReleaseProfilingEvent(ev);
     }
 
     events.clear();
@@ -211,7 +207,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
   OrtStatus* status = nullptr;
 
   for (EpEventManager::Event& raw_ep_event : raw_ep_events) {
-    OrtEpProfilingEvent* ev = nullptr;
+    OrtProfilingEvent* ev = nullptr;
 
     // ORT requires timestamps relative to the profiling start time. This example EP uses timestamps with the same
     // epoch as ORT (i.e., Unix epoch), so we can just subtract off `profiling_start_time_ns` from `raw_ep_event.ts_ns`.
@@ -219,9 +215,13 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
     int64_t ts_us = (raw_ep_event.ts_ns - profiling_start_time_ns) / 1000;
     int64_t dur_us = raw_ep_event.dur_ns / 1000;
 
-    status = self->ep_api.CreateEpProfilingEvent(
-        OrtEpProfilingEventCategory_KERNEL, raw_ep_event.ort_event_id, -1, -1, raw_ep_event.name.c_str(),
-        ts_us, dur_us, nullptr, nullptr, 0, &ev);
+    // Set parent_name and op_name as an event args. This metadata comes from the correlated ORT event.
+    std::array<const char*, 1> arg_keys = {"parent_name"};
+    std::array<const char*, 1> arg_vals = {raw_ep_event.ort_event_name.c_str()};
+
+    status = self->ep_api.CreateProfilingEvent(
+        OrtProfilingEventCategory_KERNEL, -1, -1, raw_ep_event.name.c_str(),
+        ts_us, dur_us, arg_keys.data(), arg_vals.data(), arg_keys.size(), &ev);
 
     if (status != nullptr) {
       cleanup_resources_fn();
@@ -230,7 +230,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
     events.push_back(ev);
   }
 
-  status = self->ep_api.EpProfilingEventsContainer_AddEvents(
+  status = self->ep_api.ProfilingEventsContainer_AddEvents(
       events_container, events.data(), events.size());
 
   cleanup_resources_fn();

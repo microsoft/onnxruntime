@@ -3,95 +3,10 @@
 
 #include "core/session/plugin_ep/ep_event_profiling.h"
 
-#include <map>
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
 
 namespace onnxruntime {
-
-// Merge EP-provided events into the existing event list by timestamp.
-// For each EP event whose ort_event_id matches an existing event's timestamp, inherits
-// op_name and parent_name from that parent event. Events are interleaved
-// in timestamp order. This mirrors GPUProfilerBase::MergeEvents from
-// gpu_profiler_common.h.
-static void MergeEpEvents(OrtEpProfilingEventsContainer&& ep_events_container, profiling::Events& events) {
-  const size_t num_ep_events = ep_events_container.ep_events.size();
-
-  // Group EP events by ort_event_id. Moves all event data out of `ep_events_container`.
-  std::map<uint64_t, profiling::Events> grouped_ep_events = [&]() {
-    std::map<uint64_t, profiling::Events> result;
-
-    for (OrtEpProfilingEvent& ep_event : ep_events_container.ep_events) {
-      result[ep_event.ort_event_id].emplace_back(std::move(ep_event.record));
-    }
-
-    ep_events_container.ep_events.clear();
-    return result;
-  }();
-
-  profiling::Events merged_events;
-  merged_events.reserve(events.size() + num_ep_events);
-
-  auto event_iter = events.begin();
-  auto event_end = events.end();
-
-  for (auto& [ort_event_id, ep_group] : grouped_ep_events) {
-    if (ep_group.empty()) {
-      continue;
-    }
-
-    // TODO(adrianlizarraga): Handle uncorrelated EP events correctly
-
-    // An ORT event ID is just the timestamp of an ORT event in microseconds, relative to the
-    // profiling start time. So, we can use it to match the parent ORT event.
-    long long parent_ts_to_match = static_cast<long long>(ort_event_id);
-
-    // Advance past existing events with earlier timestamps,
-    // and past all-but-the-last existing event sharing this timestamp.
-    while (event_iter != event_end &&
-           (event_iter->ts < parent_ts_to_match ||
-            (event_iter->ts == parent_ts_to_match &&
-             (event_iter + 1) != event_end &&
-             (event_iter + 1)->ts == parent_ts_to_match))) {
-      merged_events.emplace_back(std::move(*event_iter));
-      ++event_iter;
-    }
-
-    bool found_parent_ort_event = false;
-    std::string op_name;
-    std::string parent_name;
-
-    if (event_iter != event_end && event_iter->ts == parent_ts_to_match) {
-      // Found a matching parent event. Get its op_name and name.
-      found_parent_ort_event = true;
-      auto op_name_it = event_iter->args.find("op_name");
-      if (op_name_it != event_iter->args.end()) {
-        op_name = op_name_it->second;
-      }
-      parent_name = event_iter->name;
-      merged_events.emplace_back(std::move(*event_iter));
-      ++event_iter;
-    }
-
-    if (found_parent_ort_event) {
-      for (auto& evt : ep_group) {
-        evt.args["op_name"] = op_name;
-        evt.args["parent_name"] = parent_name;
-      }
-    }
-
-    merged_events.insert(merged_events.end(),
-                         std::make_move_iterator(ep_group.begin()),
-                         std::make_move_iterator(ep_group.end()));
-  }
-
-  // Move any remaining existing events
-  merged_events.insert(merged_events.end(),
-                       std::make_move_iterator(event_iter),
-                       std::make_move_iterator(event_end));
-
-  std::swap(events, merged_events);
-}
 
 /*status*/
 Status PluginEpProfiler::Create(OrtEpProfilerImpl& profiler_impl, const logging::Logger& logger,
@@ -137,8 +52,7 @@ void PluginEpProfiler::EndProfiling(TimePoint start_time, profiling::Events& eve
                                         start_time.time_since_epoch())
                                         .count();
 
-  // Collect EP events into a separate buffer so we can merge them into the existing events afterward.
-  OrtEpProfilingEventsContainer ep_events_container;
+  OrtProfilingEventsContainer ep_events_container;
   Status status = ToStatusAndRelease(profiler_impl_.EndProfiling(&profiler_impl_, profiling_start_time_ns,
                                                                  &ep_events_container));
 
@@ -149,11 +63,15 @@ void PluginEpProfiler::EndProfiling(TimePoint start_time, profiling::Events& eve
     return;
   }
 
-  if (ep_events_container.ep_events.empty()) {
+  if (ep_events_container.events.empty()) {
     return;
   }
 
-  MergeEpEvents(std::move(ep_events_container), events);
+  // Append EP events to the overall events list.
+  events.reserve(events.size() + ep_events_container.events.size());
+  for (auto& record : ep_events_container.events) {
+    events.emplace_back(std::move(record));
+  }
 }
 
 void PluginEpProfiler::Start(uint64_t ort_event_id) {
@@ -162,9 +80,9 @@ void PluginEpProfiler::Start(uint64_t ort_event_id) {
   }
 }
 
-void PluginEpProfiler::Stop(uint64_t ort_event_id) {
+void PluginEpProfiler::Stop(uint64_t ort_event_id, const profiling::EventRecord& ort_event) {
   if (profiler_impl_.ort_version_supported >= 25 && profiler_impl_.StopEvent != nullptr) {
-    profiler_impl_.StopEvent(&profiler_impl_, ort_event_id);
+    profiler_impl_.StopEvent(&profiler_impl_, ort_event_id, ToOpaqueProfilingEvent(&ort_event));
   }
 }
 }  // namespace onnxruntime
