@@ -804,9 +804,8 @@ void WindowsTelemetry::LogMemoryUsage(uint32_t session_id) const {
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt64(mem_counters.PrivateUsage, "privateUsage"),
-                    TraceLoggingUInt64(0, "sharedCommitUsage"),
                     TraceLoggingUInt64(mem_counters.WorkingSetSize, "workingSetSize"),
-                    TraceLoggingUInt64(0, "privateWorkingSetSize"),
+                    TraceLoggingUInt64(mem_counters.PeakWorkingSetSize, "peakWorkingSetSize"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
