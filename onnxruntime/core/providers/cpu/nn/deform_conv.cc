@@ -514,8 +514,11 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const size_t plan_size_for_alloc = use_streamed_plan
                                          ? static_cast<size_t>(plan_rows) * static_cast<size_t>(spatial_tile_size)
                                          : plan_size;
-  const size_t bytes_total = sampling_plan_internal::ComputeSamplingPlanWorkspaceBytes<T>(
-      plan_size_for_alloc, max_size_t, idx_bytes, weight_bytes, flag_bytes);
+  size_t bytes_total = bytes_total_full;
+  if (use_streamed_plan) {
+    bytes_total = sampling_plan_internal::ComputeSamplingPlanWorkspaceBytes<T>(
+        plan_size_for_alloc, max_size_t, idx_bytes, weight_bytes, flag_bytes);
+  }
   auto plan_buffer = IAllocator::MakeUniquePtr<uint8_t>(alloc, SafeInt<size_t>(bytes_total));
   sampling_plan_internal::BilinearSamplePlanArrays<T> sampling_plan{};
   sampling_plan_internal::InitializeSamplingPlanViewsFromBuffer<T>(
@@ -602,11 +605,11 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
         thread_pool, static_cast<std::ptrdiff_t>(total_work), static_cast<double>(output_image_size),
         [&](ptrdiff_t first, ptrdiff_t last) {
           for (ptrdiff_t idx = first; idx < last; ++idx) {
-            int64_t n = idx / M;
-            int64_t m = idx % M;
-            T* Y_ptr = Ydata + n * M * output_image_size + m * output_image_size;
-            // Eigen vectorized add: Y_ptr += Bdata[m] over all spatial positions.
-            EigenVectorArrayMap<T>(Y_ptr, narrow<ptrdiff_t>(output_image_size)) += Bdata[m];
+            int64_t n_idx = idx / M;
+            int64_t m_idx = idx % M;
+            T* Y_ptr = Ydata + n_idx * M * output_image_size + m_idx * output_image_size;
+            // Eigen vectorized add: Y_ptr += Bdata[m_idx] over all spatial positions.
+            EigenVectorArrayMap<T>(Y_ptr, narrow<ptrdiff_t>(output_image_size)) += Bdata[m_idx];
           }
         });
   }
