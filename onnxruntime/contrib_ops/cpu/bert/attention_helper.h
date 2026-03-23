@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <limits>
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
