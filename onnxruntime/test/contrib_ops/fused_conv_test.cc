@@ -317,6 +317,35 @@ TEST(FusedConvTest, Cpu_NhwcConv2D_Bias_Z_Relu) {
   TestNhwcFusedConvFloatOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(FusedConvTest, Cpu_NhwcConv2D_Z_Relu_Batch2) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      "Relu"                        // activation
+  };
+
+  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
+                     1.0f, 1.0f, 1.0f, 1.0f};
+  vector<int64_t> X_shape = {2, 2, 2, 1};
+  vector<float> W = {1.0f};
+  vector<int64_t> W_shape = {1, 1, 1, 1};
+  vector<float> B = {0.0f};
+  vector<int64_t> B_shape = {1};
+  vector<float> Z = {0.0f, 0.0f, 0.0f, 0.0f,
+                     -2.0f, -3.0f, -4.0f, -5.0f};
+  vector<int64_t> Z_shape = {2, 2, 2, 1};
+  vector<int64_t> Y_shape = {2, 2, 2, 1};
+  auto expected_vals = {1.0f, 2.0f, 3.0f, 4.0f,
+                        0.0f, 0.0f, 0.0f, 0.0f};
+
+  TestNhwcFusedConvFloatOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, true);
+}
+
 TEST(FusedConvTest, Cpu_NhwcConv2D_AutoPadSameUpper) {
   ConvOpAndTestAttributes attrs = {
       "SAME_UPPER",           // auto_pad
