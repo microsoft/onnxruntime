@@ -1,0 +1,52 @@
+name: Build macOS x86_64 Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-macos-x64:
+    runs-on: macos-latest
+    env:
+      APPLE_DEPLOY_TARGET: 11.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure Rosetta (on ARM runners)
+        if: runner.os == 'macOS' && runner.arch == 'ARM64'
+        run: |
+          sudo softwareupdate --install-rosetta --agree-to-license || true
+
+      - name: Install Homebrew dependencies
+        run: |
+          set -eux
+          brew update || true
+          brew list cmake >/dev/null 2>&1 || brew install cmake
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          brew list pkgconf >/dev/null 2>&1 || brew install pkgconf
+
+      - name: Install Python deps
+        run: |
+          python3 -m pip install --user psutil
+
+      - name: Build ONNX Runtime (macOS x86_64 Release)
+        env:
+          RUNNER_ARCH: ${{ runner.arch }}
+          APPLE_DEPLOY_TARGET: ${{ env.APPLE_DEPLOY_TARGET }}
+        run: |
+          set -eux
+          BUILD_CMD="./build.sh --config Release --osx_arch x86_64 --apple_deploy_target ${APPLE_DEPLOY_TARGET} --update --build --skip_tests"
+          if [ "$RUNNER_ARCH" = "ARM64" ]; then
+            arch -x86_64 bash -lc "$BUILD_CMD"
+          else
+            bash -lc "$BUILD_CMD"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-macos-x64-${{ github.ref_name || github.sha }}
+          path: build/MacOS
