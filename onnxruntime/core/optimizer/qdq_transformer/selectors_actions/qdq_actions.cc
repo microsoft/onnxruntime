@@ -621,6 +621,8 @@ DQMatMulToMatMulNBitsAction::ExtraAttributes(const RuntimeState& runtime_state) 
 
   const auto* dq_node = runtime_state.selected_nodes.Input(0);
   const auto* weight_shape = dq_node->InputDefs()[0]->Shape();
+  ORT_ENFORCE(weight_shape != nullptr && weight_shape->dim_size() >= 2,
+              "Weight shape unavailable for DQ node ", dq_node->Name());
 
   utils::SetNodeAttribute(utils::MakeAttribute("K", weight_shape->dim(0).dim_value()), extra_attributes);
   utils::SetNodeAttribute(utils::MakeAttribute("N", weight_shape->dim(1).dim_value()), extra_attributes);
