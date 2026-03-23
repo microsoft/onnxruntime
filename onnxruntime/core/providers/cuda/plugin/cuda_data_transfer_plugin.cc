@@ -56,43 +56,11 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
     Ort::ConstValue src{src_tensors[i]};
     Ort::UnownedValue dst{dst_tensors[i]};
 
-    auto src_type_shape = src.GetTensorTypeAndShapeInfo();
-    size_t count_elems = src_type_shape.GetElementCount();
-
-    // Get element size from data type
-    ONNXTensorElementDataType elem_type = src_type_shape.GetElementType();
-    size_t elem_size = 0;
-    // Compute byte size of the tensor elements.
-    // ORT's C API doesn't expose an element-size helper directly, so we
-    // map the ONNX element type to its byte width manually.
-    // Cases are grouped by element size for clarity.
-    switch (elem_type) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        elem_size = 1;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-        elem_size = 2;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-        elem_size = 4;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-        elem_size = 8;
-        break;
-      default:
-        return dt->ort_api_.CreateStatus(ORT_EP_FAIL, "Unsupported tensor element type for copy");
+    size_t bytes = 0;
+    auto* status = dt->ort_api_.GetTensorSizeInBytes(src_tensors[i], &bytes);
+    if (status != nullptr) {
+      return status;
     }
-
-    size_t bytes = count_elems * elem_size;
     if (bytes == 0) continue;
 
     const void* src_data = src.GetTensorRawData();

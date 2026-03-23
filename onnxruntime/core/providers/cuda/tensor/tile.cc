@@ -11,6 +11,7 @@ namespace cuda {
 
 namespace {
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
 bool IsTileMemcpyForPlugin(const TensorShape& input_shape,
                            const int64_t* repeats,
                            size_t rank,
@@ -40,6 +41,7 @@ bool IsTileMemcpyForPlugin(const TensorShape& input_shape,
   }
   return false;
 }
+#endif
 
 }  // namespace
 
@@ -143,6 +145,15 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   size_t num_of_elements_per_batch = 1;
   size_t num_of_copies_per_batch = 1;
   size_t num_of_batch_copies = 1;
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  if (IsTileMemcpyForPlugin(input_shape,
+                            repeats,
+                            input_rank,
+                            is_batched_memcpy,
+                            num_of_elements_per_batch,
+                            num_of_copies_per_batch,
+                            num_of_batch_copies)) {
+#else
   if (TileOp::IsTileMemcpy(input_shape,
                            repeats,
                            input_rank,
@@ -150,6 +161,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
                            num_of_elements_per_batch,
                            num_of_copies_per_batch,
                            num_of_batch_copies)) {
+#endif
     if (!is_batched_memcpy) {
       switch (element_size) {
         CASE_TILE_MEMCPY(float);

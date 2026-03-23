@@ -87,10 +87,10 @@ class PluginScanKernel : public OpKernel {
 };
 
 // GPU transpose helper (defined in cuda_controlflow_plugin.cu)
-void LaunchTransposeKernel(const void* input, void* output,
-                           const int64_t* input_shape, const size_t* permutation,
-                           size_t num_dims, size_t element_size, size_t total_elements,
-                           cudaStream_t stream);
+Status LaunchTransposeKernel(const void* input, void* output,
+                             const int64_t* input_shape, const size_t* permutation,
+                             size_t num_dims, size_t element_size, size_t total_elements,
+                             cudaStream_t stream);
 
 }  // namespace plugin
 }  // namespace cuda

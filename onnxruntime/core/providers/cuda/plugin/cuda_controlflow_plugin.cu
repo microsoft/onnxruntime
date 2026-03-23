@@ -9,10 +9,44 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
+
+#include "core/common/status.h"
 
 namespace onnxruntime {
 namespace cuda {
 namespace plugin {
+
+namespace {
+
+Status CudaStatus(cudaError_t cuda_status, const char* operation) {
+  if (cuda_status == cudaSuccess) {
+    return Status::OK();
+  }
+
+  return common::Status(common::ONNXRUNTIME, common::FAIL,
+                        std::string("Scan Transpose: ") + operation + " failed: " + cudaGetErrorString(cuda_status));
+}
+
+struct DeviceArraySet {
+  int64_t* input_strides = nullptr;
+  int64_t* output_strides = nullptr;
+  int* perm = nullptr;
+
+  ~DeviceArraySet() {
+    if (perm != nullptr) {
+      cudaFree(perm);
+    }
+    if (output_strides != nullptr) {
+      cudaFree(output_strides);
+    }
+    if (input_strides != nullptr) {
+      cudaFree(input_strides);
+    }
+  }
+};
+
+}  // namespace
 
 // Maximum number of dimensions supported by the transpose kernel.
 // Most real-world tensors have <= 8 dimensions.
@@ -52,11 +86,19 @@ __global__ void TransposeNDKernel(const char* __restrict__ input,
   memcpy(dst, src, element_size);
 }
 
-void LaunchTransposeKernel(const void* input, void* output,
-                           const int64_t* input_shape, const size_t* permutation,
-                           size_t num_dims, size_t element_size, size_t total_elements,
-                           cudaStream_t stream) {
-  if (total_elements == 0 || num_dims == 0) return;
+Status LaunchTransposeKernel(const void* input, void* output,
+                             const int64_t* input_shape, const size_t* permutation,
+                             size_t num_dims, size_t element_size, size_t total_elements,
+                             cudaStream_t stream) {
+  if (total_elements == 0 || num_dims == 0) {
+    return Status::OK();
+  }
+
+  if (num_dims > static_cast<size_t>(kMaxTransposeDims)) {
+    return common::Status(common::ONNXRUNTIME, common::FAIL,
+                          "Scan Transpose: rank " + std::to_string(num_dims) +
+                              " exceeds the supported maximum rank of " + std::to_string(kMaxTransposeDims));
+  }
 
   // Compute input strides (row-major)
   int64_t input_strides[kMaxTransposeDims];
@@ -79,17 +121,35 @@ void LaunchTransposeKernel(const void* input, void* output,
   }
 
   // Copy arrays to device
-  int64_t* d_input_strides = nullptr;
-  int64_t* d_output_strides = nullptr;
-  int* d_perm = nullptr;
+  DeviceArraySet device_arrays;
+  auto status = CudaStatus(cudaMalloc(&device_arrays.input_strides, num_dims * sizeof(int64_t)), "cudaMalloc(input_strides)");
+  if (!status.IsOK()) {
+    return status;
+  }
+  status = CudaStatus(cudaMalloc(&device_arrays.output_strides, num_dims * sizeof(int64_t)), "cudaMalloc(output_strides)");
+  if (!status.IsOK()) {
+    return status;
+  }
+  status = CudaStatus(cudaMalloc(&device_arrays.perm, num_dims * sizeof(int)), "cudaMalloc(perm)");
+  if (!status.IsOK()) {
+    return status;
+  }
 
-  cudaMalloc(&d_input_strides, num_dims * sizeof(int64_t));
-  cudaMalloc(&d_output_strides, num_dims * sizeof(int64_t));
-  cudaMalloc(&d_perm, num_dims * sizeof(int));
-
-  cudaMemcpyAsync(d_input_strides, input_strides, num_dims * sizeof(int64_t), cudaMemcpyHostToDevice, stream);
-  cudaMemcpyAsync(d_output_strides, output_strides, num_dims * sizeof(int64_t), cudaMemcpyHostToDevice, stream);
-  cudaMemcpyAsync(d_perm, perm_int, num_dims * sizeof(int), cudaMemcpyHostToDevice, stream);
+  status = CudaStatus(cudaMemcpyAsync(device_arrays.input_strides, input_strides, num_dims * sizeof(int64_t), cudaMemcpyHostToDevice, stream),
+                      "cudaMemcpyAsync(input_strides)");
+  if (!status.IsOK()) {
+    return status;
+  }
+  status = CudaStatus(cudaMemcpyAsync(device_arrays.output_strides, output_strides, num_dims * sizeof(int64_t), cudaMemcpyHostToDevice, stream),
+                      "cudaMemcpyAsync(output_strides)");
+  if (!status.IsOK()) {
+    return status;
+  }
+  status = CudaStatus(cudaMemcpyAsync(device_arrays.perm, perm_int, num_dims * sizeof(int), cudaMemcpyHostToDevice, stream),
+                      "cudaMemcpyAsync(perm)");
+  if (!status.IsOK()) {
+    return status;
+  }
 
   constexpr int kBlockSize = 256;
   int num_blocks = static_cast<int>((total_elements + kBlockSize - 1) / kBlockSize);
@@ -97,17 +157,18 @@ void LaunchTransposeKernel(const void* input, void* output,
   TransposeNDKernel<<<num_blocks, kBlockSize, 0, stream>>>(
       static_cast<const char*>(input),
       static_cast<char*>(output),
-      d_input_strides,
-      d_output_strides,
-      d_perm,
+      device_arrays.input_strides,
+      device_arrays.output_strides,
+      device_arrays.perm,
       static_cast<int>(num_dims),
       element_size,
       total_elements);
 
-  // Free device arrays asynchronously
-  cudaFreeAsync(d_input_strides, stream);
-  cudaFreeAsync(d_output_strides, stream);
-  cudaFreeAsync(d_perm, stream);
+  status = CudaStatus(cudaGetLastError(), "TransposeNDKernel launch");
+  if (!status.IsOK()) {
+    return status;
+  }
+  return Status::OK();
 }
 
 }  // namespace plugin

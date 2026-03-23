@@ -458,14 +458,14 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
                                                        input_tensor, output_tensor, &workspace_bytes));
   auto workspace_cuda = workspace_bytes == 0
                             ? nullptr
-                            : AllocateScratchBuffer<CudaT>(gpu_allocator, kernel, workspace_bytes, compute_stream);
+                            : AllocateScratchBuffer<void>(gpu_allocator, kernel, workspace_bytes, compute_stream);
 
   size_t indices_bytes = 0;
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(cudnn_handle, reduce_desc,
                                                      input_tensor, output_tensor, &indices_bytes));
   auto indices_cuda = indices_bytes == 0
                           ? nullptr
-                          : AllocateScratchBuffer<uint32_t>(gpu_allocator, kernel, indices_bytes, compute_stream);
+                          : AllocateScratchBuffer<void>(gpu_allocator, kernel, indices_bytes, compute_stream);
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
     IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
@@ -500,7 +500,7 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
                                                            input_tensor, output_tensor, &indices_bytes_max));
         auto indices_cuda_max = indices_bytes_max == 0
                                     ? nullptr
-                                    : AllocateScratchBuffer<uint32_t>(gpu_allocator, kernel, indices_bytes_max, compute_stream);
+                                    : AllocateScratchBuffer<void>(gpu_allocator, kernel, indices_bytes_max, compute_stream);
         auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             cudnn_handle, reduce_max_desc, indices_cuda_max.get(), indices_bytes_max,
@@ -788,8 +788,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
         cudnnGetReductionIndicesSize(GetCudnnHandle(ctx), reduce_desc, input_tensor, output_tensor, &indices_bytes));     \
     CUDNN_RETURN_IF_ERROR(                                                                                                \
         cudnnGetReductionWorkspaceSize(GetCudnnHandle(ctx), reduce_desc, input_tensor, output_tensor, &workspace_bytes)); \
-    IAllocatorUniquePtr<uint32_t> indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes, GetComputeStream(ctx));        \
-    IAllocatorUniquePtr<CudaT> workspace_cuda = GetScratchBuffer<CudaT>(workspace_bytes, GetComputeStream(ctx));          \
+    IAllocatorUniquePtr<void> indices_cuda = GetScratchBuffer<void>(indices_bytes, GetComputeStream(ctx));                \
+    IAllocatorUniquePtr<void> workspace_cuda = GetScratchBuffer<void>(workspace_bytes, GetComputeStream(ctx));            \
                                                                                                                           \
     const auto one = Consts<float>::One;                                                                                  \
     const auto zero = Consts<float>::Zero;                                                                                \

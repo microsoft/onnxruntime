@@ -12,6 +12,57 @@ namespace onnxruntime {
 namespace cuda {
 namespace plugin {
 
+namespace {
+
+Status GetTensorElementStorageSize(ONNXTensorElementDataType elem_type, size_t& element_size) {
+  switch (elem_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+      element_size = 1;
+      return Status::OK();
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      element_size = 2;
+      return Status::OK();
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      element_size = 4;
+      return Status::OK();
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
+      element_size = 8;
+      return Status::OK();
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
+      element_size = 16;
+      return Status::OK();
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Scan Transpose: packed sub-byte tensor types are unsupported");
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan Transpose: string tensors are unsupported");
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Scan Transpose: unsupported element type ", static_cast<int>(elem_type));
+  }
+}
+
+}  // namespace
+
 // ===================================================================
 // If kernel
 // ===================================================================
@@ -154,46 +205,22 @@ OrtStatus* ORT_API_CALL PluginScanHelper::TransposeImpl(
     // Determine element size from the data type
     ONNXTensorElementDataType elem_type = input_info.GetElementType();
     size_t element_size = 0;
-    switch (elem_type) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        element_size = sizeof(float);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-        element_size = sizeof(double);
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-        element_size = 2;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-        element_size = 1;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-        element_size = 2;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-        element_size = 4;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-        element_size = 8;
-        break;
-      default:
-        return Ort::Status("Scan Transpose: unsupported element type", ORT_FAIL).release();
+    auto status = GetTensorElementStorageSize(elem_type, element_size);
+    if (!status.IsOK()) {
+      return Ort::Status(status.ErrorMessage().c_str(), ORT_EP_FAIL).release();
     }
 
     const void* input_data = input.GetTensorRawData();
     void* output_data = output.GetTensorMutableData<void>();
 
     // Launch the GPU transpose kernel
-    LaunchTransposeKernel(input_data, output_data,
-                          input_shape.data(), permutation,
-                          num_dims, element_size, total_elements,
-                          cuda_stream);
+    status = LaunchTransposeKernel(input_data, output_data,
+                                   input_shape.data(), permutation,
+                                   num_dims, element_size, total_elements,
+                                   cuda_stream);
+    if (!status.IsOK()) {
+      return Ort::Status(status.ErrorMessage().c_str(), ORT_EP_FAIL).release();
+    }
 
     return nullptr;
   } catch (const std::exception& ex) {
