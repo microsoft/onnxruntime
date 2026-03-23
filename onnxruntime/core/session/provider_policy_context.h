@@ -68,9 +68,6 @@ class ProviderPolicyContext {
                                   std::vector<const OrtEpDevice*>& devices_selected,
                                   std::vector<std::unique_ptr<IExecutionProvider>>& providers);
 
-  Status RegisterExecutionProviders(InferenceSession& sess,
-                                    std::vector<std::unique_ptr<IExecutionProvider>>& providers);
-
  private:
 };
 

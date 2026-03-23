@@ -255,15 +255,6 @@ Status ProviderPolicyContext::LogTelemetry(InferenceSession& sess,
   return Status::OK();
 }
 
-Status ProviderPolicyContext::RegisterExecutionProviders(InferenceSession& sess,
-                                                         std::vector<std::unique_ptr<IExecutionProvider>>& providers) {
-  for (auto& provider : providers) {
-    ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(provider)));
-  }
-
-  return Status::OK();
-}
-
 Status ProviderPolicyContext::CreateExecutionProviders(const Environment& env, InferenceSession& sess,
                                                        std::vector<const OrtEpDevice*>& devices_selected,
                                                        std::vector<std::unique_ptr<IExecutionProvider>>& providers) {
