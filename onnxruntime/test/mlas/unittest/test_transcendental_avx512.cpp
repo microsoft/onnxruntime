@@ -133,7 +133,7 @@ class MlasComputeGeluErfAvx512Test : public MlasTestBase {
 
   void ExecuteCommon(const std::vector<size_t>& sizes, size_t iterations) {
     if (!IsGeluErfAvx512Dispatched()) {
-      GTEST_SKIP() << "AVX512F GELU dispatch is not available on this machine.";
+      GTEST_SKIP() << "AVX512F GELU(erf) dispatch is not available on this machine.";
     }
 
     for (size_t size : sizes) {
@@ -153,7 +153,7 @@ class MlasComputeGeluErfAvx512Test : public MlasTestBase {
         for (size_t i = 0; i < size; ++i) {
           ASSERT_TRUE(UnaryOutputsMatch(public_output[i], generic_output[i],
                                         kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
-              << "Public Gelu mismatch at index " << i << " of " << size
+              << "Public GELU(erf) mismatch at index " << i << " of " << size
               << ", input=" << input[i]
               << ", public=" << public_output[i]
               << ", generic=" << generic_output[i]
@@ -161,7 +161,7 @@ class MlasComputeGeluErfAvx512Test : public MlasTestBase {
 
           ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], generic_output[i],
                                         kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
-              << "Gelu mismatch at index " << i << " of " << size
+              << "GELU(erf) mismatch at index " << i << " of " << size
               << ", input=" << input[i]
               << ", avx512=" << avx512_output[i]
               << ", generic=" << generic_output[i]
@@ -169,7 +169,7 @@ class MlasComputeGeluErfAvx512Test : public MlasTestBase {
 
           ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], public_output[i],
                                         kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
-              << "Public/API Gelu dispatch mismatch at index " << i << " of " << size
+              << "Public/API GELU(erf) dispatch mismatch at index " << i << " of " << size
               << ", input=" << input[i]
               << ", avx512=" << avx512_output[i]
               << ", public=" << public_output[i]

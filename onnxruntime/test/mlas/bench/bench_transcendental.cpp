@@ -161,7 +161,7 @@ void BM_GeluErfDispatchExact(benchmark::State& state) {
 }
 
 void BM_GeluErfUnfusedExact(benchmark::State& state) {
-  // Unfused exact GELU baseline: scale by 1/sqrt(2), run erf, then apply the
+  // Unfused exact GELU(erf) baseline: scale by 1/sqrt(2), run erf, then apply the
   // final 0.5 * x * (erf(x / sqrt(2)) + 1) transform in a separate pass.
   RunUnfusedUnaryBenchmark(
       state,
