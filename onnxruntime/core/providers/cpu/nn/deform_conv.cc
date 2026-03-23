@@ -13,7 +13,6 @@
 
 #include "core/common/common.h"
 #include "core/util/math_cpuonly.h"
-#include "core/common/narrow.h"
 #include "core/util/force_inline.h"
 #include "core/util/math.h"
 
@@ -173,7 +172,7 @@ void BuildAllBilinearSamplingPlansImpl(
           const T base_h = -pad_h + static_cast<T>(i) * dilation_h;
           const T base_w = -pad_w + static_cast<T>(j) * dilation_w;
 
-          const int64_t plan_row_base = row * padded_spatial_count;
+          const size_t plan_row_base = static_cast<size_t>(row) * static_cast<size_t>(padded_spatial_count);
           BilinearSamplePlanBlock<T>* row_plan = sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
 
           BuildBilinearSamplingPlanImpl(
@@ -277,16 +276,18 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
       static_cast<std::ptrdiff_t>(ctx.channels * kernel_size),
       parallel_cost,
       [&](ptrdiff_t begin, ptrdiff_t end) {
+        int64_t c_im = begin / kernel_size;
+        int64_t rem = begin % kernel_size;
+        int64_t i = rem / ctx.kernel_w;
+        int64_t j = rem % ctx.kernel_w;
+
         for (ptrdiff_t idx = begin; idx < end; ++idx) {
-          const int64_t j = static_cast<int64_t>(idx) % ctx.kernel_w;
-          const int64_t i = (static_cast<int64_t>(idx) / ctx.kernel_w) % ctx.kernel_h;
-          const int64_t c_im = static_cast<int64_t>(idx) / kernel_size;
           const int64_t offset_grp = c_im / channel_per_offset_group;
 
           T* col_ptr = ctx.data_col + static_cast<int64_t>(idx) * output_size;
           const T* im_ptr = ctx.data_im + c_im * static_cast<int64_t>(ctx.height) * ctx.width;
           const int64_t row = offset_grp * kernel_size + i * ctx.kernel_w + j;
-          const int64_t plan_row_base = row * ctx.padded_spatial_count;
+          const size_t plan_row_base = static_cast<size_t>(row) * static_cast<size_t>(ctx.padded_spatial_count);
           const BilinearSamplePlanBlock<T>* row_plan = ctx.sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
 
           const T* ptr_mask = nullptr;
@@ -298,6 +299,14 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
 
           FillColRowFromSamplingPlanImpl<T, UseMask>(
               im_ptr, row_plan, output_size, mask_row_base, ptr_mask, col_ptr);
+
+          if (++j == ctx.kernel_w) {
+            j = 0;
+            if (++i == ctx.kernel_h) {
+              i = 0;
+              ++c_im;
+            }
+          }
         }
       });
 }
@@ -351,28 +360,52 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   }
 
   // Precompute common sizes for the im2col + GEMM pipeline.
+  const int64_t int64_max = std::numeric_limits<int64_t>::max();
+  const int64_t ptrdiff_max = static_cast<int64_t>(std::numeric_limits<std::ptrdiff_t>::max());
+
+  ORT_ENFORCE(group > 0 && offset_group > 0 && kH > 0 && kW > 0 && H > 0 && W_in > 0 && out_h > 0 && out_w > 0,
+              "Invalid deform conv dimensions.");
+  ORT_ENFORCE(kH <= int64_max / kW, "kernel_size overflows int64.");
   const int64_t kernel_size = kH * kW;
+  ORT_ENFORCE(out_h <= int64_max / out_w, "output_image_size overflows int64.");
   const int64_t output_image_size = out_h * out_w;
+  ORT_ENFORCE(H <= int64_max / W_in, "input_image_size overflows int64.");
   const int64_t input_image_size = H * W_in;
+  ORT_ENFORCE((C / group) <= int64_max / kernel_size, "kernel_dim overflows int64.");
   const int64_t kernel_dim = C / group * kernel_size;  // K dimension for GEMM: C/group * kH * kW
+  ORT_ENFORCE(offset_group <= int64_max / kernel_size, "plan_rows overflows int64.");
   const int64_t plan_rows = offset_group * kernel_size;
 
-  ORT_ENFORCE(plan_rows >= 0 && output_image_size >= 0, "Invalid plan dimensions.");
+  ORT_ENFORCE(plan_rows > 0 && output_image_size > 0, "Invalid plan dimensions.");
+  ORT_ENFORCE(output_image_size <= std::numeric_limits<int64_t>::max() - (sampling_plan_internal::kPlanAoSoALanes - 1),
+              "output_image_size is too large and will overflow.");
+
   const size_t max_size_t = std::numeric_limits<size_t>::max();
-  ORT_ENFORCE(plan_rows == 0 || static_cast<uint64_t>(output_image_size) <= (max_size_t / static_cast<size_t>(plan_rows)),
+
+  const int64_t padded_spatial_count = (output_image_size + sampling_plan_internal::kPlanAoSoALanes - 1) /
+                                       sampling_plan_internal::kPlanAoSoALanes * sampling_plan_internal::kPlanAoSoALanes;
+  const size_t blocks_per_row = static_cast<size_t>(padded_spatial_count) / sampling_plan_internal::kPlanAoSoALanes;
+
+  ORT_ENFORCE(blocks_per_row <= (max_size_t / static_cast<size_t>(plan_rows)),
               "Sampling plan size overflows size_t.");
+  const size_t block_count = static_cast<size_t>(plan_rows) * blocks_per_row;
+
+  ORT_ENFORCE(plan_rows <= ptrdiff_max, "plan_rows exceeds ptrdiff_t range.");
+  ORT_ENFORCE(C <= int64_max / kernel_size, "im2col row count overflows int64.");
+  const int64_t im2col_rows = C * kernel_size;
+  ORT_ENFORCE(im2col_rows <= ptrdiff_max, "im2col row count exceeds ptrdiff_t range.");
+  ORT_ENFORCE(N <= int64_max / M, "N*M overflows int64.");
+  const int64_t total_work = N * M;
+  ORT_ENFORCE(total_work <= ptrdiff_max, "bias work size exceeds ptrdiff_t range.");
+
   // Col buffer: shape [C*kH*kW, out_h*out_w]. Allocate per-image (process one image at a time)
   // to reduce peak memory when N is large; im2col is implemented per-image anyway.
-  const int64_t col_buffer_size = (C * kernel_size) * output_image_size;
+  ORT_ENFORCE(im2col_rows <= int64_max / output_image_size, "col_buffer_size overflows int64.");
+  const int64_t col_buffer_size = im2col_rows * output_image_size;
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   auto col_buffer = IAllocator::MakeUniquePtr<T>(alloc, SafeInt<size_t>(col_buffer_size));
-
-  const int64_t padded_spatial_count = (output_image_size + sampling_plan_internal::kPlanAoSoALanes - 1) /
-                                       sampling_plan_internal::kPlanAoSoALanes * sampling_plan_internal::kPlanAoSoALanes;
-  const size_t block_count = static_cast<size_t>(plan_rows) * static_cast<size_t>(padded_spatial_count) /
-                             sampling_plan_internal::kPlanAoSoALanes;
 
   ORT_ENFORCE(static_cast<uint64_t>(H) * static_cast<uint64_t>(W_in) <= static_cast<uint64_t>(std::numeric_limits<int>::max()),
               "DeformConv requires H*W to fit in int for sampling indices.");
@@ -427,12 +460,15 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
       T* Y_g = Ydata + n * M * output_image_size + g * (M / group) * output_image_size;
 
       // GEMM: Y = W * Col. W [M/group, kernel_dim], Col [kernel_dim, output_image_size].
+      ORT_ENFORCE((M / group) <= ptrdiff_max, "GEMM M dimension exceeds ptrdiff_t range.");
+      ORT_ENFORCE(output_image_size <= ptrdiff_max, "GEMM N dimension exceeds ptrdiff_t range.");
+      ORT_ENFORCE(kernel_dim <= ptrdiff_max, "GEMM K dimension exceeds ptrdiff_t range.");
       math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
-          narrow<ptrdiff_t>(M / group),          // M
-          narrow<ptrdiff_t>(output_image_size),  // N
-          narrow<ptrdiff_t>(kernel_dim),         // K
+          static_cast<ptrdiff_t>(M / group),          // M
+          static_cast<ptrdiff_t>(output_image_size),  // N
+          static_cast<ptrdiff_t>(kernel_dim),         // K
           static_cast<T>(1),                     // alpha
           weight_g,                              // A
           col_g,                                 // B
@@ -445,7 +481,6 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   // Step 3: Add bias if provided (broadcast over spatial dimensions).
   if (Bdata != nullptr) {
-    int64_t total_work = N * M;
     concurrency::ThreadPool::TryParallelFor(
         thread_pool, static_cast<std::ptrdiff_t>(total_work), static_cast<double>(output_image_size),
         [&](ptrdiff_t first, ptrdiff_t last) {
@@ -454,7 +489,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
             int64_t m_idx = idx % M;
             T* Y_ptr = Ydata + n_idx * M * output_image_size + m_idx * output_image_size;
             // Eigen vectorized add: Y_ptr += Bdata[m_idx] over all spatial positions.
-            EigenVectorArrayMap<T>(Y_ptr, narrow<ptrdiff_t>(output_image_size)) += Bdata[m_idx];
+            EigenVectorArrayMap<T>(Y_ptr, static_cast<ptrdiff_t>(output_image_size)) += Bdata[m_idx];
           }
         });
   }
