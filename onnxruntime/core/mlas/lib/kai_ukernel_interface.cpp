@@ -382,10 +382,10 @@ const KaiBF16SBgemmKernel& GetKleidiAISBGemmUKernel() {
     return sbgemm_gemm_sme2;
 }
 
-const KaiF32SveIMatmulKernel GetKleidiAISveImatmulUKernel() {
+const KaiF32SveIMatmulKernel& GetKleidiAISveImatmulUKernel() {
     return imatmul_sve;
 }
 
-const KaiF32SveKernel GetKleidiAISveSGemmUKernel(){
+const KaiF32SveKernel& GetKleidiAISveSGemmUKernel(){
     return sgemm_gemm_sve;
 }

@@ -637,22 +637,6 @@ MlasGemmBatchSVE(
 )
 {
 
-    if (M == 0 || N == 0 || BatchSize == 0) {
-        return true;
-    }
-    
-    // Match SME alpha/beta behavior: apply beta per-batch when alpha==0 or K==0.
-    if (Data->alpha == 0.0f || K == 0) {
-        if (BatchSize == 1) {
-            ApplyBetaToC(Data->C, Data->ldc, M, N, Data->beta);
-        } else {
-            for (size_t batch = 0; batch < BatchSize; ++batch) {
-                ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
-            }
-        }
-        return true;
-    }
-
     size_t m_step = sgemm_sve.ukernel.get_m_step();
     size_t n_step = sgemm_sve.ukernel.get_n_step();
 
@@ -775,31 +759,6 @@ MlasGemmBatchSME(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    if (M == 0 || N == 0 || BatchSize == 0) {
-        return true;
-    }
-
-    if (K == 0) {
-        for (size_t batch = 0; batch < BatchSize; ++batch) {
-            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
-        }
-        return true;
-    }
-
-    bool all_alpha_zero = true;
-    for (size_t batch = 0; batch < BatchSize; ++batch) {
-        if (Data[batch].alpha != 0.0f) {
-            all_alpha_zero = false;
-            break;
-        }
-    }
-
-    if (all_alpha_zero) {
-        for (size_t batch = 0; batch < BatchSize; ++batch) {
-            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
-        }
-        return true;
-    }
 
     // Attempt GEMV (M==1 or N==1)
     if (M == 1 || N == 1)
@@ -1007,6 +966,34 @@ ArmKleidiAI::MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 )
 {
+    
+    // common alpha beta batch checks done prior to either SME or SVE
+    if (M == 0 || N == 0 || BatchSize == 0) {
+        return true;
+    }
+
+    if (K == 0) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+        }
+        return true;
+    }
+
+    bool all_alpha_zero = true;
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+        if (Data[batch].alpha != 0.0f) {
+            all_alpha_zero = false;
+            break;
+        }
+    }
+
+    if (all_alpha_zero) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+        }
+        return true;
+    }
+    
     // Prefer SME/SME2 when available.
     // Fail fast on unsupported transpose combinations so the caller can fall back to MLAS quickly.
     //
