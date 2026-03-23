@@ -121,15 +121,17 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
         continue;  // Skip non-NVIDIA GPUs
       }
 
+      int32_t current_device_id = factory->ort_api_.HardwareDevice_DeviceId(&device);
+
       OrtKeyValuePairs* ep_metadata = nullptr;
       factory->ort_api_.CreateKeyValuePairs(&ep_metadata);
 
       // Get CUDA device properties for metadata
       int cuda_device_count = 0;
       cudaError_t err = cudaGetDeviceCount(&cuda_device_count);
-      if (err == cudaSuccess && cuda_device_count > 0) {
+      if (err == cudaSuccess && cuda_device_count > 0 && current_device_id < cuda_device_count) {
         cudaDeviceProp prop;
-        cudaGetDeviceProperties(&prop, factory->device_id_);
+        cudaGetDeviceProperties(&prop, current_device_id);
         factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_name", prop.name);
         factory->ort_api_.AddKeyValuePair(
             ep_metadata, "cuda_compute_capability",
@@ -145,9 +147,17 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
         return status;
       }
 
+      Ort::MemoryInfo device_memory_info{"Cuda",
+                                         OrtMemoryInfoDeviceType_GPU,
+                                         factory->vendor_id_,
+                                         static_cast<uint32_t>(current_device_id),
+                                         OrtDeviceMemoryType_DEFAULT,
+                                         /*alignment is default*/ 0,
+                                         OrtAllocatorType::OrtDeviceAllocator};
+
       // Register allocator info for GPU device memory
       RETURN_IF_ERROR(factory->ep_api_.EpDevice_AddAllocatorInfo(
-          ep_device, factory->default_memory_info_));
+          ep_device, device_memory_info));
 
       // Register allocator info for CPU pinned memory (host accessible)
       RETURN_IF_ERROR(factory->ep_api_.EpDevice_AddAllocatorInfo(
@@ -184,6 +194,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   // The read helpers intentionally swallow errors: if a config entry is
   // absent or malformed the default value in Config is kept.
   CudaEp::Config config{};
+  config.device_id = factory->ort_api_.HardwareDevice_DeviceId(devices[0]);
 
   auto read_session_config_bool = [&](const char* key, bool& value) {
     size_t size = 0;
@@ -261,31 +272,18 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
   auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
   *allocator = nullptr;
 
-  const OrtMemoryInfo* default_memory_info_ptr = factory.default_memory_info_.operator OrtMemoryInfo*();
-  const OrtMemoryInfo* pinned_memory_info_ptr = factory.pinned_memory_info_.operator OrtMemoryInfo*();
+  const char* name = "";
+  factory.ort_api_.MemoryInfoGetName(memory_info, &name);
+  int req_device_id = 0;
+  factory.ort_api_.MemoryInfoGetId(memory_info, &req_device_id);
 
-  auto is_equal_memory_info = [&](const OrtMemoryInfo* expected, bool& out_equal) -> OrtStatus* {
-    int is_equal = 0;
-    auto* status = factory.ort_api_.CompareMemoryInfo(memory_info, expected, &is_equal);
-    if (status != nullptr) {
-      return status;
-    }
-    out_equal = (is_equal != 0);
-    return nullptr;
-  };
-
-  bool is_default = false;
-  bool is_pinned = false;
-  RETURN_IF_ERROR(is_equal_memory_info(default_memory_info_ptr, is_default));
-  RETURN_IF_ERROR(is_equal_memory_info(pinned_memory_info_ptr, is_pinned));
-
-  if (is_default) {
-    auto cuda_allocator = std::make_unique<CudaDeviceAllocator>(memory_info, factory.device_id_);
+  if (strcmp(name, "Cuda") == 0) {
+    auto cuda_allocator = std::make_unique<CudaDeviceAllocator>(memory_info, req_device_id);
     *allocator = cuda_allocator.release();
     return nullptr;
   }
 
-  if (is_pinned) {
+  if (strcmp(name, "CudaPinned") == 0) {
     auto pinned_allocator = std::make_unique<CudaPinnedAllocator>(memory_info);
     *allocator = pinned_allocator.release();
     return nullptr;

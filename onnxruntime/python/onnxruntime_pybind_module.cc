@@ -117,7 +117,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "get_available_providers", []() -> std::vector<std::string> {
         auto available = GetAvailableExecutionProviderNames();
 #if !defined(ORT_MINIMAL_BUILD)
-        InlinedHashSet<std::string_view> existing;
+        InlinedHashSet<std::string> existing;
         existing.reserve(available.size());
         for (const auto& ep_name : available) {
           existing.insert(ep_name);
