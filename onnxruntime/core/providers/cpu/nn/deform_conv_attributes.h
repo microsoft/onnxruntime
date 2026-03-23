@@ -73,6 +73,42 @@ struct DeformConvParams {
   bool use_mask{false};  // Whether optional mask input is provided
 };
 
+// Common derived dimensions used by both CPU and CUDA kernels.
+struct DeformConvCommonDims {
+  int64_t kernel_size{0};        // kH * kW
+  int64_t output_image_size{0};  // out_h * out_w
+  int64_t input_image_size{0};   // H * W_in
+  int64_t kernel_dim{0};         // (C / group) * kernel_size
+};
+
+// Validates shared runtime bounds and computes common derived dimensions.
+// This helper is backend-agnostic and intended to be reused by both CPU/CUDA
+// after DeformConvValidateAndParse() succeeds.
+inline Status DeformConvValidateAndComputeCommonDims(const DeformConvParams& params,
+                                                     DeformConvCommonDims& dims) {
+  const int64_t int64_max = std::numeric_limits<int64_t>::max();
+  ORT_RETURN_IF_NOT(params.N > 0 && params.C > 0 && params.M > 0 &&
+                        params.group > 0 && params.offset_group > 0 &&
+                        params.kH > 0 && params.kW > 0 &&
+                        params.H > 0 && params.W_in > 0 &&
+                        params.out_h > 0 && params.out_w > 0,
+                    "Invalid deform conv dimensions.");
+
+  ORT_RETURN_IF_NOT(params.kH <= int64_max / params.kW, "kernel_size overflows int64.");
+  dims.kernel_size = params.kH * params.kW;
+
+  ORT_RETURN_IF_NOT(params.out_h <= int64_max / params.out_w, "output_image_size overflows int64.");
+  dims.output_image_size = params.out_h * params.out_w;
+
+  ORT_RETURN_IF_NOT(params.H <= int64_max / params.W_in, "input_image_size overflows int64.");
+  dims.input_image_size = params.H * params.W_in;
+
+  ORT_RETURN_IF_NOT((params.C / params.group) <= int64_max / dims.kernel_size, "kernel_dim overflows int64.");
+  dims.kernel_dim = (params.C / params.group) * dims.kernel_size;
+
+  return Status::OK();
+}
+
 // Validates inputs and parses attributes into params.
 // Returns Status::OK() on success; on failure, params may be partially filled.
 inline Status DeformConvValidateAndParse(

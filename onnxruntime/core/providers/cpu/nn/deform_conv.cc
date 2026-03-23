@@ -20,6 +20,113 @@ namespace onnxruntime {
 
 namespace {
 
+constexpr int64_t kPlanAoSoALanesForCompute = 8;
+
+ORT_FORCEINLINE size_t CheckedMulSizeT(size_t a, size_t b, size_t max_size_t, const char* err) {
+  ORT_ENFORCE(a == 0 || b <= max_size_t / a, err);
+  return a * b;
+}
+
+ORT_FORCEINLINE void CheckedBatchSpan(size_t n, size_t stride, size_t max_size_t, const char* err) {
+  ORT_ENFORCE(n == 0 || stride <= max_size_t / n, err);
+}
+
+struct CpuDeformConvStrides {
+  size_t x_batch_stride = 0;
+  size_t y_batch_stride = 0;
+  size_t w_group_stride = 0;
+  size_t col_group_stride = 0;
+  size_t y_group_stride = 0;
+  size_t offset_batch_stride = 0;
+  size_t mask_batch_stride = 0;
+};
+
+struct CpuDeformConvExecutionDims {
+  int64_t plan_rows = 0;
+  int64_t padded_spatial_count = 0;
+  size_t block_count = 0;
+  int64_t im2col_rows = 0;
+  int64_t total_work = 0;
+  int64_t col_buffer_size = 0;
+};
+
+inline CpuDeformConvExecutionDims ComputeCpuDeformConvExecutionDims(const DeformConvParams& params,
+                                                                    const DeformConvCommonDims& common_dims,
+                                                                    int64_t ptrdiff_max,
+                                                                    size_t max_size_t) {
+  const int64_t int64_max = std::numeric_limits<int64_t>::max();
+
+  ORT_ENFORCE(params.offset_group <= int64_max / common_dims.kernel_size, "plan_rows overflows int64.");
+  const int64_t plan_rows = params.offset_group * common_dims.kernel_size;
+
+  ORT_ENFORCE(plan_rows > 0 && common_dims.output_image_size > 0, "Invalid plan dimensions.");
+  ORT_ENFORCE(common_dims.output_image_size <= int64_max - (kPlanAoSoALanesForCompute - 1),
+              "output_image_size is too large and will overflow.");
+  const int64_t padded_spatial_count = (common_dims.output_image_size + kPlanAoSoALanesForCompute - 1) /
+                                       kPlanAoSoALanesForCompute * kPlanAoSoALanesForCompute;
+  const size_t blocks_per_row = static_cast<size_t>(padded_spatial_count) / kPlanAoSoALanesForCompute;
+  ORT_ENFORCE(blocks_per_row <= (max_size_t / static_cast<size_t>(plan_rows)),
+              "Sampling plan size overflows size_t.");
+  const size_t block_count = static_cast<size_t>(plan_rows) * blocks_per_row;
+
+  ORT_ENFORCE(plan_rows <= ptrdiff_max, "plan_rows exceeds ptrdiff_t range.");
+  ORT_ENFORCE(params.C <= int64_max / common_dims.kernel_size, "im2col row count overflows int64.");
+  const int64_t im2col_rows = params.C * common_dims.kernel_size;
+  ORT_ENFORCE(im2col_rows <= ptrdiff_max, "im2col row count exceeds ptrdiff_t range.");
+  ORT_ENFORCE(params.N <= int64_max / params.M, "N*M overflows int64.");
+  const int64_t total_work = params.N * params.M;
+  ORT_ENFORCE(total_work <= ptrdiff_max, "bias work size exceeds ptrdiff_t range.");
+  ORT_ENFORCE(im2col_rows <= int64_max / common_dims.output_image_size, "col_buffer_size overflows int64.");
+  const int64_t col_buffer_size = im2col_rows * common_dims.output_image_size;
+
+  return CpuDeformConvExecutionDims{
+      plan_rows,
+      padded_spatial_count,
+      block_count,
+      im2col_rows,
+      total_work,
+      col_buffer_size};
+}
+
+inline CpuDeformConvStrides ComputeCpuDeformConvStrides(const DeformConvParams& params,
+                                                        const DeformConvCommonDims& common_dims,
+                                                        size_t max_size_t) {
+  const size_t c_size = static_cast<size_t>(params.C);
+  const size_t m_size = static_cast<size_t>(params.M);
+  const size_t n_size = static_cast<size_t>(params.N);
+  const size_t group_size = static_cast<size_t>(params.group);
+  const size_t offset_group_size = static_cast<size_t>(params.offset_group);
+  const size_t input_image_size_sz = static_cast<size_t>(common_dims.input_image_size);
+  const size_t output_image_size_sz = static_cast<size_t>(common_dims.output_image_size);
+  const size_t kernel_size_sz = static_cast<size_t>(common_dims.kernel_size);
+  const size_t kernel_dim_sz = static_cast<size_t>(common_dims.kernel_dim);
+  const size_t m_per_group_sz = m_size / group_size;
+
+  CpuDeformConvStrides strides;
+  strides.x_batch_stride = CheckedMulSizeT(c_size, input_image_size_sz, max_size_t, "X batch stride overflows size_t.");
+  strides.y_batch_stride = CheckedMulSizeT(m_size, output_image_size_sz, max_size_t, "Y batch stride overflows size_t.");
+  strides.w_group_stride = CheckedMulSizeT(m_per_group_sz, kernel_dim_sz, max_size_t, "weight group stride overflows size_t.");
+  strides.col_group_stride = CheckedMulSizeT(kernel_dim_sz, output_image_size_sz, max_size_t, "col group stride overflows size_t.");
+  strides.y_group_stride = CheckedMulSizeT(m_per_group_sz, output_image_size_sz, max_size_t, "Y group stride overflows size_t.");
+
+  const size_t offset_rows = CheckedMulSizeT(
+      CheckedMulSizeT(offset_group_size, kernel_size_sz, max_size_t, "offset rows overflows size_t."),
+      static_cast<size_t>(2), max_size_t, "offset rows overflows size_t.");
+  strides.offset_batch_stride = CheckedMulSizeT(offset_rows, output_image_size_sz, max_size_t, "offset batch stride overflows size_t.");
+
+  const size_t mask_rows = CheckedMulSizeT(offset_group_size, kernel_size_sz, max_size_t, "mask rows overflows size_t.");
+  strides.mask_batch_stride = CheckedMulSizeT(mask_rows, output_image_size_sz, max_size_t, "mask batch stride overflows size_t.");
+
+  CheckedBatchSpan(n_size, strides.x_batch_stride, max_size_t, "X batch indexing overflows size_t.");
+  CheckedBatchSpan(n_size, strides.y_batch_stride, max_size_t, "Y batch indexing overflows size_t.");
+  CheckedBatchSpan(n_size, strides.offset_batch_stride, max_size_t, "offset batch indexing overflows size_t.");
+  if (params.use_mask) {
+    CheckedBatchSpan(n_size, strides.mask_batch_stride, max_size_t, "mask batch indexing overflows size_t.");
+  }
+
+  return strides;
+}
+
 namespace sampling_plan_internal {
 
 constexpr int64_t kPlanAoSoALanes = 8;
@@ -359,49 +466,38 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  // Precompute common sizes for the im2col + GEMM pipeline.
-  const int64_t int64_max = std::numeric_limits<int64_t>::max();
+  // 1) Shared (CPU/CUDA) runtime bounds + derived dimensions.
   const int64_t ptrdiff_max = static_cast<int64_t>(std::numeric_limits<std::ptrdiff_t>::max());
 
-  ORT_ENFORCE(group > 0 && offset_group > 0 && kH > 0 && kW > 0 && H > 0 && W_in > 0 && out_h > 0 && out_w > 0,
-              "Invalid deform conv dimensions.");
-  ORT_ENFORCE(kH <= int64_max / kW, "kernel_size overflows int64.");
-  const int64_t kernel_size = kH * kW;
-  ORT_ENFORCE(out_h <= int64_max / out_w, "output_image_size overflows int64.");
-  const int64_t output_image_size = out_h * out_w;
-  ORT_ENFORCE(H <= int64_max / W_in, "input_image_size overflows int64.");
-  const int64_t input_image_size = H * W_in;
-  ORT_ENFORCE((C / group) <= int64_max / kernel_size, "kernel_dim overflows int64.");
-  const int64_t kernel_dim = C / group * kernel_size;  // K dimension for GEMM: C/group * kH * kW
-  ORT_ENFORCE(offset_group <= int64_max / kernel_size, "plan_rows overflows int64.");
-  const int64_t plan_rows = offset_group * kernel_size;
-
-  ORT_ENFORCE(plan_rows > 0 && output_image_size > 0, "Invalid plan dimensions.");
-  ORT_ENFORCE(output_image_size <= std::numeric_limits<int64_t>::max() - (sampling_plan_internal::kPlanAoSoALanes - 1),
-              "output_image_size is too large and will overflow.");
-
+  DeformConvCommonDims common_dims;
+  ORT_RETURN_IF_ERROR(DeformConvValidateAndComputeCommonDims(params, common_dims));
+  const int64_t kernel_size = common_dims.kernel_size;
+  const int64_t output_image_size = common_dims.output_image_size;
+  const int64_t input_image_size = common_dims.input_image_size;
+  const int64_t kernel_dim = common_dims.kernel_dim;  // K dimension for GEMM: C/group * kH * kW
   const size_t max_size_t = std::numeric_limits<size_t>::max();
-
-  const int64_t padded_spatial_count = (output_image_size + sampling_plan_internal::kPlanAoSoALanes - 1) /
-                                       sampling_plan_internal::kPlanAoSoALanes * sampling_plan_internal::kPlanAoSoALanes;
-  const size_t blocks_per_row = static_cast<size_t>(padded_spatial_count) / sampling_plan_internal::kPlanAoSoALanes;
-
-  ORT_ENFORCE(blocks_per_row <= (max_size_t / static_cast<size_t>(plan_rows)),
-              "Sampling plan size overflows size_t.");
-  const size_t block_count = static_cast<size_t>(plan_rows) * blocks_per_row;
-
-  ORT_ENFORCE(plan_rows <= ptrdiff_max, "plan_rows exceeds ptrdiff_t range.");
-  ORT_ENFORCE(C <= int64_max / kernel_size, "im2col row count overflows int64.");
-  const int64_t im2col_rows = C * kernel_size;
-  ORT_ENFORCE(im2col_rows <= ptrdiff_max, "im2col row count exceeds ptrdiff_t range.");
-  ORT_ENFORCE(N <= int64_max / M, "N*M overflows int64.");
-  const int64_t total_work = N * M;
-  ORT_ENFORCE(total_work <= ptrdiff_max, "bias work size exceeds ptrdiff_t range.");
-
+  const CpuDeformConvExecutionDims exec_dims = ComputeCpuDeformConvExecutionDims(params, common_dims, ptrdiff_max, max_size_t);
+  const int64_t padded_spatial_count = exec_dims.padded_spatial_count;
+  const size_t block_count = exec_dims.block_count;
+  const int64_t total_work = exec_dims.total_work;
   // Col buffer: shape [C*kH*kW, out_h*out_w]. Allocate per-image (process one image at a time)
   // to reduce peak memory when N is large; im2col is implemented per-image anyway.
-  ORT_ENFORCE(im2col_rows <= int64_max / output_image_size, "col_buffer_size overflows int64.");
-  const int64_t col_buffer_size = im2col_rows * output_image_size;
+  const int64_t col_buffer_size = exec_dims.col_buffer_size;
+
+  // 4) Pointer-stride precompute (validated once, reused in hot loop).
+  const CpuDeformConvStrides strides = ComputeCpuDeformConvStrides(params, common_dims, max_size_t);
+  const size_t x_batch_stride = strides.x_batch_stride;
+  const size_t y_batch_stride = strides.y_batch_stride;
+  const size_t w_group_stride = strides.w_group_stride;
+  const size_t col_group_stride = strides.col_group_stride;
+  const size_t y_group_stride = strides.y_group_stride;
+  const size_t offset_batch_stride = strides.offset_batch_stride;
+  const size_t mask_batch_stride = strides.mask_batch_stride;
+
+  // 5) GEMM call-site bounds (checked once outside group loop).
+  ORT_ENFORCE((M / group) <= ptrdiff_max, "GEMM M dimension exceeds ptrdiff_t range.");
+  ORT_ENFORCE(output_image_size <= ptrdiff_max, "GEMM N dimension exceeds ptrdiff_t range.");
+  ORT_ENFORCE(kernel_dim <= ptrdiff_max, "GEMM K dimension exceeds ptrdiff_t range.");
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -422,22 +518,18 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
   // Process each image in the batch.
   for (int64_t n = 0; n < N; ++n) {
+    const size_t n_idx = static_cast<size_t>(n);
     // Step 1: Deformable Im2Col for image n.
     // Gather deformed samples into col buffer for GEMM.
-    const T* X_curr = Xdata + n * (C * input_image_size);
-    const T* offset_curr = offset_data + n * (offset_group * 2 * kernel_size * output_image_size);
-    const T* mask_curr = use_mask ? (mask_data + n * (offset_group * kernel_size * output_image_size)) : nullptr;
+    const T* X_curr = Xdata + n_idx * x_batch_stride;
+    const T* offset_curr = offset_data + n_idx * offset_batch_stride;
+    const T* mask_curr = use_mask ? (mask_data + n_idx * mask_batch_stride) : nullptr;
     T* col_buffer_ptr = col_buffer.get();
 
     sampling_plan_internal::DeformableIm2colContext<T> im2col_ctx{
         X_curr, offset_curr, mask_curr,
         static_cast<int>(H), static_cast<int>(W_in),
-        kH, kW, pad_h, pad_w, stride_h, stride_w,
-        dilation_h, dilation_w,
-        C,
-        offset_group,
-        out_h,
-        out_w,
+        kH, kW, pad_h, pad_w, stride_h, stride_w, dilation_h, dilation_w, C, offset_group, out_h, out_w,
         padded_spatial_count,
         plan_blocks.get(),
         col_buffer_ptr,
@@ -450,19 +542,17 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
     // Step 2: GEMM for each group. Y = W * Col (per group).
     for (int64_t g = 0; g < group; ++g) {
+      const size_t g_idx = static_cast<size_t>(g);
       // Weight for group g: shape [M/group, C/group, kH, kW], row-major.
-      const T* weight_g = Wdata + g * (M / group) * kernel_dim;
+      const T* weight_g = Wdata + g_idx * w_group_stride;
 
       // Col rows for group g: layout [C*kH*kW, out_h*out_w], group g spans rows [g*kernel_dim, (g+1)*kernel_dim).
-      const T* col_g = col_buffer_ptr + g * kernel_dim * output_image_size;
+      const T* col_g = col_buffer_ptr + g_idx * col_group_stride;
 
       // Output slice for group g: [n, g*M/group:(g+1)*M/group, out_h, out_w].
-      T* Y_g = Ydata + n * M * output_image_size + g * (M / group) * output_image_size;
+      T* Y_g = Ydata + n_idx * y_batch_stride + g_idx * y_group_stride;
 
       // GEMM: Y = W * Col. W [M/group, kernel_dim], Col [kernel_dim, output_image_size].
-      ORT_ENFORCE((M / group) <= ptrdiff_max, "GEMM M dimension exceeds ptrdiff_t range.");
-      ORT_ENFORCE(output_image_size <= ptrdiff_max, "GEMM N dimension exceeds ptrdiff_t range.");
-      ORT_ENFORCE(kernel_dim <= ptrdiff_max, "GEMM K dimension exceeds ptrdiff_t range.");
       math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
