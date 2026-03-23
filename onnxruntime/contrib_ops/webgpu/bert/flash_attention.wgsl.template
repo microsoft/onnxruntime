@@ -212,6 +212,7 @@ $MAIN {
     return;
   }
 
+  // Load Q
   let q_idx_global = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x + local_idx;
   let valid_q = q_idx_global < uniforms.new_sequence_length;
   if (valid_q) {
