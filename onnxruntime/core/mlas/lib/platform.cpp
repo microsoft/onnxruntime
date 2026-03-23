@@ -283,7 +283,7 @@ Return Value:
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
     this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
-        this->GeluErfKernelRoutine = MlasGeluErfKernel;
+    this->GeluErfKernelRoutine = MlasGeluErfKernel;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->SiluKernelRoutine = MlasSiluKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
