@@ -45,16 +45,18 @@ else
     BUILD_ARGS+=('--build_dir' 'build')
 fi
 
-if [ -x "$(command -v ccache)" ]; then
-    ccache -s;
+if command -v ccache &> /dev/null; then
+    ccache --zero-stats
     BUILD_ARGS+=("--use_cache")
 fi
+
 if [ -f /opt/python/cp312-cp312/bin/python3 ]; then
     PATH=/opt/python/cp312-cp312/bin:$PATH /opt/python/cp312-cp312/bin/python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
 else
     python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
 fi
-if [ -x "$(command -v ccache)" ]; then
-    ccache -sv
-    ccache -z
+
+if command -v ccache &> /dev/null; then
+    # FIXME: can't use `-vv` for extra details b/c we're shipping with a decrepit version of ccache (3.something) that doesn't support it.
+    ccache --show-stats # -vv
 fi

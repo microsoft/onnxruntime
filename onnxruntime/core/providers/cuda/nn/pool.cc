@@ -57,9 +57,13 @@ POOLING_KERNEL(AveragePool, float, AveragePool, 22, kOnnxDomain, false)
 POOLING_KERNEL(AveragePool, double, AveragePool, 22, kOnnxDomain, false)
 POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 22, kOnnxDomain, false)
 POOLING_KERNEL(AveragePool, BFloat16, AveragePool, 22, kOnnxDomain, false)
-POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, kOnnxDomain, false)
-POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 1, kOnnxDomain, false)
-POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kOnnxDomain, false)
+// GlobalAveragePool opsets 1-22 share the same CUDA implementation for the currently supported types.
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, float, AveragePool, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, double, AveragePool, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, MLFloat16, AveragePool, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 22, kOnnxDomain, false)
 POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<1>, 1, 7, kOnnxDomain, false)
 POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<1>, 1, 7, kOnnxDomain, false)
 POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<1>, 1, 7, kOnnxDomain, false)
@@ -78,9 +82,13 @@ POOLING_KERNEL_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 12, kOnnxDomain, fal
 POOLING_KERNEL_WITH_INDICES(MaxPool, int8_t, MaxPool<8>, 12, kOnnxDomain, false)
 POOLING_KERNEL_WITH_INDICES(MaxPool, uint8_t, MaxPool<8>, 12, kOnnxDomain, false)
 
-POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1, kOnnxDomain, false)
-POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1, kOnnxDomain, false)
-POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, kOnnxDomain, false)
+// GlobalMaxPool opsets 1-22 share the same CUDA implementation for the currently supported types.
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, float, MaxPool<1>, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, double, MaxPool<1>, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 22, kOnnxDomain, false)
+POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 22, kOnnxDomain, false)
+POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 22, kOnnxDomain, false)
 
 // NHWC variants
 #ifdef ENABLE_CUDA_NHWC_OPS
@@ -97,8 +105,10 @@ POOLING_KERNEL_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 12, kMSInternalNHWCD
 POOLING_KERNEL_WITH_INDICES(MaxPool, int8_t, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_WITH_INDICES(MaxPool, uint8_t, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
 
-POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1, kMSInternalNHWCDomain, true)
-POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, float, MaxPool<1>, 1, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 22, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 22, kMSInternalNHWCDomain, true)
 
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 7, 9, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 7, 9, kMSInternalNHWCDomain, true)
@@ -111,8 +121,10 @@ POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 19, 21, kMSInternalNHW
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 19, 21, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(AveragePool, float, AveragePool, 22, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 22, kMSInternalNHWCDomain, true)
-POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, kMSInternalNHWCDomain, true)
-POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, float, AveragePool, 1, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, MLFloat16, AveragePool, 1, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 22, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 22, kMSInternalNHWCDomain, true)
 #endif
 
 class CudnnPoolingDescriptor final {

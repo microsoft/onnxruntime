@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cpu/llm/rotary_embedding_helper.h"
 #include "core/providers/cuda/llm/rotary_embedding.h"
 #include "core/providers/cuda/llm/rotary_embedding_impl.h"
@@ -64,20 +65,22 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  // Launch rotary embedding kernel
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  // Launch rotary embedding kernel.
+  // OrtToCudaType maps BFloat16 → __nv_bfloat16 (native HW arithmetic on SM80+),
+  // unlike ToCudaType which maps BFloat16 → BFloat16 (arithmetic via float promotion).
+  using NativeCudaT = typename OrtToCudaType<T>::type;
   auto& device_prop = GetDeviceProp();
 
   // Handle optional position_ids - pass nullptr if position_ids is null
   const int64_t* position_ids_data = (position_ids != nullptr) ? position_ids->Data<int64_t>() : nullptr;
 
-  return LaunchRotaryEmbeddingKernel<CudaT>(
+  return LaunchRotaryEmbeddingKernel<NativeCudaT>(
       Stream(context),
-      reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-      reinterpret_cast<const CudaT*>(input->template Data<T>()),
+      reinterpret_cast<NativeCudaT*>(output->template MutableData<T>()),
+      reinterpret_cast<const NativeCudaT*>(input->template Data<T>()),
       position_ids_data,
-      reinterpret_cast<const CudaT*>(cos_cache->template Data<T>()),
-      reinterpret_cast<const CudaT*>(sin_cache->template Data<T>()),
+      reinterpret_cast<const NativeCudaT*>(cos_cache->template Data<T>()),
+      reinterpret_cast<const NativeCudaT*>(sin_cache->template Data<T>()),
       parameters.batch_size,
       parameters.sequence_length,
       parameters.num_heads,
