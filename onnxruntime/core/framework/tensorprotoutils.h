@@ -539,19 +539,33 @@ Status TensorProtoWithExternalDataToTensorProto(
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
 /// <summary>
-/// Validates if the external data path is under the model directory.
-/// If the model is a symlink, it checks against both the logical model directory (base_dir)
-/// and the real/canonical directory of the model.
-/// If the `base_dir` is empty, the function only ensures that `location` is not an absolute path.
+/// Validates that the given external data path is not an absolute path, is under the model directory
+/// (after resolving symlinks), and exists.
+///
+/// The model path can be empty if the model is loaded from bytes and the application did not specify a directory
+/// for external data files. In this case, the external data path must be contained under the current working
+/// directory.
+///
+/// The model path can point to a non-existing model file if the model is loaded from bytes and the application
+/// specified a directory for external data files via the session config entry
+/// `kOrtSessionOptionsModelExternalInitializersFileFolderPath`. In this case, the model_path is set to
+/// "<kOrtSessionOptionsModelExternalInitializersFileFolderPath> / virtual_model.onnx" and the external data path
+/// must be contained under `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
+///
+/// If the model itself is a symlink, this function checks against both the directory containing the symlink
+/// and the real/canonical directory of the model after resolving all symlinks.
+///
+/// On WASM builds, this function skips most validation (except checks for non-empty/non-absolute path) if we are
+/// unable to query the current working directory, as this indicates that the WASM environment does not have
+/// a valid filesystem. If skipped, an ExternalDataLoader will validate the location and contents of the
+/// external data file at the time of access.
 /// </summary>
-/// <param name="base_dir">Logical model location directory</param>
-/// <param name="location">Location string retrieved from TensorProto external data</param>
-/// <param name="model_path">Optional path to the model file, used for canonical path validation if base_dir check fails</param>
-/// <returns>The function will fail if the resolved full path is not under the logical model directory
-///          nor the real directory of the model path</returns>
-Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location,
-                                const std::filesystem::path& model_path = {});
+/// <param name="model_path">Path to the model file. Can be empty or point to a virtual file.</param>
+/// <param name="external_data_path">External data file path to be validated.
+/// Retrieved from TensorProto external data info</param>
+/// <returns>The function will fail if the resolved `external_data_path` path is not under the model directory</returns>
+Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                const std::filesystem::path& external_data_path);
 
 #endif  // !defined(SHARED_PROVIDER)
 

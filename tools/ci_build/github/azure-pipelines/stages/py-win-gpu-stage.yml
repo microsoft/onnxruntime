@@ -122,6 +122,7 @@ stages:
             --enable_pybind
             --enable_onnx_tests
             --parallel
+            --nvcc_threads 1
             --use_vcpkg
             --use_vcpkg_ms_internal_asset_cache
             --use_binskim_compliant_compile_flags

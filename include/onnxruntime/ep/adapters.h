@@ -42,6 +42,7 @@
   using DataTransferManager = onnxruntime::ep::adapter::DataTransferManager;        \
   namespace logging {                                                               \
   using Logger = onnxruntime::ep::adapter::Logger;                                  \
+  using LoggingManager = onnxruntime::ep::adapter::LoggingManager;                  \
   }
 
 namespace onnxruntime {

@@ -22,6 +22,7 @@ static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
 static const std::string ONNX_MODEL_FILENAME = "onnx_model_filename";
 static const std::string PARTITION_NAME = "partition_name";
 static const std::string SDK_VERSION = "ep_sdk_version";
+static const std::string SOURCE = "source";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 
 // TensorRT does not currently expose a header size define; keep in sync with TRT engine serialization header size.

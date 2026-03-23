@@ -115,7 +115,7 @@ inline const wchar_t* GetDateFormatString<wchar_t>() {
   return L"%Y-%m-%d_%H-%M-%S";
 }
 #endif
-// TODO: use LoggingManager::GetTimestamp and date::operator<<
+// TODO: use LoggingManager::GetTimestamp and operator<<
 // (see ostream_sink.cc for an example)
 // to simplify this and match the log file timestamp format.
 template <typename T>
@@ -2636,7 +2636,7 @@ common::Status InferenceSession::Initialize() {
 
     // and log telemetry
     std::filesystem::path model_path = graph.ModelPath();
-    std::string model_file_name = model_path.filename().string();
+    std::string model_file_name = PathToUTF8String(model_path.filename().native());
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
@@ -4120,7 +4120,7 @@ void InferenceSession::LogAllSessions() {
     if (nullptr != model) {
       onnxruntime::Graph& graph = model->MainGraph();
       std::filesystem::path model_path = graph.ModelPath();
-      std::string model_file_name = model_path.filename().string();
+      std::string model_file_name = PathToUTF8String(model_path.filename().native());
       bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
       std::string model_weight_type = session->GetWeightDataType();
       std::string model_graph_hash = session->GetGraphHash();

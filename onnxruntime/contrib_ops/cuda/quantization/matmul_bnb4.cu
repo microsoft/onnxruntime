@@ -3,10 +3,10 @@
 
 #include <type_traits>
 
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include "contrib_ops/cuda/quantization/dequantize_blockwise_bnb4.cuh"
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "matmul_bnb4.cuh"
 
 namespace onnxruntime {

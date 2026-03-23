@@ -379,8 +379,8 @@ class GPUProfilerBase : public EpProfiler {
   void MergeEvents(std::map<uint64_t, Events>& events_to_merge, Events& events) {
     Events merged_events;
 
-    auto event_iter = std::make_move_iterator(events.begin());
-    auto event_end = std::make_move_iterator(events.end());
+    auto event_iter = events.begin();
+    auto event_end = events.end();
     for (auto& map_iter : events_to_merge) {
       if (map_iter.second.empty()) {
         continue;
@@ -395,7 +395,7 @@ class GPUProfilerBase : public EpProfiler {
               (event_iter->ts == ts &&
                (event_iter + 1) != event_end &&
                (event_iter + 1)->ts == ts))) {
-        merged_events.emplace_back(*event_iter);
+        merged_events.emplace_back(*std::make_move_iterator(event_iter));
         ++event_iter;
       }
 
@@ -409,7 +409,7 @@ class GPUProfilerBase : public EpProfiler {
         copy_op_names = true;
         op_name = event_iter->args["op_name"];
         parent_name = event_iter->name;
-        merged_events.emplace_back(*event_iter);
+        merged_events.emplace_back(*std::make_move_iterator(event_iter));
         ++event_iter;
       }
 
@@ -428,7 +428,9 @@ class GPUProfilerBase : public EpProfiler {
     }
 
     // move any remaining events
-    merged_events.insert(merged_events.end(), event_iter, event_end);
+    merged_events.insert(merged_events.end(),
+                         std::make_move_iterator(event_iter),
+                         std::make_move_iterator(event_end));
     std::swap(events, merged_events);
   }
 
