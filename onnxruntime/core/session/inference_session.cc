@@ -254,35 +254,6 @@ Status GetMinimalBuildOptimizationHandling(
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-// Note: this check is used by the default lazy per-session thread-pool behavior
-// (`session.create_threadpools_only_for_cpu_nodes=1`).
-// It is based on visible, finalized EP assignment in the Graph and may not detect:
-// 1) CPU fallback performed internally by a non-CPU execution provider.
-// 2) CPU work hidden inside a compiled/fused kernel where subgraphs are no longer visible.
-// Set `session.create_threadpools_only_for_cpu_nodes=0` to restore legacy behavior
-// (always create per-session thread pools when use_per_session_threads is enabled).
-// NOTE: This recursive traversal visits all nodes and subgraphs.
-// It runs once during Initialize() so the cost is acceptable,
-// but may be non-trivial for models with deeply nested subgraphs.
-static bool GraphHasCpuNodesInternal(const Graph& graph) {
-  for (const auto& node : graph.Nodes()) {
-    const auto& node_provider = node.GetExecutionProviderType();
-    if (node_provider.empty() || node_provider == kCpuExecutionProvider) {
-      return true;
-    }
-
-    if (node.ContainsSubgraph()) {
-      for (const auto& subgraph : node.GetSubgraphs()) {
-        if (GraphHasCpuNodesInternal(*subgraph)) {
-          return true;
-        }
-      }
-    }
-  }
-
-  return false;
-}
-
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
@@ -453,7 +424,92 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   use_per_session_threads_ = session_options.use_per_session_threads;
   force_spinning_stop_between_runs_ = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigForceSpinningStop, "0") == "1";
 
-  if (!use_per_session_threads_) {
+  if (use_per_session_threads_) {
+    LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
+    {
+      if (!external_intra_op_thread_pool_) {
+        bool allow_intra_op_spinning =
+#if !defined(ORT_CLIENT_PACKAGE_BUILD)
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
+#else
+            // default KOrtSessionOptionsConfigAllowIntraOpSpinning to "0" for ORT builds targeting client/on-device workloads,
+            // to reduce CPU utilization and improve power efficiency.
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0") == "1";
+#endif
+        OrtThreadPoolParams to = session_options_.intra_op_param;
+        std::basic_stringstream<ORTCHAR_T> ss;
+        if (to.name) {
+          ss << to.name << ORT_TSTR("-");
+        }
+        ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
+        thread_pool_name_ = ss.str();
+        to.name = thread_pool_name_.c_str();
+        to.set_denormal_as_zero = set_denormal_as_zero;
+        // If the thread pool can use all the processors, then
+        // we set affinity of each thread to each processor.
+        to.allow_spinning = allow_intra_op_spinning;
+        to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
+        LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
+
+        // Set custom threading functions
+        to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+        to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+        to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+        if (session_options_.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, to.affinity_str)) {
+          ORT_ENFORCE(!to.affinity_str.empty(), "Affinity string must not be empty");
+        }
+        to.auto_set_affinity = to.thread_pool_size == 0 &&
+                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
+                               to.affinity_str.empty();
+
+        if (to.custom_create_thread_fn) {
+          ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
+        }
+
+        thread_pool_ =
+            concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+      }
+    }
+    if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
+      if (!external_inter_op_thread_pool_) {
+        bool allow_inter_op_spinning =
+#if !defined(ORT_CLIENT_PACKAGE_BUILD)
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
+#else
+            // default kOrtSessionOptionsConfigAllowInterOpSpinning to "0" for ORT builds targeting client/on-device workloads,
+            // to reduce CPU utilization and improve power efficiency.
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "0") == "1";
+#endif
+        OrtThreadPoolParams to = session_options_.inter_op_param;
+        to.auto_set_affinity = to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
+        std::basic_stringstream<ORTCHAR_T> ss;
+        if (to.name) {
+          ss << to.name << ORT_TSTR("-");
+        }
+        ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-inter-op");
+        inter_thread_pool_name_ = ss.str();
+        to.name = inter_thread_pool_name_.c_str();
+        to.set_denormal_as_zero = set_denormal_as_zero;
+        to.allow_spinning = allow_inter_op_spinning;
+        to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
+
+        // Set custom threading functions
+        to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+        to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+        to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+
+        if (to.custom_create_thread_fn) {
+          ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
+        }
+        inter_op_thread_pool_ =
+            concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+        if (inter_op_thread_pool_ == nullptr) {
+          LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
+          session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+        }
+      }
+    }
+  } else {
     LOGS(*session_logger_, INFO) << "Using global/env threadpools since use_per_session_threads_ is false";
     intra_op_thread_pool_from_env_ = session_env.GetIntraOpThreadPool();
     inter_op_thread_pool_from_env_ = session_env.GetInterOpThreadPool();
@@ -548,170 +604,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
 
 #endif
-}
-
-bool InferenceSession::GraphHasCpuNodes() const {
-  return GraphHasCpuNodesInternal(model_->MainGraph());
-}
-
-void InferenceSession::CreateIntraOpThreadPoolIfNeeded() {
-  if (external_intra_op_thread_pool_ || thread_pool_) {
-    return;
-  }
-
-  const bool set_denormal_as_zero =
-      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
-
-  bool allow_intra_op_spinning =
-#if !defined(ORT_CLIENT_PACKAGE_BUILD)
-      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
-#else
-      // default KOrtSessionOptionsConfigAllowIntraOpSpinning to "0" for ORT builds targeting client/on-device workloads,
-      // to reduce CPU utilization and improve power efficiency.
-      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0") == "1";
-#endif
-  OrtThreadPoolParams to = session_options_.intra_op_param;
-  std::basic_stringstream<ORTCHAR_T> ss;
-  if (to.name) {
-    ss << to.name << ORT_TSTR("-");
-  }
-  ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
-  thread_pool_name_ = ss.str();
-  to.name = thread_pool_name_.c_str();
-  to.set_denormal_as_zero = set_denormal_as_zero;
-  // If the thread pool can use all the processors, then
-  // we set affinity of each thread to each processor.
-  to.allow_spinning = allow_intra_op_spinning;
-  to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
-  LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
-
-  // Set custom threading functions
-  to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
-  to.custom_thread_creation_options = session_options_.custom_thread_creation_options;
-  to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
-  if (session_options_.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, to.affinity_str)) {
-    ORT_ENFORCE(!to.affinity_str.empty(), "Affinity string must not be empty");
-  }
-  to.auto_set_affinity = to.thread_pool_size == 0 &&
-                         session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
-                         to.affinity_str.empty();
-
-  if (to.custom_create_thread_fn) {
-    ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
-  }
-
-  thread_pool_ =
-      concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-}
-
-void InferenceSession::EnsureIntraOpThreadPoolInitialized() {
-  if (!use_per_session_threads_) {
-    return;
-  }
-
-  // `use_per_session_threads_` and `force_spinning_stop_between_runs_` are safe
-  // to read without a lock - they are immutable after construction.
-  std::lock_guard<std::mutex> l(session_mutex_);
-
-  if (external_intra_op_thread_pool_ || thread_pool_) {
-    return;
-  }
-
-  // RunAsync schedules work on the intra-op pool. With default lazy per-session
-  // behavior we may skip pool creation at Initialize() for graphs without CPU
-  // nodes, so we create intra-op here on first use.
-  LOGS(*session_logger_, VERBOSE)
-      << "Lazily creating per-session intra-op thread-pool on first use.";
-  CreateIntraOpThreadPoolIfNeeded();
-
-  if (session_state_) {
-    session_state_->InitializeThreadPools(GetIntraOpThreadPoolToUse(),
-                                          GetInterOpThreadPoolToUse());
-  } else if (thread_pool_ || external_intra_op_thread_pool_) {
-    LOGS(*session_logger_, WARNING)
-        << "SessionState is null when per-session intra-op thread pool is lazily initialized";
-  }
-}
-
-void InferenceSession::InitializeThreadPoolsIfNeeded() {
-  if (!use_per_session_threads_) {
-    return;
-  }
-
-  const bool create_threadpools_only_for_cpu_nodes =
-      session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes, "1") == "1";
-
-  bool should_create_per_session_threadpools = true;
-  bool has_cpu_nodes = true;
-  if (create_threadpools_only_for_cpu_nodes) {
-    has_cpu_nodes = GraphHasCpuNodes();
-    if (!has_cpu_nodes) {
-      LOGS(*session_logger_, VERBOSE)
-          << "Skipping per-session thread-pool creation (default lazy-init behavior) because finalized graph "
-             "has no CPU-assigned nodes. "
-          << "use_per_session_threads=" << (use_per_session_threads_ ? "true" : "false")
-          << ", has_cpu_nodes=" << (has_cpu_nodes ? "true" : "false")
-          << ", " << kOrtSessionOptionsConfigCreateThreadPoolsOnlyForCpuNodes
-          << "=" << (create_threadpools_only_for_cpu_nodes ? "1" : "0");
-      should_create_per_session_threadpools = false;
-    }
-  }
-
-  if (should_create_per_session_threadpools) {
-    LOGS(*session_logger_, INFO) << "Ensuring per session threadpools are initialized since use_per_session_threads_ is true";
-    CreateIntraOpThreadPoolIfNeeded();
-
-    if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      if (!external_inter_op_thread_pool_ && !inter_op_thread_pool_) {
-        bool allow_inter_op_spinning =
-#if !defined(ORT_CLIENT_PACKAGE_BUILD)
-            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
-#else
-            // default kOrtSessionOptionsConfigAllowInterOpSpinning to "0" for ORT builds targeting client/on-device workloads,
-            // to reduce CPU utilization and improve power efficiency.
-            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "0") == "1";
-#endif
-        OrtThreadPoolParams to = session_options_.inter_op_param;
-        to.auto_set_affinity = to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-        std::basic_stringstream<ORTCHAR_T> ss;
-        if (to.name) {
-          ss << to.name << ORT_TSTR("-");
-        }
-        ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-inter-op");
-        inter_thread_pool_name_ = ss.str();
-        to.name = inter_thread_pool_name_.c_str();
-        to.set_denormal_as_zero =
-            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
-        to.allow_spinning = allow_inter_op_spinning;
-        to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
-
-        // Set custom threading functions
-        to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
-        to.custom_thread_creation_options = session_options_.custom_thread_creation_options;
-        to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
-
-        if (to.custom_create_thread_fn) {
-          ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
-        }
-        inter_op_thread_pool_ =
-            concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
-        if (inter_op_thread_pool_ == nullptr) {
-          LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
-          session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-        }
-      }
-    }
-  }
-
-  if (session_state_) {
-    session_state_->InitializeThreadPools(GetIntraOpThreadPoolToUse(),
-                                          GetInterOpThreadPoolToUse());
-  } else if (thread_pool_ || inter_op_thread_pool_ ||
-             external_intra_op_thread_pool_ || external_inter_op_thread_pool_) {
-    LOGS(*session_logger_, WARNING)
-        << "SessionState is null when per-session thread pools are initialized";
-  }
 }
 
 void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger) {
@@ -2593,10 +2485,6 @@ common::Status InferenceSession::Initialize() {
 
       // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
       ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
-
-      // Must run before FinalizeSessionState() so subgraph SessionStates created during finalization
-      // inherit the thread pools via SessionState construction.
-      InitializeThreadPoolsIfNeeded();
 #else   // !defined(ORT_MINIMAL_BUILD)
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -2605,10 +2493,6 @@ common::Status InferenceSession::Initialize() {
     } else {
       ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
                                                              *session_state_, session_options_, *session_logger_));
-
-      // Must run before FinalizeSessionState() so subgraph SessionStates created during finalization
-      // inherit the thread pools via SessionState construction.
-      InitializeThreadPoolsIfNeeded();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
@@ -3146,13 +3030,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
   const bool control_spinning = use_per_session_threads_ &&
                                 force_spinning_stop_between_runs_ &&
                                 !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id);
-  concurrency::ThreadPool* intra_tp = nullptr;
-  concurrency::ThreadPool* inter_tp = nullptr;
-  if (control_spinning) {
-    std::lock_guard<std::mutex> lock(session_mutex_);
-    intra_tp = thread_pool_.get();
-    inter_tp = inter_op_thread_pool_.get();
-  }
+  auto* intra_tp = (control_spinning) ? thread_pool_.get() : nullptr;
+  auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
   // Check if this Run() is simply going to be a CUDA Graph replay.
@@ -3464,7 +3343,6 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
                                           RunAsyncCallbackFn callback,
                                           void* user_data) {
   size_t num_fetches = fetch_names.size();
-  EnsureIntraOpThreadPoolInitialized();
   auto* tp = GetIntraOpThreadPoolToUse();
   if (!tp || concurrency::ThreadPool::DegreeOfParallelism(tp) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
@@ -4059,10 +3937,6 @@ common::Status InferenceSession::AddPredefinedTransformers(
     RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
     const logging::Logger& logger) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-  // With lazy per-session thread-pool initialization, transformer generation may happen before
-  // the per-session intra-op pool exists. Transformer factories/transformers must treat this as
-  // an optional pointer and handle nullptr.
-  auto* transformer_intra_op_thread_pool = GetIntraOpThreadPoolToUse();
   for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
     std::function<onnxruntime::InlinedVector<std::unique_ptr<GraphTransformer>>()> transformers_to_register;
@@ -4074,7 +3948,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
         transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
-                                                       transformer_intra_op_thread_pool);
+                                                       GetIntraOpThreadPoolToUse());
         };
       }
     } else {
@@ -4088,7 +3962,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
           if (use_full_build_optimizations) {
             return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                          optimizers_to_disable_,
-                                                         transformer_intra_op_thread_pool);
+                                                         GetIntraOpThreadPoolToUse());
           } else {
             const auto sat_context =
                 minimal_build_optimization_handling ==
@@ -4099,7 +3973,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
             return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
                                                                         logger,
                                                                         optimizers_to_disable_,
-                                                                        transformer_intra_op_thread_pool);
+                                                                        GetIntraOpThreadPoolToUse());
           }
         };
       }

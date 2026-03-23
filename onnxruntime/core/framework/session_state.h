@@ -297,8 +297,6 @@ class SessionState {
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
-  void InitializeThreadPools(concurrency::ThreadPool* intra, concurrency::ThreadPool* inter);
-
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() noexcept { return fused_funcs_mgr_; }
 
@@ -539,8 +537,8 @@ class SessionState {
   SubgraphSessionStateMap subgraph_session_states_;
 
   // either threadpool could be nullptr
-  concurrency::ThreadPool* thread_pool_{};
-  concurrency::ThreadPool* inter_op_thread_pool_{};
+  concurrency::ThreadPool* const thread_pool_{};
+  concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   const DataTransferManager& data_transfer_mgr_;
 

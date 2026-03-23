@@ -1133,28 +1133,6 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
   return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
 }
 
-void SessionState::InitializeThreadPools(concurrency::ThreadPool* intra, concurrency::ThreadPool* inter) {
-  // NOTE: This enforce also runs recursively for each subgraph SessionState
-  // via the loop below. All subgraph SessionStates are expected to hold nullptr
-  // or the same pool pointers as the parent - never a different non-null pool.
-  ORT_ENFORCE((thread_pool_ == nullptr || thread_pool_ == intra) &&
-              (inter_op_thread_pool_ == nullptr || inter_op_thread_pool_ == inter));
-
-  thread_pool_ = intra;
-  inter_op_thread_pool_ = inter;
-
-  // Propagate thread pools to all finalized subgraph SessionStates so lazily initialized
-  // pools on the current SessionState also reach nested graphs.
-  for (auto& node_to_subgraph_ss : subgraph_session_states_) {
-    for (auto& attr_to_subgraph_ss : node_to_subgraph_ss.second) {
-      auto* subgraph_ss = attr_to_subgraph_ss.second.get();
-      if (subgraph_ss != nullptr) {
-        subgraph_ss->InitializeThreadPools(intra, inter);
-      }
-    }
-  }
-}
-
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   ORT_ENFORCE(node_index_info_.has_value(), "SetGraphAndCreateKernels must be called prior to GetExecutionInfo.");
   return *node_index_info_;
