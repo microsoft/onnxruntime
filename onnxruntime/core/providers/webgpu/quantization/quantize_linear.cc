@@ -79,7 +79,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       if (packed_) {
         shader.MainFunctionBody()
             << "let zero_point_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
-            << "let zero_point_input = " << zero_point.GetByOffset("u32(zero_point_index / 4)") << ";\n"
+            << "let zero_point_input = " << zero_point.GetByOffset("zero_point_index / 4") << ";\n"
             << "let zero_point_vec = " << unpack << ";\n"
             << "let zero_point_value = zero_point_vec[zero_point_index % 4];\n";
       } else {
@@ -88,16 +88,17 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
             << "let zero_point_value = " << zero_point.GetByOffset("zero_point_index") << ";\n";
       }
     } else {
-      // BlockedQuantization. The zero-point input shape is same as the input shape except along axis.
+      // BlockedQuantization. The zero-point input shape is the same as the scale input shape.
       if (packed_) {
         shader.MainFunctionBody()
-            << "let zero_point_offset = " << scale.GetByIndices("scale_indices") << ";\n"
-            << "let zero_point_input = " << zero_point.GetByOffset("u32(zero_point_offset / 4)") << ";\n"
+            << "let zero_point_offset = " << scale.IndicesToOffset("scale_indices") << ";\n"
+            << "let zero_point_input = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
             << "let zero_point_vec = " << unpack << ";\n"
             << "let zero_point_value = zero_point_vec[zero_point_offset % 4];\n";
       } else {
         shader.MainFunctionBody()
-            << "let zero_point_value = " << zero_point.GetByIndices("scale_indices") << ";\n";
+            << "let zero_point_offset = " << scale.IndicesToOffset("scale_indices") << ";\n"
+            << "let zero_point_value = " << zero_point.GetByOffset("zero_point_offset") << ";\n";
       }
     }
   } else {
@@ -145,7 +146,9 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   program
       .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, packed ? 4 : input_component}})
       .AddInputs({{x_scale, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank, components})
+      .AddOutput(use_components
+                     ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, ProgramOutput::Flatten, components}
+                     : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, components})
       .SetDispatchGroupSize((x_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size_)}})

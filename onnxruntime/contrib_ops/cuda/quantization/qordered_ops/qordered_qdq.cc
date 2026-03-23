@@ -70,7 +70,18 @@ Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input_order,
   UpdateTileRequire(input_order, row_tile, col_tile);
   UpdateTileRequire(output_order, row_tile, col_tile);
   if (rows % row_tile != 0 || cols % col_tile != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Shape not meet clean tile requirement!", dims);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Shape does not meet the clean tile requirement. "
+                           "rows: ",
+                           rows,
+                           ", cols: ",
+                           cols,
+                           ", row_tile: ",
+                           row_tile,
+                           ", col_tile: ",
+                           col_tile,
+                           ". Shape: ",
+                           input_tensor.Shape());
   }
   return Status::OK();
 }

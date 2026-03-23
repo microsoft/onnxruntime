@@ -46,6 +46,7 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
       GetComputeStream(context),
       GetDeviceProp(),
       GetCublasHandle(context),
+      GetCudnnHandle(context),
       allocator,
       cuda_ep_->UseTF32());
 
