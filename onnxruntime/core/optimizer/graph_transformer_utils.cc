@@ -82,6 +82,7 @@
 #include "core/optimizer/bias_skip_layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/slice_concat_to_space_to_depth_fusion.h"
 #include "core/optimizer/transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING
@@ -261,7 +262,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
-
+      transformers.emplace_back(std::make_unique<SliceConcatToSpaceToDepthFusion>());
       transformers.emplace_back(std::make_unique<GeluFusion>());
       transformers.emplace_back(std::make_unique<LayerNormFusion>());
 
