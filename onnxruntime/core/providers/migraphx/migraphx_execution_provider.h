@@ -37,6 +37,8 @@ constexpr auto kExhaustiveTune = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE"sv;
 constexpr auto kModelCachePath = "ORT_MIGRAPHX_MODEL_CACHE_PATH"sv;
 constexpr auto kModelMaxDynamicBatch = "ORT_MIGRAPHX_MAX_DYNAMIC_BATCH"sv;
 constexpr auto kCompileBatches = "ORT_MIGRAPHX_COMPILE_BATCHES"sv;
+constexpr auto kDynamicDimensionIndex = "ORT_MIGRAPHX_DYNAMIC_DIMENSION_INDEX"sv;
+constexpr auto kMaxDynamicDimSize = "ORT_MIGRAPHX_MAX_DYNAMIC_DIM_SIZE"sv;
 }  // namespace migraphx_env_vars
 
 // Tracks which dimensions are symbolic for a given input
@@ -73,6 +75,12 @@ struct MIGraphXFuncState {
   // Dynamic batch support
   bool has_dynamic_batch = false;
   std::vector<std::size_t> compiled_batch_sizes;
+
+  // Dynamic dimension support (non-batch dimension)
+  int dynamic_dimension_index = -1;       // Which dimension to treat as dynamic (-1 = disabled)
+  size_t max_dynamic_dim_size = 0;        // Max size for that dimension
+  bool has_dynamic_dim = false;           // True if dynamic_dimension_index >= 0 and max_dynamic_dim_size > 0
+  std::vector<std::size_t> compiled_dim_sizes;  // Compiled sizes for the dynamic dimension
   
   // Padded input buffers for dynamic batching (allocated on GPU)
   struct PaddedBuffer {
@@ -85,6 +93,10 @@ struct MIGraphXFuncState {
   // Track last batch sizes to avoid re-allocation when batch size is unchanged
   std::size_t last_original_batch_size = 0;  // Original batch size from last run
   std::size_t last_padded_batch_size = 0;    // Padded batch size from last run
+
+  // Track last dynamic dim sizes for reuse
+  std::size_t last_original_dim_size = 0;    // Original dynamic dim size from last run
+  std::size_t last_padded_dim_size = 0;      // Padded dynamic dim size from last run
 
   // ═══════════════════════════════════════════════════════════════════════════
   // PERFORMANCE CACHES - Avoid redundant MIGraphX API calls per inference
@@ -208,7 +220,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
         {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache_)},
         {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_path_)},
         {std::string{migraphx_provider_option::kModelMaxDynamicBatch}, MakeStringWithClassicLocale(max_dynamic_batch_)},
-        {std::string{migraphx_provider_option::kCompileBatches}, compile_batches_}};
+        {std::string{migraphx_provider_option::kCompileBatches}, compile_batches_},
+        {std::string{migraphx_provider_option::kDynamicDimensionIndex}, MakeStringWithClassicLocale(dynamic_dimension_index_)},
+        {std::string{migraphx_provider_option::kMaxDynamicDimSize}, MakeStringWithClassicLocale(max_dynamic_dim_size_)}};
    }
 
  private:
@@ -250,6 +264,8 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   bool first_start_ = true;
   size_t max_dynamic_batch_{0};
   std::string compile_batches_{};  // Comma-separated list of batch sizes to compile, e.g. "1,4,8,16,32"
+  int dynamic_dimension_index_{-1};  // Non-batch dimension to treat as dynamic (-1 = disabled)
+  size_t max_dynamic_dim_size_{0};   // Max size for the dynamic dimension (0 = disabled)
 };
 
 }; // namespace onnxruntime

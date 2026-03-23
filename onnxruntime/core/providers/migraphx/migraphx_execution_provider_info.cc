@@ -74,6 +74,8 @@ MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const ProviderOptio
           .AddAssignmentToEnumReference(migraphx_provider_option::kArenaExtendStrategy, arena_extend_strategy_mapping, arena_extend_strategy)
           .AddAssignmentToReference(migraphx_provider_option::kModelMaxDynamicBatch, max_dynamic_batch)
           .AddAssignmentToReference(migraphx_provider_option::kCompileBatches, compile_batches)
+          .AddAssignmentToReference(migraphx_provider_option::kDynamicDimensionIndex, dynamic_dimension_index)
+          .AddAssignmentToReference(migraphx_provider_option::kMaxDynamicDimSize, max_dynamic_dim_size)
           .Parse(options));
 }
 
@@ -107,6 +109,8 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions() const {
       {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_dir)},
       {std::string{migraphx_provider_option::kModelMaxDynamicBatch}, MakeStringWithClassicLocale(max_dynamic_batch)},
       {std::string{migraphx_provider_option::kCompileBatches}, compile_batches},
+      {std::string{migraphx_provider_option::kDynamicDimensionIndex}, MakeStringWithClassicLocale(dynamic_dimension_index)},
+      {std::string{migraphx_provider_option::kMaxDynamicDimSize}, MakeStringWithClassicLocale(max_dynamic_dim_size)},
   };
 }
 

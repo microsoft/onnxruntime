@@ -36,6 +36,8 @@ constexpr auto kGpuExternalEmptyCache = "migraphx_external_empty_cache"sv;
 constexpr auto kModelCacheDir = "migraphx_model_cache_dir"sv;
 constexpr auto kModelMaxDynamicBatch = "migraphx_max_dynamic_batch"sv;
 constexpr auto kCompileBatches = "migraphx_compile_batches"sv;
+constexpr auto kDynamicDimensionIndex = "migraphx_dynamic_dimension_index"sv;
+constexpr auto kMaxDynamicDimSize = "migraphx_max_dynamic_dim_size"sv;
 }  // namespace migraphx_provider_option
 
 extern const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping;
@@ -59,6 +61,8 @@ struct MIGraphXExecutionProviderInfo {
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   size_t max_dynamic_batch{static_cast<size_t>(0)};
   std::string compile_batches{};  // Comma-separated list of batch sizes to compile, e.g. "1,4,8,16,32"
+  int dynamic_dimension_index{-1};  // Non-batch dimension to treat as dynamic (-1 = disabled)
+  size_t max_dynamic_dim_size{static_cast<size_t>(0)};  // Max size for the dynamic dimension (0 = disabled)
 
   void* external_alloc{nullptr};
   void* external_free{nullptr};
@@ -106,6 +110,8 @@ struct std::hash<::onnxruntime::MIGraphXExecutionProviderInfo> {
 
     onnxruntime::HashCombine(info.max_dynamic_batch, value);
     onnxruntime::HashCombine(info.compile_batches, value);
+    onnxruntime::HashCombine(static_cast<size_t>(info.dynamic_dimension_index), value);
+    onnxruntime::HashCombine(info.max_dynamic_dim_size, value);
     // The default memory arena cfg is not used in hashing right now.
     return value;
   }
