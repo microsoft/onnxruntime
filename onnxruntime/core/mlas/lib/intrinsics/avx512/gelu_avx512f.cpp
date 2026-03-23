@@ -57,48 +57,12 @@ struct GeluAvx512Constants {
     static constexpr float ExpC = 1.25829120e+7f;
 };
 
-MLAS_FORCEINLINE __m512
-MlasGeluErfExpVectorAvx512(
-    __m512 Value
-    )
-{
-    const __m512 ExpLog2Reciprocal = _mm512_set1_ps(GeluAvx512Constants::ExpLog2Reciprocal);
-    const __m512 ExpLog2Hi = _mm512_set1_ps(GeluAvx512Constants::ExpLog2Hi);
-    const __m512 ExpLog2Lo = _mm512_set1_ps(GeluAvx512Constants::ExpLog2Lo);
-    const __m512 ExpP0 = _mm512_set1_ps(GeluAvx512Constants::ExpP0);
-    const __m512 ExpP1 = _mm512_set1_ps(GeluAvx512Constants::ExpP1);
-    const __m512 ExpP2 = _mm512_set1_ps(GeluAvx512Constants::ExpP2);
-    const __m512 ExpP3 = _mm512_set1_ps(GeluAvx512Constants::ExpP3);
-    const __m512 ExpP4 = _mm512_set1_ps(GeluAvx512Constants::ExpP4);
-    const __m512 ExpP5 = _mm512_set1_ps(GeluAvx512Constants::ExpP5);
-    const __m512 ExpP6 = _mm512_set1_ps(GeluAvx512Constants::ExpP6);
-    const __m512 ExpC = _mm512_set1_ps(GeluAvx512Constants::ExpC);
-
-    __m512 R = _mm512_fmadd_ps(ExpLog2Reciprocal, Value, ExpC);
-    R = _mm512_sub_ps(R, ExpC);
-
-    __m512 Fx = _mm512_fmadd_ps(R, ExpLog2Hi, Value);
-    Fx = _mm512_fmadd_ps(R, ExpLog2Lo, Fx);
-
-    __m512 Y = ExpP0;
-    Y = _mm512_fmadd_ps(Y, Fx, ExpP1);
-    Y = _mm512_fmadd_ps(Y, Fx, ExpP2);
-    Y = _mm512_fmadd_ps(Y, Fx, ExpP3);
-    Y = _mm512_fmadd_ps(Y, Fx, ExpP4);
-    Y = _mm512_fmadd_ps(Y, Fx, ExpP5);
-    Y = _mm512_fmadd_ps(Y, Fx, ExpP6);
-    Y = _mm512_scalef_ps(Y, R);
-
-    return Y;
-}
-
-MLAS_FORCEINLINE __m512
-MlasGeluErfAvx512(
-    __m512 Value
-    )
-{
+struct GeluAvx512BroadcastConstants {
     const __m512 NegZero = _mm512_castsi512_ps(_mm512_set1_epi32(GeluAvx512Constants::SignBitMask));
     const __m512 Zero = _mm512_setzero_ps();
+    const __m512 InvSqrt2 = _mm512_set1_ps(GeluAvx512Constants::InvSqrt2);
+    const __m512 Half = _mm512_set1_ps(GeluAvx512Constants::Half);
+    const __m512 One = _mm512_set1_ps(GeluAvx512Constants::One);
     const __m512 ErfUpperAbsRange = _mm512_set1_ps(GeluAvx512Constants::ErfUpperAbsRange);
     const __m512 ErfSplitBoundary = _mm512_set1_ps(GeluAvx512Constants::ErfSplitBoundary);
     const __m512 ErfSmallP0 = _mm512_set1_ps(GeluAvx512Constants::ErfSMALL_P0);
@@ -116,36 +80,78 @@ MlasGeluErfAvx512(
     const __m512 ErfBigP6MinusOne = _mm512_set1_ps(GeluAvx512Constants::ErfBIG_P6_Minus_One);
     const __m512 ErfOne = _mm512_set1_ps(GeluAvx512Constants::ErfOne);
     const __m512 ExpLowerRange = _mm512_set1_ps(GeluAvx512Constants::ExpLowerRange);
+    const __m512 ExpLog2Reciprocal = _mm512_set1_ps(GeluAvx512Constants::ExpLog2Reciprocal);
+    const __m512 ExpLog2Hi = _mm512_set1_ps(GeluAvx512Constants::ExpLog2Hi);
+    const __m512 ExpLog2Lo = _mm512_set1_ps(GeluAvx512Constants::ExpLog2Lo);
+    const __m512 ExpP0 = _mm512_set1_ps(GeluAvx512Constants::ExpP0);
+    const __m512 ExpP1 = _mm512_set1_ps(GeluAvx512Constants::ExpP1);
+    const __m512 ExpP2 = _mm512_set1_ps(GeluAvx512Constants::ExpP2);
+    const __m512 ExpP3 = _mm512_set1_ps(GeluAvx512Constants::ExpP3);
+    const __m512 ExpP4 = _mm512_set1_ps(GeluAvx512Constants::ExpP4);
+    const __m512 ExpP5 = _mm512_set1_ps(GeluAvx512Constants::ExpP5);
+    const __m512 ExpP6 = _mm512_set1_ps(GeluAvx512Constants::ExpP6);
+    const __m512 ExpC = _mm512_set1_ps(GeluAvx512Constants::ExpC);
+};
 
-    const __m512 SignMask = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(Value), _mm512_castps_si512(NegZero)));
-    __m512 AbsValue = _mm512_castsi512_ps(_mm512_andnot_si512(_mm512_castps_si512(NegZero), _mm512_castps_si512(Value)));
-    AbsValue = _mm512_min_ps(ErfUpperAbsRange, AbsValue);
+MLAS_FORCEINLINE __m512
+MlasGeluErfExpVectorAvx512(
+    __m512 Value,
+    const GeluAvx512BroadcastConstants& Constants
+    )
+{
+    __m512 R = _mm512_fmadd_ps(Constants.ExpLog2Reciprocal, Value, Constants.ExpC);
+    R = _mm512_sub_ps(R, Constants.ExpC);
+
+    __m512 Fx = _mm512_fmadd_ps(R, Constants.ExpLog2Hi, Value);
+    Fx = _mm512_fmadd_ps(R, Constants.ExpLog2Lo, Fx);
+
+    __m512 Y = Constants.ExpP0;
+    Y = _mm512_fmadd_ps(Y, Fx, Constants.ExpP1);
+    Y = _mm512_fmadd_ps(Y, Fx, Constants.ExpP2);
+    Y = _mm512_fmadd_ps(Y, Fx, Constants.ExpP3);
+    Y = _mm512_fmadd_ps(Y, Fx, Constants.ExpP4);
+    Y = _mm512_fmadd_ps(Y, Fx, Constants.ExpP5);
+    Y = _mm512_fmadd_ps(Y, Fx, Constants.ExpP6);
+    Y = _mm512_scalef_ps(Y, R);
+
+    return Y;
+}
+
+MLAS_FORCEINLINE __m512
+MlasGeluErfAvx512(
+    __m512 Value,
+    const GeluAvx512BroadcastConstants& Constants
+    )
+{
+    const __m512 SignMask = _mm512_castsi512_ps(_mm512_and_si512(_mm512_castps_si512(Value), _mm512_castps_si512(Constants.NegZero)));
+    __m512 AbsValue = _mm512_castsi512_ps(_mm512_andnot_si512(_mm512_castps_si512(Constants.NegZero), _mm512_castps_si512(Value)));
+    AbsValue = _mm512_min_ps(Constants.ErfUpperAbsRange, AbsValue);
 
     const __m512 SquareValue = _mm512_mul_ps(AbsValue, AbsValue);
 
-    __m512 SmallResult = ErfSmallP0;
-    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, ErfSmallP1);
-    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, ErfSmallP2);
-    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, ErfSmallP3);
-    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, ErfSmallP4);
-    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, ErfSmallP5MinusOne);
+    __m512 SmallResult = Constants.ErfSmallP0;
+    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, Constants.ErfSmallP1);
+    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, Constants.ErfSmallP2);
+    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, Constants.ErfSmallP3);
+    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, Constants.ErfSmallP4);
+    SmallResult = _mm512_fmadd_ps(SmallResult, SquareValue, Constants.ErfSmallP5MinusOne);
     SmallResult = _mm512_fmadd_ps(SmallResult, AbsValue, AbsValue);
 
-    const __mmask16 SplitMask = _mm512_cmp_ps_mask(AbsValue, ErfSplitBoundary, _CMP_GT_OQ);
-    const __m512 BigInput = _mm512_mask_blend_ps(SplitMask, Zero, AbsValue);
+    const __mmask16 SplitMask = _mm512_cmp_ps_mask(AbsValue, Constants.ErfSplitBoundary, _CMP_GT_OQ);
+    const __m512 BigInput = _mm512_mask_blend_ps(SplitMask, Constants.Zero, AbsValue);
 
-    __m512 BigResult = ErfBigP0;
-    BigResult = _mm512_fmadd_ps(BigResult, BigInput, ErfBigP1);
-    BigResult = _mm512_fmadd_ps(BigResult, BigInput, ErfBigP2);
-    BigResult = _mm512_fmadd_ps(BigResult, BigInput, ErfBigP3);
-    BigResult = _mm512_fmadd_ps(BigResult, BigInput, ErfBigP4);
-    BigResult = _mm512_fmadd_ps(BigResult, BigInput, ErfBigP5);
-    BigResult = _mm512_fmadd_ps(BigResult, BigInput, ErfBigP6MinusOne);
+    __m512 BigResult = Constants.ErfBigP0;
+    BigResult = _mm512_fmadd_ps(BigResult, BigInput, Constants.ErfBigP1);
+    BigResult = _mm512_fmadd_ps(BigResult, BigInput, Constants.ErfBigP2);
+    BigResult = _mm512_fmadd_ps(BigResult, BigInput, Constants.ErfBigP3);
+    BigResult = _mm512_fmadd_ps(BigResult, BigInput, Constants.ErfBigP4);
+    BigResult = _mm512_fmadd_ps(BigResult, BigInput, Constants.ErfBigP5);
+    BigResult = _mm512_fmadd_ps(BigResult, BigInput, Constants.ErfBigP6MinusOne);
     BigResult = _mm512_fmadd_ps(BigResult, BigInput, BigInput);
 
-    BigResult = _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(BigResult), _mm512_castps_si512(NegZero)));
-    BigResult = _mm512_max_ps(ExpLowerRange, BigResult);
-    BigResult = _mm512_sub_ps(ErfOne, MlasGeluErfExpVectorAvx512(BigResult));
+    BigResult = _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(BigResult), _mm512_castps_si512(Constants.NegZero)));
+    BigResult = _mm512_max_ps(Constants.ExpLowerRange, BigResult);
+    BigResult = _mm512_sub_ps(Constants.ErfOne, MlasGeluErfExpVectorAvx512(BigResult, Constants));
 
     __m512 Result = _mm512_mask_blend_ps(SplitMask, SmallResult, BigResult);
     Result = _mm512_castsi512_ps(_mm512_or_si512(_mm512_castps_si512(Result), _mm512_castps_si512(SignMask)));
@@ -154,15 +160,13 @@ MlasGeluErfAvx512(
 
 MLAS_FORCEINLINE __m512
 MlasComputeGeluVectorExactAvx512(
-    __m512 X
+    __m512 X,
+    const GeluAvx512BroadcastConstants& Constants
     )
 {
-    const __m512 InvSqrt2 = _mm512_set1_ps(GeluAvx512Constants::InvSqrt2);
-    const __m512 Half = _mm512_set1_ps(GeluAvx512Constants::Half);
-    const __m512 One = _mm512_set1_ps(GeluAvx512Constants::One);
-    const __m512 ErfInput = _mm512_mul_ps(X, InvSqrt2);
-    const __m512 ErfValue = MlasGeluErfAvx512(ErfInput);
-    return _mm512_mul_ps(_mm512_mul_ps(Half, X), _mm512_add_ps(ErfValue, One));
+    const __m512 ErfInput = _mm512_mul_ps(X, Constants.InvSqrt2);
+    const __m512 ErfValue = MlasGeluErfAvx512(ErfInput, Constants);
+    return _mm512_mul_ps(_mm512_mul_ps(Constants.Half, X), _mm512_add_ps(ErfValue, Constants.One));
 }
 
 void
@@ -172,9 +176,10 @@ MlasGeluKernelAvx512FExactImpl(
     size_t N
     )
 {
+    const GeluAvx512BroadcastConstants Constants;
     while (N >= 16) {
         const __m512 X = _mm512_loadu_ps(Input);
-        const __m512 Result = MlasComputeGeluVectorExactAvx512(X);
+        const __m512 Result = MlasComputeGeluVectorExactAvx512(X, Constants);
 
         _mm512_storeu_ps(Output, Result);
 
@@ -186,7 +191,7 @@ MlasGeluKernelAvx512FExactImpl(
     if (N > 0) {
         const __mmask16 TailMask = __mmask16((1u << static_cast<unsigned>(N)) - 1u);
         const __m512 X = _mm512_maskz_loadu_ps(TailMask, Input);
-        const __m512 Result = MlasComputeGeluVectorExactAvx512(X);
+        const __m512 Result = MlasComputeGeluVectorExactAvx512(X, Constants);
 
         _mm512_mask_storeu_ps(Output, TailMask, Result);
     }
