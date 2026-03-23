@@ -91,8 +91,9 @@ void RunDispatchedUnaryBenchmark(benchmark::State& state,
     benchmark::ClobberMemory();
   }
 
+  const int64_t bytes_per_iteration = static_cast<int64_t>(n) * static_cast<int64_t>(sizeof(float)) * path_info.bytes_per_element;
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(n));
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(n * sizeof(float) * path_info.bytes_per_element));
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * bytes_per_iteration);
 }
 
 template <typename KernelFn>
@@ -113,8 +114,9 @@ void RunUnfusedUnaryBenchmark(benchmark::State& state,
     benchmark::ClobberMemory();
   }
 
+  const int64_t bytes_per_iteration = static_cast<int64_t>(n) * static_cast<int64_t>(sizeof(float)) * bytes_per_element;
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(n));
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(n * sizeof(float) * bytes_per_element));
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * bytes_per_iteration);
 }
 
 static void UnaryKernelArgs(benchmark::internal::Benchmark* b) {

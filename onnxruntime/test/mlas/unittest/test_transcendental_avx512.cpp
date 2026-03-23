@@ -166,6 +166,14 @@ class MlasComputeGeluAvx512Test : public MlasTestBase {
               << ", avx512=" << avx512_output[i]
               << ", generic=" << generic_output[i]
               << ", abs_diff=" << std::fabs(avx512_output[i] - generic_output[i]);
+
+          ASSERT_TRUE(UnaryOutputsMatch(avx512_output[i], public_output[i],
+                                        kGeluAbsoluteTolerance, kGeluRelativeTolerance, true))
+              << "Public/API Gelu dispatch mismatch at index " << i << " of " << size
+              << ", input=" << input[i]
+              << ", avx512=" << avx512_output[i]
+              << ", public=" << public_output[i]
+              << ", abs_diff=" << std::fabs(avx512_output[i] - public_output[i]);
         }
       }
     }
