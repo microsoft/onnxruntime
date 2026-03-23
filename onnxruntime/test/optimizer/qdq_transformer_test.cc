@@ -3252,7 +3252,7 @@ TEST(QDQTransformerTests, ClipQuantFusion_MultipleInputEdges) {
                     18);  // opset
 }
 
-template <typename ScaleType, typename ZpType>
+template <typename ScaleType, typename ZpTypeDq, typename ZpTypeQ>
 void TestWhereWithDqInput(bool is_dq_1,
                           bool is_dq_2,
                           int expected_num_where,
@@ -3268,9 +3268,9 @@ void TestWhereWithDqInput(bool is_dq_1,
   NodeArg* where_in2 = nullptr;
   if (is_dq_1) {
     // DQ
-    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_Input = builder.MakeInput<ZpTypeDq>({4, 3, 32}, 0.0, 1.0);
     auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
-    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpTypeDq>({}, 0.0, 1.0);
     where_in1 = builder.MakeIntermediate();
     builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in1});
   } else {
@@ -3278,9 +3278,9 @@ void TestWhereWithDqInput(bool is_dq_1,
   }
   if (is_dq_2) {
     // DQ
-    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_Input = builder.MakeInput<ZpTypeDq>({4, 3, 32}, 0.0, 1.0);
     auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
-    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpTypeDq>({}, 0.0, 1.0);
     where_in2 = builder.MakeIntermediate();
     builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in2});
   } else {
@@ -3294,7 +3294,7 @@ void TestWhereWithDqInput(bool is_dq_1,
 
   // Q
   auto* q_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
-  auto* q_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+  auto* q_zp = builder.MakeInitializer<ZpTypeQ>({}, 0.0, 1.0);
   auto* q_out = builder.MakeOutput();
   builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out});
 
@@ -3315,14 +3315,18 @@ void TestWhereWithDqInput(bool is_dq_1,
 };
 
 TEST(QDQTransformerTests, WhereDummyDqTest) {
-  TestWhereWithDqInput<float, uint8_t>(true, true, 1, 2, 1, false);
-  TestWhereWithDqInput<float, uint8_t>(true, false, 1, 2, 1, true);
-  TestWhereWithDqInput<float, uint8_t>(false, true, 1, 2, 1, true);
-  TestWhereWithDqInput<float, uint8_t>(false, false, 1, 0, 1, false);
-  TestWhereWithDqInput<float, uint16_t>(true, true, 1, 2, 1, false);
-  TestWhereWithDqInput<float, uint16_t>(true, false, 1, 2, 1, true);
-  TestWhereWithDqInput<float, uint16_t>(false, true, 1, 2, 1, true);
-  TestWhereWithDqInput<float, uint16_t>(false, false, 1, 0, 1, false);
+  // is_dq_1, is_dq_2, expected_num_where, expected_num_dq, expected_num_q, expected_modified
+  TestWhereWithDqInput<float, uint8_t, uint8_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint8_t, uint8_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t, uint8_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t, uint8_t>(false, false, 1, 0, 1, false);
+  TestWhereWithDqInput<float, uint16_t, uint16_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint16_t, uint16_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t, uint16_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t, uint16_t>(false, false, 1, 0, 1, false);
+  // DQ uses uint8 but Q uses uint16
+  TestWhereWithDqInput<float, uint8_t, uint16_t>(true, false, 1, 1, 1, false);
+  TestWhereWithDqInput<float, uint8_t, uint16_t>(false, true, 1, 1, 1, false);
 }
 
 TEST(QDQTransformerTests, Concat) {
