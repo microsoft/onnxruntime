@@ -71,7 +71,13 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
               "qk_matmul_output_mode must be one of: kNone(-1), kQK(0), kQKMask(1), kQKSoftCap(2), kQKSoftMax(3).");
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
+  ORT_ENFORCE(softcap_ >= 0.0f, "softcap must be non-negative");
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
+  // Valid softmax_precision values are TensorProto data types: 0 (not set), 1 (FLOAT), 10 (FLOAT16), 16 (BFLOAT16)
+  // DOUBLE (11) is excluded — CUDA computes softmax in FP32 and cannot satisfy FP64 precision.
+  ORT_ENFORCE(softmax_precision_ == 0 || softmax_precision_ == 1 || softmax_precision_ == 10 ||
+                  softmax_precision_ == 16,
+              "softmax_precision must be a valid TensorProto data type (0, 1, 10, or 16).");
   ORT_ENFORCE(scale_ > 0 || std::isnan(scale_), "scale must be greater than 0 if specified");
 
   const auto* kernel_options = this->GetAttentionKernelOptions();
@@ -171,9 +177,10 @@ Status Attention<T>::ConvertAttnMaskToBias(
 //   Path 3: no past, no mask (prompt) -> mha_fwd
 //   Eligibility: fp16/bf16, head_size==v_head_size, no output_qk,
 //                (no mask OR bool mask + past OR nonpad_kv_seqlen without mask)
-//   Note: softcap and softmax_precision are early-rejected before the cascade.
-//   Note: nonpad_kv_seqlen + attn_mask is supported but routes to MEA/unfused,
-//         not Flash (Flash has no bias parameter for this combination).
+//   Note: softcap is passed to the Flash kernel natively. softmax_precision is
+//   inherently satisfied (Flash accumulates softmax in FP32).
+//   Note: nonpad_kv_seqlen + attn_mask routes to MEA/unfused, not Flash
+//         (Flash has no bias parameter for this combination).
 //
 // PERFORMANCE NOTE: ONNX Attention's internal-cache decode path (past_key/past_value)
 // is ~15-30% slower than contrib GQA's decode path for grouped-query attention workloads.
@@ -545,7 +552,8 @@ Status Attention<T>::RunFlashAttention(
 //   Eligibility: see has_memory_efficient_attention() (SM50+/53+/80+ by dtype,
 //                head_size <= 1024), plus: no output_qk, no past_key (decode excluded),
 //                bias stride alignment.
-//   Note: softcap and softmax_precision are early-rejected before the cascade.
+//   Note: softcap is forwarded to the MEA kernel via p.softcap. softmax_precision
+//   is inherently satisfied (cutlass FMHA accumulates softmax in FP32).
 //
 template <typename T>
 Status Attention<T>::RunMemoryEfficientAttention(
@@ -685,6 +693,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_causal;
     p.scale = parameters.scale;
+    p.softcap = parameters.softcap;
     p.seqlen_k_ptr = seqlens_k_buffer.get();
     p.has_custom_right_padding = true;
     p.broadcast_attn_bias_dim_0 = broadcast_bias_dim_0;
@@ -734,6 +743,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_causal;
     p.scale = parameters.scale;
+    p.softcap = parameters.softcap;
     p.broadcast_attn_bias_dim_0 = broadcast_bias_dim_0;
     p.broadcast_attn_bias_dim_1 = broadcast_bias_dim_1;
     p.query = q_data;
@@ -821,7 +831,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
 //           (nonpad bias + mask bias added element-wise with cyclic broadcasting)
 //   Path 3: all other cases -> passes mask/bias directly
 //   Supports: all dtypes (fp16/bf16/fp32), all mask types (bool/float/none), all head sizes
-//   Not supported: softcap, softmax_precision, output_qk modes beyond kNone/kQK
+//   Not supported: softcap (rejected at fallback), output_qk modes beyond kNone/kQK
 //   Limitation: MHA only (q_num_heads must equal kv_num_heads)
 //
 template <typename T>
@@ -1093,17 +1103,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
 #endif
 
-  // Early-reject features not supported by any CUDA kernel path.
-  // TODO(titaiwang): Support softcap and softmax_precision on CUDA kernels.
-  // When a kernel adds support, move these checks to the unfused fallback section.
-  if (parameters.softcap != 0.0f) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softcap is not supported yet in Attention op (CUDA).");
-  }
-  if (parameters.softmax_precision != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softmax_precision is not supported yet in Attention op (CUDA).");
-  }
+  // softmax_precision: All CUDA backends (Flash, MEA, Unfused) compute softmax in
+  // FP32 internally (Flash/MEA via tile-based FP32 accumulators, Unfused via FP32
+  // softmax kernel). softmax_precision=1 (FP32) is inherently satisfied;
+  // softmax_precision=0 (default) is also fine since higher precision is always
+  // acceptable per the ONNX spec.
 
 #if USE_FLASH_ATTENTION
   {
@@ -1172,6 +1176,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   // Fallback: unfused attention
+  // Softcap is not implemented in the unfused path — it requires Flash or MEA.
+  if (parameters.softcap > 0.0f) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "softcap requires flash attention or memory efficient attention, "
+                           "but neither is eligible for this configuration. Check dtype (fp16/bf16 required for Flash), "
+                           "head_size constraints, and past_key compatibility.");
+  }
+
   // TODO(titaiwang): Support additional output_qk modes beyond kNone and kQK.
   // Currently only unfused handles output_qk, and only kNone/kQK modes.
   if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
