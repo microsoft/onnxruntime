@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "ep_profiling.h"
+#include <array>
+#include <chrono>
 
 //
 // EpEventManager
@@ -206,8 +208,6 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
     int64_t dur_us = raw_ep_event.dur_ns / 1000;
 
     // Set parent_name and op_name as an event args. This metadata comes from the correlated ORT event.
-    std::array<const char*, 1> arg_keys = {"parent_name"};
-    std::array<const char*, 1> arg_vals = {raw_ep_event.ort_event_name.c_str()};
     std::unordered_map<std::string, std::string> args = {{"parent_name", raw_ep_event.ort_event_name.c_str()}};
 
     Ort::ProfilingEvent event(OrtProfilingEventCategory_KERNEL, -1, -1, raw_ep_event.name.c_str(),

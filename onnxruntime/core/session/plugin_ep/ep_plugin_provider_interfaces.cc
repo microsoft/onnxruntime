@@ -4,7 +4,6 @@
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
 #include <gsl/gsl>
-#include <map>
 #include <memory>
 #include <string>
 #include <unordered_set>

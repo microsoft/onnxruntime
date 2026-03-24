@@ -90,9 +90,9 @@ class EpEventManager {
   };
 
   mutable std::mutex mutex_;
-  uint64_t next_client_id_;
-  uint64_t num_clients_;
-  bool enabled_;
+  uint64_t next_client_id_{1};
+  uint64_t num_clients_{0};
+  bool enabled_{false};
 
   // client ID -> ClientState
   std::unordered_map<uint64_t, ClientState> client_state_;

@@ -820,8 +820,8 @@ ORT_API_STATUS_IMPL(CreateProfilingEvent,
                     _In_ size_t num_args,
                     _Outptr_ OrtProfilingEvent** out) {
   API_IMPL_BEGIN
-  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT,
-                    "OrtProfilingEvent output parameter is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent output parameter is NULL");
+  ORT_API_RETURN_IF(event_name == nullptr, ORT_INVALID_ARGUMENT, "Event name argument is NULL");
 
   *out = nullptr;
 
@@ -852,7 +852,7 @@ ORT_API_STATUS_IMPL(CreateProfilingEvent,
       static_cast<onnxruntime::profiling::EventCategory>(category_value),
       static_cast<int>(process_id),
       static_cast<int>(thread_id),
-      std::string(event_name ? event_name : ""),
+      event_name,
       static_cast<long long>(timestamp_us),
       static_cast<long long>(duration_us),
       std::move(args));

@@ -845,8 +845,6 @@ TEST(PluginExecutionProviderTest, ProfilingEvent_GetArgValue_NullOutput) {
 #if !defined(ORT_NO_EXCEPTIONS)
 TEST(PluginExecutionProviderTest, ProfilingEvent_CxxWrapper) {
   // Test the owning ProfilingEvent C++ wrapper with args.
-  const char* arg_keys[] = {"op_name", "graph_name"};
-  const char* arg_values[] = {"Conv", "main_graph"};
   std::unordered_map<std::string, std::string> args = {{"op_name", "Conv"},
                                                        {"parent_name", "Conv_node_event"}};
 
