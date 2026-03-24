@@ -12,6 +12,12 @@
 
 namespace {
 
+enum class PointwiseBenchmarkPath {
+  NchwConv,
+  NchwcBaseline,
+  NchwcPanelRepack,
+};
+
 std::vector<std::string> BuildArgNamesForNchwcPointwise() {
   return {"N", "Cin", "H", "W", "Cout", "Stride"};
 }
@@ -33,6 +39,18 @@ MLAS_BACKEND_KERNEL_SELECTOR_CONFIG MakeMlasConfig(bool enable_nchwc_pointwise_f
   return config;
 }
 
+void ValidatePointwiseArgs(int64_t batch_count,
+                           int64_t input_channels,
+                           int64_t input_height,
+                           int64_t input_width,
+                           int64_t output_channels,
+                           int64_t stride) {
+  if (batch_count <= 0 || input_channels <= 0 || input_height <= 0 || input_width <= 0 ||
+      output_channels <= 0 || stride <= 0) {
+    throw std::invalid_argument("All pointwise benchmark dimensions must be positive.");
+  }
+}
+
 void ReorderInputToNchwc(const float* source,
                          float* destination,
                          size_t batch_count,
@@ -47,6 +65,77 @@ void ReorderInputToNchwc(const float* source,
   }
 }
 
+void RunNchwPointwise(benchmark::State& state,
+                      MLAS_THREADPOOL* thread_pool) {
+  const int64_t batch_count = state.range(0);
+  const int64_t input_channels = state.range(1);
+  const int64_t input_height = state.range(2);
+  const int64_t input_width = state.range(3);
+  const int64_t output_channels = state.range(4);
+  const int64_t stride = state.range(5);
+
+  ValidatePointwiseArgs(batch_count, input_channels, input_height, input_width, output_channels, stride);
+
+  const int64_t kernel_shape[] = {1, 1};
+  const int64_t dilation_shape[] = {1, 1};
+  const int64_t padding[] = {0, 0, 0, 0};
+  const int64_t stride_shape[] = {stride, stride};
+
+  const int64_t output_height = (input_height - 1) / stride + 1;
+  const int64_t output_width = (input_width - 1) / stride + 1;
+
+  const std::vector<int64_t> input_shape = {input_height, input_width};
+  const std::vector<int64_t> output_shape = {output_height, output_width};
+  const std::vector<int64_t> x_shape = {batch_count, input_channels, input_height, input_width};
+  const std::vector<int64_t> f_shape = {output_channels, input_channels, 1, 1};
+
+  MLAS_ACTIVATION activation;
+  activation.ActivationKind = MlasIdentityActivation;
+
+  MLAS_CONV_PARAMETERS parameters;
+  size_t working_buffer_size = 0;
+  MlasConvPrepare(&parameters,
+                  2,
+                  static_cast<size_t>(batch_count),
+                  1,
+                  static_cast<size_t>(input_channels),
+                  input_shape.data(),
+                  kernel_shape,
+                  dilation_shape,
+                  padding,
+                  stride_shape,
+                  output_shape.data(),
+                  static_cast<size_t>(output_channels),
+                  &activation,
+                  &working_buffer_size,
+                  0.0f,
+                  thread_pool);
+
+  auto input_nchw = RandomVectorUniform(x_shape, -1.0f, 1.0f);
+  auto filter_oihw = RandomVectorUniform(f_shape, -1.0f, 1.0f);
+  std::vector<float> bias(static_cast<size_t>(output_channels), 0.0f);
+  std::vector<float> output_nchw(static_cast<size_t>(batch_count * output_channels * output_height * output_width));
+  std::vector<float> working_buffer(working_buffer_size);
+
+  MlasConv(&parameters,
+           input_nchw.data(),
+           filter_oihw.data(),
+           bias.data(),
+           working_buffer.empty() ? nullptr : working_buffer.data(),
+           output_nchw.data(),
+           thread_pool);
+
+  for (auto _ : state) {
+    MlasConv(&parameters,
+             input_nchw.data(),
+             filter_oihw.data(),
+             bias.data(),
+             working_buffer.empty() ? nullptr : working_buffer.data(),
+             output_nchw.data(),
+             thread_pool);
+  }
+}
+
 void RunNchwcPointwise(benchmark::State& state,
                        MLAS_THREADPOOL* thread_pool,
                        bool enable_nchwc_pointwise_filter_repacking) {
@@ -57,10 +146,7 @@ void RunNchwcPointwise(benchmark::State& state,
   const int64_t output_channels = state.range(4);
   const int64_t stride = state.range(5);
 
-  if (batch_count <= 0 || input_channels <= 0 || input_height <= 0 || input_width <= 0 ||
-      output_channels <= 0 || stride <= 0) {
-    throw std::invalid_argument("All NCHWc pointwise benchmark dimensions must be positive.");
-  }
+  ValidatePointwiseArgs(batch_count, input_channels, input_height, input_width, output_channels, stride);
 
   const size_t block_size = MlasNchwcGetBlockSize();
   if (block_size <= 1) {
@@ -151,14 +237,42 @@ void RunNchwcPointwise(benchmark::State& state,
   }
 }
 
+void RunPointwise(benchmark::State& state,
+                  MLAS_THREADPOOL* thread_pool,
+                  PointwiseBenchmarkPath path) {
+  switch (path) {
+    case PointwiseBenchmarkPath::NchwConv:
+      RunNchwPointwise(state, thread_pool);
+      break;
+    case PointwiseBenchmarkPath::NchwcBaseline:
+      RunNchwcPointwise(state, thread_pool, false);
+      break;
+    case PointwiseBenchmarkPath::NchwcPanelRepack:
+      RunNchwcPointwise(state, thread_pool, true);
+      break;
+  }
+}
+
+void NCHW_POINTWISE(benchmark::State& state) {
+  RunPointwise(state, nullptr, PointwiseBenchmarkPath::NchwConv);
+}
+
+void NCHW_POINTWISE_THREADED(benchmark::State& state) {
+  RunPointwise(state, GetMlasThreadPoolForNchwcPointwiseBenchmark(), PointwiseBenchmarkPath::NchwConv);
+}
+
 void NCHWC_POINTWISE(benchmark::State& state, bool enable_nchwc_pointwise_filter_repacking) {
-  RunNchwcPointwise(state, nullptr, enable_nchwc_pointwise_filter_repacking);
+  RunPointwise(state,
+               nullptr,
+               enable_nchwc_pointwise_filter_repacking ? PointwiseBenchmarkPath::NchwcPanelRepack
+                                                       : PointwiseBenchmarkPath::NchwcBaseline);
 }
 
 void NCHWC_POINTWISE_THREADED(benchmark::State& state, bool enable_nchwc_pointwise_filter_repacking) {
-  RunNchwcPointwise(state,
-                    GetMlasThreadPoolForNchwcPointwiseBenchmark(),
-                    enable_nchwc_pointwise_filter_repacking);
+  RunPointwise(state,
+               GetMlasThreadPoolForNchwcPointwiseBenchmark(),
+               enable_nchwc_pointwise_filter_repacking ? PointwiseBenchmarkPath::NchwcPanelRepack
+                                                       : PointwiseBenchmarkPath::NchwcBaseline);
 }
 
 void ResNetPointwise(benchmark::internal::Benchmark* benchmark) {
@@ -191,10 +305,14 @@ void HighChannelPointwise(benchmark::internal::Benchmark* benchmark) {
 
 }  // namespace
 
+BENCHMARK(NCHW_POINTWISE)->Apply(ResNetPointwise)->UseRealTime();
+BENCHMARK(NCHW_POINTWISE)->Apply(HighChannelPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE, ResNetLikeBaseline, false)->Apply(ResNetPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE, ResNetLikePanelRepack, true)->Apply(ResNetPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE, HighChannelsBaseline, false)->Apply(HighChannelPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE, HighChannelsPanelRepack, true)->Apply(HighChannelPointwise)->UseRealTime();
+BENCHMARK(NCHW_POINTWISE_THREADED)->Apply(ResNetPointwise)->UseRealTime();
+BENCHMARK(NCHW_POINTWISE_THREADED)->Apply(HighChannelPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, ResNetLikeBaseline, false)->Apply(ResNetPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, ResNetLikePanelRepack, true)->Apply(ResNetPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, HighChannelsBaseline, false)->Apply(HighChannelPointwise)->UseRealTime();

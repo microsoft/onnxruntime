@@ -17,6 +17,9 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <unordered_map>
+#include <vector>
+
 //
 // Define the base thread context for NCWHc convolution or pooling operations.
 //
@@ -56,6 +59,40 @@ struct MLAS_NCHWC_CONV_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     bool UseBf16;
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig;
 };
+
+struct MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY
+{
+    const float* FilterSource;
+    size_t InputChannelBatch;
+    size_t FilterCount;
+    size_t SourceFilterStrideBytes;
+
+    bool operator==(const MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY& other) const
+    {
+        return FilterSource == other.FilterSource &&
+            InputChannelBatch == other.InputChannelBatch &&
+            FilterCount == other.FilterCount &&
+            SourceFilterStrideBytes == other.SourceFilterStrideBytes;
+    }
+};
+
+struct MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY_HASH
+{
+    size_t operator()(const MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY& key) const
+    {
+        size_t hash = std::hash<const float*>{}(key.FilterSource);
+        hash ^= std::hash<size_t>{}(key.InputChannelBatch) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hash ^= std::hash<size_t>{}(key.FilterCount) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hash ^= std::hash<size_t>{}(key.SourceFilterStrideBytes) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        return hash;
+    }
+};
+
+using MLAS_NCHWC_POINTWISE_FILTER_CACHE =
+    std::unordered_map<MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY,
+        std::vector<float>, MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY_HASH>;
+
+thread_local MLAS_NCHWC_POINTWISE_FILTER_CACHE MlasNchwcPointwiseFilterCache;
 
 //
 // Define the worker thread context for a NCHWc pooling operation.
@@ -868,9 +905,15 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 {
     static constexpr size_t MaximumInputChannelBatch = 128;
     static constexpr size_t MinimumInputChannelBatchForPacking = 64;
-    static constexpr size_t MinimumInputChannelsForPacking = 256;
+    static constexpr size_t MinimumInputChannelsForPacking = 512;
+    static constexpr size_t MinimumOutputChannelsForPacking = 512;
+    static constexpr size_t MinimumInputChannelsForStridedPacking = 512;
+    static constexpr size_t MinimumOutputChannelsForStridedPacking = 1024;
     static constexpr size_t MinimumOutputElementsForPacking = 8;
     static constexpr size_t MinimumFilterSetsForPacking = 2;
+    static constexpr size_t MinimumOutputElementsForLargeOutputChannelPacking = 64;
+    static constexpr size_t MinimumTotalOutputElementsForVeryLargeOutputChannelPacking = 64;
+    static constexpr size_t MaximumCachedPackedFilterPanels = 64;
 
     MLAS_NCHWC_CONV_POINTWISE_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
         MLAS_NCHWC_GROUPED_CONV_ALGORITHM(WorkBlock)
@@ -887,9 +930,18 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     bool
     ShouldTryPackPointwiseFilter() const
     {
+        const bool IsStrided = StrideHeight > 1 || StrideWidth > 1;
+
         return UsePointwiseFilterPacking() &&
+            BatchCount == 1 &&
             InputChannels >= MinimumInputChannelsForPacking &&
-            OutputChannels >= BlockSize * FilterSetSize * MinimumFilterSetsForPacking;
+            OutputChannels >= std::max(MinimumOutputChannelsForPacking,
+                BlockSize * FilterSetSize * MinimumFilterSetsForPacking) &&
+            (OutputChannels < 2048 ||
+                OutputSize >= MinimumTotalOutputElementsForVeryLargeOutputChannelPacking) &&
+            (!IsStrided ||
+                (InputChannels >= MinimumInputChannelsForStridedPacking &&
+                 OutputChannels >= MinimumOutputChannelsForStridedPacking));
     }
 
     bool
@@ -901,28 +953,47 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         return FilterCount > 1 &&
             InputChannelBatch >= MinimumInputChannelBatchForPacking &&
             OutputThisIteration >= MinimumOutputElementsForPacking &&
+            (OutputChannels < 2048 ||
+                OutputThisIteration >= MinimumOutputElementsForLargeOutputChannelPacking) &&
             ShouldTryPackPointwiseFilter();
     }
 
     const float*
     PackPointwiseFilter(
         const float* FilterSource,
-        float* PackedFilter,
         size_t InputChannelBatch,
         size_t SourceFilterStrideBytes,
         size_t* PackedFilterStrideBytes
         ) const
     {
+        const MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY cache_key{
+            FilterSource, InputChannelBatch, FilterCount, SourceFilterStrideBytes};
+
+        auto cache_entry = MlasNchwcPointwiseFilterCache.find(cache_key);
+        if (cache_entry == MlasNchwcPointwiseFilterCache.end()) {
+            if (MlasNchwcPointwiseFilterCache.size() >= MaximumCachedPackedFilterPanels) {
+                MlasNchwcPointwiseFilterCache.clear();
+            }
+
+            cache_entry = MlasNchwcPointwiseFilterCache.emplace(cache_key, std::vector<float>{}).first;
+        }
+
         const size_t SourceFilterStride = SourceFilterStrideBytes / sizeof(float);
         const size_t PackedFilterStride = BlockSize * InputChannelBatch;
+        const size_t PackedFilterSize = FilterCount * PackedFilterStride;
 
-        for (size_t filter_index = 0; filter_index < FilterCount; filter_index++) {
-            std::copy_n(FilterSource + filter_index * SourceFilterStride,
-                PackedFilterStride, PackedFilter + filter_index * PackedFilterStride);
+        std::vector<float>& PackedFilter = cache_entry->second;
+        if (PackedFilter.size() != PackedFilterSize) {
+            PackedFilter.resize(PackedFilterSize);
+
+            for (size_t filter_index = 0; filter_index < FilterCount; filter_index++) {
+                std::copy_n(FilterSource + filter_index * SourceFilterStride,
+                    PackedFilterStride, PackedFilter.data() + filter_index * PackedFilterStride);
+            }
         }
 
         *PackedFilterStrideBytes = PackedFilterStride * sizeof(float);
-        return PackedFilter;
+        return PackedFilter.data();
     }
 
     void Execute(ptrdiff_t Index)
@@ -957,14 +1028,6 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 #else
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasConvPointwiseFloatKernel;
 #endif
-
-    float* PackedFilterScratch = nullptr;
-    if (ShouldTryPackPointwiseFilter()) {
-        const size_t PackedFilterScratchBytes = UpAlignSize(
-        FilterSetSize * BlockSize * MaximumInputChannelBatch * sizeof(float));
-        MlasThreadedBufAlloc(PackedFilterScratchBytes);
-        PackedFilterScratch = reinterpret_cast<float*>(ThreadedBufHolder.get());
-    }
 
         while (WorkRemaining > 0) {
 
@@ -1019,9 +1082,8 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 const float* KernelFilter = filter;
                 size_t KernelFilterStrideBytes = FilterStrideBytes;
 
-                if (PackedFilterScratch != nullptr &&
-                    ShouldPackPointwiseFilter(InputChannelBatch, OutputThisIteration)) {
-                    KernelFilter = PackPointwiseFilter(filter, PackedFilterScratch,
+                if (ShouldPackPointwiseFilter(InputChannelBatch, OutputThisIteration)) {
+                    KernelFilter = PackPointwiseFilter(filter,
                         InputChannelBatch, FilterStrideBytes, &KernelFilterStrideBytes);
                 }
 

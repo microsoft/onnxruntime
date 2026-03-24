@@ -145,6 +145,137 @@ static MLAS_THREADPOOL* GetMlasThreadPoolForConvBenchmark(void) {
   return threadpool.get();
 }
 
+static void RunSconvNchwc(benchmark::State& state, MLAS_THREADPOOL* thread_pool) {
+  const int64_t rank = state.range(0);                       // Rank
+  const int64_t batch_size = state.range(1);                 // N
+  const int64_t groups = state.range(2);                     // G
+  const int64_t input_channels_per_group = state.range(3);   // Cpg
+  const int64_t output_channels_per_group = state.range(4);  // Fpg
+
+  if (rank != 2) {
+    state.SkipWithError("NCHWc convolution benchmark only supports rank 2.");
+    return;
+  }
+
+  if (batch_size <= 0 || groups <= 0 || input_channels_per_group <= 0 || output_channels_per_group <= 0) {
+    throw std::invalid_argument("invalid convolution benchmark shape");
+  }
+
+  const size_t block_size = MlasNchwcGetBlockSize();
+  if (block_size <= 1) {
+    state.SkipWithError("NCHWc is not supported on this platform.");
+    return;
+  }
+
+  size_t arg_position = 5;
+  const auto input_shape = BenchArgsVector(state, arg_position, rank);
+  const auto kernel_shape = BenchArgsVector(state, arg_position, rank);
+  const auto paddings = BenchArgsVector(state, arg_position, rank * 2);
+  const auto strides = BenchArgsVector(state, arg_position, rank);
+  const auto dilations = BenchArgsVector(state, arg_position, rank);
+
+  if (std::any_of(input_shape.begin(), input_shape.end(), [](const int64_t& dim) { return dim <= 0; }) ||
+      std::any_of(kernel_shape.begin(), kernel_shape.end(), [](const int64_t& dim) { return dim <= 0; }) ||
+      std::any_of(strides.begin(), strides.end(), [](const int64_t& dim) { return dim <= 0; }) ||
+      std::any_of(dilations.begin(), dilations.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all convolution dimensions must be positive");
+  }
+
+  const int64_t group_input_channels = groups * input_channels_per_group;
+  const int64_t group_output_channels = groups * output_channels_per_group;
+
+  std::vector<int64_t> output_shape(static_cast<size_t>(rank));
+  for (int64_t i = 0; i < rank; ++i) {
+    const auto kernel_extent = 1 + dilations[i] * (kernel_shape[i] - 1);
+    output_shape[i] = (paddings[i] + paddings[i + rank] + input_shape[i] - kernel_extent) / strides[i] + 1;
+  }
+
+  const size_t input_height = static_cast<size_t>(input_shape[0]);
+  const size_t input_width = static_cast<size_t>(input_shape[1]);
+  const size_t output_height = static_cast<size_t>(output_shape[0]);
+  const size_t output_width = static_cast<size_t>(output_shape[1]);
+  const size_t kernel_height = static_cast<size_t>(kernel_shape[0]);
+  const size_t kernel_width = static_cast<size_t>(kernel_shape[1]);
+  const size_t input_size = input_height * input_width;
+  const size_t output_size = output_height * output_width;
+  const size_t aligned_input_channels = (static_cast<size_t>(group_input_channels) + block_size - 1) & ~(block_size - 1);
+  const size_t aligned_output_channels = (static_cast<size_t>(group_output_channels) + block_size - 1) & ~(block_size - 1);
+
+  std::vector<int64_t> x_shape = {batch_size, group_input_channels};
+  x_shape.insert(x_shape.end(), input_shape.begin(), input_shape.end());
+  std::vector<int64_t> f_shape = {group_output_channels, input_channels_per_group};
+  f_shape.insert(f_shape.end(), kernel_shape.begin(), kernel_shape.end());
+  std::vector<int64_t> y_shape = {batch_size, group_output_channels};
+  y_shape.insert(y_shape.end(), output_shape.begin(), output_shape.end());
+
+  auto X = RandomVectorUniform(x_shape, -2.0, 2.0);
+  auto F = RandomVectorUniform(f_shape, -1.0, 1.0);
+  std::vector<float> Bias(aligned_output_channels, 0.0f);
+
+  std::vector<float> NchwcInput(static_cast<size_t>(batch_size) * aligned_input_channels * input_size);
+  std::vector<float> NchwcFilter(aligned_output_channels * aligned_input_channels * kernel_height * kernel_width);
+  std::vector<float> NchwcOutput(static_cast<size_t>(batch_size) * aligned_output_channels * output_size);
+  std::vector<float> Y(static_cast<size_t>(std::accumulate(y_shape.begin(), y_shape.end(), 1LL, std::multiplies<int64_t>())));
+
+  int64_t NchwcInputShape[] = {batch_size, static_cast<int64_t>(aligned_input_channels), input_shape[0], input_shape[1]};
+  int64_t FilterShape[] = {group_output_channels, input_channels_per_group, kernel_shape[0], kernel_shape[1]};
+  int64_t NchwcOutputShape[] = {batch_size, static_cast<int64_t>(aligned_output_channels), output_shape[0], output_shape[1]};
+
+  for (int64_t batch = 0; batch < batch_size; ++batch) {
+    MlasReorderInputNchw(X.data() + static_cast<size_t>(batch) * group_input_channels * input_size,
+                         NchwcInput.data() + static_cast<size_t>(batch) * aligned_input_channels * input_size,
+                         static_cast<size_t>(group_input_channels),
+                         input_size);
+  }
+
+  if (groups == 1) {
+    MlasReorderFilterOIHWBiBo(FilterShape, F.data(), NchwcFilter.data());
+  } else {
+    MlasReorderFilterOIHWBo(FilterShape, F.data(), NchwcFilter.data());
+  }
+
+  MLAS_ACTIVATION Activation;
+  Activation.ActivationKind = MlasIdentityActivation;
+
+  MlasNchwcConv(NchwcInputShape,
+                kernel_shape.data(),
+                dilations.data(),
+                paddings.data(),
+                strides.data(),
+                NchwcOutputShape,
+                static_cast<size_t>(groups),
+                NchwcInput.data(),
+                NchwcFilter.data(),
+                Bias.data(),
+                NchwcOutput.data(),
+                &Activation,
+                true,
+                thread_pool,
+                nullptr,
+                false);
+
+  for (auto _ : state) {
+    MlasNchwcConv(NchwcInputShape,
+                  kernel_shape.data(),
+                  dilations.data(),
+                  paddings.data(),
+                  strides.data(),
+                  NchwcOutputShape,
+                  static_cast<size_t>(groups),
+                  NchwcInput.data(),
+                  NchwcFilter.data(),
+                  Bias.data(),
+                  NchwcOutput.data(),
+                  &Activation,
+                  true,
+                  thread_pool,
+                  nullptr,
+                  false);
+  }
+
+  MlasReorderOutputNchw(NchwcOutputShape, NchwcOutput.data(), Y.data(), thread_pool);
+}
+
 void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
   MLAS_THREADPOOL* tp = GetMlasThreadPoolForConvBenchmark();
 
@@ -246,6 +377,14 @@ void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
   }
 }
 
+void SCONV_NCHWC(benchmark::State& state, const char* /*dummy*/) {
+  RunSconvNchwc(state, nullptr);
+}
+
+void SCONV_NCHWC_THREADED(benchmark::State& state, const char* /*dummy*/) {
+  RunSconvNchwc(state, GetMlasThreadPoolForConvBenchmark());
+}
+
 static void ResNet50(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
 
@@ -334,6 +473,25 @@ static void TeamsModel(benchmark::internal::Benchmark* b) {
 
 BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
+
+static void Model2Compare3x3_96x96(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+  b->Args({2, 1, 1, 96, 96, 52, 52, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+}
+
+static void Model2Compare3x3_48x48(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+  b->Args({2, 1, 1, 48, 48, 52, 52, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+}
+
+BENCHMARK_CAPTURE(SCONV_NCHW, Model2Compare3x3_96x96, "")->Apply(Model2Compare3x3_96x96)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHWC, Model2Compare3x3_96x96, "")->Apply(Model2Compare3x3_96x96)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, Model2Compare3x3_96x96, "")->Apply(Model2Compare3x3_96x96)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHWC_THREADED, Model2Compare3x3_96x96, "")->Apply(Model2Compare3x3_96x96)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, Model2Compare3x3_48x48, "")->Apply(Model2Compare3x3_48x48)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHWC, Model2Compare3x3_48x48, "")->Apply(Model2Compare3x3_48x48)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, Model2Compare3x3_48x48, "")->Apply(Model2Compare3x3_48x48)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHWC_THREADED, Model2Compare3x3_48x48, "")->Apply(Model2Compare3x3_48x48)->UseRealTime();
 
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));

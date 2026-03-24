@@ -1,12 +1,17 @@
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/framework/sequential_executor.h"
 
+#include <atomic>
 #include <chrono>
+#include <deque>
 #include <thread>
 #include <vector>
 #include <sstream>
+#include <algorithm>
+#include <mutex>
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
@@ -17,6 +22,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "core/platform/env.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
@@ -58,39 +64,62 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 
 namespace onnxruntime {
 
-static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
-                                      size_t& total_output_sizes, const std::string& node_name,
-                                      std::string& output_type_shape) {
-  // Calculate total output sizes for this operation.
-  std::stringstream ss;
-  int added_type_shapes = 0;
-  ss << "[";
-  total_output_sizes = 0;
-  ORT_UNUSED_PARAMETER(node_name);
-  int output_count = op_kernel_context->OutputCount();
-  for (auto i = 0; i < output_count; i++) {
-    const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
-    if (p_output != nullptr && p_output->IsTensor() && p_output->IsAllocated()) {
-      const auto& tensor = p_output->Get<Tensor>();
-      size_t tensor_size = tensor.SizeInBytes();
-#if defined(TRACE_EXECUTION)
-      const TensorShape& tensor_shape = tensor.Shape();
-      std::cout << node_name << " output[" << i << "]"
-                << " size=" << tensor_size
-                << " shape=" << tensor_shape.ToString()
-                << " element_size=" << tensor.DataType()->Size()
-                << "\n";
-#endif
-      total_output_sizes += tensor_size;
-      auto shape_str = tensor.Shape().ToString();
-      ss << (added_type_shapes++ > 0 ? "," : "")
-         << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
-         << shape_str.substr(1, shape_str.size() - 2) << "]}";
+namespace {
+
+constexpr size_t kOpLatencyMovingAverageWindow = 32;
+
+struct OpLatencyMovingAverageState {
+  std::deque<uint64_t> recent_run_avg_latency_us;
+  uint64_t rolling_total_latency_us{0};
+  uint64_t cumulative_total_latency_us{0};
+  uint64_t total_runs_seen{0};
+};
+
+struct OpLatencyMovingAverageSnapshot {
+  uint64_t moving_avg_latency_us{0};
+  uint64_t running_avg_latency_us{0};
+  size_t window_sample_count{0};
+  uint64_t total_runs_seen{0};
+};
+
+class OpLatencyMovingAverageTracker {
+ public:
+  OpLatencyMovingAverageSnapshot Update(const SessionState* session_state,
+                                        const std::string& op_name,
+                                        uint64_t run_avg_latency_us) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto& session_stats = moving_average_by_session_[session_state];
+    auto& state = session_stats[op_name];
+
+    state.recent_run_avg_latency_us.push_back(run_avg_latency_us);
+    state.rolling_total_latency_us += run_avg_latency_us;
+    state.cumulative_total_latency_us += run_avg_latency_us;
+    state.total_runs_seen += 1;
+
+    if (state.recent_run_avg_latency_us.size() > kOpLatencyMovingAverageWindow) {
+      state.rolling_total_latency_us -= state.recent_run_avg_latency_us.front();
+      state.recent_run_avg_latency_us.pop_front();
     }
+
+    const auto sample_count = state.recent_run_avg_latency_us.size();
+    return OpLatencyMovingAverageSnapshot{
+        sample_count == 0 ? 0 : (state.rolling_total_latency_us / sample_count),
+        state.total_runs_seen == 0 ? 0 : (state.cumulative_total_latency_us / state.total_runs_seen),
+        sample_count,
+        state.total_runs_seen};
   }
-  ss << "]";
-  output_type_shape = ss.str();
+
+ private:
+  std::mutex mutex_;
+  InlinedHashMap<const SessionState*, InlinedHashMap<std::string, OpLatencyMovingAverageState>> moving_average_by_session_;
+};
+
+OpLatencyMovingAverageTracker& GetOpLatencyMovingAverageTracker() {
+  static OpLatencyMovingAverageTracker tracker;
+  return tracker;
 }
+
+}  // namespace
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
                                      const onnxruntime::OpKernel* p_op_kernel,
@@ -140,6 +169,80 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   input_type_shape = ss.str();
 }
 
+static bool TryGetConvRuntimeShape(OpKernelContextInternal* op_kernel_context,
+                                   const onnxruntime::OpKernel* p_op_kernel,
+                                   int64_t& cin, int64_t& cout,
+                                   int64_t& h, int64_t& w,
+                                   int64_t& kh, int64_t& kw) {
+  const auto& op_name = p_op_kernel->KernelDef().OpName();
+  if (op_name != "Conv" && op_name != "FusedConv") {
+    return false;
+  }
+
+  if (op_kernel_context->InputCount() < 2 || op_kernel_context->OutputCount() < 1) {
+    return false;
+  }
+
+  const OrtValue* input_ort_value = op_kernel_context->GetInputMLValue(0);
+  const OrtValue* weight_ort_value = op_kernel_context->GetInputMLValue(1);
+  const OrtValue* output_ort_value = op_kernel_context->GetOutputMLValue(0);
+
+  if (input_ort_value == nullptr || weight_ort_value == nullptr || output_ort_value == nullptr ||
+      !input_ort_value->IsTensor() || !weight_ort_value->IsTensor() || !output_ort_value->IsTensor()) {
+    return false;
+  }
+
+  const auto& input_tensor = input_ort_value->Get<Tensor>();
+  const auto& weight_tensor = weight_ort_value->Get<Tensor>();
+  const auto& output_tensor = output_ort_value->Get<Tensor>();
+
+  const auto& input_shape = input_tensor.Shape();
+  const auto& weight_shape = weight_tensor.Shape();
+  const auto& output_shape = output_tensor.Shape();
+
+  if (input_shape.NumDimensions() != 4 || weight_shape.NumDimensions() != 4 || output_shape.NumDimensions() != 4) {
+    return false;
+  }
+
+  cin = input_shape[1];
+  cout = output_shape[1];
+  h = input_shape[2];
+  w = input_shape[3];
+  kh = weight_shape[2];
+  kw = weight_shape[3];
+  return true;
+}
+
+static std::string MakeLatencyProfileOpName(OpKernelContextInternal* op_kernel_context,
+                                            const onnxruntime::OpKernel* p_op_kernel) {
+  int64_t cin = 0;
+  int64_t cout = 0;
+  int64_t h = 0;
+  int64_t w = 0;
+  int64_t kh = 0;
+  int64_t kw = 0;
+
+  if (TryGetConvRuntimeShape(op_kernel_context, p_op_kernel, cin, cout, h, w, kh, kw)) {
+    return MakeString(p_op_kernel->KernelDef().OpName(), "_",
+                      kh, "x", kw,
+                      "_Cin=", cin,
+                      "_Cout=", cout,
+                      "_H=", h,
+                      "_W=", w);
+  }
+
+  return p_op_kernel->KernelDef().OpName();
+}
+
+static bool IsPointwiseConvLatencyStatsEnabled() {
+  static const bool is_enabled = []() {
+    const std::string env_value = Env::Default().GetEnvironmentVar("ORT_ENABLE_POINTWISE_CONV_LATENCY_STATS");
+    return env_value.empty() || env_value != "0";
+  }();
+
+  return is_enabled;
+}
+
 class KernelScope;
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -178,6 +281,7 @@ class SessionScope {
 #endif
   {
     session_start_ = StartProfilingIfEnabled();
+    session_wall_clock_begin_time_ = std::chrono::steady_clock::now();
 
     auto& logger = session_state_.Logger();
     VLOGS(logger, 0) << "Begin execution";
@@ -225,6 +329,10 @@ class SessionScope {
 
     StopProfilingIfEnabled(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
 
+    if (IsPointwiseConvLatencyStatsEnabled()) {
+      LogOpLatencyStatsWarning();
+    }
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     auto& logger = session_state_.Logger();
     for (auto i : frame_.GetStaticMemorySizeInfo()) {
@@ -251,6 +359,23 @@ class SessionScope {
 
   bool IsRunProfilingEnabled() const {
     return run_profiler_ && run_profiler_->IsEnabled();
+  }
+
+  void RecordKernelLatency(uint64_t latency_us) {
+    total_kernel_latency_us_.fetch_add(latency_us, std::memory_order_relaxed);
+  }
+
+  void RecordOpLatency(const std::string& op_name, uint64_t latency_us) {
+    if (!IsPointwiseConvLatencyStatsEnabled()) {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(op_latency_stats_mutex_);
+    auto& stats = op_latency_stats_[op_name];
+    stats.count += 1;
+    stats.total_latency_us += latency_us;
+    stats.min_latency_us = std::min(stats.min_latency_us, latency_us);
+    stats.max_latency_us = std::max(stats.max_latency_us, latency_us);
   }
 
   void StopProfilingIfEnabled(profiling::EventCategory category,
@@ -286,9 +411,97 @@ class SessionScope {
   }
 
  private:
+  struct OpLatencyStats {
+    uint64_t count{0};
+    uint64_t total_latency_us{0};
+    uint64_t min_latency_us{std::numeric_limits<uint64_t>::max()};
+    uint64_t max_latency_us{0};
+  };
+
+  struct OpLatencyLogEntry {
+    std::string op_name;
+    OpLatencyStats current_run_stats;
+    uint64_t current_run_avg_latency_us{0};
+    OpLatencyMovingAverageSnapshot moving_average_snapshot;
+  };
+
+  void LogOpLatencyStatsWarning() const {
+    InlinedVector<OpLatencyLogEntry> op_stats;
+    uint64_t total_tracked_conv_kernel_latency_us = 0;
+    uint64_t total_tracked_conv_kernel_invocations = 0;
+
+    {
+      std::lock_guard<std::mutex> lock(op_latency_stats_mutex_);
+      if (op_latency_stats_.empty()) {
+        return;
+      }
+
+      op_stats.reserve(op_latency_stats_.size());
+      for (const auto& kvp : op_latency_stats_) {
+        const auto& stats = kvp.second;
+        const uint64_t current_run_avg_latency_us = stats.count == 0 ? 0 : (stats.total_latency_us / stats.count);
+
+        op_stats.push_back(OpLatencyLogEntry{
+            kvp.first,
+            stats,
+            current_run_avg_latency_us,
+            GetOpLatencyMovingAverageTracker().Update(&session_state_, kvp.first, current_run_avg_latency_us)});
+
+        total_tracked_conv_kernel_latency_us += kvp.second.total_latency_us;
+        total_tracked_conv_kernel_invocations += kvp.second.count;
+      }
+    }
+
+    const uint64_t total_run_latency_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                                    std::chrono::steady_clock::now() - session_wall_clock_begin_time_)
+                                                                    .count());
+    const uint64_t total_kernel_latency_us = total_kernel_latency_us_.load(std::memory_order_relaxed);
+    const uint64_t framework_overhead_us =
+        total_run_latency_us > total_kernel_latency_us ? (total_run_latency_us - total_kernel_latency_us) : 0;
+
+    std::sort(op_stats.begin(), op_stats.end(),
+              [](const auto& left, const auto& right) {
+                if (left.current_run_stats.total_latency_us != right.current_run_stats.total_latency_us) {
+                  return left.current_run_stats.total_latency_us > right.current_run_stats.total_latency_us;
+                }
+                if (left.current_run_avg_latency_us != right.current_run_avg_latency_us) {
+                  return left.current_run_avg_latency_us > right.current_run_avg_latency_us;
+                }
+                return left.op_name < right.op_name;
+              });
+
+    auto& logger = session_state_.Logger();
+    LOGS(logger, WARNING) << "[Latency] run_total_us=" << total_run_latency_us
+                          << " total_kernel_us=" << total_kernel_latency_us
+                          << " framework_overhead_us=" << framework_overhead_us;
+    LOGS(logger, WARNING) << "[Latency] kernel latency summary by op/shape: unique_entries="
+                          << op_stats.size() << ", kernel_invocations="
+                          << total_tracked_conv_kernel_invocations << ", total_kernel_time_us="
+                          << total_tracked_conv_kernel_latency_us;
+
+    for (const auto& entry : op_stats) {
+      const auto& op_name = entry.op_name;
+      const auto& stats = entry.current_run_stats;
+      LOGS(logger, WARNING) << "[Latency] op=" << op_name
+                            << " count=" << stats.count
+                            << " total_us=" << stats.total_latency_us
+                            << " avg_us=" << entry.current_run_avg_latency_us
+                            << " moving_avg_us=" << entry.moving_average_snapshot.moving_avg_latency_us
+                            << " running_avg_us=" << entry.moving_average_snapshot.running_avg_latency_us
+                            << " moving_avg_window=" << entry.moving_average_snapshot.window_sample_count
+                            << " moving_avg_runs_seen=" << entry.moving_average_snapshot.total_runs_seen
+                            << " min_us=" << stats.min_latency_us
+                            << " max_us=" << stats.max_latency_us;
+    }
+  }
+
   const SessionState& session_state_;
   profiling::Profiler* run_profiler_;
   TimePoint session_start_;
+  std::chrono::steady_clock::time_point session_wall_clock_begin_time_;
+  std::atomic<uint64_t> total_kernel_latency_us_{0};
+  mutable std::mutex op_latency_stats_mutex_;
+  InlinedHashMap<std::string, OpLatencyStats> op_latency_stats_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
 #endif
@@ -343,6 +556,8 @@ class KernelScope {
             session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
+    wall_clock_begin_time_ = std::chrono::steady_clock::now();
+
 #ifdef CONCURRENCY_VISUALIZER
     session_scope_.series_.write_flag(kernel_.Node().Name().c_str());
 #endif
@@ -394,6 +609,17 @@ class KernelScope {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelScope);
 
   ~KernelScope() {
+    const auto wall_clock_end_time = std::chrono::steady_clock::now();
+    const auto latency_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                wall_clock_end_time - wall_clock_begin_time_)
+                                .count();
+
+    if (latency_us > 0) {
+      session_scope_.RecordKernelLatency(static_cast<uint64_t>(latency_us));
+      session_scope_.RecordOpLatency(MakeLatencyProfileOpName(&kernel_context_, &kernel_),
+                                     static_cast<uint64_t>(latency_us));
+    }
+
 #ifdef ENABLE_NVTX_PROFILE
     node_compute_range_.End();
 #endif
@@ -402,26 +628,23 @@ class KernelScope {
     const bool run_profiling_enabled = session_scope_.IsRunProfilingEnabled();
 
     if (session_profiling_enabled || run_profiling_enabled) {
-      std::string output_type_shape_;
-      CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
+      {
+        InlinedHashMap<std::string, std::string> event_args = {
+            {"op_name", kernel_.KernelDef().OpName()},
+            {"provider", kernel_.KernelDef().Provider()},
+            {"node_index", std::to_string(kernel_.Node().Index())},
+        };
 
-      InlinedHashMap<std::string, std::string> event_args = {
-          {"op_name", kernel_.KernelDef().OpName()},
-          {"provider", kernel_.KernelDef().Provider()},
-          {"node_index", std::to_string(kernel_.Node().Index())},
-          {"activation_size", std::to_string(input_activation_sizes_)},
-          {"parameter_size", std::to_string(input_parameter_sizes_)},
-          {"output_size", std::to_string(total_output_sizes_)},
-          {"input_type_shape", input_type_shape_},
-          {"output_type_shape", output_type_shape_},
-          {"thread_scheduling_stats",
-           concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
-      };
+        event_args.insert_or_assign("activation_size", std::to_string(input_activation_sizes_));
+        event_args.insert_or_assign("parameter_size", std::to_string(input_parameter_sizes_));
+        event_args.insert_or_assign("thread_scheduling_stats",
+                                    concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool()));
 
-      session_scope_.StopProfilingIfEnabled(profiling::NODE_EVENT,
-                                            node_name_ + "_kernel_time",
-                                            kernel_begin_time_,
-                                            std::move(event_args));
+        session_scope_.StopProfilingIfEnabled(profiling::NODE_EVENT,
+                                              node_name_ + "_kernel_time",
+                                              kernel_begin_time_,
+                                              std::move(event_args));
+      }
     }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -444,6 +667,7 @@ class KernelScope {
   }  //~KernelScope
 
  private:
+  std::chrono::steady_clock::time_point wall_clock_begin_time_;
   TimePoint kernel_begin_time_;
   SessionScope& session_scope_;
   const SessionState& session_state_;
@@ -453,7 +677,6 @@ class KernelScope {
 
   size_t input_activation_sizes_{};
   size_t input_parameter_sizes_{};
-  size_t total_output_sizes_{};
   std::string input_type_shape_;
 
 #ifdef CONCURRENCY_VISUALIZER
