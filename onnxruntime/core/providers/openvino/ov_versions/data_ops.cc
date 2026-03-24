@@ -373,6 +373,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"ReduceSum", V_2025_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
