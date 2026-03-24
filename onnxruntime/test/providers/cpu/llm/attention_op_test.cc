@@ -2449,16 +2449,16 @@ TEST(AttentionTest, Attention_FP16_SoftmaxLargeDimensions) {
   test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q_data));
   test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k_data));
   test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v_data));
-  test.AddOptionalInputEdge<bool>();      // attn_mask
-  test.AddOptionalInputEdge<MLFloat16>(); // past_key
-  test.AddOptionalInputEdge<MLFloat16>(); // past_value
+  test.AddOptionalInputEdge<bool>();       // attn_mask
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
 
   // Expected output: all 1.0 (uniform attention over all-ones V).
   std::vector<int64_t> y_shape = {batch_size, num_heads, q_sequence_length, head_size};
   std::vector<float> expected_y(q_elements, 1.0f);
   test.AddOutput<MLFloat16>("Y", y_shape, ToFloat16(expected_y), false, 0, 3e-3f);
-  test.AddOptionalOutputEdge<MLFloat16>(); // present_key
-  test.AddOptionalOutputEdge<MLFloat16>(); // present_value
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
