@@ -258,10 +258,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       }
     } else {
-      // For HQNBIT_CompInt8 4-bit, route through SQNBIT_CompInt8 for sizing and packing.
-      // This gets KleidiAI-sized buffer when available and packs B+scales in KleidiAI format.
-      // The same approach is already used for 8-bit HQNBIT_CompInt8 (size function treats them identically).
-      const auto effective_compute_type = (compute_type_ == HQNBIT_CompInt8 && nbits_ == 4)
+      // For HQNBIT_CompInt8, route through SQNBIT_CompInt8 for sizing and packing.
+      // This gets KleidiAI-sized buffer when available for 4-bit and packs B+scales correctly.
+      const auto effective_compute_type = (compute_type_ == HQNBIT_CompInt8)
                                               ? SQNBIT_CompInt8
                                               : compute_type_;
 
@@ -273,9 +272,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       auto qptr = tensor.DataRaw();
       const void* scale_ptr = nullptr;
 
-      // For HQNBIT_CompInt8 4-bit: convert constant fp16 scales to fp32 for packing.
-      // KleidiAI bakes scales into packed B, so they must be available now.
-      if (compute_type_ == HQNBIT_CompInt8 && nbits_ == 4 && scales) {
+      // For HQNBIT_CompInt8: convert constant fp16 scales to fp32 for packing.
+      // KleidiAI bakes scales into packed B for 4-bit; 8-bit needs fp32 scales for SQ8BitGemmPackQuantBDataAndBlkSum.
+      if (compute_type_ == HQNBIT_CompInt8 && scales) {
         auto sptr_fp16 = scales->Data<MLFloat16>();
         auto scales_size = static_cast<size_t>(scales->Shape().Size());
         scales_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, scales_size, true);
@@ -292,7 +291,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
 #if defined(MLAS_TARGET_ARM64)
       // For KleidiAI asymmetric 4-bit path: compute BZpCorr now while scales and zero_points are accessible.
-      if (compute_type_ == HQNBIT_CompInt8 && nbits_ == 4 && has_zp_input_ && scales_fp32_) {
+      if (compute_type_ == HQNBIT_CompInt8 && nbits_ == 4 && has_zp_input_ && scales_fp32_ &&
+          MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, SQNBIT_CompInt8, has_zp_input_, &mlas_backend_kernel_selector_config_)) {
         const Tensor* zp_tensor = nullptr;
         OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
         if (zp_tensor != nullptr) {
@@ -400,21 +400,28 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       } else
 #endif  // MLAS_TARGET_ARM64
       {
-        // Non-KleidiAI path (or 8-bit): convert fp16 scales to fp32 and pack into workspace.
+        // Non-KleidiAI path (or 8-bit): convert fp16 scales to fp32.
         auto sptr_fp16 = tensor.Data<MLFloat16>();
         auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
         if (!scales_fp32_) {
           scales_fp32_ = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
           MlasConvertHalfToFloatBuffer(sptr_fp16, scales_fp32_.get(), tensor_size);
         }
-        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(),
-                                    scales_fp32_.get(), has_zp_input_, nullptr, nullptr,
-                                    &mlas_backend_kernel_selector_config_);
+        // Pack scales separately only for 8-bit. For 4-bit on ARM64, scales are already packed
+        // during B packing or used as a raw pointer at compute time (matching standard
+        // SQNBIT_CompInt8 behavior where should_pack_scale_and_zp_inputs = (nbits_ == 8) on ARM64).
+        if (nbits_ == 8) {
+          MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(),
+                                      scales_fp32_.get(), has_zp_input_, nullptr, nullptr,
+                                      &mlas_backend_kernel_selector_config_);
+        }
         is_packed = false;
       }
     }
 
-    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
+    // Pack zero_points separately only for 8-bit (matching standard SQNBIT_CompInt8 behavior).
+    // For 4-bit, zero_points are passed directly in data params or handled via KleidiAI BZpCorr.
+    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && nbits_ == 8) {
       auto zptr = tensor.Data<uint8_t>();
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(), nullptr,
                                   has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
