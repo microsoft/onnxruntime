@@ -306,6 +306,7 @@ struct PluginNoOpLogStream {
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -343,6 +344,34 @@ inline size_t BytesForCount(size_t count_or_bytes, size_t element_size) {
   if (count_or_bytes > (std::numeric_limits<size_t>::max() / element_size)) return 0;
   return count_or_bytes * element_size;
 }
+
+template <typename T>
+IConstantBuffer<T>* GetConstOnesBufferForDevice(int device_id) {
+  static std::mutex mutex;
+  static std::unordered_map<int, std::unique_ptr<IConstantBuffer<T>>> buffers;
+  std::lock_guard<std::mutex> lock(mutex);
+  auto& buffer = buffers[device_id];
+  if (!buffer) {
+    buffer = CreateConstantOnes<T>();
+  }
+  return buffer.get();
+}
+
+inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
+  static std::mutex mutex;
+  static std::unordered_map<int, std::unique_ptr<cudaDeviceProp>> props;
+  std::lock_guard<std::mutex> lock(mutex);
+  auto it = props.find(device_id);
+  if (it == props.end()) {
+    auto prop = std::make_unique<cudaDeviceProp>();
+    if (cudaGetDeviceProperties(prop.get(), device_id) != cudaSuccess) {
+      std::memset(prop.get(), 0, sizeof(*prop));
+      prop->major = -1;
+    }
+    it = props.emplace(device_id, std::move(prop)).first;
+  }
+  return *it->second;
+}
 }  // namespace detail
 }  // namespace cuda
 
@@ -370,16 +399,8 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
     return false;
   }
   const cudaDeviceProp& GetDeviceProp() const {
-    static cudaDeviceProp prop;
-    static std::once_flag flag;
-    std::call_once(flag, []() {
-      int device_id = cuda::detail::GetCudaKernelAdapterRuntimeConfig().device_id.load(std::memory_order_relaxed);
-      if (cudaGetDeviceProperties(&prop, device_id) != cudaSuccess) {
-        std::memset(&prop, 0, sizeof(prop));
-        prop.major = -1;
-      }
-    });
-    return prop;
+    int device_id = cuda::detail::GetCudaKernelAdapterRuntimeConfig().device_id.load(std::memory_order_relaxed);
+    return cuda::detail::GetDevicePropForDevice(device_id);
   }
 };
 
@@ -664,9 +685,7 @@ class CudaKernel : public OpKernel {
   // Delegates to IConstantBuffer from cuda_utils.h (compiled in cuda_utils.cu).
   template <typename T>
   const T* GetConstOnes(size_t count, cudaStream_t stream) const {
-    static std::unique_ptr<IConstantBuffer<T>> buf;
-    static std::once_flag flag;
-    std::call_once(flag, []() { buf = CreateConstantOnes<T>(); });
+    auto* buf = detail::GetConstOnesBufferForDevice<T>(device_id_);
     return buf->GetBuffer(stream, count);
   }
 
@@ -677,11 +696,23 @@ class CudaKernel : public OpKernel {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
     size_t sz = detail::BytesForCount(cnt, detail::SizeOf<T>::value);
     void* p = nullptr;
-    if (cudaMalloc(&p, sz) != cudaSuccess) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
+    cudaError_t alloc_result = cudaSuccess;
+    if (s) {
+      alloc_result = cudaMallocAsync(&p, sz, static_cast<cudaStream_t>(s));
+      if (alloc_result == cudaErrorNotSupported || alloc_result == cudaErrorInvalidValue) {
+        alloc_result = cudaMalloc(&p, sz);
+      }
+    } else {
+      alloc_result = cudaMalloc(&p, sz);
+    }
+    if (alloc_result != cudaSuccess) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
     return IAllocatorUniquePtr<T>(static_cast<T*>(p), [s](T* ptr) {
       if (ptr) {
         if (s) {
-          cudaFreeAsync(ptr, static_cast<cudaStream_t>(s));
+          cudaError_t free_result = cudaFreeAsync(ptr, static_cast<cudaStream_t>(s));
+          if (free_result == cudaErrorNotSupported || free_result == cudaErrorInvalidValue) {
+            cudaFree(ptr);
+          }
         } else {
           cudaFree(ptr);
         }

@@ -24,6 +24,8 @@ class ConvTranspose : public CudaKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) override;
   Status ComputeInternal(OpKernelContext* context) const override;
+  // `dynamic_padding` is used by the contrib op ConvTransposeWithDynamicPads,
+  // which adds a Pads input before the optional bias input.
   Status DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const;
 
  private:

@@ -189,6 +189,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
         ORT_INVALID_ARGUMENT,
         "CUDA EP factory currently supports only one device at a time.");
   }
+  ORT_RETURN_IF_NOT(devices != nullptr && devices[0] != nullptr, "CUDA EP factory requires a valid device");
 
   // Parse configuration from session options.
   // The read helpers intentionally swallow errors: if a config entry is

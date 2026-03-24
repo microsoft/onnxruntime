@@ -12,17 +12,17 @@ namespace {
 
 // Global stream-to-CudaSyncStream mapping.
 // Required because migrated CUDA kernels receive only a raw cudaStream_t
-// but need access to associated cuBLAS/cuDNN handles. The map is
-// lazily initialized and never freed (process-lifetime singleton).
-static std::unordered_map<cudaStream_t, CudaSyncStream*>* g_stream_map = nullptr;
-static std::mutex* g_stream_map_mutex = nullptr;
-static std::once_flag g_stream_map_init_flag;
+// but need access to associated cuBLAS/cuDNN handles.
+using StreamMap = std::unordered_map<cudaStream_t, CudaSyncStream*>;
 
-void InitStreamMap() {
-  std::call_once(g_stream_map_init_flag, []() {
-    g_stream_map = new std::unordered_map<cudaStream_t, CudaSyncStream*>();
-    g_stream_map_mutex = new std::mutex();
-  });
+StreamMap& GetStreamMap() {
+  static StreamMap stream_map;
+  return stream_map;
+}
+
+std::mutex& GetStreamMapMutex() {
+  static std::mutex stream_map_mutex;
+  return stream_map_mutex;
 }
 }  // namespace
 
@@ -117,25 +117,29 @@ void CudaSyncStream::CleanupDeferredCPUBuffers() {
 }
 
 /*static*/ CudaSyncStream* CudaSyncStream::FromCudaStream(cudaStream_t stream) {
-  InitStreamMap();
-  std::lock_guard<std::mutex> lock(*g_stream_map_mutex);
-  auto it = g_stream_map->find(stream);
-  if (it != g_stream_map->end()) {
+  if (stream == nullptr) {
+    return nullptr;
+  }
+
+  auto& stream_map = GetStreamMap();
+  std::lock_guard<std::mutex> lock(GetStreamMapMutex());
+  auto it = stream_map.find(stream);
+  if (it != stream_map.end()) {
     return it->second;
   }
   return nullptr;
 }
 
 /*static*/ void CudaSyncStream::RegisterStream(cudaStream_t stream, CudaSyncStream* sync_stream) {
-  InitStreamMap();
-  std::lock_guard<std::mutex> lock(*g_stream_map_mutex);
-  (*g_stream_map)[stream] = sync_stream;
+  auto& stream_map = GetStreamMap();
+  std::lock_guard<std::mutex> lock(GetStreamMapMutex());
+  stream_map[stream] = sync_stream;
 }
 
 /*static*/ void CudaSyncStream::UnregisterStream(cudaStream_t stream) {
-  if (!g_stream_map) return;
-  std::lock_guard<std::mutex> lock(*g_stream_map_mutex);
-  g_stream_map->erase(stream);
+  auto& stream_map = GetStreamMap();
+  std::lock_guard<std::mutex> lock(GetStreamMapMutex());
+  stream_map.erase(stream);
 }
 
 // ---------------------------------------------------------------------------

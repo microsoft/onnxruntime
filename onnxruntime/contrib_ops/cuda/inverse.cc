@@ -65,7 +65,8 @@ Status CheckForSingularity(cudaStream_t stream, const IAllocatorUniquePtr<int>& 
 
 template <typename T>
 struct Inverse::ComputeImpl {
-  Status operator()(void* ort_stream, Inverse::CublasHandle cublas_h, const Inverse* inst, const Tensor& input, Tensor& output,
+  Status operator()(void* ort_stream, cudaStream_t stream, Inverse::CublasHandle cublas_h, const Inverse* inst,
+                    const Tensor& input, Tensor& output,
                     const IAllocatorUniquePtr<int>& info, const IAllocatorUniquePtr<int>& pivots,
                     size_t num_batches, size_t rows) const {
     using namespace onnxruntime::cuda;
@@ -75,7 +76,6 @@ struct Inverse::ComputeImpl {
     auto info_cpu = std::make_unique<int[]>(num_batches);
     const auto dim = static_cast<int>(rows);
     const auto n_batches = static_cast<int>(num_batches);
-    cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream) : nullptr;
 
     // Make a copy of the input which will serve as a workspace as well.
     if constexpr (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) {
@@ -156,7 +156,7 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
 
   utils::MLTypeCallDispatcher<float, double, MLFloat16> t_disp(input->GetElementType());
   return t_disp.InvokeRet<Status, ComputeImpl>(
-      GetComputeStream(ctx), GetCublasHandle(ctx), this, *input, *output, info, pivots, num_batches, rows);
+      GetComputeStream(ctx), Stream(ctx), GetCublasHandle(ctx), this, *input, *output, info, pivots, num_batches, rows);
 }
 
 }  // namespace cuda

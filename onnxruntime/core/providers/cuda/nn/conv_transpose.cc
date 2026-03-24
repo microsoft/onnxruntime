@@ -225,12 +225,9 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
 template <typename T, bool Layout>
 Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dynamic_padding) const {
   constexpr bool channels_last = Layout == LAYOUT_NHWC;
-
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
   size_t num_inputs = static_cast<size_t>(Info().GetInputCount());
-#else
-  size_t num_inputs = OpKernel::Node().InputDefs().size();
-#endif
+  // Standard ONNX ConvTranspose has inputs X, W, optional B.
+  // ConvTransposeWithDynamicPads inserts Pads at input 2, so bias becomes input 3.
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   // set X
@@ -487,11 +484,7 @@ Status ConvTranspose<T, Layout>::DoConvTranspose(OpKernelContext* context, bool 
       CUDA_RETURN_IF_ERROR(cudaMemset(s_.y_data, 0, s_.Y->SizeInBytes()));
     }
   }
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  auto ws = GetWorkSpace(context->GetGPUComputeStream());
-#else
-  auto ws = GetWorkSpace(context->GetComputeStream());
-#endif
+  auto ws = GetWorkSpace(GetComputeStream(context));
 
   CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_graph->execute(cudnn_handle,
                                                       s_.variant_pack,

@@ -48,8 +48,10 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
   TensorShapeVector w_dims = w_shape.AsShapeVector();
   auto w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
 
-  const Tensor* B_tensor = context->Input<Tensor>(dynamic_padding ? 3 : 2);
-  bool has_bias = B_tensor != nullptr;
+  const size_t num_inputs = static_cast<size_t>(Info().GetInputCount());
+  // Standard ONNX ConvTranspose has inputs X, W, optional B.
+  // ConvTransposeWithDynamicPads inserts Pads at input 2, so bias becomes input 3.
+  bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   CudaT* y_data = nullptr;
 
