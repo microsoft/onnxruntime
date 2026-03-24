@@ -1407,7 +1407,9 @@ TEST(NchwcOptimizerTests, UpsampleLinear) {
 }
 
 TEST(NchwcOptimizerTests, Activation) {
-  auto test_case = [&](const std::string& activation_op_type, const std::string& domain = kOnnxDomain) {
+  auto test_case = [&](const std::string& activation_op_type,
+                       const std::string& domain = kOnnxDomain,
+                       int opset_version = 13) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -1431,7 +1433,7 @@ TEST(NchwcOptimizerTests, Activation) {
       EXPECT_EQ(op_to_count["Add"], 1);
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Verify that the optimizer doesn't add reorders for these activations in
@@ -1443,6 +1445,7 @@ TEST(NchwcOptimizerTests, Activation) {
   test_case("Sigmoid");
   test_case("Tanh");
   test_case("HardSigmoid");
+  test_case("Gelu", kOnnxDomain, 20);
   test_case("Gelu", kMSDomain);
   test_case("QuickGelu", kMSDomain);
 }
@@ -1514,7 +1517,9 @@ TEST(NchwcOptimizerTests, ActivationSingleConsumerConvFusion) {
 }
 
 TEST(NchwcOptimizerTests, ActivationSingleConsumerConvNoFusion) {
-  auto test_case = [&](const std::string& activation_op_type, const std::string& domain = kOnnxDomain) {
+  auto test_case = [&](const std::string& activation_op_type,
+                       const std::string& domain = kOnnxDomain,
+                       int opset_version = 13) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -1544,12 +1549,13 @@ TEST(NchwcOptimizerTests, ActivationSingleConsumerConvNoFusion) {
       }
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Gelu/QuickGelu must remain separate even with a single-consumer Conv input,
   // because the NCHWc Conv activation fuse guard only allows a fixed subset of
   // activations.
+  test_case("Gelu", kOnnxDomain, 20);
   test_case("Gelu", kMSDomain);
   test_case("QuickGelu", kMSDomain);
 }
