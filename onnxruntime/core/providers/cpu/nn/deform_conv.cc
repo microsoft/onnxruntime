@@ -294,7 +294,7 @@ ORT_FORCEINLINE void PlanStoreSample(BilinearSamplePlanBlock<T>* blocks, int64_t
 // Matches std::floor for in-range finite x. Call only after coords pass the inverted bounds check below
 // (NaN makes each comparison false, so the && fails and ! rejects without a separate isfinite branch).
 // Performance trick: std::floor can be slow due to handling edge cases (NaN, Inf, negative zero).
-// This custom implementation uses a simple cast to int and a boolean subtraction, which compiles 
+// This custom implementation uses a simple cast to int and a boolean subtraction, which compiles
 // to fast, branchless instructions on most architectures.
 template <typename T>
 ORT_FORCEINLINE int DeformConvFastFloor(T x) {
@@ -561,16 +561,16 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
           // Shape of col_buffer is [C * kH * kW, out_h * out_w].
           // Row-major flatten over (channel, kernel_y, kernel_x): idx = c_im * (kH*kW) + i * kW + j.
           T* col_ptr = ctx.data_col + static_cast<int64_t>(idx) * output_size;
-          
+
           // `im_ptr`: Points to the start of the current channel `c_im` in the input image.
           // Shape of input image is [C, H, W].
           const T* im_ptr = ctx.data_im + c_im * static_cast<int64_t>(ctx.height) * ctx.width;
-          
+
           // `row`: Identifies which pre-computed sampling plan to use.
           // The sampling plan is shared across channels that belong to the same `offset_grp`.
           // Formula: plan_row_index = offset_grp * (kH * kW) + (i * kW + j)
           const int64_t row = offset_grp * kernel_size + i * ctx.kernel_w + j;
-          
+
           // `row_plan`: Points to the start of the AoSoA blocks for this specific `row`.
           // Since each block holds `kPlanAoSoALanes` elements, we divide the padded base index by it.
           const size_t plan_row_base = static_cast<size_t>(row) * static_cast<size_t>(ctx.padded_spatial_count);
@@ -641,7 +641,7 @@ void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT 
   }
 
   ORT_ENFORCE(batch_n <= int64_max / M, "N*M overflows int64 for bias parallelization.");
-  
+
   // N>1: flatten (n, m) to k = n * M + m so TryParallelFor sees enough tasks; update (n,m) by increment/wrap
   // inside the loop to avoid div/mod per iteration (see loop body).
   const int64_t total_tasks = batch_n * M;
@@ -657,12 +657,12 @@ void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT 
         for (ptrdiff_t k = first; k < last; ++k) {
           const size_t n_sz = static_cast<size_t>(n);
           const size_t m_sz = static_cast<size_t>(m);
-          
+
           // Pointer arithmetic formula: Y_row_ptr = y_data + (n * y_batch_stride) + (m * output_image_size)
           // Mathematical operation: Y[n, m, spatial_idx] += B[m] for all spatial_idx in [0, output_image_size).
           T* y_row = y_data + n_sz * y_batch_stride + m_sz * output_image_size_elements;
           DeformConvCpuAddBiasToRow<T>(y_row, bias_data, m, spatial_len);
-          
+
           // For subsequent tasks, we simply increment `m` and wrap around to increment `n`.
           // This completely eliminates division and modulo operations inside the hot loop.
           if (++m == M) {
@@ -772,7 +772,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
   for (int64_t n = 0; n < N; ++n) {
     const size_t n_idx = static_cast<size_t>(n);
-    
+
     // 2.1) Deformable Im2Col for image n.
     // Gather deformed samples into col buffer for GEMM.
     const T* X_curr = Xdata + n_idx * x_batch_stride;
@@ -823,11 +823,11 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
           static_cast<ptrdiff_t>(M / group),          // M
           static_cast<ptrdiff_t>(output_image_size),  // N
           static_cast<ptrdiff_t>(kernel_dim),         // K
-          static_cast<T>(1),                     // alpha
-          weight_g,                              // A
-          col_g,                                 // B
-          static_cast<T>(0),                     // beta
-          Y_g,                                   // C
+          static_cast<T>(1),                          // alpha
+          weight_g,                                   // A
+          col_g,                                      // B
+          static_cast<T>(0),                          // beta
+          Y_g,                                        // C
           thread_pool,
           nullptr);  // mlas_backend_kernel_selector_config
     }
