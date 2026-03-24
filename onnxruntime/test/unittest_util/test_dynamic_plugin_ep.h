@@ -17,6 +17,7 @@
 namespace onnxruntime {
 struct IExecutionProviderFactory;
 class IExecutionProvider;
+struct ConfigOptions;
 
 namespace logging {
 class Logger;
@@ -74,7 +75,8 @@ bool IsInitialized();
 void Shutdown();
 
 // Returns a dynamic plugin EP `IExecutionProvider` instance, or `nullptr` if uninitialized.
-std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger = nullptr);
+// `ep_options` provides additional EP-specific option overrides (key-value pairs) on top of the defaults.
+std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger = nullptr, const ConfigOptions* ep_options = nullptr);
 
 // Gets the dynamic plugin EP name, or `std::nullopt` if uninitialized.
 std::optional<std::string> GetEpName();
