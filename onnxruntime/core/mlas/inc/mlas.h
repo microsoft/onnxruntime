@@ -169,6 +169,7 @@ enum MLAS_ACTIVATION_KIND {
     MlasClipActivation,
     MlasHardSigmoidActivation,
     MlasSiluActivation,
+    MlasGeluErfActivation,
     MlasActivationKindCount,
 };
 

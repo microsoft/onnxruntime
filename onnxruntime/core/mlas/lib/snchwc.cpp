@@ -78,6 +78,7 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
 #define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
 #define MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI      0x00000010
 #define MLAS_CONV_KERNEL_FLAG_SILU_ACTIVATION       0x00000020
+#define MLAS_CONV_KERNEL_FLAG_GELU_ERF_ACTIVATION   0x00000040
 
 size_t
 MLASCALL
@@ -908,17 +909,18 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
-    const bool CanFuseSiluActivation =
-        ActivationKind == MlasSiluActivation &&
+    const bool CanFusePointwiseAvx512Activation =
+        (ActivationKind == MlasSiluActivation || ActivationKind == MlasGeluErfActivation) &&
         Kernel == MlasConvPointwiseFloatKernelAvx512F &&
         !WorkBlock->UseBf16;
 #else
-    const bool CanFuseSiluActivation = false;
+    const bool CanFusePointwiseAvx512Activation = false;
 #endif
 
-    if (ActivationKind == MlasSiluActivation && !CanFuseSiluActivation) {
+    if ((ActivationKind == MlasSiluActivation || ActivationKind == MlasGeluErfActivation) &&
+        !CanFusePointwiseAvx512Activation) {
         MLAS_THROW_EX(std::runtime_error,
-        "MlasSiluActivation requires the fused AVX512 pointwise convolution path");
+        "This activation requires the fused AVX512 pointwise convolution path");
     }
 
         while (WorkRemaining > 0) {
@@ -959,9 +961,13 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                 unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
 
-                if (CanFuseSiluActivation && ic + InputChannelBatch == InputChannels) {
+                if (CanFusePointwiseAvx512Activation && ic + InputChannelBatch == InputChannels) {
                     KernelFlags &= ~MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION;
-                    KernelFlags |= MLAS_CONV_KERNEL_FLAG_SILU_ACTIVATION;
+                    if (ActivationKind == MlasSiluActivation) {
+                        KernelFlags |= MLAS_CONV_KERNEL_FLAG_SILU_ACTIVATION;
+                    } else if (ActivationKind == MlasGeluErfActivation) {
+                        KernelFlags |= MLAS_CONV_KERNEL_FLAG_GELU_ERF_ACTIVATION;
+                    }
                 }
 
                 //

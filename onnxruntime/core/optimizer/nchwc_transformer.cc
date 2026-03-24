@@ -131,7 +131,7 @@ class NchwcTransformerImpl {
   void TransformTransposeToNhwc(Node& node);
   void TransformResize(Node& node);
   void TrackTransposeFromNhwc(Node& node);
-  bool IsAvx512PointwiseSiluFusionTarget(const Node& nchwc_node) const;
+  bool IsAvx512PointwiseActivationFusionTarget(const Node& nchwc_node) const;
   bool TryGetFusedActivationType(const Node& activation_node, const Node& nchwc_node,
                                  std::string& activation_type) const;
 
@@ -899,7 +899,7 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
   }
 }
 
-bool NchwcTransformerImpl::IsAvx512PointwiseSiluFusionTarget(const Node& nchwc_node) const {
+bool NchwcTransformerImpl::IsAvx512PointwiseActivationFusionTarget(const Node& nchwc_node) const {
 #if defined(CPUIDINFO_ARCH_X86) && !defined(_M_ARM64EC)
   if (!CPUIDInfo::GetCPUIDInfo().HasAVX512f()) {
     return false;
@@ -955,8 +955,29 @@ bool NchwcTransformerImpl::TryGetFusedActivationType(const Node& activation_node
     return true;
   }
 
+  if (activation_node.OpType() == "Gelu" &&
+      (activation_node.Domain() == kMSDomain || activation_node.Domain() == kOnnxDomain) &&
+      IsAvx512PointwiseActivationFusionTarget(nchwc_node)) {
+    bool is_exact_gelu = activation_node.Domain() == kMSDomain;
+
+    if (activation_node.Domain() == kOnnxDomain) {
+      std::string approximate = "none";
+      if (const auto* approximate_attr = graph_utils::GetNodeAttribute(activation_node, "approximate");
+          approximate_attr != nullptr && utils::HasString(*approximate_attr)) {
+        approximate = approximate_attr->s();
+      }
+
+      is_exact_gelu = approximate == "none";
+    }
+
+    if (is_exact_gelu) {
+      activation_type = "Gelu";
+      return true;
+    }
+  }
+
   if (activation_node.OpType() == "QuickGelu" && activation_node.Domain() == kMSDomain &&
-      IsAvx512PointwiseSiluFusionTarget(nchwc_node)) {
+      IsAvx512PointwiseActivationFusionTarget(nchwc_node)) {
     float alpha = 1.702f;
     if (const auto* alpha_attr = graph_utils::GetNodeAttribute(activation_node, "alpha");
         alpha_attr != nullptr && utils::HasFloat(*alpha_attr)) {
@@ -1344,6 +1365,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13}) ||
+           graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {20}, kOnnxDomain) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {1}, kMSDomain) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "QuickGelu", {1}, kMSDomain)) {
       TransformActivation(node);

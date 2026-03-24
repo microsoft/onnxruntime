@@ -204,8 +204,18 @@ class MlasActivationTest : public MlasTestBase {
     MLAS_ACTIVATION Activation;
     AliasedValue Buffer[_countof(TestData)];
 
-    for (unsigned kind = 0; kind < unsigned(MlasActivationKindCount); kind++) {
-      Activation.ActivationKind = MLAS_ACTIVATION_KIND(kind);
+    static constexpr MLAS_ACTIVATION_KIND SupportedActivationKinds[] = {
+        MlasIdentityActivation,
+        MlasReluActivation,
+        MlasLeakyReluActivation,
+        MlasTanhActivation,
+        MlasLogisticActivation,
+        MlasClipActivation,
+        MlasHardSigmoidActivation,
+    };
+
+    for (unsigned kind = 0; kind < _countof(SupportedActivationKinds); kind++) {
+      Activation.ActivationKind = SupportedActivationKinds[kind];
 
       if (Activation.ActivationKind == MlasLeakyReluActivation) {
         Activation.Parameters.LeakyRelu.alpha = 0.2f;

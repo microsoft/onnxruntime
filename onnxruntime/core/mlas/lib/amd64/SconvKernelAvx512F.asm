@@ -39,6 +39,74 @@ MLAS_LOGISTIC_CONSTANTS_BETA_2      EQU 44
 MLAS_LOGISTIC_CONSTANTS_BETA_0      EQU 48
 MLAS_LOGISTIC_CONSTANTS_ONE_HALF    EQU 52
 
+GELU_AVX512_CONSTANTS_SIGNBITMASK           EQU 0
+GELU_AVX512_CONSTANTS_INV_SQRT2             EQU 4
+GELU_AVX512_CONSTANTS_HALF                  EQU 8
+GELU_AVX512_CONSTANTS_ONE                   EQU 12
+GELU_AVX512_CONSTANTS_ERF_UPPER_ABS_RANGE   EQU 16
+GELU_AVX512_CONSTANTS_ERF_SPLIT_BOUNDARY    EQU 20
+GELU_AVX512_CONSTANTS_ERF_SMALL_P0          EQU 24
+GELU_AVX512_CONSTANTS_ERF_SMALL_P1          EQU 28
+GELU_AVX512_CONSTANTS_ERF_SMALL_P2          EQU 32
+GELU_AVX512_CONSTANTS_ERF_SMALL_P3          EQU 36
+GELU_AVX512_CONSTANTS_ERF_SMALL_P4          EQU 40
+GELU_AVX512_CONSTANTS_ERF_SMALL_P5_MINUS_ONE EQU 44
+GELU_AVX512_CONSTANTS_ERF_BIG_P0            EQU 48
+GELU_AVX512_CONSTANTS_ERF_BIG_P1            EQU 52
+GELU_AVX512_CONSTANTS_ERF_BIG_P2            EQU 56
+GELU_AVX512_CONSTANTS_ERF_BIG_P3            EQU 60
+GELU_AVX512_CONSTANTS_ERF_BIG_P4            EQU 64
+GELU_AVX512_CONSTANTS_ERF_BIG_P5            EQU 68
+GELU_AVX512_CONSTANTS_ERF_BIG_P6_MINUS_ONE  EQU 72
+GELU_AVX512_CONSTANTS_EXP_LOWER_RANGE       EQU 76
+GELU_AVX512_CONSTANTS_EXP_LOG2_RECIPROCAL   EQU 80
+GELU_AVX512_CONSTANTS_EXP_LOG2_HI           EQU 84
+GELU_AVX512_CONSTANTS_EXP_LOG2_LO           EQU 88
+GELU_AVX512_CONSTANTS_EXP_P0                EQU 92
+GELU_AVX512_CONSTANTS_EXP_P1                EQU 96
+GELU_AVX512_CONSTANTS_EXP_P2                EQU 100
+GELU_AVX512_CONSTANTS_EXP_P3                EQU 104
+GELU_AVX512_CONSTANTS_EXP_P4                EQU 108
+GELU_AVX512_CONSTANTS_EXP_P5                EQU 112
+GELU_AVX512_CONSTANTS_EXP_P6                EQU 116
+GELU_AVX512_CONSTANTS_EXP_C                 EQU 120
+
+        .const
+
+        ALIGN   4
+MlasGeluErfConstantsAvx512F LABEL DWORD
+        DD      080000000h
+        DD      03F3504F3h
+        DD      03F000000h
+        DD      03F800000h
+        DD      0407B3333h
+        DD      03F6C0000h
+        DD      0BA1D0D41h
+        DD      03BA39FA4h
+        DD      0BCDB45E9h
+        DD      03DE70D23h
+        DD      0BEC09370h
+        DD      03E0375D3h
+        DD      037911480h
+        DD      0B9C8E966h
+        DD      03B7E899Bh
+        DD      0BCC6B180h
+        DD      03DDAAE58h
+        DD      03F228550h
+        DD      03E03CE86h
+        DD      0C2B0C0A5h
+        DD      03FB8AA3Bh
+        DD      0BF317200h
+        DD      0B5BFBE8Eh
+        DD      03AB54C6Dh
+        DD      03C093965h
+        DD      03D2AAD10h
+        DD      03E2AAA17h
+        DD      03EFFFFFBh
+        DD      03F800000h
+        DD      03F800000h
+        DD      04B400000h
+
 ;
 ; Macro Description:
 ;
@@ -124,6 +192,96 @@ ApplySiluAvx512F MACRO Accumulator
         vaddps  zmm27,zmm27,zmm27
         vminps  zmm26,zmm26,zmm27
         vmulps  Accumulator,zmm24,zmm26
+        vmovaps Accumulator{k1},zmm24
+
+        ENDM
+
+ApplyGeluErfExpVectorAvx512F MACRO Value
+
+        vbroadcastss zmm26,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_LOG2_RECIPROCAL]
+        vbroadcastss zmm27,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_C]
+        vfmadd213ps zmm26,Value,zmm27
+        vsubps  zmm26,zmm26,zmm27
+
+        vbroadcastss zmm27,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_LOG2_HI]
+        vfmadd213ps zmm27,zmm26,Value
+        vbroadcastss zmm28,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_LOG2_LO]
+        vfmadd213ps zmm28,zmm26,zmm27
+
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_P0]
+        vbroadcastss zmm27,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_P1]
+        vfmadd213ps zmm29,zmm28,zmm27
+        vbroadcastss zmm27,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_P2]
+        vfmadd213ps zmm29,zmm28,zmm27
+        vbroadcastss zmm27,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_P3]
+        vfmadd213ps zmm29,zmm28,zmm27
+        vbroadcastss zmm27,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_P4]
+        vfmadd213ps zmm29,zmm28,zmm27
+        vbroadcastss zmm27,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_P5]
+        vfmadd213ps zmm29,zmm28,zmm27
+        vbroadcastss zmm27,DWORD PTR [r10+GELU_AVX512_CONSTANTS_EXP_P6]
+        vfmadd213ps zmm29,zmm28,zmm27
+        vscalefps zmm29,zmm29,zmm26
+
+        vmovaps Value,zmm29
+
+        ENDM
+
+ApplyGeluErfAvx512F MACRO Accumulator
+
+        vmovaps zmm24,Accumulator
+        vcmpps  k1,zmm24,zmm24,3
+
+        vpbroadcastd zmm31,DWORD PTR [r10+GELU_AVX512_CONSTANTS_SIGNBITMASK]
+        vandps  zmm25,zmm24,zmm31
+        vandnps zmm26,zmm31,zmm24
+        vminps  zmm26,zmm26,DWORD BCST [r10+GELU_AVX512_CONSTANTS_ERF_UPPER_ABS_RANGE]
+        vcmpps  k2,zmm26,DWORD BCST [r10+GELU_AVX512_CONSTANTS_ERF_SPLIT_BOUNDARY],30
+
+        vpxord  zmm27,zmm27,zmm27
+        vmovaps zmm27{k2},zmm26
+
+        vbroadcastss zmm30,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_BIG_P0]
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_BIG_P1]
+        vfmadd213ps zmm30,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_BIG_P2]
+        vfmadd213ps zmm30,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_BIG_P3]
+        vfmadd213ps zmm30,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_BIG_P4]
+        vfmadd213ps zmm30,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_BIG_P5]
+        vfmadd213ps zmm30,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_BIG_P6_MINUS_ONE]
+        vfmadd213ps zmm30,zmm27,zmm29
+        vfmadd213ps zmm30,zmm27,zmm27
+
+        vxorps  zmm30,zmm30,zmm31
+        vmaxps  zmm30,zmm30,DWORD BCST [r10+GELU_AVX512_CONSTANTS_EXP_LOWER_RANGE]
+        ApplyGeluErfExpVectorAvx512F zmm30
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ONE]
+        vsubps  zmm30,zmm29,zmm30
+
+        vmulps  zmm27,zmm26,zmm26
+        vbroadcastss zmm28,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_SMALL_P0]
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_SMALL_P1]
+        vfmadd213ps zmm28,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_SMALL_P2]
+        vfmadd213ps zmm28,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_SMALL_P3]
+        vfmadd213ps zmm28,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_SMALL_P4]
+        vfmadd213ps zmm28,zmm27,zmm29
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ERF_SMALL_P5_MINUS_ONE]
+        vfmadd213ps zmm28,zmm27,zmm29
+        vfmadd213ps zmm28,zmm26,zmm26
+
+        vmovaps zmm28{k2},zmm30
+        vorps   zmm28,zmm28,zmm25
+        vbroadcastss zmm29,DWORD PTR [r10+GELU_AVX512_CONSTANTS_ONE]
+        vaddps  zmm28,zmm28,zmm29
+        vmulps  zmm28,zmm28,zmm24
+        vmulps  Accumulator,zmm28,DWORD BCST [r10+GELU_AVX512_CONSTANTS_HALF]
         vmovaps Accumulator{k1},zmm24
 
         ENDM
@@ -426,6 +584,7 @@ GeneratePostProcessFloatAvx512F MACRO UseSilu
         LOCAL   SkipBiasAddition
         LOCAL   SkipReluActivation
         LOCAL   SkipSiluActivation
+        LOCAL   SkipGeluErfActivation
 
         IRP     FilterCount, <1, 2, 3, 4>
         IRP     OutputCount, <1, 2, 3, 6>
@@ -586,6 +745,40 @@ IF UseSilu
         EmitIfCount2GE FilterCount, 4, OutputCount, 6, <ApplySiluAvx512F zmm23>
 
 SkipSiluActivation:
+
+;
+; Test for fused exact Gelu(erf) activation.
+;
+
+        test    dl,MLAS_CONV_KERNEL_FLAG_GELU_ERF_ACTIVATION
+        jz      SkipGeluErfActivation
+        lea     r10,MlasGeluErfConstantsAvx512F
+        EmitIfCount2GE FilterCount, 1, OutputCount, 1, <ApplyGeluErfAvx512F zmm0>
+        EmitIfCount2GE FilterCount, 1, OutputCount, 2, <ApplyGeluErfAvx512F zmm4>
+        EmitIfCount2GE FilterCount, 1, OutputCount, 3, <ApplyGeluErfAvx512F zmm8>
+        EmitIfCount2GE FilterCount, 1, OutputCount, 4, <ApplyGeluErfAvx512F zmm12>
+        EmitIfCount2GE FilterCount, 1, OutputCount, 5, <ApplyGeluErfAvx512F zmm16>
+        EmitIfCount2GE FilterCount, 1, OutputCount, 6, <ApplyGeluErfAvx512F zmm20>
+        EmitIfCount2GE FilterCount, 2, OutputCount, 1, <ApplyGeluErfAvx512F zmm1>
+        EmitIfCount2GE FilterCount, 2, OutputCount, 2, <ApplyGeluErfAvx512F zmm5>
+        EmitIfCount2GE FilterCount, 2, OutputCount, 3, <ApplyGeluErfAvx512F zmm9>
+        EmitIfCount2GE FilterCount, 2, OutputCount, 4, <ApplyGeluErfAvx512F zmm13>
+        EmitIfCount2GE FilterCount, 2, OutputCount, 5, <ApplyGeluErfAvx512F zmm17>
+        EmitIfCount2GE FilterCount, 2, OutputCount, 6, <ApplyGeluErfAvx512F zmm21>
+        EmitIfCount2GE FilterCount, 3, OutputCount, 1, <ApplyGeluErfAvx512F zmm2>
+        EmitIfCount2GE FilterCount, 3, OutputCount, 2, <ApplyGeluErfAvx512F zmm6>
+        EmitIfCount2GE FilterCount, 3, OutputCount, 3, <ApplyGeluErfAvx512F zmm10>
+        EmitIfCount2GE FilterCount, 3, OutputCount, 4, <ApplyGeluErfAvx512F zmm14>
+        EmitIfCount2GE FilterCount, 3, OutputCount, 5, <ApplyGeluErfAvx512F zmm18>
+        EmitIfCount2GE FilterCount, 3, OutputCount, 6, <ApplyGeluErfAvx512F zmm22>
+        EmitIfCount2GE FilterCount, 4, OutputCount, 1, <ApplyGeluErfAvx512F zmm3>
+        EmitIfCount2GE FilterCount, 4, OutputCount, 2, <ApplyGeluErfAvx512F zmm7>
+        EmitIfCount2GE FilterCount, 4, OutputCount, 3, <ApplyGeluErfAvx512F zmm11>
+        EmitIfCount2GE FilterCount, 4, OutputCount, 4, <ApplyGeluErfAvx512F zmm15>
+        EmitIfCount2GE FilterCount, 4, OutputCount, 5, <ApplyGeluErfAvx512F zmm19>
+        EmitIfCount2GE FilterCount, 4, OutputCount, 6, <ApplyGeluErfAvx512F zmm23>
+
+SkipGeluErfActivation:
 ENDIF
 
 ;

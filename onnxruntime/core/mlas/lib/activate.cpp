@@ -519,6 +519,13 @@ Return Value:
             break;
         }
 
+        case MlasGeluErfActivation:
+        {
+            MLAS_THROW_EX(std::runtime_error,
+                "MlasGeluErfActivation is only supported by the fused AVX512 pointwise convolution path");
+            break;
+        }
+
         case MlasActivationKindCount:
         {
             MLAS_THROW_EX(std::runtime_error, "bad mlas activation kind");
