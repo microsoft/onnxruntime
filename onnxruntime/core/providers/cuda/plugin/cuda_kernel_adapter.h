@@ -334,6 +334,7 @@ struct PluginNoOpLogStream {
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <shared_mutex>
 
 namespace onnxruntime {
 namespace cuda {
@@ -345,17 +346,51 @@ namespace cuda {
 // ===================================================================
 
 namespace detail {
+// All fields are written once during CudaEp construction (under unique_lock)
+// and only read afterwards, so std::atomic is not needed — the shared_mutex
+// in ProviderConfigStore provides the necessary happens-before guarantee.
 struct CudaKernelAdapterRuntimeConfig {
-  std::atomic<bool> use_tf32{true};
-  std::atomic<bool> skip_layer_norm_strict_mode{false};
-  std::atomic<int> device_id{0};
-  std::atomic<int> cudnn_conv_algo{0};
-  std::atomic<bool> cudnn_conv_use_max_workspace{true};
-  std::atomic<bool> cudnn_conv1d_pad_to_nc1d{false};
+  bool use_tf32 = true;
+  bool skip_layer_norm_strict_mode = false;
+  int cudnn_conv_algo = 0;
+  bool cudnn_conv_use_max_workspace = true;
+  bool cudnn_conv1d_pad_to_nc1d = false;
+  int device_id = 0;
+  cudaDeviceProp device_prop{};
 };
-inline CudaKernelAdapterRuntimeConfig& GetCudaKernelAdapterRuntimeConfig() {
-  static CudaKernelAdapterRuntimeConfig config;
-  return config;
+// Shared storage for per-provider runtime configurations.
+// Both Get and Remove must operate on the same static map instance,
+// so we centralise them in a single struct with static lifetime.
+struct ProviderConfigStore {
+  std::shared_mutex mutex;
+  std::unordered_map<const void*, std::unique_ptr<CudaKernelAdapterRuntimeConfig>> configs;
+
+  static ProviderConfigStore& Instance() {
+    static ProviderConfigStore store;
+    return store;
+  }
+};
+
+inline CudaKernelAdapterRuntimeConfig& GetCudaKernelAdapterRuntimeConfigForProvider(const void* provider) {
+  auto& store = ProviderConfigStore::Instance();
+  std::shared_lock<std::shared_mutex> lock(store.mutex);
+  auto it = store.configs.find(provider);
+  if (it != store.configs.end()) {
+    return *it->second;
+  }
+  lock.unlock();
+  std::unique_lock<std::shared_mutex> unique_lock(store.mutex);
+  auto& ptr = store.configs[provider];
+  if (!ptr) {
+    ptr = std::make_unique<CudaKernelAdapterRuntimeConfig>();
+  }
+  return *ptr;
+}
+
+inline void RemoveCudaKernelAdapterRuntimeConfigForProvider(const void* provider) {
+  auto& store = ProviderConfigStore::Instance();
+  std::unique_lock<std::shared_mutex> lock(store.mutex);
+  store.configs.erase(provider);
 }
 template <typename T>
 struct SizeOf {
@@ -406,6 +441,18 @@ inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
 // Provides the minimal API surface that migrated kernels expect
 // (GetCudnnConvAlgo, UseTF32, GetDeviceProp, etc.) without the full
 // CUDAExecutionProvider class from onnxruntime/core/providers/cuda/.
+//
+// DESIGN NOTE: Why does this class have no state/member variables?
+// In the plugin build, the object returned by `info.GetExecutionProvider()`
+// is an opaque C-API struct (`OrtEp*`/`CudaEp*`), NOT this class.
+// The raw kernel code performs `static_cast<const CUDAExecutionProvider*>` on it.
+// If this shim class defined any member variables (e.g., `config_`), the
+// compiler would read them at specific byte offsets relative to `this`, causing
+// memory layout UB (garbage reads/segfaults) since the underlying object in
+// memory is actually an `OrtEp`.
+// Therefore, `CUDAExecutionProvider` here must remain a pure "phantom shim."
+// To safely access state (like TF32 settings), it dynamically queries a static
+// map keyed by its own `this` pointer (which equals the `CudaEp*` memory address).
 // ===================================================================
 
 // Shim for CUDAExecutionProvider required by conv.cc, einsum, and others
@@ -413,43 +460,44 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
  public:
   explicit CUDAExecutionProvider(const std::string& name) : onnxruntime::IExecutionProvider{name} {}
   int GetCudnnConvAlgo() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfig().cudnn_conv_algo.load(std::memory_order_relaxed);
+    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).cudnn_conv_algo;
   }
   bool GetCudnnConvUseMaxWorkspace() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfig().cudnn_conv_use_max_workspace.load(std::memory_order_relaxed);
+    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).cudnn_conv_use_max_workspace;
   }
   bool GetCudnnConv1dPadToNc1d() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfig().cudnn_conv1d_pad_to_nc1d.load(std::memory_order_relaxed);
+    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).cudnn_conv1d_pad_to_nc1d;
   }
   bool UseTF32() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfig().use_tf32.load(std::memory_order_relaxed);
+    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).use_tf32;
   }
   bool IsFuseConvBias() const {
     return false;
   }
   const cudaDeviceProp& GetDeviceProp() const {
-    int device_id = cuda::detail::GetCudaKernelAdapterRuntimeConfig().device_id.load(std::memory_order_relaxed);
-    return cuda::detail::GetDevicePropForDevice(device_id);
+    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).device_prop;
   }
 };
 
 namespace cuda {
 
-inline void SetCudaKernelAdapterRuntimeConfig(bool use_tf32, int device_id, bool skip_layer_norm_strict_mode = false,
-                                              int cudnn_conv_algo = 0, bool cudnn_conv_use_max_workspace = true,
-                                              bool cudnn_conv1d_pad_to_nc1d = false) {
-  auto& config = detail::GetCudaKernelAdapterRuntimeConfig();
-  config.use_tf32.store(use_tf32, std::memory_order_relaxed);
-  config.skip_layer_norm_strict_mode.store(skip_layer_norm_strict_mode, std::memory_order_relaxed);
-  config.device_id.store(device_id, std::memory_order_relaxed);
-  config.cudnn_conv_algo.store(cudnn_conv_algo, std::memory_order_relaxed);
-  config.cudnn_conv_use_max_workspace.store(cudnn_conv_use_max_workspace, std::memory_order_relaxed);
-  config.cudnn_conv1d_pad_to_nc1d.store(cudnn_conv1d_pad_to_nc1d, std::memory_order_relaxed);
+inline void SetCudaKernelAdapterRuntimeConfigForProvider(const void* provider, bool use_tf32, int device_id,
+                                                         bool skip_layer_norm_strict_mode = false,
+                                                         int cudnn_conv_algo = 0, bool cudnn_conv_use_max_workspace = true,
+                                                         bool cudnn_conv1d_pad_to_nc1d = false) {
+  auto& config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
+  config.use_tf32 = use_tf32;
+  config.skip_layer_norm_strict_mode = skip_layer_norm_strict_mode;
+  config.cudnn_conv_algo = cudnn_conv_algo;
+  config.cudnn_conv_use_max_workspace = cudnn_conv_use_max_workspace;
+  config.cudnn_conv1d_pad_to_nc1d = cudnn_conv1d_pad_to_nc1d;
+  config.device_id = device_id;
+  PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config.device_prop, device_id));
 }
 
-inline bool GetCudaKernelAdapterSkipLayerNormStrictMode() {
-  const auto& config = detail::GetCudaKernelAdapterRuntimeConfig();
-  return config.skip_layer_norm_strict_mode.load(std::memory_order_relaxed);
+inline bool GetCudaKernelAdapterSkipLayerNormStrictMode(const void* provider) {
+  const auto& config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
+  return config.skip_layer_norm_strict_mode;
 }
 
 // Global aliases and shims
@@ -626,15 +674,11 @@ namespace cuda {  // re-open onnxruntime::cuda
 class CudaKernel : public OpKernel {
  public:
   explicit CudaKernel(const OpKernelInfo& info) : OpKernel(info), info_(info) {
-    const auto& config = detail::GetCudaKernelAdapterRuntimeConfig();
-    use_tf32_ = config.use_tf32.load(std::memory_order_relaxed);
-    device_id_ = config.device_id.load(std::memory_order_relaxed);
-    int cur = device_id_;
-    if (cudaGetDevice(&cur) == cudaSuccess) device_id_ = cur;
-    if (cudaGetDeviceProperties(&device_prop_, device_id_) != cudaSuccess) {
-      std::memset(&device_prop_, 0, sizeof(device_prop_));
-      device_prop_.major = -1;
-    }
+    const auto* provider = info.GetExecutionProvider();
+    const auto& config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
+    use_tf32_ = config.use_tf32;
+    device_id_ = config.device_id;
+    device_prop_ = config.device_prop;
   }
   virtual ~CudaKernel() = default;
   Status Compute(OpKernelContext* ctx) const {

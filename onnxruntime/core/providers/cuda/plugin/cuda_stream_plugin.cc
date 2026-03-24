@@ -4,6 +4,7 @@
 #include "cuda_stream_plugin.h"
 #include "cuda_ep_factory.h"
 #include <mutex>
+#include <shared_mutex>
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -20,8 +21,8 @@ StreamMap& GetStreamMap() {
   return stream_map;
 }
 
-std::mutex& GetStreamMapMutex() {
-  static std::mutex stream_map_mutex;
+std::shared_mutex& GetStreamMapMutex() {
+  static std::shared_mutex stream_map_mutex;
   return stream_map_mutex;
 }
 }  // namespace
@@ -55,7 +56,7 @@ CudaSyncStream::~CudaSyncStream() {
 }
 
 OrtStatus* CudaSyncStream::InitHandles() {
-  cudaSetDevice(device_id_);
+  PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id_));
 
   PL_CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
   RegisterStream(cuda_stream_, this);
@@ -122,7 +123,7 @@ void CudaSyncStream::CleanupDeferredCPUBuffers() {
   }
 
   auto& stream_map = GetStreamMap();
-  std::lock_guard<std::mutex> lock(GetStreamMapMutex());
+  std::shared_lock<std::shared_mutex> lock(GetStreamMapMutex());
   auto it = stream_map.find(stream);
   if (it != stream_map.end()) {
     return it->second;
@@ -132,13 +133,13 @@ void CudaSyncStream::CleanupDeferredCPUBuffers() {
 
 /*static*/ void CudaSyncStream::RegisterStream(cudaStream_t stream, CudaSyncStream* sync_stream) {
   auto& stream_map = GetStreamMap();
-  std::lock_guard<std::mutex> lock(GetStreamMapMutex());
+  std::unique_lock<std::shared_mutex> lock(GetStreamMapMutex());
   stream_map[stream] = sync_stream;
 }
 
 /*static*/ void CudaSyncStream::UnregisterStream(cudaStream_t stream) {
   auto& stream_map = GetStreamMap();
-  std::lock_guard<std::mutex> lock(GetStreamMapMutex());
+  std::unique_lock<std::shared_mutex> lock(GetStreamMapMutex());
   stream_map.erase(stream);
 }
 
@@ -156,8 +157,8 @@ CudaSyncNotification::CudaSyncNotification(CudaSyncStream& stream)
   Release = ReleaseImpl;
 
   // Create a CUDA event for synchronization (disable timing for performance)
-  cudaSetDevice(stream_.GetDeviceId());
-  cudaEventCreateWithFlags(&event_, cudaEventDisableTiming);
+  PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
+  PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
 }
 
 CudaSyncNotification::~CudaSyncNotification() {

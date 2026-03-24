@@ -28,7 +28,9 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
   auto* alloc = static_cast<CudaDeviceAllocator*>(this_ptr);
   void* p = nullptr;
   if (size == 0) return nullptr;
-  cudaSetDevice(alloc->device_id_);
+  if (cudaSetDevice(alloc->device_id_) != cudaSuccess) {
+    return nullptr;
+  }
   cudaError_t err = cudaMalloc(&p, size);
   if (err != cudaSuccess) {
     return nullptr;

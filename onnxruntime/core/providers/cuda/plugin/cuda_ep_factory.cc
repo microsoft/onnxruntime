@@ -131,11 +131,12 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       cudaError_t err = cudaGetDeviceCount(&cuda_device_count);
       if (err == cudaSuccess && cuda_device_count > 0 && current_device_id < cuda_device_count) {
         cudaDeviceProp prop;
-        cudaGetDeviceProperties(&prop, current_device_id);
-        factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_name", prop.name);
-        factory->ort_api_.AddKeyValuePair(
-            ep_metadata, "cuda_compute_capability",
-            (std::to_string(prop.major) + "." + std::to_string(prop.minor)).c_str());
+        if (cudaGetDeviceProperties(&prop, current_device_id) == cudaSuccess) {
+          factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_name", prop.name);
+          factory->ort_api_.AddKeyValuePair(
+              ep_metadata, "cuda_compute_capability",
+              (std::to_string(prop.major) + "." + std::to_string(prop.minor)).c_str());
+        }
       }
 
       OrtEpDevice* ep_device = nullptr;
@@ -236,6 +237,13 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     try {
       value = std::stoi(buf.data());
     } catch (...) {
+      if (logger) {
+        std::string msg = std::string("Failed to parse session config for key: ") + key + ". Using default value.";
+        OrtStatus* st = factory->ort_api_.Logger_LogMessage(logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), "cuda_ep_factory.cc", __LINE__, "CudaEpFactory");
+        if (st) {
+          factory->ort_api_.ReleaseStatus(st);
+        }
+      }
     }
   };
 
@@ -334,13 +342,14 @@ bool ORT_API_CALL CudaEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this_pt
 /*static*/
 OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
     OrtEpFactory* this_ptr,
-    const OrtMemoryDevice* /*memory_device*/,
+    const OrtMemoryDevice* memory_device,
     const OrtKeyValuePairs* /*stream_options*/,
     OrtSyncStreamImpl** stream) noexcept {
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
-  auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, factory->device_id_, nullptr);
+  int req_device_id = factory->ep_api_.MemoryDevice_GetDeviceId(memory_device);
+  auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, req_device_id, nullptr);
 
   // Initialize CUDA handles (stream, cuBLAS, cuDNN)
   RETURN_IF_ERROR(cuda_stream->InitHandles());

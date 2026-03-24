@@ -30,6 +30,20 @@
   } while (0)
 #endif
 
+// Throwing variant for use in constructors and non-OrtStatus contexts.
+// Analogous to CUDA_CALL_THROW in the non-plugin build.
+#ifndef PL_CUDA_CALL_THROW
+#define PL_CUDA_CALL_THROW(cuda_call_expr)                                   \
+  do {                                                                       \
+    cudaError_t _cuda_err = (cuda_call_expr);                                \
+    if (_cuda_err != cudaSuccess) {                                          \
+      throw std::runtime_error(                                              \
+          std::string("CUDA error: ") + cudaGetErrorName(_cuda_err) + ": " + \
+          cudaGetErrorString(_cuda_err));                                    \
+    }                                                                        \
+  } while (0)
+#endif
+
 #ifndef PL_CUBLAS_RETURN_IF_ERROR
 #define PL_CUBLAS_RETURN_IF_ERROR(cublas_call_expr)       \
   do {                                                    \
