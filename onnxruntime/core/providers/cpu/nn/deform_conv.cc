@@ -61,7 +61,6 @@ struct CpuDeformConvExecutionDims {
   int64_t padded_spatial_count = 0;
   size_t block_count = 0;
   int64_t im2col_rows = 0;
-  int64_t total_work = 0;
   int64_t col_buffer_size = 0;
 };
 
@@ -88,9 +87,6 @@ inline CpuDeformConvExecutionDims ComputeCpuDeformConvExecutionDims(const Deform
   ORT_ENFORCE(params.C <= int64_max / common_dims.kernel_size, "im2col row count overflows int64.");
   const int64_t im2col_rows = params.C * common_dims.kernel_size;
   ORT_ENFORCE(im2col_rows <= ptrdiff_max, "im2col row count exceeds ptrdiff_t range.");
-  ORT_ENFORCE(params.N <= int64_max / params.M, "N*M overflows int64.");
-  const int64_t total_work = params.N * params.M;
-  ORT_ENFORCE(total_work <= ptrdiff_max, "bias work size exceeds ptrdiff_t range.");
   ORT_ENFORCE(im2col_rows <= int64_max / common_dims.output_image_size, "col_buffer_size overflows int64.");
   const int64_t col_buffer_size = im2col_rows * common_dims.output_image_size;
 
@@ -99,7 +95,6 @@ inline CpuDeformConvExecutionDims ComputeCpuDeformConvExecutionDims(const Deform
       padded_spatial_count,
       block_count,
       im2col_rows,
-      total_work,
       col_buffer_size};
 }
 
@@ -489,6 +484,43 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
 }  // namespace
 
 template <typename T>
+void DeformConvCpuAddBias(T* y_data, const T* bias_data, int64_t batch_n, int64_t num_output_channels,
+                          int64_t output_image_size, size_t output_image_size_elements, size_t y_batch_stride,
+                          concurrency::ThreadPool* thread_pool) {
+  const double cost_per_channel_slice = static_cast<double>(output_image_size);
+  const ptrdiff_t spatial_len = static_cast<ptrdiff_t>(output_image_size);
+  const auto add_bias_to_row = [&](T* row, int64_t channel) {
+    EigenVectorArrayMap<T>(row, spatial_len) += bias_data[channel];
+  };
+
+  if (batch_n == 1) {
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool, static_cast<std::ptrdiff_t>(num_output_channels), cost_per_channel_slice,
+        [&](ptrdiff_t first, ptrdiff_t last) {
+          for (ptrdiff_t m = first; m < last; ++m) {
+            const size_t m_sz = static_cast<size_t>(m);
+            T* y_row = y_data + m_sz * output_image_size_elements;
+            add_bias_to_row(y_row, static_cast<int64_t>(m));
+          }
+        });
+  } else {
+    const double cost_per_batch = cost_per_channel_slice * static_cast<double>(num_output_channels);
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool, static_cast<std::ptrdiff_t>(batch_n), cost_per_batch,
+        [&](ptrdiff_t first, ptrdiff_t last) {
+          for (ptrdiff_t n = first; n < last; ++n) {
+            const size_t n_sz = static_cast<size_t>(n);
+            T* batch_base = y_data + n_sz * y_batch_stride;
+            for (int64_t m = 0; m < num_output_channels; ++m) {
+              const size_t m_sz = static_cast<size_t>(m);
+              add_bias_to_row(batch_base + m_sz * output_image_size_elements, m);
+            }
+          }
+        });
+  }
+}
+
+template <typename T>
 Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -539,7 +571,6 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const CpuDeformConvExecutionDims exec_dims = ComputeCpuDeformConvExecutionDims(params, common_dims, ptrdiff_max, max_size_t);
   const int64_t padded_spatial_count = exec_dims.padded_spatial_count;
   const size_t block_count = exec_dims.block_count;
-  const int64_t total_work = exec_dims.total_work;
   const auto kernel_meta_cache = GetOrCreateKernelMetaCache<T>(
       params, common_dims, kernel_meta_cache_mu_, kernel_meta_cache_);
   // Col buffer: shape [C*kH*kW, out_h*out_w]. Allocate per-image (process one image at a time)
@@ -637,19 +668,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   // Step 3: Add bias if provided (broadcast over spatial dimensions).
   if (Bdata != nullptr) {
-    concurrency::ThreadPool::TryParallelFor(
-        thread_pool, static_cast<std::ptrdiff_t>(total_work), static_cast<double>(output_image_size),
-        [&](ptrdiff_t first, ptrdiff_t last) {
-          for (ptrdiff_t idx = first; idx < last; ++idx) {
-            int64_t n_idx = idx / M;
-            int64_t m_idx = idx % M;
-            const size_t n_idx_sz = static_cast<size_t>(n_idx);
-            const size_t m_idx_sz = static_cast<size_t>(m_idx);
-            T* Y_ptr = Ydata + n_idx_sz * y_batch_stride + m_idx_sz * output_image_size_sz;
-            // Eigen vectorized add: Y_ptr += Bdata[m_idx] over all spatial positions.
-            EigenVectorArrayMap<T>(Y_ptr, static_cast<ptrdiff_t>(output_image_size)) += Bdata[m_idx];
-          }
-        });
+    DeformConvCpuAddBias<T>(Ydata, Bdata, N, M, output_image_size, output_image_size_sz, y_batch_stride, thread_pool);
   }
 
   return Status::OK();
