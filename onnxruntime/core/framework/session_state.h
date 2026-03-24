@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <map>
 #include <unordered_map>
@@ -294,8 +295,11 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
-  concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
-  concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
+  void InitializeThreadPools(concurrency::ThreadPool* thread_pool,
+                             concurrency::ThreadPool* inter_op_thread_pool);
+
+  concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_.load(std::memory_order_acquire); }
+  concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_.load(std::memory_order_acquire); }
 
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() noexcept { return fused_funcs_mgr_; }
@@ -536,9 +540,11 @@ class SessionState {
 
   SubgraphSessionStateMap subgraph_session_states_;
 
+  // Not const: thread pools may be lazily initialized after construction
+  // on first runtime use (Run/RunAsync) and then published to SessionState.
   // either threadpool could be nullptr
-  concurrency::ThreadPool* const thread_pool_{};
-  concurrency::ThreadPool* const inter_op_thread_pool_{};
+  std::atomic<concurrency::ThreadPool*> thread_pool_{nullptr};
+  std::atomic<concurrency::ThreadPool*> inter_op_thread_pool_{nullptr};
 
   const DataTransferManager& data_transfer_mgr_;
 

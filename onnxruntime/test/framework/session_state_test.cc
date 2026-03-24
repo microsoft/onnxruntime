@@ -708,6 +708,189 @@ static void PlaceAllNodesToCPUEP(Graph& graph) {
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static void CreateGraphWithIfSubgraphForThreadPoolTests(Graph& graph) {
+  TypeProto type_float;
+  type_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  TypeProto type_bool;
+  type_bool.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  type_bool.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto create_branch = [&](const std::string& graph_name) -> ONNX_NAMESPACE::GraphProto {
+    Model sub_model(graph_name, false, DefaultLoggingManager().DefaultLogger());
+    auto& subgraph = sub_model.MainGraph();
+
+    auto& outer_x = subgraph.GetOrCreateNodeArg("x", &type_float);
+    subgraph.AddOuterScopeNodeArg("x");
+    auto& sub_output = subgraph.GetOrCreateNodeArg(graph_name + "_out", &type_float);
+
+    std::vector<onnxruntime::NodeArg*> inputs = {&outer_x};
+    std::vector<onnxruntime::NodeArg*> outputs = {&sub_output};
+    subgraph.AddNode(graph_name + "_relu", "Relu", "subgraph relu", inputs, outputs);
+
+    EXPECT_STATUS_OK(subgraph.Resolve());
+    return subgraph.ToGraphProto();
+  };
+
+  auto& cond_arg = graph.GetOrCreateNodeArg("cond", &type_bool);
+  auto& x_arg = graph.GetOrCreateNodeArg("x", &type_float);
+  auto& y_arg = graph.GetOrCreateNodeArg("y", &type_float);
+
+  auto& if_node = graph.AddNode("if_node", "If", "if node", {&cond_arg}, {&y_arg});
+  auto then_branch = create_branch("then_branch");
+  auto else_branch = create_branch("else_branch");
+  if_node.AddAttribute("then_branch", then_branch);
+  if_node.AddAttribute("else_branch", else_branch);
+
+  graph.SetInputs({&cond_arg, &x_arg});
+  graph.SetOutputs({&y_arg});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+}
+
+static std::unique_ptr<SessionState> CreateSessionStateWithIfSubgraph(
+    Model& model,
+    ExecutionProviders& execution_providers,
+    DataTransferManager& dtm,
+    ExternalDataLoaderManager& edlm,
+    profiling::Profiler& profiler,
+    SessionOptions& sess_options) {
+  auto tmp_cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  ORT_THROW_IF_ERROR(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_cpu_execution_provider)));
+
+  KernelRegistryManager krm;
+  ORT_THROW_IF_ERROR(krm.RegisterKernels(execution_providers));
+
+  auto session_state = std::make_unique<SessionState>(model.MainGraph(),
+                                                      execution_providers,
+                                                      nullptr,
+                                                      nullptr,
+                                                      dtm,
+                                                      edlm,
+                                                      DefaultLoggingManager().DefaultLogger(),
+                                                      profiler,
+                                                      sess_options);
+
+  PlaceAllNodesToCPUEP(model.MainGraph());
+  ORT_THROW_IF_ERROR(session_state->FinalizeSessionState(ORT_TSTR(""), krm));
+  return session_state;
+}
+
+TEST(SessionStateTest, InitializeThreadPoolsPropagatesThreadPoolsToSubgraphs) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 12}};
+  Model model("thread_pool_propagation_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  CreateGraphWithIfSubgraphForThreadPoolTests(model.MainGraph());
+
+  ExecutionProviders execution_providers;
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+  SessionOptions sess_options;
+  sess_options.execution_mode = ExecutionMode::ORT_PARALLEL;
+
+  auto session_state = CreateSessionStateWithIfSubgraph(
+      model, execution_providers, dtm, edlm, profiler, sess_options);
+
+  OrtThreadPoolParams intra_tp_params;
+  intra_tp_params.thread_pool_size = 2;
+  auto intra_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
+                                                 concurrency::ThreadPoolType::INTRA_OP);
+  OrtThreadPoolParams inter_tp_params;
+  inter_tp_params.thread_pool_size = 2;
+  auto inter_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params,
+                                                 concurrency::ThreadPoolType::INTER_OP);
+
+  session_state->InitializeThreadPools(intra_tp.get(), inter_tp.get());
+
+  ASSERT_EQ(session_state->GetThreadPool(), intra_tp.get());
+  ASSERT_EQ(session_state->GetInterOpThreadPool(), inter_tp.get());
+
+  const auto& subgraph_session_states = session_state->GetSubgraphSessionStateMap();
+  ASSERT_EQ(subgraph_session_states.size(), 1u);
+  for (const auto& node_to_subgraph_states : subgraph_session_states) {
+    for (const auto& attribute_to_state : node_to_subgraph_states.second) {
+      ASSERT_EQ(attribute_to_state.second->GetThreadPool(), intra_tp.get());
+      ASSERT_EQ(attribute_to_state.second->GetInterOpThreadPool(), inter_tp.get());
+    }
+  }
+}
+
+TEST(SessionStateTest, InitializeThreadPools_CalledTwiceWithSamePointers_IsIdempotent) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 12}};
+  Model model("thread_pool_idempotent_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  CreateGraphWithIfSubgraphForThreadPoolTests(model.MainGraph());
+
+  ExecutionProviders execution_providers;
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+  SessionOptions sess_options;
+  sess_options.execution_mode = ExecutionMode::ORT_PARALLEL;
+
+  auto session_state = CreateSessionStateWithIfSubgraph(
+      model, execution_providers, dtm, edlm, profiler, sess_options);
+
+  OrtThreadPoolParams intra_tp_params;
+  intra_tp_params.thread_pool_size = 2;
+  auto intra_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
+                                                 concurrency::ThreadPoolType::INTRA_OP);
+  OrtThreadPoolParams inter_tp_params;
+  inter_tp_params.thread_pool_size = 2;
+  auto inter_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params,
+                                                 concurrency::ThreadPoolType::INTER_OP);
+
+  session_state->InitializeThreadPools(intra_tp.get(), inter_tp.get());
+  session_state->InitializeThreadPools(intra_tp.get(), inter_tp.get());
+
+  ASSERT_EQ(session_state->GetThreadPool(), intra_tp.get());
+  ASSERT_EQ(session_state->GetInterOpThreadPool(), inter_tp.get());
+
+  const auto& subgraph_session_states = session_state->GetSubgraphSessionStateMap();
+  ASSERT_EQ(subgraph_session_states.size(), 1u);
+  for (const auto& node_to_subgraph_states : subgraph_session_states) {
+    for (const auto& attribute_to_state : node_to_subgraph_states.second) {
+      ASSERT_EQ(attribute_to_state.second->GetThreadPool(), intra_tp.get());
+      ASSERT_EQ(attribute_to_state.second->GetInterOpThreadPool(), inter_tp.get());
+    }
+  }
+}
+
+TEST(SessionStateTest, InitializeThreadPools_CalledWithNullPointers_ClearsNothing) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 12}};
+  Model model("thread_pool_null_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  CreateGraphWithIfSubgraphForThreadPoolTests(model.MainGraph());
+
+  ExecutionProviders execution_providers;
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+  SessionOptions sess_options;
+  sess_options.execution_mode = ExecutionMode::ORT_PARALLEL;
+
+  auto session_state = CreateSessionStateWithIfSubgraph(
+      model, execution_providers, dtm, edlm, profiler, sess_options);
+
+  session_state->InitializeThreadPools(nullptr, nullptr);
+
+  ASSERT_EQ(session_state->GetThreadPool(), nullptr);
+  ASSERT_EQ(session_state->GetInterOpThreadPool(), nullptr);
+
+  const auto& subgraph_session_states = session_state->GetSubgraphSessionStateMap();
+  ASSERT_EQ(subgraph_session_states.size(), 1u);
+  for (const auto& node_to_subgraph_states : subgraph_session_states) {
+    for (const auto& attribute_to_state : node_to_subgraph_states.second) {
+      ASSERT_EQ(attribute_to_state.second->GetThreadPool(), nullptr);
+      ASSERT_EQ(attribute_to_state.second->GetInterOpThreadPool(), nullptr);
+    }
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 struct PrepackingTestParam {
   bool test_subgraph;
   bool test_prepacking;

@@ -50,7 +50,9 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
     const bool enable_cast_chain_elimination = false);
 
 /** Generates all predefined (both rule-based and non-rule-based) transformers for this level.
-    Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded. */
+    Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded.
+    `intra_op_thread_pool` is optional and may be nullptr when per-session
+    thread pools are lazily initialized. */
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
@@ -66,6 +68,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 /** Generates all predefined transformers which can be used to provide runtime optimizations for this level
     in a minimal build.
     Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded.
+    `intra_op_thread_pool` is optional and may be nullptr when per-session
+    thread pools are lazily initialized.
 
     This is a distinct function from GenerateTransformers() because:
     - An ORT format model used in a minimal build will have been pre-optimized to at least level 1 when created, so

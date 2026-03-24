@@ -771,6 +771,9 @@ class InferenceSession {
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
+  void CreateIntraOpThreadPoolIfNeeded();
+  void CreateInterOpThreadPoolIfNeeded();
+  void EnsureThreadPoolsCreatedForRun();
   [[nodiscard]] common::Status HasInvalidCombinationOfExecutionProviders() const;
   [[nodiscard]] common::Status SaveModelMetadata(const onnxruntime::Model& model);
 
@@ -928,6 +931,8 @@ class InferenceSession {
   // Determines which threadpools will be intialized and used for the duration of this session.
   // If true, use the per session ones, or else the global threadpools.
   bool use_per_session_threads_;
+  // Fast path for Run/RunAsync once all required per-session pools are ready.
+  std::atomic<bool> thread_pools_ready_for_run_{false};
 
   KernelRegistryManager kernel_registry_manager_;
 

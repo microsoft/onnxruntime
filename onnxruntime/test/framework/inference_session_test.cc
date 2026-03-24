@@ -47,13 +47,18 @@
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/ort_apis.h"
 #include "dummy_provider.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "test/internal_testing_ep/internal_testing_execution_provider.h"
+#endif
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/optimizer/dummy_graph_transformer.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/file_util.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
@@ -2209,6 +2214,128 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
 #endif
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static void CreateAddSubModel(const PathString& model_file_name) {
+  onnxruntime::Model model("add_sub_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  std::vector<onnxruntime::NodeArg*> inputs;
+  std::vector<onnxruntime::NodeArg*> outputs;
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
+  inputs.push_back(&input_arg_1);
+  inputs.push_back(&input_arg_2);
+  auto& add_output = graph.GetOrCreateNodeArg("add_out", &float_tensor);
+  outputs.push_back(&add_output);
+  graph.AddNode("add_1", "Add", "node add", inputs, outputs);
+
+  inputs.clear();
+  outputs.clear();
+  inputs.push_back(&add_output);
+  inputs.push_back(&input_arg_2);
+  auto& sub_output = graph.GetOrCreateNodeArg("M", &float_tensor);
+  outputs.push_back(&sub_output);
+  graph.AddNode("sub_1", "Sub", "node sub", inputs, outputs);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+}
+
+static void CreateIfModelWithCpuNodeInSubgraphForLazyInit(const PathString& model_file_name) {
+  // Main graph: one If node only.
+  // InternalTestingEP will take the main If node while subgraph Relu stays on CPU.
+  onnxruntime::Model model("if_subgraph_cpu_model", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_tensor_input;
+  float_tensor_input.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor_input.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  ONNX_NAMESPACE::TypeProto float_tensor_unknown;
+  float_tensor_unknown.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor_unknown.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("N");
+
+  ONNX_NAMESPACE::TypeProto bool_tensor_input;
+  bool_tensor_input.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor_input.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_x = graph.GetOrCreateNodeArg("input_x", &float_tensor_input);
+  auto& cond = graph.GetOrCreateNodeArg("cond", &bool_tensor_input);
+  auto& output_y = graph.GetOrCreateNodeArg("output_y", &float_tensor_unknown);
+
+  auto create_branch = [&](const std::string& graph_name) -> ONNX_NAMESPACE::GraphProto {
+    onnxruntime::Model sub_model(graph_name, false, ModelMetaData(), PathString(),
+                                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {},
+                                 DefaultLoggingManager().DefaultLogger());
+    auto& subgraph = sub_model.MainGraph();
+
+    auto& sub_input = subgraph.GetOrCreateNodeArg("input_x", &float_tensor_input);
+    subgraph.AddOuterScopeNodeArg("input_x");
+    auto& sub_output = subgraph.GetOrCreateNodeArg("subgraph_output", &float_tensor_unknown);
+
+    std::vector<onnxruntime::NodeArg*> inputs = {&sub_input};
+    std::vector<onnxruntime::NodeArg*> outputs = {&sub_output};
+    subgraph.AddNode(graph_name + "_relu", "Relu", "cpu node in subgraph", inputs, outputs);
+
+    auto status = subgraph.Resolve();
+    EXPECT_TRUE(status.IsOK()) << status;
+    return subgraph.ToGraphProto();
+  };
+
+  auto then_branch = create_branch("then_branch_graph");
+  auto else_branch = create_branch("else_branch_graph");
+
+  {
+    std::vector<onnxruntime::NodeArg*> inputs = {&cond};
+    std::vector<onnxruntime::NodeArg*> outputs = {&output_y};
+    auto& if_node = graph.AddNode("if_node", "If", "main graph if node", inputs, outputs);
+    if_node.AddAttribute("then_branch", then_branch);
+    if_node.AddAttribute("else_branch", else_branch);
+  }
+
+  {
+    std::vector<const onnxruntime::NodeArg*> inputs = {&input_x, &cond};
+    graph.SetInputs(inputs);
+  }
+  {
+    std::vector<const onnxruntime::NodeArg*> outputs = {&output_y};
+    graph.SetOutputs(outputs);
+  }
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+}
+
+static void RunAddSubModel(InferenceSession& session_object, const RunOptions& run_options) {
+  std::vector<int64_t> dims = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<float> values_y = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue ml_value_x;
+  OrtValue ml_value_y;
+  CreateMLValue<float>(allocator, dims, values_x, &ml_value_x);
+  CreateMLValue<float>(allocator, dims, values_y, &ml_value_y);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  feeds.insert(std::make_pair("Y", ml_value_y));
+
+  std::vector<std::string> output_names = {"M"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), output_names.size());
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 // Global threadpool related tests
 // We test for 4 combinations
 class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
@@ -2216,6 +2343,13 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
   InferenceSessionTestGlobalThreadPools(const SessionOptions& session_options,
                                         const Environment& env)
       : InferenceSessionWrapper(session_options, env) {
+  }
+
+  InferenceSessionTestGlobalThreadPools(const SessionOptions& session_options,
+                                        const Environment& env,
+                                        onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
+                                        onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool)
+      : InferenceSessionWrapper(session_options, env, external_intra_op_thread_pool, external_inter_op_thread_pool) {
   }
 
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
@@ -2227,7 +2361,28 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
   }
 };
 
-// Test 1: env created WITHOUT global tp / use per session tp (default case): in this case per session tps should be in use
+namespace {
+struct RunAsyncCompletionState {
+  std::promise<Status> result_promise;
+};
+
+void CaptureRunAsyncStatus(void* user_data, OrtValue** /*outputs*/, size_t /*num_outputs*/, OrtStatusPtr status_ptr) {
+  auto* completion_state = reinterpret_cast<RunAsyncCompletionState*>(user_data);
+  if (status_ptr == nullptr) {
+    completion_state->result_promise.set_value(Status::OK());
+    return;
+  }
+
+  const char* error_message = OrtApis::GetErrorMessage(status_ptr);
+  Status callback_status(common::ONNXRUNTIME, common::FAIL,
+                         error_message == nullptr ? "RunAsync callback received an unknown error." : error_message);
+  OrtApis::ReleaseStatus(status_ptr);
+  completion_state->result_promise.set_value(std::move(callback_status));
+}
+}  // namespace
+
+// Test 1: env created WITHOUT global tp / use per session tp (default case):
+// per session threadpools are lazily initialized on first Run().
 TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
   SessionOptions so;
   so.use_per_session_threads = true;
@@ -2245,7 +2400,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
-  // make sure we're using the per session threadpools
+  // per-session pools are created lazily and should be null before first Run().
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
   auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
   auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
@@ -2253,9 +2408,10 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
   auto intra_tp_from_env = env->GetIntraOpThreadPool();
   auto inter_tp_from_env = env->GetInterOpThreadPool();
 
-  // ensure threadpools were set correctly in the session state
-  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
-  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
+  ASSERT_TRUE(intra_tp_from_session == nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state == nullptr);
+  ASSERT_TRUE(inter_tp_from_session == nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state == nullptr);
 
   ASSERT_TRUE(intra_tp_from_env == nullptr);
   ASSERT_TRUE(inter_tp_from_env == nullptr);
@@ -2264,6 +2420,18 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
   run_options.run_tag = "RunTag";
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModel(session_object, run_options);
+
+  // make sure we're using the per session threadpools after first Run().
+  intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session != nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state != nullptr);
+  ASSERT_TRUE(inter_tp_from_session == nullptr || inter_tp_from_session_state != nullptr);
+  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
+  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
 }
 
 // Test 2: env created with global tp / DONT use per session tp: in this case global tps should be in use
@@ -2304,7 +2472,8 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
   RunModel(session_object, run_options);
 }
 
-// Test 3: env created with global tp / use per session tp: in this case per session tps should be in use
+// Test 3: env created with global tp / use per session tp:
+// per session threadpools are lazily initialized and should be preferred after first Run().
 TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   SessionOptions so;
   so.use_per_session_threads = true;
@@ -2323,7 +2492,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
-  // make sure we're using the per session threadpools
+  // per-session pools are created lazily and should be null before first Run().
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
   auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
   auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
@@ -2331,24 +2500,35 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   auto intra_tp_from_env = env->GetIntraOpThreadPool();
   auto inter_tp_from_env = env->GetInterOpThreadPool();
 
-  // ensure threadpools were set correctly in the session state
-  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
-  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
-
-  // ensure per session thread pools in use are different from the
-  // env threadpools
-  if (intra_tp_from_session && intra_tp_from_env) {  // both tps could be null on 1 core machines
-    ASSERT_FALSE(intra_tp_from_session == intra_tp_from_env);
-  }
-
-  if (inter_tp_from_session && inter_tp_from_env) {  // both tps could be null on 1 core machines
-    ASSERT_FALSE(inter_tp_from_session == inter_tp_from_env);
-  }
+  ASSERT_TRUE(intra_tp_from_session == nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state == nullptr);
+  ASSERT_TRUE(inter_tp_from_session == nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state == nullptr);
 
   RunOptions run_options;
   run_options.run_tag = "RunTag";
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModel(session_object, run_options);
+
+  intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session != nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state != nullptr);
+  ASSERT_TRUE(inter_tp_from_session == nullptr || inter_tp_from_session_state != nullptr);
+  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
+  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
+
+  // ensure per-session pools in use are different from the env threadpools
+  if (intra_tp_from_env) {
+    ASSERT_FALSE(intra_tp_from_session == intra_tp_from_env);
+  }
+
+  if (inter_tp_from_session && inter_tp_from_env) {
+    ASSERT_FALSE(inter_tp_from_session == inter_tp_from_env);
+  }
 }
 
 // Test 4: env created WITHOUT global tp / DONT use per session tp --> this should throw an exception
@@ -2377,6 +2557,415 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
                   std::string::npos);
     });
   }
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(InferenceSessionTests, PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDriven) {
+  PathString model_file_name = ORT_TSTR("lazy_init_all_internal.onnx");
+  CreateAddSubModel(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set{};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set);
+  internal_testing_ep->TakeAllNodes();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
+
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDriven";
+  RunAddSubModel(session_object, run_options);
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() != nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() != nullptr);
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == session_object.GetSessionState().GetThreadPool());
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == session_object.GetSessionState().GetInterOpThreadPool());
+}
+
+TEST(InferenceSessionTests, PerSessionThreadPools_OrtFormatInitializeKeepsPoolsNullUntilFirstRun) {
+  PathString onnx_model_file_name = ORT_TSTR("lazy_init_ort_model.onnx");
+  PathString ort_model_file_name = ORT_TSTR("lazy_init_ort_model.ort");
+  CreateAddSubModel(onnx_model_file_name);
+  ScopedFileDeleter onnx_file_deleter(onnx_model_file_name);
+  ScopedFileDeleter ort_file_deleter(ort_model_file_name);
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
+
+  SessionOptions save_so;
+  save_so.use_per_session_threads = true;
+  save_so.optimized_model_filepath = ort_model_file_name;
+  ASSERT_STATUS_OK(save_so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
+
+  InferenceSessionTestGlobalThreadPools save_session{save_so, *env.get()};
+  ASSERT_STATUS_OK(save_session.Load(onnx_model_file_name));
+  ASSERT_STATUS_OK(save_session.Initialize());
+
+  SessionOptions load_so;
+  load_so.use_per_session_threads = true;
+  load_so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  load_so.intra_op_param.thread_pool_size = 2;
+  load_so.inter_op_param.thread_pool_size = 2;
+  ASSERT_STATUS_OK(load_so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+
+  InferenceSessionTestGlobalThreadPools session_object{load_so, *env.get()};
+  ASSERT_STATUS_OK(session_object.Load(ort_model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
+
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_OrtFormatInitializeKeepsPoolsNullUntilFirstRun";
+  RunAddSubModel(session_object, run_options);
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() != nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() != nullptr);
+}
+
+TEST(InferenceSessionTests, PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDrivenAcrossAssignedProviders) {
+  PathString model_file_name = ORT_TSTR("lazy_init_add_sub_with_cpu_nodes.onnx");
+  CreateAddSubModel(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> ops = {"Add"};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(ops);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
+
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDrivenAcrossAssignedProviders";
+  RunAddSubModel(session_object, run_options);
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() != nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() != nullptr);
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == session_object.GetSessionState().GetThreadPool());
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == session_object.GetSessionState().GetInterOpThreadPool());
+}
+
+TEST(InferenceSessionTests, RunAsync_WithLazyPool_CreatesPoolOnFirstCall) {
+  PathString model_file_name = ORT_TSTR("lazy_init_all_internal_run_async.onnx");
+  CreateAddSubModel(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.intra_op_param.thread_pool_size = 2;
+  so.session_logid = "RunAsync_WithLazyPool_CreatesPoolOnFirstCall";
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set{};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set);
+  internal_testing_ep->TakeAllNodes();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
+
+  std::vector<int64_t> dims = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<float> values_y = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+
+  OrtValue ml_value_x;
+  OrtValue ml_value_y;
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  CreateMLValue<float>(allocator, dims, values_x, &ml_value_x);
+  CreateMLValue<float>(allocator, dims, values_y, &ml_value_y);
+
+  const char* input_names[] = {"X", "Y"};
+  const OrtValue* input_values[] = {&ml_value_x, &ml_value_y};
+  const char* output_names[] = {"M"};
+  OrtValue* output_values[] = {nullptr};
+
+  RunAsyncCompletionState completion_state;
+  auto completion_future = completion_state.result_promise.get_future();
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.RunAsync(&run_options,
+                                           input_names,
+                                           input_values,
+                                           output_names,
+                                           output_values,
+                                           CaptureRunAsyncStatus,
+                                           &completion_state));
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() != nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
+
+  ASSERT_EQ(completion_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+  ASSERT_STATUS_OK(completion_future.get());
+  ASSERT_TRUE(output_values[0] != nullptr);
+  std::unique_ptr<OrtValue> output_owner(output_values[0]);
+}
+
+TEST(InferenceSessionTests, PerSessionThreadPools_CreatesPoolOnFirstRun_ForSubgraphExecutionPath) {
+  PathString model_file_name = ORT_TSTR("lazy_init_if_cpu_subgraph_internal.onnx");
+  CreateIfModelWithCpuNodeInSubgraphForLazyInit(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> ops = {"If"};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(ops);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
+
+  std::vector<int64_t> dims_float = {1};
+  std::vector<float> values_x = {1.0f};
+  OrtValue input_x;
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  CreateMLValue<float>(allocator, dims_float, values_x, &input_x);
+
+  std::vector<int64_t> dims_bool = {1};
+  InlinedVector<bool> cond_values = {true};
+  OrtValue cond_value;
+  CreateMLValue<bool>(allocator, dims_bool, cond_values, &cond_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("input_x", input_x));
+  feeds.insert(std::make_pair("cond", cond_value));
+  std::vector<std::string> output_names = {"output_y"};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_CreatesPoolOnFirstRun_ForSubgraphExecutionPath";
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() != nullptr);
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() != nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() != nullptr);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+TEST(InferenceSessionTests, PerSessionThreadPools_ExternalThreadPools_NoInternalCreation) {
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  OrtThreadPoolParams intra_tp_params;
+  intra_tp_params.thread_pool_size = 2;
+  auto external_intra_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
+                                                          concurrency::ThreadPoolType::INTRA_OP);
+
+  OrtThreadPoolParams inter_tp_params;
+  inter_tp_params.thread_pool_size = 2;
+  auto external_inter_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params,
+                                                          concurrency::ThreadPoolType::INTER_OP);
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{
+      so, *env.get(), external_intra_tp.get(), external_inter_tp.get()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == external_intra_tp.get());
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == external_inter_tp.get());
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == external_intra_tp.get());
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == external_inter_tp.get());
+
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_ExternalThreadPools_NoInternalCreation";
+  RunModel(session_object, run_options);
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == external_intra_tp.get());
+  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == external_inter_tp.get());
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == external_intra_tp.get());
+  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == external_inter_tp.get());
+}
+
+TEST(InferenceSessionTests, PerSessionThreadPools_ConcurrentFirstRunAndRunAsync_NoRace) {
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+  so.session_logid = "PerSessionThreadPools_ConcurrentFirstRunAndRunAsync_NoRace";
+
+  auto capturing_sink = new CapturingSink();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
+  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
+
+  std::promise<void> start_promise;
+  auto start_signal = start_promise.get_future().share();
+
+  std::promise<Status> sync_run_status_promise;
+  auto sync_run_status_future = sync_run_status_promise.get_future();
+
+  std::promise<Status> async_submit_status_promise;
+  auto async_submit_status_future = async_submit_status_promise.get_future();
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue async_input_value;
+  CreateMLValue<float>(allocator, dims_x, values_x, &async_input_value);
+
+  const char* input_names[] = {"X"};
+  const OrtValue* input_values[] = {&async_input_value};
+  const char* output_names[] = {"Y"};
+  OrtValue* output_values[] = {nullptr};
+
+  RunAsyncCompletionState completion_state;
+  auto completion_future = completion_state.result_promise.get_future();
+  RunOptions async_run_options;
+  async_run_options.run_tag = "concurrent_async_run";
+
+  std::thread run_thread([&]() {
+    start_signal.wait();
+    std::vector<int64_t> dims = {3, 2};
+    std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    OrtValue run_input;
+    CreateMLValue<float>(allocator, dims, values, &run_input);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("X", run_input));
+    std::vector<std::string> run_output_names = {"Y"};
+    std::vector<OrtValue> fetches;
+    RunOptions run_options;
+    run_options.run_tag = "concurrent_sync_run";
+    sync_run_status_promise.set_value(session_object.Run(run_options, feeds, run_output_names, &fetches));
+  });
+
+  std::thread run_async_thread([&]() {
+    start_signal.wait();
+    async_submit_status_promise.set_value(session_object.RunAsync(&async_run_options,
+                                                                  input_names,
+                                                                  input_values,
+                                                                  output_names,
+                                                                  output_values,
+                                                                  CaptureRunAsyncStatus,
+                                                                  &completion_state));
+  });
+
+  start_promise.set_value();
+  run_thread.join();
+  run_async_thread.join();
+
+  ASSERT_STATUS_OK(sync_run_status_future.get());
+  ASSERT_STATUS_OK(async_submit_status_future.get());
+  ASSERT_EQ(completion_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+  ASSERT_STATUS_OK(completion_future.get());
+  ASSERT_TRUE(output_values[0] != nullptr);
+  std::unique_ptr<OrtValue> output_owner(output_values[0]);
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session != nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state != nullptr);
+  ASSERT_TRUE(inter_tp_from_session != nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state != nullptr);
+  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
+  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
+
 }
 
 // Tests for sharing allocators between sessions

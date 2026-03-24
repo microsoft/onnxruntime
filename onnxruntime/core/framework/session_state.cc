@@ -1138,6 +1138,31 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
+void SessionState::InitializeThreadPools(concurrency::ThreadPool* thread_pool,
+                                         concurrency::ThreadPool* inter_op_thread_pool) {
+  const auto* current_thread_pool = thread_pool_.load(std::memory_order_acquire);
+  const auto* current_inter_op_thread_pool = inter_op_thread_pool_.load(std::memory_order_acquire);
+
+  // NOTE: This enforce also runs recursively for each subgraph SessionState
+  // via the loop below. All subgraph SessionStates are expected to hold nullptr
+  // or the same pool pointers as the parent - never a different non-null pool.
+  ORT_ENFORCE(
+      (current_thread_pool == nullptr || current_thread_pool == thread_pool) &&
+      (current_inter_op_thread_pool == nullptr || current_inter_op_thread_pool == inter_op_thread_pool),
+      "SessionState thread pools can only be initialized once with stable pointers.");
+
+  thread_pool_.store(thread_pool, std::memory_order_release);
+  inter_op_thread_pool_.store(inter_op_thread_pool, std::memory_order_release);
+
+  // Propagate thread-pool pointers to all subgraph SessionStates so lazily-created pools
+  // are visible across the full SessionState tree.
+  for (auto& node_to_subgraph_states : subgraph_session_states_) {
+    for (auto& attribute_to_state : node_to_subgraph_states.second) {
+      attribute_to_state.second->InitializeThreadPools(thread_pool, inter_op_thread_pool);
+    }
+  }
+}
+
 #ifdef ENABLE_TRAINING
 void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) {
   InlinedVector<int> sorted_idxs;
@@ -1203,7 +1228,8 @@ Status SessionState::CreateSubgraphSessionState() {
 
       auto subgraph_session_state =
           std::make_unique<SessionState>(*subgraph, execution_providers_,
-                                         thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
+                                         thread_pool_.load(std::memory_order_acquire),
+                                         inter_op_thread_pool_.load(std::memory_order_acquire), data_transfer_mgr_,
                                          external_data_loader_mgr_, logger_, profiler_, sess_options_,
                                          prepacked_weights_container_, allocators_, initializer_allocators_);
 
