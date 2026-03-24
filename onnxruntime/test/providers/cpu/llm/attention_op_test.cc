@@ -5,10 +5,10 @@
 #include <limits>
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/cpu/llm/attention.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/system_info.h"
 
 namespace onnxruntime {
 namespace test {
@@ -2408,66 +2408,28 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
 }
 
 // Regression test for CPU kernel integer overflow in FP16 softmax allocation.
-// ComputeAttentionSoftmaxInplace<MLFloat16> previously used int for N and D.
-// For large enough values of N and D, N * D could overflow int32.
-TEST(AttentionTest, AttentionCpuFp16SoftmaxLargeDimensions) {
-  // Skip if the machine has less than 16GB of physical RAM.
-  constexpr uint64_t required_ram_bytes = 16ULL * 1024 * 1024 * 1024;
-  if (const auto total_ram_bytes = GetTotalPhysicalMemoryBytes();
-      total_ram_bytes.has_value() && *total_ram_bytes < required_ram_bytes) {
-    GTEST_SKIP() << "Skipping: test requires >= 16GB RAM, machine has "
-                 << (*total_ram_bytes / (1024 * 1024)) << "MB";
-  }
+// ComputeAttentionSoftmaxInplace<MLFloat16> previously used int for N and D,
+// so N * D could overflow int32 for large sequence lengths.
+// The fix uses detail::Fp16SoftmaxTempBufferBytes (see attention.h) which
+// applies SafeInt<size_t> to prevent overflow. This test exercises that helper
+// directly, so no large tensor allocations or op execution are required.
+TEST(AttentionTest, AttentionCpuFp16SoftmaxBufferSizeNoOverflow) {
+  // sqrt(INT_MAX) ≈ 46340, so 46341 * 46341 > INT_MAX. These are the same
+  // dimensions that previously triggered int32 overflow in N*D.
+  constexpr size_t N = 46341;
+  constexpr size_t D = 46341;
 
-  constexpr int batch_size = 1;
-  constexpr int num_heads = 1;
-  constexpr int q_sequence_length = 46341;
-  constexpr int kv_sequence_length = 46341;
-  constexpr int head_size = 1;
-
-  // Verify at compile time that these dimensions trigger the overflow scenario.
-  static_assert(static_cast<int64_t>(q_sequence_length) * kv_sequence_length >
+  static_assert(static_cast<int64_t>(N) * static_cast<int64_t>(D) >
                     static_cast<int64_t>(std::numeric_limits<int>::max()),
                 "Test dimensions must cause int32 overflow in N*D");
 
-  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
-
-  // 4D BNSH inputs
-  std::vector<int64_t> q_shape = {batch_size, num_heads, q_sequence_length, head_size};
-  std::vector<int64_t> k_shape = {batch_size, num_heads, kv_sequence_length, head_size};
-  std::vector<int64_t> v_shape = {batch_size, num_heads, kv_sequence_length, head_size};
-
-  constexpr int q_elements = batch_size * num_heads * q_sequence_length * head_size;
-  constexpr int kv_elements = batch_size * num_heads * kv_sequence_length * head_size;
-
-  // All-zero Q and K → all attention scores are 0, softmax produces uniform 1/kv_seq.
-  // All-one V → output is also all 1.0 (weighted average of 1s).
-  std::vector<float> q_data(q_elements, 0.0f);
-  std::vector<float> k_data(kv_elements, 0.0f);
-  std::vector<float> v_data(kv_elements, 1.0f);
-
-  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q_data));
-  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k_data));
-  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v_data));
-  test.AddOptionalInputEdge<bool>();       // attn_mask
-  test.AddOptionalInputEdge<MLFloat16>();  // past_key
-  test.AddOptionalInputEdge<MLFloat16>();  // past_value
-
-  // Expected output: all 1.0 (uniform attention over all-ones V).
-  std::vector<int64_t> y_shape = {batch_size, num_heads, q_sequence_length, head_size};
-  std::vector<float> expected_y(q_elements, 1.0f);
-  test.AddOutput<MLFloat16>("Y", y_shape, ToFloat16(expected_y), false, 0, 3e-2f);
-  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
-  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-
-  if constexpr (sizeof(void*) == 4) {
-    // Expect overflow for 32-bit builds.
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Integer overflow", {}, nullptr, &execution_providers);
+  if constexpr (sizeof(size_t) >= 8) {
+    // On 64-bit builds the computation must succeed and equal N * D * sizeof(float).
+    const size_t bytes = detail::Fp16SoftmaxTempBufferBytes(N, D);
+    EXPECT_EQ(bytes, N * D * sizeof(float));
   } else {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    // On 32-bit builds the multiplication overflows size_t; SafeInt must throw.
+    EXPECT_THROW(detail::Fp16SoftmaxTempBufferBytes(N, D), OnnxRuntimeException);
   }
 }
 

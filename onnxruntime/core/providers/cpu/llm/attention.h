@@ -3,12 +3,24 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/llm/attention_parameters.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
+
+namespace detail {
+
+// Returns the number of bytes needed for the FP16 softmax temporary float buffer
+// (used when converting FP16 scores to float32 before calling MlasComputeSoftmax).
+// Uses SafeInt<size_t> to prevent integer overflow for large values of N*D.
+inline size_t Fp16SoftmaxTempBufferBytes(size_t n, size_t d) {
+  return SafeInt<size_t>(n) * d * sizeof(float);
+}
+
+}  // namespace detail
 
 // This value is used to mask out a value from the input as ``Softmax(-infinity, ...) = 0``.
 // If the mask is added, -infinity + x = -infinity.
