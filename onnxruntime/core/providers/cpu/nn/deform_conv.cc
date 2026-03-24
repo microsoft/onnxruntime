@@ -2,6 +2,17 @@
 // Licensed under the MIT License.
 //
 // CPU implementation of DeformConv (deformable convolution 2D).
+//
+// High-level pipeline (one batch item at a time for peak memory):
+//   (1) Build a bilinear sampling plan from offsets (parallel): for each (offset_group, kernel tap, output pixel),
+//       store 4 neighbor indices + 4 weights in AoSoA blocks (see kPlanAoSoALanes).
+//   (2) Fill im2col matrix (parallel over channels x kernel taps): each row is one (channel, i, j) slice,
+//       reusing the plan row shared by all channels in the same offset group.
+//   (3) Grouped GEMM: Y_g = W_g * Col_g per group (highly optimized in math::Gemm / BLAS).
+//   (4) Optional bias: add B[m] to each output channel map (vectorized per row).
+//
+// Biggest win vs a naive loop: reusing the sampling plan across C/offset_group channels (plan built once per
+// offset row, not per channel) plus AoSoA layout so the gather/interpolate inner loop can SIMD-unroll 8-wide.
 
 #include "deform_conv.h"
 
@@ -27,6 +38,10 @@
 
 namespace onnxruntime {
 
+// Per-op kernel metadata cached on the DeformConv instance (mutex in the kernel class, not shown here).
+// Only depends on kH/kW, padding, dilation — not on N, H, W, or dynamic tensors — so it is reused across
+// Compute() calls (e.g. many inference steps). Typical saving: removes O(kernel_size) work per Compute from
+// the inner offset/plan path (small vs total work, but avoids repeated allocs for base_h/base_w vectors).
 template <typename T>
 struct DeformConvKernelMetaCacheData {
   int64_t kH = 0;
@@ -43,13 +58,26 @@ struct DeformConvKernelMetaCacheData {
 
 namespace {
 
+// AoSoA "lane" count: each BilinearSamplePlanBlock holds 8 output pixels' worth of idx/weights per corner.
+// For T=float, 8 matches one 256-bit AVX2 vector of floats; auto-vectorizers often turn the lane loop into
+// SIMD. For T=double, SIMD is typically 4-wide; the 8-lane layout still unrolls the scalar work and keeps
+// the same indexing (pidx / 8, pidx % 8) in PlanStoreSample — changing it requires revisiting all offsets.
 constexpr int64_t kPlanAoSoALanes = 8;
 
+// Overflow-safe size_t multiply: returns a * b only if the product fits in size_t.
+// Guard: for a > 0, a * b <= max  <=>  b <= max / a (integer division; avoids computing a*b first).
+// If a == 0 the product is 0 and is always representable, so the check is skipped.
+// Used when deriving batch/group strides from tensor shapes so pointer arithmetic like
+// base + n * stride cannot wrap size_t on valid ONNX shapes.
 ORT_FORCEINLINE size_t CheckedMulSizeT(size_t a, size_t b, size_t max_size_t, const char* err) {
   ORT_ENFORCE(a == 0 || b <= max_size_t / a, err);
   return a * b;
 }
 
+// Verifies that batch indexing over n items with byte stride `stride` stays within addressable size_t range.
+// For n > 0, the largest offset used when stepping batch index 0..n-1 is (n-1)*stride plus element spans;
+// requiring n * stride <= max_size_t is a conservative upper bound that n * stride itself does not overflow
+// (same inequality as CheckedMulSizeT with arguments n and stride).
 ORT_FORCEINLINE void CheckedBatchSpan(size_t n, size_t stride, size_t max_size_t, const char* err) {
   ORT_ENFORCE(n == 0 || stride <= max_size_t / n, err);
 }
@@ -84,6 +112,10 @@ inline CpuDeformConvExecutionDims ComputeCpuDeformConvExecutionDims(const Deform
   ORT_ENFORCE(plan_rows > 0 && common_dims.output_image_size > 0, "Invalid plan dimensions.");
   ORT_ENFORCE(common_dims.output_image_size <= int64_max - (kPlanAoSoALanes - 1),
               "output_image_size is too large and will overflow.");
+  // Round output_image_size up to a multiple of kPlanAoSoALanes so each plan "row" occupies an integer number
+  // of BilinearSamplePlanBlocks. Storage is row-major: row r starts at offset r * padded_spatial_count in
+  // "logical pixels"; block index = that offset / kPlanAoSoALanes. Only indices [0, output_image_size) are
+  // read when filling im2col; the padded tail slots in the last block are never read (FillColRow uses output_size).
   const int64_t padded_spatial_count = (common_dims.output_image_size + kPlanAoSoALanes - 1) /
                                        kPlanAoSoALanes * kPlanAoSoALanes;
   const size_t blocks_per_row = static_cast<size_t>(padded_spatial_count) / kPlanAoSoALanes;
@@ -125,6 +157,9 @@ inline CpuDeformConvStrides ComputeCpuDeformConvStrides(const DeformConvParams& 
   const size_t kernel_dim_sz = static_cast<size_t>(common_dims.kernel_dim);
   const size_t m_per_group_sz = m_size / group_size;
 
+  // Flat strides (elements between batch items or group slices). Computed once per Compute(), not per pixel.
+  // Hot paths then use pointer += stride instead of repeated rank-4/5 index math — typically saves several
+  // multiplies/adds per inner iteration in exchange for this O(1) setup cost.
   CpuDeformConvStrides strides;
   strides.x_batch_stride = CheckedMulSizeT(c_size, input_image_size_sz, max_size_t, "X batch stride overflows size_t.");
   strides.y_batch_stride = CheckedMulSizeT(m_size, output_image_size_sz, max_size_t, "Y batch stride overflows size_t.");
@@ -159,6 +194,8 @@ std::shared_ptr<const DeformConvKernelMetaCacheData<T>> GetOrCreateKernelMetaCac
   std::shared_ptr<const DeformConvKernelMetaCacheData<T>> cache_out;
   {
     std::lock_guard<std::mutex> lock(cache_mu);
+    // Cache key: static conv geometry only (kH, kW, pad, dilation, kernel_size). Same node + same shapes
+    // → hit on every Compute after the first; avoids reallocating base_h/base_w/offset_base_delta vectors.
     const bool cache_hit = cache_slot != nullptr &&
                            cache_slot->kH == params.kH &&
                            cache_slot->kW == params.kW &&
@@ -185,7 +222,11 @@ std::shared_ptr<const DeformConvKernelMetaCacheData<T>> GetOrCreateKernelMetaCac
         const int64_t i = kernel_idx / params.kW;
         const int64_t j = kernel_idx % params.kW;
         const size_t kernel_idx_sz = static_cast<size_t>(kernel_idx);
+        // Offset tensor layout per ONNX DeformConv: for each offset_group and kernel tap, two maps (dy, dx)
+        // of shape [out_h, out_w]. Flat row-major offset index for tap (i,j) is 2 * kernel_idx within the group.
         cache->offset_base_delta[kernel_idx_sz] = static_cast<size_t>(2) * kernel_idx_sz;
+        // Base sampling point in input space (before adding deform offsets): standard conv unwarped grid.
+        // h_im = h_col * stride_h + base_h + offset_dy[...]; same for w. See BilinearPlanOneSample.
         cache->base_h[kernel_idx_sz] = static_cast<T>(-params.pad_h + i * params.dilation_h);
         cache->base_w[kernel_idx_sz] = static_cast<T>(-params.pad_w + j * params.dilation_w);
       }
@@ -198,6 +239,7 @@ std::shared_ptr<const DeformConvKernelMetaCacheData<T>> GetOrCreateKernelMetaCac
 
 namespace sampling_plan_internal {
 
+// One AoSoA "macro-cell": 8 output pixels x 4 bilinear corners. See kPlanAoSoALanes and PlanStoreSample.
 template <typename T>
 struct alignas(64) BilinearSamplePlanBlock {
   int32_t idx[4][kPlanAoSoALanes];
@@ -232,6 +274,10 @@ template <typename T>
 ORT_FORCEINLINE void PlanStoreSample(BilinearSamplePlanBlock<T>* blocks, int64_t pidx,
                                      int32_t idx00, int32_t idx01, int32_t idx10, int32_t idx11,
                                      T w00, T w01, T w10, T w11) {
+  // Scatter one output pixel into lane `pidx % 8` across the four corners. AoSoA vs AoS: here `w[k][0..7]`
+  // are contiguous in memory for corner k, so the gather loop can load 8 weights per corner with vector
+  // loads; with AoS (one pixel's 4 corners packed together), the same 8 pixels would be strided and harder
+  // to SIMD. alignas(64) on the block type aligns starts to cache lines (struct may still span multiple lines).
   const int64_t block = pidx / kPlanAoSoALanes;
   const int64_t lane = pidx % kPlanAoSoALanes;
   auto& dst = blocks[block];
@@ -247,8 +293,12 @@ ORT_FORCEINLINE void PlanStoreSample(BilinearSamplePlanBlock<T>* blocks, int64_t
 
 // Matches std::floor for in-range finite x. Call only after coords pass the inverted bounds check below
 // (NaN makes each comparison false, so the && fails and ! rejects without a separate isfinite branch).
+// Performance trick: std::floor can be slow due to handling edge cases (NaN, Inf, negative zero).
+// This custom implementation uses a simple cast to int and a boolean subtraction, which compiles 
+// to fast, branchless instructions on most architectures.
 template <typename T>
 ORT_FORCEINLINE int DeformConvFastFloor(T x) {
+  // Assumes x is in int range after prior bounds filtering; T→int truncates toward zero.
   const int i = static_cast<int>(x);
   return i - static_cast<int>(i > x);
 }
@@ -267,11 +317,13 @@ ORT_FORCEINLINE void BilinearPlanOneSample(
     T base_h,
     T base_w,
     BilinearSamplePlanBlock<T>* ORT_CPU_RESTRICT plan_blocks) {
+  // Deformable sampling point in input space (fractional): col (h_col,w_col) -> image (h_im, w_im).
   const T h_im = static_cast<T>(h_col * stride_h) + base_h + ptr_offset_h[local_idx];
   const T w_im = static_cast<T>(w_col * stride_w) + base_w + ptr_offset_w[local_idx];
 
-  // Bitwise &: every predicate is evaluated (NaN compares false for both > and <), then folded to 0/1.
-  // Casts to unsigned give one integer guard; same open interval (-1, height) x (-1, width) as strict &&.
+  // In-bounds test on open rectangle (-1, H) x (-1, W) (same as strict && on comparisons). Bitwise & evaluates
+  // all four preds (no short-circuit); NaN makes each compare false → treated as out-of-bounds without isnan().
+  // One branch remains on `in_bounds == 0` to skip bilinear work when fully outside; inner fast/slow path is separate.
   const T neg1 = static_cast<T>(-1);
   const T h_max = static_cast<T>(height);
   const T w_max = static_cast<T>(width);
@@ -295,6 +347,11 @@ ORT_FORCEINLINE void BilinearPlanOneSample(
   const T hh = static_cast<T>(1) - lh;
   const T hw = static_cast<T>(1) - lw;
 
+  // Bilinear interpolation weights calculation:
+  // w00 (top-left)     = (1 - dy) * (1 - dx)
+  // w01 (top-right)    = (1 - dy) * dx
+  // w10 (bottom-left)  = dy * (1 - dx)
+  // w11 (bottom-right) = dy * dx
   T plan_w00 = hh * hw;
   T plan_w01 = hh * lw;
   T plan_w10 = lh * hw;
@@ -307,6 +364,9 @@ ORT_FORCEINLINE void BilinearPlanOneSample(
   int32_t idx10 = base_high + w_low;
   int32_t idx11 = base_high + w_high;
 
+  // Fast path: If the entire 2x2 interpolation window is strictly inside the image boundaries,
+  // we can safely store the indices and weights without any further bounds checking.
+  // This branch is taken for the vast majority of pixels, significantly speeding up the plan generation.
   if (static_cast<unsigned>(h_low) < static_cast<unsigned>(height - 1) &&
       static_cast<unsigned>(w_low) < static_cast<unsigned>(width - 1)) {
     PlanStoreSample(
@@ -314,6 +374,11 @@ ORT_FORCEINLINE void BilinearPlanOneSample(
         idx00, idx01, idx10, idx11,
         plan_w00, plan_w01, plan_w10, plan_w11);
   } else {
+    // Slow path (Edge cases): The interpolation window overlaps with the image boundary.
+    // We must check each of the 4 corners individually. If a corner is out of bounds,
+    // its corresponding weight and index are forced to 0. This ensures that out-of-bounds
+    // reads fetch a safe value (at index 0) which is then multiplied by a 0.0 weight,
+    // effectively contributing 0 to the final interpolated result (zero-padding semantics).
     const bool v00 = (h_low >= 0 && w_low >= 0);
     const bool v01 = (h_low >= 0 && w_high < width);
     const bool v10 = (h_high < height && w_low >= 0);
@@ -360,7 +425,14 @@ void BuildAllBilinearSamplingPlansImpl(
   const size_t kernel_size_sz = static_cast<size_t>(kernel_size);
   const size_t offset_group_stride = static_cast<size_t>(2) * kernel_size_sz;
   const int64_t output_size_i64 = static_cast<int64_t>(output_size);
+
+  // Plan is built once per (offset_group, kernel tap) row and reused for every input channel in that group:
+  // work factor ~ O(offset_group * kH * kW * out_h * out_w) instead of O(C * kH * kW * ...) for bilinear setup.
+  // Flatten (row, output pixel) to one task range so TryParallelFor can split fine-grained work even when
+  // offset_group * kernel_size is small (parallelizing only the outer dimension would under-use threads).
   const int64_t total_plan_tasks = plan_rows * output_size_i64;
+  // Unit cost is a dimensionless heuristic for ORT's thread pool splitter, not CPU cycles. Tuned so plan build
+  // parallelizes when it is large enough to matter; values need not match real instruction counts.
   constexpr double kCostPerBilinearSample = 12.0;
   concurrency::ThreadPool::TryParallelFor(
       thread_pool,
@@ -383,6 +455,7 @@ void BuildAllBilinearSamplingPlansImpl(
           const size_t plan_row_base = static_cast<size_t>(row) * static_cast<size_t>(padded_spatial_count);
           BilinearSamplePlanBlock<T>* row_plan = sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
 
+          // Output pixel index: local_idx = h_col * width_col + w_col (row-major flatten of [0, out_h) x [0, out_w)).
           const int64_t h_col = local_idx / width_col;
           const int64_t w_col = local_idx % width_col;
           BilinearPlanOneSample(ptr_offset_h, ptr_offset_w, height, width, h_col, w_col, local_idx, stride_h,
@@ -410,12 +483,15 @@ void FillColRowFromSamplingPlanImpl(
     size_t mask_row_base,
     const T* ORT_CPU_RESTRICT ptr_mask,
     T* ORT_CPU_RESTRICT col_ptr) {
+  // val = sum_{c in corners} w_c * im[idx_c]; optionally val *= mask[local_idx] (DeformConv v2).
+  // UseMask is a template parameter so the no-mask build has zero mask branches/loads in this loop (better SIMD).
   const int64_t block_count = spatial_count / kPlanAoSoALanes;
   const int64_t tail_count = spatial_count % kPlanAoSoALanes;
 
   int64_t local_idx = 0;
   for (int64_t b = 0; b < block_count; ++b) {
     const auto& block = plan_blocks[b];
+    // Inner lane loop: 8 pixels; for float, compilers often SIMD this (commonly a few× faster than scalar, ISA/optimizer dependent).
     for (int lane = 0; lane < kPlanAoSoALanes; ++lane) {
       T val = block.w[0][lane] * im_ptr[block.idx[0][lane]] +
               block.w[1][lane] * im_ptr[block.idx[1][lane]] +
@@ -445,11 +521,12 @@ void FillColRowFromSamplingPlanImpl(
   }
 }
 
-// Deformable Im2Col for a SINGLE image.
 template <typename T, bool UseMask>
 void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
   ORT_ENFORCE(ctx.sampling_plan_blocks != nullptr, "sampling_plan_blocks must not be null.");
   ORT_ENFORCE(ctx.data_col != nullptr, "data_col must not be null.");
+  // Single-image im2col: col buffer is [C*kH*kW, out_h*out_w] per batch index n only → peak memory O(C*kH*kW*HWout)
+  // instead of O(N*...) when N>1. UseMask is compile-time so mask loads/branches are absent when false.
   const int64_t channel_per_offset_group = ctx.channels / ctx.offset_groups;
   const int64_t kernel_size = ctx.kernel_h * ctx.kernel_w;
   const int64_t output_size = ctx.height_col * ctx.width_col;
@@ -463,6 +540,8 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
       ctx.kernel_offset_base_delta, ctx.kernel_base_h, ctx.kernel_base_w,
       ctx.sampling_plan_blocks, ctx.thread_pool);
 
+  // Heuristic cost per im2col row (one channel x one kernel tap): ~one full pass over output pixels with gathers.
+  // Slightly higher when UseMask (extra multiply per pixel). Same note as kCostPerBilinearSample: for scheduling only.
   const double parallel_cost = static_cast<double>(output_size) * (UseMask ? 12.0 : 10.0);
   concurrency::ThreadPool::TryParallelFor(
       ctx.thread_pool,
@@ -477,19 +556,38 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
         for (ptrdiff_t idx = begin; idx < end; ++idx) {
           const int64_t offset_grp = c_im / channel_per_offset_group;
 
+          // Pointer arithmetic and index calculation for the current im2col row.
+          // `col_ptr`: Points to the start of the current row in the output `col_buffer`.
+          // Shape of col_buffer is [C * kH * kW, out_h * out_w].
+          // Row-major flatten over (channel, kernel_y, kernel_x): idx = c_im * (kH*kW) + i * kW + j.
           T* col_ptr = ctx.data_col + static_cast<int64_t>(idx) * output_size;
+          
+          // `im_ptr`: Points to the start of the current channel `c_im` in the input image.
+          // Shape of input image is [C, H, W].
           const T* im_ptr = ctx.data_im + c_im * static_cast<int64_t>(ctx.height) * ctx.width;
+          
+          // `row`: Identifies which pre-computed sampling plan to use.
+          // The sampling plan is shared across channels that belong to the same `offset_grp`.
+          // Formula: plan_row_index = offset_grp * (kH * kW) + (i * kW + j)
           const int64_t row = offset_grp * kernel_size + i * ctx.kernel_w + j;
+          
+          // `row_plan`: Points to the start of the AoSoA blocks for this specific `row`.
+          // Since each block holds `kPlanAoSoALanes` elements, we divide the padded base index by it.
           const size_t plan_row_base = static_cast<size_t>(row) * static_cast<size_t>(ctx.padded_spatial_count);
           const BilinearSamplePlanBlock<T>* row_plan = ctx.sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
 
           const T* ptr_mask = nullptr;
           size_t mask_row_base = 0;
           if constexpr (UseMask) {
+            // If DeformConv v2 (with modulation mask), fetch the mask pointer.
+            // Shape of mask is [offset_group * kH * kW, out_h * out_w].
+            // The `row` index perfectly matches the mask's row index.
             ptr_mask = ctx.data_mask;
             mask_row_base = static_cast<size_t>(row) * output_size_sz;
           }
 
+          // Execute the gather and interpolation for this specific (channel, kernel_y, kernel_x) combination
+          // across all spatial output pixels [0, out_h * out_w).
           FillColRowFromSamplingPlanImpl<T, UseMask>(
               im_ptr, row_plan, output_size, mask_row_base, ptr_mask, col_ptr);
 
@@ -511,6 +609,7 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
 template <typename T>
 ORT_FORCEINLINE void DeformConvCpuAddBiasToRow(T* ORT_CPU_RESTRICT row, const T* ORT_CPU_RESTRICT bias_data,
                                                int64_t channel, ptrdiff_t spatial_len) {
+  // row[s] += bias[channel] for all s; Eigen maps to SIMD on large spatial_len (often several x vs scalar loop).
   EigenVectorArrayMap<T>(row, spatial_len) += bias_data[channel];
 }
 
@@ -523,6 +622,10 @@ void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT 
   const ptrdiff_t spatial_len = static_cast<ptrdiff_t>(output_image_size);
   const int64_t M = num_output_channels;
 
+  // N==1: parallelize over M channels only. Avoids the N>1 path's initial k/M and k%M per thread chunk and keeps
+  // the hot loop free of division (integer div is ~tens of cycles; negligible vs spatial SIMD work for large HW,
+  // but this path is the common inference case and is simpler for the pool to split).
+  // Y[0, m, :] += B[m] elementwise over spatial indices.
   if (batch_n == 1) {
     const double cost_per_channel_slice = static_cast<double>(output_image_size);
     concurrency::ThreadPool::TryParallelFor(
@@ -538,6 +641,9 @@ void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT 
   }
 
   ORT_ENFORCE(batch_n <= int64_max / M, "N*M overflows int64 for bias parallelization.");
+  
+  // N>1: flatten (n, m) to k = n * M + m so TryParallelFor sees enough tasks; update (n,m) by increment/wrap
+  // inside the loop to avoid div/mod per iteration (see loop body).
   const int64_t total_tasks = batch_n * M;
   ORT_ENFORCE(total_tasks <= ptrdiff_max, "N*M exceeds ptrdiff_t range for bias parallelization.");
   const double cost_per_task = static_cast<double>(output_image_size);
@@ -545,13 +651,20 @@ void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT 
   concurrency::ThreadPool::TryParallelFor(
       thread_pool, static_cast<std::ptrdiff_t>(total_tasks), cost_per_task,
       [&](ptrdiff_t first, ptrdiff_t last) {
+        // Initialize (n,m) from `first` only once per [first,last); advance by m++ with wrap (no per-iter div).
         int64_t n = static_cast<int64_t>(first) / M;
         int64_t m = static_cast<int64_t>(first) % M;
         for (ptrdiff_t k = first; k < last; ++k) {
           const size_t n_sz = static_cast<size_t>(n);
           const size_t m_sz = static_cast<size_t>(m);
+          
+          // Pointer arithmetic formula: Y_row_ptr = y_data + (n * y_batch_stride) + (m * output_image_size)
+          // Mathematical operation: Y[n, m, spatial_idx] += B[m] for all spatial_idx in [0, output_image_size).
           T* y_row = y_data + n_sz * y_batch_stride + m_sz * output_image_size_elements;
           DeformConvCpuAddBiasToRow<T>(y_row, bias_data, m, spatial_len);
+          
+          // For subsequent tasks, we simply increment `m` and wrap around to increment `n`.
+          // This completely eliminates division and modulo operations inside the hot loop.
           if (++m == M) {
             m = 0;
             ++n;
@@ -593,14 +706,15 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const int64_t out_w = params.out_w;
   const bool use_mask = params.use_mask;
 
-  // Allocate output tensor [N, M, out_h, out_w].
+  // --- Phase 1: Pre-computation and Memory Allocation ---
+  // 1.0) Output Y [N, M, out_h, out_w]; early exit if empty.
   const TensorShape Y_shape({N, M, out_h, out_w});
   Tensor* Y = context->Output(0, Y_shape);
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
 
-  // 1) Shared (CPU/CUDA) runtime bounds + derived dimensions.
+  // 1.1) Shared (CPU/CUDA) runtime bounds + derived dimensions.
   const int64_t ptrdiff_max = static_cast<int64_t>(std::numeric_limits<std::ptrdiff_t>::max());
 
   DeformConvCommonDims common_dims;
@@ -617,7 +731,11 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   // to reduce peak memory when N is large; im2col is implemented per-image anyway.
   const int64_t col_buffer_size = exec_dims.col_buffer_size;
 
-  // 4) Pointer-stride precompute (validated once, reused in hot loop).
+  // 1.2) Flat strides (element counts) for batch/group pointer bumping — see ComputeCpuDeformConvStrides body.
+  // x_batch_stride = C * H * W; y_batch_stride = M * out_h * out_w; w_group_stride = (M/group) * kernel_dim;
+  // col_group_stride = kernel_dim * out_h * out_w; y_group_stride = (M/group) * out_h * out_w;
+  // offset_batch_stride = (2 * offset_group * kH * kW) * out_h * out_w (dy and dx maps per tap).
+  // mask_batch_stride = (offset_group * kH * kW) * out_h * out_w (one modulation weight per tap, no factor 2).
   const CpuDeformConvStrides strides = ComputeCpuDeformConvStrides(params, common_dims, max_size_t);
   const size_t output_image_size_sz = static_cast<size_t>(output_image_size);
   const size_t x_batch_stride = strides.x_batch_stride;
@@ -628,7 +746,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const size_t offset_batch_stride = strides.offset_batch_stride;
   const size_t mask_batch_stride = strides.mask_batch_stride;
 
-  // 5) GEMM call-site bounds (checked once outside group loop).
+  // 1.3) GEMM call-site bounds (checked once outside group loop).
   ORT_ENFORCE((M / group) <= ptrdiff_max, "GEMM M dimension exceeds ptrdiff_t range.");
   ORT_ENFORCE(output_image_size <= ptrdiff_max, "GEMM N dimension exceeds ptrdiff_t range.");
   ORT_ENFORCE(kernel_dim <= ptrdiff_max, "GEMM K dimension exceeds ptrdiff_t range.");
@@ -649,11 +767,13 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   T* Ydata = Y->MutableData<T>();
   const T* Bdata = (B != nullptr) ? B->Data<T>() : nullptr;
 
+  // --- Phase 2: Core Computation (Im2Col + GEMM) ---
+  // Process each image in the batch sequentially to save peak memory.
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
-  // Process each image in the batch.
   for (int64_t n = 0; n < N; ++n) {
     const size_t n_idx = static_cast<size_t>(n);
-    // Step 1: Deformable Im2Col for image n.
+    
+    // 2.1) Deformable Im2Col for image n.
     // Gather deformed samples into col buffer for GEMM.
     const T* X_curr = Xdata + n_idx * x_batch_stride;
     const T* offset_curr = offset_data + n_idx * offset_batch_stride;
@@ -671,13 +791,19 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
         plan_blocks.get(),
         col_buffer_ptr,
         thread_pool};
+    // use_mask is runtime, but the hot gather loop is compiled twice (UseMask true/false) so the false
+    // build has no mask load/multiply/branch per pixel — see FillColRowFromSamplingPlanImpl.
     if (use_mask) {
       sampling_plan_internal::DeformableIm2colPlanned<T, true>(im2col_ctx);
     } else {
       sampling_plan_internal::DeformableIm2colPlanned<T, false>(im2col_ctx);
     }
 
-    // Step 2: GEMM for each group. Y = W * Col (per group).
+    // 2.2) GEMM for each group. Y = W * Col (per group).
+    // The deformable convolution is cast as a Matrix Multiplication (GEMM).
+    // For each group, the weight matrix W has shape [M/group, C/group * kH * kW]
+    // and the gathered column matrix Col has shape [C/group * kH * kW, out_h * out_w].
+    // The result Y_g is [M/group, out_h * out_w].
     for (int64_t g = 0; g < group; ++g) {
       const size_t g_idx = static_cast<size_t>(g);
       // Weight for group g: shape [M/group, C/group, kH, kW], row-major.
@@ -689,7 +815,8 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
       // Output slice for group g: [n, g*M/group:(g+1)*M/group, out_h, out_w].
       T* Y_g = Ydata + n_idx * y_batch_stride + g_idx * y_group_stride;
 
-      // GEMM: Y = W * Col. W [M/group, kernel_dim], Col [kernel_dim, output_image_size].
+      // GEMM: C = alpha * A * B + beta * C with alpha=1, beta=0  =>  Y_g = W_g * Col_g.
+      // Dimensions: A is (M_g, K), B is (K, N_out), C is (M_g, N_out), where M_g=M/group, K=kernel_dim, N_out=output_image_size.
       math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
@@ -706,7 +833,8 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  // Step 3: Add bias if provided (broadcast over spatial dimensions).
+  // --- Phase 3: Post-processing ---
+  // 3.1) Add bias if provided (broadcast over spatial dimensions).
   if (Bdata != nullptr) {
     DeformConvCpuAddBias<T>(Ydata, Bdata, N, M, output_image_size, output_image_size_sz, y_batch_stride, thread_pool);
   }
@@ -714,7 +842,8 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-// Explicit template instantiation for float and double
+// Explicit instantiation in this .cc keeps DeformConv<float/double> definitions out of other TUs that only
+// include deform_conv.h — one copy of Compute() per T in the library, faster builds and predictable link size.
 template class DeformConv<float>;
 template class DeformConv<double>;
 
