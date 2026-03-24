@@ -79,8 +79,6 @@ class EpEventManager {
   uint64_t RegisterProfiler();
   void UnregisterProfiler(uint64_t profiler_id);
 
-  void StartProfiling();
-
   void PushOrtEvent(uint64_t profiler_id);
   void PopOrtEvent(uint64_t profiler_id, const std::string& ort_event_name);
 
@@ -89,17 +87,12 @@ class EpEventManager {
   void ConsumeEvents(uint64_t profiler_id, std::vector<Event>& events);
 
  private:
-  // Caller should hold mutex_
-  void Shutdown();
-
   struct ProfilerState {
     std::vector<Event> events;
   };
 
   mutable std::mutex mutex_;
   uint64_t next_profiler_id_{1};
-  uint64_t num_profilers_{0};
-  bool enabled_{false};
 
   // profiler ID -> ProfilerState
   std::unordered_map<uint64_t, ProfilerState> profiler_state_;

@@ -34,40 +34,17 @@ uint64_t EpEventManager::RegisterProfiler() {
   uint64_t result = next_profiler_id_++;
 
   profiler_state_.insert({result, {}});
-  num_profilers_++;
 
   return result;
 }
 
 void EpEventManager::UnregisterProfiler(uint64_t profiler_id) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto iter = profiler_state_.find(profiler_id);
-  if (iter == profiler_state_.end()) {
-    return;
-  }
-
-  profiler_state_.erase(iter);
-  --num_profilers_;
-
-  if (num_profilers_ == 0 && enabled_) {
-    Shutdown();
-  }
-}
-
-void EpEventManager::StartProfiling() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (enabled_) {
-    return;
-  }
-
-  enabled_ = true;
+  profiler_state_.erase(profiler_id);
 }
 
 void EpEventManager::PushOrtEvent(uint64_t profiler_id) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!enabled_) {
-    return;
-  }
 
   auto iter = profiler_state_.find(profiler_id);
   if (iter == profiler_state_.end()) {
@@ -84,9 +61,6 @@ void EpEventManager::PushOrtEvent(uint64_t profiler_id) {
 
 void EpEventManager::PopOrtEvent(uint64_t profiler_id, const std::string& ort_event_name) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!enabled_) {
-    return;
-  }
 
   auto iter = profiler_state_.find(profiler_id);
   if (iter == profiler_state_.end() || tls_profiling_state_.ort_event_start_indices.empty()) {
@@ -112,9 +86,6 @@ void EpEventManager::PopOrtEvent(uint64_t profiler_id, const std::string& ort_ev
 
 void EpEventManager::AddEpEvent(uint64_t profiler_id, Event event) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!enabled_) {
-    return;
-  }
 
   auto iter = profiler_state_.find(profiler_id);
   if (iter == profiler_state_.end()) {
@@ -126,9 +97,6 @@ void EpEventManager::AddEpEvent(uint64_t profiler_id, Event event) {
 
 void EpEventManager::ConsumeEvents(uint64_t profiler_id, std::vector<Event>& events) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!enabled_) {
-    return;
-  }
 
   auto iter = profiler_state_.find(profiler_id);
   if (iter == profiler_state_.end()) {
@@ -137,16 +105,6 @@ void EpEventManager::ConsumeEvents(uint64_t profiler_id, std::vector<Event>& eve
 
   events.clear();
   std::swap(iter->second.events, events);
-}
-
-// Caller should hold mutex_
-void EpEventManager::Shutdown() {
-  if (!enabled_) {
-    return;
-  }
-
-  enabled_ = false;
-  profiler_state_.clear();
 }
 
 //
@@ -179,9 +137,6 @@ void ORT_API_CALL ExampleKernelEpProfiler::ReleaseImpl(OrtEpProfilerImpl* this_p
 bool ORT_API_CALL ExampleKernelEpProfiler::StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
                                                               int64_t profiling_start_time_ns) noexcept {
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
-  auto& ep_event_manager = EpEventManager::GetInstance();
-  ep_event_manager.StartProfiling();
-
   self->profiling_start_time_ns = profiling_start_time_ns;
   return true;
 }
