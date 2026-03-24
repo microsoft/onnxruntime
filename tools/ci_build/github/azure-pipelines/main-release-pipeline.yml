@@ -1,5 +1,13 @@
 trigger: none
 
+schedules:
+- cron: '55 7 * * *'
+  displayName: 'Nightly Packaging Pipeline Orchestration'
+  branches:
+    include:
+    - main
+  always: true
+
 parameters:
 - name: branch
   displayName: 'Target branch (without refs/heads/ prefix)'
