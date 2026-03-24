@@ -32,8 +32,14 @@ class FusionConformerAttention(FusionAttention):
             [1, None, 0, 0, 0],
         )
         if qkv_nodes is None:
-            logger.debug("fuse_conformer_attention: failed to match qkv path")
-            return
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["MatMul", "Reshape", "Transpose", "MatMul"],
+                [1, 0, 0, 0],
+            )
+            if qkv_nodes is None:
+                logger.debug("fuse_conformer_attention: failed to match qkv path")
+                return
 
         reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes[-3], qkv_nodes[-2], qkv_nodes[-1]
 
@@ -50,15 +56,22 @@ class FusionConformerAttention(FusionAttention):
                 [1, 0, 0, 0],
             )
             if v_nodes is None:
-                logger.debug("fuse_conformer_attention: failed to match v path")
-                return
+                v_nodes = self.model.match_parent_path(
+                    matmul_qkv,
+                    ["Transpose", "Reshape", "MatMul"],
+                    [1, 0, 0],
+                )
+                if v_nodes is None:
+                    logger.debug("fuse_conformer_attention: failed to match v path")
+                    return
         else:
             concat_v = v_nodes[0]
             concat_parent = self.model.get_parent(concat_v, 0, None)
             present_v = concat_v.output[0]
             past_v = concat_parent.output[0]
 
-        add_v, matmul_v = v_nodes[-2], v_nodes[-1]
+        add_v = v_nodes[-2] if len(v_nodes) >= 2 and v_nodes[-2].op_type == "Add" else None
+        matmul_v = v_nodes[-1]
 
         attn_mask = ""
         qk_nodes = self.model.match_parent_path(
@@ -66,6 +79,7 @@ class FusionConformerAttention(FusionAttention):
             ["Softmax", "Add", "MatMul"],
             [0, 0, 0],
         )
+        where_qk = None
         if qk_nodes is None:
             qk_nodes = self.model.match_parent_path(
                 matmul_qkv,
@@ -73,10 +87,19 @@ class FusionConformerAttention(FusionAttention):
                 [0, 2, 0, 2, 0],
             )
             if qk_nodes is None:
-                logger.debug("fuse_conformer_attention: failed to match qk path")
-                return
+                qk_nodes = self.model.match_parent_path(
+                    matmul_qkv,
+                    ["Where", "Softmax", "Where", "Div", "Add", "MatMul"],
+                    [0, 2, 0, 2, 0, 0],
+                )
+                if qk_nodes is None:
+                    logger.debug("fuse_conformer_attention: failed to match qk path")
+                    return
+                where_qk = qk_nodes[2]
+            else:
+                where_qk = qk_nodes[2]
 
-            where_qk = qk_nodes[2]
+        if where_qk is not None:
             mask_nodes = self.model.match_parent_path(
                 where_qk,
                 ["Equal", "Unsqueeze", "Cast"],
@@ -99,10 +122,27 @@ class FusionConformerAttention(FusionAttention):
                 [0, 0, 0, 0, 0],
             )
             if q_nodes is None:
-                logger.debug("fuse_conformer_attention: failed to match q path")
-                return
+                q_nodes = self.model.match_parent_path(
+                    matmul_qk,
+                    ["Transpose", "Add", "Reshape", "MatMul"],
+                    [0, 0, 0, 1],
+                )
+                if q_nodes is None:
+                    q_nodes = self.model.match_parent_path(
+                        matmul_qk,
+                        ["Transpose", "Add", "Reshape", "MatMul"],
+                        [0, 0, 0, 0],
+                    )
+                    if q_nodes is None:
+                        logger.debug("fuse_conformer_attention: failed to match q path")
+                        return
 
-        reshape_q, add_q, matmul_q = q_nodes[-3], q_nodes[-2], q_nodes[-1]
+        reshape_q = next((node for node in q_nodes if node.op_type == "Reshape"), None)
+        add_q = next((node for node in q_nodes if node.op_type == "Add"), None)
+        matmul_q = next((node for node in reversed(q_nodes) if node.op_type == "MatMul"), None)
+        if reshape_q is None or matmul_q is None:
+            logger.debug("fuse_conformer_attention: failed to identify q reshape/matmul nodes")
+            return
 
         extra_q_nodes = self.model.match_parent_path(
             add_qk,
@@ -112,6 +152,15 @@ class FusionConformerAttention(FusionAttention):
         if extra_q_nodes is not None and q_nodes[0] != extra_q_nodes[-1]:
             logger.debug("fuse_conformer_attention: failed to match extra q path")
             return
+
+        if extra_q_nodes is None:
+            nemotron_extra_q_nodes = self.model.match_parent_path(
+                add_qk,
+                ["Slice", "Reshape", "Slice", "Reshape", "Pad", "MatMul", "Transpose", "Add"],
+                [1, 0, 0, 0, 0, 0, 0, 0],
+            )
+            if nemotron_extra_q_nodes is not None:
+                extra_q_nodes = nemotron_extra_q_nodes
 
         past_k, present_k = "", ""
         k_nodes = self.model.match_parent_path(
@@ -132,15 +181,22 @@ class FusionConformerAttention(FusionAttention):
                     [1, 0, 0, 0],
                 )
                 if k_nodes is None:
-                    logger.debug("fuse_conformer_attention: failed to match k path")
-                    return
+                    k_nodes = self.model.match_parent_path(
+                        matmul_qk,
+                        ["Transpose", "Reshape", "MatMul"],
+                        [1, 0, 0],
+                    )
+                    if k_nodes is None:
+                        logger.debug("fuse_conformer_attention: failed to match k path")
+                        return
         else:
             concat_k = k_nodes[1]
             concat_parent = self.model.get_parent(concat_k, 0, None)
             past_k = concat_parent.output[0]
             present_k = concat_k.output[0]
 
-        add_k, matmul_k = k_nodes[-2], k_nodes[-1]
+        add_k = k_nodes[-2] if len(k_nodes) >= 2 and k_nodes[-2].op_type == "Add" else None
+        matmul_k = k_nodes[-1]
 
         num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
         if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
@@ -149,7 +205,12 @@ class FusionConformerAttention(FusionAttention):
 
         new_node = None
         use_packed_attention_op = (
-            matmul_q.input[0] == matmul_k.input[0] and matmul_k.input[0] == matmul_v.input[0] and extra_q_nodes is None
+            matmul_q.input[0] == matmul_k.input[0]
+            and matmul_k.input[0] == matmul_v.input[0]
+            and extra_q_nodes is None
+            and add_q is not None
+            and add_k is not None
+            and add_v is not None
         )
         if use_packed_attention_op:
             # Self-attention, use Attention op

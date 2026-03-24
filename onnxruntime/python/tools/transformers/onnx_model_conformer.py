@@ -30,3 +30,9 @@ class ConformerOnnxModel(BertOnnxModel):
 
     def preprocess(self):
         self.adjust_reshape_and_expand()
+
+    def postprocess(self):
+        self.remove_cascaded_cast_nodes()
+        self.remove_useless_cast_nodes()
+        self.remove_unused_constant()
+        super().postprocess()
