@@ -1,0 +1,92 @@
+parameters:
+- name: build_windows_x64
+  displayName: 'Build Windows x64'
+  type: boolean
+  default: true
+
+- name: build_windows_arm64
+  displayName: 'Build Windows ARM64'
+  type: boolean
+  default: false
+
+- name: build_linux_x64
+  displayName: 'Build Linux x64'
+  type: boolean
+  default: false
+
+- name: build_macos_arm64
+  displayName: 'Build macOS ARM64'
+  type: boolean
+  default: false
+
+- name: api_version
+  displayName: 'API Version'
+  type: number
+  default: 24
+
+- name: package_version
+  displayName: 'Package Version'
+  type: string
+  default: dev
+
+- name: cmake_build_type
+  type: string
+  displayName: 'CMake build type'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+stages:
+    # Validate parameter combinations
+    - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, false)) }}:
+      - stage: Validate_Parameters
+        displayName: 'Validate Parameters'
+        dependsOn: []
+        jobs:
+        - job: Validate
+          displayName: 'Validate parameter combinations'
+          pool:
+            name: 'onnxruntime-Win-CPU-VS2022-Latest'
+            os: windows
+          steps:
+          - script: |
+              echo "##vso[task.logissue type=error]Windows ARM64 build requires Windows x64 build to be enabled."
+              exit 1
+            displayName: 'ERROR: Windows ARM64 requires Windows x64'
+
+    # Windows x64
+    - ${{ if eq(parameters.build_windows_x64, true) }}:
+      - template: plugin-win-webgpu-stage.yml
+        parameters:
+          arch: 'x64'
+          api_version: ${{ parameters.api_version }}
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Windows ARM64
+    - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+      - template: plugin-win-webgpu-stage.yml
+        parameters:
+          arch: 'arm64'
+          api_version: ${{ parameters.api_version }}
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Linux x64
+    - ${{ if eq(parameters.build_linux_x64, true) }}:
+      - template: plugin-linux-webgpu-stage.yml
+        parameters:
+          api_version: ${{ parameters.api_version }}
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # macOS ARM64
+    - ${{ if eq(parameters.build_macos_arm64, true) }}:
+      - template: plugin-mac-webgpu-stage.yml
+        parameters:
+          api_version: ${{ parameters.api_version }}
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}

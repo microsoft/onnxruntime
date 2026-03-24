@@ -1,0 +1,157 @@
+parameters:
+- name: arch
+  type: string
+  values:
+  - x64
+  - arm64
+
+- name: api_version
+  type: number
+  default: 24
+
+- name: package_version
+  type: string
+  default: dev
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: npm_registry_url
+  type: string
+  default: 'https://pkgs.dev.azure.com/aiinfra/_packaging/Guardian1ESPTUpstreamOrgFeed/npm/registry/'
+
+stages:
+  - stage: Win_plugin_webgpu_${{ parameters.arch }}_Build
+    ${{ if eq(parameters.arch, 'arm64') }}:
+      dependsOn: Win_plugin_webgpu_x64_Build
+    ${{ else }}:
+      dependsOn: []
+    jobs:
+    - job: Win_plugin_webgpu_${{ parameters.arch }}_Build
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      templateContext:
+        sdl:
+          codeSignValidation:
+            enabled: true
+            break: true
+          psscriptanalyzer:
+            enabled: true
+          binskim:
+            enabled: true
+            scanOutputDirectoryOnly: true
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: webgpu_plugin_win_${{ parameters.arch }}
+      variables:
+      - template: ../templates/common-variables.yml
+      - name: GRADLE_OPTS
+        value: '-Dorg.gradle.daemon=false'
+      - name: VSGenerator
+        value: 'Visual Studio 17 2022'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/set-plugin-build-variables-step.yml
+        parameters:
+          api_version: ${{ parameters.api_version }}
+          package_version: ${{ parameters.package_version }}
+
+      - script: |
+          python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
+        displayName: 'Install Python build dependencies'
+        env:
+          TMPDIR: "$(Agent.TempDirectory)"
+
+      - task: PowerShell@2
+        displayName: '[WebGPU] Create .npmrc for WebGPU build'
+        inputs:
+          targetType: 'inline'
+          pwsh: true
+          script: |
+            $npmrcPath = Join-Path "$(Build.SourcesDirectory)" "onnxruntime/core/providers/webgpu/wgsl_templates/.npmrc"
+            $npmrcDir = Split-Path -Parent $npmrcPath
+            $packageJsonPath = Join-Path $npmrcDir "package.json"
+
+            # Check if package.json exists
+            if (-not (Test-Path $packageJsonPath)) {
+              Write-Error "package.json not found at: $packageJsonPath"
+              throw "package.json does not exist in $npmrcDir"
+            }
+
+            # Create .npmrc file with required content
+            $npmrcContent = @"
+            registry=${{ parameters.npm_registry_url }}
+
+            always-auth=true
+            "@
+
+            Set-Content -Path $npmrcPath -Value $npmrcContent -Encoding UTF8
+            Write-Host "Created .npmrc at: $npmrcPath"
+
+      - task: npmAuthenticate@0
+        displayName: '[WebGPU] Authenticate npm for WebGPU build'
+        inputs:
+          workingFile: '$(Build.SourcesDirectory)/onnxruntime/core/providers/webgpu/wgsl_templates/.npmrc'
+
+      - task: PythonScript@0
+        displayName: 'Build'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: >-
+            --config ${{ parameters.cmake_build_type }}
+            --build_dir $(Build.BinariesDirectory)
+            --skip_submodule_sync
+            --cmake_generator "$(VSGenerator)"
+            --parallel
+            --use_vcpkg
+            --use_vcpkg_ms_internal_asset_cache
+            --use_binskim_compliant_compile_flags
+            --update
+            --build
+            --enable_onnx_tests
+            --use_webgpu shared_lib
+            --wgsl_template static
+            --disable_rtti
+            --enable_lto
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine)
+            $(TelemetryOption)
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      # Esrp signing
+      - template: ../templates/win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: true
+          Pattern: '*.dll'
+
+      - task: CopyFiles@2
+        displayName: 'Copy plugin binaries to staging directory'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+          Contents: |
+            onnxruntime_providers_webgpu.dll
+            onnxruntime_providers_webgpu.pdb
+            dxcompiler.dll
+            dxil.dll
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
