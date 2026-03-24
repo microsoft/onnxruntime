@@ -286,6 +286,10 @@ class UpsampleBase {
       if constexpr (upsamplebase_detail::has_input_defs<decltype(node)>::value) {
         auto x_shape = node.InputDefs()[0]->Shape();
         rank = x_shape ? x_shape->dim_size() : -1;
+      } else {
+        auto type_info = info.GetKernelInfo().GetInputTypeInfo(0);
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        rank = static_cast<int64_t>(tensor_info.GetDimensionsCount());
       }
       if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
         ORT_THROW_IF_ERROR(ParseScalesData(scale, scales_, rank));
