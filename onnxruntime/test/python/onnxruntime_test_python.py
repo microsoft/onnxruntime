@@ -1528,9 +1528,10 @@ class TestInferenceSession(unittest.TestCase):
         numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
 
         # numpy arrays expose __dlpack__ since numpy 1.22
-        if hasattr(numpy_arr, "__dlpack__"):
-            ortvalue = onnxrt.OrtValue.from_dlpack(numpy_arr)
-            np.testing.assert_equal(numpy_arr, ortvalue.numpy())
+        if not hasattr(numpy_arr, "__dlpack__"):
+            self.skipTest("numpy < 1.22 does not expose __dlpack__")
+        ortvalue = onnxrt.OrtValue.from_dlpack(numpy_arr)
+        np.testing.assert_equal(numpy_arr, ortvalue.numpy())
 
     @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
     def test_ortvalue_dlpack_roundtrip(self):

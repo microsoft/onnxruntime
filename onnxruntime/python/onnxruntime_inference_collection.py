@@ -1209,11 +1209,12 @@ class OrtValue:
 
         :param dtype: Optional numpy dtype to cast the result to.
         :param copy: Optional flag from numpy >= 2.0. When *False*, a copy
-            will be avoided if possible. When *True*, a copy is always made.
+            is never made and ``ValueError`` is raised if one would be required.
+            When *True*, a copy is always made.
             *None* (default) lets numpy decide.
         :return: A numpy ndarray with the contents of this OrtValue.
         """
-        import numpy as np  # noqa: PLC0415 - numpy is guaranteed loaded by the caller
+        import numpy as np  # noqa: PLC0415 - numpy is a TYPE_CHECKING-only module-level import
 
         arr = self._ortvalue.numpy()
         if copy is not None:
@@ -1245,7 +1246,7 @@ class OrtValue:
             data = data.__dlpack__()
         return cls(C.OrtValue.from_dlpack(data, is_bool_tensor))
 
-    def __dlpack__(self, *, stream: int | None = None):
+    def __dlpack__(self, *, stream: int | None = None) -> object:
         """
         Export this OrtValue as a DLPack capsule (``PyCapsule``).
 
