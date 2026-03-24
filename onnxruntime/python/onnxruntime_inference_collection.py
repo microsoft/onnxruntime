@@ -1199,6 +1199,86 @@ class OrtValue:
         """
         return self._ortvalue.numpy()
 
+    def __array__(self, dtype=None, copy=None) -> np.ndarray:
+        """
+        Implements the numpy ``__array__`` protocol so that ``np.array(ortvalue)``
+        and ``np.asarray(ortvalue)`` work transparently.
+
+        Valid only for OrtValues holding Tensors on CPU.
+        For device tensors the data is first copied to host memory.
+
+        :param dtype: Optional numpy dtype to cast the result to.
+        :param copy: Optional flag from numpy >= 2.0. When *False*, a copy
+            will be avoided if possible. When *True*, a copy is always made.
+            *None* (default) lets numpy decide.
+        :return: A numpy ndarray with the contents of this OrtValue.
+        """
+        import numpy as np  # noqa: PLC0415 - numpy is guaranteed loaded by the caller
+
+        arr = self._ortvalue.numpy()
+        if copy is not None:
+            return np.array(arr, dtype=dtype, copy=copy)
+        if dtype is not None:
+            return np.asarray(arr, dtype=dtype)
+        return arr
+
+    @classmethod
+    def from_dlpack(cls, data, /, *, is_bool_tensor: bool = False) -> OrtValue:
+        """
+        Construct an OrtValue from any object implementing the DLPack protocol
+        (i.e. exposing a ``__dlpack__`` method) or from a raw DLPack capsule.
+
+        This is the public entry-point that mirrors
+        ``numpy.from_dlpack`` / ``torch.from_dlpack``.
+
+        :param data: A DLPack-compatible tensor (has ``__dlpack__``) **or** a
+            raw ``PyCapsule`` produced by a ``to_dlpack()`` call.
+        :param is_bool_tensor: Set to *True* when the source tensor is a
+            boolean tensor encoded as uint8 per the DLPack spec.
+        :return: An :class:`OrtValue` wrapping the shared memory (zero-copy
+            when possible).
+        """
+        if not hasattr(C.OrtValue, "from_dlpack"):
+            raise NotImplementedError("DLPack support is not enabled in this build of ONNX Runtime")
+        # If the object exposes the __dlpack__ protocol, obtain the capsule.
+        if hasattr(data, "__dlpack__"):
+            data = data.__dlpack__()
+        return cls(C.OrtValue.from_dlpack(data, is_bool_tensor))
+
+    def __dlpack__(self, *, stream: int | None = None):
+        """
+        Export this OrtValue as a DLPack capsule (``PyCapsule``).
+
+        Part of the `DLPack data interchange protocol
+        <https://dmlc.github.io/dlpack/latest/>`_.  Enables zero-copy sharing
+        with frameworks like PyTorch, JAX, CuPy, etc. via
+        ``other_framework.from_dlpack(ortvalue)``.
+
+        :param stream: Optional CUDA/device stream for synchronisation.
+            Not used for CPU tensors.
+        :return: A ``PyCapsule`` with name ``"dltensor"`` owning a
+            ``DLManagedTensor``.
+        :raises NotImplementedError: If DLPack is not enabled in this build.
+        """
+        if not hasattr(self._ortvalue, "__dlpack__"):
+            raise NotImplementedError("DLPack support is not enabled in this build of ONNX Runtime")
+        return self._ortvalue.__dlpack__(stream=stream)
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """
+        Return the device type and device index for DLPack.
+
+        Part of the `DLPack data interchange protocol
+        <https://dmlc.github.io/dlpack/latest/>`_.
+
+        :return: ``(device_type, device_id)`` where *device_type* is one of the
+            ``DLDeviceType`` enum values (1 = CPU, 2 = CUDA, …).
+        :raises NotImplementedError: If DLPack is not enabled in this build.
+        """
+        if not hasattr(self._ortvalue, "__dlpack_device__"):
+            raise NotImplementedError("DLPack support is not enabled in this build of ONNX Runtime")
+        return self._ortvalue.__dlpack_device__()
+
     def update_inplace(self, np_arr) -> None:
         """
         Update the OrtValue in place with a new Numpy array. The numpy contents
