@@ -78,20 +78,21 @@ void make_copy<MLFloat16, bool>(MLFloat16* mask_data, const bool* mask_index, si
 }
 
 template <typename T>
-inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp, AllocatorPtr) {
+inline void ComputeAttentionSoftmaxInplace(T* score, size_t N, size_t D, ThreadPool* tp, AllocatorPtr) {
   MlasComputeSoftmax(score, score, N, D, false, false, 0.0f, tp);
 }
 
 template <>
-inline void ComputeAttentionSoftmaxInplace<MLFloat16>(MLFloat16* score, int N, int D, ThreadPool* tp, AllocatorPtr allocator) {
+inline void ComputeAttentionSoftmaxInplace<MLFloat16>(MLFloat16* score, size_t N, size_t D, ThreadPool* tp, AllocatorPtr allocator) {
   ORT_ENFORCE(tp == nullptr, "No parallelized version of softmax for float16.");
   // Mlas Lacks kernels for fp16 softmax, we convert into float32 and call the float32 version.
-  void* allocated_ptr = allocator->Alloc(static_cast<size_t>(N * D * sizeof(float)));
+  const auto num_elements = SafeInt<size_t>(N) * D;
+  void* allocated_ptr = allocator->Alloc(num_elements * sizeof(float));
   BufferUniquePtr float_buffer(allocated_ptr, BufferDeleter(allocator));
   float* ptr = reinterpret_cast<float*>(allocated_ptr);
-  MlasConvertHalfToFloatBuffer(score, ptr, N * D);
+  MlasConvertHalfToFloatBuffer(score, ptr, num_elements);
   MlasComputeSoftmax(ptr, ptr, N, D, false, false, 0.0f, tp);
-  MlasConvertFloatToHalfBuffer(ptr, score, N * D);
+  MlasConvertFloatToHalfBuffer(ptr, score, num_elements);
 }
 
 template <typename T>
@@ -500,7 +501,8 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       if (out_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftCap) {
         memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
       }
-      ComputeAttentionSoftmaxInplace(output, parameters.q_sequence_length, parameters.total_sequence_length, nullptr, allocator);
+      ComputeAttentionSoftmaxInplace(output, SafeInt<size_t>(parameters.q_sequence_length),
+                                     SafeInt<size_t>(parameters.total_sequence_length), nullptr, allocator);
 
       if (output_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftMax) {
         memcpy(output_qk + output_offset, output,
