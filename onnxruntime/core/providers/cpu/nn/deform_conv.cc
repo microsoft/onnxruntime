@@ -518,12 +518,15 @@ template <typename T>
 void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT bias_data, int64_t batch_n,
                           int64_t num_output_channels, int64_t output_image_size, size_t output_image_size_elements,
                           size_t y_batch_stride, concurrency::ThreadPool* thread_pool) {
-  const double cost_per_channel_slice = static_cast<double>(output_image_size);
+  const int64_t int64_max = std::numeric_limits<int64_t>::max();
+  const int64_t ptrdiff_max = static_cast<int64_t>(std::numeric_limits<std::ptrdiff_t>::max());
   const ptrdiff_t spatial_len = static_cast<ptrdiff_t>(output_image_size);
+  const int64_t M = num_output_channels;
 
   if (batch_n == 1) {
+    const double cost_per_channel_slice = static_cast<double>(output_image_size);
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, static_cast<std::ptrdiff_t>(num_output_channels), cost_per_channel_slice,
+        thread_pool, static_cast<std::ptrdiff_t>(M), cost_per_channel_slice,
         [&](ptrdiff_t first, ptrdiff_t last) {
           for (ptrdiff_t m = first; m < last; ++m) {
             const size_t m_sz = static_cast<size_t>(m);
@@ -531,22 +534,30 @@ void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT 
             DeformConvCpuAddBiasToRow<T>(y_row, bias_data, static_cast<int64_t>(m), spatial_len);
           }
         });
-  } else {
-    const double cost_per_batch = cost_per_channel_slice * static_cast<double>(num_output_channels);
-    concurrency::ThreadPool::TryParallelFor(
-        thread_pool, static_cast<std::ptrdiff_t>(batch_n), cost_per_batch,
-        [&](ptrdiff_t first, ptrdiff_t last) {
-          for (ptrdiff_t n = first; n < last; ++n) {
-            const size_t n_sz = static_cast<size_t>(n);
-            T* batch_base = y_data + n_sz * y_batch_stride;
-            for (int64_t m = 0; m < num_output_channels; ++m) {
-              const size_t m_sz = static_cast<size_t>(m);
-              DeformConvCpuAddBiasToRow<T>(batch_base + m_sz * output_image_size_elements, bias_data, m,
-                                           spatial_len);
-            }
-          }
-        });
+    return;
   }
+
+  ORT_ENFORCE(batch_n <= int64_max / M, "N*M overflows int64 for bias parallelization.");
+  const int64_t total_tasks = batch_n * M;
+  ORT_ENFORCE(total_tasks <= ptrdiff_max, "N*M exceeds ptrdiff_t range for bias parallelization.");
+  const double cost_per_task = static_cast<double>(output_image_size);
+
+  concurrency::ThreadPool::TryParallelFor(
+      thread_pool, static_cast<std::ptrdiff_t>(total_tasks), cost_per_task,
+      [&](ptrdiff_t first, ptrdiff_t last) {
+        int64_t n = static_cast<int64_t>(first) / M;
+        int64_t m = static_cast<int64_t>(first) % M;
+        for (ptrdiff_t k = first; k < last; ++k) {
+          const size_t n_sz = static_cast<size_t>(n);
+          const size_t m_sz = static_cast<size_t>(m);
+          T* y_row = y_data + n_sz * y_batch_stride + m_sz * output_image_size_elements;
+          DeformConvCpuAddBiasToRow<T>(y_row, bias_data, m, spatial_len);
+          if (++m == M) {
+            m = 0;
+            ++n;
+          }
+        }
+      });
 }
 
 template <typename T>
