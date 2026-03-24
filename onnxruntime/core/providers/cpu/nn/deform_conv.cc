@@ -16,14 +16,12 @@
 
 #include "deform_conv.h"
 
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <vector>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/force_inline.h"
 #include "core/util/math.h"
@@ -37,24 +35,6 @@
 #endif
 
 namespace onnxruntime {
-
-// Per-op kernel metadata cached on the DeformConv instance (mutex in the kernel class, not shown here).
-// Only depends on kH/kW, padding, dilation — not on N, H, W, or dynamic tensors — so it is reused across
-// Compute() calls (e.g. many inference steps). Typical saving: removes O(kernel_size) work per Compute from
-// the inner offset/plan path (small vs total work, but avoids repeated allocs for base_h/base_w vectors).
-template <typename T>
-struct DeformConvKernelMetaCacheData {
-  int64_t kH = 0;
-  int64_t kW = 0;
-  int64_t pad_h = 0;
-  int64_t pad_w = 0;
-  int64_t dilation_h = 0;
-  int64_t dilation_w = 0;
-  int64_t kernel_size = 0;
-  std::vector<size_t> offset_base_delta;
-  std::vector<T> base_h;
-  std::vector<T> base_w;
-};
 
 namespace {
 
@@ -183,58 +163,6 @@ inline CpuDeformConvStrides ComputeCpuDeformConvStrides(const DeformConvParams& 
   }
 
   return strides;
-}
-
-template <typename T>
-std::shared_ptr<const DeformConvKernelMetaCacheData<T>> GetOrCreateKernelMetaCache(
-    const DeformConvParams& params,
-    const DeformConvCommonDims& common_dims,
-    std::mutex& cache_mu,
-    std::shared_ptr<const DeformConvKernelMetaCacheData<T>>& cache_slot) {
-  std::shared_ptr<const DeformConvKernelMetaCacheData<T>> cache_out;
-  {
-    std::lock_guard<std::mutex> lock(cache_mu);
-    // Cache key: static conv geometry only (kH, kW, pad, dilation, kernel_size). Same node + same shapes
-    // → hit on every Compute after the first; avoids reallocating base_h/base_w/offset_base_delta vectors.
-    const bool cache_hit = cache_slot != nullptr &&
-                           cache_slot->kH == params.kH &&
-                           cache_slot->kW == params.kW &&
-                           cache_slot->pad_h == params.pad_h &&
-                           cache_slot->pad_w == params.pad_w &&
-                           cache_slot->dilation_h == params.dilation_h &&
-                           cache_slot->dilation_w == params.dilation_w &&
-                           cache_slot->kernel_size == common_dims.kernel_size;
-    if (!cache_hit) {
-      auto cache = std::make_shared<DeformConvKernelMetaCacheData<T>>();
-      cache->kH = params.kH;
-      cache->kW = params.kW;
-      cache->pad_h = params.pad_h;
-      cache->pad_w = params.pad_w;
-      cache->dilation_h = params.dilation_h;
-      cache->dilation_w = params.dilation_w;
-      cache->kernel_size = common_dims.kernel_size;
-
-      const size_t kernel_size_sz = static_cast<size_t>(common_dims.kernel_size);
-      cache->offset_base_delta.resize(kernel_size_sz);
-      cache->base_h.resize(kernel_size_sz);
-      cache->base_w.resize(kernel_size_sz);
-      for (int64_t kernel_idx = 0; kernel_idx < common_dims.kernel_size; ++kernel_idx) {
-        const int64_t i = kernel_idx / params.kW;
-        const int64_t j = kernel_idx % params.kW;
-        const size_t kernel_idx_sz = static_cast<size_t>(kernel_idx);
-        // Offset tensor layout per ONNX DeformConv: for each offset_group and kernel tap, two maps (dy, dx)
-        // of shape [out_h, out_w]. Flat row-major offset index for tap (i,j) is 2 * kernel_idx within the group.
-        cache->offset_base_delta[kernel_idx_sz] = static_cast<size_t>(2) * kernel_idx_sz;
-        // Base sampling point in input space (before adding deform offsets): standard conv unwarped grid.
-        // h_im = h_col * stride_h + base_h + offset_dy[...]; same for w. See BilinearPlanOneSample.
-        cache->base_h[kernel_idx_sz] = static_cast<T>(-params.pad_h + i * params.dilation_h);
-        cache->base_w[kernel_idx_sz] = static_cast<T>(-params.pad_w + j * params.dilation_w);
-      }
-      cache_slot = cache;
-    }
-    cache_out = cache_slot;
-  }
-  return cache_out;
 }
 
 namespace sampling_plan_internal {
@@ -492,6 +420,13 @@ void FillColRowFromSamplingPlanImpl(
   for (int64_t b = 0; b < block_count; ++b) {
     const auto& block = plan_blocks[b];
     // Inner lane loop: 8 pixels; for float, compilers often SIMD this (commonly a few× faster than scalar, ISA/optimizer dependent).
+#if defined(_OPENMP)
+#pragma omp simd
+#elif defined(__clang__)
+#pragma clang loop vectorize(enable)
+#elif defined(__GNUC__)
+#pragma GCC ivdep
+#endif
     for (int lane = 0; lane < kPlanAoSoALanes; ++lane) {
       T val = block.w[0][lane] * im_ptr[block.idx[0][lane]] +
               block.w[1][lane] * im_ptr[block.idx[1][lane]] +
@@ -507,6 +442,13 @@ void FillColRowFromSamplingPlanImpl(
 
   if (tail_count > 0) {
     const auto& block = plan_blocks[block_count];
+#if defined(_OPENMP)
+#pragma omp simd
+#elif defined(__clang__)
+#pragma clang loop vectorize(enable)
+#elif defined(__GNUC__)
+#pragma GCC ivdep
+#endif
     for (int lane = 0; lane < tail_count; ++lane) {
       T val = block.w[0][lane] * im_ptr[block.idx[0][lane]] +
               block.w[1][lane] * im_ptr[block.idx[1][lane]] +
@@ -725,8 +667,28 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const CpuDeformConvExecutionDims exec_dims = ComputeCpuDeformConvExecutionDims(params, common_dims, ptrdiff_max, max_size_t);
   const int64_t padded_spatial_count = exec_dims.padded_spatial_count;
   const size_t block_count = exec_dims.block_count;
-  const auto kernel_meta_cache = GetOrCreateKernelMetaCache<T>(
-      params, common_dims, kernel_meta_cache_mu_, kernel_meta_cache_);
+
+  // Compute base sampling points and offset deltas on the fly using InlinedVector.
+  // This avoids heap allocations (std::vector) while completely eliminating the need for
+  // shared_mutex, atomic reference counting, and mutable state in the OpKernel.
+  // The computation cost (a few dozen cycles) is vastly lower than lock/atomic overhead.
+  const size_t kernel_size_sz = static_cast<size_t>(common_dims.kernel_size);
+  // 25 is enough to inline up to 5x5 kernels without heap allocation.
+  onnxruntime::InlinedVector<size_t, 25> offset_base_delta(kernel_size_sz);
+  onnxruntime::InlinedVector<T, 25> base_h(kernel_size_sz);
+  onnxruntime::InlinedVector<T, 25> base_w(kernel_size_sz);
+  for (int64_t kernel_idx = 0; kernel_idx < common_dims.kernel_size; ++kernel_idx) {
+    const int64_t i = kernel_idx / params.kW;
+    const int64_t j = kernel_idx % params.kW;
+    const size_t kernel_idx_sz = static_cast<size_t>(kernel_idx);
+    // Offset tensor layout per ONNX DeformConv: for each offset_group and kernel tap, two maps (dy, dx)
+    // of shape [out_h, out_w]. Flat row-major offset index for tap (i,j) is 2 * kernel_idx within the group.
+    offset_base_delta[kernel_idx_sz] = static_cast<size_t>(2) * kernel_idx_sz;
+    // Base sampling point in input space (before adding deform offsets): standard conv unwarped grid.
+    base_h[kernel_idx_sz] = static_cast<T>(-params.pad_h + i * params.dilation_h);
+    base_w[kernel_idx_sz] = static_cast<T>(-params.pad_w + j * params.dilation_w);
+  }
+
   // Col buffer: shape [C*kH*kW, out_h*out_w]. Allocate per-image (process one image at a time)
   // to reduce peak memory when N is large; im2col is implemented per-image anyway.
   const int64_t col_buffer_size = exec_dims.col_buffer_size;
@@ -785,9 +747,9 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
         static_cast<int>(H), static_cast<int>(W_in),
         kH, kW, stride_h, stride_w, C, offset_group, out_h, out_w,
         padded_spatial_count,
-        kernel_meta_cache->offset_base_delta.data(),
-        kernel_meta_cache->base_h.data(),
-        kernel_meta_cache->base_w.data(),
+        offset_base_delta.data(),
+        base_h.data(),
+        base_w.data(),
         plan_blocks.get(),
         col_buffer_ptr,
         thread_pool};
