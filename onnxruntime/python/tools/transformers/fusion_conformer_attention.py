@@ -149,16 +149,7 @@ class FusionConformerAttention(FusionAttention):
             ["Reshape", "Transpose", "MatMul", "Transpose", "Reshape", "Div"],
             [1, 0, 0, 0, 0, 0],
         )
-        if extra_q_nodes is None:
-            extra_q_nodes = self.model.match_parent_path(
-                add_qk,
-                ["Slice", "Reshape", "Slice", "Reshape", "Pad", "MatMul", "Transpose", "Add"],
-                [1, 0, 0, 0, 0, 0, 0, 0],
-            )
-            if extra_q_nodes is None:
-                logger.debug("fuse_conformer_attention: failed to match extra q path")
-                return
-        elif q_nodes[0].op_type in ["Div", "Mul"] and q_nodes[0] != extra_q_nodes[-1]:
+        if extra_q_nodes is not None and q_nodes[0].op_type in ["Div", "Mul"] and q_nodes[0] != extra_q_nodes[-1]:
             logger.debug("fuse_conformer_attention: failed to match extra q path")
             return
 
