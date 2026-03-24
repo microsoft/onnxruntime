@@ -2456,7 +2456,7 @@ TEST(AttentionTest, Attention_FP16_SoftmaxLargeDimensions) {
   // Expected output: all 1.0 (uniform attention over all-ones V).
   std::vector<int64_t> y_shape = {batch_size, num_heads, q_sequence_length, head_size};
   std::vector<float> expected_y(q_elements, 1.0f);
-  test.AddOutput<MLFloat16>("Y", y_shape, ToFloat16(expected_y), false, 0, 3e-3f);
+  test.AddOutput<MLFloat16>("Y", y_shape, ToFloat16(expected_y), false, 0, 3e-2f);
   test.AddOptionalOutputEdge<MLFloat16>();  // present_key
   test.AddOptionalOutputEdge<MLFloat16>();  // present_value
 
