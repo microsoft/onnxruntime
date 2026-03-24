@@ -268,7 +268,7 @@ inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
   const fs::path path{main_graph.ModelPath()};
 
   if (path.has_filename()) {
-    const auto model_name = path.filename().string();
+    const auto model_name = PathToUTF8String(path.filename().native());
 
     LOGS_DEFAULT(INFO) << "Model name is '" << model_name << "'";
     // Ensure enough characters are hashed in case model names are too short
