@@ -53,6 +53,7 @@ void
     const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-static_cast<int>(BiasAddition)));
     const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION)));
 
+
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
     const size_t FilterStrideElements = FilterStride / sizeof(float);
@@ -189,6 +190,54 @@ void
 
 void
     MLASCALL
+    MlasConvNchwcFloatKernelNeonCpp(
+        const float* Input,
+        const float* Filter,
+        float* Output,
+        size_t StrideWidth,
+        size_t DilationWidth,
+        size_t FilterCount,
+        size_t InputStride,
+        size_t FilterStride,
+        size_t OutputStride,
+        size_t KernelHeight,
+        size_t KernelWidth,
+        const float* InputBase,
+        size_t InputWidth,
+        size_t DilatedInputWidth,
+        size_t OutputCountLeftPad,
+        size_t OutputCount,
+        size_t OutputCountRightPad,
+        const float* Bias,
+        unsigned KernelFlags
+    )
+{
+    MlasConvFloatKernelNeonImpl<true>(
+        Input,
+        Filter,
+        Output,
+        StrideWidth,
+        DilationWidth,
+        FilterCount,
+        InputStride,
+        FilterStride,
+        OutputStride,
+        KernelHeight,
+        KernelWidth,
+        InputBase,
+        InputWidth,
+        DilatedInputWidth,
+        OutputCountLeftPad,
+        OutputCount,
+        OutputCountRightPad,
+        Bias,
+        KernelFlags
+    );
+}
+
+
+void
+    MLASCALL
     MlasConvNchwFloatKernelNeon(
         const float* Input,
         const float* Filter,
@@ -263,7 +312,118 @@ void
         unsigned KernelFlags
     )
 {
-    MlasConvFloatKernelNeonImpl<true>(
+#if !defined(_WIN32)
+    if (FilterCount <= 4) {
+        const size_t StrideWidthElements = StrideWidth / sizeof(float);
+
+        if (OutputCountLeftPad != 0) {
+            MlasConvNchwcFloatKernelNeonCpp(
+                Input,
+                Filter,
+                Output,
+                StrideWidth,
+                DilationWidth,
+                FilterCount,
+                InputStride,
+                FilterStride,
+                OutputStride,
+                KernelHeight,
+                KernelWidth,
+                InputBase,
+                InputWidth,
+                DilatedInputWidth,
+                0,
+                OutputCountLeftPad,
+                0,
+                Bias,
+                KernelFlags
+            );
+        }
+
+        if (OutputCount != 0) {
+            const size_t InteriorOffsetElements = OutputCountLeftPad * StrideWidthElements;
+            const size_t InteriorOutputOffsetElements = OutputCountLeftPad * BlockSize;
+
+            MlasConvNchwcFloatKernelNeonAsm(
+                Input + InteriorOffsetElements,
+                Filter,
+                Output + InteriorOutputOffsetElements,
+                StrideWidth,
+                DilationWidth,
+                FilterCount,
+                InputStride,
+                FilterStride,
+                OutputStride,
+                KernelHeight,
+                KernelWidth,
+                InputBase,
+                InputWidth,
+                DilatedInputWidth,
+                0,
+                OutputCount,
+                0,
+                Bias,
+                KernelFlags
+            );
+        }
+
+        if (OutputCountRightPad != 0) {
+            const size_t RightOffset = (OutputCountLeftPad + OutputCount) * StrideWidthElements;
+            const size_t RightOutputOffsetElements = (OutputCountLeftPad + OutputCount) * BlockSize;
+
+            MlasConvNchwcFloatKernelNeonCpp(
+                Input + RightOffset,
+                Filter,
+                Output + RightOutputOffsetElements,
+                StrideWidth,
+                DilationWidth,
+                FilterCount,
+                InputStride,
+                FilterStride,
+                OutputStride,
+                KernelHeight,
+                KernelWidth,
+                InputBase,
+                InputWidth,
+                DilatedInputWidth,
+                0,
+                OutputCountRightPad,
+                0,
+                Bias,
+                KernelFlags
+            );
+        }
+
+        return;
+    }
+
+    if (OutputCountLeftPad == 0 && OutputCountRightPad == 0) {
+        MlasConvNchwcFloatKernelNeonAsm(
+            Input,
+            Filter,
+            Output,
+            StrideWidth,
+            DilationWidth,
+            FilterCount,
+            InputStride,
+            FilterStride,
+            OutputStride,
+            KernelHeight,
+            KernelWidth,
+            InputBase,
+            InputWidth,
+            DilatedInputWidth,
+            OutputCountLeftPad,
+            OutputCount,
+            OutputCountRightPad,
+            Bias,
+            KernelFlags
+        );
+        return;
+    }
+#endif
+
+    MlasConvNchwcFloatKernelNeonCpp(
         Input,
         Filter,
         Output,
