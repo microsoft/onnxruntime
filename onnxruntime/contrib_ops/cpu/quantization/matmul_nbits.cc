@@ -69,7 +69,7 @@ GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_leve
   // By converting Fp16 to Fp32, there is not precision increase, and the performance
   // becomes worse.
   if (accuracy_level_attr == static_cast<int64_t>(Level4) &&
-      MlasIsQNBitGemmAvailable(nbits, block_size, HQNBIT_CompInt8)) {
+      MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
     return HQNBIT_CompInt8;
   }
 
@@ -627,14 +627,18 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
       // For non-KleidiAI 4-bit: scales_fp32_ was set during PrePack.
       // For 8-bit: scales are packed inside PackedQuantBDataStruct and extracted at dispatch.
       float* scales_ptr = nullptr;
-      if (!scales_are_packed_ && scales_fp32_) {
-        scales_ptr = scales_fp32_.get();
-      } else if (!scales_are_packed_ && scales != nullptr) {
-        // Scales not pre-converted (shouldn't happen with our PrePack, but handle gracefully).
-        auto scales_size = static_cast<size_t>(scales->Shape().Size());
-        auto tmp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
-        MlasConvertHalfToFloatBuffer(scales->Data<MLFloat16>(), tmp_scales.get(), scales_size);
-        scales_ptr = tmp_scales.get();
+      IAllocatorUniquePtr<float> tmp_scales;
+      if (!scales_are_packed_) {
+        if (scales_fp32_) {
+          scales_ptr = scales_fp32_.get();
+        } else {
+          // Dynamic scales (non-constant input): convert fp16 to fp32 at compute time.
+          ORT_ENFORCE(scales != nullptr, "scales must be provided when not packed and not pre-converted");
+          auto scales_size = static_cast<size_t>(scales->Shape().Size());
+          tmp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
+          MlasConvertHalfToFloatBuffer(scales->Data<MLFloat16>(), tmp_scales.get(), scales_size);
+          scales_ptr = tmp_scales.get();
+        }
       }
 
       // Use pre-converted fp32 bias, or convert on the fly.

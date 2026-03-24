@@ -78,6 +78,8 @@ MlasIsQNBitGemmAvailable(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
+    // HQNBIT_CompInt8 uses the same MLAS kernels as SQNBIT_CompInt8.
+    // The operator handles fp16<->fp32 conversion and delegates to the SQ path.
     if (ComputeType == HQNBIT_CompInt8) {
         ComputeType = SQNBIT_CompInt8;
     }
