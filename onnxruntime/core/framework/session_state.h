@@ -296,8 +296,9 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
-  // Acquire semantics pair with BindThreadPoolsOnce release stores so readers
-  // running without external synchronization observe fully-published pool pointers.
+  // Each getter uses an acquire load that pairs with the corresponding
+  // BindThreadPoolsOnce release store. Pointers are published independently, so
+  // this does not provide an atomic pair snapshot.
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_.load(std::memory_order_acquire); }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_.load(std::memory_order_acquire); }
 
@@ -400,11 +401,14 @@ class SessionState {
   friend class InferenceSession;
   friend class SessionStateThreadPoolBindingTestAccessor;
 
-  // One-shot late binding for execution thread pools.
+  // One-shot publish for execution thread pools. Must be called before any
+  // execution starts.
   // - No ownership transfer: SessionState stores raw pointers only.
   // - Allows nullptr -> final pointer transition once.
   // - Allows idempotent rebinding to the same pointers.
   // - Rejects rebinding to different non-null pointers.
+  // - Publishes each pointer with release semantics; readers use acquire loads
+  //   via GetThreadPool()/GetInterOpThreadPool().
   // - Recursively publishes the same pointers to all subgraph SessionStates.
   void BindThreadPoolsOnce(concurrency::ThreadPool* thread_pool,
                            concurrency::ThreadPool* inter_op_thread_pool);
@@ -553,7 +557,9 @@ class SessionState {
 
   // Thread-pool pointers are set either in the constructor or via one-shot
   // BindThreadPoolsOnce publication on first Run/RunAsync when per-session
-  // thread pools are lazily created. Either pointer can be nullptr.
+  // thread pools are lazily created. Either pointer can be nullptr. Pointers are
+  // published independently; a coherent required pair is gated by
+  // the session-level readiness flag in InferenceSession.
   std::atomic<concurrency::ThreadPool*> thread_pool_{nullptr};
   std::atomic<concurrency::ThreadPool*> inter_op_thread_pool_{nullptr};
 

@@ -2402,6 +2402,34 @@ void CaptureRunAsyncStatus(void* user_data, OrtValue** /*outputs*/, size_t /*num
   completion_state->result_promise.set_value(std::move(callback_status));
 }
 
+Status RunModelAndGetStatus(InferenceSession& session_object, const RunOptions& run_options) {
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, values_mul_x,
+                       &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+
+  std::vector<std::string> output_names = {"Y"};
+  std::vector<OrtValue> fetches;
+  return session_object.Run(run_options, feeds, output_names, &fetches);
+}
+
+OrtCustomThreadHandle FailingCustomCreateThread(void* custom_thread_creation_options,
+                                                OrtThreadWorkerFn worker_fn,
+                                                void* worker_param) {
+  ORT_UNUSED_PARAMETER(custom_thread_creation_options);
+  ORT_UNUSED_PARAMETER(worker_fn);
+  ORT_UNUSED_PARAMETER(worker_param);
+  return nullptr;
+}
+
+void NoOpCustomJoinThread(OrtCustomThreadHandle custom_thread_handle) {
+  ORT_UNUSED_PARAMETER(custom_thread_handle);
+}
+
 void RunModelAsync(InferenceSessionTestGlobalThreadPools& session_object, const char* run_tag) {
   std::vector<int64_t> dims = {3, 2};
   std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -3034,6 +3062,97 @@ TEST(InferenceSessionTests, PerSessionThreadPools_ExternalThreadPools_NoInternal
   ASSERT_EQ(after_run_async.intra_from_session, external_intra_tp.get());
   ASSERT_EQ(after_run_async.inter_from_session, external_inter_tp.get());
   AssertSessionAndSessionStateThreadPoolsMatch(after_run_async);
+}
+
+TEST(InferenceSessionTests, PerSessionThreadPools_ParallelMode_InterOpCreationFailureDoesNotMutateExecutionMode) {
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+  so.custom_create_thread_fn = FailingCustomCreateThread;
+  so.custom_join_thread_fn = NoOpCustomJoinThread;
+
+  OrtThreadPoolParams intra_tp_params;
+  intra_tp_params.thread_pool_size = 2;
+  auto external_intra_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
+                                                          concurrency::ThreadPoolType::INTRA_OP);
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
+
+  InferenceSessionTestGlobalThreadPools session_object{
+      so, *env.get(), external_intra_tp.get(), nullptr};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto before_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(before_run.intra_from_session, external_intra_tp.get());
+  ASSERT_EQ(before_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(before_run);
+
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_ParallelMode_InterOpCreationFailureDoesNotMutateExecutionMode";
+  auto status = RunModelAndGetStatus(session_object, run_options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              ::testing::HasSubstr("Failed to create inter-op thread pool while execution_mode=ORT_PARALLEL"));
+
+  ASSERT_EQ(session_object.GetSessionOptions().execution_mode, ExecutionMode::ORT_PARALLEL);
+
+  const auto after_failed_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_failed_run.intra_from_session, external_intra_tp.get());
+  ASSERT_EQ(after_failed_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_failed_run);
+}
+
+TEST(InferenceSessionTests, PerSessionThreadPools_ExternalIntraOnly_LazyInterOpCreationAndReuse) {
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  OrtThreadPoolParams intra_tp_params;
+  intra_tp_params.thread_pool_size = 2;
+  auto external_intra_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
+                                                          concurrency::ThreadPoolType::INTRA_OP);
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
+
+  InferenceSessionTestGlobalThreadPools session_object{
+      so, *env.get(), external_intra_tp.get(), nullptr};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto before_first_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(before_first_run.intra_from_session, external_intra_tp.get());
+  ASSERT_EQ(before_first_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(before_first_run);
+
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_ExternalIntraOnly_LazyInterOpCreationAndReuse_first_run";
+  RunModel(session_object, run_options);
+
+  const auto after_first_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_first_run.intra_from_session, external_intra_tp.get());
+  ASSERT_NE(after_first_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_first_run);
+
+  run_options.run_tag = "PerSessionThreadPools_ExternalIntraOnly_LazyInterOpCreationAndReuse_second_run";
+  RunModel(session_object, run_options);
+
+  const auto after_second_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_second_run.intra_from_session, external_intra_tp.get());
+  ASSERT_EQ(after_second_run.inter_from_session, after_first_run.inter_from_session);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_second_run);
 }
 
 TEST(InferenceSessionTests, PerSessionThreadPools_ConcurrentFirstRunAndRunAsync_NoRace) {

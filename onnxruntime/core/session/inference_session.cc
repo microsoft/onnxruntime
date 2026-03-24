@@ -594,13 +594,13 @@ void InferenceSession::CreateIntraOpThreadPoolIfNeeded() {
   thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
 }
 
-void InferenceSession::CreateInterOpThreadPoolIfNeeded() {
+Status InferenceSession::CreateInterOpThreadPoolIfNeeded() {
   if (external_inter_op_thread_pool_ || inter_op_thread_pool_) {
-    return;
+    return Status::OK();
   }
 
   if (session_options_.execution_mode != ExecutionMode::ORT_PARALLEL) {
-    return;
+    return Status::OK();
   }
 
   bool allow_inter_op_spinning =
@@ -613,6 +613,8 @@ void InferenceSession::CreateInterOpThreadPoolIfNeeded() {
 #endif
 
   OrtThreadPoolParams to = session_options_.inter_op_param;
+  // Preserve historical assignment logic. In this lazy inter-op path we are in
+  // ORT_PARALLEL mode, so this remains intentionally false.
   to.auto_set_affinity = to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
   inter_thread_pool_name_ = BuildPerSessionThreadPoolName(to.name, ORT_TSTR("inter-op"));
   to.name = inter_thread_pool_name_.c_str();
@@ -620,21 +622,34 @@ void InferenceSession::CreateInterOpThreadPoolIfNeeded() {
 
   PopulateThreadPoolParamsFromSessionOptions(to, "inter op");
 
-  inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
-  if (inter_op_thread_pool_ == nullptr) {
-    LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
-    session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  constexpr const char* kInterOpThreadPoolCreateFailureMessage =
+      "Failed to create inter-op thread pool while execution_mode=ORT_PARALLEL";
+  ORT_TRY {
+    inter_op_thread_pool_ =
+        concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
   }
+  ORT_CATCH(const std::exception& ex) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kInterOpThreadPoolCreateFailureMessage, ". ", ex.what());
+  }
+  ORT_CATCH(...) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kInterOpThreadPoolCreateFailureMessage);
+  }
+
+  if (inter_op_thread_pool_ == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kInterOpThreadPoolCreateFailureMessage);
+  }
+
+  return Status::OK();
 }
 
-void InferenceSession::EnsureThreadPoolsCreatedForRun() {
+Status InferenceSession::EnsureThreadPoolsCreatedForRun() {
   if (!use_per_session_threads_) {
-    return;
+    return Status::OK();
   }
 
   // Fast path for Run/RunAsync after first-use publication succeeds.
   if (thread_pools_ready_for_run_.load(std::memory_order_acquire)) {
-    return;
+    return Status::OK();
   }
 
   // Slow path: first-use creation/publication is serialized under session_mutex_.
@@ -642,14 +657,14 @@ void InferenceSession::EnsureThreadPoolsCreatedForRun() {
   // pointers cannot race with session setup transitions.
   std::lock_guard<std::mutex> l(session_mutex_);
   if (thread_pools_ready_for_run_.load(std::memory_order_relaxed)) {
-    return;
+    return Status::OK();
   }
 
   // Run and RunAsync both come through this gate so lazy creation semantics are
   // identical for synchronous and asynchronous execution.
   CreateIntraOpThreadPoolIfNeeded();
   if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-    CreateInterOpThreadPoolIfNeeded();
+    ORT_RETURN_IF_ERROR(CreateInterOpThreadPoolIfNeeded());
   }
 
   auto* intra_op_tp = GetIntraOpThreadPoolToUse();
@@ -659,8 +674,9 @@ void InferenceSession::EnsureThreadPoolsCreatedForRun() {
               "This is an internal ORT bug.");
 
   if (session_state_) {
-    // One-shot publication into SessionState (and all subgraphs). After this call,
-    // SessionState getters are safe for lock-free readers due release/acquire order.
+    // One-shot publication into SessionState (and all subgraphs). Thread-pool
+    // pointers are published independently with release stores, and readers use
+    // acquire loads.
     session_state_->BindThreadPoolsOnce(intra_op_tp, inter_op_tp);
   }
 
@@ -669,6 +685,8 @@ void InferenceSession::EnsureThreadPoolsCreatedForRun() {
   if (AreRequiredPerSessionThreadPoolsAvailable(intra_op_tp, inter_op_tp)) {
     thread_pools_ready_for_run_.store(true, std::memory_order_release);
   }
+
+  return Status::OK();
 }
 
 void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger) {
@@ -3102,7 +3120,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // Run and RunAsync intentionally share the same lazy thread-pool gate.
-  EnsureThreadPoolsCreatedForRun();
+  ORT_RETURN_IF_ERROR_SESSIONID_(EnsureThreadPoolsCreatedForRun());
 
   // Increment/decrement concurrent_num_runs_ and control
   // session threads spinning as configured. Do nothing for graph replay except the counter.
@@ -3429,7 +3447,7 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
   size_t num_fetches = fetch_names.size();
   // Keep lazy thread-pool readiness aligned with Run(). RunAsync schedules its
   // work item onto the intra-op pool, so intra-op readiness is mandatory here.
-  EnsureThreadPoolsCreatedForRun();
+  ORT_RETURN_IF_ERROR(EnsureThreadPoolsCreatedForRun());
   auto* tp = GetIntraOpThreadPoolToUse();
   if (!tp || concurrency::ThreadPool::DegreeOfParallelism(tp) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");

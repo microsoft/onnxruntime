@@ -1152,8 +1152,9 @@ void SessionState::BindThreadPoolsOnce(concurrency::ThreadPool* thread_pool,
       (current_inter_op_thread_pool == nullptr || current_inter_op_thread_pool == inter_op_thread_pool),
       "SessionState thread pools must be bound once with stable pointers.");
 
-  // Release stores publish both pointers to lock-free readers via GetThreadPool/
-  // GetInterOpThreadPool acquire loads.
+  // Release stores publish each pointer independently to lock-free readers via
+  // GetThreadPool()/GetInterOpThreadPool() acquire loads. This does not provide
+  // an atomic pair snapshot.
   thread_pool_.store(thread_pool, std::memory_order_release);
   inter_op_thread_pool_.store(inter_op_thread_pool, std::memory_order_release);
 

@@ -711,9 +711,11 @@ class InferenceSession {
   // These accessors select the execution thread pools based on finalized session options.
   // Concurrency model:
   // - During initialization and first-use lazy creation, callers must hold session_mutex_.
-  // - After thread_pools_ready_for_run_ is true, per-session pool pointers are immutable
-  //   for the session lifetime and lock-free reads are safe.
-  // Run()/RunAsync() satisfy this by calling EnsureThreadPoolsCreatedForRun() first.
+  // - SessionState publishes intra-op and inter-op pointers independently (no atomic pair snapshot).
+  // - After thread_pools_ready_for_run_ is true, required per-session pointers are immutable
+  //   for the session lifetime and lock-free reads of each pointer are safe.
+  // Run()/RunAsync() satisfy coherent-pair requirements by calling
+  // EnsureThreadPoolsCreatedForRun() first.
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
     if (session_options_.use_per_session_threads) {
       if (external_intra_op_thread_pool_) {
@@ -781,8 +783,8 @@ class InferenceSession {
   bool AreRequiredPerSessionThreadPoolsAvailable(onnxruntime::concurrency::ThreadPool* intra_op_tp,
                                                  onnxruntime::concurrency::ThreadPool* inter_op_tp) const;
   void CreateIntraOpThreadPoolIfNeeded();
-  void CreateInterOpThreadPoolIfNeeded();
-  void EnsureThreadPoolsCreatedForRun();
+  [[nodiscard]] common::Status CreateInterOpThreadPoolIfNeeded();
+  [[nodiscard]] common::Status EnsureThreadPoolsCreatedForRun();
   [[nodiscard]] common::Status HasInvalidCombinationOfExecutionProviders() const;
   [[nodiscard]] common::Status SaveModelMetadata(const onnxruntime::Model& model);
 
@@ -945,7 +947,8 @@ class InferenceSession {
   bool set_denormal_as_zero_ = false;
   // True means all thread pools required for execution in per-session mode have been created
   // (or supplied externally) and published to SessionState via BindThreadPoolsOnce.
-  // Acquire/release ordering gates lock-free runtime reads of thread-pool pointers.
+  // Intra-op/inter-op pointers are published independently. This readiness flag is the
+  // barrier indicating a coherent required set is available for execution.
   std::atomic<bool> thread_pools_ready_for_run_{false};
 
   KernelRegistryManager kernel_registry_manager_;
