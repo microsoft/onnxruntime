@@ -17,6 +17,14 @@
 #include "core/util/force_inline.h"
 #include "core/util/math.h"
 
+#if defined(__GNUC__) && !defined(__wasm__)
+#define ORT_CPU_RESTRICT __restrict__
+#elif defined(_MSC_VER)
+#define ORT_CPU_RESTRICT __restrict
+#else
+#define ORT_CPU_RESTRICT
+#endif
+
 namespace onnxruntime {
 
 template <typename T>
@@ -379,12 +387,12 @@ void BuildAllBilinearSamplingPlansImpl(
 
 template <typename T, bool UseMask>
 void FillColRowFromSamplingPlanImpl(
-    const T* im_ptr,
-    const BilinearSamplePlanBlock<T>* plan_blocks,
+    const T* ORT_CPU_RESTRICT im_ptr,
+    const BilinearSamplePlanBlock<T>* ORT_CPU_RESTRICT plan_blocks,
     int64_t spatial_count,
     size_t mask_row_base,
-    const T* ptr_mask,
-    T* col_ptr) {
+    const T* ORT_CPU_RESTRICT ptr_mask,
+    T* ORT_CPU_RESTRICT col_ptr) {
   const int64_t block_count = spatial_count / kPlanAoSoALanes;
   const int64_t tail_count = spatial_count % kPlanAoSoALanes;
 
@@ -484,14 +492,17 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
 }  // namespace
 
 template <typename T>
-void DeformConvCpuAddBias(T* y_data, const T* bias_data, int64_t batch_n, int64_t num_output_channels,
-                          int64_t output_image_size, size_t output_image_size_elements, size_t y_batch_stride,
-                          concurrency::ThreadPool* thread_pool) {
+ORT_FORCEINLINE void DeformConvCpuAddBiasToRow(T* ORT_CPU_RESTRICT row, const T* ORT_CPU_RESTRICT bias_data,
+                                               int64_t channel, ptrdiff_t spatial_len) {
+  EigenVectorArrayMap<T>(row, spatial_len) += bias_data[channel];
+}
+
+template <typename T>
+void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT bias_data, int64_t batch_n,
+                          int64_t num_output_channels, int64_t output_image_size, size_t output_image_size_elements,
+                          size_t y_batch_stride, concurrency::ThreadPool* thread_pool) {
   const double cost_per_channel_slice = static_cast<double>(output_image_size);
   const ptrdiff_t spatial_len = static_cast<ptrdiff_t>(output_image_size);
-  const auto add_bias_to_row = [&](T* row, int64_t channel) {
-    EigenVectorArrayMap<T>(row, spatial_len) += bias_data[channel];
-  };
 
   if (batch_n == 1) {
     concurrency::ThreadPool::TryParallelFor(
@@ -500,7 +511,7 @@ void DeformConvCpuAddBias(T* y_data, const T* bias_data, int64_t batch_n, int64_
           for (ptrdiff_t m = first; m < last; ++m) {
             const size_t m_sz = static_cast<size_t>(m);
             T* y_row = y_data + m_sz * output_image_size_elements;
-            add_bias_to_row(y_row, static_cast<int64_t>(m));
+            DeformConvCpuAddBiasToRow<T>(y_row, bias_data, static_cast<int64_t>(m), spatial_len);
           }
         });
   } else {
@@ -513,7 +524,8 @@ void DeformConvCpuAddBias(T* y_data, const T* bias_data, int64_t batch_n, int64_
             T* batch_base = y_data + n_sz * y_batch_stride;
             for (int64_t m = 0; m < num_output_channels; ++m) {
               const size_t m_sz = static_cast<size_t>(m);
-              add_bias_to_row(batch_base + m_sz * output_image_size_elements, m);
+              DeformConvCpuAddBiasToRow<T>(batch_base + m_sz * output_image_size_elements, bias_data, m,
+                                           spatial_len);
             }
           }
         });
