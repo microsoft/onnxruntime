@@ -92,6 +92,11 @@ inline CpuDeformConvExecutionDims ComputeCpuDeformConvExecutionDims(const Deform
   const size_t block_count = static_cast<size_t>(plan_rows) * blocks_per_row;
 
   ORT_ENFORCE(plan_rows <= ptrdiff_max, "plan_rows exceeds ptrdiff_t range.");
+  ORT_ENFORCE(common_dims.output_image_size == 0 || plan_rows <= int64_max / common_dims.output_image_size,
+              "Flattened bilinear plan task count overflows int64.");
+  const int64_t flattened_plan_tasks = plan_rows * common_dims.output_image_size;
+  ORT_ENFORCE(flattened_plan_tasks <= ptrdiff_max,
+              "Flattened bilinear plan tasks exceed ptrdiff_t range (needed for thread pool parallelization).");
   ORT_ENFORCE(params.C <= int64_max / common_dims.kernel_size, "im2col row count overflows int64.");
   const int64_t im2col_rows = params.C * common_dims.kernel_size;
   ORT_ENFORCE(im2col_rows <= ptrdiff_max, "im2col row count exceeds ptrdiff_t range.");
@@ -332,30 +337,6 @@ ORT_FORCEINLINE void BilinearPlanOneSample(
 }
 
 template <typename T>
-void BuildBilinearSamplingPlanImpl(
-    const T* ptr_offset_h,
-    const T* ptr_offset_w,
-    int height,
-    int width,
-    int64_t height_col,
-    int64_t width_col,
-    int64_t stride_h,
-    int64_t stride_w,
-    T base_h,
-    T base_w,
-    BilinearSamplePlanBlock<T>* plan_blocks) {
-  int64_t local_idx = 0;
-  for (int64_t h_col = 0; h_col < height_col; ++h_col) {
-    for (int64_t w_col = 0; w_col < width_col; ++w_col) {
-      BilinearPlanOneSample(
-          ptr_offset_h, ptr_offset_w, height, width, h_col, w_col, local_idx, stride_h, stride_w, base_h, base_w,
-          plan_blocks);
-      ++local_idx;
-    }
-  }
-}
-
-template <typename T>
 void BuildAllBilinearSamplingPlansImpl(
     const T* data_offset,
     int height,
@@ -365,7 +346,6 @@ void BuildAllBilinearSamplingPlansImpl(
     int64_t offset_groups,
     size_t output_size,
     int64_t padded_spatial_count,
-    int64_t height_col,
     int64_t width_col,
     int64_t kernel_size,
     const size_t* kernel_offset_base_delta,
@@ -379,37 +359,44 @@ void BuildAllBilinearSamplingPlansImpl(
   ORT_ENFORCE(kernel_base_w != nullptr, "kernel_base_w must not be null.");
   const size_t kernel_size_sz = static_cast<size_t>(kernel_size);
   const size_t offset_group_stride = static_cast<size_t>(2) * kernel_size_sz;
-  const double plan_parallel_cost = static_cast<double>(output_size) * 12.0;
+  const int64_t output_size_i64 = static_cast<int64_t>(output_size);
+  const int64_t total_plan_tasks = plan_rows * output_size_i64;
+  constexpr double kCostPerBilinearSample = 12.0;
   concurrency::ThreadPool::TryParallelFor(
       thread_pool,
-      static_cast<std::ptrdiff_t>(plan_rows),
-      plan_parallel_cost,
+      static_cast<std::ptrdiff_t>(total_plan_tasks),
+      kCostPerBilinearSample,
       [&](ptrdiff_t begin, ptrdiff_t end) {
-        int64_t row = static_cast<int64_t>(begin);
+        const int64_t end_task = static_cast<int64_t>(end);
+        int64_t task = static_cast<int64_t>(begin);
+        int64_t row = task / output_size_i64;
+        int64_t local_idx = task % output_size_i64;
         int64_t offset_grp = row / kernel_size;
         int64_t kernel_idx = row % kernel_size;
         size_t offset_grp_base = static_cast<size_t>(offset_grp) * offset_group_stride;
 
-        for (ptrdiff_t plan_row = begin; plan_row < end; ++plan_row, ++row) {
+        while (task < end_task) {
           const size_t kernel_idx_sz = static_cast<size_t>(kernel_idx);
-
           const size_t offset_base = offset_grp_base + kernel_offset_base_delta[kernel_idx_sz];
           const T* ptr_offset_h = data_offset + offset_base * output_size;
           const T* ptr_offset_w = data_offset + (offset_base + 1) * output_size;
-
           const size_t plan_row_base = static_cast<size_t>(row) * static_cast<size_t>(padded_spatial_count);
           BilinearSamplePlanBlock<T>* row_plan = sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
 
-          BuildBilinearSamplingPlanImpl(
-              ptr_offset_h, ptr_offset_w,
-              height, width, height_col, width_col,
-              stride_h, stride_w, kernel_base_h[kernel_idx_sz], kernel_base_w[kernel_idx_sz],
-              row_plan);
+          const int64_t h_col = local_idx / width_col;
+          const int64_t w_col = local_idx % width_col;
+          BilinearPlanOneSample(ptr_offset_h, ptr_offset_w, height, width, h_col, w_col, local_idx, stride_h,
+                                stride_w, kernel_base_h[kernel_idx_sz], kernel_base_w[kernel_idx_sz], row_plan);
 
-          if (++kernel_idx == kernel_size) {
-            kernel_idx = 0;
-            ++offset_grp;
-            offset_grp_base += offset_group_stride;
+          ++task;
+          if (++local_idx == output_size_i64) {
+            local_idx = 0;
+            ++row;
+            if (++kernel_idx == kernel_size) {
+              kernel_idx = 0;
+              ++offset_grp;
+              offset_grp_base += offset_group_stride;
+            }
           }
         }
       });
@@ -472,7 +459,7 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
       ctx.data_offset, ctx.height, ctx.width,
       ctx.stride_h, ctx.stride_w,
       ctx.offset_groups,
-      output_size_sz, ctx.padded_spatial_count, ctx.height_col, ctx.width_col, kernel_size,
+      output_size_sz, ctx.padded_spatial_count, ctx.width_col, kernel_size,
       ctx.kernel_offset_base_delta, ctx.kernel_base_h, ctx.kernel_base_w,
       ctx.sampling_plan_blocks, ctx.thread_pool);
 
