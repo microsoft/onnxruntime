@@ -102,20 +102,13 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "    " << output.SetByIndices("output_indices_t(output_row, output_col)", "tile[local_id.x][local_id.y]") << "\n"
                               << "  }";
   } else {
-    if (perm_.size() < 2) {
-      // rank-1: indices types are scalar u32, no indexing needed
-      shader.AdditionalImplementation() << "fn perm(i: output_indices_t)->a_indices_t {\n"
-                                           "  return i;\n"
-                                           "}\n";
-    } else {
-      shader.AdditionalImplementation() << "fn perm(i: output_indices_t)->a_indices_t {\n"
-                                           "  var a: a_indices_t;\n";
-      for (size_t i = 0; i < perm_.size(); ++i) {
-        shader.AdditionalImplementation() << "  a[" << perm_[i] << "] = i[" << i << "];\n";
-      }
-      shader.AdditionalImplementation() << "  return a;\n"
-                                           "}\n";
+    shader.AdditionalImplementation() << "fn perm(i: output_indices_t)->a_indices_t {\n"
+                                         "  var a: a_indices_t;\n";
+    for (size_t i = 0; i < perm_.size(); ++i) {
+      shader.AdditionalImplementation() << "  a[" << perm_[i] << "] = i[" << i << "];\n";
     }
+    shader.AdditionalImplementation() << "  return a;\n"
+                                         "}\n";
 
     shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                               << "  let indices = " << output.OffsetToIndices("global_idx")
@@ -249,6 +242,11 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   int64_t output_size = output_shape.Size();
   if (output_size == 0) {
     return Status::OK();
+  }
+
+  // 1D transpose is identity - just copy the GPU buffer.
+  if (rank == 1) {
+    return Info().GetDataTransferManager().CopyTensor(*input_tensor, *output_tensor);
   }
 
   return DoTranspose(context, *p_perm, *input_tensor, *output_tensor);
