@@ -376,7 +376,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       // For 4-bit on ARM64: check if KleidiAI packs scales into B (scales already packed during B packing).
       if (nbits_ == 4 &&
           MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, SQNBIT_CompInt8,
-                                   has_zp_input_, &mlas_backend_kernel_selector_config_)) {
+                                    has_zp_input_, &mlas_backend_kernel_selector_config_)) {
         // For asymmetric quantization, require zero_points to be constant for KleidiAI.
         if (has_zp_input_) {
           const Tensor* zp_tensor = nullptr;
