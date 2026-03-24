@@ -10,6 +10,11 @@ import onnx
 from bert_model_generator import float_tensor
 from onnx import TensorProto, helper, numpy_helper
 
+# Minimum non-zero value used for the QK attention bias initializer in test models.
+# A zero bias would be eliminated by ORT's basic constant folding (it removes Add(x, 0)
+# as a no-op), breaking the fusion patterns that expect an Add node before Softmax.
+_NON_ZERO_QK_BIAS = 1e-4
+
 
 # Adapted from bert_model_generator.py
 def get_tensor_and_weight(name: str, shape: list[int], random=False, zeros=False):
@@ -650,8 +655,9 @@ def create_conformer_attention_simple_bias(
         numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="q_bias"),
         numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="k_bias"),
         numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="v_bias"),
-        # QK bias: a simple initializer so extra_q_nodes won't match any positional-embed pattern
-        numpy_helper.from_array(np.array([0.0], dtype="float32"), name="qk_bias"),
+        # QK bias: a simple non-zero initializer so extra_q_nodes won't match any positional-embed pattern.
+        # Non-zero so ORT's constant folding (which removes Add(x, 0)) doesn't eliminate this node.
+        numpy_helper.from_array(np.array([_NON_ZERO_QK_BIAS], dtype="float32"), name="qk_bias"),
         numpy_helper.from_array(
             np.array(1.0 / np.sqrt(head_size), dtype="float32"), name="q_scale"
         ),
@@ -788,7 +794,8 @@ def create_conformer_attention_no_add_kv(
         numpy_helper.from_array(
             np.ones([1, 1, num_heads, head_size], dtype="float32"), name="q_bias_4d"
         ),
-        numpy_helper.from_array(np.array([0.0], dtype="float32"), name="qk_bias"),
+        # Non-zero qk_bias so ORT's constant folding (which removes Add(x, 0)) doesn't eliminate this node.
+        numpy_helper.from_array(np.array([_NON_ZERO_QK_BIAS], dtype="float32"), name="qk_bias"),
         numpy_helper.from_array(
             np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"
         ),
@@ -939,7 +946,8 @@ def create_conformer_attention_qk_div_masking(
         numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="q_bias"),
         numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="k_bias"),
         numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="v_bias"),
-        numpy_helper.from_array(np.array([0.0], dtype="float32"), name="qk_bias"),
+        # Non-zero qk_bias so ORT's constant folding (which removes Add(x, 0)) doesn't eliminate this node.
+        numpy_helper.from_array(np.array([_NON_ZERO_QK_BIAS], dtype="float32"), name="qk_bias"),
         numpy_helper.from_array(np.array(1.0 / np.sqrt(head_size), dtype="float32"), name="q_scale"),
         numpy_helper.from_array(np.array(float(head_size), dtype="float32"), name="qk_div_scale"),
         # Boolean mask condition (all True = no masking, for test purposes)
