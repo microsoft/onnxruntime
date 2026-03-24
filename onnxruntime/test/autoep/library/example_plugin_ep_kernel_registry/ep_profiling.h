@@ -3,7 +3,9 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -58,15 +60,21 @@ class EpEventManager {
  public:
   struct Event {
     Event(std::string event_name, int64_t timestamp_ns, int64_t duration_ns)
-        : name(std::move(event_name)), ts_ns(timestamp_ns), dur_ns(duration_ns) {}
+        : name(std::move(event_name)), ts_ns(timestamp_ns), dur_ns(duration_ns), thread_id(std::this_thread::get_id()) {}
 
     std::string name;
     int64_t ts_ns;
     int64_t dur_ns;
     std::string ort_event_name;  // Set from the correlated ORT event
+    std::thread::id thread_id;   // Thread that created this event
   };
 
   static EpEventManager& GetInstance();
+
+  // Returns the active profiling client ID for the current thread, or std::nullopt if no
+  // ORT event is in progress on this thread. Use this from kernels to determine the correct
+  // client ID for submitting profiling events during concurrent runs (each with its own run profiler).
+  static std::optional<uint64_t> GetActiveClientId();
 
   uint64_t RegisterClient();
   void UnregisterClient(uint64_t client_id);
@@ -85,7 +93,6 @@ class EpEventManager {
   void Shutdown();
 
   struct ClientState {
-    std::vector<size_t> ort_event_start_indices;  // Stack of event indices at push time
     std::vector<Event> events;
   };
 

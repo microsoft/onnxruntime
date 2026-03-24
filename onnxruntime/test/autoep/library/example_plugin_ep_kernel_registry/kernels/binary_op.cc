@@ -75,9 +75,8 @@ void ORT_API_CALL BinaryOp::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   BinaryOp* binary_op_kernel = static_cast<BinaryOp*>(this_ptr);
-  const ExampleKernelEp* ep = static_cast<const ExampleKernelEp*>(binary_op_kernel->info_.GetEp());
 
-  std::optional<uint64_t> profiler_client_id = ep != nullptr ? ep->GetProfilerClientId() : std::nullopt;
+  std::optional<uint64_t> profiler_client_id = EpEventManager::GetActiveClientId();
   std::chrono::high_resolution_clock::time_point kernel_start_ts;
   std::chrono::high_resolution_clock::time_point kernel_end_ts;
 

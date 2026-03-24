@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <optional>
-
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
@@ -27,8 +25,6 @@ class ExampleKernelEp : public OrtEp {
   const OrtEpApi& GetEpApi() const { return ep_api_; }
   const Config& GetConfig() const { return config_; }
 
-  std::optional<uint64_t> GetProfilerClientId() const { return profiler_client_id_; }
-
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
 
@@ -48,5 +44,4 @@ class ExampleKernelEp : public OrtEp {
   std::string name_;
   Config config_;
   const OrtLogger& logger_;
-  std::optional<uint64_t> profiler_client_id_;
 };

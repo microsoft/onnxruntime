@@ -3,6 +3,16 @@
 #include "ep_profiling.h"
 #include <array>
 #include <chrono>
+#include <optional>
+
+// Thread-local profiling state. Tracks the active client ID and a per-thread stack of ORT event
+// boundaries. Per-thread state is necessary because a single session profiler (single client_id)
+// can have StartEvent/StopEvent called from multiple threads (e.g., via inter-op parallelism).
+struct ThreadLocalProfilingState {
+  std::optional<uint64_t> client_id;
+  std::vector<size_t> ort_event_start_indices;  // Stack of event indices at push time (per-thread)
+};
+static thread_local ThreadLocalProfilingState tls_profiling_state_;
 
 //
 // EpEventManager
@@ -12,6 +22,11 @@
 EpEventManager& EpEventManager::GetInstance() {
   static EpEventManager instance;
   return instance;
+}
+
+/*static*/
+std::optional<uint64_t> EpEventManager::GetActiveClientId() {
+  return tls_profiling_state_.client_id;
 }
 
 uint64_t EpEventManager::RegisterClient() {
@@ -59,8 +74,12 @@ void EpEventManager::PushOrtEvent(uint64_t client_id) {
     return;
   }
 
-  // Record the current event count so we can annotate events added during this ORT event.
-  iter->second.ort_event_start_indices.push_back(iter->second.events.size());
+  // Record the current event count in the per-thread stack so we can annotate
+  // only this thread's events when PopOrtEvent is called.
+  tls_profiling_state_.ort_event_start_indices.push_back(iter->second.events.size());
+
+  // Set the active client for this thread so kernels can find it.
+  tls_profiling_state_.client_id = client_id;
 }
 
 void EpEventManager::PopOrtEvent(uint64_t client_id, const std::string& ort_event_name) {
@@ -70,16 +89,24 @@ void EpEventManager::PopOrtEvent(uint64_t client_id, const std::string& ort_even
   }
 
   auto iter = client_state_.find(client_id);
-  if (iter == client_state_.end() || iter->second.ort_event_start_indices.empty()) {
+  if (iter == client_state_.end() || tls_profiling_state_.ort_event_start_indices.empty()) {
     return;
   }
 
-  size_t start_index = iter->second.ort_event_start_indices.back();
-  iter->second.ort_event_start_indices.pop_back();
+  size_t start_index = tls_profiling_state_.ort_event_start_indices.back();
+  tls_profiling_state_.ort_event_start_indices.pop_back();
 
-  // Annotate EP events added since StartEvent with metadata from the correlated ORT event.
+  // Annotate this thread's EP events (added since StartEvent) with metadata from the correlated ORT event.
+  auto current_thread_id = std::this_thread::get_id();
   for (size_t i = start_index; i < iter->second.events.size(); ++i) {
-    iter->second.events[i].ort_event_name = ort_event_name;
+    if (iter->second.events[i].thread_id == current_thread_id) {
+      iter->second.events[i].ort_event_name = ort_event_name;
+    }
+  }
+
+  // Clear the thread-local when the outermost ORT event on this thread finishes.
+  if (tls_profiling_state_.ort_event_start_indices.empty()) {
+    tls_profiling_state_.client_id.reset();
   }
 }
 
