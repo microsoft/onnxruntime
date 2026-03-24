@@ -88,8 +88,9 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/sequence_op\\.cc$")
 # in the CPU provider and is not linked into the plugin.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/size\\.cc$")
 
-# Exclude llm/ — attention.cc calls QkvToContext which dereferences
-# onnxruntime::Stream* (not available in plugin build's adapter OpKernelContext).
+# Exclude llm/ for now. Stream handling in core/providers/cuda/llm/attention.cc
+# is now adapter-safe, but the kernel still uses framework-only Node::OutputDefs()
+# introspection in its constructor, and ep::adapter::Node does not expose that yet.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/llm/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/llm/.*")
 
@@ -98,7 +99,8 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/llm/.*")
 # which cannot convert to ep::adapter::OpKernel in the plugin build.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/shape_op\\.cc$")
 
-# Exclude contrib llm/ — uses onnxruntime::Stream* in QkvToContext.
+# Exclude contrib llm/ for now. The core CUDA llm kernels are adapter-safe, but
+# contrib llm kernels still need their own plugin pass.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/llm/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/llm/.*")
 
@@ -197,7 +199,6 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cublasLt
     CUDNN::cudnn_all
     cudnn_frontend
-    ${CUDA_PLUGIN_CUDNN_LIBRARY}
     Boost::mp11
     safeint_interface
     onnxruntime_framework
