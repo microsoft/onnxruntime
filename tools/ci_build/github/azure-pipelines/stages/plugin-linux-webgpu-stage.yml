@@ -61,12 +61,9 @@ stages:
           DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimewebgpuplugin
 
-      - task: Bash@3
+      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_package.sh -i onnxruntimewebgpuplugin -c ${{ parameters.cmake_build_type }}
+        workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build WebGPU Plugin'
-        inputs:
-          targetType: filePath
-          filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-          arguments: -i onnxruntimewebgpuplugin -d "WEBGPU" -c ${{ parameters.cmake_build_type }}
         env:
           EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine)
 
