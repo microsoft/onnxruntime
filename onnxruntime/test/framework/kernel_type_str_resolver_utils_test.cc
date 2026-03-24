@@ -23,7 +23,10 @@ static Status LoadLayoutTransformationRequiredOpsFromOpSchemas(KernelTypeStrReso
   for (const auto& op_id : required_op_ids) {
     const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version,
                                                       std::string{op_id.domain});
-    ORT_RETURN_IF(op_schema == nullptr, "Failed to get op schema.");
+    ORT_RETURN_IF(op_schema == nullptr,
+                  "Failed to get op schema for domain='", op_id.domain,
+                  "', op_type='", op_id.op_type,
+                  "', since_version=", op_id.since_version, ".");
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
   return Status::OK();
