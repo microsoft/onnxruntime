@@ -1076,8 +1076,6 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx512F;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx512F;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512F;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512FHot4x6;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512FNativePacked;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx512F;

@@ -15,8 +15,6 @@ namespace {
 enum class PointwiseBenchmarkPath {
   NchwConv,
   NchwcBaseline,
-  NchwcPanelRepack,
-  NchwcAvx512NativePacked,
 };
 
 std::vector<std::string> BuildArgNamesForNchwcPointwise() {
@@ -34,12 +32,8 @@ MLAS_THREADPOOL* GetMlasThreadPoolForNchwcPointwiseBenchmark() {
   return threadpool.get();
 }
 
-MLAS_BACKEND_KERNEL_SELECTOR_CONFIG MakeMlasConfig(bool enable_nchwc_pointwise_filter_repacking,
-                                                   bool enable_nchwc_pointwise_filter_native_avx512_packing) {
+MLAS_BACKEND_KERNEL_SELECTOR_CONFIG MakeMlasConfig() {
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
-  config.use_nchwc_pointwise_filter_repacking = enable_nchwc_pointwise_filter_repacking;
-  config.use_nchwc_pointwise_filter_native_avx512_packing =
-      enable_nchwc_pointwise_filter_native_avx512_packing;
   return config;
 }
 
@@ -141,9 +135,7 @@ void RunNchwPointwise(benchmark::State& state,
 }
 
 void RunNchwcPointwise(benchmark::State& state,
-                       MLAS_THREADPOOL* thread_pool,
-                       bool enable_nchwc_pointwise_filter_repacking,
-                       bool enable_nchwc_pointwise_filter_native_avx512_packing) {
+                       MLAS_THREADPOOL* thread_pool) {
   const int64_t batch_count = state.range(0);
   const int64_t input_channels = state.range(1);
   const int64_t input_height = state.range(2);
@@ -156,11 +148,6 @@ void RunNchwcPointwise(benchmark::State& state,
   const size_t block_size = MlasNchwcGetBlockSize();
   if (block_size <= 1) {
     state.SkipWithError("NCHWc is not supported on this platform.");
-    return;
-  }
-
-  if (enable_nchwc_pointwise_filter_native_avx512_packing && block_size != 16) {
-    state.SkipWithError("The AVX512 native-packed pointwise path requires 16-channel NCHWc blocks.");
     return;
   }
 
@@ -207,9 +194,7 @@ void RunNchwcPointwise(benchmark::State& state,
   MLAS_ACTIVATION activation;
   activation.ActivationKind = MlasIdentityActivation;
 
-  auto mlas_backend_kernel_selector_config =
-      MakeMlasConfig(enable_nchwc_pointwise_filter_repacking,
-             enable_nchwc_pointwise_filter_native_avx512_packing);
+  auto mlas_backend_kernel_selector_config = MakeMlasConfig();
 
   MlasNchwcConv(input_shape,
                 kernel_shape,
@@ -256,13 +241,7 @@ void RunPointwise(benchmark::State& state,
       RunNchwPointwise(state, thread_pool);
       break;
     case PointwiseBenchmarkPath::NchwcBaseline:
-      RunNchwcPointwise(state, thread_pool, false, false);
-      break;
-    case PointwiseBenchmarkPath::NchwcPanelRepack:
-      RunNchwcPointwise(state, thread_pool, true, false);
-      break;
-    case PointwiseBenchmarkPath::NchwcAvx512NativePacked:
-      RunNchwcPointwise(state, thread_pool, false, true);
+      RunNchwcPointwise(state, thread_pool);
       break;
   }
 }
@@ -343,25 +322,13 @@ BENCHMARK(NCHW_POINTWISE)->Apply(ResNetPointwise)->UseRealTime();
 BENCHMARK(NCHW_POINTWISE)->Apply(HighChannelPointwise)->UseRealTime();
 BENCHMARK(NCHW_POINTWISE)->Apply(Model1Pointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE, ResNetLikeBaseline, PointwiseBenchmarkPath::NchwcBaseline)->Apply(ResNetPointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE, ResNetLikePanelRepack, PointwiseBenchmarkPath::NchwcPanelRepack)->Apply(ResNetPointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE, ResNetLikeAvx512NativePacked, PointwiseBenchmarkPath::NchwcAvx512NativePacked)->Apply(ResNetPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE, HighChannelsBaseline, PointwiseBenchmarkPath::NchwcBaseline)->Apply(HighChannelPointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE, HighChannelsPanelRepack, PointwiseBenchmarkPath::NchwcPanelRepack)->Apply(HighChannelPointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE, HighChannelsAvx512NativePacked, PointwiseBenchmarkPath::NchwcAvx512NativePacked)->Apply(HighChannelPointwise)->UseRealTime();
 BENCHMARK(NCHW_POINTWISE_MODEL1)->Apply(Model1Pointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE, Model1Baseline, PointwiseBenchmarkPath::NchwcBaseline)->Apply(Model1Pointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE, Model1PanelRepack, PointwiseBenchmarkPath::NchwcPanelRepack)->Apply(Model1Pointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE, Model1Avx512NativePacked, PointwiseBenchmarkPath::NchwcAvx512NativePacked)->Apply(Model1Pointwise)->UseRealTime();
 BENCHMARK(NCHW_POINTWISE_THREADED)->Apply(ResNetPointwise)->UseRealTime();
 BENCHMARK(NCHW_POINTWISE_THREADED)->Apply(HighChannelPointwise)->UseRealTime();
 BENCHMARK(NCHW_POINTWISE_THREADED)->Apply(Model1Pointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, ResNetLikeBaseline, PointwiseBenchmarkPath::NchwcBaseline)->Apply(ResNetPointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, ResNetLikePanelRepack, PointwiseBenchmarkPath::NchwcPanelRepack)->Apply(ResNetPointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, ResNetLikeAvx512NativePacked, PointwiseBenchmarkPath::NchwcAvx512NativePacked)->Apply(ResNetPointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, HighChannelsBaseline, PointwiseBenchmarkPath::NchwcBaseline)->Apply(HighChannelPointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, HighChannelsPanelRepack, PointwiseBenchmarkPath::NchwcPanelRepack)->Apply(HighChannelPointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, HighChannelsAvx512NativePacked, PointwiseBenchmarkPath::NchwcAvx512NativePacked)->Apply(HighChannelPointwise)->UseRealTime();
 BENCHMARK(NCHW_POINTWISE_THREADED_MODEL1)->Apply(Model1Pointwise)->UseRealTime();
 BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, Model1Baseline, PointwiseBenchmarkPath::NchwcBaseline)->Apply(Model1Pointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, Model1PanelRepack, PointwiseBenchmarkPath::NchwcPanelRepack)->Apply(Model1Pointwise)->UseRealTime();
-BENCHMARK_CAPTURE(NCHWC_POINTWISE_THREADED, Model1Avx512NativePacked, PointwiseBenchmarkPath::NchwcAvx512NativePacked)->Apply(Model1Pointwise)->UseRealTime();

@@ -17,8 +17,6 @@ namespace onnxruntime {
 inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& config,
                                                             const ConfigOptions& config_options) {
   config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
-  config.use_nchwc_pointwise_filter_repacking =
-      config_options.GetConfigOrDefault(kOrtSessionOptionsMlasEnableNchwcPointwiseFilterRepacking, "0") == "1";
 }
 
 }  // namespace onnxruntime
