@@ -512,6 +512,13 @@ Return Value:
             break;
         }
 
+        case MlasSiluActivation:
+        {
+            MLAS_THROW_EX(std::runtime_error,
+                "MlasSiluActivation is only supported by the fused AVX512 pointwise convolution path");
+            break;
+        }
+
         case MlasActivationKindCount:
         {
             MLAS_THROW_EX(std::runtime_error, "bad mlas activation kind");

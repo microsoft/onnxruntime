@@ -66,13 +66,15 @@ struct MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY
     size_t InputChannelBatch;
     size_t FilterCount;
     size_t SourceFilterStrideBytes;
+    bool NativeAvx512Packed;
 
     bool operator==(const MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY& other) const
     {
         return FilterSource == other.FilterSource &&
             InputChannelBatch == other.InputChannelBatch &&
             FilterCount == other.FilterCount &&
-            SourceFilterStrideBytes == other.SourceFilterStrideBytes;
+            SourceFilterStrideBytes == other.SourceFilterStrideBytes &&
+            NativeAvx512Packed == other.NativeAvx512Packed;
     }
 };
 
@@ -84,6 +86,7 @@ struct MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY_HASH
         hash ^= std::hash<size_t>{}(key.InputChannelBatch) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         hash ^= std::hash<size_t>{}(key.FilterCount) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         hash ^= std::hash<size_t>{}(key.SourceFilterStrideBytes) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hash ^= std::hash<bool>{}(key.NativeAvx512Packed) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         return hash;
     }
 };
@@ -114,6 +117,7 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
 #define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       0x00000004
 #define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
 #define MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI      0x00000010
+#define MLAS_CONV_KERNEL_FLAG_SILU_ACTIVATION       0x00000020
 
 size_t
 MLASCALL
@@ -912,6 +916,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     static constexpr size_t MinimumOutputElementsForPacking = 8;
     static constexpr size_t MinimumFilterSetsForPacking = 2;
     static constexpr size_t MinimumOutputElementsForLargeOutputChannelPacking = 64;
+    static constexpr size_t MinimumTotalOutputElementsForPacking = 128;
     static constexpr size_t MinimumTotalOutputElementsForVeryLargeOutputChannelPacking = 64;
     static constexpr size_t MaximumCachedPackedFilterPanels = 64;
 
@@ -921,22 +926,32 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     }
 
     bool
-    UsePointwiseFilterPacking() const
+    UseLegacyPointwiseFilterPacking() const
     {
-        return WorkBlock->BackendKernelSelectorConfig != nullptr &&
-            WorkBlock->BackendKernelSelectorConfig->use_nchwc_pointwise_filter_repacking;
+        // Disabled to keep the pointwise AVX512 path on the original baseline
+        // execution flow while working on fused activation support.
+        return false;
     }
 
     bool
-    ShouldTryPackPointwiseFilter() const
+    UseNativeAvx512PointwiseFilterPacking() const
+    {
+        // Disabled to keep the pointwise AVX512 path on the original baseline
+        // execution flow while working on fused activation support.
+        return false;
+    }
+
+    bool
+    ShouldTryPackPointwiseFilter(bool EnablePacking) const
     {
         const bool IsStrided = StrideHeight > 1 || StrideWidth > 1;
 
-        return UsePointwiseFilterPacking() &&
+        return EnablePacking &&
             BatchCount == 1 &&
             InputChannels >= MinimumInputChannelsForPacking &&
             OutputChannels >= std::max(MinimumOutputChannelsForPacking,
                 BlockSize * FilterSetSize * MinimumFilterSetsForPacking) &&
+            OutputSize >= MinimumTotalOutputElementsForPacking &&
             (OutputChannels < 2048 ||
                 OutputSize >= MinimumTotalOutputElementsForVeryLargeOutputChannelPacking) &&
             (!IsStrided ||
@@ -947,7 +962,8 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     bool
     ShouldPackPointwiseFilter(
         size_t InputChannelBatch,
-        size_t OutputThisIteration
+        size_t OutputThisIteration,
+        bool EnablePacking
         ) const
     {
         return FilterCount > 1 &&
@@ -955,7 +971,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             OutputThisIteration >= MinimumOutputElementsForPacking &&
             (OutputChannels < 2048 ||
                 OutputThisIteration >= MinimumOutputElementsForLargeOutputChannelPacking) &&
-            ShouldTryPackPointwiseFilter();
+            ShouldTryPackPointwiseFilter(EnablePacking);
     }
 
     const float*
@@ -963,11 +979,12 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         const float* FilterSource,
         size_t InputChannelBatch,
         size_t SourceFilterStrideBytes,
-        size_t* PackedFilterStrideBytes
+        size_t* PackedFilterStrideBytes,
+        bool NativeAvx512Packed
         ) const
     {
         const MLAS_NCHWC_POINTWISE_FILTER_CACHE_KEY cache_key{
-            FilterSource, InputChannelBatch, FilterCount, SourceFilterStrideBytes};
+            FilterSource, InputChannelBatch, FilterCount, SourceFilterStrideBytes, NativeAvx512Packed};
 
         auto cache_entry = MlasNchwcPointwiseFilterCache.find(cache_key);
         if (cache_entry == MlasNchwcPointwiseFilterCache.end()) {
@@ -979,16 +996,43 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         }
 
         const size_t SourceFilterStride = SourceFilterStrideBytes / sizeof(float);
-        const size_t PackedFilterStride = BlockSize * InputChannelBatch;
-        const size_t PackedFilterSize = FilterCount * PackedFilterStride;
+        const size_t PackedFilterStride = NativeAvx512Packed ?
+            (FilterSetSize * BlockSize * InputChannelBatch) :
+            (BlockSize * InputChannelBatch);
+        const size_t PackedFilterSize = NativeAvx512Packed ? PackedFilterStride : (FilterCount * PackedFilterStride);
 
         std::vector<float>& PackedFilter = cache_entry->second;
         if (PackedFilter.size() != PackedFilterSize) {
             PackedFilter.resize(PackedFilterSize);
 
-            for (size_t filter_index = 0; filter_index < FilterCount; filter_index++) {
-                std::copy_n(FilterSource + filter_index * SourceFilterStride,
-                    PackedFilterStride, PackedFilter.data() + filter_index * PackedFilterStride);
+            if (NativeAvx512Packed) {
+                std::fill(PackedFilter.begin(), PackedFilter.end(), 0.0f);
+
+                const size_t InputChannelBlockCount = InputChannelBatch / BlockSize;
+                const size_t SourceInputBlockStride = BlockSize * BlockSize;
+                const size_t PackedBiStride = FilterSetSize * BlockSize;
+
+                for (size_t input_block = 0; input_block < InputChannelBlockCount; input_block++) {
+                    for (size_t bi = 0; bi < BlockSize; bi++) {
+                        float* packed_bi = PackedFilter.data() +
+                            (input_block * BlockSize + bi) * PackedBiStride;
+
+                        for (size_t filter_index = 0; filter_index < FilterCount; filter_index++) {
+                            const float* source = FilterSource +
+                                filter_index * SourceFilterStride +
+                                input_block * SourceInputBlockStride +
+                                bi * BlockSize;
+
+                            std::copy_n(source, BlockSize,
+                                packed_bi + filter_index * BlockSize);
+                        }
+                    }
+                }
+            } else {
+                for (size_t filter_index = 0; filter_index < FilterCount; filter_index++) {
+                    std::copy_n(FilterSource + filter_index * SourceFilterStride,
+                        PackedFilterStride, PackedFilter.data() + filter_index * PackedFilterStride);
+                }
             }
         }
 
@@ -1029,6 +1073,22 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasConvPointwiseFloatKernel;
 #endif
 
+    const bool EnableNativeAvx512Packing = false;
+    const bool EnableLegacyPacking = UseLegacyPointwiseFilterPacking();
+#if defined(MLAS_TARGET_AMD64)
+    const bool CanFuseSiluActivation =
+        ActivationKind == MlasSiluActivation &&
+        Kernel == MlasConvPointwiseFloatKernelAvx512F &&
+        !WorkBlock->UseBf16;
+#else
+    const bool CanFuseSiluActivation = false;
+#endif
+
+    if (ActivationKind == MlasSiluActivation && !CanFuseSiluActivation) {
+        MLAS_THROW_EX(std::runtime_error,
+        "MlasSiluActivation requires the fused AVX512 pointwise convolution path");
+    }
+
         while (WorkRemaining > 0) {
 
             //
@@ -1067,6 +1127,11 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                 unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
 
+                if (CanFuseSiluActivation && ic + InputChannelBatch == InputChannels) {
+                    KernelFlags &= ~MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION;
+                    KernelFlags |= MLAS_CONV_KERNEL_FLAG_SILU_ACTIVATION;
+                }
+
                 //
                 // Invoke the convolution kernel.
                 //
@@ -1079,12 +1144,20 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     KernelToUse = KernelFast;
                 }
 #endif
+                // The experimental AVX512 4x6 pointwise hot-path is disabled
+                // so this code follows the original baseline pointwise kernel.
                 const float* KernelFilter = filter;
                 size_t KernelFilterStrideBytes = FilterStrideBytes;
+                const bool UsePackedKernel = EnableNativeAvx512Packing || EnableLegacyPacking;
 
-                if (ShouldPackPointwiseFilter(InputChannelBatch, OutputThisIteration)) {
+                if (ShouldPackPointwiseFilter(InputChannelBatch, OutputThisIteration, UsePackedKernel)) {
+                    if (EnableNativeAvx512Packing) {
+                        KernelToUse = MlasConvPointwiseFloatKernelAvx512FNativePacked;
+                    }
+
                     KernelFilter = PackPointwiseFilter(filter,
-                        InputChannelBatch, FilterStrideBytes, &KernelFilterStrideBytes);
+                        InputChannelBatch, FilterStrideBytes, &KernelFilterStrideBytes,
+                        EnableNativeAvx512Packing);
                 }
 
                 KernelToUse(input, KernelFilter, output, StrideWidthBytes, InputChannelBatch /

@@ -13,6 +13,8 @@ common::Status GetFusedActivationAttr(const OpKernelInfo& info, MLAS_ACTIVATION&
   if (info.GetAttr<std::string>("activation", &activation_type).IsOK()) {
     if (activation_type == "Relu") {
       activation.ActivationKind = MlasReluActivation;
+    } else if (activation_type == "Silu") {
+      activation.ActivationKind = MlasSiluActivation;
     } else if (activation_type == "Tanh") {
       activation.ActivationKind = MlasTanhActivation;
     } else if (activation_type == "Sigmoid") {

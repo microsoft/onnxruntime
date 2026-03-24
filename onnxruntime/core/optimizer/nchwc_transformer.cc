@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <deque>
+#include <cmath>
+#include "core/common/cpuid_info.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
@@ -129,6 +131,9 @@ class NchwcTransformerImpl {
   void TransformTransposeToNhwc(Node& node);
   void TransformResize(Node& node);
   void TrackTransposeFromNhwc(Node& node);
+  bool IsAvx512PointwiseSiluFusionTarget(const Node& nchwc_node) const;
+  bool TryGetFusedActivationType(const Node& activation_node, const Node& nchwc_node,
+                                 std::string& activation_type) const;
 
   Graph& graph_;
 
@@ -879,20 +884,92 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
     // been fused with another activation.
     auto& nchwc_node = nchwc_input->output_node_;
 
-    const bool can_fuse_activation = (node.OpType() == "Relu") ||
-                                     (node.OpType() == "Sigmoid") ||
-                                     (node.OpType() == "Tanh");
+    std::string activation_type;
+    const bool can_fuse_activation = TryGetFusedActivationType(node, nchwc_node, activation_type);
     if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
         can_fuse_activation &&
         (nchwc_input->starting_original_uses_ == 1) &&
         (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
-      nchwc_node.AddAttribute("activation", node.OpType());
+      nchwc_node.AddAttribute("activation", activation_type);
       FuseNchwcArgument(node, *nchwc_input);
       removed_nodes_.push_front(node.Index());
     } else {
       CreateNchwcArgument(node, node, nchwc_input->channels_, nchwc_input->shape_);
     }
   }
+}
+
+bool NchwcTransformerImpl::IsAvx512PointwiseSiluFusionTarget(const Node& nchwc_node) const {
+#if defined(CPUIDINFO_ARCH_X86) && !defined(_M_ARM64EC)
+  if (!CPUIDInfo::GetCPUIDInfo().HasAVX512f()) {
+    return false;
+  }
+#else
+  ORT_UNUSED_PARAMETER(nchwc_node);
+  return false;
+#endif
+
+  const auto& input_defs = nchwc_node.InputDefs();
+  if (input_defs.size() < 2 || input_defs[1] == nullptr) {
+    return false;
+  }
+
+  const auto* auto_pad_attr = graph_utils::GetNodeAttribute(nchwc_node, "auto_pad");
+  if (auto_pad_attr != nullptr && utils::HasString(*auto_pad_attr) && auto_pad_attr->s() != "NOTSET") {
+    return false;
+  }
+
+  const auto* pads_attr = graph_utils::GetNodeAttribute(nchwc_node, "pads");
+  if (pads_attr != nullptr) {
+    if (pads_attr->ints_size() != 4) {
+      return false;
+    }
+
+    for (const auto pad : pads_attr->ints()) {
+      if (pad != 0) {
+        return false;
+      }
+    }
+  }
+
+  const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
+  if (!graph_.GetInitializedTensor(input_defs[1]->Name(), conv_W_tensor_proto) ||
+      conv_W_tensor_proto == nullptr ||
+      conv_W_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      conv_W_tensor_proto->dims_size() != 4) {
+    return false;
+  }
+
+  return conv_W_tensor_proto->dims(2) == 1 &&
+         conv_W_tensor_proto->dims(3) == 1 &&
+         conv_W_tensor_proto->dims(1) >= static_cast<int64_t>(MlasNchwcGetBlockSize());
+}
+
+bool NchwcTransformerImpl::TryGetFusedActivationType(const Node& activation_node,
+                                                     const Node& nchwc_node,
+                                                     std::string& activation_type) const {
+  if (activation_node.OpType() == "Relu" ||
+      activation_node.OpType() == "Sigmoid" ||
+      activation_node.OpType() == "Tanh") {
+    activation_type = activation_node.OpType();
+    return true;
+  }
+
+  if (activation_node.OpType() == "QuickGelu" && activation_node.Domain() == kMSDomain &&
+      IsAvx512PointwiseSiluFusionTarget(nchwc_node)) {
+    float alpha = 1.702f;
+    if (const auto* alpha_attr = graph_utils::GetNodeAttribute(activation_node, "alpha");
+        alpha_attr != nullptr && utils::HasFloat(*alpha_attr)) {
+      alpha = alpha_attr->f();
+    }
+
+    if (std::abs(alpha - 1.0f) <= 1.0e-6f) {
+      activation_type = "Silu";
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // Transform BatchNormalization to a depthwise separable 1x1 convolution. This

@@ -168,6 +168,7 @@ enum MLAS_ACTIVATION_KIND {
     MlasLogisticActivation,
     MlasClipActivation,
     MlasHardSigmoidActivation,
+    MlasSiluActivation,
     MlasActivationKindCount,
 };
 
@@ -205,6 +206,7 @@ MlasActivation(
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
     bool use_nchwc_pointwise_filter_repacking = false; /**< Flag to enable pointwise NCHWc filter panel repacking */
+    bool use_nchwc_pointwise_filter_native_avx512_packing = false; /**< Flag to enable AVX512 pointwise NCHWc native packed filter repacking */
 };
 
 //

@@ -23,6 +23,7 @@ MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT     EQU     00000001h
 MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         EQU     00000002h
 MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       EQU     00000004h
 MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      EQU     00000008h
+MLAS_CONV_KERNEL_FLAG_SILU_ACTIVATION       EQU     00000020h
 
 ;
 ; Stack frame layout for the convolution kernels.
@@ -747,7 +748,11 @@ IF FilterCount GT 1
         mov     rax,SconvKernelPointwiseFrame.OutputStride[rsp]
 ENDIF
         mov     rcx,SconvKernelPointwiseFrame.Bias[rsp]
+IFDIFI <Isa>, <Avx512F>
         call    MlasConvPostProcessFloat&Isa&Filter&FilterCount&Output&OutputCount
+ELSE
+        call    MlasConvPostProcessFloat&Isa&PointwiseFilter&FilterCount&Output&OutputCount
+ENDIF
 
         ENDM
 
