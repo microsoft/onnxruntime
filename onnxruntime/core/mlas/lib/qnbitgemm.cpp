@@ -943,6 +943,34 @@ SQ4BitGemm_CompInt8(
         SQ4BitGemm(BlkLen, QuantA, DataParams->PackedQuantBData,
             DataParams->C, RangeStartM, RangeCountM, RangeStartN, RangeCountN, K,
             DataParams->ldc, DataParams->Bias);
+
+        // Apply zero-point correction for asymmetric quantization (KleidiAI path only).
+        // BZpCorr and AFloatBlkSum are only set when KleidiAI is active with asymmetric
+        // quantization (has zero points). On all other paths they remain nullptr.
+        // C += AFloatBlkSum * BZpCorr^T  (for this tile's M/N ranges)
+        if (DataParams->BZpCorr != nullptr && DataParams->AFloatBlkSum != nullptr) {
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            const size_t ldc = DataParams->ldc;
+            const float* ABlkSum = DataParams->AFloatBlkSum + RangeStartM * BlockCountK;
+            const float* BCorr = DataParams->BZpCorr + RangeStartN * BlockCountK;
+            float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+            const auto ApplyCorrection = GetMlasPlatform().QNBitGemmDispatch->ApplyBZpCorrection;
+            if (ApplyCorrection) {
+                ApplyCorrection(ABlkSum, BCorr, C, RangeCountM, RangeCountN, BlockCountK, ldc);
+            } else {
+                // Scalar fallback
+                for (size_t m = 0; m < RangeCountM; ++m) {
+                    for (size_t n = 0; n < RangeCountN; ++n) {
+                        float corr = 0.0f;
+                        for (size_t blk = 0; blk < BlockCountK; ++blk) {
+                            corr += ABlkSum[m * BlockCountK + blk] * BCorr[n * BlockCountK + blk];
+                        }
+                        C[m * ldc + n] += corr;
+                    }
+                }
+            }
+        }
         return;
     }
 
@@ -1186,6 +1214,7 @@ InitializeWorkspace_CompInt8<float>(
 
     const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
     const auto QuantizeA_Packed = GetMlasPlatform().QNBitGemmDispatch->QuantizeA_Packed_CompInt8;
+    const auto ComputeAFloatBlkSumFn = GetMlasPlatform().QNBitGemmDispatch->ComputeAFloatBlkSum;
     const auto QuantizeARow = GetMlasPlatform().QNBitGemmDispatch->QuantizeARow_CompInt8;
     const auto QuantizeARow2 = GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
 
@@ -1194,12 +1223,28 @@ InitializeWorkspace_CompInt8<float>(
 
     // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
     if (BlkBitWidth == 4 && UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig)) {
+        // Compute KleidiAI packed A size (same as workspace size without zero points)
+        const size_t kleidiAIPackedASize = GetMlasPlatform().QNBitGemmDispatch->QNBitGemmPerGemmWorkspaceSize
+            ? GetMlasPlatform().QNBitGemmDispatch->QNBitGemmPerGemmWorkspaceSize(
+                  M, N, K, BlkLen, /*HasZeroPoint=*/false, SQNBIT_CompInt8, BlkBitWidth, BackendKernelSelectorConfig)
+            : 0;
+
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
 
             const float* ARowPtr = data.A;
             std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
             QuantizeA_Packed(BlkLen, ARowPtr, M, K, QuantARowPtr, BackendKernelSelectorConfig);
+
+            // For asymmetric KleidiAI path, also compute float-domain A block sums
+            // for zero-point correction. AFloatBlkSum is stored after KleidiAI packed A.
+            if (data.QuantBZeroPoint != nullptr && ComputeAFloatBlkSumFn != nullptr && kleidiAIPackedASize > 0) {
+                // Align offset so AFloatBlkSum starts at a float-aligned address
+                constexpr size_t FloatAlignment = alignof(float);
+                const size_t alignedAOffset = (kleidiAIPackedASize + FloatAlignment - 1) & ~(FloatAlignment - 1);
+                float* AFloatBlkSum = reinterpret_cast<float*>(QuantARowPtr + alignedAOffset);
+                ComputeAFloatBlkSumFn(ARowPtr, M, K, BlkLen, data.lda, AFloatBlkSum);
+            }
         });
     } else {
         // TODO(hasesh): Clean-up the following logic so that it is clean AND it works as expected on all platforms
@@ -1481,6 +1526,45 @@ MlasQNBitGemmBatch(
     const auto ComputeOperation = GetQNBitGemm<T>(Variant);
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    // For KleidiAI asymmetric path: set up BZpCorr and AFloatBlkSum pointers.
+    // BZpCorr is stored after KleidiAI packed B data.
+    // AFloatBlkSum is stored after KleidiAI packed A data in each per-GEMM workspace.
+    const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
+    if (Variant == SQ4BitGemmVariant_CompInt8 && has_zp_input && UsePacked &&
+        UsePacked(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig)) {
+        // Compute KleidiAI packed B size (without zero point correction space)
+        const size_t kleidiAIPackedBSize = GetMlasPlatform().QNBitGemmDispatch->Q4BitGemmPackQuantBDataSize
+            ? GetMlasPlatform().QNBitGemmDispatch->Q4BitGemmPackQuantBDataSize(
+                  N, K, BlkLen, /*HasZeroPoint=*/false, ComputeType, BackendKernelSelectorConfig)
+            : 0;
+        // KleidiAI packed A size (workspace without AFloatBlkSum)
+        const size_t kleidiAIPackedASize = GetMlasPlatform().QNBitGemmDispatch->QNBitGemmPerGemmWorkspaceSize
+            ? GetMlasPlatform().QNBitGemmDispatch->QNBitGemmPerGemmWorkspaceSize(
+                  M, N, K, BlkLen, /*HasZeroPoint=*/false, ComputeType, BlkBitWidth, BackendKernelSelectorConfig)
+            : 0;
+
+        // Align offsets so float arrays start at float-aligned addresses
+        constexpr size_t FloatAlignment = alignof(float);
+        const size_t alignedBOffset = (kleidiAIPackedBSize + FloatAlignment - 1) & ~(FloatAlignment - 1);
+        const size_t alignedAOffset = (kleidiAIPackedASize + FloatAlignment - 1) & ~(FloatAlignment - 1);
+
+        for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+            auto* Data = const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(&DataParams[gemm_i]);
+            if (Data->QuantBZeroPoint == nullptr) {
+                continue;
+            }
+            // BZpCorr is at the end of packed B data (float-aligned)
+            if (kleidiAIPackedBSize > 0 && Data->PackedQuantBData != nullptr) {
+                Data->BZpCorr = reinterpret_cast<const float*>(Data->PackedQuantBData + alignedBOffset);
+            }
+            // AFloatBlkSum is at the end of the workspace's KleidiAI packed A (float-aligned)
+            if (kleidiAIPackedASize > 0 && Workspace != nullptr) {
+                std::byte* wsBase = reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
+                Data->AFloatBlkSum = reinterpret_cast<const float*>(wsBase + alignedAOffset);
+            }
+        }
+    }
 
     if (ThreadPool == nullptr) {
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
