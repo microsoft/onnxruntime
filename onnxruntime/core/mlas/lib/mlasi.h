@@ -1481,7 +1481,7 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
 #endif
 #if defined(MLAS_TARGET_AMD64)
-        MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
