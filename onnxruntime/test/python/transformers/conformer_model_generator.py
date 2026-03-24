@@ -658,17 +658,11 @@ def create_conformer_attention_simple_bias(
         # QK bias: a simple non-zero initializer so extra_q_nodes won't match any positional-embed pattern.
         # Non-zero so ORT's constant folding (which removes Add(x, 0)) doesn't eliminate this node.
         numpy_helper.from_array(np.array([_NON_ZERO_QK_BIAS], dtype="float32"), name="qk_bias"),
-        numpy_helper.from_array(
-            np.array(1.0 / np.sqrt(head_size), dtype="float32"), name="q_scale"
-        ),
+        numpy_helper.from_array(np.array(1.0 / np.sqrt(head_size), dtype="float32"), name="q_scale"),
         # Reshape shape [0, 0, num_heads, head_size] for Q/K/V
-        numpy_helper.from_array(
-            np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"
-        ),
+        numpy_helper.from_array(np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"),
         # Reshape shape [0, 0, hidden_size] for output
-        numpy_helper.from_array(
-            np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"
-        ),
+        numpy_helper.from_array(np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"),
     ]
 
     graph = helper.make_graph(
@@ -791,22 +785,14 @@ def create_conformer_attention_no_add_kv(
         k_weight,
         v_weight,
         # Q bias in 4D shape [1, 1, num_heads, head_size] for broadcasting after Reshape
-        numpy_helper.from_array(
-            np.ones([1, 1, num_heads, head_size], dtype="float32"), name="q_bias_4d"
-        ),
+        numpy_helper.from_array(np.ones([1, 1, num_heads, head_size], dtype="float32"), name="q_bias_4d"),
         # Non-zero qk_bias so ORT's constant folding (which removes Add(x, 0)) doesn't eliminate this node.
         numpy_helper.from_array(np.array([_NON_ZERO_QK_BIAS], dtype="float32"), name="qk_bias"),
-        numpy_helper.from_array(
-            np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"
-        ),
-        numpy_helper.from_array(
-            np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"
-        ),
+        numpy_helper.from_array(np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"),
+        numpy_helper.from_array(np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"),
     ]
 
-    graph = helper.make_graph(
-        nodes, "conformer_no_add_kv_graph", inputs, outputs, initializers, doc_string="conformer"
-    )
+    graph = helper.make_graph(nodes, "conformer_no_add_kv_graph", inputs, outputs, initializers, doc_string="conformer")
     opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
     return helper.make_model(graph, opset_imports=(opsetid,))
 
@@ -954,12 +940,8 @@ def create_conformer_attention_qk_div_masking(
         helper.make_tensor("mask_condition", TensorProto.BOOL, [1, 1, 1, 1], [True]),
         numpy_helper.from_array(np.array([-1e9], dtype="float32"), name="mask_value"),
         numpy_helper.from_array(np.array([0.0], dtype="float32"), name="zeros_val"),
-        numpy_helper.from_array(
-            np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"
-        ),
-        numpy_helper.from_array(
-            np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"
-        ),
+        numpy_helper.from_array(np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"),
+        numpy_helper.from_array(np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"),
     ]
 
     graph = helper.make_graph(
