@@ -669,6 +669,18 @@ class CudaKernel : public OpKernel {
   }
   cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const { return GetCublasHandle(Stream(ctx)); }
 
+  static cublasLtHandle_t GetCublasLtHandle(cudaStream_t s) {
+    auto* sync = cuda_plugin::CudaSyncStream::FromCudaStream(s);
+    return sync ? sync->GetCublasLtHandle() : nullptr;
+  }
+  static inline cublasLtHandle_t GetCublasLtHandle(onnxruntime::CudaStream* stream) {
+    return stream ? GetCublasLtHandle(static_cast<cudaStream_t>(reinterpret_cast<onnxruntime::Stream*>(stream)->GetHandle())) : nullptr;
+  }
+  static inline cublasLtHandle_t GetCublasLtHandle(onnxruntime::Stream* stream) {
+    return stream ? GetCublasLtHandle(static_cast<cudaStream_t>(stream->GetHandle())) : nullptr;
+  }
+  cublasLtHandle_t GetCublasLtHandle(OpKernelContext* ctx) const { return GetCublasLtHandle(Stream(ctx)); }
+
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; }
   bool UseTF32() const { return use_tf32_; }
   bool IsArchAvailable(int arch) const { return device_prop_.major >= arch; }

@@ -79,17 +79,6 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda_common\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda_nhwc_kernels\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda_contrib_kernels\\.cc$")
 
-# integer_gemm.cc: dynamic_cast<CudaStream*> replaced with GetCublasHandle(cudaStream_t).
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/integer_gemm\\.cc$")  # REMOVED in Stage 5
-
-# RNN ops: dual-build-compatible signatures are in place (void* alloc_stream,
-# cudaStream_t, cudnnHandle_t), but the ORT C API lacks KernelInfoGetAttributeArray_string
-# which rnn.h uses via GetAttrs<std::string>("activations", ...).
-# Re-excluded until the C API is extended to support string array attributes.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/rnn/.*")
-
-list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/rnn/.*")
-
 # Exclude files that use TensorSeq (incomplete type in plugin build).
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/identity_op\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/sequence_op\\.cc$")
@@ -99,37 +88,10 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/sequence_op\\.cc$")
 # in the CPU provider and is not linked into the plugin.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/size\\.cc$")
 
-# scatter_nd.cc: ValidateShapes inlined for plugin, GetComputeStream fixed.
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/scatter_nd\\.cc$")  # REMOVED in Stage 5
-
 # Exclude llm/ — attention.cc calls QkvToContext which dereferences
 # onnxruntime::Stream* (not available in plugin build's adapter OpKernelContext).
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/llm/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/llm/.*")
-
-# Exclude constant_of_shape — inherits from ConstantOfShapeBase (CPU provider)
-# which is not linked into the plugin.
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/generator/constant_of_shape\\.cc$")
-
-# Exclude space_depth_ops — inherits from SpaceDepthBase (CPU provider).
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/space_depth_ops\\.cc$")
-
-# Exclude object_detection/ — NonMaxSuppression and RoiAlign inherit from CPU
-# base classes (NonMaxSuppressionBase, RoiAlignBase) not linked into the plugin.
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/object_detection/.*")
-# list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/object_detection/.*")
-
-# Exclude upsample.cc — UpsampleBase uses InputDefs() and
-# OpKernelInfo::GetAllocator() not available in adapter.
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/upsample\\.cc$")
-
-# Exclude resize.cc — Resize inherits from Upsample (excluded above).
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/resize\\.cc$")
-
-# Exclude einsum — einsum_auxiliary_ops.cc calls ReductionOps::ReduceCompute
-# which is framework-only (guarded by #ifndef BUILD_CUDA_EP_AS_PLUGIN).
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/math/einsum_utils/.*")
-# list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/math/einsum_utils/.*")
 
 # Permanently excluded — pure CPU ops, handled by GetCpuPreferredNodes.
 # shape_op.cc inherits from onnxruntime::OpKernel (framework)
@@ -143,51 +105,15 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/llm/.*")
 # Exclude contrib training ops (shrunken_gather depends on provider_api.h in header).
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shrunken_gather\\.cc$")
 
-# Exclude contrib bert ops that use GetComputeStream() or framework OpKernelContext.
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/decoder_attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/decoder_masked_self_attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/embed_layer_norm\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/fast_gelu\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/group_query_attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/longformer_attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/multihead_attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/packed_attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/packed_multihead_attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/paged_attention\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/relative_attn_bias\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/bert/remove_padding\\.cc$")
-
 # Exclude contrib ops using GetComputeStream() or framework type deps.
-# group_norm.cc still requires the real CudaTuningContext/Stream types.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/diffusion/group_norm\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/fused_conv\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/inverse\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/math/bias_dropout\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/math/fft_ops\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/moe/moe\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/sparse/sparse_attention\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/crop\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/dynamic_time_warping\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/dynamicslice\\.cc$")
 
-# Exclude contrib quantization ops with GetComputeStream() deps.
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/quantization/attention_quantization\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/quantization/matmul_bnb4\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/quantization/matmul_nbits\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/quantization/moe_quantization\\.cc$")
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/quantization/qordered_ops/.*")
 
-# Exclude contrib transformers/ (beam search, greedy search, sampling).
+# Exclude contrib transformers/ (beam search, greedy search, sampling). Those need subgraph inference.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
-
-# Exclude gemm_float8.cc/.cu — ComputeInternal is in .cu which uses GetComputeStream().
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/math/gemm_float8\\.cc$")
-# list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/math/gemm_float8\\.cu$")
-
-# fused_matmul.cc: matmul.cc is now included, so fused_matmul can be too.
-# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/math/fused_matmul\\.cc$")  # REMOVED in Stage 5
 
 # Create shared library target using the ORT helper function for plugins
 onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin

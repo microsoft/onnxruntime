@@ -144,6 +144,10 @@ class CudaKernel : public OpKernel {
     return stream ? GetCublasHandle(stream) : DefaultCublasHandle();
   }
 
+  inline cublasLtHandle_t GetCublasLtHandle(OpKernelContext* /*ctx*/) const {
+    return provider_->PerThreadCublasLtHandle();
+  }
+
   bool UseTF32() const {
     return provider_->UseTF32();
   }
