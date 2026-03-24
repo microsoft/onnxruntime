@@ -2409,7 +2409,7 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
 
 // Regression test for integer overflow in FP16 softmax allocation.
 // ComputeAttentionSoftmaxInplace<MLFloat16> previously used int for N and D.
-// For large enough values of N and D, N * D * sizeof(float) could overflow int32.
+// For large enough values of N and D, N * D could overflow int32.
 TEST(AttentionTest, Attention_FP16_SoftmaxLargeDimensions) {
   // Skip if the machine has less than 16GB of physical RAM.
   constexpr uint64_t required_ram_bytes = 16ULL * 1024 * 1024 * 1024;
