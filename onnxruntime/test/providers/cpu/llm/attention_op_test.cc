@@ -2407,10 +2407,10 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// Regression test for integer overflow in FP16 softmax allocation.
+// Regression test for CPU kernel integer overflow in FP16 softmax allocation.
 // ComputeAttentionSoftmaxInplace<MLFloat16> previously used int for N and D.
 // For large enough values of N and D, N * D could overflow int32.
-TEST(AttentionTest, Attention_FP16_SoftmaxLargeDimensions) {
+TEST(AttentionTest, AttentionCpuFp16SoftmaxLargeDimensions) {
   // Skip if the machine has less than 16GB of physical RAM.
   constexpr uint64_t required_ram_bytes = 16ULL * 1024 * 1024 * 1024;
   if (const auto total_ram_bytes = GetTotalPhysicalMemoryBytes();
@@ -2462,7 +2462,13 @@ TEST(AttentionTest, Attention_FP16_SoftmaxLargeDimensions) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  if constexpr (sizeof(void*) == 4) {
+    // Expect overflow for 32-bit builds.
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Integer overflow", {}, nullptr, &execution_providers);
+  } else {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 }  // namespace test
