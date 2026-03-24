@@ -22,6 +22,18 @@ import {
   TimestampQuery,
 } from './webgpu/types';
 
+const setFrozenProperty = (obj: object, key: string, value: unknown): void => {
+  const desc = Object.getOwnPropertyDescriptor(obj, key);
+  if (desc && !desc.configurable) {
+    if (desc.value === value) return; // already frozen to same value
+    throw new Error(
+      `Conflicting WebGPU initialization: attempted to replace existing ` +
+        `env.webgpu.${key} with a different object after backend initialization.`,
+    );
+  }
+  Object.defineProperty(obj, key, { value, writable: false, enumerable: true, configurable: false });
+};
+
 interface CommandInfo {
   readonly kernelId: number;
   readonly computePipeline: GPUComputePipeline;
@@ -226,7 +238,7 @@ export class WebGpuBackend {
    */
   sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
-  async initialize(env: Env, adapter: GPUAdapter): Promise<void> {
+  async initialize(env: Env, adapter: GPUAdapter, externalDevice?: GPUDevice): Promise<void> {
     this.env = env;
     const requiredFeatures: GPUFeatureName[] = [];
     const deviceDescriptor: GPUDeviceDescriptor = {
@@ -254,7 +266,12 @@ export class WebGpuBackend {
     // Try subgroups
     requireFeatureIfAvailable('subgroups' as GPUFeatureName);
 
-    this.device = await adapter.requestDevice(deviceDescriptor);
+    if (externalDevice) {
+      this.validateExternalDevice(externalDevice, deviceDescriptor);
+      this.device = externalDevice;
+    } else {
+      this.device = await adapter.requestDevice(deviceDescriptor);
+    }
     this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
@@ -267,28 +284,55 @@ export class WebGpuBackend {
 
     // TODO: set up flags
 
-    this.device.onuncapturederror = (ev) => {
-      if (ev.error instanceof GPUValidationError) {
-        // eslint-disable-next-line no-console
-        console.error(`An uncaught WebGPU validation error was raised: ${ev.error.message}`);
-      }
-    };
+    if (externalDevice) {
+      const existingHandler = this.device.onuncapturederror;
+      this.device.onuncapturederror = (ev) => {
+        if (ev.error instanceof GPUValidationError) {
+          // eslint-disable-next-line no-console
+          console.error(`An uncaught WebGPU validation error was raised: ${ev.error.message}`);
+        }
+        if (existingHandler) {
+          existingHandler.call(this.device, ev);
+        }
+      };
+    } else {
+      this.device.onuncapturederror = (ev) => {
+        if (ev.error instanceof GPUValidationError) {
+          // eslint-disable-next-line no-console
+          console.error(`An uncaught WebGPU validation error was raised: ${ev.error.message}`);
+        }
+      };
+    }
 
-    Object.defineProperty(this.env.webgpu, 'device', {
-      value: this.device,
-      writable: false,
-      enumerable: true,
-      configurable: false,
-    });
-    Object.defineProperty(this.env.webgpu, 'adapter', {
-      value: adapter,
-      writable: false,
-      enumerable: true,
-      configurable: false,
-    });
+    setFrozenProperty(this.env.webgpu, 'device', this.device);
+    setFrozenProperty(this.env.webgpu, 'adapter', adapter);
 
     // init queryType, which is necessary for InferenceSession.create
     this.setQueryType();
+  }
+
+  private validateExternalDevice(device: GPUDevice, descriptor: GPUDeviceDescriptor): void {
+    // Shape check
+    if (
+      typeof device.queue !== 'object' ||
+      typeof device.createBuffer !== 'function' ||
+      typeof device.createShaderModule !== 'function' ||
+      typeof device.features !== 'object' ||
+      typeof device.limits !== 'object'
+    ) {
+      throw new Error('Invalid GPU device set in `env.webgpu.device`. It must be a GPUDevice object.');
+    }
+    // Limits check
+    const requiredLimits = descriptor.requiredLimits ?? {};
+    for (const [key, value] of Object.entries(requiredLimits)) {
+      const deviceValue = (device.limits as unknown as Record<string, number>)[key];
+      if (deviceValue === undefined || deviceValue < value) {
+        throw new Error(
+          `The supplied GPUDevice does not satisfy required WebGPU limit "${key}": ` +
+            `required ${value}, got ${deviceValue ?? 'undefined'}.`,
+        );
+      }
+    }
   }
 
   dispose(): void {

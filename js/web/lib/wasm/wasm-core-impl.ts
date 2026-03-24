@@ -107,7 +107,14 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
 
   // perform WebGPU availability check ( either JSEP or WebGPU EP )
   let webgpuAdapter = env.webgpu.adapter as GPUAdapter | null;
+  const webgpuDevice = env.webgpu.device as unknown as GPUDevice | undefined;
   if (epName === 'webgpu') {
+    if (webgpuDevice && !webgpuAdapter) {
+      throw new Error(
+        'Invalid WebGPU configuration: `env.webgpu.device` was provided without ' +
+          '`env.webgpu.adapter`. Provide both objects when reusing an existing GPUDevice.',
+      );
+    }
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
     }
@@ -152,7 +159,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
     const initJsep = require('./jsep/init').init;
 
     if (epName === 'webgpu') {
-      await initJsep('webgpu', getInstance(), env, webgpuAdapter);
+      await initJsep('webgpu', getInstance(), env, webgpuAdapter, webgpuDevice);
     }
     if (epName === 'webnn') {
       await initJsep('webnn', getInstance(), env);
