@@ -29,6 +29,8 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=AndroidBinarySizeCheckJob_MinimalBaseline-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    env:
+      CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
@@ -120,6 +122,8 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=android_nnapi_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    env:
+      CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
       - uses: actions/checkout@v6
 
@@ -159,6 +163,10 @@ jobs:
           key: vcpkg-cache | android.yml | android_nnapi_ep
           path: ~/.cache/vcpkg
 
+      - name: CCache reset stats
+        run: ccache --zero-stats
+        shell: bash
+
       - name: NNAPI EP, Build, Test on Android Emulator
         run: >-
           python3 tools/ci_build/build.py
@@ -180,17 +188,16 @@ jobs:
           --build_java
           --update --build --test
         shell: bash
-        env:
-          CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
-
 
       - name: Build Minimal ORT with NNAPI and run tests
         run:
           tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh
           "$(pwd)"
         shell: bash
-        env:
-          CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
+
+      - name: CCache stats
+        run: ccache --show-stats -vv
+        shell: bash
 
       - name: Install psutil for emulator shutdown by run_android_emulator.py
         if: always()
@@ -220,7 +227,8 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=android_cpu_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
-
+    env:
+      CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
       - uses: actions/checkout@v6
 
@@ -260,6 +268,10 @@ jobs:
           key: vcpkg-cache | android.yml | android_cpu_ep
           path: ~/.cache/vcpkg
 
+      - name: CCache reset stats
+        run: ccache --zero-stats
+        shell: bash
+
       - name: CPU EP, Build and Test
         run: >-
           python3 tools/ci_build/build.py
@@ -279,8 +291,10 @@ jobs:
           --build_java
           --update --build --test
         shell: bash
-        env:
-          CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
+
+      - name: CCache stats
+        run: ccache --show-stats -vv
+        shell: bash
 
       - name: Install psutil for emulator shutdown by run_android_emulator.py
         if: always()
