@@ -76,11 +76,11 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   BinaryOp* binary_op_kernel = static_cast<BinaryOp*>(this_ptr);
 
-  std::optional<uint64_t> profiler_client_id = EpEventManager::GetActiveClientId();
+  std::optional<uint64_t> active_profiler_id = EpEventManager::GetActiveProfilerId();
   std::chrono::high_resolution_clock::time_point kernel_start_ts;
   std::chrono::high_resolution_clock::time_point kernel_end_ts;
 
-  if (profiler_client_id.has_value()) {
+  if (active_profiler_id.has_value()) {
     kernel_start_ts = std::chrono::high_resolution_clock::now();
   }
 
@@ -132,7 +132,7 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
     }
   }
 
-  if (profiler_client_id.has_value()) {
+  if (active_profiler_id.has_value()) {
     kernel_end_ts = std::chrono::high_resolution_clock::now();
 
     auto& ep_event_manager = EpEventManager::GetInstance();
@@ -145,7 +145,7 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
     event_name += op_type;
 
     EpEventManager::Event event(std::move(event_name), ts_ns, dur_ns);
-    ep_event_manager.AddEpEvent(*profiler_client_id, std::move(event));
+    ep_event_manager.AddEpEvent(*active_profiler_id, std::move(event));
   }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

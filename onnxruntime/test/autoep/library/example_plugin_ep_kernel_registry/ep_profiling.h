@@ -24,7 +24,7 @@
 struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
   const OrtEpApi& ep_api;
   int64_t profiling_start_time_ns = 0;
-  uint64_t client_id = 0;
+  uint64_t profiler_id = 0;
 
   explicit ExampleKernelEpProfiler(const OrtEpApi& api);
   ~ExampleKernelEpProfiler();
@@ -45,11 +45,11 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
 /// Singleton object that stores events from this EP's kernels and manages a stack of ORT event boundaries
 /// used for annotating EP events with metadata from correlated ORT events.
 ///
-/// This singleton maintains state per profiling session (i.e., a client). An OrtEpProfilerImpl must register itself
-/// as a client via RegisterClient().
+/// This singleton maintains state per profiling session (i.e., per profiler). An OrtEpProfilerImpl must register
+/// itself via RegisterProfiler().
 ///
 /// An OrtEpProfilerImpl performs the following operations:
-///   - RegisterClient()
+///   - RegisterProfiler()
 ///   - PushOrtEvent() / PopOrtEvent() as ORT provides StartEvent / StopEvent callbacks
 ///   - ConsumeEvents() to get all EP events when ORT calls OrtEpProfilerImpl::EndProfiling()
 ///
@@ -71,36 +71,36 @@ class EpEventManager {
 
   static EpEventManager& GetInstance();
 
-  // Returns the active profiling client ID for the current thread, or std::nullopt if no
+  // Returns the active profiler ID for the current thread, or std::nullopt if no
   // ORT event is in progress on this thread. Use this from kernels to determine the correct
-  // client ID for submitting profiling events during concurrent runs (each with its own run profiler).
-  static std::optional<uint64_t> GetActiveClientId();
+  // profiler ID for submitting profiling events during concurrent runs (each with its own run profiler).
+  static std::optional<uint64_t> GetActiveProfilerId();
 
-  uint64_t RegisterClient();
-  void UnregisterClient(uint64_t client_id);
+  uint64_t RegisterProfiler();
+  void UnregisterProfiler(uint64_t profiler_id);
 
   void StartProfiling();
 
-  void PushOrtEvent(uint64_t client_id);
-  void PopOrtEvent(uint64_t client_id, const std::string& ort_event_name);
+  void PushOrtEvent(uint64_t profiler_id);
+  void PopOrtEvent(uint64_t profiler_id, const std::string& ort_event_name);
 
-  void AddEpEvent(uint64_t client_id, Event event);
+  void AddEpEvent(uint64_t profiler_id, Event event);
 
-  void ConsumeEvents(uint64_t client_id, std::vector<Event>& events);
+  void ConsumeEvents(uint64_t profiler_id, std::vector<Event>& events);
 
  private:
   // Caller should hold mutex_
   void Shutdown();
 
-  struct ClientState {
+  struct ProfilerState {
     std::vector<Event> events;
   };
 
   mutable std::mutex mutex_;
-  uint64_t next_client_id_{1};
-  uint64_t num_clients_{0};
+  uint64_t next_profiler_id_{1};
+  uint64_t num_profilers_{0};
   bool enabled_{false};
 
-  // client ID -> ClientState
-  std::unordered_map<uint64_t, ClientState> client_state_;
+  // profiler ID -> ProfilerState
+  std::unordered_map<uint64_t, ProfilerState> profiler_state_;
 };

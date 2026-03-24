@@ -5,11 +5,11 @@
 #include <chrono>
 #include <optional>
 
-// Thread-local profiling state. Tracks the active client ID and a per-thread stack of ORT event
-// boundaries. Per-thread state is necessary because a single session profiler (single client_id)
+// Thread-local profiling state. Tracks the active profiler ID and a per-thread stack of ORT event
+// boundaries. Per-thread state is necessary because a single session profiler (single profiler_id)
 // can have StartEvent/StopEvent called from multiple threads (e.g., via inter-op parallelism).
 struct ThreadLocalProfilingState {
-  std::optional<uint64_t> client_id;
+  std::optional<uint64_t> profiler_id;
   std::vector<size_t> ort_event_start_indices;  // Stack of event indices at push time (per-thread)
 };
 static thread_local ThreadLocalProfilingState tls_profiling_state_;
@@ -25,31 +25,31 @@ EpEventManager& EpEventManager::GetInstance() {
 }
 
 /*static*/
-std::optional<uint64_t> EpEventManager::GetActiveClientId() {
-  return tls_profiling_state_.client_id;
+std::optional<uint64_t> EpEventManager::GetActiveProfilerId() {
+  return tls_profiling_state_.profiler_id;
 }
 
-uint64_t EpEventManager::RegisterClient() {
+uint64_t EpEventManager::RegisterProfiler() {
   std::lock_guard<std::mutex> lock(mutex_);
-  uint64_t result = next_client_id_++;
+  uint64_t result = next_profiler_id_++;
 
-  client_state_.insert({result, {}});
-  num_clients_++;
+  profiler_state_.insert({result, {}});
+  num_profilers_++;
 
   return result;
 }
 
-void EpEventManager::UnregisterClient(uint64_t client_id) {
+void EpEventManager::UnregisterProfiler(uint64_t profiler_id) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto iter = client_state_.find(client_id);
-  if (iter == client_state_.end()) {
+  auto iter = profiler_state_.find(profiler_id);
+  if (iter == profiler_state_.end()) {
     return;
   }
 
-  client_state_.erase(iter);
-  --num_clients_;
+  profiler_state_.erase(iter);
+  --num_profilers_;
 
-  if (num_clients_ == 0 && enabled_) {
+  if (num_profilers_ == 0 && enabled_) {
     Shutdown();
   }
 }
@@ -63,14 +63,14 @@ void EpEventManager::StartProfiling() {
   enabled_ = true;
 }
 
-void EpEventManager::PushOrtEvent(uint64_t client_id) {
+void EpEventManager::PushOrtEvent(uint64_t profiler_id) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!enabled_) {
     return;
   }
 
-  auto iter = client_state_.find(client_id);
-  if (iter == client_state_.end()) {
+  auto iter = profiler_state_.find(profiler_id);
+  if (iter == profiler_state_.end()) {
     return;
   }
 
@@ -78,18 +78,18 @@ void EpEventManager::PushOrtEvent(uint64_t client_id) {
   // only this thread's events when PopOrtEvent is called.
   tls_profiling_state_.ort_event_start_indices.push_back(iter->second.events.size());
 
-  // Set the active client for this thread so kernels can find it.
-  tls_profiling_state_.client_id = client_id;
+  // Set the active profiler for this thread so kernels can find it.
+  tls_profiling_state_.profiler_id = profiler_id;
 }
 
-void EpEventManager::PopOrtEvent(uint64_t client_id, const std::string& ort_event_name) {
+void EpEventManager::PopOrtEvent(uint64_t profiler_id, const std::string& ort_event_name) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!enabled_) {
     return;
   }
 
-  auto iter = client_state_.find(client_id);
-  if (iter == client_state_.end() || tls_profiling_state_.ort_event_start_indices.empty()) {
+  auto iter = profiler_state_.find(profiler_id);
+  if (iter == profiler_state_.end() || tls_profiling_state_.ort_event_start_indices.empty()) {
     return;
   }
 
@@ -106,32 +106,32 @@ void EpEventManager::PopOrtEvent(uint64_t client_id, const std::string& ort_even
 
   // Clear the thread-local when the outermost ORT event on this thread finishes.
   if (tls_profiling_state_.ort_event_start_indices.empty()) {
-    tls_profiling_state_.client_id.reset();
+    tls_profiling_state_.profiler_id.reset();
   }
 }
 
-void EpEventManager::AddEpEvent(uint64_t client_id, Event event) {
+void EpEventManager::AddEpEvent(uint64_t profiler_id, Event event) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!enabled_) {
     return;
   }
 
-  auto iter = client_state_.find(client_id);
-  if (iter == client_state_.end()) {
+  auto iter = profiler_state_.find(profiler_id);
+  if (iter == profiler_state_.end()) {
     return;
   }
 
   iter->second.events.push_back(std::move(event));
 }
 
-void EpEventManager::ConsumeEvents(uint64_t client_id, std::vector<Event>& events) {
+void EpEventManager::ConsumeEvents(uint64_t profiler_id, std::vector<Event>& events) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!enabled_) {
     return;
   }
 
-  auto iter = client_state_.find(client_id);
-  if (iter == client_state_.end()) {
+  auto iter = profiler_state_.find(profiler_id);
+  if (iter == profiler_state_.end()) {
     return;
   }
 
@@ -146,7 +146,7 @@ void EpEventManager::Shutdown() {
   }
 
   enabled_ = false;
-  client_state_.clear();
+  profiler_state_.clear();
 }
 
 //
@@ -162,12 +162,12 @@ ExampleKernelEpProfiler::ExampleKernelEpProfiler(const OrtEpApi& api) : OrtEpPro
   StopEvent = StopEventImpl;
 
   auto& ep_event_manager = EpEventManager::GetInstance();
-  client_id = ep_event_manager.RegisterClient();
+  profiler_id = ep_event_manager.RegisterProfiler();
 }
 
 ExampleKernelEpProfiler::~ExampleKernelEpProfiler() {
   auto& ep_event_manager = EpEventManager::GetInstance();
-  ep_event_manager.UnregisterClient(client_id);
+  ep_event_manager.UnregisterProfiler(profiler_id);
 }
 
 /*static*/
@@ -191,7 +191,7 @@ void ORT_API_CALL ExampleKernelEpProfiler::StartEventImpl(OrtEpProfilerImpl* thi
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
   auto& ep_event_manager = EpEventManager::GetInstance();
 
-  ep_event_manager.PushOrtEvent(self->client_id);
+  ep_event_manager.PushOrtEvent(self->profiler_id);
 }
 
 /*static*/
@@ -205,7 +205,7 @@ void ORT_API_CALL ExampleKernelEpProfiler::StopEventImpl(OrtEpProfilerImpl* this
   const char* ort_event_name = ort_event.GetName();
 
   // Annotate all EP events that were collected during this ORT event with metadata from the ORT event.
-  ep_event_manager.PopOrtEvent(self->client_id, ort_event_name);
+  ep_event_manager.PopOrtEvent(self->profiler_id, ort_event_name);
 }
 
 /*static*/
@@ -218,7 +218,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
   auto& ep_event_manager = EpEventManager::GetInstance();
 
   std::vector<EpEventManager::Event> raw_ep_events;
-  ep_event_manager.ConsumeEvents(self->client_id, raw_ep_events);
+  ep_event_manager.ConsumeEvents(self->profiler_id, raw_ep_events);
 
   if (raw_ep_events.empty()) {
     return nullptr;
