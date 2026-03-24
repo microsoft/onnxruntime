@@ -972,8 +972,23 @@ public:
     {
         ORT_TRY
         {
-            Microsoft::WRL::ComPtr<MLOperatorKernel> kernel = wil::MakeOrThrow<MLOperatorKernel>(MLOperatorKernelCreationContext(&info));
+            // Use placement new instead of wil::MakeOrThrow to control allocation
+            // and deallocation directly, ensuring correctly-sized cleanup if the
+            // constructor throws an exception.
+            void* buffer = ::operator new(sizeof(MLOperatorKernel));
+            MLOperatorKernel* kernelRaw = nullptr;
+            try
+            {
+                kernelRaw = new (buffer) MLOperatorKernel(MLOperatorKernelCreationContext(&info));
+            }
+            catch (...)
+            {
+                ::operator delete(buffer, sizeof(MLOperatorKernel));
+                throw;
+            }
 
+            Microsoft::WRL::ComPtr<MLOperatorKernel> kernel;
+            kernel.Attach(kernelRaw);
             *opKernel = kernel.Detach();
             return S_OK;
         }
