@@ -24,16 +24,9 @@ class ConformerOnnxModel(BertOnnxModel):
             False if options is None else options.disable_multi_head_attention_bias
         )
         super().optimize(options, add_dynamic_axes)
-        self.postprocess()
 
     def fuse_attention(self):
         self.attention_fusion.apply()
 
     def preprocess(self):
         self.adjust_reshape_and_expand()
-
-    def postprocess(self):
-        self.remove_cascaded_cast_nodes()
-        self.remove_useless_cast_nodes()
-        self.remove_unused_constant()
-        super().postprocess()
