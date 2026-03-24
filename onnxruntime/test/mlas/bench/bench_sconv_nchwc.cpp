@@ -82,10 +82,18 @@ static void RunDirectNchwcKernel(const size_t input_channels,
 
   // Outer IC-block loop is required to accumulate all channel-block contributions:
   // first block initializes with bias, remaining blocks accumulate into output.
+  // the production driver sets ACCUMULATE_OUTPUT for all but the first IC block,
+  // and applies BIAS_ADDITION only on the final IC block.
   for (size_t icb = 0; icb < input_channel_blocks; ++icb) {
-    const unsigned kernel_flags =
-        (icb == 0) ? MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION : MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT;
-
+    const bool is_first_ic_block = (icb == 0);
+    const bool is_last_ic_block = (icb + 1 == input_channel_blocks);
+    unsigned kernel_flags = 0;
+    if (!is_first_ic_block) {
+      kernel_flags |= MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT;
+    }
+    if (is_last_ic_block && bias != nullptr) {
+      kernel_flags |= MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION;
+    }
     const float* ic_block_input = input + icb * input_height * input_width * NchwcBlockSize;
     const float* ic_block_filter = filter + icb * kernel_size * NchwcBlockSize * NchwcBlockSize;
 
@@ -111,9 +119,13 @@ static void RunDirectNchwcKernel(const size_t input_channels,
       const size_t effective_kernel_height = kh_end - kh_start;
       const ptrdiff_t input_h_base = output_origin_h + static_cast<ptrdiff_t>(kh_start * dilation);
 
+      ptrdiff_t kernel_row_index =
+          input_h_base * static_cast<ptrdiff_t>(input_width) - static_cast<ptrdiff_t>(pad_left);
+      if (kernel_row_index < 0) {
+        kernel_row_index = 0;
+      }
       const float* kernel_input_row =
-          ic_block_input + static_cast<ptrdiff_t>(NchwcBlockSize) *
-                               (input_h_base * static_cast<ptrdiff_t>(input_width) - static_cast<ptrdiff_t>(pad_left));
+          ic_block_input + static_cast<ptrdiff_t>(NchwcBlockSize) * kernel_row_index;
       const float* input_base_row =
           ic_block_input + static_cast<ptrdiff_t>(NchwcBlockSize) * (input_h_base * static_cast<ptrdiff_t>(input_width));
       const float* kernel_filter = ic_block_filter + kh_start * kernel_width * NchwcBlockSize * NchwcBlockSize;
