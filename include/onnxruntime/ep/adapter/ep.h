@@ -27,6 +27,7 @@ class Ep : public OrtEp {
         profiler_{impl_->GetProfiler()},
         temp_space_cpu_allocator_{temp_space_cpu_allocator},
         temp_space_allocator_{temp_space_allocator} {
+    ort_version_supported = ORT_API_VERSION;
   }
 
  public:

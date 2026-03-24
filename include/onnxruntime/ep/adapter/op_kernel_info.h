@@ -19,7 +19,7 @@
 #include "tensor_helper.h"
 
 namespace onnxruntime {
-struct DataTransferManager;
+class DataTransferManager;
 struct IExecutionProvider;
 }  // namespace onnxruntime
 
