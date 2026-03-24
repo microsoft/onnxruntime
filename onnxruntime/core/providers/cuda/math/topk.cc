@@ -35,10 +35,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
-    11,
+    11, 23,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
@@ -47,6 +47,22 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
                               DataTypeImpl::GetTensorType<int64_t>()})
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    TopK<true>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    TopK,
+    kOnnxDomain,
+    24,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
+                              DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<int64_t>(),
+                              DataTypeImpl::GetTensorType<BFloat16>()})
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
@@ -124,6 +140,7 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   if (IS_PRIM_TYPE(MLFloat16)) return TOPKIMPL(MLFloat16);
   if (IS_PRIM_TYPE(float)) return TOPKIMPL(float);
   if (IS_PRIM_TYPE(double)) return TOPKIMPL(double);
+  if (IS_PRIM_TYPE(BFloat16)) return TOPKIMPL(BFloat16);
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for TopK operator");
 }

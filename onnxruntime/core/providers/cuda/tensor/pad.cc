@@ -40,10 +40,70 @@ namespace cuda {
           .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      18, 18,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      19, 20,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      21, 22,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      23, 23,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      24, 24,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      18,                                                         \
+      25,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -154,6 +214,11 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     effective_input_extents.push_back(extent);
   }
 
+  TArray<int64_t> input_offsets(dimension_count);
+  for (int32_t i = 0; i < dimension_count; ++i) {
+    input_offsets[i] = -(*p_slices)[i];
+  }
+
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
 
@@ -195,10 +260,10 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
                            "Pad: invalid mode: ", static_cast<int>(mode_), " with zero effective input extent");
   }
 
-  // Special case for Reflect mode: ensure all extents >= 2 after slicing
-  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
-  // implies that this would be wrong as the start and end positions should be distinct
-  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
+  // Special case for Reflect mode: ensure all extents >= 2 after slicing;
+  // otherwise reflection is not possible. Also validate that pads do not
+  // exceed extent - 1 on each side, as required by the ONNX spec, which
+  // aligns with NumPy behavior where start and end positions must be distinct.
   if (mode_ == Mode::Reflect) {
     for (int32_t i = 0; i < dimension_count; ++i) {
       const int64_t extent = effective_input_extents[i];  // length after slicing
@@ -208,6 +273,19 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Pad reflect requires axis length >= 2 after slicing. Input shape:",
                                input_shape);
+      }
+      // ONNX spec: reflect pads must not exceed extent - 1 on each side
+      if ((*p_pads)[i] > extent - 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect: pre-pad (", (*p_pads)[i],
+                               ") exceeds maximum allowed (", extent - 1,
+                               ") for axis ", i, ". Input shape:", input_shape);
+      }
+      if ((*p_pads)[i + dimension_count] > extent - 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect: post-pad (", (*p_pads)[i + dimension_count],
+                               ") exceeds maximum allowed (", extent - 1,
+                               ") for axis ", i, ". Input shape:", input_shape);
       }
     }
   }
@@ -223,7 +301,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  if (IsNCHWInputWithPaddingAlongHAndW(dimension_count, lower_pads, upper_pads)) {
+  if (mode_ != Mode::Wrap &&
+      IsNCHWInputWithPaddingAlongHAndW(dimension_count, lower_pads, upper_pads)) {
     // If we have entered here, it means the input can only be 4-D (NCHW), 3-D (CHW), or 2-D (HW)
 
     // NCHW input
@@ -269,6 +348,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       input_dims,
       input_strides,
       lower_pads,
+      TArray<int64_t>(effective_input_extents),
+      input_offsets,
       value,
       static_cast<int>(mode_),
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.Data<T>()),
