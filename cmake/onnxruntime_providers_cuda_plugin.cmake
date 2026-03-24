@@ -161,8 +161,7 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shr
 # Exclude contrib ops using GetComputeStream() or framework type deps.
 # group_norm.cc still requires the real CudaTuningContext/Stream types.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/diffusion/group_norm\\.cc$")
-# fused_conv.cc still depends on provider-only cuDNN config APIs beyond stream access.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/fused_conv\\.cc$")
+# list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/fused_conv\\.cc$")
 # list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/inverse\\.cc$")
 # list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/math/bias_dropout\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/math/fft_ops\\.cc$")

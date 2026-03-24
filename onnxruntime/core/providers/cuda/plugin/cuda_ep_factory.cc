@@ -245,12 +245,14 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   read_session_config_bool("prefer_nhwc", config.prefer_nhwc);
   read_session_config_bool("use_tf32", config.use_tf32);
   read_session_config_bool("enable_skip_layer_norm_strict_mode", config.enable_skip_layer_norm_strict_mode);
+  read_session_config_bool("cudnn_conv_use_max_workspace", config.cudnn_conv_use_max_workspace);
   read_session_config_bool("cudnn_conv1d_pad_to_nc1d", config.cudnn_conv1d_pad_to_nc1d);
   read_session_config_int("cudnn_conv_algo", config.cudnn_conv_algo);
 
   read_session_config_bool("ep.cuda.prefer_nhwc_layout", config.prefer_nhwc);
   read_session_config_bool("ep.cuda.use_tf32", config.use_tf32);
   read_session_config_bool("ep.cuda.enable_skip_layer_norm_strict_mode", config.enable_skip_layer_norm_strict_mode);
+  read_session_config_bool("ep.cuda.cudnn_conv_use_max_workspace", config.cudnn_conv_use_max_workspace);
   read_session_config_bool("ep.cuda.cudnn_conv1d_pad_to_nc1d", config.cudnn_conv1d_pad_to_nc1d);
   read_session_config_int("ep.cuda.cudnn_conv_algo", config.cudnn_conv_algo);
 

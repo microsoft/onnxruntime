@@ -325,6 +325,7 @@ struct CudaKernelAdapterRuntimeConfig {
   std::atomic<bool> skip_layer_norm_strict_mode{false};
   std::atomic<int> device_id{0};
   std::atomic<int> cudnn_conv_algo{0};
+  std::atomic<bool> cudnn_conv_use_max_workspace{true};
   std::atomic<bool> cudnn_conv1d_pad_to_nc1d{false};
 };
 inline CudaKernelAdapterRuntimeConfig& GetCudaKernelAdapterRuntimeConfig() {
@@ -389,6 +390,9 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
   int GetCudnnConvAlgo() const {
     return cuda::detail::GetCudaKernelAdapterRuntimeConfig().cudnn_conv_algo.load(std::memory_order_relaxed);
   }
+  bool GetCudnnConvUseMaxWorkspace() const {
+    return cuda::detail::GetCudaKernelAdapterRuntimeConfig().cudnn_conv_use_max_workspace.load(std::memory_order_relaxed);
+  }
   bool GetCudnnConv1dPadToNc1d() const {
     return cuda::detail::GetCudaKernelAdapterRuntimeConfig().cudnn_conv1d_pad_to_nc1d.load(std::memory_order_relaxed);
   }
@@ -407,12 +411,14 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
 namespace cuda {
 
 inline void SetCudaKernelAdapterRuntimeConfig(bool use_tf32, int device_id, bool skip_layer_norm_strict_mode = false,
-                                              int cudnn_conv_algo = 0, bool cudnn_conv1d_pad_to_nc1d = false) {
+                                              int cudnn_conv_algo = 0, bool cudnn_conv_use_max_workspace = true,
+                                              bool cudnn_conv1d_pad_to_nc1d = false) {
   auto& config = detail::GetCudaKernelAdapterRuntimeConfig();
   config.use_tf32.store(use_tf32, std::memory_order_relaxed);
   config.skip_layer_norm_strict_mode.store(skip_layer_norm_strict_mode, std::memory_order_relaxed);
   config.device_id.store(device_id, std::memory_order_relaxed);
   config.cudnn_conv_algo.store(cudnn_conv_algo, std::memory_order_relaxed);
+  config.cudnn_conv_use_max_workspace.store(cudnn_conv_use_max_workspace, std::memory_order_relaxed);
   config.cudnn_conv1d_pad_to_nc1d.store(cudnn_conv1d_pad_to_nc1d, std::memory_order_relaxed);
 }
 
