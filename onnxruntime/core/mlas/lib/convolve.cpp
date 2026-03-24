@@ -1327,6 +1327,7 @@ Return Value:
 
 namespace {
 
+#if defined(USE_KLEIDIAI) && defined(__aarch64__)
 static constexpr size_t ComputeChannelsLastDilatedKernelSize(size_t dilation, size_t kernel) {
     return (dilation * kernel) - (dilation - 1);
 }
@@ -1338,6 +1339,7 @@ static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kern
 
     return 0;
 }
+#endif
 
 }  // namespace
 
