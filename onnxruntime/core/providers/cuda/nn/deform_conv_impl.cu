@@ -154,7 +154,7 @@ __device__ __inline__ T BilinearInterpolate(
 }
 
 // kH/kW = -1 means dynamic (runtime); >= 0 means compile-time constant for loop unrolling.
-template <typename T, typename IndexT, int kH = -1, int kW = -1>
+template <typename T, typename IndexT, int kH = -1, int kW = -1, bool UseMask = false>
 __global__ void DeformableIm2ColKernel(
     IndexT num_kernels,
     const T* __restrict__ input,
@@ -176,7 +176,6 @@ __global__ void DeformableIm2ColKernel(
     DivMod<IndexT> out_w_div,
     DivMod<IndexT> parallel_imgs_div,
     DivMod<IndexT> channel_per_offset_grp_div,
-    bool use_mask,
     T* __restrict__ data_col) {
   constexpr bool is_fixed = (kH >= 0 && kW >= 0);
   const int64_t h_dim = is_fixed ? kH : weight_h;
@@ -227,7 +226,7 @@ __global__ void DeformableIm2ColKernel(
     // 4. Mask pointer base calculation (if used).
     // Layout: (N, offset_groups, KH*KW, OH, OW)
     const T* mask_ptr_base = nullptr;
-    if (use_mask) {
+    if constexpr (UseMask) {
       const int64_t mask_group_block_size = h_dim * w_dim * out_size;
       mask_ptr_base = mask + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * mask_group_block_size + spatial_idx;
     }
@@ -247,7 +246,7 @@ __global__ void DeformableIm2ColKernel(
     auto process_kernel_point = [&](int64_t i, int64_t j) {
       const int64_t kernel_idx = i * w_dim + j;
       T mask_val = static_cast<T>(1);
-      if (use_mask) {
+      if constexpr (UseMask) {
         // Access mask using pre-calculated base and stride.
         mask_val = DeformConvLdg(mask_ptr_base + kernel_idx * out_size);
       }
@@ -275,11 +274,23 @@ __global__ void DeformableIm2ColKernel(
     };
 
     if constexpr (is_fixed) {
+      if constexpr (kH * kW <= 9) {
+        // For 1x1 and 3x3, fully unroll both loops
 #pragma unroll
-      for (int i = 0; i < kH; ++i) {
+        for (int i = 0; i < kH; ++i) {
 #pragma unroll
-        for (int j = 0; j < kW; ++j) {
-          process_kernel_point(i, j);
+          for (int j = 0; j < kW; ++j) {
+            process_kernel_point(i, j);
+          }
+        }
+      } else {
+        // For 5x5 (25 iterations), fully unrolling causes register spilling and I-cache thrashing.
+        // Unroll only the inner loop to balance loop overhead and instruction footprint.
+        for (int i = 0; i < kH; ++i) {
+#pragma unroll
+          for (int j = 0; j < kW; ++j) {
+            process_kernel_point(i, j);
+          }
         }
       }
     } else {
@@ -381,35 +392,44 @@ Status DeformConvIm2ColImpl(
 
   int blocks = GetGridSize(static_cast<size_t>(num_kernels), kDeformConvThreadsPerBlock);
 
-  auto launch = [&](auto kH_tag, auto kW_tag) {
+  auto launch = [&](auto kH_tag, auto kW_tag, auto use_mask_tag) {
     constexpr int KH = decltype(kH_tag)::value;
     constexpr int KW = decltype(kW_tag)::value;
+    constexpr bool UseMask = decltype(use_mask_tag)::value;
     if (use_64bit) {
-      DeformableIm2ColKernel<T, int64_t, KH, KW><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+      DeformableIm2ColKernel<T, int64_t, KH, KW, UseMask><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
           num_kernels, input, offset, mask, H, W, kH, kW, pad_h, pad_w,
           stride_h, stride_w, dilation_h, dilation_w, C, offset_group,
           DivMod<int64_t>(out_h), DivMod<int64_t>(out_w), DivMod<int64_t>(parallel_imgs),
-          DivMod<int64_t>(C / offset_group), use_mask, col_buffer);
+          DivMod<int64_t>(C / offset_group), col_buffer);
     } else {
-      DeformableIm2ColKernel<T, int32_t, KH, KW><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+      DeformableIm2ColKernel<T, int32_t, KH, KW, UseMask><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
           static_cast<int32_t>(num_kernels), input, offset, mask, H, W, kH, kW, pad_h, pad_w,
           stride_h, stride_w, dilation_h, dilation_w, C, offset_group,
           DivMod<int32_t>(static_cast<int32_t>(out_h)),
           DivMod<int32_t>(static_cast<int32_t>(out_w)),
           DivMod<int32_t>(static_cast<int32_t>(parallel_imgs)),
           DivMod<int32_t>(static_cast<int32_t>(C / offset_group)),
-          use_mask, col_buffer);
+          col_buffer);
+    }
+  };
+
+  auto launch_with_mask = [&](auto kH_tag, auto kW_tag) {
+    if (use_mask) {
+      launch(kH_tag, kW_tag, std::integral_constant<bool, true>{});
+    } else {
+      launch(kH_tag, kW_tag, std::integral_constant<bool, false>{});
     }
   };
 
   if (kH == 1 && kW == 1) {
-    launch(DeformConvKSize<1>{}, DeformConvKSize<1>{});
+    launch_with_mask(DeformConvKSize<1>{}, DeformConvKSize<1>{});
   } else if (kH == 3 && kW == 3) {
-    launch(DeformConvKSize<3>{}, DeformConvKSize<3>{});
+    launch_with_mask(DeformConvKSize<3>{}, DeformConvKSize<3>{});
   } else if (kH == 5 && kW == 5) {
-    launch(DeformConvKSize<5>{}, DeformConvKSize<5>{});
+    launch_with_mask(DeformConvKSize<5>{}, DeformConvKSize<5>{});
   } else {
-    launch(DeformConvKSize<-1>{}, DeformConvKSize<-1>{});
+    launch_with_mask(DeformConvKSize<-1>{}, DeformConvKSize<-1>{});
   }
   return CUDA_CALL(cudaGetLastError());
 }
