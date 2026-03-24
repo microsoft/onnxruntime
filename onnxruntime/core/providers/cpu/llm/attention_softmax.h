@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/float16.h"
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/buffer_deleter.h"
