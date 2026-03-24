@@ -8,6 +8,9 @@
 #include "core/framework/kernel_registry.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "core/mlas/inc/mlas.h"
+#if defined(USE_KLEIDIAI) && defined(__aarch64__)
+#include "core/mlas/lib/mlasi.h"
+#endif
 #include "core/graph/graph.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/util/include/test_environment.h"
@@ -57,6 +60,14 @@ static bool HasFloatNhwcFusedConvKernel() {
       &kernel_create_info);
 
   return status.IsOK() && kernel_create_info != nullptr;
+}
+
+static bool HasFloatNhwcRuntimeSupport() {
+#if defined(USE_KLEIDIAI) && defined(__aarch64__)
+  return HasFloatNhwcFusedConvKernel() && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+#else
+  return false;
+#endif
 }
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -288,8 +299,8 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwc) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const int expected_nhwc_fused_conv = HasFloatNhwcFusedConvKernel() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcFusedConvKernel() ? 2 : 0;
+    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
+    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
@@ -315,8 +326,8 @@ TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const int expected_nhwc_fused_conv = HasFloatNhwcFusedConvKernel() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcFusedConvKernel() ? 2 : 0;
+    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
+    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
@@ -346,8 +357,8 @@ TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const int expected_nhwc_fused_conv = HasFloatNhwcFusedConvKernel() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcFusedConvKernel() ? 2 : 0;
+    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
+    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
@@ -379,8 +390,8 @@ TEST(NhwcTransformerTests, FusedConvWithSumFloat_SkipNhwc) {
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
-    const int expected_nhwc_fused_conv = HasFloatNhwcFusedConvKernel() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcFusedConvKernel() ? 3 : 0;
+    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
+    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 3 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
@@ -407,8 +418,8 @@ TEST(NhwcTransformerTests, ConvAutoPadFloat_SkipNhwc) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const int expected_nhwc_fused_conv = HasFloatNhwcFusedConvKernel() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcFusedConvKernel() ? 2 : 0;
+    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
+    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
