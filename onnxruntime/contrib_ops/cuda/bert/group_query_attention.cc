@@ -142,13 +142,7 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
 // 11. head_sink        (Tensor) - Attention sink for GPT-OSS
 template <typename T, typename U>
 Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) const {
-  // Stream access: void* for GetScratchBuffer, Stream* for QkvToContext.
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  onnxruntime::PluginStreamShim plugin_stream_shim(GetComputeStream(context));
-  auto* ort_stream = static_cast<onnxruntime::Stream*>(&plugin_stream_shim);
-#else
-  auto* ort_stream = context->GetComputeStream();
-#endif
+  auto ort_stream = GetOrtStream(context);
 
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
@@ -564,7 +558,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   cublasHandle_t cublas = GetCublasHandle(context);
 
   ORT_RETURN_IF_ERROR((QkvToContext<CudaT, CudaU>(
-      device_prop, cublas, ort_stream, parameters, data)));
+      device_prop, cublas, ort_stream.get(), parameters, data)));
   return Status::OK();
 }
 

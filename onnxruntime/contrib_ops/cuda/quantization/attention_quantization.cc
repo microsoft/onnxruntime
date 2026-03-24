@@ -95,12 +95,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   //   Output 0 - output            : (batch_size, sequence_length, hidden_size)
   //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
 
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  onnxruntime::PluginStreamShim plugin_stream_shim(GetComputeStream(context));
-  auto* ort_stream = static_cast<onnxruntime::Stream*>(&plugin_stream_shim);
-#else
-  auto* ort_stream = context->GetComputeStream();
-#endif
+  auto ort_stream = GetOrtStream(context);
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
@@ -228,7 +223,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   }
 
   cudnnHandle_t cudnn = GetCudnnHandle(context);
-  return QkvToContext<CudaT>(GetDeviceProp(), cublas, cudnn, ort_stream, parameters, data);
+  return QkvToContext<CudaT>(GetDeviceProp(), cublas, cudnn, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

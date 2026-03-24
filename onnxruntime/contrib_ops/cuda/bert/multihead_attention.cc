@@ -88,12 +88,7 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
 
 template <typename T, typename QK>
 Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) const {
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  onnxruntime::PluginStreamShim plugin_stream_shim(GetComputeStream(context));
-  auto* ort_stream = static_cast<onnxruntime::Stream*>(&plugin_stream_shim);
-#else
-  auto* ort_stream = context->GetComputeStream();
-#endif
+  auto ort_stream = GetOrtStream(context);
 
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
@@ -564,7 +559,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   cudnnHandle_t cudnn = GetCudnnHandle(context);
   DUMP_STRING("Run QkvToContext from MHA CUDA");
   return QkvToContext<CudaT, CudaQK>(
-      device_prop, cublas, cudnn, ort_stream, parameters, data);
+      device_prop, cublas, cudnn, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

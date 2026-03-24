@@ -88,10 +88,10 @@ struct DispatchGroupNorm {
                     int channels_per_block) {
     ORT_UNUSED_PARAMETER(tuning_ctx);
     typedef typename ToCudaType<T>::MappedType CudaT;
-    onnxruntime::PluginStreamShim plugin_stream_shim(ort_stream);
+    onnxruntime::OrtStreamAdapter ort_stream_adapter(ort_stream);
     return LaunchGroupNormKernel<CudaT>(
         nullptr,
-        &plugin_stream_shim,
+        ort_stream_adapter.get(),
         reinterpret_cast<CudaT*>(output->MutableData<T>()),
         add_out == nullptr ? nullptr : reinterpret_cast<CudaT*>(add_out->MutableData<T>()),
         reinterpret_cast<const CudaT*>(input->Data<T>()),

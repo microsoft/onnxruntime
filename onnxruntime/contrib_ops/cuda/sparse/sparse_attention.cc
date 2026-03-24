@@ -60,13 +60,7 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
-  // Stream access: void* for GetScratchBuffer, Stream* for QkvToContext.
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  onnxruntime::PluginStreamShim plugin_stream_shim(GetComputeStream(context));
-  auto* ort_stream = static_cast<onnxruntime::Stream*>(&plugin_stream_shim);
-#else
-  auto* ort_stream = context->GetComputeStream();
-#endif
+  auto ort_stream = GetOrtStream(context);
 
   auto& device_prop = GetDeviceProp();
   if constexpr (std::is_same<T, BFloat16>::value) {
@@ -324,7 +318,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.active_q_blocks = active_q_blocks;
   }
 
-  return QkvToContext<CudaT>(device_prop, ort_stream, parameters, data);
+  return QkvToContext<CudaT>(device_prop, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

@@ -175,12 +175,7 @@ DecoderAttention<T>::DecoderAttention(const OpKernelInfo& info) : CudaKernel(inf
 
 template <typename T>
 Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  onnxruntime::PluginStreamShim plugin_stream_shim(GetComputeStream(context));
-  auto* ort_stream = static_cast<onnxruntime::Stream*>(&plugin_stream_shim);
-#else
-  auto* ort_stream = context->GetComputeStream();
-#endif
+  auto ort_stream = GetOrtStream(context);
 
   const Tensor* query(context->Input<Tensor>(0));
   const Tensor* key(context->Input<Tensor>(1));
@@ -378,7 +373,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   return LaunchDecoderAttentionKernel(
       device_prop,
       UseTF32(),
-      ort_stream,
+      ort_stream.get(),
       cublas,
       element_size,
       batch_size,

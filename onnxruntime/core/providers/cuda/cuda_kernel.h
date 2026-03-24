@@ -14,6 +14,18 @@
 namespace onnxruntime {
 namespace cuda {
 
+class OrtStreamAdapter {
+ public:
+  explicit OrtStreamAdapter(onnxruntime::Stream* stream) : stream_(stream) {}
+  explicit OrtStreamAdapter(void* stream) : stream_(static_cast<onnxruntime::Stream*>(stream)) {}
+
+  onnxruntime::Stream* get() const { return stream_; }
+  operator onnxruntime::Stream*() const { return stream_; }
+
+ private:
+  onnxruntime::Stream* stream_;
+};
+
 #ifndef CUDA_STREAM_FROM_CTX
 // Helper for kernels that need a cudaStream_t from OpKernelContext in both framework and plugin builds.
 #define CUDA_STREAM_FROM_CTX(ctx) static_cast<cudaStream_t>(GetComputeStream(ctx))
@@ -101,6 +113,10 @@ class CudaKernel : public OpKernel {
   // Compatibility helper used by kernels that need the underlying ORT stream object.
   inline onnxruntime::Stream* GetComputeStream(OpKernelContext* ctx) const {
     return ctx ? ctx->GetComputeStream() : nullptr;
+  }
+
+  inline OrtStreamAdapter GetOrtStream(OpKernelContext* ctx) const {
+    return OrtStreamAdapter(GetComputeStream(ctx));
   }
 
   inline cudaStream_t Stream(OpKernelContext* ctx) const {

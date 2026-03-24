@@ -59,6 +59,31 @@ struct PluginStreamShim : public onnxruntime::Stream {
                             OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
                                       OrtDevice::VendorIds::NVIDIA, 0)) {}
 };
+
+class OrtStreamAdapter {
+ public:
+  explicit OrtStreamAdapter(void* cuda_stream_handle)
+      : plugin_stream_shim_(cuda_stream_handle), stream_(&plugin_stream_shim_) {}
+
+  onnxruntime::Stream* get() const { return stream_; }
+  operator onnxruntime::Stream*() const { return stream_; }
+
+ private:
+  PluginStreamShim plugin_stream_shim_;
+  onnxruntime::Stream* stream_;
+};
+#else
+class OrtStreamAdapter {
+ public:
+  explicit OrtStreamAdapter(void* cuda_stream_handle)
+      : stream_(static_cast<onnxruntime::Stream*>(cuda_stream_handle)) {}
+
+  onnxruntime::Stream* get() const { return stream_; }
+  operator onnxruntime::Stream*() const { return stream_; }
+
+ private:
+  onnxruntime::Stream* stream_;
+};
 #endif
 }  // namespace onnxruntime
 
@@ -643,6 +668,10 @@ class CudaKernel : public OpKernel {
   // Returns void* for dual-build compatibility: framework wraps Stream*, plugin wraps cudaStream_t.
   inline void* GetComputeStream(OpKernelContext* ctx) const {
     return ctx->GetGPUComputeStream();
+  }
+
+  inline onnxruntime::OrtStreamAdapter GetOrtStream(OpKernelContext* ctx) const {
+    return onnxruntime::OrtStreamAdapter(GetComputeStream(ctx));
   }
 
   static cudnnHandle_t GetCudnnHandle(cudaStream_t s) {
