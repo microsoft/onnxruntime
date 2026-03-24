@@ -630,6 +630,53 @@ public:
         const DML_TENSOR_DATA_TYPE outputDataType = m_outputTensorDescs[0].GetDmlDataType();
         bool hasZeroPointTensor = kernelInfo.IsInputValid(2);
 
+        uint32_t axis = 0;
+
+        if (kernelInfo.HasAttribute(AttrName::Axis, MLOperatorAttributeType::Int))
+        {
+            const int32_t signedAxis = gsl::narrow_cast<int32_t>(kernelInfo.GetAttribute<int64_t>(AttrName::Axis));
+            axis = Dml::HandleNegativeAxis(signedAxis, outputShapeDimCount, /*validateAxis*/ false);
+        }
+
+        // Explicitly reshape each of the inputs after the first input (scale tensor and optional zero point tensor)
+        // so that broadcasting works correctly. Without this, scalar or 1D scale/zero_point tensors may have fewer
+        // dimensions than the input tensor, which DML does not support.
+        for (uint32_t index = 1, inputCount = gsl::narrow_cast<uint32_t>(m_inputTensorDescs.size()); index < inputCount; ++index)
+        {
+            if (!kernelInfo.IsInputValid(index))
+            {
+                continue;
+            }
+
+            auto edgeDesc = kernelInfo.GetInputEdgeDescription(index);
+            assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+
+            std::vector<uint32_t> inputTensorShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(index);
+
+            if (inputTensorShape.size() == 1 && inputTensorShape != outputShape)
+            {
+                ML_CHECK_VALID_ARGUMENT(axis < outputShapeDimCount);
+                uint32_t broadcastAxisLength = outputShape[axis];
+                ML_CHECK_VALID_ARGUMENT(
+                    (inputTensorShape[0] == broadcastAxisLength) ||
+                    (inputTensorShape[0] == 1)
+                );
+                inputTensorShape.insert(inputTensorShape.begin(), axis, 1);
+                inputTensorShape.insert(inputTensorShape.end(), outputShapeDimCount - 1 - axis, 1);
+            }
+
+            m_inputTensorDescs[index] = TensorDesc(
+                edgeDesc.tensorDataType,
+                gsl::make_span(outputShape),
+                gsl::make_span(inputTensorShape),
+                TensorAxis::DoNotCoerce,
+                TensorAxis::W,
+                TensorAxis::RightAligned,
+                NchwDimensionCount, // minDimensionCount
+                0 // guaranteedBaseOffsetAlignment
+            );
+        }
+
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
