@@ -19,6 +19,19 @@ using namespace onnxruntime::cuda;
 namespace onnxruntime {
 namespace cuda {
 
+namespace llm_attention_detail {
+
+template <typename NodeType>
+bool HasOutput(const NodeType& node, size_t output_index) {
+  if constexpr (requires(const NodeType& candidate) { candidate.OutputCount(); candidate.OutputExists(output_index); }) {
+    return node.OutputCount() > output_index && node.OutputExists(output_index);
+  } else {
+    return node.OutputDefs().size() > output_index && node.OutputDefs()[output_index]->Exists();
+  }
+}
+
+}  // namespace llm_attention_detail
+
 #define REGISTER_KERNEL_TYPED(T)                                      \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
       Attention,                                                      \
@@ -60,7 +73,8 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   kv_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", 0));
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
-  qk_matmul_output_mode_ = info.node().OutputDefs().size() >= 4 && info.node().OutputDefs()[3]->Exists()
+  const auto& node = info.node();
+  qk_matmul_output_mode_ = llm_attention_detail::HasOutput(node, 3)
                                ? static_cast<attention_helper::QKMatMulOutputMode>(mode)
                                : attention_helper::QKMatMulOutputMode::kNone;
   ORT_ENFORCE(qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone ||

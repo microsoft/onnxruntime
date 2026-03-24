@@ -88,12 +88,6 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/sequence_op\\.cc$")
 # in the CPU provider and is not linked into the plugin.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/size\\.cc$")
 
-# Exclude llm/ for now. Stream handling in core/providers/cuda/llm/attention.cc
-# is now adapter-safe, but the kernel still uses framework-only Node::OutputDefs()
-# introspection in its constructor, and ep::adapter::Node does not expose that yet.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/llm/.*")
-list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/llm/.*")
-
 # Permanently excluded — pure CPU ops, handled by GetCpuPreferredNodes.
 # shape_op.cc inherits from onnxruntime::OpKernel (framework)
 # which cannot convert to ep::adapter::OpKernel in the plugin build.

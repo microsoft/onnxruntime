@@ -36,6 +36,16 @@ struct Node {
     return kernel_info_.GetOperatorSinceVersion();
   }
 
+  /** Gets the number of outputs. */
+  size_t OutputCount() const noexcept {
+    return kernel_info_.GetOutputCount();
+  }
+
+  /** Gets whether an output exists or is an omitted optional output. */
+  bool OutputExists(size_t index) const {
+    return index < OutputCount() && !kernel_info_.GetOutputName(index).empty();
+  }
+
  private:
   const Ort::ConstKernelInfo kernel_info_;
 };
