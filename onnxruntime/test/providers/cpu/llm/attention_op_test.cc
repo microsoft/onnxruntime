@@ -2414,16 +2414,19 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
 // applies SafeInt<size_t> to prevent overflow. This test exercises that helper
 // directly, so no large tensor allocations or op execution are required.
 TEST(AttentionTest, AttentionCpuFp16SoftmaxBufferSizeNoOverflow) {
-  // sqrt(INT_MAX) ≈ 46340, so 46341 * 46341 > INT_MAX. These are the same
-  // dimensions that previously triggered int32 overflow in N*D.
-  constexpr size_t N = 46341;
+  // N*D exceeds INT_MAX (46341^2 > 2^31-1), which is the same scenario that
+  // previously caused int32 overflow in ComputeAttentionSoftmaxInplace<MLFloat16>.
+  constexpr size_t N = 46341;  // sqrt(INT_MAX) ~ 46340, so N*D > INT_MAX
   constexpr size_t D = 46341;
 
   static_assert(static_cast<int64_t>(N) * static_cast<int64_t>(D) >
                     static_cast<int64_t>(std::numeric_limits<int>::max()),
                 "Test dimensions must cause int32 overflow in N*D");
 
-  if constexpr (sizeof(size_t) >= 8) {
+  // sizeof(void*) == 8 on all common 64-bit platforms (LP64 and LLP64/Windows).
+  // On 32-bit platforms (sizeof(void*) == 4), size_t is also 32-bit, so
+  // N*D*sizeof(float) overflows and SafeInt throws.
+  if constexpr (sizeof(void*) >= 8) {
     // On 64-bit builds the computation must succeed and equal N * D * sizeof(float).
     const size_t bytes = detail::Fp16SoftmaxTempBufferBytes(N, D);
     EXPECT_EQ(bytes, N * D * sizeof(float));
