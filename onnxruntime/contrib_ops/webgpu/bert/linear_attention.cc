@@ -247,6 +247,20 @@ LinearAttention::LinearAttention(const OpKernelInfo& info)
   chunk_size_ = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
 }
 
+
+/*
+  Inputs:
+      query:         (B, H_kv, T, d_k) — query (may have fewer heads than value for GQA; pre-scaled by 1/sqrt(d_k))
+      key:           (B, H_kv, T, d_k) — key (L2-normalized)
+      value:         (B, H, T, d_v) — value (H >= H_kv)
+      initial_state: (B, H, d_k, d_v) — recurrent state
+      decay:         (B, H, T) — exponential decay gate (log-space)
+      beta:          (B, H, T) — update rate (sigmoid output)
+
+  Outputs:
+      output:        (B, H, T, d_v) — attention output
+      present_state: (B, H, d_k, d_v) — updated recurrent state
+*/
 Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   const Tensor* query = context.Input(0);
   const Tensor* key = context.Input(1);
@@ -276,7 +290,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // Compute scale
   float scale = scale_;
   if (scale == 0.0f) {
-    scale = 1.0f / std::sqrt(static_cast<float>(head_dim_k));
+    scale = 1.0f; // TODO: should this come / std::sqrt(static_cast<float>(head_dim_k));
   }
 
   // Allocate outputs
