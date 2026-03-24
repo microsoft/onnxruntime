@@ -1521,7 +1521,7 @@ Status GetExtDataFromTensorProto(const Env& env,
       auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(ext_data_buf), static_cast<size_t>(raw_data_safe_len));
       auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(native_data.get()), static_cast<size_t>(raw_data_safe_len));
 
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span));
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span));
 
       auto tensor = Tensor{type, tensor_shape, native_data.release(), allocator};
       ORT_RETURN_IF(raw_data_safe_len != tensor.SizeInBytes(), "Weight: ", name,
