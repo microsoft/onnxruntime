@@ -173,7 +173,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
 /*static*/
 OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     OrtEpFactory* this_ptr,
-    const OrtHardwareDevice* const* /*devices*/,
+    const OrtHardwareDevice* const* devices,
     const OrtKeyValuePairs* const* /*ep_metadata*/,
     size_t num_devices,
     const OrtSessionOptions* session_options,
@@ -189,7 +189,11 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
         ORT_INVALID_ARGUMENT,
         "CUDA EP factory currently supports only one device at a time.");
   }
-  ORT_RETURN_IF_NOT(devices != nullptr && devices[0] != nullptr, "CUDA EP factory requires a valid device");
+  if (devices == nullptr || devices[0] == nullptr) {
+    return factory->ort_api_.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CUDA EP factory requires a valid device.");
+  }
 
   // Parse configuration from session options.
   // The read helpers intentionally swallow errors: if a config entry is
@@ -274,9 +278,15 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
   *allocator = nullptr;
 
   const char* name = "";
-  factory.ort_api_.MemoryInfoGetName(memory_info, &name);
+  OrtStatus* status = factory.ort_api_.MemoryInfoGetName(memory_info, &name);
+  if (status != nullptr) {
+    return status;
+  }
   int req_device_id = 0;
-  factory.ort_api_.MemoryInfoGetId(memory_info, &req_device_id);
+  status = factory.ort_api_.MemoryInfoGetId(memory_info, &req_device_id);
+  if (status != nullptr) {
+    return status;
+  }
 
   if (strcmp(name, "Cuda") == 0) {
     auto cuda_allocator = std::make_unique<CudaDeviceAllocator>(memory_info, req_device_id);

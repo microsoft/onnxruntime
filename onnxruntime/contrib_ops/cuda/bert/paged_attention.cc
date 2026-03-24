@@ -56,8 +56,8 @@ template <typename T>
 Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Stream access: void* for GetScratchBuffer, Stream* for QkvToContext.
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-  onnxruntime::PluginStreamShim __stream_shim(GetComputeStream(context));
-  auto* ort_stream = static_cast<onnxruntime::Stream*>(&__stream_shim);
+  onnxruntime::PluginStreamShim plugin_stream_shim(GetComputeStream(context));
+  auto* ort_stream = static_cast<onnxruntime::Stream*>(&plugin_stream_shim);
 #else
   auto* ort_stream = context->GetComputeStream();
 #endif

@@ -107,9 +107,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     if (antialias_) {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
       const uint8_t* lookup_table = GetLookupTableShared();
-      auto shared_lookup_table_ondevice = GetScratchBuffer<uint8_t>(kLookupTableSize, GetComputeStream(context));
-      CUDA_CALL_THROW(cudaMemcpyAsync(shared_lookup_table_ondevice.get(), lookup_table, kLookupTableSize,
+      auto shared_lookup_table_ondevice_buffer = GetScratchBuffer<uint8_t>(kLookupTableSize, GetComputeStream(context));
+      CUDA_CALL_THROW(cudaMemcpyAsync(shared_lookup_table_ondevice_buffer.get(), lookup_table, kLookupTableSize,
                                       cudaMemcpyHostToDevice, Stream(context)));
+      const auto* shared_lookup_table_ondevice = shared_lookup_table_ondevice_buffer.get();
 #else
       const auto* shared_lookup_table_ondevice = shared_lookup_table_ondevice_.get();
 #endif

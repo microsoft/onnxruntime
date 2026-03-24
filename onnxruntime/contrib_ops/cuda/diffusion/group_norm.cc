@@ -208,11 +208,11 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
   }
 
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(batch_size, num_groups_),
-                                          context->GetComputeStream());
+                                          GetComputeStream(context));
 
   utils::MLTypeCallDispatcher<GROUP_NORM_TYPES> dispatcher(input->GetElementType());
   return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(),
-                                                         context->GetComputeStream(), output, add_out, input, skip, bias,
+                                                         GetComputeStream(context), output, add_out, input, skip, bias,
                                                          gamma, beta, workspace.get(),
                                                          epsilon_,
                                                          batch_size,
