@@ -240,6 +240,97 @@ ORT_FORCEINLINE void PlanStoreSample(BilinearSamplePlanBlock<T>* blocks, int64_t
   dst.w[3][lane] = w11;
 }
 
+// Matches std::floor for in-range finite x. Call only after coords pass the inverted bounds check below
+// (NaN makes each comparison false, so the && fails and ! rejects without a separate isfinite branch).
+template <typename T>
+ORT_FORCEINLINE int DeformConvFastFloor(T x) {
+  const int i = static_cast<int>(x);
+  return i - static_cast<int>(i > x);
+}
+
+template <typename T>
+ORT_FORCEINLINE void BilinearPlanOneSample(
+    const T* ORT_CPU_RESTRICT ptr_offset_h,
+    const T* ORT_CPU_RESTRICT ptr_offset_w,
+    int height,
+    int width,
+    int64_t h_col,
+    int64_t w_col,
+    int64_t local_idx,
+    int64_t stride_h,
+    int64_t stride_w,
+    T base_h,
+    T base_w,
+    BilinearSamplePlanBlock<T>* ORT_CPU_RESTRICT plan_blocks) {
+  const T h_im = static_cast<T>(h_col * stride_h) + base_h + ptr_offset_h[local_idx];
+  const T w_im = static_cast<T>(w_col * stride_w) + base_w + ptr_offset_w[local_idx];
+
+  // Bitwise &: every predicate is evaluated (NaN compares false for both > and <), then folded to 0/1.
+  // Casts to unsigned give one integer guard; same open interval (-1, height) x (-1, width) as strict &&.
+  const T neg1 = static_cast<T>(-1);
+  const T h_max = static_cast<T>(height);
+  const T w_max = static_cast<T>(width);
+  const unsigned in_bounds = static_cast<unsigned>(
+      (h_im > neg1) & (h_im < h_max) & (w_im > neg1) & (w_im < w_max));
+  if (in_bounds == 0u) {
+    PlanStoreSample(plan_blocks, local_idx, 0, 0, 0, 0,
+                    static_cast<T>(0), static_cast<T>(0), static_cast<T>(0), static_cast<T>(0));
+    return;
+  }
+
+  const int h_low = DeformConvFastFloor(h_im);
+  const int w_low = DeformConvFastFloor(w_im);
+  const T h_floor = static_cast<T>(h_low);
+  const T w_floor = static_cast<T>(w_low);
+  const int h_high = h_low + 1;
+  const int w_high = w_low + 1;
+
+  const T lh = h_im - h_floor;
+  const T lw = w_im - w_floor;
+  const T hh = static_cast<T>(1) - lh;
+  const T hw = static_cast<T>(1) - lw;
+
+  T plan_w00 = hh * hw;
+  T plan_w01 = hh * lw;
+  T plan_w10 = lh * hw;
+  T plan_w11 = lh * lw;
+
+  const int base_low = h_low * width;
+  const int base_high = h_high * width;
+  int32_t idx00 = base_low + w_low;
+  int32_t idx01 = base_low + w_high;
+  int32_t idx10 = base_high + w_low;
+  int32_t idx11 = base_high + w_high;
+
+  if (static_cast<unsigned>(h_low) < static_cast<unsigned>(height - 1) &&
+      static_cast<unsigned>(w_low) < static_cast<unsigned>(width - 1)) {
+    PlanStoreSample(
+        plan_blocks, local_idx,
+        idx00, idx01, idx10, idx11,
+        plan_w00, plan_w01, plan_w10, plan_w11);
+  } else {
+    const bool v00 = (h_low >= 0 && w_low >= 0);
+    const bool v01 = (h_low >= 0 && w_high < width);
+    const bool v10 = (h_high < height && w_low >= 0);
+    const bool v11 = (h_high < height && w_high < width);
+
+    plan_w00 = v00 ? plan_w00 : static_cast<T>(0);
+    plan_w01 = v01 ? plan_w01 : static_cast<T>(0);
+    plan_w10 = v10 ? plan_w10 : static_cast<T>(0);
+    plan_w11 = v11 ? plan_w11 : static_cast<T>(0);
+
+    idx00 = v00 ? idx00 : 0;
+    idx01 = v01 ? idx01 : 0;
+    idx10 = v10 ? idx10 : 0;
+    idx11 = v11 ? idx11 : 0;
+
+    PlanStoreSample(
+        plan_blocks, local_idx,
+        idx00, idx01, idx10, idx11,
+        plan_w00, plan_w01, plan_w10, plan_w11);
+  }
+}
+
 template <typename T>
 void BuildBilinearSamplingPlanImpl(
     const T* ptr_offset_h,
@@ -253,73 +344,12 @@ void BuildBilinearSamplingPlanImpl(
     T base_h,
     T base_w,
     BilinearSamplePlanBlock<T>* plan_blocks) {
-  auto process_sample = [&](int64_t h_col, int64_t w_col, int64_t local_idx) {
-    const T h_im = h_col * stride_h + base_h + ptr_offset_h[local_idx];
-    const T w_im = w_col * stride_w + base_w + ptr_offset_w[local_idx];
-
-    if (h_im <= static_cast<T>(-1) || h_im >= height || w_im <= static_cast<T>(-1) || w_im >= width) {
-      PlanStoreSample(plan_blocks, local_idx, 0, 0, 0, 0,
-                      static_cast<T>(0), static_cast<T>(0), static_cast<T>(0), static_cast<T>(0));
-      return;
-    }
-
-    const T h_floor = std::floor(h_im);
-    const T w_floor = std::floor(w_im);
-    const int h_low = static_cast<int>(h_floor);
-    const int w_low = static_cast<int>(w_floor);
-    const int h_high = h_low + 1;
-    const int w_high = w_low + 1;
-
-    const T lh = h_im - h_floor;
-    const T lw = w_im - w_floor;
-    const T hh = static_cast<T>(1) - lh;
-    const T hw = static_cast<T>(1) - lw;
-
-    T plan_w00 = hh * hw;
-    T plan_w01 = hh * lw;
-    T plan_w10 = lh * hw;
-    T plan_w11 = lh * lw;
-
-    const int base_low = h_low * width;
-    const int base_high = h_high * width;
-    int32_t idx00 = base_low + w_low;
-    int32_t idx01 = base_low + w_high;
-    int32_t idx10 = base_high + w_low;
-    int32_t idx11 = base_high + w_high;
-
-    if (static_cast<unsigned>(h_low) < static_cast<unsigned>(height - 1) &&
-        static_cast<unsigned>(w_low) < static_cast<unsigned>(width - 1)) {
-      PlanStoreSample(
-          plan_blocks, local_idx,
-          idx00, idx01, idx10, idx11,
-          plan_w00, plan_w01, plan_w10, plan_w11);
-    } else {
-      const bool v00 = (h_low >= 0 && w_low >= 0);
-      const bool v01 = (h_low >= 0 && w_high < width);
-      const bool v10 = (h_high < height && w_low >= 0);
-      const bool v11 = (h_high < height && w_high < width);
-
-      plan_w00 = v00 ? plan_w00 : static_cast<T>(0);
-      plan_w01 = v01 ? plan_w01 : static_cast<T>(0);
-      plan_w10 = v10 ? plan_w10 : static_cast<T>(0);
-      plan_w11 = v11 ? plan_w11 : static_cast<T>(0);
-
-      idx00 = v00 ? idx00 : 0;
-      idx01 = v01 ? idx01 : 0;
-      idx10 = v10 ? idx10 : 0;
-      idx11 = v11 ? idx11 : 0;
-
-      PlanStoreSample(
-          plan_blocks, local_idx,
-          idx00, idx01, idx10, idx11,
-          plan_w00, plan_w01, plan_w10, plan_w11);
-    }
-  };
-
   int64_t local_idx = 0;
   for (int64_t h_col = 0; h_col < height_col; ++h_col) {
     for (int64_t w_col = 0; w_col < width_col; ++w_col) {
-      process_sample(h_col, w_col, local_idx);
+      BilinearPlanOneSample(
+          ptr_offset_h, ptr_offset_w, height, width, h_col, w_col, local_idx, stride_h, stride_w, base_h, base_w,
+          plan_blocks);
       ++local_idx;
     }
   }
