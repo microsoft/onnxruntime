@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <array>
 #include <algorithm>
 #include <cfloat>
 #include <filesystem>
@@ -2366,6 +2367,27 @@ struct RunAsyncCompletionState {
   std::promise<Status> result_promise;
 };
 
+struct SessionThreadPoolSnapshot {
+  onnxruntime::concurrency::ThreadPool* intra_from_session = nullptr;
+  onnxruntime::concurrency::ThreadPool* inter_from_session = nullptr;
+  onnxruntime::concurrency::ThreadPool* intra_from_session_state = nullptr;
+  onnxruntime::concurrency::ThreadPool* inter_from_session_state = nullptr;
+};
+
+SessionThreadPoolSnapshot CaptureSessionThreadPoolSnapshot(const InferenceSessionTestGlobalThreadPools& session_object) {
+  SessionThreadPoolSnapshot snapshot;
+  snapshot.intra_from_session = session_object.GetIntraOpThreadPoolToUse();
+  snapshot.inter_from_session = session_object.GetInterOpThreadPoolToUse();
+  snapshot.intra_from_session_state = session_object.GetSessionState().GetThreadPool();
+  snapshot.inter_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+  return snapshot;
+}
+
+void AssertSessionAndSessionStateThreadPoolsMatch(const SessionThreadPoolSnapshot& snapshot) {
+  ASSERT_EQ(snapshot.intra_from_session, snapshot.intra_from_session_state);
+  ASSERT_EQ(snapshot.inter_from_session, snapshot.inter_from_session_state);
+}
+
 void CaptureRunAsyncStatus(void* user_data, OrtValue** /*outputs*/, size_t /*num_outputs*/, OrtStatusPtr status_ptr) {
   auto* completion_state = reinterpret_cast<RunAsyncCompletionState*>(user_data);
   if (status_ptr == nullptr) {
@@ -2378,6 +2400,38 @@ void CaptureRunAsyncStatus(void* user_data, OrtValue** /*outputs*/, size_t /*num
                          error_message == nullptr ? "RunAsync callback received an unknown error." : error_message);
   OrtApis::ReleaseStatus(status_ptr);
   completion_state->result_promise.set_value(std::move(callback_status));
+}
+
+void RunModelAsync(InferenceSessionTestGlobalThreadPools& session_object, const char* run_tag) {
+  std::vector<int64_t> dims = {3, 2};
+  std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  OrtValue input;
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  CreateMLValue<float>(allocator, dims, values, &input);
+
+  const char* input_names[] = {"X"};
+  const OrtValue* input_values[] = {&input};
+  const char* output_names[] = {"Y"};
+  OrtValue* output_values[] = {nullptr};
+
+  RunAsyncCompletionState completion_state;
+  auto completion_future = completion_state.result_promise.get_future();
+
+  RunOptions run_options;
+  run_options.run_tag = run_tag;
+  ASSERT_STATUS_OK(session_object.RunAsync(&run_options,
+                                           input_names,
+                                           input_values,
+                                           output_names,
+                                           output_values,
+                                           CaptureRunAsyncStatus,
+                                           &completion_state));
+
+  ASSERT_EQ(completion_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+  ASSERT_STATUS_OK(completion_future.get());
+  ASSERT_NE(output_values[0], nullptr);
+  std::unique_ptr<OrtValue> output_owner(output_values[0]);
 }
 }  // namespace
 
@@ -2588,21 +2642,27 @@ TEST(InferenceSessionTests, PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDr
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
 
-  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
-  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
+  const auto before_first_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(before_first_run.intra_from_session, nullptr);
+  ASSERT_EQ(before_first_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(before_first_run);
 
   RunOptions run_options;
   run_options.run_tag = "PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDriven";
   RunAddSubModel(session_object, run_options);
 
-  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() != nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() != nullptr);
-  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() != nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() != nullptr);
-  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == session_object.GetSessionState().GetThreadPool());
-  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == session_object.GetSessionState().GetInterOpThreadPool());
+  const auto after_first_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_NE(after_first_run.intra_from_session, nullptr);
+  ASSERT_NE(after_first_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_first_run);
+
+  run_options.run_tag = "PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDriven_second_run";
+  RunAddSubModel(session_object, run_options);
+
+  const auto after_second_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_second_run.intra_from_session, after_first_run.intra_from_session);
+  ASSERT_EQ(after_second_run.inter_from_session, after_first_run.inter_from_session);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_second_run);
 }
 
 TEST(InferenceSessionTests, PerSessionThreadPools_OrtFormatInitializeKeepsPoolsNullUntilFirstRun) {
@@ -2680,10 +2740,10 @@ TEST(InferenceSessionTests, PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDr
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
 
-  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
-  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
+  const auto before_first_async = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(before_first_async.intra_from_session, nullptr);
+  ASSERT_EQ(before_first_async.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(before_first_async);
 
   RunOptions run_options;
   run_options.run_tag = "PerSessionThreadPools_CreatesPoolOnFirstRun_DemandDrivenAcrossAssignedProviders";
@@ -2755,15 +2815,115 @@ TEST(InferenceSessionTests, RunAsync_WithLazyPool_CreatesPoolOnFirstCall) {
                                            CaptureRunAsyncStatus,
                                            &completion_state));
 
-  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() != nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() != nullptr);
-  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == nullptr);
-
   ASSERT_EQ(completion_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
   ASSERT_STATUS_OK(completion_future.get());
-  ASSERT_TRUE(output_values[0] != nullptr);
+  ASSERT_NE(output_values[0], nullptr);
   std::unique_ptr<OrtValue> output_owner(output_values[0]);
+
+  const auto after_first_async = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_NE(after_first_async.intra_from_session, nullptr);
+  ASSERT_EQ(after_first_async.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_first_async);
+
+  OrtValue* second_output_values[] = {nullptr};
+  RunAsyncCompletionState second_completion_state;
+  auto second_completion_future = second_completion_state.result_promise.get_future();
+  run_options.run_tag = "RunAsync_WithLazyPool_CreatesPoolOnFirstCall_second_run_async";
+  ASSERT_STATUS_OK(session_object.RunAsync(&run_options,
+                                           input_names,
+                                           input_values,
+                                           output_names,
+                                           second_output_values,
+                                           CaptureRunAsyncStatus,
+                                           &second_completion_state));
+  ASSERT_EQ(second_completion_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+  ASSERT_STATUS_OK(second_completion_future.get());
+  ASSERT_NE(second_output_values[0], nullptr);
+  std::unique_ptr<OrtValue> second_output_owner(second_output_values[0]);
+
+  const auto after_second_async = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_second_async.intra_from_session, after_first_async.intra_from_session);
+  ASSERT_EQ(after_second_async.inter_from_session, after_first_async.inter_from_session);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_second_async);
+}
+
+TEST(InferenceSessionTests, PerSessionThreadPools_RunAsyncThenRun_ReusesSamePools) {
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto before_first_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(before_first_run.intra_from_session, nullptr);
+  ASSERT_EQ(before_first_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(before_first_run);
+
+  RunModelAsync(session_object, "PerSessionThreadPools_RunAsyncThenRun_ReusesSamePools_async");
+  const auto after_async = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_NE(after_async.intra_from_session, nullptr);
+  ASSERT_NE(after_async.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_async);
+
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_RunAsyncThenRun_ReusesSamePools_run";
+  RunModel(session_object, run_options);
+
+  const auto after_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_run.intra_from_session, after_async.intra_from_session);
+  ASSERT_EQ(after_run.inter_from_session, after_async.inter_from_session);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_run);
+}
+
+TEST(InferenceSessionTests, PerSessionThreadPools_RunThenRunAsync_ReusesSamePools) {
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto before_first_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(before_first_run.intra_from_session, nullptr);
+  ASSERT_EQ(before_first_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(before_first_run);
+
+  RunOptions run_options;
+  run_options.run_tag = "PerSessionThreadPools_RunThenRunAsync_ReusesSamePools_run";
+  RunModel(session_object, run_options);
+
+  const auto after_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_NE(after_run.intra_from_session, nullptr);
+  ASSERT_NE(after_run.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_run);
+
+  RunModelAsync(session_object, "PerSessionThreadPools_RunThenRunAsync_ReusesSamePools_async");
+
+  const auto after_async = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_async.intra_from_session, after_run.intra_from_session);
+  ASSERT_EQ(after_async.inter_from_session, after_run.inter_from_session);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_async);
 }
 
 TEST(InferenceSessionTests, PerSessionThreadPools_CreatesPoolOnFirstRun_ForSubgraphExecutionPath) {
@@ -2854,19 +3014,26 @@ TEST(InferenceSessionTests, PerSessionThreadPools_ExternalThreadPools_NoInternal
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
-  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == external_intra_tp.get());
-  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == external_inter_tp.get());
-  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == external_intra_tp.get());
-  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == external_inter_tp.get());
+  const auto after_initialize = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_initialize.intra_from_session, external_intra_tp.get());
+  ASSERT_EQ(after_initialize.inter_from_session, external_inter_tp.get());
+  AssertSessionAndSessionStateThreadPoolsMatch(after_initialize);
 
   RunOptions run_options;
   run_options.run_tag = "PerSessionThreadPools_ExternalThreadPools_NoInternalCreation";
   RunModel(session_object, run_options);
 
-  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == external_intra_tp.get());
-  ASSERT_TRUE(session_object.GetInterOpThreadPoolToUse() == external_inter_tp.get());
-  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == external_intra_tp.get());
-  ASSERT_TRUE(session_object.GetSessionState().GetInterOpThreadPool() == external_inter_tp.get());
+  const auto after_run = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_run.intra_from_session, external_intra_tp.get());
+  ASSERT_EQ(after_run.inter_from_session, external_inter_tp.get());
+  AssertSessionAndSessionStateThreadPoolsMatch(after_run);
+
+  RunModelAsync(session_object, "PerSessionThreadPools_ExternalThreadPools_NoInternalCreation_async");
+
+  const auto after_run_async = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_run_async.intra_from_session, external_intra_tp.get());
+  ASSERT_EQ(after_run_async.inter_from_session, external_inter_tp.get());
+  AssertSessionAndSessionStateThreadPoolsMatch(after_run_async);
 }
 
 TEST(InferenceSessionTests, PerSessionThreadPools_ConcurrentFirstRunAndRunAsync_NoRace) {
@@ -2889,83 +3056,119 @@ TEST(InferenceSessionTests, PerSessionThreadPools_ConcurrentFirstRunAndRunAsync_
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
-  ASSERT_TRUE(session_object.GetIntraOpThreadPoolToUse() == nullptr);
-  ASSERT_TRUE(session_object.GetSessionState().GetThreadPool() == nullptr);
+  const auto before_first_use = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(before_first_use.intra_from_session, nullptr);
+  ASSERT_EQ(before_first_use.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(before_first_use);
 
   std::promise<void> start_promise;
   auto start_signal = start_promise.get_future().share();
 
-  std::promise<Status> sync_run_status_promise;
-  auto sync_run_status_future = sync_run_status_promise.get_future();
+  constexpr size_t kSyncRunThreadCount = 2;
+  constexpr size_t kAsyncRunThreadCount = 2;
 
-  std::promise<Status> async_submit_status_promise;
-  auto async_submit_status_future = async_submit_status_promise.get_future();
+  std::vector<std::promise<Status>> sync_run_promises(kSyncRunThreadCount);
+  std::vector<std::future<Status>> sync_run_futures;
+  sync_run_futures.reserve(kSyncRunThreadCount);
+  for (size_t i = 0; i < kSyncRunThreadCount; ++i) {
+    sync_run_futures.emplace_back(sync_run_promises[i].get_future());
+  }
 
-  std::vector<int64_t> dims_x = {3, 2};
-  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<std::promise<Status>> async_submit_promises(kAsyncRunThreadCount);
+  std::vector<std::future<Status>> async_submit_futures;
+  async_submit_futures.reserve(kAsyncRunThreadCount);
+  for (size_t i = 0; i < kAsyncRunThreadCount; ++i) {
+    async_submit_futures.emplace_back(async_submit_promises[i].get_future());
+  }
+
+  std::vector<RunAsyncCompletionState> async_completion_states(kAsyncRunThreadCount);
+  std::vector<std::future<Status>> async_completion_futures;
+  async_completion_futures.reserve(kAsyncRunThreadCount);
+  for (size_t i = 0; i < kAsyncRunThreadCount; ++i) {
+    async_completion_futures.emplace_back(async_completion_states[i].result_promise.get_future());
+  }
+
+  std::vector<std::array<OrtValue*, 1>> async_output_values(kAsyncRunThreadCount);
+
+  std::vector<int64_t> dims = {3, 2};
+  std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-  OrtValue async_input_value;
-  CreateMLValue<float>(allocator, dims_x, values_x, &async_input_value);
+  std::vector<OrtValue> async_inputs(kAsyncRunThreadCount);
+  std::vector<std::array<const OrtValue*, 1>> async_input_values(kAsyncRunThreadCount);
+  for (size_t i = 0; i < kAsyncRunThreadCount; ++i) {
+    CreateMLValue<float>(allocator, dims, values, &async_inputs[i]);
+    async_input_values[i][0] = &async_inputs[i];
+  }
 
   const char* input_names[] = {"X"};
-  const OrtValue* input_values[] = {&async_input_value};
   const char* output_names[] = {"Y"};
-  OrtValue* output_values[] = {nullptr};
+  std::vector<std::thread> worker_threads;
+  worker_threads.reserve(kSyncRunThreadCount + kAsyncRunThreadCount);
 
-  RunAsyncCompletionState completion_state;
-  auto completion_future = completion_state.result_promise.get_future();
-  RunOptions async_run_options;
-  async_run_options.run_tag = "concurrent_async_run";
+  for (size_t i = 0; i < kSyncRunThreadCount; ++i) {
+    worker_threads.emplace_back([&, i]() {
+      start_signal.wait();
+      OrtValue run_input;
+      CreateMLValue<float>(allocator, dims, values, &run_input);
+      NameMLValMap feeds;
+      feeds.insert(std::make_pair("X", run_input));
+      std::vector<std::string> run_output_names = {"Y"};
+      std::vector<OrtValue> fetches;
+      RunOptions run_options;
+      run_options.run_tag = "concurrent_sync_run_" + std::to_string(i);
+      sync_run_promises[i].set_value(session_object.Run(run_options, feeds, run_output_names, &fetches));
+    });
+  }
 
-  std::thread run_thread([&]() {
-    start_signal.wait();
-    std::vector<int64_t> dims = {3, 2};
-    std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    OrtValue run_input;
-    CreateMLValue<float>(allocator, dims, values, &run_input);
-    NameMLValMap feeds;
-    feeds.insert(std::make_pair("X", run_input));
-    std::vector<std::string> run_output_names = {"Y"};
-    std::vector<OrtValue> fetches;
-    RunOptions run_options;
-    run_options.run_tag = "concurrent_sync_run";
-    sync_run_status_promise.set_value(session_object.Run(run_options, feeds, run_output_names, &fetches));
-  });
-
-  std::thread run_async_thread([&]() {
-    start_signal.wait();
-    async_submit_status_promise.set_value(session_object.RunAsync(&async_run_options,
-                                                                  input_names,
-                                                                  input_values,
-                                                                  output_names,
-                                                                  output_values,
-                                                                  CaptureRunAsyncStatus,
-                                                                  &completion_state));
-  });
+  for (size_t i = 0; i < kAsyncRunThreadCount; ++i) {
+    worker_threads.emplace_back([&, i]() {
+      start_signal.wait();
+      RunOptions async_run_options;
+      async_run_options.run_tag = "concurrent_async_run_" + std::to_string(i);
+      async_submit_promises[i].set_value(session_object.RunAsync(&async_run_options,
+                                                                 input_names,
+                                                                 async_input_values[i],
+                                                                 output_names,
+                                                                 async_output_values[i],
+                                                                 CaptureRunAsyncStatus,
+                                                                 &async_completion_states[i]));
+    });
+  }
 
   start_promise.set_value();
-  run_thread.join();
-  run_async_thread.join();
+  for (auto& worker : worker_threads) {
+    worker.join();
+  }
 
-  ASSERT_STATUS_OK(sync_run_status_future.get());
-  ASSERT_STATUS_OK(async_submit_status_future.get());
-  ASSERT_EQ(completion_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
-  ASSERT_STATUS_OK(completion_future.get());
-  ASSERT_TRUE(output_values[0] != nullptr);
-  std::unique_ptr<OrtValue> output_owner(output_values[0]);
+  for (auto& sync_run_future : sync_run_futures) {
+    ASSERT_STATUS_OK(sync_run_future.get());
+  }
+  for (auto& async_submit_future : async_submit_futures) {
+    ASSERT_STATUS_OK(async_submit_future.get());
+  }
+  for (auto& async_completion_future : async_completion_futures) {
+    ASSERT_EQ(async_completion_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+    ASSERT_STATUS_OK(async_completion_future.get());
+  }
+  for (auto& async_output : async_output_values) {
+    ASSERT_NE(async_output[0], nullptr);
+    std::unique_ptr<OrtValue> output_owner(async_output[0]);
+  }
 
-  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
-  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
-  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
-  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+  const auto after_concurrent_first_use = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_NE(after_concurrent_first_use.intra_from_session, nullptr);
+  ASSERT_NE(after_concurrent_first_use.inter_from_session, nullptr);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_concurrent_first_use);
 
-  ASSERT_TRUE(intra_tp_from_session != nullptr);
-  ASSERT_TRUE(intra_tp_from_session_state != nullptr);
-  ASSERT_TRUE(inter_tp_from_session != nullptr);
-  ASSERT_TRUE(inter_tp_from_session_state != nullptr);
-  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
-  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
+  RunOptions follow_up_run_options;
+  follow_up_run_options.run_tag = "PerSessionThreadPools_ConcurrentFirstRunAndRunAsync_NoRace_follow_up_run";
+  RunModel(session_object, follow_up_run_options);
+  RunModelAsync(session_object, "PerSessionThreadPools_ConcurrentFirstRunAndRunAsync_NoRace_follow_up_async");
 
+  const auto after_follow_up_runs = CaptureSessionThreadPoolSnapshot(session_object);
+  ASSERT_EQ(after_follow_up_runs.intra_from_session, after_concurrent_first_use.intra_from_session);
+  ASSERT_EQ(after_follow_up_runs.inter_from_session, after_concurrent_first_use.inter_from_session);
+  AssertSessionAndSessionStateThreadPoolsMatch(after_follow_up_runs);
 }
 
 // Tests for sharing allocators between sessions

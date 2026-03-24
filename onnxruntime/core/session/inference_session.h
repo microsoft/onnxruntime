@@ -708,9 +708,12 @@ class InferenceSession {
 
   bool IsInitialized() const;
 
-  // Use these 2 threadpool methods to get access to the threadpools since they rely on
-  // specific flags in session options
-  // These methods assume that session options have been finalized before the call.
+  // These accessors select the execution thread pools based on finalized session options.
+  // Concurrency model:
+  // - During initialization and first-use lazy creation, callers must hold session_mutex_.
+  // - After thread_pools_ready_for_run_ is true, per-session pool pointers are immutable
+  //   for the session lifetime and lock-free reads are safe.
+  // Run()/RunAsync() satisfy this by calling EnsureThreadPoolsCreatedForRun() first.
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
     if (session_options_.use_per_session_threads) {
       if (external_intra_op_thread_pool_) {
@@ -771,6 +774,12 @@ class InferenceSession {
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
+  std::basic_string<ORTCHAR_T> BuildPerSessionThreadPoolName(const ORTCHAR_T* configured_name,
+                                                              const ORTCHAR_T* pool_name_suffix) const;
+  void PopulateThreadPoolParamsFromSessionOptions(OrtThreadPoolParams& thread_pool_params,
+                                                  const char* thread_pool_kind_for_error) const;
+  bool AreRequiredPerSessionThreadPoolsAvailable(onnxruntime::concurrency::ThreadPool* intra_op_tp,
+                                                 onnxruntime::concurrency::ThreadPool* inter_op_tp) const;
   void CreateIntraOpThreadPoolIfNeeded();
   void CreateInterOpThreadPoolIfNeeded();
   void EnsureThreadPoolsCreatedForRun();
@@ -931,7 +940,12 @@ class InferenceSession {
   // Determines which threadpools will be intialized and used for the duration of this session.
   // If true, use the per session ones, or else the global threadpools.
   bool use_per_session_threads_;
-  // Fast path for Run/RunAsync once all required per-session pools are ready.
+  // Immutable per-session config cached from finalized session options. Reused when lazy
+  // thread pools are created on first Run/RunAsync.
+  bool set_denormal_as_zero_ = false;
+  // True means all thread pools required for execution in per-session mode have been created
+  // (or supplied externally) and published to SessionState via BindThreadPoolsOnce.
+  // Acquire/release ordering gates lock-free runtime reads of thread-pool pointers.
   std::atomic<bool> thread_pools_ready_for_run_{false};
 
   KernelRegistryManager kernel_registry_manager_;
@@ -961,7 +975,9 @@ class InferenceSession {
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;
 
-  mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
+  // Guards mutable session lifecycle transitions (Load/Initialize) and one-shot lazy
+  // per-session thread-pool creation/publication.
+  mutable std::mutex session_mutex_;
   bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                   // GUARDED_BY(session_mutex_)
   bool is_concurrent_run_supported_ = true;  // Graph execution in Run is GUARDED_BY(session_mutex_) if false

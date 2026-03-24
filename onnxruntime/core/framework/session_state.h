@@ -57,6 +57,7 @@ class ExecutionProviders;
 class KernelDef;
 class OpKernel;
 class NodeIndexInfo;
+class InferenceSession;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
 class DeviceStreamCollection;
@@ -295,9 +296,8 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
-  void InitializeThreadPools(concurrency::ThreadPool* thread_pool,
-                             concurrency::ThreadPool* inter_op_thread_pool);
-
+  // Acquire semantics pair with BindThreadPoolsOnce release stores so readers
+  // running without external synchronization observe fully-published pool pointers.
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_.load(std::memory_order_acquire); }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_.load(std::memory_order_acquire); }
 
@@ -397,6 +397,17 @@ class SessionState {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
+  friend class InferenceSession;
+  friend class SessionStateThreadPoolBindingTestAccessor;
+
+  // One-shot late binding for execution thread pools.
+  // - No ownership transfer: SessionState stores raw pointers only.
+  // - Allows nullptr -> final pointer transition once.
+  // - Allows idempotent rebinding to the same pointers.
+  // - Rejects rebinding to different non-null pointers.
+  // - Recursively publishes the same pointers to all subgraph SessionStates.
+  void BindThreadPoolsOnce(concurrency::ThreadPool* thread_pool,
+                           concurrency::ThreadPool* inter_op_thread_pool);
 
   // Populate OrtValueNameIdxMap and create the graph viewer.
   void CreateGraphInfo(bool save_prepacked_on);
@@ -540,9 +551,9 @@ class SessionState {
 
   SubgraphSessionStateMap subgraph_session_states_;
 
-  // Not const: thread pools may be lazily initialized after construction
-  // on first runtime use (Run/RunAsync) and then published to SessionState.
-  // either threadpool could be nullptr
+  // Thread-pool pointers are set either in the constructor or via one-shot
+  // BindThreadPoolsOnce publication on first Run/RunAsync when per-session
+  // thread pools are lazily created. Either pointer can be nullptr.
   std::atomic<concurrency::ThreadPool*> thread_pool_{nullptr};
   std::atomic<concurrency::ThreadPool*> inter_op_thread_pool_{nullptr};
 

@@ -31,6 +31,16 @@
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
+
+class SessionStateThreadPoolBindingTestAccessor {
+ public:
+  static void BindThreadPoolsOnce(SessionState& session_state,
+                                  concurrency::ThreadPool* thread_pool,
+                                  concurrency::ThreadPool* inter_op_thread_pool) {
+    session_state.BindThreadPoolsOnce(thread_pool, inter_op_thread_pool);
+  }
+};
+
 namespace test {
 
 #ifndef ENABLE_TRAINING_CORE
@@ -778,7 +788,7 @@ static std::unique_ptr<SessionState> CreateSessionStateWithIfSubgraph(
   return session_state;
 }
 
-TEST(SessionStateTest, InitializeThreadPoolsPropagatesThreadPoolsToSubgraphs) {
+TEST(SessionStateTest, BindThreadPoolsOncePropagatesThreadPoolsToSubgraphs) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 12}};
   Model model("thread_pool_propagation_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
@@ -803,7 +813,7 @@ TEST(SessionStateTest, InitializeThreadPoolsPropagatesThreadPoolsToSubgraphs) {
   auto inter_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params,
                                                  concurrency::ThreadPoolType::INTER_OP);
 
-  session_state->InitializeThreadPools(intra_tp.get(), inter_tp.get());
+  SessionStateThreadPoolBindingTestAccessor::BindThreadPoolsOnce(*session_state, intra_tp.get(), inter_tp.get());
 
   ASSERT_EQ(session_state->GetThreadPool(), intra_tp.get());
   ASSERT_EQ(session_state->GetInterOpThreadPool(), inter_tp.get());
@@ -818,7 +828,7 @@ TEST(SessionStateTest, InitializeThreadPoolsPropagatesThreadPoolsToSubgraphs) {
   }
 }
 
-TEST(SessionStateTest, InitializeThreadPools_CalledTwiceWithSamePointers_IsIdempotent) {
+TEST(SessionStateTest, BindThreadPoolsOnce_CalledTwiceWithSamePointers_IsIdempotent) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 12}};
   Model model("thread_pool_idempotent_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
@@ -843,8 +853,8 @@ TEST(SessionStateTest, InitializeThreadPools_CalledTwiceWithSamePointers_IsIdemp
   auto inter_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params,
                                                  concurrency::ThreadPoolType::INTER_OP);
 
-  session_state->InitializeThreadPools(intra_tp.get(), inter_tp.get());
-  session_state->InitializeThreadPools(intra_tp.get(), inter_tp.get());
+  SessionStateThreadPoolBindingTestAccessor::BindThreadPoolsOnce(*session_state, intra_tp.get(), inter_tp.get());
+  SessionStateThreadPoolBindingTestAccessor::BindThreadPoolsOnce(*session_state, intra_tp.get(), inter_tp.get());
 
   ASSERT_EQ(session_state->GetThreadPool(), intra_tp.get());
   ASSERT_EQ(session_state->GetInterOpThreadPool(), inter_tp.get());
@@ -859,7 +869,7 @@ TEST(SessionStateTest, InitializeThreadPools_CalledTwiceWithSamePointers_IsIdemp
   }
 }
 
-TEST(SessionStateTest, InitializeThreadPools_CalledWithNullPointers_ClearsNothing) {
+TEST(SessionStateTest, BindThreadPoolsOnce_CalledWithNullPointers_ClearsNothing) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 12}};
   Model model("thread_pool_null_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
@@ -875,7 +885,7 @@ TEST(SessionStateTest, InitializeThreadPools_CalledWithNullPointers_ClearsNothin
   auto session_state = CreateSessionStateWithIfSubgraph(
       model, execution_providers, dtm, edlm, profiler, sess_options);
 
-  session_state->InitializeThreadPools(nullptr, nullptr);
+  SessionStateThreadPoolBindingTestAccessor::BindThreadPoolsOnce(*session_state, nullptr, nullptr);
 
   ASSERT_EQ(session_state->GetThreadPool(), nullptr);
   ASSERT_EQ(session_state->GetInterOpThreadPool(), nullptr);
@@ -887,6 +897,48 @@ TEST(SessionStateTest, InitializeThreadPools_CalledWithNullPointers_ClearsNothin
       ASSERT_EQ(attribute_to_state.second->GetThreadPool(), nullptr);
       ASSERT_EQ(attribute_to_state.second->GetInterOpThreadPool(), nullptr);
     }
+  }
+}
+
+TEST(SessionStateTest, BindThreadPoolsOnce_RebindingWithDifferentNonNullPointerFails) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 12}};
+  Model model("thread_pool_rebind_fails_graph", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  CreateGraphWithIfSubgraphForThreadPoolTests(model.MainGraph());
+
+  ExecutionProviders execution_providers;
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+  SessionOptions sess_options;
+  sess_options.execution_mode = ExecutionMode::ORT_PARALLEL;
+
+  auto session_state = CreateSessionStateWithIfSubgraph(
+      model, execution_providers, dtm, edlm, profiler, sess_options);
+
+  OrtThreadPoolParams intra_tp_params;
+  intra_tp_params.thread_pool_size = 2;
+  auto intra_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
+                                                concurrency::ThreadPoolType::INTRA_OP);
+  auto intra_tp_different = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), intra_tp_params,
+                                                           concurrency::ThreadPoolType::INTRA_OP);
+
+  OrtThreadPoolParams inter_tp_params;
+  inter_tp_params.thread_pool_size = 2;
+  auto inter_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params,
+                                                concurrency::ThreadPoolType::INTER_OP);
+  auto inter_tp_different = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), inter_tp_params,
+                                                           concurrency::ThreadPoolType::INTER_OP);
+
+  SessionStateThreadPoolBindingTestAccessor::BindThreadPoolsOnce(*session_state, intra_tp.get(), inter_tp.get());
+
+  ORT_TRY {
+    SessionStateThreadPoolBindingTestAccessor::BindThreadPoolsOnce(*session_state,
+                                                                   intra_tp_different.get(),
+                                                                   inter_tp_different.get());
+    FAIL() << "Expected rebinding to different thread pools to fail.";
+  }
+  ORT_CATCH(const std::exception&) {
   }
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)

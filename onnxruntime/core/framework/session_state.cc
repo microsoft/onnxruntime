@@ -1138,27 +1138,30 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
-void SessionState::InitializeThreadPools(concurrency::ThreadPool* thread_pool,
-                                         concurrency::ThreadPool* inter_op_thread_pool) {
+void SessionState::BindThreadPoolsOnce(concurrency::ThreadPool* thread_pool,
+                                       concurrency::ThreadPool* inter_op_thread_pool) {
   const auto* current_thread_pool = thread_pool_.load(std::memory_order_acquire);
   const auto* current_inter_op_thread_pool = inter_op_thread_pool_.load(std::memory_order_acquire);
 
-  // NOTE: This enforce also runs recursively for each subgraph SessionState
-  // via the loop below. All subgraph SessionStates are expected to hold nullptr
-  // or the same pool pointers as the parent - never a different non-null pool.
+  // This enforces one-shot semantics for both the root SessionState and all
+  // subgraph SessionStates reached by recursive propagation below.
+  // Current pointer states are allowed to stay at nullptr or to match exactly
+  // the incoming pointers; rebinding to different non-null pointers is rejected.
   ORT_ENFORCE(
       (current_thread_pool == nullptr || current_thread_pool == thread_pool) &&
       (current_inter_op_thread_pool == nullptr || current_inter_op_thread_pool == inter_op_thread_pool),
-      "SessionState thread pools can only be initialized once with stable pointers.");
+      "SessionState thread pools must be bound once with stable pointers.");
 
+  // Release stores publish both pointers to lock-free readers via GetThreadPool/
+  // GetInterOpThreadPool acquire loads.
   thread_pool_.store(thread_pool, std::memory_order_release);
   inter_op_thread_pool_.store(inter_op_thread_pool, std::memory_order_release);
 
-  // Propagate thread-pool pointers to all subgraph SessionStates so lazily-created pools
-  // are visible across the full SessionState tree.
+  // Propagate the same published pointers to every subgraph SessionState so the
+  // full SessionState tree observes a consistent thread-pool view.
   for (auto& node_to_subgraph_states : subgraph_session_states_) {
     for (auto& attribute_to_state : node_to_subgraph_states.second) {
-      attribute_to_state.second->InitializeThreadPools(thread_pool, inter_op_thread_pool);
+      attribute_to_state.second->BindThreadPoolsOnce(thread_pool, inter_op_thread_pool);
     }
   }
 }
