@@ -178,21 +178,31 @@ __global__ void DeformableIm2ColKernel(
     DivMod<IndexT> channel_per_offset_grp_div,
     T* __restrict__ data_col) {
   constexpr bool is_fixed = (kH >= 0 && kW >= 0);
-  const int64_t h_dim = is_fixed ? kH : weight_h;
-  const int64_t w_dim = is_fixed ? kW : weight_w;
+  const int64_t h_dim_i64 = is_fixed ? kH : weight_h;
+  const int64_t w_dim_i64 = is_fixed ? kW : weight_w;
+  const IndexT h_dim = static_cast<IndexT>(h_dim_i64);
+  const IndexT w_dim = static_cast<IndexT>(w_dim_i64);
 
   // Reconstruct dimensions from DivMod objects
-  const int64_t out_h = out_h_div.d_;
-  const int64_t out_w = out_w_div.d_;
-  const int64_t parallel_imgs = parallel_imgs_div.d_;
+  const IndexT out_h = out_h_div.d_;
+  const IndexT out_w = out_w_div.d_;
+  const IndexT parallel_imgs = parallel_imgs_div.d_;
 
-  const int64_t out_size = out_h * out_w;
+  const IndexT out_size = out_h * out_w;
   // The stride for data_col is (parallel_imgs * out_h * out_w)
-  const int64_t col_stride = parallel_imgs * out_size;
+  const IndexT col_stride = parallel_imgs * out_size;
+  const int64_t out_size_i64 = static_cast<int64_t>(out_size);
+  const int64_t col_stride_i64 = static_cast<int64_t>(col_stride);
+  const int64_t channel_hw_i64 = static_cast<int64_t>(height) * static_cast<int64_t>(width);
+  const int64_t batch_input_stride_i64 = static_cast<int64_t>(channels) * channel_hw_i64;
+  const int64_t offset_group_block_size_i64 = static_cast<int64_t>(2) * h_dim_i64 * w_dim_i64 * out_size_i64;
+  const int64_t mask_group_block_size_i64 = h_dim_i64 * w_dim_i64 * out_size_i64;
+  const int height_i = static_cast<int>(height);
+  const int width_i = static_cast<int>(width);
 
   using CoordT = typename DeformConvBilinearTraits<T>::ComputeT;
 
-  for (IndexT index = blockIdx.x * blockDim.x + threadIdx.x; index < num_kernels; index += blockDim.x * gridDim.x) {
+  for (IndexT index = static_cast<IndexT>(blockIdx.x) * blockDim.x + threadIdx.x; index < num_kernels; index += static_cast<IndexT>(blockDim.x) * gridDim.x) {
     IndexT val = index;
     IndexT out_x, out_y, out_b, in_c;
 
@@ -212,39 +222,45 @@ __global__ void DeformableIm2ColKernel(
     // Pre-calculate base pointers to reduce integer arithmetic inside the inner loops.
 
     // 1. Input pointer base for this batch and channel.
-    const T* input_ptr = input + static_cast<int64_t>(out_b) * (channels * height * width) + static_cast<int64_t>(in_c) * (height * width);
+    const T* input_ptr =
+        input + static_cast<int64_t>(out_b) * batch_input_stride_i64 + static_cast<int64_t>(in_c) * channel_hw_i64;
 
     // 2. Spatial index in the output feature map.
-    const int64_t spatial_idx = static_cast<int64_t>(out_y) * out_w + static_cast<int64_t>(out_x);
+    const IndexT spatial_idx = static_cast<IndexT>(out_y * out_w + out_x);
+    const int64_t spatial_idx_i64 = static_cast<int64_t>(spatial_idx);
 
     // 3. Offset pointer base calculation.
     // Layout: (N, offset_groups, 2*KH*KW, OH, OW)
     // We pre-calculate the pointer to the start of the specific (n, g) block, plus spatial_idx.
-    const int64_t offset_group_block_size = 2 * h_dim * w_dim * out_size;
-    const T* offset_ptr_base = offset + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * offset_group_block_size + spatial_idx;
+    const T* offset_ptr_base =
+        offset + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * offset_group_block_size_i64 + spatial_idx_i64;
 
     // 4. Mask pointer base calculation (if used).
     // Layout: (N, offset_groups, KH*KW, OH, OW)
     const T* mask_ptr_base = nullptr;
     if constexpr (UseMask) {
-      const int64_t mask_group_block_size = h_dim * w_dim * out_size;
-      mask_ptr_base = mask + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * mask_group_block_size + spatial_idx;
+      mask_ptr_base =
+          mask + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * mask_group_block_size_i64 + spatial_idx_i64;
     }
 
     // 5. Output pointer base calculation.
     // data_col Layout: (C * KH * KW, N * OH * OW)
     // The current thread writes to the column `c_col` = (b * OH * OW) + spatial_idx.
     // The starting row for this channel is `in_c * KH * KW`.
-    const int64_t c_col = static_cast<int64_t>(out_b) * out_size + spatial_idx;
-    T* data_col_ptr_base = data_col + (static_cast<int64_t>(in_c) * h_dim * w_dim) * col_stride + c_col;
+    const int64_t c_col = static_cast<int64_t>(out_b) * out_size_i64 + spatial_idx_i64;
+    T* data_col_ptr_base =
+        data_col + (static_cast<int64_t>(in_c) * h_dim_i64 * w_dim_i64) * col_stride_i64 + c_col;
 
     // 6. Pre-calculate invariant coordinate parts.
     // Use float for coordinate math when T is half or BFloat16 to avoid precision loss.
     const CoordT base_h_im = static_cast<CoordT>(out_y * stride_h - pad_h);
     const CoordT base_w_im = static_cast<CoordT>(out_x * stride_w - pad_w);
 
-    auto process_kernel_point = [&](int64_t i, int64_t j) {
-      const int64_t kernel_idx = i * w_dim + j;
+    auto process_kernel_point = [&](IndexT i, IndexT j) {
+      // Keep hot-loop indexing in IndexT to reduce 64-bit integer instruction chains.
+      // Safety: launch-side gating uses use_64bit (num_kernels/col_numel) and shared shape validation
+      // ((H+1)*W <= INT_MAX), so int32 path has bounded index products here.
+      const IndexT kernel_idx = static_cast<IndexT>(i * w_dim + j);
       T mask_val = static_cast<T>(1);
       if constexpr (UseMask) {
         // Access mask using pre-calculated base and stride.
@@ -254,7 +270,7 @@ __global__ void DeformableIm2ColKernel(
       // Calculate offset pointers relative to the base.
       // The offset tensor stores (y_offset, x_offset) pairs for each kernel weight.
       // Stride between y_offset and x_offset is `out_size`.
-      const int64_t offset_offset_idx = (2 * kernel_idx) * out_size;
+      const IndexT offset_offset_idx = static_cast<IndexT>(2 * kernel_idx) * out_size;
 
       const CoordT offset_h = static_cast<CoordT>(DeformConvLdg(offset_ptr_base + offset_offset_idx));
       const CoordT offset_w = static_cast<CoordT>(DeformConvLdg(offset_ptr_base + offset_offset_idx + out_size));
@@ -263,14 +279,10 @@ __global__ void DeformableIm2ColKernel(
       const CoordT w_im = base_w_im + static_cast<CoordT>(j * dilation_w) + offset_w;
 
       // height/width are validated on host (DeformConvValidateAndParse) so int is safe here.
-      T val = BilinearInterpolate(input_ptr,
-                                  static_cast<int>(height),
-                                  static_cast<int>(width),
-                                  h_im,
-                                  w_im);
+      T val = BilinearInterpolate(input_ptr, height_i, width_i, h_im, w_im);
 
       // Match CPU path: always interpolate then apply mask to keep branch-free hot loop.
-      data_col_ptr_base[kernel_idx * col_stride] = val * mask_val;
+      data_col_ptr_base[static_cast<int64_t>(kernel_idx) * col_stride_i64] = val * mask_val;
     };
 
     if constexpr (is_fixed) {
@@ -280,7 +292,7 @@ __global__ void DeformableIm2ColKernel(
         for (int i = 0; i < kH; ++i) {
 #pragma unroll
           for (int j = 0; j < kW; ++j) {
-            process_kernel_point(i, j);
+            process_kernel_point(static_cast<IndexT>(i), static_cast<IndexT>(j));
           }
         }
       } else {
@@ -289,14 +301,16 @@ __global__ void DeformableIm2ColKernel(
         for (int i = 0; i < kH; ++i) {
 #pragma unroll
           for (int j = 0; j < kW; ++j) {
-            process_kernel_point(i, j);
+            process_kernel_point(static_cast<IndexT>(i), static_cast<IndexT>(j));
           }
         }
       }
     } else {
-      for (int64_t i = 0; i < weight_h; ++i) {
-        for (int64_t j = 0; j < weight_w; ++j) {
-          process_kernel_point(i, j);
+      const IndexT weight_h_idx = static_cast<IndexT>(weight_h);
+      const IndexT weight_w_idx = static_cast<IndexT>(weight_w);
+      for (IndexT i = 0; i < weight_h_idx; ++i) {
+        for (IndexT j = 0; j < weight_w_idx; ++j) {
+          process_kernel_point(static_cast<IndexT>(i), static_cast<IndexT>(j));
         }
       }
     }
@@ -311,7 +325,7 @@ __global__ void DeformConvAddBiasKernel(
     DivMod<int64_t> spatial_div,  // For dividing by (H * W)
     DivMod<int64_t> channel_div,  // For dividing by M (channel count)
     int64_t total_elements) {
-  for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total_elements; idx += blockDim.x * gridDim.x) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < total_elements; idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
     int64_t val = idx;
     int64_t batch_channel_idx, pixel_idx;
 
@@ -387,8 +401,14 @@ Status DeformConvIm2ColImpl(
   }
 
   const int64_t col_numel = static_cast<int64_t>(C) * kH * kW * parallel_imgs * out_h * out_w;
+  const int64_t offset_inner_size = static_cast<int64_t>(2) * kH * kW * out_h * out_w;
+  const int64_t out_size = out_h * out_w;
+  const int64_t col_stride = parallel_imgs * out_size;
+  const int64_t max_col_write_idx = static_cast<int64_t>(kH * kW - 1) * col_stride;
   const bool use_64bit = (num_kernels > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) ||
-                         (col_numel > static_cast<int64_t>(std::numeric_limits<int32_t>::max()));
+                         (col_numel > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) ||
+                         (offset_inner_size > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) ||
+                         (max_col_write_idx > static_cast<int64_t>(std::numeric_limits<int32_t>::max()));
 
   int blocks = GetGridSize(static_cast<size_t>(num_kernels), kDeformConvThreadsPerBlock);
 
