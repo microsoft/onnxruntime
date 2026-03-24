@@ -51,6 +51,10 @@ stages:
             enabled: true
             scanOutputDirectoryOnly: true
         outputs:
+        - ${{ if eq(parameters.arch, 'x64') }}:
+          - output: pipelineArtifact
+            targetPath: '$(Build.ArtifactStagingDirectory)\WebGPU_BuildTools'
+            artifactName: WebGPU_BuildTools_x64
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
           artifactName: webgpu_plugin_win_${{ parameters.arch }}
@@ -60,6 +64,8 @@ stages:
         value: '-Dorg.gradle.daemon=false'
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
+      - name: CrossCompileDefines
+        value: ''
       steps:
       - checkout: self
         clean: true
@@ -113,6 +119,22 @@ stages:
         inputs:
           workingFile: '$(Build.SourcesDirectory)/onnxruntime/core/providers/webgpu/wgsl_templates/.npmrc'
 
+      - ${{ if eq(parameters.arch, 'arm64') }}:
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download WebGPU build tools from x64 build'
+          inputs:
+            artifactName: 'WebGPU_BuildTools_x64'
+            targetPath: '$(Build.BinariesDirectory)\WebGPU_BuildTools'
+        - script: |
+            @echo ##vso[task.setvariable variable=LLVM_TABLEGEN_PATH]$(Build.BinariesDirectory)\WebGPU_BuildTools\llvm-tblgen.exe
+            @echo ##vso[task.setvariable variable=CLANG_TABLEGEN_PATH]$(Build.BinariesDirectory)\WebGPU_BuildTools\clang-tblgen.exe
+          displayName: 'Set tablegen paths'
+        - powershell: |
+            Write-Host "Using LLVM_TABLEGEN_PATH: $(LLVM_TABLEGEN_PATH)"
+            Write-Host "Using CLANG_TABLEGEN_PATH: $(CLANG_TABLEGEN_PATH)"
+            Write-Host "##vso[task.setvariable variable=CrossCompileDefines]LLVM_TABLEGEN=$(LLVM_TABLEGEN_PATH) CLANG_TABLEGEN=$(CLANG_TABLEGEN_PATH)"
+          displayName: 'Set build flags for WebGPU cross-compilation'
+
       - task: PythonScript@0
         displayName: 'Build'
         inputs:
@@ -133,9 +155,16 @@ stages:
             --wgsl_template static
             --disable_rtti
             --enable_lto
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine)
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine) $(CrossCompileDefines)
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
+
+      - ${{ if eq(parameters.arch, 'x64') }}:
+        - script: |
+            mkdir $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
+            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
+            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
+          displayName: 'Copy WebGPU build tools'
 
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml
