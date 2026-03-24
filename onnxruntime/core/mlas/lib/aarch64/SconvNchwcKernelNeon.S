@@ -418,7 +418,7 @@ Abstract:
 
     // Prologue and callee-saved register spill.
     // Save callee-saved SIMD registers v8-v15 per AArch64 ABI.
-    stp     x29, x30, [sp, #-256]!
+    stp     x29, x30, [sp, #-272]!
     mov     x29, sp
     stp     x19, x20, [sp, #16]
     stp     x21, x22, [sp, #32]
@@ -448,26 +448,26 @@ Abstract:
     ldr     x15, [x9, #40]               // DilatedInputWidth (bytes)
     ldr     x16, [x9, #48]               // OutputCountLeftPad
     ldr     x17, [x9, #56]               // OutputCount
-    ldr     x18, [x9, #64]               // OutputCountRightPad
     ldr     x6,  [x9, #72]               // Bias
     ldr     w8,  [x9, #80]               // KernelFlags
 
     // Early exit when nothing to compute.
+    mov     x26, x10                     // OutputStride (bytes)
+    ldr     x10, [x9, #64]               // OutputCountRightPad
     add     x0, x16, x17
-    add     x0, x0, x18                  // x0 = TotalOutputCount
+    add     x0, x0, x10                  // x0 = TotalOutputCount
     cbz     x0, .Lepilogue
     cbz     x24, .Lepilogue
 
-    // Spill the output counts so that x16/x17/x18 can be used as scratch.
+    // Spill the output counts so that x16/x17 can be used as scratch.
     str     x16, [sp, #224]
     str     x17, [sp, #232]
-    str     x18, [sp, #240]
+    str     x10, [sp, #240]
+    str     w8,  [sp, #256]
 
-    mov     x26, x10                     // OutputStride (bytes)
     mov     x27, x11                     // KernelHeight
     mov     x28, x12                     // KernelWidth
     mov     x17, x6                      // Bias
-    mov     w18, w8                      // KernelFlags
 
     // Set up a zero vector for ReLU.
     movi    v31.4s, #0
@@ -479,7 +479,8 @@ Abstract:
 
     // Fast path when no post-processing flags are enabled. This removes
     // repeated flag checks and branches from the steady-state loops.
-    tst     w18, #7
+    ldr     w9, [sp, #256]
+    tst     w9, #7
     b.eq    .Lkernel_flags0
 
     // Process the left padded output region with bounds checks.
@@ -509,7 +510,8 @@ Abstract:
     add     x12, x5, x2
 
     // Conditionally accumulate the existing output.
-    tst     w18, #1
+    ldr     w9, [sp, #256]
+    tst     w9, #1
     b.eq    .Lskip_accumulate
     ldp     q16, q17, [x12, #0]
     ldp     q18, q19, [x12, #32]
@@ -521,7 +523,7 @@ Abstract:
 .Lskip_accumulate:
 
     // Conditionally add bias.
-    tst     w18, #2
+    tst     w9, #2
     b.eq    .Lskip_bias
     ldp     q16, q17, [x6, #0]
     ldp     q18, q19, [x6, #32]
@@ -533,7 +535,7 @@ Abstract:
 .Lskip_bias:
 
     // Conditionally apply ReLU.
-    tst     w18, #4
+    tst     w9, #4
     b.eq    .Lskip_relu
     fmax    v0.4s, v0.4s, v31.4s
     fmax    v1.4s, v1.4s, v31.4s
@@ -612,7 +614,8 @@ Abstract:
     add     x10, x12, #128
 
     // Conditionally accumulate the existing output.
-    tst     w18, #1
+    ldr     w9, [sp, #256]
+    tst     w9, #1
     b.eq    .Lskip_accumulate_triad
     ldp     q16, q17, [x12, #0]
     ldp     q18, q19, [x12, #32]
@@ -636,7 +639,7 @@ Abstract:
 .Lskip_accumulate_triad:
 
     // Conditionally add bias.
-    tst     w18, #2
+    tst     w9, #2
     b.eq    .Lskip_bias_triad
     ldp     q16, q17, [x6, #0]
     ldp     q18, q19, [x6, #32]
@@ -656,7 +659,7 @@ Abstract:
 .Lskip_bias_triad:
 
     // Conditionally apply ReLU.
-    tst     w18, #4
+    tst     w9, #4
     b.eq    .Lskip_relu_triad
     fmax    v0.4s, v0.4s, v31.4s
     fmax    v1.4s, v1.4s, v31.4s
@@ -730,7 +733,8 @@ Abstract:
     add     x11, x12, #64
 
     // Conditionally accumulate the existing output.
-    tst     w18, #1
+    ldr     w9, [sp, #256]
+    tst     w9, #1
     b.eq    .Lskip_accumulate_pair
     ldp     q16, q17, [x12, #0]
     ldp     q18, q19, [x12, #32]
@@ -748,7 +752,7 @@ Abstract:
 .Lskip_accumulate_pair:
 
     // Conditionally add bias.
-    tst     w18, #2
+    tst     w9, #2
     b.eq    .Lskip_bias_pair
     ldp     q16, q17, [x6, #0]
     ldp     q18, q19, [x6, #32]
@@ -764,7 +768,7 @@ Abstract:
 .Lskip_bias_pair:
 
     // Conditionally apply ReLU.
-    tst     w18, #4
+    tst     w9, #4
     b.eq    .Lskip_relu_pair
     fmax    v0.4s, v0.4s, v31.4s
     fmax    v1.4s, v1.4s, v31.4s
@@ -823,7 +827,8 @@ Abstract:
     add     x12, x5, x2
 
     // Conditionally accumulate the existing output.
-    tst     w18, #1
+    ldr     w9, [sp, #256]
+    tst     w9, #1
     b.eq    .Lskip_accumulate_mid
     ldp     q16, q17, [x12, #0]
     ldp     q18, q19, [x12, #32]
@@ -835,7 +840,7 @@ Abstract:
 .Lskip_accumulate_mid:
 
     // Conditionally add bias.
-    tst     w18, #2
+    tst     w9, #2
     b.eq    .Lskip_bias_mid
     ldp     q16, q17, [x6, #0]
     ldp     q18, q19, [x6, #32]
@@ -847,7 +852,7 @@ Abstract:
 .Lskip_bias_mid:
 
     // Conditionally apply ReLU.
-    tst     w18, #4
+    tst     w9, #4
     b.eq    .Lskip_relu_mid
     fmax    v0.4s, v0.4s, v31.4s
     fmax    v1.4s, v1.4s, v31.4s
@@ -901,7 +906,8 @@ Abstract:
     add     x12, x5, x2
 
     // Conditionally accumulate the existing output.
-    tst     w18, #1
+    ldr     w9, [sp, #256]
+    tst     w9, #1
     b.eq    .Lskip_accumulate_right
     ldp     q16, q17, [x12, #0]
     ldp     q18, q19, [x12, #32]
@@ -913,7 +919,7 @@ Abstract:
 .Lskip_accumulate_right:
 
     // Conditionally add bias.
-    tst     w18, #2
+    tst     w9, #2
     b.eq    .Lskip_bias_right
     ldp     q16, q17, [x6, #0]
     ldp     q18, q19, [x6, #32]
@@ -925,7 +931,7 @@ Abstract:
 .Lskip_bias_right:
 
     // Conditionally apply ReLU.
-    tst     w18, #4
+    tst     w9, #4
     b.eq    .Lskip_relu_right
     fmax    v0.4s, v0.4s, v31.4s
     fmax    v1.4s, v1.4s, v31.4s
@@ -1291,7 +1297,7 @@ Abstract:
     ldp     x23, x24, [sp, #48]
     ldp     x21, x22, [sp, #32]
     ldp     x19, x20, [sp, #16]
-    ldp     x29, x30, [sp], #256
+    ldp     x29, x30, [sp], #272
     ret
 
 #endif // defined(__aarch64__) && !defined(_WIN32)
