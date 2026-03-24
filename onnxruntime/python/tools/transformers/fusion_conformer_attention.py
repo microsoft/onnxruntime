@@ -162,6 +162,15 @@ class FusionConformerAttention(FusionAttention):
             logger.debug("fuse_conformer_attention: failed to match extra q path")
             return
 
+        if extra_q_nodes is None:
+            nemotron_extra_q_nodes = self.model.match_parent_path(
+                add_qk,
+                ["Slice", "Reshape", "Slice", "Reshape", "Pad", "MatMul", "Transpose", "Add"],
+                [1, 0, 0, 0, 0, 0, 0, 0],
+            )
+            if nemotron_extra_q_nodes is not None:
+                extra_q_nodes = nemotron_extra_q_nodes
+
         past_k, present_k = "", ""
         k_nodes = self.model.match_parent_path(
             matmul_qk,
@@ -208,6 +217,7 @@ class FusionConformerAttention(FusionAttention):
             matmul_q.input[0] == matmul_k.input[0]
             and matmul_k.input[0] == matmul_v.input[0]
             and extra_q_nodes is None
+            and add_q is not None
             and add_k is not None
             and add_v is not None
         )

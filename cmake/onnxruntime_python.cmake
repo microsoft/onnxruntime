@@ -193,7 +193,6 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
 )
@@ -201,7 +200,7 @@ set(onnxruntime_pybind11_state_static_providers
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
 if(WIN32)

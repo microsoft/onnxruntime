@@ -5,13 +5,13 @@
 
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cpu/object_detection/non_max_suppression.h"
+#include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-struct NonMaxSuppression final : public CudaKernel, public NonMaxSuppressionBase {
-  explicit NonMaxSuppression(const OpKernelInfo& info) : CudaKernel(info), NonMaxSuppressionBase(info) {
+struct NonMaxSuppression final : public CudaKernel, public NonMaxSuppressionBaseImpl<OpKernelInfo, OpKernelContext> {
+  explicit NonMaxSuppression(const OpKernelInfo& info) : CudaKernel(info), NonMaxSuppressionBaseImpl(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

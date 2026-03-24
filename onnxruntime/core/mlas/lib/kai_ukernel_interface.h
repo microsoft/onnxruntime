@@ -12,6 +12,8 @@
 
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p_interface.h"
 
+#include "kai/ukernels/matmul/matmul_clamp_f32_bf16p_bf16p/kai_matmul_clamp_f32_bf16p_bf16p_interface.h"
+
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp_qsi8cxp_interface.h"
 
 #include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p_f32p_interface.h"
@@ -39,6 +41,8 @@ using KaiDynamicQGemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi8c
 // Wrapper for FP32 IMATMUL kernels used by the KleidiAI convolution implementation.
 using KaiF32IMatmulKernel = KaiMatmulKernel<kai_imatmul_clamp_f32_f32p_f32p_ukernel>;
 
+using KaiBF16SBgemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_bf16p_bf16p_ukernel>;
+
 // Returns the selected Qnbit GEMM ukernel based on runtime CPU capabilities.
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel();
 
@@ -56,3 +60,6 @@ const KaiF32SgemvKernel& GetKleidiAISGemvUKernel();
 
 // Returns the selected FP32 IMATMUL ukernel used by the KleidiAI convolution implementation.
 const KaiF32IMatmulKernel& GetKleidiAIF32IMatmulUKernel();
+
+// Returns the selected BF16 SBGEMM ukernel used by the KleidiAI based on runtime CPU capabilities.
+const KaiBF16SBgemmKernel& GetKleidiAISBGemmUKernel();

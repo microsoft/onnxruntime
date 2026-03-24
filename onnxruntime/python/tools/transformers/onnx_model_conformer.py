@@ -33,9 +33,7 @@ class ConformerOnnxModel(BertOnnxModel):
         self.adjust_reshape_and_expand()
 
     def postprocess(self):
-        super().postprocess()
         self.remove_cascaded_cast_nodes()
         self.remove_useless_cast_nodes()
         self.remove_unused_constant()
-        self.clean_graph()
-        self.prune_graph()
+        super().postprocess()

@@ -5,8 +5,10 @@
 //
 
 #include <vector>
+#include <algorithm>
 #include <cstring>
 #include <cstddef>
+#include <arm_neon.h>
 
 #include "mlas.h"
 
@@ -31,6 +33,9 @@ static thread_local KaiTlsBuffers g_kai_tls;
 const KaiF32SgemmKernel& sgemm_gemm = GetKleidiAISGemmUKernel();
 const KaiF32SgemvKernel& sgemm_gemv = GetKleidiAISGemvUKernel();
 
+// Avoid vector setup overhead on tiny outputs.
+constexpr size_t kAlphaBetaNeonMinElements = 32;
+
 
 // Helpers for GEMV
 /*++
@@ -54,6 +59,53 @@ static inline void ApplyAlphaBetaStrided(const float* src, size_t num_elements, 
         std::memcpy(dst, src, num_elements * sizeof(float));
         return;
     }
+
+    // Contiguous-only vectorized path with strict correctness guards.
+    if (dst_stride == 1 && num_elements >= kAlphaBetaNeonMinElements) {
+        size_t i = 0;
+        if (alpha == 1.0f && beta == 0.0f) {
+            for (; i + 4 <= num_elements; i += 4) {
+                vst1q_f32(dst + i, vld1q_f32(src + i));
+            }
+        } else if (alpha == 1.0f) {
+            const float32x4_t vbeta = vdupq_n_f32(beta);
+            for (; i + 4 <= num_elements; i += 4) {
+                const float32x4_t vab = vld1q_f32(src + i);
+                const float32x4_t vc = vld1q_f32(dst + i);
+                vst1q_f32(dst + i, vmlaq_f32(vab, vbeta, vc));
+            }
+        } else if (beta == 0.0f) {
+            const float32x4_t valpha = vdupq_n_f32(alpha);
+            for (; i + 4 <= num_elements; i += 4) {
+                const float32x4_t vab = vld1q_f32(src + i);
+                vst1q_f32(dst + i, vmulq_f32(valpha, vab));
+            }
+        } else {
+            const float32x4_t valpha = vdupq_n_f32(alpha);
+            const float32x4_t vbeta = vdupq_n_f32(beta);
+            for (; i + 4 <= num_elements; i += 4) {
+                const float32x4_t vab = vld1q_f32(src + i);
+                const float32x4_t vc = vld1q_f32(dst + i);
+                vst1q_f32(dst + i, vmlaq_f32(vmulq_f32(valpha, vab), vbeta, vc));
+            }
+        }
+
+        for (; i < num_elements; ++i) {
+            const float ab = src[i];
+            const float c_orig = dst[i];
+            if (alpha == 1.0f && beta == 0.0f) {
+                dst[i] = ab;
+            } else if (alpha == 1.0f) {
+                dst[i] = ab + beta * c_orig;
+            } else if (beta == 0.0f) {
+                dst[i] = alpha * ab;
+            } else {
+                dst[i] = alpha * ab + beta * c_orig;
+            }
+        }
+        return;
+    }
+
     for (size_t i = 0; i < num_elements; ++i) {
         const float ab = src[i];
         float& d = dst[i * dst_stride];
@@ -84,20 +136,44 @@ Arguments:
     ldc   - Leading dimension of C (in elements).
 
 Notes:
-    Uses a memcpy path when alpha==1, beta==0, ldc==cols, and rows/cols are non-zero.
-    Otherwise applies per-row scaling via ApplyAlphaBetaStrided.
+    For contiguous destination tiles (ldc==cols), flattens (rows*cols) and routes
+    through ApplyAlphaBetaStrided to enable contiguous SIMD and memcpy fast paths.
+    For non-contiguous destination tiles, applies per-row scaling via
+    ApplyAlphaBetaStrided.
 --*/
 static inline void ApplyAlphaBeta2D(const float* src, size_t rows, size_t cols,
                                     float alpha, float beta,
                                     float* dst, size_t ldc) {
-    if (alpha == 1.0f && beta == 0.0f && ldc == cols && rows != 0 && cols != 0) {
-        std::memcpy(dst, src, rows * cols * sizeof(float));
+    if (rows == 0 || cols == 0) {
         return;
     }
+
+    if (ldc == cols) {
+        // Contiguous destination: flatten so we can hit the contiguous SIMD path.
+        ApplyAlphaBetaStrided(src, rows * cols, alpha, beta, dst, 1, /*allow_memcpy*/ true);
+        return;
+    }
+
     for (size_t i = 0; i < rows; ++i) {
         const float* src_row = src + i * cols;
         float* dst_row = dst + i * ldc;
-        ApplyAlphaBetaStrided(src_row, cols, alpha, beta, dst_row, 1, /*allow_memcpy*/ (ldc == cols));
+        ApplyAlphaBetaStrided(src_row, cols, alpha, beta, dst_row, 1, /*allow_memcpy*/ false);
+    }
+}
+
+static inline void ApplyBetaToC(float* C, size_t ldc, size_t M, size_t N, float beta) {
+    if (beta == 0.0f) {
+        for (size_t i = 0; i < M; ++i) {
+            std::fill_n(C + i * ldc, N, 0.0f);
+        }
+        return;
+    }
+    if (beta != 1.0f) {
+        for (size_t i = 0; i < M; ++i) {
+            for (size_t j = 0; j < N; ++j) {
+                C[i * ldc + j] *= beta;
+            }
+        }
     }
 }
 
@@ -413,21 +489,28 @@ Return Value:
 
 --*/
 {
-    if (M == 0 || N == 0) {
+    if (M == 0 || N == 0 || BatchSize == 0) {
         return true;
     }
 
-    if (Data->alpha == 0.0f || K == 0) {
-        if (Data->beta == 0.0f) {
-            for (size_t i = 0; i < M; ++i) {
-                std::fill_n(Data->C + i * Data->ldc, N, 0.0f);
-            }
-        } else if (Data->beta != 1.0f) {
-            for (size_t i = 0; i < M; ++i) {
-                for (size_t j = 0; j < N; ++j) {
-                    Data->C[i * Data->ldc + j] *= Data->beta;
-                }
-            }
+    if (K == 0) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+        }
+        return true;
+    }
+
+    bool all_alpha_zero = true;
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+        if (Data[batch].alpha != 0.0f) {
+            all_alpha_zero = false;
+            break;
+        }
+    }
+
+    if (all_alpha_zero) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
         }
         return true;
     }

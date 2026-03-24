@@ -257,7 +257,7 @@ class QnnTensorWrapper {
     dimensions_.assign(shape_data, shape_data + shape_rank);
     SetQnnTensorDim(qnn_tensor_, dimensions_);
 
-    SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
+    SetQnnTensorMemType(qnn_tensor_, GetQnnTensorMemType(qnn_tensor));
 
     return Status::OK();
   }
