@@ -86,10 +86,12 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_initial_state_) {
     shader.MainFunctionBody()
         << "// Load initial state: initial_state[batch, head, dk_idx, dv_start..dv_start+TILE_V]\n"
-        << "let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;\n"
-        << "for (var j = 0u; j < TILE_V; j++) {\n"
-        << "  if (dv_start + j < uniforms.head_dim_v) {\n"
-        << "    state[j] = f32(initial_state[state_base + j]);\n"
+        << "if (dk_idx < uniforms.head_dim_k) {\n"
+        << "  let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;\n"
+        << "  for (var j = 0u; j < TILE_V; j++) {\n"
+        << "    if (dv_start + j < uniforms.head_dim_v) {\n"
+        << "      state[j] = f32(initial_state[state_base + j]);\n"
+        << "    }\n"
         << "  }\n"
         << "}\n";
   }
@@ -100,9 +102,13 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "for (var t = 0u; t < uniforms.seq_length; t++) {\n"
       // Load k and q for this thread's dk row
       << "  let qkv_bh_offset = (batch_idx * uniforms.num_heads + head_idx) * uniforms.seq_length;\n"
-      << "  let k_base = (qkv_bh_offset + t) * uniforms.head_dim_k + dk_idx;\n"
-      << "  let k_val = f32(key[k_base]);\n"
-      << "  let q_val = f32(query[k_base]);\n";
+      << "  var k_val: f32 = 0.0;\n"
+      << "  var q_val: f32 = 0.0;\n"
+      << "  if (dk_idx < uniforms.head_dim_k) {\n"
+      << "    let k_base = (qkv_bh_offset + t) * uniforms.head_dim_k + dk_idx;\n"
+      << "    k_val = f32(key[k_base]);\n"
+      << "    q_val = f32(query[k_base]);\n"
+      << "  }\n";
 
   // Step 1: Apply decay (for gated and gated_delta modes)
   if (update_rule_ == LinearAttentionUpdateRule::Gated || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
@@ -111,14 +117,17 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (decay_broadcast_dk_) {
       // Decay shape is (B, H, T) — same decay for all dk rows
       shader.MainFunctionBody()
-          << "  let decay_base = qkv_bh_offset + t;\n";
+          << "  let exp_g = exp(f32(decay[qkv_bh_offset + t]));\n";
     } else {
       // Decay shape is (B, H, T, dk) — per-dk decay
+      // For padding threads (dk_idx >= head_dim_k), use 0.0 (exp(0)=1, no decay)
       shader.MainFunctionBody()
-          << "  let decay_base = (qkv_bh_offset + t) * uniforms.head_dim_k + dk_idx;\n";
+          << "  var exp_g: f32 = 1.0;\n"
+          << "  if (dk_idx < uniforms.head_dim_k) {\n"
+          << "    exp_g = exp(f32(decay[(qkv_bh_offset + t) * uniforms.head_dim_k + dk_idx]));\n"
+          << "  }\n";
     }
     shader.MainFunctionBody()
-        << "  let exp_g = exp(f32(decay[decay_base]));\n"
         << "  for (var j = 0u; j < TILE_V; j++) {\n"
         << "    state[j] *= exp_g;\n"
         << "  }\n";
@@ -205,10 +214,12 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Write final state
   shader.MainFunctionBody()
       << "\n// Write final state\n"
-      << "let final_state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;\n"
-      << "for (var j = 0u; j < TILE_V; j++) {\n"
-      << "  if (dv_start + j < uniforms.head_dim_v) {\n"
-      << "    final_state[final_state_base + j] = output_element_t(state[j]);\n"
+      << "if (dk_idx < uniforms.head_dim_k) {\n"
+      << "  let final_state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;\n"
+      << "  for (var j = 0u; j < TILE_V; j++) {\n"
+      << "    if (dv_start + j < uniforms.head_dim_v) {\n"
+      << "      final_state[final_state_base + j] = output_element_t(state[j]);\n"
+      << "    }\n"
       << "  }\n"
       << "}\n";
 
