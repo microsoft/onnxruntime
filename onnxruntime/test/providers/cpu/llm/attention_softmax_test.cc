@@ -52,25 +52,26 @@ TEST(AttentionSoftmaxTest, Fp16OverflowAllocation) {
   constexpr size_t D = 46341;
 
   // Verify at compile time that these dimensions would overflow int32.
-  static_assert(static_cast<int64_t>(N) * D > static_cast<int64_t>(std::numeric_limits<int>::max()),
+  static_assert(int64_t{N} * int64_t{D} > int64_t{std::numeric_limits<int>::max()},
                 "Test dimensions must cause int32 overflow in N*D");
 
   auto alloc = std::make_shared<OverflowCheckAllocator>();
   MLFloat16 dummy_score{0.0f};
 
-  if constexpr (static_cast<uintmax_t>(N) * D <= static_cast<uintmax_t>(std::numeric_limits<size_t>::max())) {
-    // N * D fits in size_t.  The function reaches Alloc, which records the requested size and throws
+  // The allocation size must reflect correct size_t arithmetic: N * D * sizeof(float).
+  // With the old int parameters, N * D would overflow to a small/negative value, producing a wrong (much smaller)
+  // allocation size.
+  constexpr uintmax_t expected_allocation_size = uintmax_t{N} * D * sizeof(float);
+
+  if constexpr (expected_allocation_size <= uintmax_t{std::numeric_limits<size_t>::max()}) {
+    // Allocation size fits in size_t. The function reaches Alloc, which records the requested size and throws
     // AllocationIntercepted.
     EXPECT_THROW(ComputeAttentionSoftmaxInplace<MLFloat16>(&dummy_score, N, D, nullptr, alloc),
                  AllocationIntercepted);
 
-    // The allocation size must reflect correct size_t arithmetic: N * D * sizeof(float).
-    // With the old int parameters, N * D would overflow to a small/negative value, producing a wrong (much smaller)
-    // allocation size.
-    constexpr size_t expected_bytes = N * D * sizeof(float);
-    EXPECT_EQ(alloc->LastAllocSize(), expected_bytes);
+    EXPECT_EQ(alloc->LastAllocSize(), static_cast<size_t>(expected_allocation_size));
   } else {
-    // N * D overflows size_t (i.e., in a 32-bit build), so SafeInt<size_t> will throw an exception.
+    // Allocation size overflows size_t (i.e., in a 32-bit build), so SafeInt<size_t> will throw an exception.
     try {
       ComputeAttentionSoftmaxInplace<MLFloat16>(&dummy_score, N, D, nullptr, alloc);
       FAIL() << "Expected OnnxRuntimeException to be thrown";
