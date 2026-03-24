@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <mutex>
 #include <unordered_map>
+#include <cuda.h>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -539,8 +540,6 @@ struct NvTrtRtxSyncStreamImpl : OrtSyncStreamImpl {
   const OrtApi& ort_api;
 };
 
-#if defined(_WIN32)
-
 // External Resource Import Implementation (D3D12 to CUDA)
 /**
  * @brief Derived handle for imported external memory from D3D12 to CUDA.
@@ -642,8 +641,13 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       _In_ OrtExternalMemoryHandleType handle_type) noexcept {
     (void)this_ptr;
     // CUDA supports both D3D12 resource and heap handles
+#if defined(_WIN32)
     return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE ||
-           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
+           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP ||
+           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32;
+#elif __linux__
+    return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD;
+#endif
   }
 
   static OrtStatus* ORT_API_CALL ImportMemoryImpl(
@@ -694,6 +698,14 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
         cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
         is_dedicated = false;  // D3D12 heaps are not dedicated
         break;
+      case ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32:
+        cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32;
+        is_dedicated = false;  // API header currently, documents that this handle currently is non-dedicated
+        break;
+      case ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD:
+        cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD;
+        is_dedicated = false;  // API header currently, documents that this handle currently is non-dedicated
+        break;
       default:
         // Should not reach here - CanImportMemory already validated handle type
         return impl.ort_api.CreateStatus(ORT_EP_FAIL, "Unexpected external memory handle type");
@@ -702,7 +714,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // Setup external memory handle descriptor
     CUDA_EXTERNAL_MEMORY_HANDLE_DESC ext_mem_desc = {};
     ext_mem_desc.type = cu_handle_type;
+#if defined(_WIN32)
     ext_mem_desc.handle.win32.handle = desc->native_handle;
+#else
+    ext_mem_desc.handle.fd = static_cast<int>(reinterpret_cast<intptr_t>((desc->native_handle)));
+#endif
     ext_mem_desc.size = desc->size_bytes;
     ext_mem_desc.flags = is_dedicated ? CUDA_EXTERNAL_MEMORY_DEDICATED : 0;
 
@@ -825,8 +841,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       _In_ const OrtExternalResourceImporterImpl* this_ptr,
       _In_ OrtExternalSemaphoreType type) noexcept {
     (void)this_ptr;
-    // CUDA supports D3D12 timeline fences
-    return type == ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
+#if defined(_WIN32)
+    return type == ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE || type == ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32;
+#else
+    return type == ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD;
+#endif
   }
 
   static OrtStatus* ORT_API_CALL ImportSemaphoreImpl(
@@ -857,8 +876,25 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
 
     // Setup external semaphore handle descriptor for D3D12 fence
     CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC ext_sem_desc = {};
-    ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+    switch (desc->type) {
+      case ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+        break;
+      case ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_WIN32;
+        break;
+      case ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD:
+        ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_TIMELINE_SEMAPHORE_FD;
+        break;
+      default:
+        // Should not reach here - ImportSemaphoreImpl already validated handle type
+        return impl.ort_api.CreateStatus(ORT_EP_FAIL, "Unexpected external memory handle type");
+    }
+#if defined(_WIN32)
     ext_sem_desc.handle.win32.handle = desc->native_handle;
+#else
+    ext_sem_desc.handle.fd = static_cast<int>(reinterpret_cast<intptr_t>(desc->native_handle));
+#endif
     ext_sem_desc.flags = 0;
 
     // Import the external semaphore
@@ -956,7 +992,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // Get the CUDA stream from OrtSyncStream
     cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.ort_api.SyncStream_GetHandle(stream));
 
-    // Setup signal parameters for D3D12 fence (timeline semaphore)
+    // Setup signal parameters for D3D12 fence / VK timeline semaphore
     CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signal_params = {};
     signal_params.params.fence.value = value;
     signal_params.flags = 0;
@@ -993,8 +1029,6 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
 };
-
-#endif  // defined(_WIN32)
 
 // OrtEpApi infrastructure to be able to use the NvTensorRTRTX EP as an OrtEpFactory for auto EP selection.
 struct NvTensorRtRtxEpFactory : OrtEpFactory {
@@ -1280,17 +1314,11 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     *out_importer = nullptr;
 
-#if defined(_WIN32)
     // Create the external resource importer
     auto importer = std::make_unique<NvTrtRtxExternalResourceImporterImpl>(ep_device, factory.ort_api);
     *out_importer = importer.release();
 
     return nullptr;
-#else
-    ORT_UNUSED_PARAMETER(ep_device);
-    return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                                        "External resource import is only available on Windows builds.");
-#endif
   }
 
   /**
@@ -1529,9 +1557,40 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
                                        "[NvTensorRTRTX EP] D3D12 CIG context creation not supported on this platform");
 #endif
     } else if (config->graphics_api == ORT_GRAPHICS_API_VULKAN) {
-      // TODO: Add Vulkan CIG context support if needed
-      return onnxruntime::CreateStatus(ORT_NOT_IMPLEMENTED,
-                                       "[NvTensorRTRTX EP] Vulkan CIG context not yet implemented");
+      int cig_supported{false};
+      if (cudaSuccess != cudaDeviceGetAttribute(&cig_supported, cudaDevAttrVulkanCigSupported, device_id)) {
+        return onnxruntime::CreateStatus(ORT_EP_FAIL,
+                                         "[NvTensorRTRTX EP] Could not determine CiG support for CUDA device");
+      }
+      if (!cig_supported) {
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] InitGraphicsInterop: CiG for Vulkan is not supported on the given device. Will use the default CUDA context";
+        return nullptr;
+      }
+      const char* nv_blob_ptr_str = factory.ort_api.GetKeyValue(config->additional_options, onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data);
+      if (!nv_blob_ptr_str) {
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] InitGraphicsInterop: Can't enable CUDA in Graphics (CiG) for Vulkan without onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data";
+        return nullptr;
+      }
+      uint64_t nv_blob_ptr = std::stoull(nv_blob_ptr_str);
+      if (nv_blob_ptr == 0) {
+        return onnxruntime::CreateStatus(ORT_EP_FAIL,
+                                         "[NvTensorRTRTX EP] Could not parse provided values for onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data or onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data_len");
+      }
+
+      CUctxCigParam cig_params{};
+      cig_params.sharedDataType = CIG_DATA_TYPE_NV_BLOB;
+      cig_params.sharedData = reinterpret_cast<void*>(nv_blob_ptr);
+      CUctxCreateParams params{};
+      params.cigParams = &cig_params;
+
+      cu_result = cuCtxCreate_v4(&cig_context, &params, 0, device_id);
+      if (cu_result != CUDA_SUCCESS) {
+        const char* error_str = nullptr;
+        cuGetErrorString(cu_result, &error_str);
+        std::string error_msg = "[NvTensorRTRTX EP] Failed to create CIG context for Vulkan: ";
+        error_msg += error_str ? error_str : "unknown error";
+        return onnxruntime::CreateStatus(ORT_FAIL, error_msg.c_str());
+      }
     } else {
       return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
                                        "[NvTensorRTRTX EP] Unsupported graphics API for CIG context");

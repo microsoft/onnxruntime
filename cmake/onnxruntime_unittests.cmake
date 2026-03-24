@@ -734,10 +734,21 @@ if(onnxruntime_USE_TENSORRT)
 endif()
 
 if(onnxruntime_USE_NV)
+  # If an external project (e.g. dawn from Webgpu EP has already added a Vulkan::Headers target we shouldn't try to import another version of the Vulkan headers)
+  if (NOT TARGET Vulkan::Headers)
+    onnxruntime_fetchcontent_declare(
+      vulkan_headers
+      URL ${DEP_URL_vulkan_headers}
+      URL_HASH SHA1=${DEP_SHA1_vulkan_headers}
+      EXCLUDE_FROM_ALL
+    )
+    onnxruntime_fetchcontent_makeavailable(vulkan_headers)
+  endif()
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nv_tensorrt_rtx/*)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h")
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nv_tensorrt_rtx onnxruntime_providers_shared)
   list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
+  list(APPEND onnxruntime_test_providers_libs Vulkan::Headers)
 endif()
 
 
