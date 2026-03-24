@@ -94,7 +94,7 @@ jobs:
           key: vcpkg-cache | web.yml | ${{ inputs.job_name }}
           path: ~/.cache/vcpkg
 
-      - uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/setup-build-tools-cache
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           ccache-version: 4.13.1
           ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
