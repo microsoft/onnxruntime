@@ -1276,6 +1276,16 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
     size_t FilterCount,
     float Beta)
 {
+#if !defined(USE_KLEIDIAI) || !defined(__aarch64__)
+    return false;
+#else
+    // Channels-last float convolution is only implemented by the KleidiAI
+    // override. The generic MLAS convolution path assumes NCHW layout.
+    if (GetMlasPlatform().MlasConvPrepareOverride == nullptr ||
+        GetMlasPlatform().MlasConvOverride == nullptr) {
+        return false;
+    }
+
     if (Dimensions != 2 || BatchCount != 1 || GroupCount != 1 || Beta != 0.0f) {
         return false;
     }
@@ -1299,6 +1309,7 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
     }
 
     return true;
+#endif
 }
 
 void
