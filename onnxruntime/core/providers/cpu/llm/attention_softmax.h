@@ -23,7 +23,7 @@ inline void ComputeAttentionSoftmaxInplace<MLFloat16>(MLFloat16* score, size_t N
                                                       concurrency::ThreadPool* tp, AllocatorPtr allocator) {
   ORT_ENFORCE(tp == nullptr, "No parallelized version of softmax for float16.");
   // MLAS lacks kernels for fp16 softmax, so we convert to float32 and use the float32 version.
-  size_t num_elements = SafeInt<size_t>(N) * D;
+  auto num_elements = SafeInt<size_t>(N) * D;
   void* allocated_ptr = allocator->Alloc(num_elements * sizeof(float));
   BufferUniquePtr float_buffer(allocated_ptr, BufferDeleter(allocator));
   float* ptr = reinterpret_cast<float*>(allocated_ptr);
