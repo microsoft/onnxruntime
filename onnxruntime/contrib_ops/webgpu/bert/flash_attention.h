@@ -97,9 +97,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
       // Compute max_k_step from shared memory budget: k_tile + v_tile = 2 * element_size * head_size * max_k_step
       const int element_size = is_fp16 ? 2 : 4;
       int max_k_from_shm = 16384 / (2 * element_size * qkv_head_size);
-      if (max_k_from_shm >= 64) {
-        max_k_step_ = 64;
-      } else if (max_k_from_shm >= 32) {
+      if (max_k_from_shm >= 32) {
         max_k_step_ = 32;
       } else {
         max_k_step_ = 16;
