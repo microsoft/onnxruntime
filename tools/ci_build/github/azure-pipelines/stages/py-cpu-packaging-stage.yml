@@ -194,6 +194,7 @@ stages:
     - template: ../templates/py-linux-qnn.yml
       parameters:
         machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+        QnnSdk: ${{ parameters.qnn_sdk_version }}
         extra_build_arg: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
         is1ES: true
