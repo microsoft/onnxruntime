@@ -12,9 +12,14 @@ namespace onnxruntime {
 Status PluginEpProfiler::Create(OrtEpProfilerImpl& profiler_impl, const logging::Logger& logger,
                                 const std::string& ep_name, std::unique_ptr<PluginEpProfiler>& profiler_out) {
   // plugin EP profiling APIs were introduced in ORT 1.25
-  ORT_RETURN_IF(profiler_impl.ort_version_supported < 25,
-                "OrtEpProfilerImpl::ort_version_supported (", profiler_impl.ort_version_supported, ") for ",
-                ep_name, " expected to be >= 25");
+  if (auto profiler_version = profiler_impl.ort_version_supported; profiler_version < 25) {
+    if (profiler_impl.Release != nullptr) {
+      profiler_impl.Release(&profiler_impl);
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtEpProfilerImpl::ort_version_supported (", profiler_version, ") for ",
+                           ep_name, " expected to be >= 25");
+  }
 
   // Check presence of required OrtEpProfilerImpl functions
   if (profiler_impl.Release == nullptr ||

@@ -207,7 +207,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
     int64_t ts_us = (raw_ep_event.ts_ns - profiling_start_time_ns) / 1000;
     int64_t dur_us = raw_ep_event.dur_ns / 1000;
 
-    // Set parent_name and op_name as an event args. This metadata comes from the correlated ORT event.
+    // Set parent_name an event arg. The parent_name is just the name of the correlated ORT event.
     std::unordered_map<std::string, std::string> args = {{"parent_name", raw_ep_event.ort_event_name.c_str()}};
 
     Ort::ProfilingEvent event(OrtProfilingEventCategory_KERNEL, -1, -1, raw_ep_event.name.c_str(),

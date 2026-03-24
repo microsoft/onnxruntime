@@ -1045,6 +1045,8 @@ TEST(OrtEpLibrary, KernelPluginEp_RunProfiling) {
       break;
     }
   }
+  ASSERT_FALSE(profile_file_path.empty()) << "Could not find run profile with prefix '"
+                                          << run_profile_prefix << "' in current directory";
   std::ifstream profile(profile_file_path);
   ASSERT_TRUE(profile.is_open()) << "Could not open profile file: " << profile_file_path;
 
