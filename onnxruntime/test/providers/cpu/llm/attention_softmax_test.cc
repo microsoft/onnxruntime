@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/llm/attention_softmax.h"
