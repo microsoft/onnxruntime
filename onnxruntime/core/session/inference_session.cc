@@ -2283,7 +2283,7 @@ common::Status InferenceSession::Initialize() {
       auto* intra_op_tp = GetIntraOpThreadPoolToUse();
       auto* inter_op_tp = GetInterOpThreadPoolToUse();
       if (AreRequiredPerSessionThreadPoolsAvailable(intra_op_tp, inter_op_tp)) {
-        thread_pools_ready_for_run_.store(true, std::memory_order_relaxed);
+        thread_pools_ready_for_run_.store(true, std::memory_order_release);
       }
     }
 
