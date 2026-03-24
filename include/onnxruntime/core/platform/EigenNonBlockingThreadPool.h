@@ -423,9 +423,6 @@ struct WorkNoCallbackPolicy {
   void Execute(const Work& w) const { w(); }
 
   void OnAbandon(const Work&) const noexcept {}
-
- private:
-  void* OnEnqueue() const noexcept { return nullptr; }
 };
 
 #ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
