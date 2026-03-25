@@ -203,6 +203,20 @@ class FusionConformerAttention(FusionAttention):
             logger.debug("fuse_conformer_attention: failed to detect num_heads or hidden_size")
             return
 
+        # Validate attention_bias: the Attention and MultiHeadAttention kernels require a 4-D
+        # tensor with shape [batch_size, num_heads, seq_len, seq_len].  Scalar or 1-D initializers
+        # (e.g. a plain QK scaling constant) must not be forwarded as attention_bias.
+        # Non-initializer values (computed positional-bias outputs) are kept as-is.
+        attention_bias = add_qk.input[1]
+        bias_init = self.model.get_initializer(attention_bias)
+        if bias_init is not None and len(bias_init.dims) != 4:
+            logger.debug(
+                "fuse_conformer_attention: skipping attention_bias %s with dims %s (expected 4-D)",
+                attention_bias,
+                list(bias_init.dims),
+            )
+            attention_bias = ""
+
         new_node = None
         use_packed_attention_op = (
             matmul_q.input[0] == matmul_k.input[0]
@@ -226,7 +240,7 @@ class FusionConformerAttention(FusionAttention):
                 hidden_size=hidden_size,
                 first_input=matmul_q.input[0],
                 output=reshape_qkv.output[0],
-                add_qk_str=add_qk.input[1],
+                add_qk_str=attention_bias,
                 past_k=past_k,
                 past_v=past_v,
                 present_k=present_k,
@@ -244,7 +258,7 @@ class FusionConformerAttention(FusionAttention):
                 hidden_size=hidden_size,
                 output=reshape_qkv.output[0],
                 key_padding_mask=attn_mask,
-                add_qk=add_qk.input[1],
+                add_qk=attention_bias,
                 past_k=past_k,
                 past_v=past_v,
                 present_k=present_k,
