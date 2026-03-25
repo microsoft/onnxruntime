@@ -1238,7 +1238,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         onnxruntime::contrib::cuda::has_memory_efficient_attention(
             sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
             parameters.head_size, parameters.v_head_size) &&
-        !has_output_qk;
+        !has_output_qk &&
+        // MEA decode requires head_size == v_head_size for LaunchConcatNewToPastKV
+        // (single head_size parameter). Fall back to unfused when they differ.
+        !(past_key != nullptr && parameters.head_size != parameters.v_head_size);
 
     // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
     // "unaligned" kernel path. When an attention mask is present (with or without
