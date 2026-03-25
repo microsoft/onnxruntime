@@ -167,6 +167,40 @@ stages:
             copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\${{ parameters.cmake_build_type }}\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
           displayName: 'Copy WebGPU build tools'
 
+      - powershell: |
+          $dxcZipUrl = "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip"
+          $dxcZipPath = "$(Build.BinariesDirectory)\dxc.zip"
+          $dxcExtractPath = "$(Build.BinariesDirectory)\dxc_extracted"
+          $targetArch = "${{ parameters.arch }}"
+
+          # Download the DXC package
+          Write-Host "Downloading DXC release from $dxcZipUrl"
+          Invoke-WebRequest -Uri $dxcZipUrl -OutFile $dxcZipPath
+
+          # Create extraction directory
+          if (-not (Test-Path $dxcExtractPath)) {
+            New-Item -Path $dxcExtractPath -ItemType Directory -Force
+          }
+
+          # Extract the zip file
+          Write-Host "Extracting DXC package to $dxcExtractPath"
+          Expand-Archive -Path $dxcZipPath -DestinationPath $dxcExtractPath -Force
+
+          # Copy the necessary DLLs to the target directory
+          $sourcePath = Join-Path $dxcExtractPath "bin\$targetArch"
+          $targetPath = "$(Build.ArtifactStagingDirectory)\bin"
+
+          if (-not (Test-Path $targetPath)) {
+            New-Item -Path $targetPath -ItemType Directory -Force
+          }
+
+          Write-Host "Copying dxil.dll and dxcompiler.dll from $sourcePath to $targetPath"
+          Copy-Item -Path "$sourcePath\dxil.dll" -Destination $targetPath -Force
+          Copy-Item -Path "$sourcePath\dxcompiler.dll" -Destination $targetPath -Force
+
+          Write-Host "DXC DLLs successfully copied to the target directory"
+        displayName: 'Download and Copy DXC Binaries'
+
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml
         parameters:
@@ -182,8 +216,6 @@ stages:
           Contents: |
             onnxruntime_providers_webgpu.dll
             onnxruntime_providers_webgpu.pdb
-            dxcompiler.dll
-            dxil.dll
           TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
 
       - script: |
