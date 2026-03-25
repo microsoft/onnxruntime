@@ -1008,6 +1008,10 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeonAsm;
 #endif
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
+#if !defined(_WIN32)
+    // AArch64 assembly micro-kernel for direct NCHWc convolution
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeonAsm;
+#endif
     // Intrinsics kernel for depthwise NCHWc convolution
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
 #if !defined(_WIN32)
