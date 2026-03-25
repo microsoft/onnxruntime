@@ -483,8 +483,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
   ORT_THROW_IF_ERROR(parser.ParseManifest(package_root, model_variant_infos_));
 }
 
-Status ModelPackageContext::SelectModelVariant(gsl::span<SelectionEpInfo> ep_infos,
-                                               std::optional<std::filesystem::path>& selected_variant_path) {
+Status ModelPackageContext::SelectModelVariant(gsl::span<SelectionEpInfo> ep_infos) {
   ModelVariantSelector selector;
   return selector.SelectVariant(model_variant_infos_, ep_infos, selected_model_variant_path_);
 }
