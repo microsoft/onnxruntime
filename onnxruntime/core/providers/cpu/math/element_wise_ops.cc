@@ -2072,52 +2072,9 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-// Defined early so Mod constructor can use it via the type dispatcher.
-namespace mod_internal {
-
-template <class T, typename Enable = void>
-struct CheckZeroDivisorImpl;
-
-// Integer types: scan for zeros.
-template <class T>
-struct CheckZeroDivisorImpl<T, typename std::enable_if<std::is_integral<T>::value>::type> {
-  void operator()(const Tensor& B) const {
-    const T* b_data = B.Data<T>();
-    const int64_t b_size = B.Shape().Size();
-    for (int64_t i = 0; i < b_size; ++i) {
-      ORT_ENFORCE(b_data[i] != T{0}, "Integer modulo by zero");
-    }
-  }
-};
-
-// Non-integer types: modulo by zero produces NaN / is well-defined; no check needed.
-template <class T>
-struct CheckZeroDivisorImpl<T, typename std::enable_if<!std::is_integral<T>::value>::type> {
-  void operator()(const Tensor&) const {}
-};
-
-}  // namespace mod_internal
-
 class Mod final : public OpKernel {
  public:
-  Mod(const OpKernelInfo& info) : OpKernel(info) {
-    int64_t fmod = 0;
-    Status s = info.GetAttr<int64_t>("fmod", &fmod);
-    if (s.IsOK()) {
-      ORT_ENFORCE((fmod == 0) || (fmod == 1), "fmod must have value either 0 or 1");
-      fmod_ = (fmod == 1);
-    }
-
-    // If the divisor is a constant initializer, validate for integer modulo by zero once
-    // during kernel creation instead of on every Compute call.
-    const Tensor* constant_divisor = nullptr;
-    if (info.TryGetConstantInput(1, &constant_divisor)) {
-      const auto dt_type = constant_divisor->GetElementType();
-      utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
-      check_disp.Invoke<mod_internal::CheckZeroDivisorImpl>(*constant_divisor);
-      divisor_is_validated_constant_ = true;
-    }
-  }
+  Mod(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -2271,6 +2228,21 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 template <class T, typename Enable = void>
 struct CallModImpl;
 
+// Check for zero values in the divisor tensor for integral types.
+template <class T>
+struct CheckZeroDivisorImpl {
+  Status operator()(const Tensor& B) const {
+    if constexpr (std::is_integral<T>::value) {
+      const T* b_data = B.Data<T>();
+      const int64_t b_size = B.Shape().Size();
+      for (int64_t i = 0; i < b_size; ++i) {
+        ORT_RETURN_IF(b_data[i] == T{0}, "Integer modulo by zero");
+      }
+    }
+    return Status::OK();
+  }
+};
+
 // Generic implementation of Mod kernel, non-floating point types
 template <class T>
 struct CallModImpl<T, typename std::enable_if<!std::is_floating_point<T>::value>::type> {
@@ -2303,6 +2275,26 @@ struct CallModImpl<MLFloat16> {
 
 }  // namespace mod_internal
 
+Mod::Mod(const OpKernelInfo& info) : OpKernel(info) {
+  int64_t fmod = 0;
+  Status s = info.GetAttr<int64_t>("fmod", &fmod);
+  if (s.IsOK()) {
+    ORT_ENFORCE((fmod == 0) || (fmod == 1), "fmod must have value either 0 or 1");
+    fmod_ = (fmod == 1);
+  }
+
+  // If the divisor is a constant initializer, validate for integer modulo by zero once
+  // during kernel creation instead of on every Compute call.
+  const Tensor* constant_divisor = nullptr;
+  if (info.TryGetConstantInput(1, &constant_divisor)) {
+    const auto dt_type = constant_divisor->GetElementType();
+    utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
+    Status check_status = check_disp.InvokeRet<Status, mod_internal::CheckZeroDivisorImpl>(*constant_divisor);
+    ORT_THROW_IF_ERROR(check_status);
+    divisor_is_validated_constant_ = true;
+  }
+}
+
 Status Mod::Compute(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
   const auto dt_type = X.GetElementType();
@@ -2313,7 +2305,8 @@ Status Mod::Compute(OpKernelContext* context) const {
   if (!divisor_is_validated_constant_) {
     const Tensor& B = *context->Input<Tensor>(1);
     utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
-    check_disp.Invoke<mod_internal::CheckZeroDivisorImpl>(B);
+    Status check_status = check_disp.InvokeRet<Status, mod_internal::CheckZeroDivisorImpl>(B);
+    ORT_RETURN_IF_ERROR(check_status);
   }
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> t_disp(dt_type);
