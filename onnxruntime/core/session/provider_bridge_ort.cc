@@ -1077,8 +1077,10 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv4() override { return DataTypeImpl::AllTensorTypesIRv4(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv9() override { return DataTypeImpl::AllTensorTypesIRv9(); }
+#if !defined(DISABLE_FLOAT4_TYPES)
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv10() override { return DataTypeImpl::AllTensorTypesIRv10(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv11() override { return DataTypeImpl::AllTensorTypesIRv11(); }
+#endif
 
   const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() override { return DataTypeImpl::AllIEEEFloatTensorTypes(); }
 
