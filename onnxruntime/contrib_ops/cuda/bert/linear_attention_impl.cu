@@ -159,8 +159,8 @@ __global__ void LinearAttentionRecurrentKernel(
   __syncthreads();
 
   // Step 5: Compute output = scale * q^T S
-  // Load q into shared memory (reuse s_v since we're done with it)
-  float* s_q = s_v;  // Reuse s_v space for q
+  // Load q into shared memory (reuse s_k since we're done with it and both are key_dim sized)
+  float* s_q = s_k;  // Reuse s_k space for q
   for (int i = tid; i < key_dim; i += block_size) {
     s_q[i] = ToFloat(q_t[i]);
   }
@@ -222,8 +222,10 @@ void LaunchLinearAttentionKernel(
 
   int rule = static_cast<int>(update_rule);
 
-  // Process each timestep sequentially (for T>1, this is not optimal but correct)
-  // A future optimization would use chunk-parallel computation
+  // Process each timestep sequentially.
+  // Note: For multi-token sequences (T > 1), a chunk-parallel algorithm using
+  // WY decomposition could provide better GPU utilization. The current sequential
+  // approach is functionally correct for all sequence lengths.
   for (int t = 0; t < seq_len; ++t) {
     // Offset q/k/v/decay/beta pointers for timestep t
     const T* q_t = query + static_cast<int64_t>(t) * key_dim;

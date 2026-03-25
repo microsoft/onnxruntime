@@ -5,13 +5,14 @@
 #include "contrib_ops/cuda/bert/linear_attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 
+#include <cmath>
 #include <string>
-
-using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using namespace onnxruntime::cuda;
 
 namespace {
 LinearAttentionUpdateRule ParseUpdateRuleCuda(const std::string& rule) {

@@ -235,7 +235,7 @@ TEST(LinearAttentionTest, DeltaMode_SingleToken) {
                          B, H, T, dk, dv, "delta", scale);
 }
 
-// Test 5: Gated Delta mode (the most complex one, used by Qwen3.5)
+// Test 5: Gated Delta mode (the most complex variant)
 TEST(LinearAttentionTest, GatedDeltaMode_SingleToken) {
   int B = 1, H = 1, T = 1, dk = 2, dv = 2;
   float scale = 1.0f;
