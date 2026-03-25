@@ -117,13 +117,16 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "get_available_providers", []() -> std::vector<std::string> {
         auto available = GetAvailableExecutionProviderNames();
 #if !defined(ORT_MINIMAL_BUILD)
+        const auto& ep_devices = GetEnv().GetOrtEpDevices();
+        available.reserve(available.size() + ep_devices.size());
+
         InlinedHashSet<std::string> existing;
-        existing.reserve(available.size());
+        existing.reserve(available.size() + ep_devices.size());
         for (const auto& ep_name : available) {
           existing.insert(ep_name);
         }
 
-        for (const OrtEpDevice* ep_device : GetEnv().GetOrtEpDevices()) {
+        for (const OrtEpDevice* ep_device : ep_devices) {
           if (!ep_device) {
             continue;
           }

@@ -126,7 +126,10 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
         continue;  // Skip non-NVIDIA GPUs
       }
 
-      int32_t current_device_id = cuda_device_index++;
+      // CUDA uses contiguous ordinals for CUDA-visible NVIDIA devices. Build that
+      // mapping from the filtered hardware-device list instead of relying on the
+      // ORT hardware device id, which is not guaranteed to be a CUDA ordinal.
+      const int32_t current_device_id = cuda_device_index++;
 
       {
         std::lock_guard<std::mutex> lock(factory->device_map_mutex_);
@@ -204,7 +207,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   if (num_devices != 1) {
     return factory->ort_api_.CreateStatus(
         ORT_INVALID_ARGUMENT,
-        "CUDA EP factory currently supports only one device at a time.");
+        "CUDA EP factory currently supports exactly one device per EP instance. "
+        "Pass a single OrtHardwareDevice when creating the CUDA plugin EP.");
   }
   if (devices == nullptr || devices[0] == nullptr) {
     return factory->ort_api_.CreateStatus(

@@ -423,6 +423,9 @@ struct DefaultCudaHandles {
 };
 
 inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
+  // Fallback handles are only used for code paths that need cuBLAS/cuDNN
+  // without an active CudaSyncStream. Keep them thread-local so they are not
+  // shared across callers that may use the libraries concurrently.
   thread_local std::unordered_map<int, DefaultCudaHandles> handles_by_device;
   auto [it, inserted] = handles_by_device.try_emplace(device_id);
   if (inserted) {
@@ -826,20 +829,30 @@ class CudaKernel : public OpKernel {
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* s) const {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
     size_t sz = detail::BytesForCount(cnt, detail::SizeOf<T>::value);
+    if (sz == 0) {
+      ORT_THROW("CUDA scratch buffer allocation size overflow for ", cnt, " elements");
+    }
+
     void* p = nullptr;
     cudaError_t alloc_result = cudaSuccess;
+    bool used_async_alloc = false;
     if (s) {
       alloc_result = cudaMallocAsync(&p, sz, static_cast<cudaStream_t>(s));
-      if (alloc_result == cudaErrorNotSupported || alloc_result == cudaErrorInvalidValue) {
+      used_async_alloc = (alloc_result == cudaSuccess);
+      if (!used_async_alloc && (alloc_result == cudaErrorNotSupported || alloc_result == cudaErrorInvalidValue)) {
         alloc_result = cudaMalloc(&p, sz);
       }
     } else {
       alloc_result = cudaMalloc(&p, sz);
     }
-    if (alloc_result != cudaSuccess) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
-    return IAllocatorUniquePtr<T>(static_cast<T*>(p), [s](T* ptr) {
+
+    if (alloc_result != cudaSuccess) {
+      ORT_THROW("CUDA scratch buffer allocation failed for ", sz, " bytes: ", cudaGetErrorString(alloc_result));
+    }
+
+    return IAllocatorUniquePtr<T>(static_cast<T*>(p), [s, used_async_alloc](T* ptr) {
       if (ptr) {
-        if (s) {
+        if (used_async_alloc && s) {
           cudaError_t free_result = cudaFreeAsync(ptr, static_cast<cudaStream_t>(s));
           if (free_result == cudaErrorNotSupported || free_result == cudaErrorInvalidValue) {
             cudaFree(ptr);

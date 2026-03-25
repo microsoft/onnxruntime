@@ -15,8 +15,8 @@ namespace cuda_plugin {
 
 /// Allocator type: device memory (GPU) or pinned (page-locked host) memory.
 enum class CudaAllocatorKind {
-  kDevice,   ///< GPU device memory via cudaMalloc
-  kPinned,   ///< Page-locked host memory via cudaHostAlloc
+  kDevice,  ///< GPU device memory via cudaMalloc
+  kPinned,  ///< Page-locked host memory via cudaHostAlloc
 };
 
 /// Base class for CUDA allocators implementing the OrtAllocator C interface.

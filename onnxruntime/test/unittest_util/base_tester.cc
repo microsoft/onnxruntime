@@ -44,7 +44,8 @@ void DebugTrap() {
 bool ShouldRouteCudaToDynamicPluginEp(const std::optional<std::string>& dynamic_plugin_ep_name) {
   // Route CUDA requests to the CUDA plugin EP when unit test main has initialized
   // dynamic plugin EP infrastructure with the CUDA plugin registration.
-  return dynamic_plugin_ep_name.has_value() && *dynamic_plugin_ep_name == "CudaPluginExecutionProvider";
+  return dynamic_plugin_ep_name.has_value() &&
+         *dynamic_plugin_ep_name == dynamic_plugin_ep_infra::kCudaPluginExecutionProviderName;
 }
 
 }  // namespace

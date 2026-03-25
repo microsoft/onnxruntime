@@ -97,7 +97,8 @@ class CudaEpFactory : public OrtEpFactory {
   std::vector<Ort::MemoryInfo> cached_memory_infos_;
   int device_id_ = 0;
 
-  // Map ORT hardware device pointers to internal CUDA ordinal indices
+  // Map ORT hardware device pointers to CUDA ordinals for the NVIDIA devices
+  // visible to the CUDA runtime.
   std::mutex device_map_mutex_;
   std::unordered_map<const OrtHardwareDevice*, int> hw_device_to_cuda_index_;
 

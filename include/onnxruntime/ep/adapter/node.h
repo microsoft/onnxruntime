@@ -43,6 +43,9 @@ struct Node {
 
   /** Gets whether an output exists or is an omitted optional output. */
   bool OutputExists(size_t index) const {
+    // KernelInfo_GetOutputName returns an empty string for omitted optional
+    // outputs, which lets adapter consumers mirror NodeArg::Exists() without
+    // pulling in full NodeArg metadata.
     return index < OutputCount() && !kernel_info_.GetOutputName(index).empty();
   }
 
