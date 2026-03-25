@@ -990,7 +990,7 @@ class TestONNXAttentionPaddingMaskMemoryEfficientGQA(unittest.TestCase):
 
 @unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
-class TestONNXAttentionGQAFloatMaskDecode(unittest.TestCase):
+class TestONNXAttentionMemoryEfficientGQAFloatMaskDecode(unittest.TestCase):
     """
     Test GQA with float additive attention mask during decode using MEA.
 
@@ -1018,14 +1018,16 @@ class TestONNXAttentionGQAFloatMaskDecode(unittest.TestCase):
         torch.manual_seed(0)
         device = "cuda"
         torch_type = torch.float16
+        # std=0.2 keeps values in a numerically stable range for fp16 attention
+        std = 0.2
 
-        q = torch.randn(2, 1, 8, 128, device=device, dtype=torch_type) * 0.2
+        q = torch.randn(2, 1, 8, 128, device=device, dtype=torch_type) * std
 
-        past_k = torch.randn(2, 2, 32, 128, device=device, dtype=torch_type) * 0.2
-        past_v = torch.randn_like(past_k) * 0.2
+        past_k = torch.randn(2, 2, 32, 128, device=device, dtype=torch_type) * std
+        past_v = torch.randn_like(past_k) * std
 
-        new_k = torch.randn(2, 1, 2, 128, device=device, dtype=torch_type) * 0.2
-        new_v = torch.randn_like(new_k) * 0.2
+        new_k = torch.randn(2, 1, 2, 128, device=device, dtype=torch_type) * std
+        new_v = torch.randn_like(new_k) * std
 
         total_seq_len = 33  # past(32) + new(1)
 
@@ -1075,6 +1077,18 @@ class TestONNXAttentionGQAFloatMaskDecode(unittest.TestCase):
 
         out_ort = out_ort.reshape(2, 1, 8, 128)
 
+        # --- Verify present_k/v match concatenated reference ---
+        full_k_ref_np = full_k_bnsh.float().detach().cpu().numpy()
+        full_v_ref_np = full_v_bnsh.float().detach().cpu().numpy()
+        present_k_np = present_k.float().detach().cpu().numpy()
+        present_v_np = present_v.float().detach().cpu().numpy()
+
+        print_diff_statistics(torch.tensor(present_k_np - full_k_ref_np), "present_k")
+        numpy.testing.assert_allclose(present_k_np, full_k_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+        print_diff_statistics(torch.tensor(present_v_np - full_v_ref_np), "present_v")
+        numpy.testing.assert_allclose(present_v_np, full_v_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+        # --- Verify output ---
         out_np = out_ort.float().detach().cpu().numpy()
         out_ref_np = out_ref.float().detach().cpu().numpy()
         print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
@@ -1391,6 +1405,31 @@ class TestONNXAttentionGQA4DBNSH(unittest.TestCase):
 
     @parameterized.expand(gqa_4d_bnsh_past_test_cases())
     def test_gqa_4d_bnsh_decode(self, name, config):
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
+@unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping 4D BNSH tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionGQA4DBNSHMEA(unittest.TestCase):
+    """
+    Test GQA with 4D BNSH input format via Memory Efficient Attention.
+
+    Verifies the BNSH transpose logic (use_4d_bnsh=True) works correctly
+    when MEA handles the decode path. The C++ attention op detects 4D inputs
+    and sets transpose_output=false; the dispatcher transposes Q internally.
+    """
+
+    @parameterized.expand(gqa_4d_bnsh_past_test_cases())
+    def test_gqa_4d_bnsh_decode_mea(self, name, config):
         parity_check_gqa_past(
             config=config,
             ep="CUDAExecutionProvider",
