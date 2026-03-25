@@ -2,6 +2,17 @@
 // Licensed under the MIT License.
 //
 // CUDA implementation of DeformConv (deformable convolution 2D).
+// High-level pipeline matches CPU `nn/deform_conv.cc`: im2col then grouped GEMM then optional bias;
+// this file hosts the EP and batch chunking; device kernels live in `deform_conv_impl.cu`.
+//
+// High-level pipeline (batch may be chunked for col_buffer memory; see GetNParallelImgs):
+//   (1) Deformable im2col per chunk: DeformConvIm2ColImpl launches GPU kernels that fill col_buffer
+//       (bilinear sampling + optional mask fused in threads; no separate sampling plan like CPU).
+//   (2) Grouped strided batched GEMM: Y = W * Col via cuBLAS (row-major vs column-major mapping in ComputeInternal).
+//   (3) Optional bias: add B[m] to each output channel map (DeformConvAddBiasImpl).
+//
+// Main difference vs CPU path: CPU builds an AoSoA bilinear plan once per image then reuses it across channels;
+// CUDA recomputes bilinear samples in the im2col kernel while walking offset/mask tensors.
 
 #include "core/providers/shared_library/provider_api.h"
 #include "deform_conv.h"
@@ -178,6 +189,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     const int64_t cur_out_size = static_cast<int64_t>(cur_parallel) * output_image_size;
 
     const T* X_block = Xdata + b * (C * input_image_size);
+    // Stride per full image along N: offset [N, offset_group*2*kH*kW, OH, OW] -> offset_group * 2*kH*kW * OH*OW floats.
     const T* offset_block = offset_data + b * (offset_group * 2 * kernel_size * output_image_size);
     const T* mask_block = use_mask ? (mask_data + b * (offset_group * kernel_size * output_image_size)) : nullptr;
 

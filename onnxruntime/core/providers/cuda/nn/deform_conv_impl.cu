@@ -1,8 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 //
-// CUDA implementation of DeformConv: deformable im2col kernel + bilinear interpolation.
-// Reference: torchvision deform_conv2d_kernel.cu, ONNX DeformConv spec.
+// CUDA device code for DeformConv: deformable im2col kernel(s) and bias-add kernel.
+// Host orchestration and GEMM: `deform_conv.cc` (pipeline described there, aligned with CPU `nn/deform_conv.cc`).
+//
+// This file corresponds to CPU step (1) on GPU: each thread contributes im2col entries by sampling X with
+// bilinear interpolation at offset positions (+ optional mask), instead of CPU's precomputed AoSoA plan + fill.
+//
+// Reference: torchvision deform_conv2d_kernel.cu, ONNX DeformConv.
+//
+// ONNX shapes (this EP; batch chunk = parallel_imgs):
+//   X     [parallel_imgs, C, H, W]
+//   offset[parallel_imgs, offset_group * 2*kH*kW, out_h, out_w]  — per (n, oh, ow), channels are
+//         (dy, dx) pairs for kernel taps in order (i=0..kH-1, j=0..kW-1): ch = 2*(i*kW+j) for dy, +1 for dx.
+//   mask  [parallel_imgs, offset_group * kH*kW, out_h, out_w]      — optional; ch = i*kW+j.
+//   col   row-major [C * kH * kW, parallel_imgs * out_h * out_w]; GEMM uses this as in deform_conv.cc.
+//
+// Sampling (same as CPU / typical DCN): for output (oh, ow), kernel tap (i, j),
+//   h_ref = oh * stride_h - pad_h + i * dilation_h + Δh(oh,ow,i,j)
+//   w_ref = ow * stride_w - pad_w + j * dilation_w + Δw(oh,ow,i,j)
+// then bilinear sample X at (h_ref, w_ref); multiply by mask if present.
 
 #include "deform_conv_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -113,7 +130,8 @@ struct DeformConvBilinearTraits<BFloat16> {
 // round trips when computing lh/lw/hh/hw.
 //
 // Empirical share of samples that take the guarded "edge" branch (else below) vs fully interior
-// fast-path, from one workload (counts = edge samples / total bilinear samples):
+// fast-path, from one workload (counts = edge samples / total bilinear samples).
+// Example workload only; not a benchmark or representative ratio.
 //   kernel 1x1: 1.3746%  (2421 / 176128)
 //   kernel 3x3: 1.4833%  (11756 / 792576)
 //   kernel 7x7: 4.7593%  (52537 / 1103872)
@@ -134,7 +152,7 @@ __device__ __inline__ T BilinearInterpolate(
     return Traits::Zero();
   }
 
-  // [Optimization 2]: Keep floor result in T; cast to int only for indices. Avoids float->int->float in lh/lw.
+  // [Optimization 2]: Keep floor result in CoordT; cast to int only for indices. Avoids float->int->float in lh/lw.
   CoordT h_floor = _Floor(h);
   CoordT w_floor = _Floor(w);
   int h_low = static_cast<int>(h_floor);
@@ -214,19 +232,23 @@ __global__ void DeformableIm2ColKernel(
   const IndexT h_dim = static_cast<IndexT>(h_dim_i64);
   const IndexT w_dim = static_cast<IndexT>(w_dim_i64);
 
-  // Reconstruct dimensions from DivMod objects
+  // Linear thread index `index` encodes (in_c, out_b, out_y, out_x) with x fastest:
+  //   index = out_x + out_w * (out_y + out_h * (out_b + parallel_imgs * in_c))
+  // Unroll: divmod by out_w -> out_x; by out_h -> out_y; by parallel_imgs -> out_b, in_c.
   const IndexT out_h = out_h_div.d_;
   const IndexT out_w = out_w_div.d_;
   const IndexT parallel_imgs = parallel_imgs_div.d_;
 
   const IndexT out_size = out_h * out_w;
   // The stride for data_col is (parallel_imgs * out_h * out_w)
-  const IndexT col_stride = parallel_imgs * out_size;
+  const IndexT col_stride = parallel_imgs * out_size;  // columns span one spatial map per image in the chunk
   const int64_t out_size_i64 = static_cast<int64_t>(out_size);
   const int64_t col_stride_i64 = static_cast<int64_t>(col_stride);
   const int64_t channel_hw_i64 = static_cast<int64_t>(height) * static_cast<int64_t>(width);
   const int64_t batch_input_stride_i64 = static_cast<int64_t>(channels) * channel_hw_i64;
+  // One (n, offset_group g) slice of `offset` in linear memory: 2*kH*kW planes of shape (out_h, out_w).
   const int64_t offset_group_block_size_i64 = static_cast<int64_t>(2) * h_dim_i64 * w_dim_i64 * out_size_i64;
+  // Same for `mask`: kH*kW planes of (out_h, out_w).
   [[maybe_unused]] const int64_t mask_group_block_size_i64 = UseMask ? (h_dim_i64 * w_dim_i64 * out_size_i64) : int64_t{0};
   const int height_i = static_cast<int>(height);
   const int width_i = static_cast<int>(width);
@@ -237,22 +259,20 @@ __global__ void DeformableIm2ColKernel(
     IndexT val = index;
     IndexT out_x, out_y, out_b, in_c;
 
-    // Fast division/modulo to recover coordinates
     out_w_div.divmod(val, val, out_x);
     out_h_div.divmod(val, val, out_y);
     parallel_imgs_div.divmod(val, in_c, out_b);
 
-    // [Optimization 3] Avoid expensive division if offset_group is 1 (very common case).
+    // [Im2Col] offset_group==1: channel_per_offset_grp_div is unused; skip divmod.
     IndexT offset_grp = 0;
     if (offset_group > 1) {
       IndexT dummy;
       channel_per_offset_grp_div.divmod(in_c, offset_grp, dummy);
     }
 
-    // [Optimization 2] Common Subexpression Elimination (CSE) & Pointer Arithmetic
-    // Pre-calculate base pointers to reduce integer arithmetic inside the inner loops.
+    // [Im2Col] CSE: base pointers for this thread (one output pixel × input channel).
 
-    // 1. Input pointer base for this batch and channel.
+    // 1. Input X: NCHW; offset to (out_b, in_c) is out_b * (C*H*W) + in_c * (H*W).
     const IndexT channel_hw = static_cast<IndexT>(channel_hw_i64);
     const IndexT batch_input_stride = static_cast<IndexT>(batch_input_stride_i64);
     const IndexT input_base = out_b * batch_input_stride + in_c * channel_hw;
@@ -261,17 +281,16 @@ __global__ void DeformableIm2ColKernel(
     // 2. Spatial index in the output feature map.
     const IndexT spatial_idx = static_cast<IndexT>(out_y * out_w + out_x);
 
-    // 3. Offset pointer base calculation.
-    // Layout: (N, offset_groups, 2*KH*KW, OH, OW)
-    // We pre-calculate the pointer to the start of the specific (n, g) block, plus spatial_idx.
+    // 3. Offset: linear index to (dy,dx) channel 0 at (out_y, out_x) for image out_b, deformable group offset_grp.
+    //   ng = out_b * offset_group + offset_grp
+    //   offset_base = ng * (2*kH*kW*out_h*out_w) + (out_y*out_w + out_x)
     const IndexT offset_group_idx = static_cast<IndexT>(offset_group);
-    const IndexT ng = out_b * offset_group_idx + offset_grp;  // n * offset_group + g
+    const IndexT ng = out_b * offset_group_idx + offset_grp;
     const IndexT offset_group_block_size = static_cast<IndexT>(offset_group_block_size_i64);
     const IndexT offset_base = ng * offset_group_block_size + spatial_idx;
     const T* offset_ptr_base = offset + static_cast<int64_t>(offset_base);
 
-    // 4. Mask pointer base calculation (if used).
-    // Layout: (N, offset_groups, KH*KW, OH, OW)
+    // 4. Mask: same as offset but kH*kW planes: mask_base = ng * (kH*kW*out_h*out_w) + spatial_idx.
     const T* mask_ptr_base = nullptr;
     if constexpr (UseMask) {
       const IndexT mask_group_block_size = static_cast<IndexT>(mask_group_block_size_i64);
@@ -280,17 +299,15 @@ __global__ void DeformableIm2ColKernel(
           mask + static_cast<int64_t>(mask_base);
     }
 
-    // 5. Output pointer base calculation.
-    // data_col Layout: (C * KH * KW, N * OH * OW)
-    // The current thread writes to the column `c_col` = (b * OH * OW) + spatial_idx.
-    // The starting row for this channel is `in_c * KH * KW`.
+    // 5. col_buffer row-major: row r = in_c * (kH*kW) + kernel_flat; column c_col = out_b * out_h*out_w + spatial_idx.
+    //    Element (r, c_col) at col_buffer[r * col_stride + c_col].
     const IndexT c_col = out_b * out_size + spatial_idx;
     const IndexT row_base = static_cast<IndexT>((in_c * h_dim) * w_dim);
     T* data_col_ptr_base =
         data_col + static_cast<int64_t>(row_base) * col_stride_i64 + static_cast<int64_t>(c_col);
 
-    // 6. Pre-calculate invariant coordinate parts.
-    // Use float for coordinate math when T is half or BFloat16 to avoid precision loss.
+    // 6. Undilated top-left of the kernel anchor for this output pixel: base_* = out_* * stride_* - pad_*.
+    //    Row i / col j add i*dilation_h / j*dilation_w before applying offsets (see run_deform_row).
     const CoordT base_h_im = static_cast<CoordT>(out_y * stride_h - pad_h);
     const CoordT base_w_im = static_cast<CoordT>(out_x * stride_w - pad_w);
 
@@ -317,6 +334,7 @@ __global__ void DeformableIm2ColKernel(
 
     // One row of kernel weights (fixed kW or runtime weight_w): compute row base once, then walk j with pointer
     // adds only (no kernel_idx * stride rebuild each j). Shared by compile-time and dynamic kernel sizes.
+    // Along the kernel row, dy/dx planes are spaced by out_h*out_w; each (dy,dx) pair spans 2*out_size elements.
     const IndexT offset_pair_stride = static_cast<IndexT>(2) * out_size;
     auto run_deform_row = [&](IndexT row_kernel_base, CoordT h_base, IndexT row_width) {
       CoordT w_base = base_w_im;
@@ -384,7 +402,7 @@ __global__ void DeformableIm2ColKernel(
   }
 }
 
-// Bias add: Y[n,m,oh,ow] += B[m]. Layout NCHW.
+// Bias add: Y[n,m,oh,ow] += B[m]. Y linear row-major NCHW: idx = n*(M*HW) + m*HW + (oh*W+ow).
 template <typename T, typename IndexT>
 __global__ void DeformConvAddBiasKernel(
     T* Y,
@@ -397,24 +415,20 @@ __global__ void DeformConvAddBiasKernel(
     IndexT val = idx;
     IndexT batch_channel_idx, pixel_idx;
 
-    // 1. First decomposition: decompose idx into (batch_channel_idx, pixel_idx)
-    // Equivalent to: batch_channel_idx = idx / (H*W); pixel_idx = idx % (H*W);
+    // idx -> (batch_channel_idx, pixel_idx) with pixel_idx = oh*out_w+ow fastest.
     spatial_div.divmod(val, batch_channel_idx, pixel_idx);
 
-    // 2. Second decomposition: decompose batch_channel_idx into (batch_idx, channel_idx)
-    // Equivalent to: channel_idx = batch_channel_idx % M;
-    // We only need channel_idx (i.e. m)
+    // batch_channel_idx = n*M + m  ->  bias index is m = batch_channel_idx % M.
     IndexT batch_idx, channel_idx;
     channel_div.divmod(batch_channel_idx, batch_idx, channel_idx);
-    ORT_UNUSED_PARAMETER(batch_idx);  // Only channel_idx is needed
+    ORT_UNUSED_PARAMETER(batch_idx);
 
-    // channel_idx is what we need (i.e. m)
     Y[idx] += DeformConvLdg(B + channel_idx);
   }
 }
 
-// 2D path only when N*M <= max_grid_y. If !Needs64BitIndex(total, out_size, M), then total <= INT32_MAX so
-// batch_channel_idx * spatial_size + pixel_idx < total fits int32; use IndexT=int32_t. Otherwise int64_t.
+// 2D launch: blockIdx.y -> batch_channel_idx in [0, N*M), threadIdx -> pixel_idx in [0, out_h*out_w).
+// Indexing: Y[batch_channel_idx * spatial_size + pixel_idx]. Pick IndexT from Needs64BitIndex like the 1D kernel.
 template <typename T, typename IndexT>
 __global__ void DeformConvAddBias2DKernel(T* Y, const T* B, IndexT spatial_size, int32_t channels) {
   // blockIdx.y maps to batch_channel_idx (N * M)
@@ -513,12 +527,9 @@ inline bool CheckDeformConvNeeds64BitIndex(
   const int64_t channel_hw = H * W;
   const int64_t batch_input_stride = C * channel_hw;
   const int64_t input_numel = parallel_imgs * batch_input_stride;
-  const int64_t out_size = out_h * out_w;
-  const int64_t col_stride = parallel_imgs * out_size;
-  const int64_t max_col_write_idx = static_cast<int64_t>(kH * kW - 1) * col_stride;
 
   return Needs64BitIndex(num_kernels, col_numel, offset_inner_size, mask_inner_size, offset_numel, mask_numel,
-                         max_col_write_idx, channel_hw, batch_input_stride, input_numel, offset_group);
+                         channel_hw, batch_input_stride, input_numel, offset_group);
 }
 
 template <typename T>
