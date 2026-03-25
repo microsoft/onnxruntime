@@ -642,10 +642,12 @@ Status Attention<T>::RunMemoryEfficientAttention(
     IAllocatorUniquePtr<void> k_bsnh_buffer;
     IAllocatorUniquePtr<void> v_bsnh_buffer;
     if (!is_bsnh) {
-      size_t kv_bytes = sizeof(T) * parameters.batch_size * parameters.kv_sequence_length *
-                        parameters.kv_num_heads * parameters.head_size;
-      k_bsnh_buffer = GetScratchBuffer<void>(kv_bytes, context->GetComputeStream());
-      v_bsnh_buffer = GetScratchBuffer<void>(kv_bytes, context->GetComputeStream());
+      size_t k_bytes = sizeof(T) * parameters.batch_size * parameters.kv_sequence_length *
+                       parameters.kv_num_heads * parameters.head_size;
+      size_t v_bytes = sizeof(T) * parameters.batch_size * parameters.kv_sequence_length *
+                       parameters.kv_num_heads * parameters.v_head_size;
+      k_bsnh_buffer = GetScratchBuffer<void>(k_bytes, context->GetComputeStream());
+      v_bsnh_buffer = GetScratchBuffer<void>(v_bytes, context->GetComputeStream());
       ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
           parameters.batch_size, parameters.kv_sequence_length,
           parameters.kv_num_heads, parameters.head_size,
@@ -653,7 +655,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
           cuda_stream, device_prop.maxThreadsPerBlock));
       ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
           parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.head_size,
+          parameters.kv_num_heads, parameters.v_head_size,
           V->Data<T>(), v_bsnh_buffer.get(),
           cuda_stream, device_prop.maxThreadsPerBlock));
       k_new_bsnh = static_cast<const T*>(k_bsnh_buffer.get());
@@ -661,6 +663,12 @@ Status Attention<T>::RunMemoryEfficientAttention(
     }
 
     // Step 3: Fused concat: past_key + new_key → present_key (BNSH).
+    // NOTE: When bool masks produce variable per-batch past_seq_lens, positions in the range
+    // [past_seq_lens[b] + kv_sequence_length, total_sequence_length) for each batch b are left
+    // uninitialized by the concat kernel. Unlike Flash (which bounds reads via seqlens_k), MEA
+    // reads all total_sequence_length positions but masks out invalid ones via additive bias
+    // (mask_filter_value ≈ -65504 for fp16), producing near-zero softmax weights. This matches
+    // the pattern used by contrib GQA's MEA path and is safe in practice.
     ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<NativeCudaT>(
         parameters.batch_size,
         parameters.kv_num_heads,
