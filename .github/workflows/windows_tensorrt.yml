@@ -39,6 +39,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_tensorrt.yml | build
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
@@ -196,6 +197,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_tensorrt.yml | build # re-use build's caches, we do not expect to modify/extend them.
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
