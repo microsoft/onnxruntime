@@ -866,6 +866,29 @@ class TestONNXAttentionMHAPastFP32(unittest.TestCase):
         )
 
 
+@unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionMHAPastMEA(unittest.TestCase):
+    """Test ONNX Attention op MHA path — decoding with KV cache via Memory Efficient Attention.
+
+    Explicitly forces MEA by disabling Flash Attention. This verifies that the
+    MEA decode path works correctly for MHA (kv_num_heads == q_num_heads).
+    """
+
+    @parameterized.expand(mha_past_test_cases())
+    def test_mha_past_mea(self, name, config):
+        parity_check_mha_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping MHA tests.")
 class TestONNXAttentionMHAAttnBias(unittest.TestCase):
     """
