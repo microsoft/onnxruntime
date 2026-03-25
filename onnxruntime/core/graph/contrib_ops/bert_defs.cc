@@ -2217,5 +2217,195 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* CausalConv1DWithState_ver1_doc = R"DOC(
+Depthwise causal 1D convolution with carry state for incremental decoding.
+
+Used by Gated DeltaNet (Qwen3.5) and Mamba (Jamba, FalconMamba) as a preprocessing step.
+Replaces the 3-op pattern (Concat + Conv + Slice) with a single fused operation.
+
+The convolution is causal (looks only at current and past positions) and depthwise
+(each channel is convolved independently with its own kernel).
+
+Input layout is channels-first: (batch_size, channels, length).
+Weight layout: (channels, 1, kernel_size) for depthwise convolution.
+Conv state carries the last (kernel_size - 1) input values for incremental decode.
+
+The optional activation attribute supports fused SiLU/Swish activation.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    CausalConv1DWithState, 1,
+    OpSchema()
+        .SetDoc(CausalConv1DWithState_ver1_doc)
+        .Attr("activation",
+              "Fused activation function. One of: 'silu', 'swish', 'none'. "
+              "Default is 'silu'.",
+              AttributeProto::STRING,
+              std::string("silu"))
+        .Attr("group",
+              "group for convolution. Default is 1, which means normal convolution. When group equals to input channels, it becomes depthwise convolution.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Input(0,
+               "input",
+               "Input tensor with shape (batch_size, channels, length). Channels-first layout.",
+               "T")
+        .Input(1,
+               "weight",
+               "Depthwise convolution weights with shape (channels, 1, kernel_size).",
+               "T")
+        .Input(2,
+               "bias",
+               "Optional bias with shape (channels).",
+               "T",
+               OpSchema::Optional)
+        .Input(3,
+               "conv_state",
+               "Carry state from previous step with shape (batch_size, channels, kernel_size - 1). "
+               "If not provided, padding is zero.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Convolution output with shape (batch_size, channels, length).",
+                "T")
+        .Output(1,
+                "present_state",
+                "Updated carry state with shape (batch_size, channels, kernel_size - 1). "
+                "Contains the last (kernel_size - 1) values from the virtual input.",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+
+          // Output 0: same shape as input (batch_size, channels, length)
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          // Output 1: (batch_size, channels, kernel_size - 1)
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+            auto& input_shape = getInputShape(ctx, 0);
+            auto& weight_shape = getInputShape(ctx, 1);
+            TensorShapeProto state_shape;
+            *state_shape.add_dim() = input_shape.dim(0);  // batch_size
+            *state_shape.add_dim() = input_shape.dim(1);  // channels
+            // kernel_size - 1
+            if (weight_shape.dim(2).has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(weight_shape.dim(2).dim_value() - 1);
+            } else {
+              state_shape.add_dim();  // unknown
+            }
+            updateOutputShape(ctx, 1, state_shape);
+          }
+        }));
+
+constexpr const char* LinearAttention_ver1_doc = R"DOC(
+Linear Attention operator.
+
+Processes a sequence of tokens using linear attention with a recurrent state matrix.
+When sequence_length=1, this is equivalent to a single recurrent decode step.
+When sequence_length>1, this efficiently processes the full sequence (e.g., for prefill).
+
+The update_rule attribute selects the recurrence type:
+- "linear": S_t = S_{t-1} + k_t ⊗ v_t; o_t = q_t^T S_t / sqrt(d_k)
+- "gated": S_t = exp(g_t) * S_{t-1} + k_t ⊗ v_t; o_t = q_t^T S_t / sqrt(d_k)
+- "delta": S_t = S_{t-1} + β_t * k_t ⊗ (v_t - S_{t-1}^T k_t); o_t = q_t^T S_t / sqrt(d_k)
+- "gated_delta": S_t = exp(g_t) * S_{t-1} + β_t * k_t ⊗ (v_t - exp(g_t) * S_{t-1}^T k_t); o_t = q_t^T S_t / sqrt(d_k)
+
+where g_t is the decay (in log-space), β_t is the update rate, and ⊗ denotes outer product.
+
+Semantics: Equivalent to running the recurrent update sequentially for each token,
+but may be implemented using chunk-parallel algorithms for GPU efficiency.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    LinearAttention, 1,
+    OpSchema()
+        .SetDoc(LinearAttention_ver1_doc)
+        .Attr("update_rule",
+              "The update rule for the linear attention recurrence. "
+              "One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.",
+              AttributeProto::STRING,
+              std::string("gated_delta"))
+        .Attr("scale",
+              "Output scaling factor. When 0.0 (default), uses 1/sqrt(d_k) where d_k is the key dimension.",
+              AttributeProto::FLOAT,
+              0.0f)
+        .Input(0,
+               "query",
+               "Query vectors with shape (batch_size, num_heads, sequence_length, head_dim_k)",
+               "T")
+        .Input(1,
+               "key",
+               "Key vectors with shape (batch_size, num_heads, sequence_length, head_dim_k). "
+               "Should be L2-normalized for delta/gated_delta modes.",
+               "T")
+        .Input(2,
+               "value",
+               "Value vectors with shape (batch_size, num_heads, sequence_length, head_dim_v)",
+               "T")
+        .Input(3,
+               "initial_state",
+               "Initial recurrent state with shape (batch_size, num_heads, head_dim_k, head_dim_v). "
+               "If not provided, defaults to zeros.",
+               "T",
+               OpSchema::Optional)
+        .Input(4,
+               "decay",
+               "Exponential decay gate in log-space with shape broadcastable to "
+               "(batch_size, num_heads, sequence_length, [head_dim_k]). "
+               "Required for 'gated' and 'gated_delta' modes.",
+               "T",
+               OpSchema::Optional)
+        .Input(5,
+               "beta",
+               "Update rate (sigmoid output) with shape broadcastable to "
+               "(batch_size, num_heads, sequence_length, [1]). "
+               "Required for 'delta' and 'gated_delta' modes.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Attention output with shape (batch_size, num_heads, sequence_length, head_dim_v)",
+                "T")
+        .Output(1,
+                "final_state",
+                "Final recurrent state with shape (batch_size, num_heads, head_dim_k, head_dim_v)",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+
+          // Output 0: same shape as query but last dim from value
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
+            auto& query_shape = getInputShape(ctx, 0);
+            auto& value_shape = getInputShape(ctx, 2);
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = query_shape.dim(0);
+            *output_shape.add_dim() = query_shape.dim(1);
+            *output_shape.add_dim() = query_shape.dim(2);
+            *output_shape.add_dim() = value_shape.dim(3);
+            updateOutputShape(ctx, 0, output_shape);
+          }
+
+          // Output 1: final_state shape (B, H, dk, dv)
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
+            auto& query_shape = getInputShape(ctx, 0);
+            auto& value_shape = getInputShape(ctx, 2);
+            TensorShapeProto state_shape;
+            *state_shape.add_dim() = query_shape.dim(0);  // batch
+            *state_shape.add_dim() = query_shape.dim(1);  // heads
+            *state_shape.add_dim() = query_shape.dim(3);  // dk
+            *state_shape.add_dim() = value_shape.dim(3);  // dv
+            updateOutputShape(ctx, 1, state_shape);
+          } else if (hasInputShape(ctx, 3)) {
+            propagateShapeFromInputToOutput(ctx, 3, 1);
+          }
+        }));
 }  // namespace contrib
 }  // namespace onnxruntime
