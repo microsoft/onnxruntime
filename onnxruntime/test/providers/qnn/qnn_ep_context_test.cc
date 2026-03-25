@@ -2292,6 +2292,126 @@ TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
   EXPECT_EQ(status.GetErrorMessage(), "Error from OrtOutStreamWriteFunc callback");
 }
 
+// Tests setting num_graph_prepare_threads to compile model
+// 1. Compile model with 2 threads
+// 2. Check for successful compilation (_ctx.onnx model should exist)
+// 3. Execute compiled model successfully
+TEST_F(QnnHTPBackendTests, QnnContextBinary_SetNumGraphPrepareThreads_InRange) {
+  const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
+  std::string output_model_file("mul_1_ctx.onnx");
+  std::filesystem::remove(output_model_file.c_str());
+
+  ProviderOptions qnn_options = {{"backend_type", "htp"}, {"num_graph_prepare_threads", "2"}};
+
+  // Compile a model with QNN. This should succeed.
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_file.c_str());
+  so.AppendExecutionProvider(kQnnExecutionProvider, qnn_options);
+
+  Ort::Session session(*ort_env, input_model_file, so);
+  ASSERT_TRUE(std::filesystem::exists(output_model_file.c_str()));
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  GetModelInputNames(output_model_file, input_names, output_names,
+                     DefaultLoggingManager().DefaultLogger());
+
+  // Run session with compiled model
+  // prepare input
+  std::vector<int64_t> input_dim{3, 2};
+  std::vector<float> input_value(3 * 2, 0.0f);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names_c;
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                                 input_dim.data(), input_dim.size());
+    ort_inputs.push_back(std::move(input_tensor));
+    input_names_c.push_back(input_names[i].c_str());
+  }
+  std::vector<const char*> output_names_c;
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    output_names_c.push_back(output_names[i].c_str());
+  }
+
+  ProviderOptions exec_qnn_options = {{"backend_type", "htp"}};
+  so = Ort::SessionOptions();
+#ifdef _WIN32
+  std::wstring compiled_model_file(output_model_file.begin(), output_model_file.end());
+#else
+  std::string compiled_model_file(output_model_file.begin(), output_model_file.end());
+#endif
+  so.AppendExecutionProvider(kQnnExecutionProvider, exec_qnn_options);
+  Ort::Session session_ctx(*ort_env, compiled_model_file.c_str(), so);
+  auto outputs = session_ctx.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_names_c.data(), 1);
+#endif
+  std::filesystem::remove(output_model_file);
+}
+
+// Tests setting num_graph_prepare_threads to an outrageous number to compile model
+// 1. Attempt to compile model with 100 threads
+//    a. Number of threads should default to something reasonable, and compilation should still be successful
+// 2. Check for successful compilation (_ctx.onnx model should exist)
+// 3. Execute compiled model successfully
+TEST_F(QnnHTPBackendTests, QnnContextBinary_SetNumGraphPrepareThreads_OutOfRange) {
+  const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
+  std::string output_model_file("mul_1_ctx.onnx");
+  std::filesystem::remove(output_model_file.c_str());
+
+  // number of threads should default back to 8 or the max supported by platform (whichever is lower)
+  ProviderOptions qnn_options = {{"backend_type", "htp"}, {"num_graph_prepare_threads", "100"}};
+
+  // Compile a model with QNN. This should succeed.
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_file.c_str());
+  so.AppendExecutionProvider(kQnnExecutionProvider, qnn_options);
+
+  Ort::Session session(*ort_env, input_model_file, so);
+  ASSERT_TRUE(std::filesystem::exists(output_model_file.c_str()));
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  GetModelInputNames(output_model_file, input_names, output_names,
+                     DefaultLoggingManager().DefaultLogger());
+
+  // Run session with compiled model
+  // prepare input
+  std::vector<int64_t> input_dim{3, 2};
+  std::vector<float> input_value(3 * 2, 0.0f);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names_c;
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                                 input_dim.data(), input_dim.size());
+    ort_inputs.push_back(std::move(input_tensor));
+    input_names_c.push_back(input_names[i].c_str());
+  }
+  std::vector<const char*> output_names_c;
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    output_names_c.push_back(output_names[i].c_str());
+  }
+
+  ProviderOptions exec_qnn_options = {{"backend_type", "htp"}};
+  so = Ort::SessionOptions();
+#ifdef _WIN32
+  std::wstring compiled_model_file(output_model_file.begin(), output_model_file.end());
+#else
+  std::string compiled_model_file(output_model_file.begin(), output_model_file.end());
+#endif
+  so.AppendExecutionProvider(kQnnExecutionProvider, exec_qnn_options);
+  Ort::Session session_ctx(*ort_env, compiled_model_file.c_str(), so);
+  auto outputs = session_ctx.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                 output_names_c.data(), 1);
+#endif
+  std::filesystem::remove(output_model_file);
+}
+
 struct CustomInitializerHandlerState {
   const ORTCHAR_T* external_file_path = nullptr;
   std::ofstream* outfile = nullptr;

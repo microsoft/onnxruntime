@@ -560,20 +560,24 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     max_num_supported_threads = 4;
   }
 
+  // 8 threads provided the best initialization performance from testing
+  // Default to max number of supported threads if less than 8. Otherwise default to 8 threads
+  uint8_t def_num_graph_prepare_threads = max_num_supported_threads > 8 ? 8 : max_num_supported_threads;
+
   if (num_graph_prepare_threads_pos != provider_options_map.end()) {
     uint8_t value = static_cast<uint8_t>(std::stoi(num_graph_prepare_threads_pos->second));
     LOGS_DEFAULT(VERBOSE) << "User specified num_graph_prepare_threads: " << std::to_string(value);
     if (value > max_num_supported_threads || value < 1) {
-      LOGS_DEFAULT(ERROR) << "Specified number of graph prepare threads (" << std::to_string(value)
-                          << ") is outside of the allowable range [1," << std::to_string(max_num_supported_threads)
-                          << ". Defaulting to the upper limit of allowable range (" << std::to_string(max_num_supported_threads) << ").";
-      num_graph_prepare_threads_ = max_num_supported_threads;
+      LOGS_DEFAULT(WARNING) << "Specified number of graph prepare threads (" << std::to_string(value)
+                            << ") is outside of the allowable range [1," << std::to_string(max_num_supported_threads)
+                            << "]. Defaulting to " << std::to_string(def_num_graph_prepare_threads) << " threads.";
+      num_graph_prepare_threads_ = def_num_graph_prepare_threads;
     } else {
       num_graph_prepare_threads_ = value;
     }
   } else {
-    LOGS_DEFAULT(VERBOSE) << "Using maximum number of supported concurrent threads for graph prepare: " << std::to_string(max_num_supported_threads);
-    num_graph_prepare_threads_ = max_num_supported_threads;
+    LOGS_DEFAULT(VERBOSE) << "Using default number threads for graph prepare: " << std::to_string(def_num_graph_prepare_threads);
+    num_graph_prepare_threads_ = def_num_graph_prepare_threads;
   }
 
   if (qnn_context_embed_mode_ && share_ep_contexts_) {
@@ -1325,7 +1329,7 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
   tp.Start();
   auto finalize_start = std::chrono::high_resolution_clock::now();
   for (auto& model_info : model_infos) {
-    tp.Submit([qnn_model = model_info.model.get(), &logger, res = &model_info.result] {
+    tp.SubmitJob([qnn_model = model_info.model.get(), &logger, res = &model_info.result] {
       *res = qnn_model->FinalizeGraphs(logger);
     });
   }
@@ -1463,7 +1467,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                           max_spill_fill_buffer_size));
     }
     qnn_ep_context_model_ = Factory<Model>::Create(std::string{"qnn_ep_context_model"}, false, logger);
-    
+
     ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
                                                   context_buffer.get(),
                                                   buffer_size,
@@ -1477,7 +1481,6 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   logger,
                                                   share_ep_contexts_,
                                                   stop_share_ep_contexts_));
-                                                  
 
     if (share_ep_contexts_ && !stop_share_ep_contexts_ &&
         nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {

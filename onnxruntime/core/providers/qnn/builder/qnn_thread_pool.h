@@ -6,9 +6,6 @@
 #include <mutex>
 #include <queue>
 #include <vector>
-#include <iostream>
-
-#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -16,229 +13,122 @@ namespace thread {
 
 class QnnJobThreadPool {
  private:
+  // Class that contains main job thread
+  // - Checks the thread pool job queue for jobs
+  // - Run any available jobs. Wait for new submission to queue otherwise
   class QnnJobThread {
    public:
-    QnnJobThread(uint8_t thread_num, QnnJobThreadPool* thread_pool_ptr)
-      : thread_num_(thread_num), tp_(thread_pool_ptr){
-      LOGS_DEFAULT(VERBOSE) << "Thread " << std::to_string(thread_num_) << " created";
-    }
+    QnnJobThread(uint8_t thread_num, QnnJobThreadPool* thread_pool_ptr);
 
-    ~QnnJobThread() {
-      Stop();
-    }
+    ~QnnJobThread();
 
-    void Start() {
-      if (!thread_ && IsStopped()) {
-        {
-          std::unique_lock<std::mutex> lock(thread_stopped_mutex_);
-          thread_stopped_ = false;
-        }
+    // Starts the main thread/loop
+    // 1. Checks if there is a job in the queue
+    // 2a. If a job exists, then notify a job has started and run it
+    // 2b. If a job does not exist, then wait for a new submission
+    // 3. Continue to do steps 1, 2a, and 2b until stopped
+    void Start();
 
-        thread_ = std::make_shared<std::thread>([this]() {
-          do {
-            auto job = tp_->GetJobFromQueueIfExists(thread_num_);
-            if (job) {
-              {
-                std::unique_lock<std::mutex> lock(thread_active_mutex_);
-                thread_active_ = true;
-              }
+    // Stops main thread/loop
+    void Stop();
 
-              thread_activity_change_cv_.notify_all();
-              tp_->NotifyJobStarted();
-
-              job();
-
-              {
-                std::unique_lock<std::mutex> lock(thread_active_mutex_);
-                thread_active_ = false;
-              }
-
-              thread_activity_change_cv_.notify_all();
-            } else {
-              tp_->WaitForJobQueueUpdate(thread_num_);
-            }
-          } while (!IsStopped());
-        });
-
-        LOGS_DEFAULT(VERBOSE) << "Thread " << std::to_string(thread_num_) << " started";
-      }
-    }
-
-    void Stop() {
-      if (thread_ && !IsStopped()) {
-        {
-          std::unique_lock<std::mutex> lock(thread_stopped_mutex_);
-          thread_stopped_ = true;
-        }
-        thread_->join();
-        thread_.reset();
-
-        LOGS_DEFAULT(VERBOSE) << "Thread " << std::to_string(thread_num_) << " stopped";
-      }
-    }
-
-    bool IsActive() {
-      std::unique_lock<std::mutex> lock(thread_active_mutex_);
-      return thread_active_;
-    }
-
-    void WaitUntilInactive() {
-      if (IsActive()) {
-        std::unique_lock<std::mutex> lock(thread_active_mutex_);
-        thread_activity_change_cv_.wait(lock, [this]() {
-          return !thread_active_;
-        });
-      }
-    }
+    // If a job is actively being run, wait for it to finish and return
+    // If no job is actively being run, return immediately
+    void WaitUntilInactive();
 
    private:
+    // A job thread is considered active when a job is actively being run
+    void SetActive() {
+      std::unique_lock<std::mutex> lock(thread_activity_mutex_);
+      thread_active_ = true;
+      thread_activity_change_cv_.notify_all();
+    }
+
+    // A job thread is considered inactive when it is idling between jobs or stopped
+    void SetInactive() {
+      std::unique_lock<std::mutex> lock(thread_activity_mutex_);
+      thread_active_ = false;
+      thread_activity_change_cv_.notify_all();
+    }
 
     bool IsStopped() {
-      std::unique_lock<std::mutex> lock(thread_stopped_mutex_);
+      std::unique_lock<std::mutex> lock(thread_state_mutex_);
       return thread_stopped_;
     }
 
     const uint8_t thread_num_;
     QnnJobThreadPool* const tp_;
 
+    std::function<bool()> exit_predicate_;
+
     std::condition_variable thread_activity_change_cv_;
 
-    std::mutex thread_active_mutex_;
-    std::mutex thread_stopped_mutex_;
+    std::mutex thread_activity_mutex_;
+    std::mutex thread_state_mutex_;
     bool thread_active_ = false;
     bool thread_stopped_ = true;
 
-    std::shared_ptr<std::thread> thread_;
+    std::unique_ptr<std::thread> thread_;
   };
 
  public:
-  QnnJobThreadPool(uint8_t max_num_threads): max_num_threads_(max_num_threads), running_(false) {
-    thread_pool_.reserve(max_num_threads);
-  }
+  QnnJobThreadPool(uint8_t max_num_threads);
 
-  ~QnnJobThreadPool() {
-    Stop();
-  }
+  ~QnnJobThreadPool();
 
-  void Start() {
-    if (IsRunning()) {
-      return;
-    }
+  // Creates and starts all job threads
+  void Start();
 
-    LOGS_DEFAULT(VERBOSE) << "Start";
-    std::unique_lock<std::mutex> s_lock(state_mutex_);
-    std::unique_lock<std::mutex> tp_lock(thread_pool_mutex_);
-    running_ = true;
+  // Stops all job threads
+  void Stop();
 
-    while (thread_pool_.size() < max_num_threads_ && !job_queue_.empty()) {
-      StartJobThread();
-    }
-  }
+  // Waits for job queue to empty out and all active jobs to finish running
+  void WaitForAllJobsToFinish();
 
-  void Stop() {
-    if (!IsRunning()) {
-      return;
-    }
-    {
-      LOGS_DEFAULT(VERBOSE) << "Stop";
-      std::unique_lock<std::mutex> s_lock(state_mutex_);
-      running_ = false;
-    }
-
-    // Wake up all waiting threads
-    job_submitted_cv_.notify_all();
-  }
-
-  void WaitForAllJobsToFinish() {
-    if (!IsRunning()) {
-      return;
-    }
-    
-    LOGS_DEFAULT(VERBOSE) << "Waiting for all jobs to finish before stopping";
-
-    if (!job_queue_.empty()) {
-      std::unique_lock<std::mutex> lock(queue_mutex_);
-      job_started_cv_.wait(lock, [this]() {
-        return job_queue_.empty();
-      });
-    }
-
-    for (auto& t : thread_pool_) {
-      t->WaitUntilInactive();
-    }
-
-    LOGS_DEFAULT(VERBOSE) << "Done waiting on all jobs" << std::endl;
-  }
-
-  void Submit(std::function<void()> job) {
-    LOGS_DEFAULT(VERBOSE) << "Job submitted";
-    {
-      std::unique_lock<std::mutex> lock(thread_pool_mutex_);
-      LOGS_DEFAULT(VERBOSE) << "Number of active threads: " << std::to_string(thread_pool_.size());
-      if (thread_pool_.size() < max_num_threads_ && IsRunning()) {
-        StartJobThread();
-      }
-    }
-
-    std::unique_lock<std::mutex> lock(queue_mutex_);
-    job_queue_.push(std::move(job));
-    LOGS_DEFAULT(VERBOSE) << "Job pushed to queue, current size: " << std::to_string(job_queue_.size());
-    job_submitted_cv_.notify_one();
-  }
+  // Submits job to queue but job may sit in queue until threadpool starts
+  // Notifies one waiting job thread
+  void SubmitJob(std::function<void()> job);
 
  private:
+  void StartJobThread();
 
-   void StartJobThread() {
-     uint8_t thread_num = static_cast<uint8_t>(thread_pool_.size());
-     auto job_thread = std::make_unique<QnnJobThread>(thread_num, this);
-     job_thread->Start();
-     thread_pool_.push_back(std::move(job_thread));
-   }
+  // Function to be called by job thread waiting for a new job to be available
+  // Check interval is currently 200ms
+  // thread_num - job thread identifier for debugging purposes
+  // exit_predicate - a function that returns true when this function
+  //                  must exit regardless of job availability
+  // Returns when a job is available or if the exit predicate is met
+  void WaitForJobQueueUpdate(const uint8_t thread_num, std::function<bool()>& exit_predicate);
 
-   void WaitForJobQueueUpdate(const uint8_t thread_num) {
-     std::unique_lock<std::mutex> lock(queue_mutex_);
-     LOGS_DEFAULT(VERBOSE) << "Thread " << std::to_string(thread_num) << " waiting for a job";
-     job_submitted_cv_.wait(lock, [this] {
-       return !job_queue_.empty() || !IsRunning();
-     });
-   }
+  // Returns a job if one is available, nullptr otherwise
+  std::function<void()> GetJobFromQueueIfExists(const uint8_t thread_num);
 
-   std::function<void()> GetJobFromQueueIfExists(const uint8_t thread_num) {
-     std::unique_lock<std::mutex> lock(queue_mutex_);
-     LOGS_DEFAULT(VERBOSE) << "Thread " << std::to_string(thread_num) << " checking for job, queue size: " << std::to_string(job_queue_.size());
-     if (!job_queue_.empty()) {
-       auto job = job_queue_.front();
-       job_queue_.pop();
-       return job;
-     }
+  // Notifies a waiting thread that a new job has started
+  // Implies job has been taken from the job queue
+  void NotifyJobStarted() {
+    job_started_cv_.notify_all();
+  }
 
-     return nullptr;
-   }
+  bool IsRunning() {
+    std::unique_lock<std::mutex> lock(state_mutex_);
+    return running_;
+  }
 
-   void NotifyJobStarted() {
-     job_started_cv_.notify_all();
-   }
+  std::condition_variable job_submitted_cv_;
+  std::condition_variable job_started_cv_;
 
-   bool IsRunning() {
-     std::unique_lock<std::mutex> lock(state_mutex_);
-     return running_;
-   }
+  std::mutex queue_mutex_;
+  std::queue<std::function<void()>> job_queue_;
 
- std::condition_variable job_submitted_cv_;
- std::condition_variable job_started_cv_;
+  std::mutex thread_pool_mutex_;
+  std::vector<std::unique_ptr<QnnJobThread>> thread_pool_;
 
- std::mutex queue_mutex_;
- std::queue<std::function<void()>> job_queue_;
+  const uint8_t max_num_threads_;
 
- std::mutex thread_pool_mutex_;
- std::vector<std::unique_ptr<QnnJobThread>> thread_pool_;
-
- const uint8_t max_num_threads_;
-
- std::mutex state_mutex_;
- bool running_;
+  std::mutex state_mutex_;
+  bool running_;
 };
 
-}
-}
-}
+}  // namespace thread
+}  // namespace qnn
+}  // namespace onnxruntime
