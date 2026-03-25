@@ -206,6 +206,9 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    size_t pointwise_input_channel_batch_override = 0; /**< Optional override for NCHWc pointwise input-channel batching. Zero keeps the default heuristic. */
+    size_t nchwc_filter_set_size_override = 0; /**< Optional override for NCHWc grouped-convolution filter-set size. Zero keeps the default heuristic. */
+    size_t pointwise_output_count_chunk_override = 0; /**< Optional override to split pointwise output processing into smaller kernel calls. Zero keeps the default kernel-driven output tiling. */
 };
 
 //
@@ -1110,6 +1113,30 @@ MlasMaximumPool(
 void
 MLASCALL
 MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+//
+// Note: The Input and Output buffers for MlasComputeGeluErf must not overlap.
+// In-place operation (e.g., passing the same buffer for both parameters) is unsupported.
+//
+void
+MLASCALL
+MlasComputeGeluErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+//
+// Note: The Input and Output buffers for MlasComputeSilu must not overlap.
+// In-place operation (e.g., passing the same buffer for both parameters) is unsupported.
+//
+void
+MLASCALL
+MlasComputeSilu(
     const float* Input,
     float* Output,
     size_t N

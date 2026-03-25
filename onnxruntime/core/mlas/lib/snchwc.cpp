@@ -527,8 +527,9 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     // reused for a given set of input inside the kernel.
     //
 
-    static constexpr size_t FilterSetSize = 4;
+    static constexpr size_t DefaultFilterSetSize = 4;
 
+    const size_t FilterSetSize;
     const size_t FilterSetCount;
 
     //
@@ -544,6 +545,12 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     MLAS_NCHWC_GROUPED_CONV_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
         MLAS_NCHWC_CONV_ALGORITHM(WorkBlock),
+        FilterSetSize(
+            WorkBlock->BackendKernelSelectorConfig != nullptr &&
+                    WorkBlock->BackendKernelSelectorConfig->nchwc_filter_set_size_override >= 1 &&
+                    WorkBlock->BackendKernelSelectorConfig->nchwc_filter_set_size_override <= DefaultFilterSetSize
+                ? WorkBlock->BackendKernelSelectorConfig->nchwc_filter_set_size_override
+                : DefaultFilterSetSize),
         FilterSetCount((OutputChannels + (BlockSize * FilterSetSize) - 1) / (BlockSize * FilterSetSize))
     {
     }
@@ -649,7 +656,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     }
 };
 
-constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::FilterSetSize;
+constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::DefaultFilterSetSize;
 
 //
 // Implementation of the direct convolution algorithm where the input buffer is
@@ -942,6 +949,16 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             }
 
             const size_t OutputThisIteration = WorkThisIteration * OutputWidth;
+            const size_t PointwiseOutputCountChunkOverride =
+                WorkBlock->BackendKernelSelectorConfig != nullptr
+                    ? WorkBlock->BackendKernelSelectorConfig->pointwise_output_count_chunk_override
+                    : 0;
+
+            size_t MaximumInputChannelBatchThisIteration = MaximumInputChannelBatch;
+            if (WorkBlock->BackendKernelSelectorConfig != nullptr &&
+                WorkBlock->BackendKernelSelectorConfig->pointwise_input_channel_batch_override != 0) {
+                MaximumInputChannelBatchThisIteration = WorkBlock->BackendKernelSelectorConfig->pointwise_input_channel_batch_override;
+            }
 
             //
             // Apply the convolution kernel to batches of the input tensor.
@@ -957,7 +974,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
             size_t InputChannelBatch = 0;
             for (size_t ic = 0; ic < InputChannels; ) {
-                InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
+                InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatchThisIteration);
 
                 unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
 
@@ -982,16 +999,39 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     KernelToUse = KernelFast;
                 }
 #endif
-                KernelToUse(input, filter, output, StrideWidthBytes, InputChannelBatch /
-                    BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
-                    OutputStrideBytes, OutputThisIteration, Bias, KernelFlags);
+                if (PointwiseOutputCountChunkOverride != 0 &&
+                    PointwiseOutputCountChunkOverride < OutputThisIteration) {
+                    const float* input_chunk = input;
+                    float* output_chunk = output;
+                    size_t remaining_output = OutputThisIteration;
 
-                //
-                // Test for fused non-ReLU activation.
-                //
+                    while (remaining_output > 0) {
+                        const size_t output_chunk_count = std::min(PointwiseOutputCountChunkOverride, remaining_output);
 
-                if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
-                    DoActivation(output, FilterCount, BlockSize * OutputThisIteration);
+                        KernelToUse(input_chunk, filter, output_chunk, StrideWidthBytes, InputChannelBatch /
+                            BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
+                            OutputStrideBytes, output_chunk_count, Bias, KernelFlags);
+
+                        if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
+                            DoActivation(output_chunk, FilterCount, BlockSize * output_chunk_count);
+                        }
+
+                        input_chunk += (StrideWidthBytes / sizeof(float)) * output_chunk_count;
+                        output_chunk += BlockSize * output_chunk_count;
+                        remaining_output -= output_chunk_count;
+                    }
+                } else {
+                    KernelToUse(input, filter, output, StrideWidthBytes, InputChannelBatch /
+                        BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
+                        OutputStrideBytes, OutputThisIteration, Bias, KernelFlags);
+
+                    //
+                    // Test for fused non-ReLU activation.
+                    //
+
+                    if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
+                        DoActivation(output, FilterCount, BlockSize * OutputThisIteration);
+                    }
                 }
 
                 input += InputChannelBatch * InputSize;

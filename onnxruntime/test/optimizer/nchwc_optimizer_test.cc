@@ -7,6 +7,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
@@ -173,7 +174,8 @@ struct NchwcTestHelper {
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
                           const std::function<void(InferenceSessionWrapper& session)>& check_nchwc_graph,
                           int opset_version = 13,
-                          const std::function<void(const Graph& graph)>& check_pre_optimization_graph = nullptr) {
+                          const std::function<void(const Graph& graph)>& check_pre_optimization_graph = nullptr,
+                          const std::function<void(SessionOptions&)>& configure_session_options = nullptr) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
@@ -201,6 +203,9 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     SessionOptions session_options;
     session_options.graph_optimization_level = level;
     session_options.session_logid = "NchwcOptimizerTests";
+    if (configure_session_options != nullptr) {
+      configure_session_options(session_options);
+    }
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     ASSERT_STATUS_OK(session.Initialize());
@@ -1408,7 +1413,9 @@ TEST(NchwcOptimizerTests, UpsampleLinear) {
 }
 
 TEST(NchwcOptimizerTests, Activation) {
-  auto test_case = [&](const std::string& activation_op_type, const std::string& domain = kOnnxDomain) {
+  auto test_case = [&](const std::string& activation_op_type,
+                       const std::string& domain = kOnnxDomain,
+                       int opset_version = 13) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -1432,23 +1439,93 @@ TEST(NchwcOptimizerTests, Activation) {
       EXPECT_EQ(op_to_count["Add"], 1);
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Verify that the optimizer doesn't add reorders for these activations in
-  // this pattern. Relu/Sigmoid/Tanh are generally fusable with a
+  // this pattern. Relu/Sigmoid/Tanh/HardSigmoid are generally fusable with a
   // preceding convolution, but not here because the Conv output is consumed
   // both by the activation node and directly by the Add node. Gelu/QuickGelu
   // are also expected to remain as separate nodes.
   test_case("Relu");
   test_case("Sigmoid");
   test_case("Tanh");
+  test_case("HardSigmoid");
+  test_case("Gelu", kOnnxDomain, 20);
   test_case("Gelu", kMSDomain);
   test_case("QuickGelu", kMSDomain);
 }
 
-TEST(NchwcOptimizerTests, ActivationSingleConsumerConvGuard) {
-  auto test_case = [&](const std::string& activation_op_type, const std::string& domain = kOnnxDomain) {
+TEST(NchwcOptimizerTests, ActivationSingleConsumerConvFusion) {
+  constexpr float kHardSigmoidAlpha = 0.125f;
+  constexpr float kHardSigmoidBeta = 0.625f;
+
+  auto test_case = [&](const std::string& activation_op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* activation_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
+      auto& activation_node = helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg});
+      if (activation_op_type == "HardSigmoid") {
+        activation_node.AddAttribute("alpha", kHardSigmoidAlpha);
+        activation_node.AddAttribute("beta", kHardSigmoidBeta);
+      }
+      helper.AddConvNode(activation_output_arg, output_arg, {16, 32, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto& graph = session.GetGraph();
+      auto op_to_count = CountOpsInGraph(graph);
+
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count[activation_op_type], 0);
+
+      size_t fused_conv_count = 0;
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() != "Conv" || node.Domain() != kMSNchwcDomain) {
+          continue;
+        }
+
+        const auto& attributes = node.GetAttributes();
+        auto activation_it = attributes.find("activation");
+        if (activation_it == attributes.end()) {
+          continue;
+        }
+
+        fused_conv_count++;
+        EXPECT_EQ(activation_it->second.s(), activation_op_type);
+
+        auto activation_params_it = attributes.find("activation_params");
+        if (activation_op_type == "HardSigmoid") {
+          ASSERT_NE(activation_params_it, attributes.end());
+          ASSERT_EQ(activation_params_it->second.floats_size(), 2);
+          EXPECT_FLOAT_EQ(activation_params_it->second.floats(0), kHardSigmoidAlpha);
+          EXPECT_FLOAT_EQ(activation_params_it->second.floats(1), kHardSigmoidBeta);
+        } else {
+          EXPECT_EQ(activation_params_it, attributes.end());
+        }
+      }
+
+      EXPECT_EQ(fused_conv_count, 1U);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  for (const auto& activation_op_type : {"Relu", "Sigmoid", "Tanh", "HardSigmoid"}) {
+    test_case(activation_op_type);
+  }
+}
+
+TEST(NchwcOptimizerTests, ActivationSingleConsumerConvNoFusion) {
+  auto test_case = [&](const std::string& activation_op_type,
+                       const std::string& domain = kOnnxDomain,
+                       int opset_version = 13) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -1478,12 +1555,13 @@ TEST(NchwcOptimizerTests, ActivationSingleConsumerConvGuard) {
       }
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Gelu/QuickGelu must remain separate even with a single-consumer Conv input,
   // because the NCHWc Conv activation fuse guard only allows a fixed subset of
   // activations.
+  test_case("Gelu", kOnnxDomain, 20);
   test_case("Gelu", kMSDomain);
   test_case("QuickGelu", kMSDomain);
 }
@@ -1510,25 +1588,28 @@ TEST(NchwcOptimizerTests, QuickGeluAlphaOnePointwiseActivationFusion) {
 #else
     const bool expect_fusion = false;
 #endif
+  const size_t expected_quickgelu_count = expect_fusion ? 0U : 1U;
+  const size_t expected_fused_silu_count = expect_fusion ? 1U : 0U;
 
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
-    EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], expect_fusion ? 0 : 1);
+  EXPECT_TRUE(op_to_count["com.microsoft.QuickGelu"] == expected_quickgelu_count);
 
     size_t fused_silu_count = 0;
     for (const auto& node : graph.Nodes()) {
       if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
-        const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
-        if (activation_attr != nullptr) {
-          EXPECT_TRUE(utils::HasString(*activation_attr));
-          EXPECT_EQ(activation_attr->s(), "Silu");
+        NodeAttributes::const_iterator activation_attr_it = node.GetAttributes().find("activation");
+        if (activation_attr_it != node.GetAttributes().cend()) {
+          const ONNX_NAMESPACE::AttributeProto& activation_attr = activation_attr_it->second;
+          EXPECT_TRUE(activation_attr.has_s());
+          EXPECT_STREQ(activation_attr.s().c_str(), "Silu");
           fused_silu_count += 1;
         }
       }
     }
 
-    EXPECT_EQ(fused_silu_count, expect_fusion ? 1U : 0U);
+    EXPECT_TRUE(fused_silu_count == expected_fused_silu_count);
   };
 
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -1555,25 +1636,28 @@ TEST(NchwcOptimizerTests, GeluPointwiseActivationFusion) {
 #else
     const bool expect_fusion = false;
 #endif
+  const size_t expected_ms_gelu_count = expect_fusion ? 0U : 1U;
+  const size_t expected_fused_gelu_count = expect_fusion ? 1U : 0U;
 
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
-    EXPECT_EQ(op_to_count["com.microsoft.Gelu"], expect_fusion ? 0 : 1);
+  EXPECT_TRUE(op_to_count["com.microsoft.Gelu"] == expected_ms_gelu_count);
 
     size_t fused_gelu_count = 0;
     for (const auto& node : graph.Nodes()) {
       if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
-        const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
-        if (activation_attr != nullptr) {
-          EXPECT_TRUE(utils::HasString(*activation_attr));
-          EXPECT_EQ(activation_attr->s(), "Gelu");
+        NodeAttributes::const_iterator activation_attr_it = node.GetAttributes().find("activation");
+        if (activation_attr_it != node.GetAttributes().cend()) {
+          const ONNX_NAMESPACE::AttributeProto& activation_attr = activation_attr_it->second;
+          EXPECT_TRUE(activation_attr.has_s());
+          EXPECT_STREQ(activation_attr.s().c_str(), "Gelu");
           fused_gelu_count += 1;
         }
       }
     }
 
-    EXPECT_EQ(fused_gelu_count, expect_fusion ? 1U : 0U);
+    EXPECT_TRUE(fused_gelu_count == expected_fused_gelu_count);
   };
 
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -1600,25 +1684,28 @@ TEST(NchwcOptimizerTests, OnnxGeluPointwiseActivationFusion) {
 #else
     const bool expect_fusion = false;
 #endif
+  const size_t expected_onnx_gelu_count = expect_fusion ? 0U : 1U;
+  const size_t expected_onnx_fused_gelu_count = expect_fusion ? 1U : 0U;
 
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
-    EXPECT_EQ(op_to_count["Gelu"], expect_fusion ? 0 : 1);
+  EXPECT_TRUE(op_to_count["Gelu"] == expected_onnx_gelu_count);
 
     size_t fused_gelu_count = 0;
     for (const auto& node : graph.Nodes()) {
       if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
-        const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
-        if (activation_attr != nullptr) {
-          EXPECT_TRUE(utils::HasString(*activation_attr));
-          EXPECT_EQ(activation_attr->s(), "Gelu");
+        NodeAttributes::const_iterator activation_attr_it = node.GetAttributes().find("activation");
+        if (activation_attr_it != node.GetAttributes().cend()) {
+          const ONNX_NAMESPACE::AttributeProto& activation_attr = activation_attr_it->second;
+          EXPECT_TRUE(activation_attr.has_s());
+          EXPECT_STREQ(activation_attr.s().c_str(), "Gelu");
           fused_gelu_count += 1;
         }
       }
     }
 
-    EXPECT_EQ(fused_gelu_count, expect_fusion ? 1U : 0U);
+    EXPECT_TRUE(fused_gelu_count == expected_onnx_fused_gelu_count);
   };
 
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
@@ -1686,6 +1773,223 @@ TEST(NchwcOptimizerTests, QuickGeluAlphaGuard) {
   };
 
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
+TEST(NchwcOptimizerTests, PointwiseActivationFusionDisableSessionOption) {
+  auto configure_session_options = [](SessionOptions& session_options) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableNchwcPointwiseActivationFusion, "1"));
+  };
+
+  auto build_quickgelu_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* quickgelu_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {32, 48, 1, 1});
+    auto& quickgelu_node = helper.AddNode("QuickGelu", {conv_output_arg}, {quickgelu_output_arg}, kMSDomain);
+    quickgelu_node.AddAttribute("alpha", 1.0f);
+    helper.AddConvNode(quickgelu_output_arg, output_arg, {16, 32, 1, 1});
+  };
+
+  auto check_quickgelu_graph = [&](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], 1);
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+        EXPECT_EQ(node.GetAttributes().count("activation"), 0U)
+            << "QuickGelu(alpha=1) should not fuse when the session option disables pointwise activation fusion";
+      }
+    }
+  };
+
+  NchwcOptimizerTester(build_quickgelu_test_case, check_quickgelu_graph, 13, nullptr, configure_session_options);
+
+  auto build_gelu_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* gelu_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {32, 48, 1, 1});
+    helper.AddNode("Gelu", {conv_output_arg}, {gelu_output_arg}, kMSDomain);
+    helper.AddConvNode(gelu_output_arg, output_arg, {16, 32, 1, 1});
+  };
+
+  auto check_gelu_graph = [&](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.Gelu"], 1);
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+        EXPECT_EQ(node.GetAttributes().count("activation"), 0U)
+            << "Gelu should not fuse when the session option disables pointwise activation fusion";
+      }
+    }
+  };
+
+  NchwcOptimizerTester(build_gelu_test_case, check_gelu_graph, 13, nullptr, configure_session_options);
+}
+
+TEST(NchwcOptimizerTests, QuickGeluPointwiseActivationFusionSessionOptionPaths) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* quickgelu_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {32, 48, 1, 1});
+    auto& quickgelu_node = helper.AddNode("QuickGelu", {conv_output_arg}, {quickgelu_output_arg}, kMSDomain);
+    quickgelu_node.AddAttribute("alpha", 1.0f);
+    helper.AddConvNode(quickgelu_output_arg, output_arg, {16, 32, 1, 1});
+  };
+
+  auto configure_fused_path = [](SessionOptions& session_options) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableNchwcPointwiseActivationFusion, "0"));
+  };
+
+  auto configure_unfused_path = [](SessionOptions& session_options) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableNchwcPointwiseActivationFusion, "1"));
+  };
+
+  auto check_fused_graph = [&](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+
+#if defined(CPUIDINFO_ARCH_X86) && !defined(_M_ARM64EC)
+    const bool expect_fusion = CPUIDInfo::GetCPUIDInfo().HasAVX512f();
+#else
+    const bool expect_fusion = false;
+#endif
+
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], expect_fusion ? 0 : 1);
+
+    size_t fused_silu_count = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+        NodeAttributes::const_iterator activation_attr_it = node.GetAttributes().find("activation");
+        if (activation_attr_it != node.GetAttributes().cend()) {
+          const ONNX_NAMESPACE::AttributeProto& activation_attr = activation_attr_it->second;
+          EXPECT_TRUE(activation_attr.has_s());
+          EXPECT_STREQ(activation_attr.s().c_str(), "Silu");
+          fused_silu_count += 1;
+        }
+      }
+    }
+
+    EXPECT_EQ(fused_silu_count, expect_fusion ? 1U : 0U);
+  };
+
+  auto check_unfused_graph = [&](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], 1);
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+        EXPECT_EQ(node.GetAttributes().count("activation"), 0U)
+            << "QuickGelu(alpha=1) should remain unfused when the session option disables pointwise activation fusion";
+      }
+    }
+  };
+
+  NchwcOptimizerTester(build_test_case, check_fused_graph, 13, nullptr, configure_fused_path);
+  NchwcOptimizerTester(build_test_case, check_unfused_graph, 13, nullptr, configure_unfused_path);
+}
+
+TEST(NchwcOptimizerTests, GeluPointwiseActivationFusionSessionOptionPaths) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* gelu_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {32, 48, 1, 1});
+    helper.AddNode("Gelu", {conv_output_arg}, {gelu_output_arg}, kMSDomain);
+    helper.AddConvNode(gelu_output_arg, output_arg, {16, 32, 1, 1});
+  };
+
+  auto configure_fused_path = [](SessionOptions& session_options) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableNchwcPointwiseActivationFusion, "0"));
+  };
+
+  auto configure_unfused_path = [](SessionOptions& session_options) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableNchwcPointwiseActivationFusion, "1"));
+  };
+
+  auto check_fused_graph = [&](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+
+#if defined(CPUIDINFO_ARCH_X86) && !defined(_M_ARM64EC)
+    const bool expect_fusion = CPUIDInfo::GetCPUIDInfo().HasAVX512f();
+#else
+    const bool expect_fusion = false;
+#endif
+
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.Gelu"], expect_fusion ? 0 : 1);
+
+    size_t fused_gelu_count = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+        NodeAttributes::const_iterator activation_attr_it = node.GetAttributes().find("activation");
+        if (activation_attr_it != node.GetAttributes().cend()) {
+          const ONNX_NAMESPACE::AttributeProto& activation_attr = activation_attr_it->second;
+          EXPECT_TRUE(activation_attr.has_s());
+          EXPECT_STREQ(activation_attr.s().c_str(), "Gelu");
+          fused_gelu_count += 1;
+        }
+      }
+    }
+
+    EXPECT_EQ(fused_gelu_count, expect_fusion ? 1U : 0U);
+  };
+
+  auto check_unfused_graph = [&](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.Gelu"], 1);
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+        EXPECT_EQ(node.GetAttributes().count("activation"), 0U)
+            << "Gelu should remain unfused when the session option disables pointwise activation fusion";
+      }
+    }
+  };
+
+  NchwcOptimizerTester(build_test_case, check_fused_graph, 13, nullptr, configure_fused_path);
+  NchwcOptimizerTester(build_test_case, check_unfused_graph, 13, nullptr, configure_unfused_path);
 }
 
 TEST(NchwcOptimizerTests, MaxPoolTypeCheck) {

@@ -213,25 +213,43 @@ static bool TryGetConvRuntimeShape(OpKernelContextInternal* op_kernel_context,
   return true;
 }
 
+static std::string GetConvActivationLatencySuffix(const Node& node) {
+  const auto& attributes = node.GetAttributes();
+  const auto activation_attr_it = attributes.find("activation");
+  if (activation_attr_it == attributes.cend()) {
+    return {};
+  }
+
+  const auto& activation_attr = activation_attr_it->second;
+  if (!activation_attr.has_s()) {
+    return {};
+  }
+
+  return MakeString("|act=", activation_attr.s());
+}
+
 static std::string MakeLatencyProfileOpName(OpKernelContextInternal* op_kernel_context,
                                             const onnxruntime::OpKernel* p_op_kernel) {
+  const auto& node = p_op_kernel->Node();
   int64_t cin = 0;
   int64_t cout = 0;
   int64_t h = 0;
   int64_t w = 0;
   int64_t kh = 0;
   int64_t kw = 0;
+  const std::string activation_suffix = GetConvActivationLatencySuffix(node);
 
   if (TryGetConvRuntimeShape(op_kernel_context, p_op_kernel, cin, cout, h, w, kh, kw)) {
-    return MakeString(p_op_kernel->KernelDef().OpName(), "_",
+    return MakeString(node.Name(), "|", p_op_kernel->KernelDef().OpName(), "_",
                       kh, "x", kw,
                       "_Cin=", cin,
                       "_Cout=", cout,
                       "_H=", h,
-                      "_W=", w);
+                      "_W=", w,
+                      activation_suffix);
   }
 
-  return p_op_kernel->KernelDef().OpName();
+  return MakeString(node.Name(), "|", p_op_kernel->KernelDef().OpName(), activation_suffix);
 }
 
 static bool IsPointwiseConvLatencyStatsEnabled() {
@@ -376,6 +394,7 @@ class SessionScope {
     stats.total_latency_us += latency_us;
     stats.min_latency_us = std::min(stats.min_latency_us, latency_us);
     stats.max_latency_us = std::max(stats.max_latency_us, latency_us);
+    op_latency_timeline_.push_back(OpLatencyChronologicalEntry{op_latency_timeline_.size() + 1, op_name, latency_us});
   }
 
   void StopProfilingIfEnabled(profiling::EventCategory category,
@@ -425,6 +444,12 @@ class SessionScope {
     OpLatencyMovingAverageSnapshot moving_average_snapshot;
   };
 
+  struct OpLatencyChronologicalEntry {
+    size_t sequence_number{0};
+    std::string op_name;
+    uint64_t latency_us{0};
+  };
+
   void LogOpLatencyStatsWarning() const {
     InlinedVector<OpLatencyLogEntry> op_stats;
     uint64_t total_tracked_conv_kernel_latency_us = 0;
@@ -459,25 +484,23 @@ class SessionScope {
     const uint64_t framework_overhead_us =
         total_run_latency_us > total_kernel_latency_us ? (total_run_latency_us - total_kernel_latency_us) : 0;
 
-    std::sort(op_stats.begin(), op_stats.end(),
-              [](const auto& left, const auto& right) {
-                if (left.current_run_stats.total_latency_us != right.current_run_stats.total_latency_us) {
-                  return left.current_run_stats.total_latency_us > right.current_run_stats.total_latency_us;
-                }
-                if (left.current_run_avg_latency_us != right.current_run_avg_latency_us) {
-                  return left.current_run_avg_latency_us > right.current_run_avg_latency_us;
-                }
-                return left.op_name < right.op_name;
-              });
-
     auto& logger = session_state_.Logger();
     LOGS(logger, WARNING) << "[Latency] run_total_us=" << total_run_latency_us
                           << " total_kernel_us=" << total_kernel_latency_us
                           << " framework_overhead_us=" << framework_overhead_us;
-    LOGS(logger, WARNING) << "[Latency] kernel latency summary by op/shape: unique_entries="
+    LOGS(logger, WARNING) << "[Latency] kernel latency summary by node/op: unique_entries="
                           << op_stats.size() << ", kernel_invocations="
                           << total_tracked_conv_kernel_invocations << ", total_kernel_time_us="
                           << total_tracked_conv_kernel_latency_us;
+
+    LOGS(logger, WARNING) << "[Latency] kernel latency timeline (execution order): entries="
+                          << op_latency_timeline_.size();
+
+    for (const auto& entry : op_latency_timeline_) {
+      LOGS(logger, WARNING) << "[Latency] seq=" << entry.sequence_number
+                            << " op=" << entry.op_name
+                            << " latency_us=" << entry.latency_us;
+    }
 
     for (const auto& entry : op_stats) {
       const auto& op_name = entry.op_name;
@@ -493,6 +516,10 @@ class SessionScope {
                             << " min_us=" << stats.min_latency_us
                             << " max_us=" << stats.max_latency_us;
     }
+
+    LOGS(logger, WARNING) << "[Latency] end_of_run";
+    LOGS(logger, WARNING) << "";
+    LOGS(logger, WARNING) << "";
   }
 
   const SessionState& session_state_;
@@ -502,6 +529,7 @@ class SessionScope {
   std::atomic<uint64_t> total_kernel_latency_us_{0};
   mutable std::mutex op_latency_stats_mutex_;
   InlinedHashMap<std::string, OpLatencyStats> op_latency_stats_;
+  std::vector<OpLatencyChronologicalEntry> op_latency_timeline_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
 #endif
@@ -698,6 +726,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   const bool& terminate_flag,
                                   SessionScope& session_scope) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
+  const auto& node = p_kernel->Node();
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
     // Do not execute YieldOp (it is an no-op anyways).
     // Decrement the reference count of tensors that are not needed beyond this point.
@@ -716,6 +745,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                      ctx.GetDeviceStream(stream_idx));
   onnxruntime::Status status;
   auto& logger = ctx.GetLogger();
+
   if (p_kernel->IsAsync()) {
     ORT_THROW("Async Kernel Support is not implemented yet.");
   } else {
@@ -756,9 +786,9 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
 #if !defined(ORT_MINIMAL_BUILD)
       auto* node_stats_recorder = ctx.GetSessionState().GetNodeStatsRecorder();
       if (node_stats_recorder != nullptr) {
-        const auto& node = p_kernel->Node();
+    const auto& stats_node = p_kernel->Node();
         const OpKernelInfo& op_kernel_info = p_kernel->Info();
-        const auto input_defs = node.InputDefs();
+    const auto input_defs = stats_node.InputDefs();
 
         // Lets first check if any inputs are initializers,
         // if so we need to account for their memory usage.
@@ -781,7 +811,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
         }
 
         // Get outputs and see if anything were allocated dynamically
-        const auto output_defs = node.OutputDefs();
+        const auto output_defs = stats_node.OutputDefs();
         SafeInt<size_t> total_dynamic_sizes = 0;
         const auto& exec_frame = ctx.GetExecutionFrame();
         for (int i = 0, lim = kernel_ctx.OutputCount(); i < lim; ++i) {
@@ -807,7 +837,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
         }
 
         // Record node allocation stats
-        const std::string name = IResourceAccountant::MakeUniqueNodeName(node);
+        const std::string name = IResourceAccountant::MakeUniqueNodeName(stats_node);
         node_stats_recorder->ReportNodeStats(name, node_stats);
       }
 #endif
@@ -819,9 +849,9 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
       });
     }
   }
+
   if (!status.IsOK()) {
     std::ostringstream ss;
-    const auto& node = p_kernel->Node();
     ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
        << "' Status Message: " << status.ErrorMessage();
     // If the computation failed, we still can record the memory consumption

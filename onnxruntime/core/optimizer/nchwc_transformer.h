@@ -16,10 +16,14 @@ and inserts nodes to reorder tensors as needed.
 */
 class NchwcTransformer : public GraphTransformer {
  public:
-  NchwcTransformer() noexcept : GraphTransformer("NchwcTransformer") {}
+  explicit NchwcTransformer(bool enable_pointwise_avx512_activation_fusion = true) noexcept
+      : GraphTransformer("NchwcTransformer"),
+        enable_pointwise_avx512_activation_fusion_(enable_pointwise_avx512_activation_fusion) {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+  const bool enable_pointwise_avx512_activation_fusion_;
 };
 
 }  // namespace onnxruntime

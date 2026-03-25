@@ -71,6 +71,11 @@ static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimizati
 // CastElimination with chain elimination has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimization.enable_cast_chain_elimination";
 
+// Disable AVX512-only NCHWc fusion of exact Gelu and SiLU-style pointwise activations into 1x1 Conv.
+// "0": enable these fusions; "1": disable them. The default is "0".
+static const char* const kOrtSessionOptionsDisableNchwcPointwiseActivationFusion =
+    "optimization.disable_nchwc_pointwise_activation_fusion";
+
 // This setting controls whether to enable AheadOfTime function inlining.
 // AOT function inlining examines the graph and attempts to inline as many locally defined functions in the model
 // as possible with the help of enabled execution providers.
@@ -396,6 +401,13 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// Block size used when converting per-tensor or per-axis DQ + MatMul to MatMulNBits.
+// Only applies to DQ nodes without an existing block_size attribute (i.e., per-tensor or per-axis quantization).
+// Positive value: explicit block_size (must be power-of-2 and >= 16, e.g., 16, 32, 64, 128).
+// "0" or not provided: use default block_size of 32.
+// "-1": heuristic - largest power-of-2 <= min(K, 256) that minimizes padding.
+static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qdq_matmulnbits_block_size";
 
 // Enable the DQ->MatMulNBits fusion graph transformer.
 // "0": disabled (default). "1": enabled.
