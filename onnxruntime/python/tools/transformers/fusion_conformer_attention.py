@@ -205,7 +205,7 @@ class FusionConformerAttention(FusionAttention):
 
         # Validate attention_bias: the Attention and MultiHeadAttention kernels require a 4-D
         # tensor with shape [batch_size or 1, num_heads or 1, sequence_length, total_sequence_length].
-        # Scalar or 1-D initializers (e.g. a plain QK scaling constant) must not be forwarded as 
+        # Scalar or 1-D initializers (e.g. a plain QK scaling constant) must not be forwarded as
         # attention_bias. Non-initializer values (computed positional-bias outputs) are kept as-is.
         attention_bias = add_qk.input[1]
         bias_init = self.model.get_initializer(attention_bias)
