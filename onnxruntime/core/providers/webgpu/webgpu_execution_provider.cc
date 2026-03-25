@@ -1082,7 +1082,12 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 
 std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   auto profiler = std::make_unique<WebGpuProfiler>(context_);
-  session_profiler_ = profiler.get();
+  // Only set session_profiler_ on the first call (session-level profiler).
+  // Subsequent calls from run-level profiling create temporary profilers that
+  // should not overwrite it, as those profilers have shorter lifetimes.
+  if (session_profiler_ == nullptr) {
+    session_profiler_ = profiler.get();
+  }
   return profiler;
 }
 
@@ -1127,7 +1132,11 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
   }
 
-  if ((session_profiler_ && session_profiler_->Enabled()) || run_options.enable_profiling) {
+  if (session_profiler_ && session_profiler_->Enabled()) {
+    // Session-level profiling: collect into profiler's own events storage.
+    context_.CollectProfilingData(session_profiler_->GpuEvents());
+  } else if (run_options.enable_profiling) {
+    // Run-level profiling: collect into shared events vector.
     context_.CollectProfilingData();
   }
 
@@ -1160,7 +1169,8 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
   }
   context_.Replay(captured_commands_, *graph_buffer_mgr_);
   if (session_profiler_ && session_profiler_->Enabled()) {
-    context_.CollectProfilingData();
+    // Session-level profiling: collect into profiler's own events storage.
+    context_.CollectProfilingData(session_profiler_->GpuEvents());
   }
   return Status::OK();
 }

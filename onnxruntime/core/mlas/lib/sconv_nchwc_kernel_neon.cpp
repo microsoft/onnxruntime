@@ -263,6 +263,29 @@ void
         unsigned KernelFlags
     )
 {
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
+    MlasConvNchwcFloatKernelNeonAsm(
+        Input,
+        Filter,
+        Output,
+        StrideWidth,
+        DilationWidth,
+        FilterCount,
+        InputStride,
+        FilterStride,
+        OutputStride,
+        KernelHeight,
+        KernelWidth,
+        InputBase,
+        InputWidth,
+        DilatedInputWidth,
+        OutputCountLeftPad,
+        OutputCount,
+        OutputCountRightPad,
+        Bias,
+        KernelFlags
+    );
+#else
     MlasConvFloatKernelNeonImpl<true>(
         Input,
         Filter,
@@ -284,6 +307,7 @@ void
         Bias,
         KernelFlags
     );
+#endif
 }
 
 //
