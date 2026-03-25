@@ -31,15 +31,19 @@ namespace {
 template <typename T>
 void ConvertNHWCToNCHW(const T* src, T* dst,
                        int64_t n, int64_t c, int64_t h, int64_t w) {
-  const int64_t hw = (SafeInt<int64_t>(h) * w);
-  for (int64_t n_idx = 0; n_idx < n; ++n_idx) {
-    const int64_t n_src_offset = n_idx * hw * c;
-    const int64_t n_dst_offset = n_idx * c * hw;
-    for (int64_t c_idx = 0; c_idx < c; ++c_idx) {
+  const size_t n_count = narrow<size_t>(n);
+  const size_t c_count = narrow<size_t>(c);
+  const size_t hw = narrow<size_t>(SafeInt<int64_t>(h) * w);
+  for (size_t n_idx = 0; n_idx < n_count; ++n_idx) {
+    const size_t n_src_offset = SafeInt<size_t>(SafeInt<size_t>(n_idx) * hw) * c_count;
+    const size_t n_dst_offset = SafeInt<size_t>(SafeInt<size_t>(n_idx) * c_count) * hw;
+    for (size_t c_idx = 0; c_idx < c_count; ++c_idx) {
+      const size_t c_dst_offset = SafeInt<size_t>(c_idx) * hw;
       const T* src_ptr = src + n_src_offset + c_idx;
-      T* dst_ptr = dst + n_dst_offset + c_idx * hw;
-      for (int64_t hw_idx = 0; hw_idx < hw; ++hw_idx) {
-        dst_ptr[hw_idx] = src_ptr[hw_idx * c];
+      T* dst_ptr = dst + n_dst_offset + c_dst_offset;
+      for (size_t hw_idx = 0; hw_idx < hw; ++hw_idx) {
+        const size_t src_hw_offset = SafeInt<size_t>(hw_idx) * c_count;
+        dst_ptr[hw_idx] = src_ptr[src_hw_offset];
       }
     }
   }
@@ -48,15 +52,19 @@ void ConvertNHWCToNCHW(const T* src, T* dst,
 template <typename T>
 void ConvertNCHWToNHWC(const T* src, T* dst,
                        int64_t n, int64_t c, int64_t h, int64_t w) {
-  const int64_t hw = (SafeInt<int64_t>(h) * w);
-  for (int64_t n_idx = 0; n_idx < n; ++n_idx) {
-    const int64_t n_src_offset = n_idx * c * hw;
-    const int64_t n_dst_offset = n_idx * hw * c;
-    for (int64_t hw_idx = 0; hw_idx < hw; ++hw_idx) {
+  const size_t n_count = narrow<size_t>(n);
+  const size_t c_count = narrow<size_t>(c);
+  const size_t hw = narrow<size_t>(SafeInt<int64_t>(h) * w);
+  for (size_t n_idx = 0; n_idx < n_count; ++n_idx) {
+    const size_t n_src_offset = SafeInt<size_t>(SafeInt<size_t>(n_idx) * c_count) * hw;
+    const size_t n_dst_offset = SafeInt<size_t>(SafeInt<size_t>(n_idx) * hw) * c_count;
+    for (size_t hw_idx = 0; hw_idx < hw; ++hw_idx) {
+      const size_t hw_dst_offset = SafeInt<size_t>(hw_idx) * c_count;
       const T* src_ptr = src + n_src_offset + hw_idx;
-      T* dst_ptr = dst + n_dst_offset + hw_idx * c;
-      for (int64_t c_idx = 0; c_idx < c; ++c_idx) {
-        dst_ptr[c_idx] = src_ptr[c_idx * hw];
+      T* dst_ptr = dst + n_dst_offset + hw_dst_offset;
+      for (size_t c_idx = 0; c_idx < c_count; ++c_idx) {
+        const size_t src_c_offset = SafeInt<size_t>(c_idx) * hw;
+        dst_ptr[c_idx] = src_ptr[src_c_offset];
       }
     }
   }
@@ -291,7 +299,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
     if (manual_sum) {
-      sum_manual_buffer.assign(Sum->Data<float>(), Sum->Data<float>() + Y->Shape().Size());
+      auto sum_span = Sum->DataAsSpan<float>();
+      sum_manual_buffer.assign(sum_span.begin(), sum_span.end());
       sum_manual_data = sum_manual_buffer.data();
     } else {
       auto sum_span = Sum->DataAsSpan<float>();
