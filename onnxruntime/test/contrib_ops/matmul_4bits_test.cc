@@ -880,7 +880,6 @@ TEST(MatMulNBits, Basic_M10_N128_K512) {
 }
 #endif
 
-#if !defined(USE_DML) && !defined(USE_WEBGPU)
 // Test that out-of-range g_idx values are rejected with INVALID_ARGUMENT.
 TEST(MatMulNBits, InvalidGIdx_OutOfRange) {
   constexpr int64_t M = 2, N = 4, K = 32, block_size = 16;
@@ -923,7 +922,8 @@ TEST(MatMulNBits, InvalidGIdx_OutOfRange) {
   std::vector<float> y_data(M * N, 0.0f);
   test.AddOutput<float>("Y", {M, N}, y_data);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
+           {kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // Test that negative g_idx values are rejected.
@@ -962,9 +962,9 @@ TEST(MatMulNBits, InvalidGIdx_Negative) {
   std::vector<float> y_data(M * N, 0.0f);
   test.AddOutput<float>("Y", {M, N}, y_data);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
+           {kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
-#endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
 
 }  // namespace test
 }  // namespace onnxruntime
