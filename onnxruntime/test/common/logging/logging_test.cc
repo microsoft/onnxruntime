@@ -4,7 +4,6 @@
 #include <exception>
 #include <functional>
 #include <string>
-#include <cstdlib>
 
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
