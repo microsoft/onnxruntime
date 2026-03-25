@@ -41,14 +41,49 @@ bool MatchesDevice(const OrtHardwareDevice* hd, std::string_view value) {
   }
 }
 
-bool MatchesProviderOptionsSpecificKeyForDeviceType(std::string_view provider_option_key,
-                                                    std::string_view provider_option_value,
-                                                    std::string_view value) {
+const OrtHardwareDevice* FindMatchingHardwareDevice(std::string_view device_constraint,
+                                                    gsl::span<const OrtHardwareDevice* const> hardware_devices) {
+  if (device_constraint.empty()) {
+    return nullptr;
+  }
+
+  for (const auto* hd : hardware_devices) {
+    if (MatchesDevice(hd, device_constraint)) {
+      return hd;
+    }
+  }
+
+  return nullptr;
+}
+
+bool MatchesDeviceTypeProviderOption(std::string_view provider_option_key,
+                                     std::string_view provider_option_value,
+                                     std::string_view device_constraint,
+                                     gsl::span<const OrtHardwareDevice* const> hardware_devices,
+                                     std::vector<const OrtHardwareDevice*>& constraint_devices) {
+  if (device_constraint.empty()) {
+    return true;
+  }
+
   const auto key_lower = ToLower(provider_option_key);
 
   // If provider option key is related to device type, then its value must match the device constraint value.
+  //
+  // Those keys are not standardized and are defined by EPs, e.g. "device_type" for OpenVINO EP, "backend_type" for QNN EP.
+  //   - "backend_type" has valid values: "cpu", "gpu", "htp" and "saver".
+  //   - "device_type" has valid values: "CPU", "GPU", "GPU.0", "GPU.1" and "NPU".
+  //
+  // TODO: In the future, we can consider standardizing the key for device type in provider options and make it more generic for all EPs to use.
   if (key_lower == "device_type" || key_lower == "backend_type") {
-    return ToLower(provider_option_value) == ToLower(value);
+    bool match = ToLower(provider_option_value).find(ToLower(device_constraint)) != std::string::npos;
+
+    if (!match) {
+      return false;  // provider option value does not match device constraint
+    }
+
+    // Get the matched device according to the device constraint.
+    const auto* matched_device = FindMatchingHardwareDevice(device_constraint, hardware_devices);
+    constraint_devices = {matched_device};
   }
 
   return true;
@@ -56,6 +91,7 @@ bool MatchesProviderOptionsSpecificKeyForDeviceType(std::string_view provider_op
 
 Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
                                               const std::string& compatibility_info,
+                                              std::vector<const OrtHardwareDevice*>& constraint_devices,
                                               OrtCompiledModelCompatibility* compiled_model_compatibility) {
   if (compatibility_info.empty()) {
     return Status::OK();
@@ -67,8 +103,8 @@ Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
       ep_factory->ort_version_supported >= 23 &&
       ep_factory->ValidateCompiledModelCompatibilityInfo != nullptr) {
     auto status = ep_factory->ValidateCompiledModelCompatibilityInfo(ep_factory,
-                                                                     ep_info.hardware_devices.data(),
-                                                                     ep_info.hardware_devices.size(),
+                                                                     constraint_devices.data(),
+                                                                     constraint_devices.size(),
                                                                      compatibility_info.c_str(),
                                                                      compiled_model_compatibility);
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(status));
@@ -85,12 +121,15 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
 
   // Check device constraints
   bool device_ok = variant.device.empty();
+
+  // This is the target device list that will be passed to ValidateCompiledModelCompatibilityInfo
+  // for compatibility validation.
+  std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
+
   if (!device_ok) {
-    for (const auto* hd : ep_info.hardware_devices) {
-      if (MatchesDevice(hd, variant.device)) {
-        device_ok = true;
-        break;
-      }
+    if (const auto* matched = FindMatchingHardwareDevice(variant.device, ep_info.hardware_devices)) {
+      device_ok = true;
+      constraint_devices = {matched};
     }
   }
 
@@ -98,26 +137,24 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
     return false;
   }
 
-  // If provider options contain keys related to device type, then the value must match the device constraint value.
+  // If provider options contain keys related to device type, then the value must match (and narrow) the device constraint if any.
   for (const auto& [key, value] : ep_info.ep_options) {
-    if (!MatchesProviderOptionsSpecificKeyForDeviceType(key, value, variant.device)) {
-      device_ok = false;
-      break;
+    if (!MatchesDeviceTypeProviderOption(key, value, variant.device, ep_info.hardware_devices, constraint_devices)) {
+      return false;
     }
-  }
-
-  if (!device_ok) {
-    return false;
   }
 
   // ORT doesn't directly check architecture constraint, but relies on ep_compatibility_info constraint containing the
   // architecture information if needed.
-  // The ep_compatibility_info should be the same as ep compatibility string in EPContext model's metadata. (see
-  // OrtEp::GetCompiledModelCompatibilityInfo())
-  // EP should implement EpFactory::ValidateCompiledModelCompatibilityInfo() to validate the compatibility info and
+  //
+  // The ep_compatibility_info is expected be the same as ep compatibility string in EPContext model's metadata.
+  // (see OrtEp::GetCompiledModelCompatibilityInfo() for how to create compatibility string in model metadata)
+  //
+  // EP implements EpFactory::ValidateCompiledModelCompatibilityInfo() should validate the compatibility string with given
+  // the target device and OrtHardwareDevice
   // return the compatibility result.
   auto status = ValidateCompiledModelCompatibilityInfo(ep_info, variant.compatibility_info,
-                                                       &variant.compiled_model_compatibility);
+                                                       constraint_devices, &variant.compiled_model_compatibility);
   if (!status.IsOK()) {
     LOGS_DEFAULT(WARNING) << "Failed to validate compatibility info for variant with EP constraint '"
                           << variant.ep << "': " << status.ToString()
