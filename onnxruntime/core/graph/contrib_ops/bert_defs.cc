@@ -2242,10 +2242,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default is 'silu'.",
               AttributeProto::STRING,
               std::string("silu"))
-        .Attr("group",
-              "group for convolution. Default is 1, which means normal convolution. When group equals to input channels, it becomes depthwise convolution.",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, channels, length). Channels-first layout.",
