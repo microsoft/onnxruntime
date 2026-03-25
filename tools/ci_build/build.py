@@ -2327,9 +2327,6 @@ def main():
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
 
-    if args.build_wasm_static_lib:
-        args.build_wasm = True
-
     if args.build_wasm:
         if not args.disable_wasm_exception_catching and args.disable_exceptions:
             # When '--disable_exceptions' is set, we set '--disable_wasm_exception_catching' as well
