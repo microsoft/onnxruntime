@@ -40,23 +40,6 @@ parameters:
    - MinSizeRel
 
 stages:
-    # Validate parameter combinations
-    - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, false)) }}:
-      - stage: Validate_Parameters
-        displayName: 'Validate Parameters'
-        dependsOn: []
-        jobs:
-        - job: Validate
-          displayName: 'Validate parameter combinations'
-          pool:
-            name: 'onnxruntime-Win-CPU-VS2022-Latest'
-            os: windows
-          steps:
-          - script: |
-              echo "##vso[task.logissue type=error]Windows ARM64 build requires Windows x64 build to be enabled."
-              exit 1
-            displayName: 'ERROR: Windows ARM64 requires Windows x64'
-
     # Windows x64
     - ${{ if eq(parameters.build_windows_x64, true) }}:
       - template: plugin-win-webgpu-stage.yml

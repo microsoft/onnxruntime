@@ -54,6 +54,14 @@ parameters:
     - RelWithDebInfo
     - MinSizeRel
 
+variables:
+  # Windows ARM64 build requires Windows x64 build to be enabled (ARM64 cross-compilation depends on x64 build artifacts)
+  - name: invalidARM64Config
+    value: ${{ and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, false)) }}
+  # Non-dev package versions (release, RC) must use Release build type
+  - name: invalidBuildTypeConfig
+    value: ${{ and(ne(parameters.package_version, 'dev'), ne(parameters.cmake_build_type, 'Release')) }}
+
 extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
@@ -83,12 +91,36 @@ extends:
       os: windows
 
     stages:
-      - template: stages/plugin-webgpu-packaging-stage.yml
-        parameters:
-          build_windows_x64: ${{ parameters.build_windows_x64 }}
-          build_windows_arm64: ${{ parameters.build_windows_arm64 }}
-          build_linux_x64: ${{ parameters.build_linux_x64 }}
-          build_macos_arm64: ${{ parameters.build_macos_arm64 }}
-          api_version: ${{ parameters.api_version }}
-          package_version: ${{ parameters.package_version }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
+      # Validate parameter combinations
+      - ${{ if or(eq(variables['invalidARM64Config'], 'True'), eq(variables['invalidBuildTypeConfig'], 'True')) }}:
+        - stage: Validate_Parameters
+          displayName: 'Validate Parameters'
+          dependsOn: []
+          jobs:
+          - job: Validate
+            displayName: 'Validate parameter combinations'
+            pool:
+              name: 'onnxruntime-Win-CPU-VS2022-Latest'
+              os: windows
+            steps:
+            - checkout: none
+            - ${{ if eq(variables['invalidARM64Config'], 'True') }}:
+              - script: |
+                  echo "##vso[task.logissue type=error]Windows ARM64 build requires Windows x64 build to be enabled."
+                  exit 1
+                displayName: 'ERROR: Windows ARM64 requires Windows x64'
+            - ${{ if eq(variables['invalidBuildTypeConfig'], 'True') }}:
+              - script: |
+                  echo "##vso[task.logissue type=error]Non-dev package version requires Release build type."
+                  exit 1
+                displayName: 'ERROR: Non-dev package version requires Release build type'
+      - ${{ else }}:
+        - template: stages/plugin-webgpu-packaging-stage.yml
+          parameters:
+            build_windows_x64: ${{ parameters.build_windows_x64 }}
+            build_windows_arm64: ${{ parameters.build_windows_arm64 }}
+            build_linux_x64: ${{ parameters.build_linux_x64 }}
+            build_macos_arm64: ${{ parameters.build_macos_arm64 }}
+            api_version: ${{ parameters.api_version }}
+            package_version: ${{ parameters.package_version }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
