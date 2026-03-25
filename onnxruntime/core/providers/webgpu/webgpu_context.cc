@@ -629,7 +629,7 @@ void WebGpuContext::StartProfiling() {
   }
 }
 
-void WebGpuContext::CollectProfilingData() {
+void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   if (!pending_queries_.empty()) {
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
@@ -676,7 +676,7 @@ void WebGpuContext::CollectProfilingData() {
                                      static_cast<int64_t>(std::round(start_time / 1000.0)),
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
-        events_.emplace_back(std::move(event));
+        events.emplace_back(std::move(event));
       }
 
       query_read_buffer.Unmap();
@@ -687,6 +687,10 @@ void WebGpuContext::CollectProfilingData() {
   }
 
   is_profiling_ = false;
+}
+
+void WebGpuContext::CollectProfilingData() {
+  CollectProfilingData(events_);
 }
 
 void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) {
@@ -700,7 +704,6 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) 
     events.insert(events.end(),
                   std::make_move_iterator(events_.begin()),
                   std::make_move_iterator(events_.end()));
-
     events_.clear();
   } else {
     LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";

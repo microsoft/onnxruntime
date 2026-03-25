@@ -1042,6 +1042,18 @@ function(onnxruntime_apply_test_target_workarounds target)
   endif()
 endfunction()
 
+# Set environment variables for plugin EP tests when run via CTest.
+function(onnxruntime_set_plugin_ep_test_environment target)
+  if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+    set(ORT_PLUGIN_EP_JSON_CONFIG "{\"ep_library_registration_name\": \"WebGPU_PluginEP\", \"ep_library_path\": \"$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>\", \"selected_ep_name\": \"WebGpuExecutionProvider\"}")
+    set_tests_properties(${target} PROPERTIES
+      ENVIRONMENT "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON=${ORT_PLUGIN_EP_JSON_CONFIG}"
+    )
+  # TODO: add for other plugin EPs if needed
+  # elseif()
+  endif()
+endfunction()
+
 function(onnxruntime_apply_emscripten_test_link_settings target)
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(${target} PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_adapter.js)
@@ -1250,6 +1262,7 @@ block()
   )
 
   onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
+  onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
   # Expose QNN SDK headers to unit tests via an interface target
   if(onnxruntime_USE_QNN)
