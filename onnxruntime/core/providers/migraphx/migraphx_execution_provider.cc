@@ -1612,7 +1612,6 @@ static void clear_cached_mgx_shapes(MIGraphXFuncState* mgx_state) {
 static std::vector<void*> get_or_allocate_temp_output_buffers(
     MIGraphXFuncState* mgx_state,
     const migraphx::program_parameter_shapes& param_shapes,
-    const migraphx::shapes& output_shapes,
     const std::unordered_map<std::string, std::size_t>& map_input_name_index,
     std::size_t padded_batch_size)
 {
@@ -2053,11 +2052,9 @@ static void run_migraphx_program(
 static void handle_input_shape_mismatch(
     MIGraphXFuncState* mgx_state,
     const std::filesystem::path& model_cache_path,
-    const std::filesystem::path& model_path,
     const std::string& mxr_filename_prefix,
     Ort::KernelContext& ctx,
-    migraphx::program_parameter_shapes& param_shapes,
-    std::vector<std::int64_t>& input_shapes)
+    migraphx::program_parameter_shapes& param_shapes)
 {
   // Extract references from mgx_state for convenience
   auto& prog = mgx_state->prog;
@@ -2618,7 +2615,7 @@ static bool execute_fast_path(
   std::vector<void*> temp_output_buffer_ptrs;
   if (needs_slicing) {
     temp_output_buffer_ptrs = get_or_allocate_temp_output_buffers(
-        mgx_state, param_shapes, output_shapes, map_input_name_index, padded_batch_size);
+        mgx_state, param_shapes, map_input_name_index, padded_batch_size);
   }
 
   // Bind inputs/outputs (use temp buffers for outputs when slicing)
@@ -3076,14 +3073,7 @@ static void execute_standard_path(
     // Invalidate caches before recompilation
     mgx_state->caches_valid = false;
 
-    handle_input_shape_mismatch(
-        mgx_state,
-        model_cache_path,
-        model_path,
-        mxr_filename_prefix,
-        ctx,
-        param_shapes,
-        input_shapes);
+    handle_input_shape_mismatch(mgx_state, model_cache_path, mxr_filename_prefix, ctx, param_shapes);
 
     // Re-fetch param_shapes after recompilation
     param_shapes = prog.get_parameter_shapes();
@@ -3183,7 +3173,7 @@ static std::unordered_map<std::string, std::size_t> get_input_name_map(
 
 // Check if model has only dynamic batch dimension (all other dimensions are static)
 // Returns true if ONLY the batch dimension (dim 0) is symbolic/dynamic for all inputs
-static inline bool has_only_dynamic_batch_dimension(
+static bool has_only_dynamic_batch_dimension(
     const std::vector<std::string>& input_names,
     const std::vector<const NodeArg*>& input_tensor,
     const InitializedTensorSet& initializers)
@@ -3238,7 +3228,7 @@ static inline bool has_only_dynamic_batch_dimension(
 //   - vector of input names
 //   - vector of corresponding base shapes (non-batch dimensions)
 // IMPORTANT: Does NOT default symbolic dimensions to any value - returns failure instead
-static inline std::tuple<bool, std::vector<std::string>, std::vector<std::vector<std::int64_t>>>
+static std::tuple<bool, std::vector<std::string>, std::vector<std::vector<std::int64_t>>>
 extract_base_shapes_from_graph(
     const std::vector<std::string>& input_names,
     const std::vector<const NodeArg*>& input_tensor,
@@ -3333,7 +3323,7 @@ extract_base_shapes_from_graph(
 
 // Compile a single model for a specific batch size and cache it
 // Returns the cache hash for the compiled program
-static inline std::string precompile_model_for_batch(
+static std::string precompile_model_for_batch(
     std::size_t batch_size,
     const std::vector<std::string>& input_names,
     const std::vector<std::vector<std::int64_t>>& all_input_base_shapes,
@@ -3409,7 +3399,7 @@ static inline std::string precompile_model_for_batch(
 // This moves compilation from compute_func() to initialization time
 // Uses parallel loading to speed up cache loading, but serializes compilation
 // to avoid thread-safety issues in MIGraphX compile()
-static inline void precompile_all_dynamic_batch_models(
+static void precompile_all_dynamic_batch_models(
     const std::vector<std::size_t>& compiled_batch_sizes,
     const std::vector<std::string>& input_names,
     const std::vector<std::vector<std::int64_t>>& all_input_base_shapes,
@@ -3609,8 +3599,7 @@ static inline void precompile_all_dynamic_batch_models(
 // Precompile static model (no dynamic batching) during Compile() phase
 // IMPORTANT: This function should ONLY be called when all dimensions are concrete.
 // The caller must verify this before calling - symbolic dimensions are NOT allowed.
-static inline void precompile_static_model(
-    const std::vector<std::string>& input_names,
+static void precompile_static_model(
     const std::vector<const NodeArg*>& input_tensor,
     const InitializedTensorSet& initializers,
     const std::unordered_map<std::string, std::size_t>& input_name_index,
@@ -3743,8 +3732,7 @@ static inline void precompile_static_model(
 
 // Encapsulates precompilation decision logic from Compile()
 // Returns true if compilation should be deferred to runtime, false if precompilation succeeded
-static inline bool handle_precompilation_decision(
-    const std::string& node_name,
+static bool handle_precompilation_decision(
     const std::vector<std::string>& input_names,
     const std::vector<const NodeArg*>& input_tensor,
     const InitializedTensorSet& initializers,
@@ -3783,47 +3771,20 @@ static inline bool handle_precompilation_decision(
   // IMPORTANT: We do NOT default symbolic dimensions to any value.
   // Precompilation only happens when we have concrete shapes from the graph.
   // ═══════════════════════════════════════════════════════════════════════════
-  
-  LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ════════════════════════════════════════════════════";
-  LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Starting precompilation decision for node '" << node_name << "'";
-  LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] max_dynamic_batch = " << max_dynamic_batch;
-  LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Number of inputs: " << input_names.size();
-  LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Number of input tensors: " << input_tensor.size();
-  LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Number of initializers: " << initializers.size();
-  
+
   // Check if model has only dynamic batch dimension (other dims are static)
   bool only_dynamic_batch = has_only_dynamic_batch_dimension(input_names, input_tensor, initializers);
-  LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] only_dynamic_batch = " << (only_dynamic_batch ? "true" : "false");
-  
   if (max_dynamic_batch > 0) {
-    LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Mode: DYNAMIC BATCH (max_dynamic_batch=" << max_dynamic_batch << ")";
-    
     // Dynamic batch mode - try to precompile if all non-batch dimensions are concrete
     if (only_dynamic_batch) {
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Model has only dynamic batch dimension - attempting to extract base shapes";
-      
       // Extract base shapes - this will FAIL if any non-batch dim is symbolic
       auto [shapes_valid, ordered_names, base_shapes] = extract_base_shapes_from_graph(
           input_names, input_tensor, initializers, input_name_index);
-      
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] extract_base_shapes_from_graph result: shapes_valid=" 
-                            << (shapes_valid ? "true" : "false");
-      
+
       if (shapes_valid) {
-        
         // All non-batch dimensions are concrete - precompile all batch models
         auto compiled_batch_sizes = generate_compiled_batch_sizes(max_dynamic_batch, compile_batches_spec);
-        
-        std::ostringstream batch_ss;
-        batch_ss << "[";
-        for (std::size_t i = 0; i < compiled_batch_sizes.size(); ++i) {
-          if (i > 0) batch_ss << ", ";
-          batch_ss << compiled_batch_sizes[i];
-        }
-        batch_ss << "]";
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Batch sizes to compile: " << batch_ss.str();
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] >>> STARTING DYNAMIC BATCH PRECOMPILATION <<<";
-        
+
         precompile_all_dynamic_batch_models(
             compiled_batch_sizes,
             ordered_names,
@@ -3844,97 +3805,60 @@ static inline bool handle_precompilation_decision(
             cached_programs);
         
         // Precompilation complete - disable deferred compilation
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ✓✓✓ Dynamic batch precompilation COMPLETE for node '" 
-                              << node_name << "'";
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] defer_compilation set to FALSE";
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] cached_programs size: " << cached_programs.size();
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ════════════════════════════════════════════════════";
         return false;  // No need to defer
       } else {
         // Non-batch dimensions contain symbolic values - cannot precompile
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ✗ CANNOT PRECOMPILE: Non-batch dimensions contain symbolic values";
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Deferring compilation to runtime for node '" << node_name << "'";
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] defer_compilation set to TRUE";
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ════════════════════════════════════════════════════";
         return true;  // Defer to runtime
       }
     } else {
       // Model has multiple dynamic dimensions (not just batch) - defer to runtime
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ✗ CANNOT PRECOMPILE: Model has non-batch dynamic dimensions";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Deferring compilation to runtime for node '" << node_name << "'";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] defer_compilation set to TRUE";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ════════════════════════════════════════════════════";
-      return true;  // Defer to runtime
-    }
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Mode: STATIC (max_dynamic_batch=0)";
-    
-    // Static model (max_dynamic_batch == 0) - only precompile if ALL dimensions are concrete
-    // Check if any dimension is symbolic
-    bool has_symbolic_dims = false;
-    std::string symbolic_info;
-    for (std::size_t i = 0; i < input_names.size(); ++i) {
-      if (initializers.count(input_names[i]) > 0) continue;  // Skip initializers
-      if (i < input_tensor.size()) {
-        auto tensor_shape = input_tensor[i]->Shape();
-        if (tensor_shape != nullptr) {
-          for (int j = 0; j < tensor_shape->dim_size(); ++j) {
-            if (!tensor_shape->dim(j).has_dim_value()) {
-              has_symbolic_dims = true;
-              symbolic_info = "Input '" + input_names[i] + "' dim " + std::to_string(j);
-              LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Found symbolic dimension: " << symbolic_info;
-              break;
-            }
-          }
-        }
-      }
-      if (has_symbolic_dims) break;
-    }
-    
-    LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] has_symbolic_dims = " << (has_symbolic_dims ? "true" : "false");
-    
-    if (!has_symbolic_dims) {
-      // All dimensions are concrete - precompile static model
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] All dimensions are concrete - precompiling static model";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] >>> STARTING STATIC MODEL PRECOMPILATION <<<";
-      
-      precompile_static_model(
-          input_names,
-          input_tensor,
-          initializers,
-          input_name_index,
-          onnx_string_buffer,
-          options,
-          t,
-          fp16_enable,
-          bf16_enable,
-          int8_enable,
-          fp8_enable,
-          int8_calibration_cache_available,
-          dynamic_range_map,
-          exhaustive_tune,
-          model_path,
-          model_cache_path,
-          mxr_filename_prefix,
-          cached_programs);
-      
-      // Precompilation complete - disable deferred compilation
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ✓✓✓ Static model precompilation COMPLETE for node '" 
-                            << node_name << "'";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] defer_compilation set to FALSE";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] cached_programs size: " << cached_programs.size();
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ════════════════════════════════════════════════════";
-      return false;  // No need to defer
-    } else {
-      // Has symbolic dimensions and max_dynamic_batch == 0 - defer to runtime
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ✗ CANNOT PRECOMPILE: Has symbolic dimensions but max_dynamic_batch=0";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Symbolic dimension found: " << symbolic_info;
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Deferring compilation to runtime for node '" << node_name << "'";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] defer_compilation set to TRUE";
-      LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ════════════════════════════════════════════════════";
       return true;  // Defer to runtime
     }
   }
+    
+  // Static model (max_dynamic_batch == 0) - only precompile if ALL dimensions are concrete
+  // Check if any dimension is symbolic
+  bool has_symbolic_dims = false;
+  for (std::size_t i = 0; i < input_names.size(); ++i) {
+    if (initializers.count(input_names[i]) > 0) continue;  // Skip initializers
+    if (i < input_tensor.size()) {
+      auto tensor_shape = input_tensor[i]->Shape();
+      if (tensor_shape != nullptr) {
+        for (int j = 0; j < tensor_shape->dim_size(); ++j) {
+          if (!tensor_shape->dim(j).has_dim_value()) {
+            has_symbolic_dims = true;
+            break;
+          }
+        }
+      }
+    }
+    if (has_symbolic_dims) break;
+  }
+
+  if (!has_symbolic_dims) {
+    // All dimensions are concrete - precompile static model
+    precompile_static_model(
+        input_tensor,
+        initializers,
+        input_name_index,
+        onnx_string_buffer,
+        options,
+        t,
+        fp16_enable,
+        bf16_enable,
+        int8_enable,
+        fp8_enable,
+        int8_calibration_cache_available,
+        dynamic_range_map,
+        exhaustive_tune,
+        model_path,
+        model_cache_path,
+        mxr_filename_prefix,
+        cached_programs);
+
+    return false;  // No need to defer
+  }
+  return true;  // Defer to runtime
 }
 
 constexpr std::uint64_t MIGraphX_Version =
@@ -3991,7 +3915,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     
     // Perform precompilation decision and execution
     map_defer_compilation_[fused_node.Name()] = handle_precompilation_decision(
-        fused_node.Name(),
         input_names,
         input_tensor,
         initializers,
@@ -4036,24 +3959,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       if (max_dynamic_batch_ > 0) {
         p->has_dynamic_batch = true;
         p->compiled_batch_sizes = generate_compiled_batch_sizes(max_dynamic_batch_, compile_batches_);
-        LOGS_DEFAULT(VERBOSE) << "[Compile][CREATE_STATE] Dynamic batch enabled for node '" << context->node_name 
-                              << "' with max_dynamic_batch=" << max_dynamic_batch_
-                              << ", compile_batches='" << (compile_batches_.empty() ? "(power-of-two)" : compile_batches_) << "'"
-                              << ", generated " << p->compiled_batch_sizes.size() << " batch sizes to compile";
-        {
-          std::ostringstream bs_oss;
-          bs_oss << "[";
-          for (std::size_t bi = 0; bi < p->compiled_batch_sizes.size(); ++bi) {
-            if (bi > 0) bs_oss << ", ";
-            bs_oss << p->compiled_batch_sizes[bi];
-          }
-          bs_oss << "]";
-          LOGS_DEFAULT(INFO) << "[Compile][CREATE_STATE] Batch sizes: " << bs_oss.str();
-        }
-        LOGS_DEFAULT(VERBOSE) << "[Compile][CREATE_STATE] defer_compilation=" << p->defer_compilation;
-      } else {
-        LOGS_DEFAULT(VERBOSE) << "[Compile][CREATE_STATE] Static model mode for node '" << context->node_name << "'";
-        LOGS_DEFAULT(VERBOSE) << "[Compile][CREATE_STATE] defer_compilation=" << p->defer_compilation;
       }
       
       *state = p.release();
@@ -4067,7 +3972,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
     compute_info.compute_func = [this, mxr_filename_prefix](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
-      MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
+      MIGraphXFuncState* mgx_state = static_cast<MIGraphXFuncState*>(state);
 
       const auto& map_input_name_index = mgx_state->input_name_indexes;
 
