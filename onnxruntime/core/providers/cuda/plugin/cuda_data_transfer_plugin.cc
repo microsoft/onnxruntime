@@ -36,6 +36,11 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
   bool src_is_gpu = (src_type == OrtMemoryInfoDeviceType_GPU);
   bool dst_is_gpu = (dst_type == OrtMemoryInfoDeviceType_GPU);
 
+  if ((src_is_gpu && ep_api.MemoryDevice_GetVendorId(src_device) != OrtDevice::VendorIds::NVIDIA) ||
+      (dst_is_gpu && ep_api.MemoryDevice_GetVendorId(dst_device) != OrtDevice::VendorIds::NVIDIA)) {
+    return false;
+  }
+
   // Support CPU→GPU, GPU→CPU, GPU→GPU
   return (src_is_cpu && dst_is_gpu) ||
          (src_is_gpu && dst_is_cpu) ||

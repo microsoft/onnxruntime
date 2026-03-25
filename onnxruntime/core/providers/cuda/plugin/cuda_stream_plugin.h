@@ -53,7 +53,7 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(OrtSyncStreamImpl* this_ptr) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtSyncStreamImpl* this_ptr) noexcept;
 
-  void CleanupDeferredCPUBuffers();
+  OrtStatus* CleanupDeferredCPUBuffers() noexcept;
 
   CudaEpFactory& factory_;
   int device_id_;

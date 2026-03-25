@@ -573,6 +573,49 @@ void RegisterNvTensorRTRtxPluginsAsCustomOps(PySessionOptions& so, const Provide
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Find a registered plugin EP device matching the given EP name and optional device_id from provider options.
+// Returns nullptr if no matching device is found.
+static const OrtEpDevice* FindRegisteredPluginEpDevice(
+    const std::string& ep_name,
+    const ProviderOptions* provider_options) {
+  const auto& ep_devices = GetEnv().GetOrtEpDevices();
+  if (ep_devices.empty()) {
+    return nullptr;
+  }
+
+  bool has_requested_device_id = false;
+  int requested_device_id = 0;
+  if (provider_options != nullptr) {
+    if (const auto device_id_it = provider_options->find("device_id"); device_id_it != provider_options->end()) {
+      try {
+        requested_device_id = std::stoi(device_id_it->second);
+        has_requested_device_id = requested_device_id >= 0;
+      } catch (const std::exception&) {
+        // Invalid device_id values are logged by callers when appropriate.
+      }
+    }
+  }
+
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    if (!ep_device || ep_device->ep_name != ep_name) {
+      continue;
+    }
+
+    if (has_requested_device_id) {
+      Ort::ConstEpDevice current_device(ep_device);
+      if (static_cast<int>(current_device.Device().DeviceId()) != requested_device_id) {
+        continue;
+      }
+    }
+
+    return ep_device;
+  }
+
+  return nullptr;
+}
+#endif
+
 /**
  * Creates an IExecutionProviderFactory instance of the specified type.
  * @param session_options The session options.
@@ -586,55 +629,34 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     const std::string& type,
     const ProviderOptionsMap& provider_options_map) {
 #if !defined(ORT_MINIMAL_BUILD)
-  auto try_create_registered_plugin_factory = [&]() -> std::shared_ptr<IExecutionProviderFactory> {
-    const auto& ep_devices = GetEnv().GetOrtEpDevices();
-    if (ep_devices.empty()) {
-      return nullptr;
-    }
-
-    bool has_requested_device_id = false;
-    int requested_device_id = 0;
-    if (const auto provider_it = provider_options_map.find(type); provider_it != provider_options_map.end()) {
-      if (const auto device_id_it = provider_it->second.find("device_id"); device_id_it != provider_it->second.end()) {
-        try {
-          requested_device_id = std::stoi(device_id_it->second);
-          has_requested_device_id = requested_device_id >= 0;
-        } catch (const std::exception& ex) {
-          LOGS_DEFAULT(WARNING) << "Ignoring invalid device_id provider option '" << device_id_it->second
-                                << "' for registered plugin EP '" << type << "': " << ex.what();
-        }
-      }
-    }
-
-    const OrtEpDevice* selected_device = nullptr;
-    for (const OrtEpDevice* ep_device : ep_devices) {
-      if (!ep_device || ep_device->ep_name != type) {
-        continue;
-      }
-
-      if (has_requested_device_id) {
-        Ort::ConstEpDevice current_device(ep_device);
-        if (static_cast<int>(current_device.Device().DeviceId()) != requested_device_id) {
-          continue;
-        }
-      }
-
-      if (selected_device == nullptr) {
-        selected_device = ep_device;
-        break;
-      }
-    }
-
-    if (selected_device == nullptr) {
-      if (has_requested_device_id) {
-        LOGS_DEFAULT(WARNING) << "No registered plugin EP device found for '" << type
-                              << "' with device_id=" << requested_device_id;
-      }
-      return nullptr;
-    }
-
+  auto get_registered_plugin_ep_devices = [&]() -> InlinedVector<const OrtEpDevice*> {
     InlinedVector<const OrtEpDevice*> selected_devices;
+
+    const ProviderOptions* provider_options = nullptr;
+    if (const auto provider_it = provider_options_map.find(type); provider_it != provider_options_map.end()) {
+      provider_options = &provider_it->second;
+    }
+
+    const OrtEpDevice* selected_device = FindRegisteredPluginEpDevice(type, provider_options);
+    if (selected_device == nullptr) {
+      if (provider_options != nullptr) {
+        if (const auto device_id_it = provider_options->find("device_id"); device_id_it != provider_options->end()) {
+          LOGS_DEFAULT(WARNING) << "No registered plugin EP device found for '" << type
+                                << "' with device_id=" << device_id_it->second;
+        }
+      }
+      return selected_devices;
+    }
+
     selected_devices.push_back(selected_device);
+    return selected_devices;
+  };
+
+  auto try_create_registered_plugin_factory = [&]() -> std::shared_ptr<IExecutionProviderFactory> {
+    auto selected_devices = get_registered_plugin_ep_devices();
+    if (selected_devices.empty()) {
+      return nullptr;
+    }
 
     std::unique_ptr<IExecutionProviderFactory> ep_factory;
     const auto status = onnxruntime::CreateIExecutionProviderFactoryForEpDevices(GetEnv(), selected_devices, ep_factory);
@@ -1314,6 +1336,44 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
     const auto& default_logger = GetEnv().GetLoggingManager()->DefaultLogger();
     OrtSessionOptions ort_session_options;
     ort_session_options.value = session_options;
+
+#if !defined(ORT_MINIMAL_BUILD)
+    auto add_registered_plugin_ep_options_to_session = [&]() -> Status {
+      const ProviderOptions* provider_options = nullptr;
+      if (const auto provider_it = provider_options_map.find(type); provider_it != provider_options_map.end()) {
+        provider_options = &provider_it->second;
+      }
+
+      if (provider_options == nullptr || provider_options->empty()) {
+        return Status::OK();
+      }
+
+      const OrtEpDevice* selected_device = FindRegisteredPluginEpDevice(type, provider_options);
+      if (selected_device == nullptr) {
+        return Status::OK();
+      }
+
+      InlinedVector<const OrtEpDevice*> selected_devices;
+      selected_devices.push_back(selected_device);
+
+      std::vector<const char*> ep_option_keys;
+      std::vector<const char*> ep_option_vals;
+      ep_option_keys.reserve(provider_options->size());
+      ep_option_vals.reserve(provider_options->size());
+      for (const auto& [key, val] : *provider_options) {
+        ep_option_keys.push_back(key.c_str());
+        ep_option_vals.push_back(val.c_str());
+      }
+
+      return AddEpOptionsToSessionOptions(selected_devices, ep_option_keys, ep_option_vals, ort_session_options.value);
+    };
+
+    auto status = add_registered_plugin_ep_options_to_session();
+    if (!status.IsOK()) {
+      ORT_THROW("Error applying registered plugin EP options: ", status);
+    }
+#endif
+
     return ep_factory->CreateProvider(ort_session_options, *default_logger.ToExternal());
   }
   return nullptr;
@@ -1336,6 +1396,31 @@ static Status AddExplicitEpFactory(PySessionOptions& py_sess_options, const std:
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to add provider of type '",
                            provider_type, "' to SessionOptions. Provider configuration is not supported.");
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (!provider_options.empty()) {
+    const OrtEpDevice* selected_device = FindRegisteredPluginEpDevice(provider_type, &provider_options);
+    if (selected_device != nullptr) {
+      InlinedVector<const OrtEpDevice*> selected_devices;
+      selected_devices.push_back(selected_device);
+
+      std::vector<const char*> ep_option_keys;
+      std::vector<const char*> ep_option_vals;
+      ep_option_keys.reserve(provider_options.size());
+      ep_option_vals.reserve(provider_options.size());
+      for (const auto& [key, val] : provider_options) {
+        ep_option_keys.push_back(key.c_str());
+        ep_option_vals.push_back(val.c_str());
+      }
+
+      ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(selected_devices,
+                                                       ep_option_keys,
+                                                       ep_option_vals,
+                                                       py_sess_options.value));
+    }
+  }
+#endif
+
   py_sess_options.provider_factories.push_back(std::move(ep_factory));
   return Status::OK();
 }

@@ -45,7 +45,7 @@ OrtStatus* CreateCudaKernelRegistry(const OrtEpApi& /*ep_api*/,
   for (auto build_fn : entries) {
     ::onnxruntime::ep::adapter::KernelCreateInfo info = build_fn();
     if (info.kernel_def != nullptr) {  // filter the BuildKernelCreateInfo<void> sentinel
-      (void)registry.Register(std::move(info));
+      ORT_THROW_IF_ERROR(registry.Register(std::move(info)));
     }
   }
 

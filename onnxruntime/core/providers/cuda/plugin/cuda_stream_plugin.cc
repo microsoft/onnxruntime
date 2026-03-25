@@ -53,14 +53,40 @@ CudaSyncStream::CudaSyncStream(CudaEpFactory& factory, int device_id,
 }
 
 CudaSyncStream::~CudaSyncStream() {
-  CleanupDeferredCPUBuffers();
+  if (!deferred_cpu_buffers_.empty()) {
+    if (cuda_stream_ != nullptr) {
+      OrtStatus* status = OnSessionRunEndImpl(this);
+      if (status != nullptr) {
+        Ort::GetApi().ReleaseStatus(status);
+      }
+    } else {
+      OrtStatus* status = CleanupDeferredCPUBuffers();
+      if (status != nullptr) {
+        Ort::GetApi().ReleaseStatus(status);
+      }
+    }
+  }
 
   if (cuda_stream_) UnregisterStream(cuda_stream_);
 
   if (cublas_handle_) cublasDestroy(cublas_handle_);
   if (cudnn_handle_) cudnnDestroy(cudnn_handle_);
   if (cublas_lt_handle_) cublasLtDestroy(cublas_lt_handle_);
-  if (cuda_stream_) cudaStreamDestroy(cuda_stream_);
+  if (cuda_stream_) {
+    auto destroy_result = cudaStreamDestroy(cuda_stream_);
+    if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
+      // Fallback: we only reach here when the earlier cudaStreamSynchronize in
+      // OnSessionRunEndImpl failed, leaving some buffers un-freed.
+      // cudaStreamDestroy on a non-blocking stream returns immediately (async
+      // cleanup), so in-flight ops may still reference these buffers. However,
+      // a prior sync failure indicates a serious CUDA error, so best-effort
+      // cleanup is the most we can do here.
+      OrtStatus* status = CleanupDeferredCPUBuffers();
+      if (status != nullptr) {
+        Ort::GetApi().ReleaseStatus(status);
+      }
+    }
+  }
 }
 
 OrtStatus* CudaSyncStream::InitHandles() {
@@ -84,11 +110,18 @@ void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {
   deferred_cpu_buffers_.push_back(cpu_buffer);
 }
 
-void CudaSyncStream::CleanupDeferredCPUBuffers() {
+OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
+  OrtStatus* first_error = nullptr;
   for (void* buf : deferred_cpu_buffers_) {
-    cudaFreeHost(buf);
+    cudaError_t err = cudaFreeHost(buf);
+    if (err != cudaSuccess && first_error == nullptr) {
+      first_error = Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("CUDA error: ") + cudaGetErrorName(err) + ": " + cudaGetErrorString(err)).c_str());
+    }
   }
   deferred_cpu_buffers_.clear();
+  return first_error;
 }
 
 /*static*/ void* ORT_API_CALL CudaSyncStream::GetHandleImpl(OrtSyncStreamImpl* this_ptr) noexcept {
@@ -114,11 +147,13 @@ void CudaSyncStream::CleanupDeferredCPUBuffers() {
 
 /*static*/ OrtStatus* ORT_API_CALL CudaSyncStream::OnSessionRunEndImpl(OrtSyncStreamImpl* this_ptr) noexcept {
   auto* stream = static_cast<CudaSyncStream*>(this_ptr);
+  if (stream->cuda_stream_ == nullptr) {
+    return stream->CleanupDeferredCPUBuffers();
+  }
   // Synchronize before releasing deferred CPU buffers to ensure
   // all async copies using those buffers have completed.
   PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream->cuda_stream_));
-  stream->CleanupDeferredCPUBuffers();
-  return nullptr;
+  return stream->CleanupDeferredCPUBuffers();
 }
 
 /*static*/ void ORT_API_CALL CudaSyncStream::ReleaseImpl(OrtSyncStreamImpl* this_ptr) noexcept {
