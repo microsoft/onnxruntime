@@ -116,9 +116,11 @@ onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CC_SRCS}
     ${CUDA_PLUGIN_EP_CU_SRCS}
 )
-# Set CUDA standard and flags
+# Keep the plugin CUDA target aligned with the repo-wide C++20 baseline.
+# Forcing CUDA C++17 here breaks newer protobuf/absl headers used by the plugin
+# build, as absl::compare expects standard ordering support in this configuration.
 set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES
-    CUDA_STANDARD 17
+    CUDA_STANDARD 20
     CUDA_STANDARD_REQUIRED ON
 )
 
@@ -133,14 +135,53 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
     # receive the ORT-framework force-include (it conflicts with cute::Tensor etc.).
     # cuda_plugin_kernels.cu already #include "cuda_kernel_adapter.h" directly.
     # Op-registration .cc files do not include it directly, so they need it here.
+    # Force NVCC onto C++20 explicitly. With the VS generator the CUDA standard
+    # property alone still leaves `-std=c++17` in AdditionalOptions.
     # Suppress NVCC cudafe warnings:
     #   550  - variable set but never used (in adapter headers)
     #   2810 - [[nodiscard]] false positive on Status assignments in op_kernel.h / kernel_registry.h
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--std c++20>"
     "$<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr;-Xcudafe;--diag_suppress=550>"
     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=2810>"
     "$<$<COMPILE_LANGUAGE:CXX>:-include;${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
     "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
 )
+
+if (MSVC)
+    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+    )
+
+    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>"
+    )
+endif()
+
+# Mirror the core CUDA provider's CUDA 12.8+ NVCC workarounds so the plugin
+# target handles stricter cudafe diagnostics consistently.
+set(onnxruntime_plugin_nvcc_threads "1")
+target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>"
+)
+
+if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+            "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
+    )
+
+    if (MSVC)
+        target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+                "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>"
+        )
+    endif()
+endif()
 
 include(cudnn_frontend)
 include(cutlass)

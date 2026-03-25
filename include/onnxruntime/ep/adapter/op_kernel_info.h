@@ -9,6 +9,7 @@
 
 #include <memory>
 
+#include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
 #include "core/framework/tensor_shape.h"
@@ -42,11 +43,11 @@ struct OpKernelInfo {
   struct KernelInfoCache {
     explicit KernelInfoCache(const OrtKernelInfo* kernel_info) : kernel_info_(kernel_info) {
       Ort::ConstKernelInfo info{kernel_info};
-      const int input_count = info.GetInputCount();
+      const size_t input_count = info.GetInputCount();
       constant_input_tensors.resize(input_count);
-      for (int i = 0; i < input_count; ++i) {
+      for (size_t i = 0; i < input_count; ++i) {
         int is_constant = 0;
-        Ort::ConstValue const_input = info.GetTensorConstantInput(i, &is_constant);
+        Ort::ConstValue const_input = info.GetTensorConstantInput(gsl::narrow_cast<int>(i), &is_constant);
         if (is_constant && const_input != nullptr && const_input.IsTensor()) {
           constant_input_tensors[i] = CreateTensorFromApiValue(const_cast<OrtValue*>(static_cast<const OrtValue*>(const_input)));
         }
@@ -85,7 +86,7 @@ struct OpKernelInfo {
   }
 
   int GetInputCount() const noexcept {
-    return info_.GetInputCount();
+    return gsl::narrow_cast<int>(info_.GetInputCount());
   }
 
   const std::vector<Tensor>& GetConstantInputTensors() const noexcept {
