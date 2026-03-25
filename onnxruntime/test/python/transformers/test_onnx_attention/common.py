@@ -88,6 +88,7 @@ class AttentionConfig:
     q_num_heads: int
     kv_num_heads: int
     head_size: int
+    v_head_size: int = 0  # 0 means same as head_size; set explicitly for asymmetric Q/V head sizes
     is_causal: int = 0
     past_kv_sequence_length: int = 0
     softcap: float = 0.0
@@ -134,6 +135,9 @@ def create_attention_node_and_io(
         present_kv_seqlen = config.past_kv_sequence_length + config.kv_sequence_length
     else:  # Prompt (no past KV cache)
         present_kv_seqlen = config.kv_sequence_length
+
+    # Effective v_head_size: defaults to head_size when not explicitly set
+    effective_v_head_size = config.v_head_size if config.v_head_size else config.head_size
 
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -199,13 +203,14 @@ def create_attention_node_and_io(
             helper.make_tensor_value_info(
                 "value",
                 ort_type,
-                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
+                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, effective_v_head_size],
             ),
         ]
     else:
         # 3D inputs: [batch, seq_len, hidden_size]
         q_hidden_size = config.q_num_heads * config.head_size
         kv_hidden_size = config.kv_num_heads * config.head_size
+        v_hidden_size = config.kv_num_heads * effective_v_head_size
         graph_input = [
             helper.make_tensor_value_info(
                 "query", ort_type, [config.batch_size, config.q_sequence_length, q_hidden_size]
@@ -214,7 +219,7 @@ def create_attention_node_and_io(
                 "key", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
             ),
             helper.make_tensor_value_info(
-                "value", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
+                "value", ort_type, [config.batch_size, config.kv_sequence_length, v_hidden_size]
             ),
         ]
 
@@ -263,10 +268,11 @@ def create_attention_node_and_io(
     # Shape: [batch, num_heads, past_seq_len, head_size] (4D BNSH format)
     if is_past:
         past_k_shape = [config.batch_size, config.kv_num_heads, config.past_kv_sequence_length, config.head_size]
+        past_v_shape = [config.batch_size, config.kv_num_heads, config.past_kv_sequence_length, effective_v_head_size]
         graph_input.extend(
             [
                 helper.make_tensor_value_info("past_key", cache_ort_type, past_k_shape),
-                helper.make_tensor_value_info("past_value", cache_ort_type, past_k_shape),
+                helper.make_tensor_value_info("past_value", cache_ort_type, past_v_shape),
             ]
         )
 
@@ -276,16 +282,17 @@ def create_attention_node_and_io(
 
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
+    output_v_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, effective_v_head_size]
 
     if config.use_4d_bnsh:
-        output_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size]
+        output_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, effective_v_head_size]
     else:
-        output_shape = [config.batch_size, config.q_sequence_length, config.q_num_heads * config.head_size]
+        output_shape = [config.batch_size, config.q_sequence_length, config.q_num_heads * effective_v_head_size]
 
     graph_output = [
         helper.make_tensor_value_info("output", ort_type, output_shape),
         helper.make_tensor_value_info("present_key", cache_ort_type, output_k_shape),
-        helper.make_tensor_value_info("present_value", cache_ort_type, output_k_shape),
+        helper.make_tensor_value_info("present_value", cache_ort_type, output_v_shape),
     ]
 
     if output_qk > 0:
@@ -447,24 +454,26 @@ def attention_prompt_func(
         bind_tensor(io_binding, "nonpad_kv_seqlen", nonpad_kv_seqlen, device, TensorProto.INT64)
 
     # Bind Outputs
-    hidden_size = config.q_num_heads * config.head_size
+    effective_v_head_size = config.v_head_size if config.v_head_size else config.head_size
+    output_hidden_size = config.q_num_heads * effective_v_head_size
     out_dtype = _get_out_dtype(ort_type)
 
     if config.use_4d_bnsh:
         out_torch = torch.zeros(
-            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size),
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, effective_v_head_size),
             dtype=out_dtype,
             device=device,
         )
     else:
         out_torch = torch.zeros(
-            (config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device
+            (config.batch_size, config.q_sequence_length, output_hidden_size), dtype=out_dtype, device=device
         )
     bind_output_tensor(io_binding, "output", out_torch, device, ort_type)
 
     # present KV shape for prompt (no past)
     present_seqlen = config.kv_sequence_length
-    present_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    present_k_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    present_v_dims = [config.batch_size, config.kv_num_heads, present_seqlen, effective_v_head_size]
 
     # Determine dtype for cache tensors
     cache_dtype = out_dtype
@@ -473,8 +482,8 @@ def attention_prompt_func(
     else:
         cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
-    present_k = torch.zeros(tuple(present_dims), dtype=cache_dtype, device=device)
-    present_v = torch.zeros(tuple(present_dims), dtype=cache_dtype, device=device)
+    present_k = torch.zeros(tuple(present_k_dims), dtype=cache_dtype, device=device)
+    present_v = torch.zeros(tuple(present_v_dims), dtype=cache_dtype, device=device)
     bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
@@ -565,28 +574,30 @@ def attention_past_func(
     bind_tensor(io_binding, "past_value", past_v_sliced, device, cache_ort_type)
 
     # Bind Outputs
-    hidden_size = config.q_num_heads * config.head_size
+    effective_v_head_size = config.v_head_size if config.v_head_size else config.head_size
+    output_hidden_size = config.q_num_heads * effective_v_head_size
     out_dtype = _get_out_dtype(ort_type)
 
     if config.use_4d_bnsh:
         out_torch = torch.zeros(
-            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size),
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, effective_v_head_size),
             dtype=out_dtype,
             device=device,
         )
     else:
         out_torch = torch.zeros(
-            (config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device
+            (config.batch_size, config.q_sequence_length, output_hidden_size), dtype=out_dtype, device=device
         )
     bind_output_tensor(io_binding, "output", out_torch, device, ort_type)
 
     # present KV shape (past + new)
     present_seqlen = total_seq_len
-    present_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    present_k_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    present_v_dims = [config.batch_size, config.kv_num_heads, present_seqlen, effective_v_head_size]
 
     cache_dtype = out_dtype
-    present_k = torch.zeros(tuple(present_dims), dtype=cache_dtype, device=device)
-    present_v = torch.zeros(tuple(present_dims), dtype=cache_dtype, device=device)
+    present_k = torch.zeros(tuple(present_k_dims), dtype=cache_dtype, device=device)
+    present_v = torch.zeros(tuple(present_v_dims), dtype=cache_dtype, device=device)
     bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
