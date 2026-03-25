@@ -355,6 +355,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           ParseStringWithClassicLocale<int64_t>(
               session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
                                                                 "4"));
+      const int64_t qdq_matmulnbits_block_size =
+          ParseStringWithClassicLocale<int64_t>(
+              session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsBlockSize,
+                                                                "0"));
 #ifdef MLAS_TARGET_AMD64_IX86
       const bool avx2_precision_mode =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1" && MlasPlatformU8S8Overflow();
@@ -371,7 +375,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  SatApplyContextVariant{},
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool));
+                                                                                 intra_op_thread_pool,
+                                                                                 qdq_matmulnbits_block_size));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
@@ -513,6 +518,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
           ParseStringWithClassicLocale<int64_t>(
               session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
                                                                 "4"));
+      const int64_t qdq_matmulnbits_block_size =
+          ParseStringWithClassicLocale<int64_t>(
+              session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsBlockSize,
+                                                                "0"));
       // runtime optimizations only support CPU EP now
       const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 
@@ -520,7 +529,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  apply_context,
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool));
+                                                                                 intra_op_thread_pool,
+                                                                                 qdq_matmulnbits_block_size));
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
