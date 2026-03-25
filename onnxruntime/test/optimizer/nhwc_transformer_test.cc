@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <random>
+#include <string_view>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "core/framework/kernel_registry.h"
-#include "test/unittest_util/graph_transform_test_builder.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/common.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #if defined(USE_KLEIDIAI) && defined(__aarch64__)
 #include "core/mlas/lib/mlasi.h"
 #endif
@@ -64,10 +67,124 @@ static bool HasFloatNhwcFusedConvKernel() {
 }
 #endif
 
-static bool HasFloatNhwcRuntimeSupport() {
+static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_shape,
+                                           const std::vector<int64_t>& weight_shape,
+                                           std::vector<int64_t> pads = {},
+                                           std::vector<int64_t> strides = {},
+                                           std::vector<int64_t> dilations = {},
+                                           int64_t group = 1,
+                                           bool has_sum_input = false,
+                                           std::string_view auto_pad = "NOTSET") {
 #if defined(USE_KLEIDIAI) && defined(__aarch64__)
-  return HasFloatNhwcFusedConvKernel() && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+  if (!HasFloatNhwcFusedConvKernel() || !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+    return false;
+  }
+
+  if (has_sum_input || group != 1 || input_shape.size() != 4 || weight_shape.size() != 4) {
+    return false;
+  }
+
+  std::array<size_t, 2> input_spatial_shape{
+      narrow<size_t>(input_shape[2]),
+      narrow<size_t>(input_shape[3]),
+  };
+  std::array<size_t, 2> kernel_spatial_shape{
+      narrow<size_t>(weight_shape[2]),
+      narrow<size_t>(weight_shape[3]),
+  };
+  std::array<size_t, 2> strides_size_t{1, 1};
+  std::array<size_t, 2> dilations_size_t{1, 1};
+  std::array<size_t, 4> pads_size_t{};
+
+  if (!strides.empty()) {
+    if (strides.size() != strides_size_t.size()) {
+      return false;
+    }
+
+    for (size_t i = 0; i < strides_size_t.size(); ++i) {
+      if (strides[i] < 0) {
+        return false;
+      }
+
+      strides_size_t[i] = narrow<size_t>(strides[i]);
+    }
+  }
+
+  if (!dilations.empty()) {
+    if (dilations.size() != dilations_size_t.size()) {
+      return false;
+    }
+
+    for (size_t i = 0; i < dilations_size_t.size(); ++i) {
+      if (dilations[i] < 0) {
+        return false;
+      }
+
+      dilations_size_t[i] = narrow<size_t>(dilations[i]);
+    }
+  }
+
+  const AutoPadType auto_pad_type = StringToAutoPadType(std::string(auto_pad));
+  if (auto_pad_type == AutoPadType::NOTSET) {
+    if (pads.empty()) {
+      pads_size_t.fill(0);
+    } else {
+      if (pads.size() != pads_size_t.size()) {
+        return false;
+      }
+
+      for (size_t i = 0; i < pads_size_t.size(); ++i) {
+        if (pads[i] < 0) {
+          return false;
+        }
+
+        pads_size_t[i] = narrow<size_t>(pads[i]);
+      }
+    }
+  } else {
+    for (size_t i = 0; i < 2; ++i) {
+      int64_t pad_head = 0;
+      int64_t pad_tail = 0;
+      int64_t out_dim = 0;
+      const auto status = ComputePadAndOutputShape(
+          input_shape[2 + i],
+          narrow<int64_t>(strides_size_t[i]),
+          weight_shape[2 + i],
+          narrow<int64_t>(dilations_size_t[i]),
+          auto_pad_type,
+          pad_head,
+          pad_tail,
+          out_dim,
+          /*force_symmetric_auto_padding*/ false);
+      if (!status.IsOK() || pad_head < 0 || pad_tail < 0 || out_dim < 0) {
+        return false;
+      }
+
+      pads_size_t[i] = narrow<size_t>(pad_head);
+      pads_size_t[i + 2] = narrow<size_t>(pad_tail);
+    }
+  }
+
+  return MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+      /*Dimensions*/ 2,
+      narrow<size_t>(input_shape[0]),
+      /*GroupCount*/ 1,
+      input_spatial_shape.data(),
+      kernel_spatial_shape.data(),
+      dilations_size_t.data(),
+      pads_size_t.data(),
+      strides_size_t.data(),
+      narrow<size_t>(weight_shape[0]),
+      /*Beta*/ 0.0f);
 #else
+  ORT_UNUSED_PARAMETER(input_shape);
+  ORT_UNUSED_PARAMETER(weight_shape);
+  ORT_UNUSED_PARAMETER(pads);
+  ORT_UNUSED_PARAMETER(strides);
+  ORT_UNUSED_PARAMETER(dilations);
+  ORT_UNUSED_PARAMETER(group);
+  ORT_UNUSED_PARAMETER(has_sum_input);
+  ORT_UNUSED_PARAMETER(auto_pad);
   return false;
 #endif
 }
@@ -301,8 +418,9 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwc) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 2 : 0;
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {}, {}, {}, 8);
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
@@ -328,8 +446,9 @@ TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 2 : 0;
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1});
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
@@ -359,8 +478,10 @@ TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 2 : 0;
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
+        {1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1}, {1, 1});
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
@@ -392,8 +513,10 @@ TEST(NhwcTransformerTests, FusedConvWithSumFloat_SkipNhwc) {
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
-    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 3 : 0;
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
+        {1, 8, 7, 7}, {16, 8, 3, 3}, {0, 0, 0, 0}, {1, 1}, {}, 1, true);
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 3 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };
@@ -420,8 +543,10 @@ TEST(NhwcTransformerTests, ConvAutoPadFloat_SkipNhwc) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const int expected_nhwc_fused_conv = HasFloatNhwcRuntimeSupport() ? 1 : 0;
-    const int expected_transposes = HasFloatNhwcRuntimeSupport() ? 2 : 0;
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
+        {1, 8, 6, 6}, {16, 8, 3, 3}, {}, {2, 2}, {}, 1, false, "SAME_UPPER");
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
   };

@@ -16,6 +16,7 @@
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
+#include "core/providers/common.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -27,8 +28,128 @@ namespace onnxruntime {
 using namespace layout_transformation;
 
 #ifdef USE_KLEIDIAI
-// Float NHWC Conv wrappers are only safe for 4D tensors today because the runtime fallback path
-// only converts between NHWC and NCHW for 2D convolutions.
+bool TryGetDimValueAsSizeT(const ONNX_NAMESPACE::TensorShapeProto& shape, int index, size_t& value) {
+  if (shape.dim_size() <= index || !shape.dim(index).has_dim_value()) {
+    return false;
+  }
+
+  const int64_t dim_value = shape.dim(index).dim_value();
+  if (dim_value < 0) {
+    return false;
+  }
+
+  value = narrow<size_t>(dim_value);
+  return true;
+}
+
+bool TryReadPositiveOrZeroInts(const std::vector<int64_t>& values, std::array<size_t, 2>& out) {
+  if (values.size() != out.size()) {
+    return false;
+  }
+
+  for (size_t i = 0; i < out.size(); ++i) {
+    if (values[i] < 0) {
+      return false;
+    }
+
+    out[i] = narrow<size_t>(values[i]);
+  }
+
+  return true;
+}
+
+bool TryReadPositiveOrZeroInts(const std::vector<int64_t>& values, std::array<size_t, 4>& out) {
+  if (values.size() != out.size()) {
+    return false;
+  }
+
+  for (size_t i = 0; i < out.size(); ++i) {
+    if (values[i] < 0) {
+      return false;
+    }
+
+    out[i] = narrow<size_t>(values[i]);
+  }
+
+  return true;
+}
+
+bool TryParseAutoPadType(std::string_view value, AutoPadType& auto_pad_type) {
+  if (value.empty() || value == "NOTSET") {
+    auto_pad_type = AutoPadType::NOTSET;
+    return true;
+  }
+
+  if (value == "VALID") {
+    auto_pad_type = AutoPadType::VALID;
+    return true;
+  }
+
+  if (value == "SAME_UPPER") {
+    auto_pad_type = AutoPadType::SAME_UPPER;
+    return true;
+  }
+
+  if (value == "SAME_LOWER") {
+    auto_pad_type = AutoPadType::SAME_LOWER;
+    return true;
+  }
+
+  return false;
+}
+
+bool TryComputeFloatNhwcPads(const api::NodeRef& node,
+                             const std::array<size_t, 2>& input_shape,
+                             const std::array<size_t, 2>& kernel_shape,
+                             const std::array<size_t, 2>& strides,
+                             const std::array<size_t, 2>& dilations,
+                             std::array<size_t, 4>& pads) {
+  const auto auto_pad_value = node.GetAttributeString("auto_pad");
+  AutoPadType auto_pad = AutoPadType::NOTSET;
+  if (!TryParseAutoPadType(auto_pad_value.value_or("NOTSET"), auto_pad)) {
+    return false;
+  }
+
+  if (auto_pad == AutoPadType::NOTSET) {
+    const auto pads_opt = node.GetAttributeInts("pads");
+    if (!pads_opt.has_value()) {
+      pads.fill(0);
+      return true;
+    }
+
+    return TryReadPositiveOrZeroInts(*pads_opt, pads);
+  }
+
+  std::array<int64_t, 4> pads_int64{};
+  for (size_t i = 0; i < 2; ++i) {
+    int64_t pad_head = 0;
+    int64_t pad_tail = 0;
+    int64_t out_dim = 0;
+    const auto status = ComputePadAndOutputShape(
+        narrow<int64_t>(input_shape[i]),
+        narrow<int64_t>(strides[i]),
+        narrow<int64_t>(kernel_shape[i]),
+        narrow<int64_t>(dilations[i]),
+        auto_pad,
+        pad_head,
+        pad_tail,
+        out_dim,
+        /*force_symmetric_auto_padding*/ false);
+    if (!status.IsOK() || pad_head < 0 || pad_tail < 0 || out_dim < 0) {
+      return false;
+    }
+
+    pads_int64[i] = pad_head;
+    pads_int64[i + 2] = pad_tail;
+  }
+
+  for (size_t i = 0; i < pads.size(); ++i) {
+    pads[i] = narrow<size_t>(pads_int64[i]);
+  }
+
+  return true;
+}
+
 bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& graph,
                             onnx_transpose_optimization::api::NodeRef& node) {
   auto& base_node = NodeFromApiNode(node);
@@ -55,7 +176,58 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
     return false;
   }
 
-  return true;
+  const auto inputs = node.Inputs();
+  if (base_node.OpType() == "FusedConv" && inputs.size() > 3 && !inputs[3].empty()) {
+    return false;
+  }
+
+  const auto group = node.GetAttributeInt("group").value_or(1);
+  if (group != 1) {
+    return false;
+  }
+
+  std::array<size_t, 2> input_spatial_shape{};
+  std::array<size_t, 2> kernel_spatial_shape{};
+  std::array<size_t, 2> dilations{1, 1};
+  std::array<size_t, 2> strides{1, 1};
+  std::array<size_t, 4> pads{};
+  size_t batch_count = 0;
+  size_t filter_count = 0;
+
+  if (!TryGetDimValueAsSizeT(*input_shape, 0, batch_count) ||
+      !TryGetDimValueAsSizeT(*input_shape, 2, input_spatial_shape[0]) ||
+      !TryGetDimValueAsSizeT(*input_shape, 3, input_spatial_shape[1]) ||
+      !TryGetDimValueAsSizeT(*weight_shape, 0, filter_count) ||
+      !TryGetDimValueAsSizeT(*weight_shape, 2, kernel_spatial_shape[0]) ||
+      !TryGetDimValueAsSizeT(*weight_shape, 3, kernel_spatial_shape[1])) {
+    return false;
+  }
+
+  const auto dilations_opt = node.GetAttributeInts("dilations");
+  if (dilations_opt.has_value() && !TryReadPositiveOrZeroInts(*dilations_opt, dilations)) {
+    return false;
+  }
+
+  const auto strides_opt = node.GetAttributeInts("strides");
+  if (strides_opt.has_value() && !TryReadPositiveOrZeroInts(*strides_opt, strides)) {
+    return false;
+  }
+
+  if (!TryComputeFloatNhwcPads(node, input_spatial_shape, kernel_spatial_shape, strides, dilations, pads)) {
+    return false;
+  }
+
+  return MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+      /*Dimensions*/ 2,
+      batch_count,
+      /*GroupCount*/ 1,
+      input_spatial_shape.data(),
+      kernel_spatial_shape.data(),
+      dilations.data(),
+      pads.data(),
+      strides.data(),
+      filter_count,
+      /*Beta*/ 0.0f);
 #endif
 }
 #endif
