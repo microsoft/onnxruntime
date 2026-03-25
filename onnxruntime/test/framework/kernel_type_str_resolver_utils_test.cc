@@ -55,7 +55,7 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
-#if defined(USE_KLEIDIAI) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromFusedConvSchema) {
   SchemaRegistryManager schema_registry;
   const auto* fused_conv_schema = schema_registry.GetSchema("FusedConv", 1, kMSDomain);
@@ -84,9 +84,6 @@ TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromFusedConvSchema) {
   ASSERT_STATUS_OK(resolver.ResolveKernelTypeStr(nhwc_fused_conv, "T", resolved_args));
   ASSERT_FALSE(resolved_args.empty());
 }
-#endif  // defined(USE_KLEIDIAI) && !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
-
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromLayoutTransformationRequiredOps) {
   KernelTypeStrResolver resolver;
   ASSERT_STATUS_OK(kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(resolver));
