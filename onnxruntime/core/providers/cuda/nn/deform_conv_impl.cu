@@ -129,14 +129,15 @@ struct DeformConvBilinearTraits<BFloat16> {
 // cast to int only for indices (h_low/w_low), which avoids unnecessary CoordT->int->CoordT
 // round trips when computing lh/lw/hh/hw.
 //
-// Empirical share of samples that take the guarded "edge" branch (else below) vs fully interior
-// fast-path, from one workload (counts = edge samples / total bilinear samples).
+// Historical note: before switching to branchless masked loads, this workload had the following
+// "edge sample" ratio (counts = samples with >=1 OOB neighbor / total bilinear samples).
+// The numbers remain useful as boundary-hit context, but no longer imply control-flow divergence.
 // Example workload only; not a benchmark or representative ratio.
 //   kernel 1x1: 1.3746%  (2421 / 176128)
 //   kernel 3x3: 1.4833%  (11756 / 792576)
 //   kernel 7x7: 4.7593%  (52537 / 1103872)
-// Offsets tend to be spatially smooth, so warps often agree on fast-path vs edge-path, which
-// limits divergence versus always doing four per-neighbor conditional loads.
+// Current implementation always issues safe-address loads and masks invalid neighbors to zero.
+// Offsets are often spatially smooth, so nearby threads still tend to exhibit similar validity patterns.
 template <typename T>
 __device__ __inline__ T BilinearInterpolate(
     const T* in,
@@ -165,34 +166,33 @@ __device__ __inline__ T BilinearInterpolate(
   CoordT hh = static_cast<CoordT>(1) - lh;
   CoordT hw = static_cast<CoordT>(1) - lw;
 
-  // [Optimization 3]: Avoid a second multiply for base_high.
-  // Original code computed both bases as:
-  //   base_low  = h_low  * width;
-  //   base_high = h_high * width;
-  // Since h_high = h_low + 1, we can rewrite base_high as base_low + width and
-  // save one integer multiply in the hot path:
-  //   base_low  = h_low  * width;
-  //   base_high = base_low + width;
-  int base_low = h_low * width;
-  int base_high = base_low + width;
+  // [Optimization 4]: Branchless neighbor loads via "safe address + validity mask".
+  // 1) Clamp each coordinate to a legal address first (prevents illegal memory access).
+  // 2) Compute validity predicates for the true (possibly OOB) coordinates.
+  // 3) Always load from clamped address and mask invalid neighbors to zero.
+  // Modern CUDA compilers usually lower this to predicated/selp-style code without control-flow branches.
+  const int safe_h_low = max(0, min(h_low, height - 1));
+  const int safe_h_high = max(0, min(h_high, height - 1));
+  const int safe_w_low = max(0, min(w_low, width - 1));
+  const int safe_w_high = max(0, min(w_high, width - 1));
 
-  CoordT v1, v2, v3, v4;
+  const int safe_base_low = safe_h_low * width;
+  const int safe_base_high = safe_h_high * width;
 
-  // [Optimization 4]: Interior fast-path when all four bilinear neighbors lie inside the image.
-  // In that case we skip four per-neighbor ternary checks (see else). See block comment above for
-  // measured edge-branch rates (~1.4%–4.8% in sampled configs); the majority of threads hit this branch.
-  if (h_low >= 0 && w_low >= 0 && h_high < height && w_high < width) {
-    v1 = Traits::Load(in + base_low + w_low);
-    v2 = Traits::Load(in + base_low + w_high);
-    v3 = Traits::Load(in + base_high + w_low);
-    v4 = Traits::Load(in + base_high + w_high);
-  } else {
-    // Edge / partial OOB: same semantics as before (invalid neighbor contributes 0).
-    v1 = (h_low >= 0 && w_low >= 0) ? Traits::Load(in + base_low + w_low) : static_cast<CoordT>(0);
-    v2 = (h_low >= 0 && w_high < width) ? Traits::Load(in + base_low + w_high) : static_cast<CoordT>(0);
-    v3 = (h_high < height && w_low >= 0) ? Traits::Load(in + base_high + w_low) : static_cast<CoordT>(0);
-    v4 = (h_high < height && w_high < width) ? Traits::Load(in + base_high + w_high) : static_cast<CoordT>(0);
-  }
+  const bool h_low_valid = (h_low >= 0 && h_low < height);
+  const bool h_high_valid = (h_high >= 0 && h_high < height);
+  const bool w_low_valid = (w_low >= 0 && w_low < width);
+  const bool w_high_valid = (w_high >= 0 && w_high < width);
+
+  const CoordT m1 = static_cast<CoordT>(h_low_valid && w_low_valid);
+  const CoordT m2 = static_cast<CoordT>(h_low_valid && w_high_valid);
+  const CoordT m3 = static_cast<CoordT>(h_high_valid && w_low_valid);
+  const CoordT m4 = static_cast<CoordT>(h_high_valid && w_high_valid);
+
+  const CoordT v1 = Traits::Load(in + safe_base_low + safe_w_low) * m1;
+  const CoordT v2 = Traits::Load(in + safe_base_low + safe_w_high) * m2;
+  const CoordT v3 = Traits::Load(in + safe_base_high + safe_w_low) * m3;
+  const CoordT v4 = Traits::Load(in + safe_base_high + safe_w_high) * m4;
 
   // [Optimization 5]: Factor bilinear into horizontal blends on two rows, then vertical blend.
   // Algebraically equivalent to w1*v1 + w2*v2 + w3*v3 + w4*v4 with w1..w4 from hh/hw/lh/lw;
