@@ -12,8 +12,7 @@ namespace cuda_plugin {
 // ---------------------------------------------------------------------------
 
 CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int device_id)
-    : OrtAllocator{},
-      memory_info_(memory_info),
+    : CudaAllocatorBase(CudaAllocatorKind::kDevice, memory_info),
       device_id_(device_id) {
   version = ORT_API_VERSION;
   Alloc = AllocImpl;
@@ -48,7 +47,7 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
 
 /*static*/ const OrtMemoryInfo* ORT_API_CALL CudaDeviceAllocator::InfoImpl(const OrtAllocator* this_ptr) noexcept {
   const auto* alloc = static_cast<const CudaDeviceAllocator*>(this_ptr);
-  return alloc->memory_info_;
+  return alloc->GetMemoryInfo();
 }
 
 /*static*/ void* ORT_API_CALL CudaDeviceAllocator::ReserveImpl(OrtAllocator* this_ptr, size_t size) noexcept {
@@ -62,8 +61,7 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
 // ---------------------------------------------------------------------------
 
 CudaPinnedAllocator::CudaPinnedAllocator(const OrtMemoryInfo* memory_info)
-    : OrtAllocator{},
-      memory_info_(memory_info) {
+    : CudaAllocatorBase(CudaAllocatorKind::kPinned, memory_info) {
   version = ORT_API_VERSION;
   Alloc = AllocImpl;
   Free = FreeImpl;
@@ -91,7 +89,7 @@ CudaPinnedAllocator::CudaPinnedAllocator(const OrtMemoryInfo* memory_info)
 
 /*static*/ const OrtMemoryInfo* ORT_API_CALL CudaPinnedAllocator::InfoImpl(const OrtAllocator* this_ptr) noexcept {
   const auto* alloc = static_cast<const CudaPinnedAllocator*>(this_ptr);
-  return alloc->memory_info_;
+  return alloc->GetMemoryInfo();
 }
 
 /*static*/ void* ORT_API_CALL CudaPinnedAllocator::ReserveImpl(OrtAllocator* this_ptr, size_t size) noexcept {

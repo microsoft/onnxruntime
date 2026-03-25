@@ -11,22 +11,13 @@
 #include <cstring>
 #include <string>
 
-#include "core/common/status.h"
+#include "cuda_plugin_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
 namespace plugin {
 
 namespace {
-
-Status CudaStatus(cudaError_t cuda_status, const char* operation) {
-  if (cuda_status == cudaSuccess) {
-    return Status::OK();
-  }
-
-  return common::Status(common::ONNXRUNTIME, common::FAIL,
-                        std::string("Scan Transpose: ") + operation + " failed: " + cudaGetErrorString(cuda_status));
-}
 
 // Maximum number of dimensions supported by the transpose kernel.
 // Most real-world tensors have <= 8 dimensions.
@@ -72,18 +63,16 @@ __global__ void TransposeNDKernel(const char* __restrict__ input,
   memcpy(dst, src, element_size);
 }
 
-Status LaunchTransposeKernel(const void* input, void* output,
-                             const int64_t* input_shape, const size_t* permutation,
-                             size_t num_dims, size_t element_size, size_t total_elements,
-                             cudaStream_t stream) {
+OrtStatus* LaunchTransposeKernel(const void* input, void* output,
+                                 const int64_t* input_shape, const size_t* permutation,
+                                 size_t num_dims, size_t element_size, size_t total_elements,
+                                 cudaStream_t stream) {
   if (total_elements == 0 || num_dims == 0) {
-    return Status::OK();
+    return nullptr;
   }
 
   if (num_dims > static_cast<size_t>(kMaxTransposeDims)) {
-    return common::Status(common::ONNXRUNTIME, common::FAIL,
-                          "Scan Transpose: rank " + std::to_string(num_dims) +
-                              " exceeds the supported maximum rank of " + std::to_string(kMaxTransposeDims));
+    return Ort::Status("Scan Transpose: rank exceeds the supported maximum rank", ORT_FAIL).release();
   }
 
   TransposeArgs args;
@@ -116,11 +105,9 @@ Status LaunchTransposeKernel(const void* input, void* output,
       element_size,
       total_elements);
 
-  auto status = CudaStatus(cudaGetLastError(), "TransposeNDKernel launch");
-  if (!status.IsOK()) {
-    return status;
-  }
-  return Status::OK();
+  PL_CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  return nullptr;
 }
 
 }  // namespace plugin

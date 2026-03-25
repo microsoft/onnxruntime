@@ -231,7 +231,7 @@ class PluginKernelCollector {
               return Status::OK();                                                                 \
             }));                                                                                   \
   }                                                                                                \
-  static const bool ORT_ADAPTER_CONCAT(_autoreg_##name##_, __COUNTER__) =                          \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_, __COUNTER__) =               \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                 \
            &BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>),  \
        true);
@@ -250,7 +250,7 @@ class PluginKernelCollector {
               return Status::OK();                                                                               \
             }));                                                                                                 \
   }                                                                                                              \
-  static const bool ORT_ADAPTER_CONCAT(_autoreg_##name##_, __COUNTER__) =                                        \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_, __COUNTER__) =                             \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                               \
            &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(                                     \
                provider, domain, startver, endver, name)>),                                                      \
@@ -270,7 +270,7 @@ class PluginKernelCollector {
               return Status::OK();                                                                            \
             }));                                                                                              \
   }                                                                                                           \
-  static const bool ORT_ADAPTER_CONCAT(_autoreg_##name##_##type##_, __COUNTER__) =                            \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type##_, __COUNTER__) =                 \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                            \
            &BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>), \
        true);
@@ -290,7 +290,7 @@ class PluginKernelCollector {
               return Status::OK();                                                                            \
             }));                                                                                              \
   }                                                                                                           \
-  static const bool ORT_ADAPTER_CONCAT(_autoreg_##name##_##type##_, __COUNTER__) =                            \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type##_, __COUNTER__) =                 \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                            \
            &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                            \
                provider, domain, startver, endver, type, name)>),                                             \
@@ -305,23 +305,8 @@ class PluginKernelCollector {
 // Explicit function instantiation — called once per unique class in each .cc file
 #define ONNX_OPERATOR_TYPED_KERNEL_COMPUTE_INSTANTIATION(cls) template Status cls::ComputeInternal(OpKernelContext* context) const;
 
-#undef CREATE_MESSAGE
-#undef LOGS
-#undef LOGS_DEFAULT
-#undef ORT_LOG_MESSAGE
-
-namespace onnxruntime {
-namespace cuda {
-struct PluginNoOpLogStream {
-  template <typename T>
-  PluginNoOpLogStream& operator<<(const T&) { return *this; }
-};
-}  // namespace cuda
-}  // namespace onnxruntime
-
-#ifndef LOGS_DEFAULT
-#define LOGS_DEFAULT(severity) ::onnxruntime::cuda::PluginNoOpLogStream()
-#endif
+// The plugin utilizes ep::adapter::LoggingManager for LOGS_DEFAULT,
+// which is initialized in CudaEpFactory::CudaEpFactory.
 
 #include <atomic>
 #include <cstring>

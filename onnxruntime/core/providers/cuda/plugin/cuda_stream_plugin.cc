@@ -122,10 +122,19 @@ void CudaSyncStream::CleanupDeferredCPUBuffers() {
     return nullptr;
   }
 
+  // Thread-local TLS cache to mitigate lock contention on the hot path
+  thread_local cudaStream_t tls_last_stream = nullptr;
+  thread_local CudaSyncStream* tls_last_sync_stream = nullptr;
+  if (stream == tls_last_stream) {
+    return tls_last_sync_stream;
+  }
+
   auto& stream_map = GetStreamMap();
   std::shared_lock<std::shared_mutex> lock(GetStreamMapMutex());
   auto it = stream_map.find(stream);
   if (it != stream_map.end()) {
+    tls_last_stream = stream;
+    tls_last_sync_stream = it->second;
     return it->second;
   }
   return nullptr;

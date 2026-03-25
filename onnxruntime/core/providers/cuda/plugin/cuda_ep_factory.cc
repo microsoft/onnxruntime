@@ -18,6 +18,10 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
       pinned_memory_info_{nullptr} {
   ort_version_supported = ORT_API_VERSION;
 
+  if (!::onnxruntime::ep::adapter::LoggingManager::HasDefaultLogger()) {
+    ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(&default_logger);
+  }
+
   // Assign callback function pointers
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
@@ -318,9 +322,18 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
 /*static*/
 void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
     OrtEpFactory* /*this_ptr*/, OrtAllocator* allocator) noexcept {
-  // We know the allocator was created by us, so cast and delete.
-  // OrtAllocator itself has no Release method.
-  delete allocator;
+  if (!allocator) return;
+  auto* typed_allocator = static_cast<CudaAllocatorBase*>(allocator);
+  switch (typed_allocator->GetKind()) {
+    case CudaAllocatorKind::kDevice:
+      delete static_cast<CudaDeviceAllocator*>(allocator);
+      return;
+    case CudaAllocatorKind::kPinned:
+      delete static_cast<CudaPinnedAllocator*>(allocator);
+      return;
+    default:
+      ORT_ENFORCE(false, "Unknown CudaAllocatorKind in ReleaseAllocatorImpl");
+  }
 }
 
 /*static*/
@@ -328,7 +341,17 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateDataTransferImpl(
     OrtEpFactory* this_ptr,
     OrtDataTransferImpl** data_transfer) noexcept {
   auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
-  const OrtMemoryDevice* gpu_device = factory.ep_api_.MemoryInfo_GetMemoryDevice(factory.default_memory_info_);
+
+  // Use the device ID this factory was created for
+  Ort::MemoryInfo device_memory_info{"Cuda",
+                                     OrtMemoryInfoDeviceType_GPU,
+                                     factory.vendor_id_,
+                                     static_cast<uint32_t>(factory.device_id_),
+                                     OrtDeviceMemoryType_DEFAULT,
+                                     0,
+                                     OrtAllocatorType::OrtDeviceAllocator};
+
+  const OrtMemoryDevice* gpu_device = factory.ep_api_.MemoryInfo_GetMemoryDevice(device_memory_info);
   auto data_transfer_impl = std::make_unique<CudaDataTransfer>(factory.ort_api_, factory.ep_api_, gpu_device);
   *data_transfer = data_transfer_impl.release();
   return nullptr;

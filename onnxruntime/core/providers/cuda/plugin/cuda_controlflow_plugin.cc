@@ -115,15 +115,8 @@ OrtStatus* ORT_API_CALL PluginLoopHelper::ConcatOutputImpl(
       if (cur_bytes != bytes_per_iteration) {
         return Ort::Status("Inconsistent size in loop output iteration", ORT_FAIL).release();
       }
-      cudaError_t err = cudaMemcpyAsync(cur, val.GetTensorRawData(), bytes_per_iteration,
-                                        cudaMemcpyDeviceToDevice, cuda_stream);
-      if (err != cudaSuccess) {
-        return Ort::Status((std::string("cudaMemcpyAsync failed in Loop ConcatOutput: ") +
-                            cudaGetErrorString(err))
-                               .c_str(),
-                           ORT_FAIL)
-            .release();
-      }
+      PL_CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cur, val.GetTensorRawData(), bytes_per_iteration,
+                                              cudaMemcpyDeviceToDevice, cuda_stream));
       cur += bytes_per_iteration;
     }
 
@@ -214,12 +207,12 @@ OrtStatus* ORT_API_CALL PluginScanHelper::TransposeImpl(
     void* output_data = output.GetTensorMutableData<void>();
 
     // Launch the GPU transpose kernel
-    status = LaunchTransposeKernel(input_data, output_data,
-                                   input_shape.data(), permutation,
-                                   num_dims, element_size, total_elements,
-                                   cuda_stream);
-    if (!status.IsOK()) {
-      return Ort::Status(status.ErrorMessage().c_str(), ORT_EP_FAIL).release();
+    OrtStatus* ort_status = LaunchTransposeKernel(input_data, output_data,
+                                                  input_shape.data(), permutation,
+                                                  num_dims, element_size, total_elements,
+                                                  cuda_stream);
+    if (ort_status != nullptr) {
+      return ort_status;
     }
 
     return nullptr;
