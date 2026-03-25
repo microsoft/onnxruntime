@@ -24,7 +24,7 @@ namespace test {
 // A custom allocator intercepts the Alloc call to verify the requested size is computed correctly with size_t
 // arithmetic, without actually allocating the ~8GB buffer.
 //
-// On 32-bit builds, SafeInt<size_t>(N) * D itself overflows.
+// On 32-bit builds, SafeInt<size_t> will signal an overflow for the requested size.
 TEST(AttentionSoftmaxTest, Fp16OverflowAllocation) {
   // Custom exception thrown by the allocator to distinguish it from SafeInt overflow.
   struct AllocationIntercepted : std::exception {
@@ -59,8 +59,7 @@ TEST(AttentionSoftmaxTest, Fp16OverflowAllocation) {
   MLFloat16 dummy_score{0.0f};
 
   // The allocation size must reflect correct size_t arithmetic: N * D * sizeof(float).
-  // With the old int parameters, N * D would overflow to a small/negative value, producing a wrong (much smaller)
-  // allocation size.
+  // With the old int parameters, N * D would overflow to a small/negative value, producing a wrong allocation size.
   constexpr uintmax_t expected_allocation_size = uintmax_t{N} * D * sizeof(float);
 
   if constexpr (expected_allocation_size <= uintmax_t{std::numeric_limits<size_t>::max()}) {
