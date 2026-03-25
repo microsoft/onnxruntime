@@ -110,9 +110,9 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
     return false;
   }
 
-  // ORT doesn't directly check architecture constraint, but relies on ep_compability_info constraint containing the
+  // ORT doesn't directly check architecture constraint, but relies on ep_compatibility_info constraint containing the
   // architecture information if needed.
-  // The ep_compability_info should be the same as ep compatibility string in EPContext model's metadata. (see
+  // The ep_compatibility_info should be the same as ep compatibility string in EPContext model's metadata. (see
   // OrtEp::GetCompiledModelCompatibilityInfo())
   // EP should implement EpFactory::ValidateCompiledModelCompatibilityInfo() to validate the compatibility info and
   // return the compatibility result.
@@ -486,7 +486,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
 Status ModelPackageContext::SelectModelVariant(gsl::span<SelectionEpInfo> ep_infos,
                                                std::optional<std::filesystem::path>& selected_variant_path) {
   ModelVariantSelector selector;
-  return selector.SelectVariant(model_variant_infos_, ep_infos, selected_variant_path);
+  return selector.SelectVariant(model_variant_infos_, ep_infos, selected_model_variant_path_);
 }
 
 }  // namespace onnxruntime

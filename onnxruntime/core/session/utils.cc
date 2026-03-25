@@ -417,7 +417,6 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       options_to_use = &ort_sess_options;
     }
 
-    std::optional<std::filesystem::path> component_path;
     std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
     const bool has_provider_factories = options_to_use != nullptr && !options_to_use->provider_factories.empty();
     ProviderPolicyContext provider_policy_context;
@@ -444,10 +443,15 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
     std::vector<SelectionEpInfo> ep_infos;
     ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(options_to_use, provider_list, ep_infos));
 
+    // Select model variant based on EP info and component metadata and get the model path.
     ModelPackageContext model_package_context(package_root);
-    ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.SelectModelVariant(ep_infos, component_path));
-    if (component_path.has_value()) {
-      model_path_to_use = component_path->c_str();
+    ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.SelectModelVariant(ep_infos));
+    if (model_package_context.GetSelectedModelVariantPath().has_value()) {
+      model_path_to_use = model_package_context.GetSelectedModelVariantPath()->c_str();
+    } else {
+      return OrtApis::CreateStatus(ORT_FAIL,
+                                   "No suitable model variant found for the available execution providers."
+                                   "Try specifying the model file path instead.");
     }
 
     Status status;
@@ -467,7 +471,8 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
         options_to_use != nullptr &&
         options_to_use->value.ep_selection_policy.enable) {
       // Log telemetry for auto EP selection
-      ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(*sess, *options_to_use, execution_devices, devices_selected));
+      ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(*sess, *options_to_use,
+                                                                           execution_devices, devices_selected));
     }
 #else
     return OrtApis::CreateStatus(ORT_FAIL, "Model package is not supported in this build.");

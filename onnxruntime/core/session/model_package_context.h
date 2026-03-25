@@ -82,12 +82,15 @@ class ModelPackageContext {
   ModelPackageContext(const std::filesystem::path& package_root);
 
   // Select the most suitable model variant
-  Status SelectModelVariant(gsl::span<SelectionEpInfo> ep_infos,
-                            std::optional<std::filesystem::path>& selected_variant_path);
+  Status SelectModelVariant(gsl::span<SelectionEpInfo> ep_infos);
+
+  std::optional<std::filesystem::path> GetSelectedModelVariantPath() const {
+    return selected_model_variant_path_;
+  }
 
  private:
   std::vector<ModelVariantInfo> model_variant_infos_;
-  // std::optional<std::filesystem::path> selected_model_variant_path_;
+  std::optional<std::filesystem::path> selected_model_variant_path_;
 };
 
 }  // namespace onnxruntime
