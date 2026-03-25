@@ -76,6 +76,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         int qkv_num_heads,
                         bool is_unidirectional,
                         bool is_nvidia,
+                        bool is_apple,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
                         bool has_head_sink = false)
@@ -87,12 +88,28 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
         is_nvidia_(is_nvidia),
+        is_apple_(is_apple),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
         has_head_sink_(has_head_sink) {
+    if (is_apple) {
+      // On Apple GPUs, use an optimized loop-based path with dynamic max_k_step.
+      // Compute max_k_step from shared memory budget: k_tile + v_tile = 2 * element_size * head_size * max_k_step
+      const int element_size = is_fp16 ? 2 : 4;
+      int max_k_from_shm = 16384 / (2 * element_size * qkv_head_size);
+      if (max_k_from_shm >= 32) {
+        max_k_step_ = 32;
+      } else {
+        max_k_step_ = 16;
+      }
+    } else {
+      max_k_step_ = 16;
+    }
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  int max_k_step() const { return max_k_step_; }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
@@ -112,9 +129,11 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_num_heads_;
   bool is_unidirectional_;
   bool is_nvidia_;
+  bool is_apple_;
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
+  int max_k_step_;
 };
 
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
