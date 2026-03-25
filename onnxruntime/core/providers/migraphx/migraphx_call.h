@@ -11,12 +11,12 @@ namespace onnxruntime {
 // Error handling
 // -----------------------------------------------------------------------
 
-template <typename ERRTYPE, bool THRW>
-std::conditional_t<THRW, void, Status> RocmCall(
-    ERRTYPE retCode, std::string_view exprString, std::string_view libName, ERRTYPE successCode, std::string_view msg, std::string_view file, int line);
-
-#define HIP_CALL(expr) (RocmCall<hipError_t, false>((expr), #expr, "HIP", hipSuccess, "", __FILE__, __LINE__))
-#define HIP_CALL_THROW(expr) (RocmCall<hipError_t, true>((expr), #expr, "HIP", hipSuccess, "", __FILE__, __LINE__))
-#define HIP_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIP_CALL(expr))
+template <typename ERROR_TYPE, bool THROW>
+std::conditional_t<THROW, void, Status> RocmCall(
+    ERROR_TYPE retCode, std::string_view exprString, std::string_view libName, ERROR_TYPE successCode, std::string_view msg, std::string_view file, int line);
 
 }  // namespace onnxruntime
+
+#define HIP_CALL(expr) (::onnxruntime::RocmCall<hipError_t, false>((expr), #expr, "HIP", hipSuccess, "", __FILE__, __LINE__))
+#define HIP_CALL_THROW(expr) (::onnxruntime::RocmCall<hipError_t, true>((expr), #expr, "HIP", hipSuccess, "", __FILE__, __LINE__))
+#define HIP_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIP_CALL(expr))

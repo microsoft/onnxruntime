@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-struct MIGraphXStream : Stream {
+struct MIGraphXStream final : Stream {
   MIGraphXStream(hipStream_t stream,
                  const OrtDevice& device,
                  AllocatorPtr cpu_allocator,
@@ -20,7 +20,7 @@ struct MIGraphXStream : Stream {
 
   ~MIGraphXStream() override;
 
-  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override;
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) override;
 
   void Flush() override;
 

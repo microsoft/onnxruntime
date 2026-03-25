@@ -18,7 +18,7 @@
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #include "core/providers/migraphx/migraphx_call.h"
 
-using namespace std::literals::string_view_literals;
+using namespace std::literals::string_view_literals;  // NOLINT(build/namespaces_literals)
 
 namespace onnxruntime {
 
@@ -59,38 +59,40 @@ struct MIGraphXFuncState {
 };
 
 // Logical device representation.
-class MIGraphXExecutionProvider : public IExecutionProvider {
+class MIGraphXExecutionProvider final : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
   ~MIGraphXExecutionProvider() override = default;
 
   Status Sync() const override;
 
-  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
+  Status OnRunStart(const RunOptions& run_options) override;
 
-  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
+  Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
+
+  void dump_model_as_onnx(const std::string& onnx_buffer,
+                          const std::string& model_name) const;
 
   std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const IKernelLookup& /*kernel_lookup*/,
-                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
-                IResourceAccountant* /* resource_accountant */) const override;
+  GetCapability(const GraphViewer& graph_viewer,
+                const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                IResourceAccountant* resource_accountant) const override;
 
-  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
-  std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
+  std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph, bool is_graph_split) const;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
-  int GetDeviceId() const override { return device_id_; }
   ProviderOptions GetProviderOptions() const override {
     return {
-        {std::string{migraphx_provider_option::kDeviceId}, MakeStringWithClassicLocale(device_id_)},
+        {std::string{migraphx_provider_option::kDeviceId}, MakeStringWithClassicLocale(GetDeviceId())},
         {std::string{migraphx_provider_option::kFp16Enable}, MakeStringWithClassicLocale(fp16_enable_)},
         {std::string{migraphx_provider_option::kBf16Enable}, MakeStringWithClassicLocale(bf16_enable_)},
         {std::string{migraphx_provider_option::kFp8Enable}, MakeStringWithClassicLocale(fp8_enable_)},
@@ -107,7 +109,6 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   }
 
  private:
-  OrtDevice::DeviceId device_id_{0};
   bool fp16_enable_ = false;
   bool bf16_enable_ = false;
   bool fp8_enable_ = false;

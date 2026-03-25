@@ -470,15 +470,19 @@ else:
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
     migraphx_deps = [
+        "amdhip64_7.dll",
         "amd_comgr0602.dll",
         "amd_comgr0604.dll",
         "amd_comgr0700.dll",
+        "amd_comgr0701.dll",
         "hiprtc0602.dll",
         "hiprtc0604.dll",
         "hiprtc0700.dll",
+        "hiprtc0701.dll",
         "hiprtc-builtins0602.dll",
         "hiprtc-builtins0604.dll",
         "hiprtc-builtins0700.dll",
+        "hiprtc-builtins0701.dll",
         "migraphx-hiprtc-driver.exe",
         "migraphx.dll",
         "migraphx_c.dll",
@@ -486,7 +490,7 @@ else:
         "migraphx_device.dll",
         "migraphx_gpu.dll",
         "migraphx_onnx.dll",
-        "migraphx_tf.dll",
+        "migraphx_tf.dll"
     ]
     libs.extend(migraphx_deps)
     # NV TensorRT RTX Libs

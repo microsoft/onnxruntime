@@ -15,7 +15,7 @@
 #include "core/framework/provider_options_utils.h"
 #include "core/session/onnxruntime_c_api.h"
 
-using namespace std::literals::string_view_literals;
+using namespace std::literals::string_view_literals;  // NOLINT(build/namespaces_literals)
 
 namespace onnxruntime {
 

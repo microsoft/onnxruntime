@@ -23,7 +23,7 @@ bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
          (dst_type == OrtDevice::GPU || dst_type == OrtDevice::CPU);
 }
 
-common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
@@ -65,7 +65,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
   return Status::OK();
 }
 
-common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const {
+Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const {
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();

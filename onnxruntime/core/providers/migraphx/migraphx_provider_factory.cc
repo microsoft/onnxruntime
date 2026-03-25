@@ -18,7 +18,6 @@
 #include "core/providers/migraphx/migraphx_execution_provider.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #include "core/providers/migraphx/migraphx_allocator.h"
-#include "core/providers/migraphx/gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
 
 #include "core/session/onnxruntime_c_api.h"
@@ -28,7 +27,7 @@ namespace onnxruntime {
 void InitializeRegistry();
 void DeleteRegistry();
 
-struct MIGraphXProviderFactory : IExecutionProviderFactory {
+struct MIGraphXProviderFactory final : IExecutionProviderFactory {
   explicit MIGraphXProviderFactory(MIGraphXExecutionProviderInfo info) : info_{std::move(info)} {}
   ~MIGraphXProviderFactory() override = default;
 
@@ -69,10 +68,10 @@ struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
     HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyDeviceToHost));
   }
 
-  std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy,
+  std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                                       void* alloc_fn, void* free_fn, void* empty_cache_fn, const OrtArenaCfg* default_memory_arena_cfg) override {
     if (alloc_fn != nullptr && free_fn != nullptr) {
-      AllocatorCreationInfo default_memory_info{
+      const AllocatorCreationInfo default_memory_info{
           [alloc_fn, free_fn, empty_cache_fn](OrtDevice::DeviceId id) {
             return std::make_unique<MIGraphXExternalAllocator>(id, HIP, alloc_fn, free_fn, empty_cache_fn);
           },
@@ -80,7 +79,7 @@ struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
 
       return CreateAllocator(default_memory_info);
     }
-    AllocatorCreationInfo default_memory_info{
+    const AllocatorCreationInfo default_memory_info{
         [](OrtDevice::DeviceId id) {
           return std::make_unique<MIGraphXAllocator>(id, HIP);
         },
@@ -99,6 +98,12 @@ struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
 
 struct MIGraphX_Provider final : Provider {
   void* GetInfo() override { return &g_info; }
+
+  MIGraphX_Provider() {
+#ifdef _WIN32
+    ::SetEnvironmentVariable("MIGRAPHX_MLIR_USE_SPECIFIC_OPS", "dot,convolution,fused,attention");
+#endif
+  }
 
   virtual ~MIGraphX_Provider() = default;
 
@@ -198,9 +203,9 @@ struct MIGraphX_Provider final : Provider {
 
 #include "core/framework/error_code_helper.h"
 
-// OrtEpApi infrastructure to be able to use the MigraphX/AMDGPU EP as an OrtEpFactory for auto EP selection.
-struct MigraphXEpFactory : OrtEpFactory {
-  MigraphXEpFactory(const OrtApi& ort_api_in,
+// OrtEpApi infrastructure to be able to use the MIGraphX as an OrtEpFactory for auto EP selection.
+struct MIGraphXEpFactory final : OrtEpFactory {
+  MIGraphXEpFactory(const OrtApi& ort_api_in,
                     const char* ep_name,
                     OrtHardwareDeviceType hw_type,
                     const OrtLogger& default_logger_in)
@@ -226,29 +231,29 @@ struct MigraphXEpFactory : OrtEpFactory {
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
   // Ex: a factory that supports NPU should have a different than a factory that supports GPU.
   static const char* GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
-    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    const auto* factory = static_cast<const MIGraphXEpFactory*>(this_ptr);
     return factory->ep_name.c_str();
   }
 
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
-    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    const auto* factory = static_cast<const MIGraphXEpFactory*>(this_ptr);
     return factory->vendor.c_str();
   }
 
   static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
-    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    const auto* factory = static_cast<const MIGraphXEpFactory*>(this_ptr);
     return factory->vendor_id;
   }
 
   static const char* GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
-    const auto* factory = static_cast<const MigraphXEpFactory*>(this_ptr);
+    const auto* factory = static_cast<const MIGraphXEpFactory*>(this_ptr);
     return factory->version.c_str();
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
   // An EP created with this factory is expected to be able to execute a model with *all* supported
-  // hardware devices at once. A single instance of MigraphX EP is not currently setup to partition a model among
-  // multiple different MigraphX backends at once (e.g, npu, cpu, gpu), so this factory instance is set to only
+  // hardware devices at once. A single instance of MIGraphX EP is not currently setup to partition a model among
+  // multiple different MIGraphX backends at once (e.g, npu, cpu, gpu), so this factory instance is set to only
   // support one backend: gpu. To support a different backend, like npu, create a different factory instance
   // that only supports NPU.
   static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
@@ -258,17 +263,18 @@ struct MigraphXEpFactory : OrtEpFactory {
                                             size_t max_ep_devices,
                                             size_t* p_num_ep_devices) noexcept {
     size_t& num_ep_devices = *p_num_ep_devices;
-    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+    auto* factory = reinterpret_cast<MIGraphXEpFactory*>(this_ptr);
+
+    int num_hip_devices = 0;
+    HIP_CALL_THROW(hipGetDeviceCount(&num_hip_devices));
+    max_ep_devices = std::min(max_ep_devices, static_cast<size_t>(num_hip_devices));
 
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
       const OrtHardwareDevice& device = *devices[i];
-      if (factory->ort_api.HardwareDevice_Type(&device) == factory->ort_hw_device_type) {
-        // factory->ort_api.HardwareDevice_VendorId(&device) == factory->vendor_id) {
-        OrtKeyValuePairs* ep_options = nullptr;
-        factory->ort_api.CreateKeyValuePairs(&ep_options);
-        ORT_API_RETURN_IF_ERROR(
-            factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
-                                                        &ep_devices[num_ep_devices++]));
+      if (factory->ort_api.HardwareDevice_Type(&device) == factory->ort_hw_device_type &&
+          factory->ort_api.HardwareDevice_VendorId(&device) == 0x1002) {
+        ORT_API_RETURN_IF_ERROR(factory->ort_api.GetEpApi()->CreateEpDevice(
+          factory, &device, nullptr, {}, &ep_devices[num_ep_devices++]));
       }
     }
 
@@ -293,7 +299,7 @@ struct MigraphXEpFactory : OrtEpFactory {
                                                      const OrtMemoryInfo* /*memory_info*/,
                                                      const OrtKeyValuePairs* /*allocator_options*/,
                                                      OrtAllocator** allocator) noexcept {
-    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+    auto* factory = static_cast<MIGraphXEpFactory*>(this_ptr);
 
     *allocator = nullptr;
     return factory->ort_api.CreateStatus(
@@ -319,7 +325,7 @@ struct MigraphXEpFactory : OrtEpFactory {
                                                                const OrtMemoryDevice* /*memory_device*/,
                                                                const OrtKeyValuePairs* /*stream_options*/,
                                                                OrtSyncStreamImpl** stream) noexcept {
-    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+    auto* factory = static_cast<MIGraphXEpFactory*>(this_ptr);
 
     *stream = nullptr;
     return factory->ort_api.CreateStatus(
@@ -330,7 +336,7 @@ struct MigraphXEpFactory : OrtEpFactory {
   const OrtLogger& default_logger;
   const std::string ep_name;
   const std::string vendor{"AMD"};
-  const std::string version{"1.0.0"};  // MigraphX EP version
+  const std::string version{"1.0.0"};  // MIGraphX EP version
 
   // Not using AMD vendor id 0x1002 so that OrderDevices in provider_policy_context.cc will default dml ep
   const uint32_t vendor_id{0x9999};
@@ -347,7 +353,7 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
 
   // Factory could use registration_name or define its own EP name.
-  auto factory_gpu = std::make_unique<MigraphXEpFactory>(*ort_api,
+  auto factory_gpu = std::make_unique<MIGraphXEpFactory>(*ort_api,
                                                          onnxruntime::kMIGraphXExecutionProvider,
                                                          OrtHardwareDeviceType_GPU,
                                                          *default_logger);
@@ -364,7 +370,7 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
 }
 
 OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
-  delete static_cast<MigraphXEpFactory*>(factory);
+  delete static_cast<MIGraphXEpFactory*>(factory);
   return nullptr;
 }
 

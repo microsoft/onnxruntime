@@ -87,9 +87,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
-
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
 void InitializeRegistry() {
@@ -128,7 +125,7 @@ static std::string_view GetArenaExtendStrategyName(ArenaExtendStrategy strategy)
   const auto value##env{GetEnvironmentVar(variable)};              \
   if (!value##env.empty()) {                                       \
     __VA_ARGS__;                                                   \
-    LOGS_DEFAULT(INFO) << "\n " << variable << ": " << value##env; \
+    LOGS_DEFAULT(VERBOSE) << "\n " << variable << ": " << value##env; \
   }
 
 #define GET_ENV_BOOL(variable, value) \
@@ -139,7 +136,6 @@ static std::string_view GetArenaExtendStrategyName(ArenaExtendStrategy strategy)
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
     : IExecutionProvider{kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, info.device_id)},
-      device_id_{info.device_id},
       fp16_enable_{info.fp16_enable},
 #if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && (HIP_VERSION_MINOR > 4 || (HIP_VERSION_MINOR == 4 && HIP_VERSION_PATCH >= 2)))
       bf16_enable_{info.bf16_enable},
@@ -159,12 +155,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 
   // Set GPU device to be used and read device properties for feature usage.
 
-  HIP_CALL_THROW(hipSetDevice(device_id_));
-  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, device_id_));
+  HIP_CALL_THROW(hipSetDevice(info.device_id));
+  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, info.device_id));
 
   // Overwrite initialized values with values from environment variables.
 
-  LOGS_DEFAULT(WARNING) << "[MIGraphX EP] MIGraphX ENV Override Variables Set:";
+  LOGS_DEFAULT(VERBOSE) << "MIGraphX ENV Override Variables Set:";
   GET_ENV_BOOL(migraphx_env_vars::kFP16Enable, fp16_enable_);
 #if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && (HIP_VERSION_MINOR > 4 || (HIP_VERSION_MINOR == 4 && HIP_VERSION_PATCH >= 2)))
   GET_ENV_BOOL(migraphx_env_vars::kBF16Enable, bf16_enable_);
@@ -190,7 +186,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   if (bf16_enable_ && fp16_enable_) {
     bf16_enable_ = false;
     fp16_enable_ = false;
-    LOGS_DEFAULT(FATAL) << "MIGraphX: BF16 and FP16 Quantization Mutually exclusive. Ignoring both Quantization flags";
+    LOGS_DEFAULT(ERROR) << "MIGraphX: BF16 and FP16 Quantization Mutually exclusive. Ignoring both Quantization flags";
   }
 
 #if HIP_VERSION_MAJOR < 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR < 4)
@@ -199,7 +195,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 #endif
 
   if (int8_enable_ && fp8_enable_) {
-    LOGS_DEFAULT(FATAL) << "MIGraphX: FP8 and INT8 Quantization Mutually exclusive. Ignoring both Quantization flags";
+    LOGS_DEFAULT(ERROR) << "MIGraphX: FP8 and INT8 Quantization Mutually exclusive. Ignoring both Quantization flags";
   }
 
   if (int8_enable_ ^ fp8_enable_) {
@@ -209,12 +205,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
         int8_use_native_migraphx_calibration_table_env.empty() ? info.int8_use_native_calibration_table : std::stoi(int8_use_native_migraphx_calibration_table_env) != 0;
   }
 
-  if (int8_enable_ || fp8_enable_) {
-    int8_calibration_cache_available_ = !info.int8_calibration_table_name.empty();
-  }
+  int8_calibration_cache_available_ =
+    (int8_enable_ || fp8_enable_) && !int8_calibration_table_name_.empty();
+
 
   // Load INT8 calibration table
-  if ((int8_enable_ || fp8_enable_) && int8_calibration_cache_available_) {
+  if (int8_calibration_cache_available_) {
     std::unordered_map<std::string, float> dynamic_range_map;
     auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_table_name_);
     if (!ReadDynamicRange(calibration_cache_path, int8_use_native_calibration_table_, dynamic_range_map)) {
@@ -223,9 +219,8 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   // Print configured options for the session.
-
-  LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider Session Options:"
-                        << "\n " << migraphx_provider_option::kDeviceId << ": " << device_id_
+  LOGS_DEFAULT(VERBOSE) << "MIGraphX execution provider options:"
+                        << "\n " << migraphx_provider_option::kDeviceId << ": " << info.device_id
                         << "\n " << migraphx_provider_option::kFp16Enable << ": " << fp16_enable_
                         << "\n " << migraphx_provider_option::kBf16Enable << ": " << bf16_enable_
                         << "\n " << migraphx_provider_option::kFp8Enable << ": " << fp8_enable_
@@ -241,21 +236,21 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 }
 
 std::vector<AllocatorPtr> MIGraphXExecutionProvider::CreatePreferredAllocators() {
-  AllocatorCreationInfo default_memory_info(
+  const AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<MIGraphXAllocator>(device_id, onnxruntime::CUDA);
+        return std::make_unique<MIGraphXAllocator>(device_id, CUDA);
       },
-      device_id_);
-  AllocatorCreationInfo pinned_allocator_info(
+      static_cast<OrtDevice::DeviceId>(GetDeviceId()));
+  const AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
         return std::make_unique<MIGraphXPinnedAllocator>(device_id, CUDA_PINNED);
       },
-      device_id_);
-  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
+      static_cast<OrtDevice::DeviceId>(GetDeviceId()));
+  return {CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
 
-std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>();
+std::unique_ptr<IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
+  return std::make_unique<GPUDataTransfer>();
 }
 
 static bool IsTypeSupported(const NodeArg* node_arg) {
@@ -356,25 +351,19 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
       mgx_type = migraphx_shape_bool_type;
       break;
     default:
-      LOGS_DEFAULT(WARNING) << "MiGraphx: unsupported data type " << type << ", fallback to CPU";
-      LOGS_DEFAULT(WARNING) << "implementation";
+      LOGS_DEFAULT(WARNING) << "unsupported data type " << type
+                            << ", fallback to CPU implementation";
       return false;
   }
 
   return true;
 }
 
-std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
-  std::vector<int> result;
-  int num = nums.size();
-  for (int i = 0; i < num; ++i) {
-    result.push_back(static_cast<int>(nums[i]));
-  }
-
-  return result;
+std::vector<int64_t> toVector(const ONNX_NAMESPACE::int64s& nums) {
+  return {nums.begin(), nums.end()};
 }
 
-static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node) {
+static bool IsUnsupportedOpMode(const GraphViewer& graph_viewer, const Node* node) {
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
   if (optype == "ArgMax" || optype == "ArgMin") {
@@ -390,7 +379,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
   } else if (optype == "ConvInteger") {
     // only support int8 and uint8 type
-    const auto& input_type = node->InputDefs()[0]->TypeAsProto();
+    const auto& input_type = node->InputDefs().at(0)->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
@@ -428,7 +417,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
 
     // do not support int8 and uint8 type
-    const auto& input_type = node->InputDefs()[0]->TypeAsProto();
+    const auto& input_type = node->InputDefs().at(0)->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
@@ -439,7 +428,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
   } else if (optype == "MatMulInteger") {
     // only support int8 and uint8 type
-    const auto& input_type = node->InputDefs()[0]->TypeAsProto();
+    const auto& input_type = node->InputDefs().at(0)->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
@@ -466,25 +455,17 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
 
     const auto& attributes = node->GetAttributes();
-    // Pad only support constant mode
+    // Pad only support reflect, constant and edge mode currently
     auto mode_attr = attributes.find("mode");
     std::string mode = "constant";
     if (mode_attr != attributes.end()) {
       mode = (*mode_attr).second.s();
     }
-    static const std::set<std::string> allowed_modes = {"constant", "reflect"};
+    static const std::set<std::string> allowed_modes = {"constant", "reflect", "edge"};
     if (allowed_modes.count(mode) == 0) {
       return true;
     }
 
-    // input value only applied to constant mode
-    if (mode == "constant") {
-      if (args.size() == 3) {
-        if (!canEvalNodeArgument(graph_viewer, node, {2}, input_nodes)) {
-          return true;
-        }
-      }
-    }
   } else if (optype == "Range") {
     auto arg_num = node->InputDefs().size();
     std::vector<std::size_t> vec(arg_num);
@@ -541,6 +522,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     if (attributes.count("starts") > 0 && attributes.count("ends") > 0) {
       auto starts = toVector((*attributes.find("starts")).second.ints());
       auto ends = toVector((*attributes.find("ends")).second.ints());
+
       for (std::size_t i = 0; i < starts.size(); ++i) {
         if (starts.at(i) > ends.at(i)) {
           return true;
@@ -549,7 +531,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
   } else if (optype == "Split") {
     // cannot process input dim of 0 size
-    const auto arg_s = node->InputDefs()[0]->Shape();
+    const auto arg_s = node->InputDefs().at(0)->Shape();
     if (arg_s != nullptr) {
       const auto& tensor_dims = arg_s->dim();
       std::vector<std::size_t> dims;
@@ -590,7 +572,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
   return false;
 }
 
-void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters,
+void SubgraphPostProcessing(const GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters,
                             [[maybe_unused]] const logging::Logger& logger) {
   // Then check whether a subgraph should fall back to CPU
   // 1. Check whether a subgraph contains a RNN operator
@@ -608,9 +590,8 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
             return !std::all_of(node_inputs.begin(), node_inputs.end(), [&](auto i) {
               return std::find(git.begin(), git.end(), i) != git.end();
             });
-          } else {
-            return true;
           }
+          return true;
         }
       }
     }
@@ -659,7 +640,7 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
 }
 
 static bool IsNodeSupported(const std::set<std::string>& op_set,
-                            const onnxruntime::GraphViewer& graph_viewer,
+                            const GraphViewer& graph_viewer,
                             const NodeIndex node_idx,
                             [[maybe_unused]] const logging::Logger& logger) {
   const auto& node = graph_viewer.GetNode(node_idx);
@@ -675,7 +656,7 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   // check data type
   bool are_types_supported = true;
 
-  node->ForEachDef([&are_types_supported](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
+  node->ForEachDef([&are_types_supported](const NodeArg& node_arg, bool /*is_input*/) {
     are_types_supported &= IsTypeSupported(&node_arg);
   });
 
@@ -698,7 +679,7 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   return true;
 }
 
-std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const {
+std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph, bool is_graph_split) const {
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.size());
   for (const auto& index : graph_nodes_index) {
@@ -712,7 +693,7 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
   }
 
   // Find inputs and outputs of the subgraph
-  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+  std::unique_ptr<IndexedSubGraph> sub_graph = IndexedSubGraph::Create();
   std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
@@ -751,7 +732,28 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
     // be also added to the subgraph's output list
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-        const auto& node_idx = it->GetNode().Index();
+        const auto& target_node = it->GetNode();
+        const auto& target_op_type = target_node.OpType();
+
+        if (target_op_type == "If" || target_op_type == "Loop" || target_op_type == "Scan") {
+          const auto& src_output_idx = it->GetSrcArgIndex();
+
+          // Do this to avoid signed to unsigned comparrison here
+          // if src_output_index is invalid (-1 or less) signal that to be larger than size + 1
+          // This ensures the check below fails
+          size_t output_index = 0;
+          if(src_output_idx < 0)
+            output_index = node->OutputDefs().size() + 1;
+
+          if (output_index < node->OutputDefs().size()) {
+            const auto* output_def = node->OutputDefs()[src_output_idx];
+            if (output_def && fused_outputs.find(output_def) == fused_outputs.end() && erased.find(output_def) == erased.end()) {
+              fused_outputs_to_add[output_def] = output_order++;
+            }
+          }
+          continue;
+        }
+        const auto& node_idx = target_node.Index();
         const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
         if (node_set.find(node_idx) != node_set.end()) {
           const auto& iter = fused_inputs.find(output);
@@ -796,14 +798,14 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
   // Sort inputs and outputs by the order they were added
   std::multimap<int, const NodeArg*> inputs, outputs;
   for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
-    inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+    inputs.insert(std::pair(it->second, it->first));
   }
 
   for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-    outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+    outputs.insert(std::pair(it->second, it->first));
   }
 
-  // It is possible that an output of an node is put bebind the output of an later
+  // It is possible that an output of a node is put behind the output of a later
   // node in the graph output list. So we should sort the output name according
   // to the graph output names
   std::vector<std::string> output_names;
@@ -812,7 +814,12 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
     if (output.second->Exists()) {
       auto name = output.second->Name();
       if (std::find(graph_output_names.begin(), graph_output_names.end(), name) == graph_output_names.end()) {
-        output_names.push_back(name);
+        // if graph is split we dont know if output is used so we need this, otherwise if the graph isn't split
+        // then we can safely assume this output is a dangling output from a node and to discard it as part of the
+        // final graph output
+        if (is_graph_split) {
+          output_names.push_back(name);
+        }
       } else {
         graph_out_names.insert(name);
       }
@@ -854,6 +861,16 @@ static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
+
+#ifdef HAVE_MIGRAPHX_API_GET_ONNX_OPERATORS
+  // In ROCm 7.2 onward we'll query the MIGraphX API to get the supported op list
+  static std::set<std::string> mgx_supported_ops{};
+  auto list = migraphx::get_onnx_operators();
+  for(const auto& name : list)
+  {
+    mgx_supported_ops.emplace(name);
+  }
+#else
   static std::set<std::string> mgx_supported_ops = {"Abs",
                                                     "Acos",
                                                     "Acosh",
@@ -992,6 +1009,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "SimplifiedLayerNormalization",
                                                     "Sin",
                                                     "Sinh",
+                                                    "Size",
                                                     "SkipLayerNormalization",
                                                     "SkipSimplifiedLayerNormalization",
                                                     "Slice",
@@ -1016,12 +1034,14 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Upsample",
                                                     "Where",
                                                     "Xor"};
+#endif
+
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
       // Collect inputs that are initializers
       graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers,
-                                                  &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
+                                                  &graph_viewer](const NodeArg& node_arg, bool is_input) {
               if(is_input && graph_viewer.GetAllInitializedTensors().count(node_arg.Name())) {
                 mgx_required_initializers.insert(node_arg.Name());
               } },
@@ -1035,7 +1055,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
 }
 
 // Returns a vector clusters(or node_idx). For each unsupported node, the graph
-// is split into 3 parts. supported_cluster + (UNsupported_node + rest_of_the_graph).
+// is split into 3 parts. supported_cluster + (Unsupported_node + rest_of_the_graph).
 // This functions returns vector of all supported_subgraphx by amdmigraphx
 static std::vector<std::vector<NodeIndex>>
 GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order,
@@ -1065,12 +1085,37 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order,
   return mgx_subgraphx;
 }
 
+void MIGraphXExecutionProvider::dump_model_as_onnx(const std::string& onnx_buffer,
+                                                   const std::string& model_name) const {
+  // dump onnx file if environment var is set
+  if (dump_model_ops_) {
+    std::ofstream ofs(model_name, std::ios::binary);
+    if (!ofs.is_open()) {
+      ORT_THROW("Failed to open file to dump ONNX model: " + model_name);
+    }
+    ofs.write(onnx_buffer.c_str(), onnx_buffer.size());
+    ofs.close();
+    LOGS_DEFAULT(INFO) << "ONNX model dumped to " << model_name;
+  }
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
-MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+MIGraphXExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                          const IKernelLookup& /*kernel_lookup*/,
                                          const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                          IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  if (graph_viewer.IsSubgraph()) {
+    const auto* parent_node = graph_viewer.ParentNode();
+    if (parent_node) {
+      const auto& parent_op_type = parent_node->OpType();
+      if (parent_op_type == "If" || parent_op_type == "Loop" || parent_op_type == "Scan") {
+        return result;
+      }
+    }
+  }
+
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
   graph_viewer.ToProto(*model_proto->mutable_graph(), true, true);
@@ -1079,48 +1124,40 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   model_proto->SerializeToString(onnx_string_buffer);
   model_path_ = graph_viewer.ModelPath();
 
-  // dump onnx file if environment var is set
-  if (dump_model_ops_) {
-    std::string model_name = graph_viewer.Name() + ".onnx";
-    std::ofstream ofs(model_name, std::ios::binary);
-    if (!ofs.is_open()) {
-      ORT_THROW("Failed to open file to dump ONNX model: " + model_name);
-    }
-    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    ofs.close();
-    LOGS_DEFAULT(INFO) << "ONNX model dumped to " << model_name;
-  }
+  dump_model_as_onnx(onnx_string_buffer, graph_viewer.Name() + ".onnx");
 
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
 
+  if (unsupported_nodes.size() > 0) {
+    LOGS_DEFAULT(WARNING) << "============= Unsupported nodes ====================";
+    for (auto idx : unsupported_nodes) {
+      LOGS_DEFAULT(WARNING) << graph_viewer.GetNode(idx)->OpType();
+    }
+    LOGS_DEFAULT(WARNING) << "************* Unsupported nodes ********************";
+  }
+
+  if (unsupported_nodes.size() > 10) {
+    return result;
+  }
+
+  bool is_graph_not_split = unsupported_nodes.empty();
+
   // If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
-  if (unsupported_nodes.empty()) {
+  if (is_graph_not_split) {
     auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
-    auto sub_graph = GetSubGraph(node_indices, graph_viewer);
+    auto sub_graph = GetSubGraph(node_indices, graph_viewer, !is_graph_not_split);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-  } else {  // unsupported_nodes_idx.empty()
-    if (dump_model_ops_) {
-      LOGS_DEFAULT(INFO) << "============= Unsupported nodes ====================";
-      for (auto idx : unsupported_nodes) {
-        LOGS_DEFAULT(INFO) << graph_viewer.GetNode(idx)->OpType();
-      }
-      LOGS_DEFAULT(INFO) << "************* Unsupported nodes ********************";
-    }
-
-    if (unsupported_nodes.size() > 10) {
-      return result;
-    }
-
+  } else {
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
     // check whether a subgrap should fallback to CPU
     SubgraphPostProcessing(graph_viewer, mgx_clusters, *GetLogger());
 
     for (const auto& this_cluster : mgx_clusters) {
-      auto sub_graph = GetSubGraph(this_cluster, graph_viewer);
+      auto sub_graph = GetSubGraph(this_cluster, graph_viewer, !is_graph_not_split);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
   }
@@ -1210,7 +1247,7 @@ void calibrate_and_quantize(migraphx::program& prog,
                             std::unordered_map<std::string, float>& dynamic_range_map) {
   // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
   if ((int8_enable ^ fp8_enable) && int8_calibration_cache_available) {
-    LOGS_DEFAULT(WARNING) << "Quantizing input program";
+    LOGS_DEFAULT(VERBOSE) << "Quantizing input program";
 
     auto param_shapes = prog.get_parameter_shapes();
 
@@ -1222,36 +1259,36 @@ void calibrate_and_quantize(migraphx::program& prog,
 
     // perform static quantization on the programs
     if (int8_enable) {
-      LOGS_DEFAULT(WARNING) << "Quantizing input program to int8";
+      LOGS_DEFAULT(VERBOSE) << "Quantizing input program to int8";
       migraphx::quantize_int8_options quant_opts;
       quant_opts.add_calibration_data(quant_params);
       // specify thing we want to int8 quantize
       quant_opts.add_op_name("convolution");
       quant_opts.add_op_name("dot");
       migraphx::quantize_int8(prog, t, quant_opts);
-      LOGS_DEFAULT(WARNING) << "Quantizing int8: Complete";
+      LOGS_DEFAULT(VERBOSE) << "Quantizing int8: Complete";
     } else if (fp8_enable) {
 #if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
-      LOGS_DEFAULT(WARNING) << "Quantizing input program to fp8";
+      LOGS_DEFAULT(VERBOSE) << "Quantizing input program to fp8";
       migraphx::quantize_fp8_options quant_opts;
       quant_opts.add_calibration_data(quant_params);
       migraphx::quantize_fp8(prog, t, quant_opts);
-      LOGS_DEFAULT(WARNING) << "Quantizing fp8: Complete";
+      LOGS_DEFAULT(VERBOSE) << "Quantizing fp8: Complete";
 #endif
     }
   }
 
   if (fp16_enable) {
-    LOGS_DEFAULT(WARNING) << "Quantizing input program to fp16";
+    LOGS_DEFAULT(VERBOSE) << "Quantizing input program to fp16";
     migraphx::quantize_fp16(prog);
-    LOGS_DEFAULT(WARNING) << "Quantizing fp16: Complete";
+    LOGS_DEFAULT(VERBOSE) << "Quantizing fp16: Complete";
   }
 
 #if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4 && HIP_VERSION_PATCH >= 2)
   if (bf16_enable) {
-    LOGS_DEFAULT(WARNING) << "Quantizing input program to bf16";
+    LOGS_DEFAULT(VERBOSE) << "Quantizing input program to bf16";
     migraphx::quantize_bf16(prog);
-    LOGS_DEFAULT(WARNING) << "Quantizing bf16: Complete";
+    LOGS_DEFAULT(VERBOSE) << "Quantizing bf16: Complete";
   }
 #endif
 }
@@ -1259,12 +1296,12 @@ void calibrate_and_quantize(migraphx::program& prog,
 void compile_program(migraphx::program& prog,
                      const migraphx::target& t,
                      bool exhaustive_tune) {
-  LOGS_DEFAULT(WARNING) << "Model Compile: Begin";
+  LOGS_DEFAULT(VERBOSE) << "Model Compile: Begin";
   migraphx::compile_options co;
   co.set_fast_math(false);
   co.set_exhaustive_tune_flag(exhaustive_tune);
   prog.compile(t, co);
-  LOGS_DEFAULT(WARNING) << "Model Compile: Complete";
+  LOGS_DEFAULT(VERBOSE) << "Model Compile: Complete";
 }
 
 std::string to_hex(const uint64_t v) {
@@ -1276,8 +1313,8 @@ std::string to_hex(const uint64_t v) {
 template <typename T>
 std::string make_hash(T v) {
   std::array<std::uint32_t, 4> temp{};
-  MurmurHash3::x86_128(v.data(), gsl::narrow_cast<int32_t>(v.size()), temp[0], temp.data());
-  return to_hex(temp[0] | static_cast<uint64_t>(temp[1]) << 32);
+  MurmurHash3::x86_128(v.data(), gsl::narrow_cast<int32_t>(v.size()), temp.front(), temp.data());
+  return to_hex(temp.at(0) | static_cast<uint64_t>(temp.at(1)) << 32);
 }
 
 template <>
@@ -1314,7 +1351,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     if (!model_cache_path_.empty()) {
       std::vector<std::int64_t> input_shapes;
       for (std::size_t i = 0; i < session_input_names.size(); ++i) {
-        auto tensor_shape = input_tensor[i]->Shape();
+        auto tensor_shape = input_tensor.at(i)->Shape();
         for (int j = 1; j < tensor_shape->dim_size(); ++j) {
           input_shapes.push_back(tensor_shape->dim(j).dim_value());
         }
@@ -1327,7 +1364,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     const auto& input_defs = fused_node.InputDefs();
     input_name_index.reserve(input_defs.size());
     for (std::size_t i = 0; i < input_defs.size(); ++i) {
-      input_name_index[input_defs[i]->Name()] = i;
+      input_name_index[input_defs.at(i)->Name()] = i;
     }
 
     auto model = graph_body_viewer.CreateModel(*GetLogger());
@@ -1337,16 +1374,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);
 
-    if (dump_model_ops_) {
-      std::string onnx_name = fused_node.Name() + ".onnx";
-      std::ofstream ofs(onnx_name, std::ios::binary);
-      if (!ofs.is_open()) {
-        ORT_THROW("Failed to open file to dump ONNX model: " + onnx_name);
-      }
-      ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
-      ofs.close();
-      LOGS_DEFAULT(INFO) << "ONNX model dumped to " << onnx_name;
-    }
+    dump_model_as_onnx(onnx_string_buffer, std::string{fused_node.Name() + ".onnx"});
 
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape || get_input_output_names(graph_body_viewer, input_names, output_names);
@@ -1375,7 +1403,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < prog_output_shapes.size(); ++i) {
         auto out_len = prog_output_shapes[i].lengths();
-        options.set_input_parameter_shape(output_names[i], out_len);
+        options.set_input_parameter_shape(output_names.at(i), out_len);
       }
     }
 
@@ -1388,9 +1416,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
-      *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
-            map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
-            map_no_input_shape_[context->node_name], fp16_enable_, bf16_enable_, fp8_enable_, int8_enable_,
+      *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_.at(context->node_name),
+            map_onnx_string_.at(context->node_name), options, t_, map_input_index_.at(context->node_name), &mgx_mu_,
+            map_no_input_shape_.at(context->node_name), fp16_enable_, bf16_enable_, fp8_enable_, int8_enable_,
             int8_calibration_cache_available_, dynamic_range_map_,
             model_cache_path_.string(), dump_model_ops_};
       *state = p.release();
@@ -1455,8 +1483,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
               auto mgx_s = param_shapes[name];
               auto mgx_lens = mgx_s.lengths();
               auto mgx_strides = mgx_s.strides();
-              if (mgx_lens.size() == 1 && mgx_lens[0] == 1 &&
-                  mgx_strides.size() == 1 && mgx_strides[0] == 0) {
+              if (mgx_lens.size() == 1 && mgx_lens.front() == 1 &&
+                  mgx_strides.size() == 1 && mgx_strides.front() == 0) {
                 mgx_lens.clear();
               }
 
@@ -1576,7 +1604,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
       {
         // lock to avoid race condition
-        std::lock_guard<std::mutex> lock(*(mgx_state->mgx_mu_ptr));
+        std::lock_guard lock(*mgx_state->mgx_mu_ptr);
 
         void* rocm_stream;
         Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
@@ -1613,7 +1641,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
 void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
                                                        AllocatorMap& allocators) const {
-  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
+  auto allocator = allocators.at(GetOrtDeviceByMemType(OrtMemTypeCPU));
   RegisterMIGraphXStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/);
 }
 
@@ -1627,20 +1655,20 @@ OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
 }
 
 Status MIGraphXExecutionProvider::Sync() const {
-  HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
+  HIP_CALL_THROW(hipStreamSynchronize(nullptr));
 
   auto status = hipStreamQuery(stream_);
   if (status != hipSuccess) {
-    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
+    return Status(common::ONNXRUNTIME, common::EP_FAIL);
   }
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+Status MIGraphXExecutionProvider::OnRunStart(const RunOptions& /*run_options*/) {
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
+Status MIGraphXExecutionProvider::OnRunEnd(bool /*sync_stream*/, const RunOptions& /*run_options*/) {
   auto status = hipStreamQuery(stream_);
 
   if (status != hipSuccess) {

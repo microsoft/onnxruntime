@@ -11,21 +11,18 @@ namespace onnxruntime {
 
 class MIGraphXAllocator : public IAllocator {
  public:
-  MIGraphXAllocator(int device_id, const char* name)
+  MIGraphXAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+            OrtMemoryInfo(name, OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
-                                    static_cast<OrtDevice::DeviceId>(device_id)),
+                                    device_id),
                           OrtMemTypeDefault)) {}
 
-  virtual void* Alloc(size_t size) override;
-  virtual void Free(void* p) override;
-
- private:
-  void CheckDevice() const;
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
 };
 
-class MIGraphXExternalAllocator : public MIGraphXAllocator {
+class MIGraphXExternalAllocator final : public MIGraphXAllocator {
   typedef void* (*ExternalAlloc)(size_t size);
   typedef void (*ExternalFree)(void* p);
   typedef void (*ExternalEmptyCache)();

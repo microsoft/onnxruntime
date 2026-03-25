@@ -15,7 +15,7 @@ enum MIGraphXResource {
   hip_stream_t = migraphx_resource_offset
 };
 
-struct MIGraphXNotification : synchronize::Notification {
+struct MIGraphXNotification final : synchronize::Notification {
   explicit MIGraphXNotification(Stream& s) : Notification(s) {
     HIP_CALL_THROW(hipEventCreateWithFlags(&event_, hipEventDisableTiming));
   }
