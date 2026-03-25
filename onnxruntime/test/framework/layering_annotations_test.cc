@@ -1018,6 +1018,124 @@ TEST(LayeringRulesTest, FromConfigString_RejectsDuplicateAnnotations) {
   EXPECT_FALSE(rules.rules[0].prefix_match);
   EXPECT_TRUE(rules.rules[1].prefix_match);
 }
+
+TEST(LayeringIndexTest, MakeNodeUnassigned_PreservesEpRuleMapping) {
+  // Scenario: All nodes for a rule are unassigned in one graph.
+  // ep_name_to_layering_indices_ must still contain the rule so that
+  // sibling subgraphs (or the same graph on a subsequent pass) can still
+  // use it for filtering.
+
+  // 1. Setup Graph with two nodes, both annotated with the same rule
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 12;
+  Model model("test_model", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  NodeArg* input_arg = &graph.GetOrCreateNodeArg("input", &type_proto);
+  NodeArg* mid_arg = &graph.GetOrCreateNodeArg("mid", &type_proto);
+  NodeArg* output_arg = &graph.GetOrCreateNodeArg("output", &type_proto);
+
+  Node& node0 = graph.AddNode("node0", "Abs", "Node 0", {input_arg}, {mid_arg});
+  node0.SetLayeringAnnotation("RuleA");
+  Node& node1 = graph.AddNode("node1", "Abs", "Node 1", {mid_arg}, {output_arg});
+  node1.SetLayeringAnnotation("RuleA");
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // 2. Setup Rules: RuleA -> DeviceA
+  LayeringRules rules;
+  rules.rules.push_back({"DeviceA", "RuleA", false});  // Index 0
+
+  LayeringIndex::EpNameToLayeringIndices ep_map;
+  ep_map["DeviceA"].insert(0);
+  LayeringIndex::LayeringIndexToEpName rule_map;
+  rule_map[0] = "DeviceA";
+
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
+
+  // Both nodes should be assigned
+  ASSERT_TRUE(index.GetNodeAssignment(graph, node0.Index()).has_value());
+  ASSERT_TRUE(index.GetNodeAssignment(graph, node1.Index()).has_value());
+
+  // 3. Unassign both nodes (simulating EP failing to claim them)
+  index.MakeNodeUnassigned(graph, node0.Index());
+  index.MakeNodeUnassigned(graph, node1.Index());
+
+  // Nodes should be unassigned
+  EXPECT_FALSE(index.GetNodeAssignment(graph, node0.Index()).has_value());
+  EXPECT_FALSE(index.GetNodeAssignment(graph, node1.Index()).has_value());
+
+  // 4. CRITICAL: ep_name_to_layering_indices_ must still map DeviceA -> {0}
+  // so that other graphs/passes can still use this rule for filtering.
+  auto rules_opt = index.GetLayeringRulesForThisEp("DeviceA");
+  ASSERT_TRUE(rules_opt.has_value()) << "EP-to-rule mapping should not be erased when nodes are unassigned";
+  EXPECT_EQ(rules_opt->get().count(0), 1u);
+}
+
+TEST(LayeringIndexTest, UpdateAfterFullUnassignment_RestoresVisibility) {
+  // Scenario: All nodes for a rule are unassigned, then Update() adds
+  // a new node matching the same rule. The new node must be visible
+  // to the EP via GetLayeringRulesForThisEp.
+
+  // 1. Setup Graph with one annotated node
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 12;
+  Model model("test_model", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  NodeArg* input_arg = &graph.GetOrCreateNodeArg("input", &type_proto);
+  NodeArg* output_arg = &graph.GetOrCreateNodeArg("output", &type_proto);
+
+  Node& node0 = graph.AddNode("node0", "Abs", "Node 0", {input_arg}, {output_arg});
+  node0.SetLayeringAnnotation("RuleA");
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // 2. Setup Rules: RuleA -> DeviceA
+  LayeringRules rules;
+  rules.rules.push_back({"DeviceA", "RuleA", false});  // Index 0
+
+  LayeringIndex::EpNameToLayeringIndices ep_map;
+  ep_map["DeviceA"].insert(0);
+  LayeringIndex::LayeringIndexToEpName rule_map;
+  rule_map[0] = "DeviceA";
+
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
+  ASSERT_TRUE(index.GetNodeAssignment(graph, node0.Index()).has_value());
+
+  // 3. Unassign the only node
+  index.MakeNodeUnassigned(graph, node0.Index());
+  EXPECT_FALSE(index.GetNodeAssignment(graph, node0.Index()).has_value());
+
+  // 4. Simulate layout transform adding a new node with inherited annotation
+  NodeArg* new_output_arg = &graph.GetOrCreateNodeArg("new_output", &type_proto);
+  Node& new_node = graph.AddNode("new_node", "Abs", "New Node", {output_arg}, {new_output_arg});
+  new_node.SetLayeringAnnotation("RuleA");
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // 5. Update index with the new node
+  std::vector<NodeIndex> new_nodes = {new_node.Index()};
+  index.Update(graph, new_nodes);
+
+  // 6. New node should be assigned to rule 0
+  auto assign = index.GetNodeAssignment(graph, new_node.Index());
+  ASSERT_TRUE(assign.has_value());
+  EXPECT_EQ(*assign, 0u);
+
+  // 7. CRITICAL: The rule must still be visible for DeviceA
+  auto rules_opt = index.GetLayeringRulesForThisEp("DeviceA");
+  ASSERT_TRUE(rules_opt.has_value()) << "EP-to-rule mapping must be intact for Update to be effective";
+  EXPECT_EQ(rules_opt->get().count(0), 1u);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

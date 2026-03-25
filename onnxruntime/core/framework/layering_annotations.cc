@@ -577,15 +577,6 @@ void LayeringIndex::MakeNodeUnassigned(const Graph& graph, NodeIndex node_id) {
       // partitioning passes no longer reserve this layer for the EP.
       if (layer_to_nodes_hit->second.empty()) {
         graph_layering_index.layer_to_node_ids_.erase(layer_to_nodes_hit);
-        // Update ep_name_to_layering_indices_ to remove this layer index
-        // from the EP that owned it, making it available for other EPs.
-        auto rule_to_ep_hit = layering_index_to_ep_name_.find(*layer_idx);
-        if (rule_to_ep_hit != layering_index_to_ep_name_.end()) {
-          auto ep_hit = ep_name_to_layering_indices_.find(rule_to_ep_hit->second);
-          if (ep_hit != ep_name_to_layering_indices_.end()) {
-            ep_hit->second.erase(*layer_idx);
-          }
-        }
       }
     }
   }
