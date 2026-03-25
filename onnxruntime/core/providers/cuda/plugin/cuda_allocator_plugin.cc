@@ -27,10 +27,16 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
   auto* alloc = static_cast<CudaDeviceAllocator*>(this_ptr);
   void* p = nullptr;
   if (size == 0) return nullptr;
+  // Save and restore CUDA device context to avoid corrupting the calling
+  // thread's device state in multi-GPU scenarios.
+  int prev_device = -1;
+  cudaGetDevice(&prev_device);
   if (cudaSetDevice(alloc->device_id_) != cudaSuccess) {
+    cudaSetDevice(prev_device);
     return nullptr;
   }
   cudaError_t err = cudaMalloc(&p, size);
+  cudaSetDevice(prev_device);
   if (err != cudaSuccess) {
     return nullptr;
   }
@@ -40,8 +46,11 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
 /*static*/ void ORT_API_CALL CudaDeviceAllocator::FreeImpl(OrtAllocator* this_ptr, void* p) noexcept {
   auto* alloc = static_cast<CudaDeviceAllocator*>(this_ptr);
   if (p != nullptr) {
+    int prev_device = -1;
+    cudaGetDevice(&prev_device);
     cudaSetDevice(alloc->device_id_);
     cudaFree(p);
+    cudaSetDevice(prev_device);
   }
 }
 

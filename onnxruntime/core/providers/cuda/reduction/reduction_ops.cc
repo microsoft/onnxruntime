@@ -808,7 +808,6 @@ SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int8_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(uint8_t)
 namespace ReductionOps {
 
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 std::unique_ptr<Tensor> ReduceCompute(const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
@@ -864,7 +863,6 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, Stream* stream, cudnnHandle_t cudnn_handle, const TensorShape* input_shape_override);
 
-#endif  // BUILD_CUDA_EP_AS_PLUGIN
 }  // namespace ReductionOps
 
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, MLFloat16)

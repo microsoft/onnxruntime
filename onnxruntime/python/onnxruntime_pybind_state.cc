@@ -592,10 +592,31 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
       return nullptr;
     }
 
+    bool has_requested_device_id = false;
+    int requested_device_id = 0;
+    if (const auto provider_it = provider_options_map.find(type); provider_it != provider_options_map.end()) {
+      if (const auto device_id_it = provider_it->second.find("device_id"); device_id_it != provider_it->second.end()) {
+        try {
+          requested_device_id = std::stoi(device_id_it->second);
+          has_requested_device_id = requested_device_id >= 0;
+        } catch (const std::exception& ex) {
+          LOGS_DEFAULT(WARNING) << "Ignoring invalid device_id provider option '" << device_id_it->second
+                                << "' for registered plugin EP '" << type << "': " << ex.what();
+        }
+      }
+    }
+
     const OrtEpDevice* selected_device = nullptr;
     for (const OrtEpDevice* ep_device : ep_devices) {
       if (!ep_device || ep_device->ep_name != type) {
         continue;
+      }
+
+      if (has_requested_device_id) {
+        Ort::ConstEpDevice current_device(ep_device);
+        if (static_cast<int>(current_device.Device().DeviceId()) != requested_device_id) {
+          continue;
+        }
       }
 
       if (selected_device == nullptr) {
@@ -605,6 +626,10 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     }
 
     if (selected_device == nullptr) {
+      if (has_requested_device_id) {
+        LOGS_DEFAULT(WARNING) << "No registered plugin EP device found for '" << type
+                              << "' with device_id=" << requested_device_id;
+      }
       return nullptr;
     }
 

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <optional>
 
 #pragma push_macro("ORT_API_MANUAL_INIT")
@@ -35,18 +36,20 @@ inline const ApiPtrs& Api() {
 
 /// <summary>
 /// Initialize the EP API pointers and global OrtEnv if not already done.
+/// Thread-safe via std::call_once.
 /// </summary>
 inline void ApiInit(const OrtApiBase* ort_api_base) {
-  // Manual init for the C++ API
-  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
-  const OrtEpApi* ep_api = ort_api->GetEpApi();
-  const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
-  Ort::InitApi(ort_api);
+  static std::once_flag init_flag;
+  std::call_once(init_flag, [&]() {
+    // Manual init for the C++ API
+    const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
+    const OrtEpApi* ep_api = ort_api->GetEpApi();
+    const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
+    Ort::InitApi(ort_api);
 
-  // Initialize the global API instance
-  if (!detail::g_api_ptrs) {
+    // Initialize the global API instance
     detail::g_api_ptrs.emplace(*ort_api, *ep_api, *model_editor_api);
-  }
+  });
 }
 
 }  // namespace ep

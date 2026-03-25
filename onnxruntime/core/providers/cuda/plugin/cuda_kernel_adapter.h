@@ -191,6 +191,11 @@ namespace cuda {
 
 /// Singleton collector for BuildKernelCreateInfoFn pointers.
 /// Each compiled kernel .cc file's macro expansion auto-registers here.
+///
+/// Thread-safety: Instance() uses a function-local static (C++11 §6.7/4:
+/// constructed exactly once, even under concurrent first-access). All Add()
+/// calls happen during static initialisation of each translation unit
+/// (before main()), which is single-threaded per the C++ standard.
 class PluginKernelCollector {
  public:
   static PluginKernelCollector& Instance() {
@@ -403,6 +408,43 @@ IConstantBuffer<T>* GetConstOnesBufferForDevice(int device_id) {
   return buffer.get();
 }
 
+struct DefaultCudaHandles {
+  cublasHandle_t cublas = nullptr;
+  cudnnHandle_t cudnn = nullptr;
+
+  ~DefaultCudaHandles() {
+    if (cublas != nullptr) {
+      cublasDestroy(cublas);
+    }
+    if (cudnn != nullptr) {
+      cudnnDestroy(cudnn);
+    }
+  }
+};
+
+inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
+  thread_local std::unordered_map<int, DefaultCudaHandles> handles_by_device;
+  auto [it, inserted] = handles_by_device.try_emplace(device_id);
+  if (inserted) {
+    int prev_device = -1;
+    cudaGetDevice(&prev_device);
+    PL_CUDA_CALL_THROW(cudaSetDevice(device_id));
+    if (cublasCreate(&it->second.cublas) != CUBLAS_STATUS_SUCCESS) {
+      cudaSetDevice(prev_device);
+      ORT_THROW("Failed to create default cuBLAS handle for CUDA plugin device ", device_id);
+    }
+    if (cudnnCreate(&it->second.cudnn) != CUDNN_STATUS_SUCCESS) {
+      cublasDestroy(it->second.cublas);
+      it->second.cublas = nullptr;
+      cudaSetDevice(prev_device);
+      ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
+    }
+    PL_CUDA_CALL_THROW(cudaSetDevice(prev_device));
+  }
+
+  return it->second;
+}
+
 inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
   static std::mutex mutex;
   static std::unordered_map<int, std::unique_ptr<cudaDeviceProp>> props;
@@ -444,6 +486,15 @@ inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
 class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
  public:
   explicit CUDAExecutionProvider(const std::string& name) : onnxruntime::IExecutionProvider{name} {}
+
+  // SAFETY: This class must remain empty (no added member variables beyond
+  // IExecutionProvider). In the plugin build, an OrtEp*/CudaEp* is cast to
+  // CUDAExecutionProvider*. Adding members would cause the compiler to read
+  // them at incorrect byte offsets, silently corrupting data. All runtime
+  // state is stored in ProviderConfigStore, keyed by `this`.
+  // If the static_assert below fires, move the new state into
+  // CudaKernelAdapterRuntimeConfig instead of adding members here.
+
   int GetCudnnConvAlgo() const {
     return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).cudnn_conv_algo;
   }
@@ -463,6 +514,10 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
     return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).device_prop;
   }
 };
+
+// Verify CUDAExecutionProvider has no added members — see phantom cast design note.
+static_assert(sizeof(CUDAExecutionProvider) == sizeof(onnxruntime::IExecutionProvider),
+              "CUDAExecutionProvider must not add member variables.");
 
 namespace cuda {
 
@@ -677,8 +732,8 @@ class CudaKernel : public OpKernel {
   virtual Status ComputeInternal(OpKernelContext* ctx) const = 0;
 
   inline cudaStream_t DefaultCudaStream() const { return Stream(static_cast<OpKernelContext*>(nullptr)); }
-  inline cublasHandle_t DefaultCublasHandle() const { return GetCublasHandle(static_cast<cudaStream_t>(nullptr)); }
-  inline cudnnHandle_t DefaultCudnnHandle() const { return GetCudnnHandle(static_cast<cudaStream_t>(nullptr)); }
+  inline cublasHandle_t DefaultCublasHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cublas; }
+  inline cudnnHandle_t DefaultCudnnHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cudnn; }
 
   inline Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst, onnxruntime::Stream& stream) const {
     if (src.Shape().Size() == 0) return Status::OK();

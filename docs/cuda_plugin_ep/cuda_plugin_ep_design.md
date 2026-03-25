@@ -9,7 +9,7 @@ The CUDA Plugin EP is an alternative build of the ONNX Runtime CUDA Execution Pr
 - Support all operators currently supported by the in-tree CUDA EP (tunable ops are low priority)
 - Minimize changes to existing CUDA kernel source files
 
-**Current status:** ~80% of CUDA kernels compile in the plugin build. Excluded operators are documented in [Section 7](#7-excluded-operators).
+**Current status:** The plugin build is functional on this branch and the focused plugin validation script (`./cuda_plugin.sh --build --test_plugin`) passes. Most core CUDA kernels now compile in the plugin build; the remaining source-level exclusions are documented in [Section 7](#7-excluded-operators).
 
 ---
 
@@ -40,26 +40,27 @@ Each build target uses different preprocessor defines that control how framework
 ### 2.3 Class Hierarchy
 
 ```
-OrtEpFactory                              OrtEp
-    ↑                                       ↑
-CudaEpFactory                     adapter::Ep (holds unique_ptr<IExecutionProvider>)
-    │                                        ↑
-    │                                     CudaEp
-    │                                        │
-    │                                        └─ owns ──→ CUDAExecutionProvider
-    │                                                     (: IExecutionProvider)
-    │                                                     ├─ config members
-    │                                                     ├─ device properties
-    │                                                     └─ stream→handle map
-    │
-    └─ creates ──→ CudaSyncStream (owns cublasHandle_t, cudnnHandle_t, cublasLtHandle_t)
+OrtEpFactory                    OrtEp
+  ↑                            ↑
+CudaEpFactory                CudaEp
+  │                            │
+  ├─ creates OrtEpDevice       ├─ stores session-derived Config
+  ├─ creates CudaSyncStream    └─ seeds adapter runtime config for kernels
+  ├─ caches kernel registry
+  ├─ caches stable OrtMemoryInfo objects
+  └─ maps OrtHardwareDevice* → CUDA ordinal
+
+Migrated CUDA kernels
+  └─ use CudaKernel / cuda_kernel_adapter.h
+     ├─ read provider config through a phantom CUDAExecutionProvider shim
+     └─ resolve stream-local handles via CudaSyncStream::FromCudaStream()
 ```
 
 Key ownership relationships:
-- `CudaEpFactory` creates `CudaEp` instances and `CudaSyncStream` objects
-- `CudaEp` inherits from `ep::adapter::Ep` and owns a `CUDAExecutionProvider` instance (accessible via `EpImpl()`)
-- `CUDAExecutionProvider` is a plugin-local class (not the framework one) that inherits from `IExecutionProvider` and provides the full API surface CUDA kernels need
-- `CudaSyncStream` owns CUDA/cuBLAS/cuDNN handles per stream
+- `CudaEpFactory` implements raw `OrtEpFactory` callbacks and owns shared factory-level state such as the kernel registry, cached `OrtMemoryInfo` instances, and the hardware-device to CUDA-ordinal map.
+- `CudaEp` inherits directly from `OrtEp`; it does not derive from `ep::adapter::Ep` and does not own a separate framework `IExecutionProvider` object.
+- The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a zero-state compatibility shim used by migrated kernels. Runtime state is stored in adapter-side maps keyed by the `CudaEp` address.
+- `CudaSyncStream` owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, and `cublasLtHandle_t` for each sync stream created through the EP API.
 
 ### 2.4 Plugin DLL Entry Points
 
@@ -124,7 +125,7 @@ This 700+ line header provides everything CUDA kernels need that would normally 
 | Kernel registration | Self-registering `ONNX_OPERATOR_*_KERNEL_EX` macro overrides via `PluginKernelCollector` |
 | CPU shims | Lightweight reimplementations of CPU helpers not linked into plugin |
 | Math helpers | `HalfGemmOptions`, `CublasMathModeSetter` |
-| Stream shim | `PluginStreamShim` wrapping raw `cudaStream_t` as `onnxruntime::Stream*` |
+| Stream shim | `OrtStreamAdapter`/`PluginStreamShim` to present a framework-compatible `Stream*` view over a raw `cudaStream_t` where needed |
 
 ### 3.5 Kernel Registration
 
@@ -216,7 +217,7 @@ This allows the base class constructor to work with both the framework `OpKernel
 
 Some CPU base classes have heavy dependencies (protobuf, `UnpackTensor`) that make inlining impractical:
 
-- **`ConstantOfShapeBase`** — depends on `TensorProto` and `UnpackTensor`. Plugin uses a self-contained duplicate class in `constant_of_shape.h` guarded by `#ifdef BUILD_CUDA_EP_AS_PLUGIN`.
+- **`ConstantOfShapeBase`** — depends on `TensorProto` and `UnpackTensor`. The plugin path in `constant_of_shape.h` stays self-contained: it reuses `ConstantOfShapeCore` but fetches the `value` attribute through the ORT C++ API instead of depending on the full CPU base implementation.
 - **`UpsampleBase`** — partially addressed: `AdjustOutputSizeAsPolicy` moved to header (#27628). Still depends on `InputDefs()` and `OpKernelInfo::GetAllocator()` which are not in the adapter.
 
 ---
@@ -225,27 +226,33 @@ Some CPU base classes have heavy dependencies (protobuf, `UnpackTensor`) that ma
 
 ### 5.1 Stream Ownership
 
-`CudaSyncStream` is the plugin's CUDA stream implementation:
+`CudaSyncStream` is the plugin's CUDA sync-stream implementation:
 - Owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, `cublasLtHandle_t`
-- Created by `CudaEpFactory::CreateSyncStreamForDevice`
-- Registered with `CUDAExecutionProvider` for handle lookup
+- Is created by `CudaEpFactory::CreateSyncStreamForDevice`
+- Registers itself in a global `cudaStream_t -> CudaSyncStream*` map so migrated kernels can recover per-stream handles from a raw CUDA stream
+- Defers host-buffer cleanup until `OnSessionRunEnd()` after the stream is synchronized
 
 ### 5.2 Handle Access Path
 
 ```
 CudaKernel::GetCublasHandle(OpKernelContext* ctx)
-  → Stream(ctx)                                     // raw cudaStream_t from ctx
-  → CUDAExecutionProvider::GetActiveProvider()       // static pointer to active EP
-  → provider->GetCublasHandle(cudaStream_t)          // stream→handle map lookup
+  → Stream(ctx)                           // raw cudaStream_t from adapter ctx
+  → CudaSyncStream::FromCudaStream()      // global stream map + TLS cache
+  → sync_stream->GetCublasHandle()
 ```
 
-The `CUDAExecutionProvider` maintains a `std::unordered_map<cudaStream_t, CudaSyncStream*>` for handle lookups.
+The stream lookup path uses a thread-local last-hit cache plus a generation counter so destroyed streams invalidate stale TLS entries without requiring per-thread cleanup.
+
+For code paths that need handles without an active stream, `cuda_kernel_adapter.h` also provides thread-local default cuBLAS/cuDNN handles via `GetDefaultCudaHandlesForDevice(device_id)`.
 
 ### 5.3 Provider Access
 
-Kernels access the provider through two paths:
-1. **`CudaKernel::provider_`** — set in the constructor from `info.GetExecutionProvider()`
-2. **`CUDAExecutionProvider::GetActiveProvider()`** — static atomic pointer (for `.cu` code that doesn't have a `CudaKernel` instance)
+Kernels access provider configuration through the pointer returned by `info.GetExecutionProvider()`, but in the plugin build that pointer is treated as a phantom `CUDAExecutionProvider` shim. The shim must remain layout-compatible with `IExecutionProvider` and carries no member state; runtime configuration is stored in the adapter-side `ProviderConfigStore`, keyed by the provider address.
+
+For stream bridging, the preferred helpers are:
+- `Stream(ctx)` when the kernel only needs a raw `cudaStream_t`
+- `GetComputeStream(ctx)` when the kernel API already accepts the adapter's opaque stream pointer
+- `GetOrtStream(ctx)` when framework-style `Stream*` plumbing is still needed by shared helper code
 
 ### 5.4 CUDA Graph Support
 
@@ -286,28 +293,24 @@ Session::Run()
 
 #### 5.4.2 Current Plugin EP Behavior — API Gap
 
-The `OrtEp` C API (`onnxruntime_ep_c_api.h`) provides `OnRunStart` and `OnRunEnd` callbacks but **does not include**:
+The `OrtEp` C API (`onnxruntime_ep_c_api.h`) still does not include:
 - `IsGraphCaptureEnabled()`
 - `IsGraphCaptured(annotation_id)`
 - `ReplayGraph(annotation_id)`
 
-The `PluginExecutionProvider` bridge (`ep_plugin_provider_interfaces.cc`) does not override these `IExecutionProvider` virtual methods, so they return the base class defaults (`false`, `false`, `Status::OK()`).
+The current plugin EP does not implement CUDA graph callbacks at all: `CudaEp` sets `OnRunStart = nullptr` and `OnRunEnd = nullptr`, and the previously proposed graph-specific plugin files are not part of the branch. As a result, CUDA graph support is currently disabled rather than partially implemented.
 
-**Consequence**: The session's `cached_execution_provider_for_graph_replay_` is never set for the plugin EP. The session-level replay bypass **never activates**. Even after the plugin captures a CUDA graph via `OnRunStart`/`OnRunEnd`, subsequent runs still go through the full kernel dispatch pipeline — the captured graph sits unused.
+#### 5.4.3 Current Branch Design
 
-The current plugin implementation has a partial mitigation: it captures the graph and replays it once (in `OnRunEnd` after capture). But on subsequent runs, `OnRunEnd` sees the graph is already captured and does nothing.
+Given the API gap, the current branch uses the simplest correct design:
 
-#### 5.4.3 Revised Design — Remove EP-Level Graph Management
-
-Given the API gap, the correct design for the plugin EP is:
-
-> **The plugin EP should NOT manage CUDA graph capture/replay internally.** CUDA graph support requires session-level cooperation that is not available through the current `OrtEp` C API.
+> **The plugin EP does not manage CUDA graph capture/replay internally.** CUDA graph support remains deferred until the `OrtEp` C API grows the required session-cooperative callbacks.
 
 **Rationale:**
 
 1. The `OrtEp` C API has no `IsGraphCaptureEnabled`/`IsGraphCaptured`/`ReplayGraph` callbacks. Without these, the session cannot know that the EP supports graph capture, cannot bypass kernel dispatch for replay, and cannot trigger the recursive warm-up sequence.
 
-2. Implementing capture in `OnRunStart`/`OnRunEnd` without the session-level replay bypass is **incorrect** — the captured graph would never be replayed on subsequent runs (the session always dispatches kernels normally).
+2. The plugin branch intentionally removed graph-specific implementation files instead of keeping an incomplete capture-only path.
 
 3. The session's graph validation logic (all nodes on one EP, no control flow) is also not triggered without `IsGraphCaptureEnabled()`.
 
@@ -316,10 +319,9 @@ Given the API gap, the correct design for the plugin EP is:
 | Option | Description | Effort | Status |
 |--------|------------|--------|--------|
 | **A. Extend the OrtEp C API** | Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph` to `OrtEp`. Update `PluginExecutionProvider` to delegate to these. | Medium — requires ORT core changes | Preferred long-term solution |
-| **B. Disable graph capture in plugin EP** | Remove `CUDAGraphManager` and graph-related code from the plugin. Document as a known limitation. Re-enable when Option A is available. | Small | Recommended for now |
-| **C. Keep capture-only (no replay)** | Keep the current code but document that it only captures + replays once (the first time), with no subsequent replay optimization. | None | Misleading — gives false confidence |
+| **B. Keep graph support disabled in the plugin EP** | Leave graph files and hooks out of the plugin build until Option A exists. | Small | Current branch behavior |
 
-**Recommendation**: Option B for the current release, with Option A tracked as a public API enhancement request.
+**Recommendation**: Keep Option B in place until Option A is available.
 
 #### 5.4.4 What Needs to Change in ORT Core (Option A)
 
@@ -364,17 +366,15 @@ This would plug into the existing `cached_execution_provider_for_graph_replay_` 
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `cuda_graph_plugin.h/.cc` | Implemented | `CUDAGraphManager` adapted from bundled EP. Captures/replays correctly. |
-| `CudaEp::OnRunStartImpl` | Implemented | Reads `gpu_graph_id`, manages warm-up, begins capture. |
-| `CudaEp::OnRunEndImpl` | Implemented | Ends capture, first replay. No subsequent replay. |
-| Session-level replay bypass | **Not functional** | `OrtEp` API lacks `IsGraphCaptureEnabled`/`IsGraphCaptured`/`ReplayGraph`. |
-| Tests | Pass (capture + first replay) | `test_cuda_plugin_cuda_graph()` tests warm-up, capture, and `gpu_graph_id=-1` disable. |
+| `cuda_graph_plugin.h/.cc` | **Removed** | Not present in the current branch. |
+| `CudaEp::OnRunStart` / `OnRunEnd` | **Disabled** | `CudaEp` installs `nullptr` for both callbacks. |
+| Session-level replay bypass | **Unavailable** | `OrtEp` API still lacks `IsGraphCaptureEnabled`/`IsGraphCaptured`/`ReplayGraph`. |
+| Tests | Not included | The plugin test script has no CUDA graph stage. |
 
 **Action items:**
-1. Keep `cuda_graph_plugin.h/.cc` and `CudaEp` graph state machine code — it is correct and will be needed when the API gap is closed.
-2. Default `enable_cuda_graph` to `false` in the plugin EP config and document the limitation.
-3. File an ORT core feature request to add `IsGraphCaptureEnabled`/`IsGraphCaptured`/`ReplayGraph` to the `OrtEp` C API.
-4. When the API is extended, wire up the existing `CUDAGraphManager` through the new callbacks.
+1. Keep CUDA graph support disabled in the plugin build until the `OrtEp` C API grows the required replay hooks.
+2. Add `IsGraphCaptureEnabled`/`IsGraphCaptured`/`ReplayGraph` to the `OrtEp` C API.
+3. Reintroduce plugin-side graph management only after the public API is capable of session-cooperative replay.
 
 ---
 
@@ -397,18 +397,18 @@ The adapter layer provides thin wrappers around the ORT C API that present a C++
 
 ## 7. Excluded Operators
 
-The following operators are excluded from the plugin build. Each exclusion has a specific technical reason and a path to inclusion.
+Section 7 reflects the current source exclusions in `cmake/onnxruntime_providers_cuda_plugin.cmake`, plus the small set of intentionally out-of-scope directories. This is the source of truth for what the plugin build omits today.
 
 ### 7.1 Infrastructure (Permanently Excluded — Replaced by Plugin Equivalents)
 
 | File | Reason |
 |------|--------|
-| `cuda_execution_provider.cc` | Replaced by `cuda_ep_provider.h` + `cuda_ep.h` |
+| `cuda_execution_provider.cc` | Replaced by `cuda_ep.h/.cc` and the plugin adapter/runtime shim |
 | `cuda_provider_factory.cc` | Replaced by `cuda_ep_factory.cc` |
 | `cuda_provider_interface.cc` | Not needed in plugin architecture |
 | `cuda_stream_handle.cc` | Replaced by `cuda_stream_plugin.cc` |
 | `cuda_execution_provider_info.cc` | Config parsed directly in `CudaEp::Config` |
-| `cuda_graph.cc` | Replaced by `cuda_graph_plugin.cc` |
+| `cuda_graph.cc` | CUDA graph support deferred (files removed pending OrtEp API extension) |
 | `cuda_mempool_arena.cc` | Plugin uses `cudaMalloc`/`cudaFree` directly |
 | `cuda_common.cc` | Utility functions shimmed in `cuda_kernel_adapter.h` |
 | `cuda_nhwc_kernels.cc` | Replaced by `PluginKernelCollector` auto-registration |
@@ -423,83 +423,46 @@ The following operators are excluded from the plugin build. Each exclusion has a
 
 ### 7.3 Operators Excluded Due to Missing Features
 
-| File | Exclusion Reason | What's Needed to Include |
-|------|-----------------|--------------------------|
-| `controlflow/*` | CPU base class If/Loop/Scan not linked | Plugin has own wrappers in `cuda_controlflow_plugin.cc` via `OrtEpApi`. Already functional. |
-| `tunable/*` | Depends on real `CudaTuningContext` | Implement plugin-side `ITuningContext` that delegates to ORT tuning APIs. Low priority. |
-| `rnn/*` | ORT C API lacks `KernelInfoGetAttributeArray_string` | Extend C API with string-array attribute support. |
-| `math/einsum.cc`, `math/einsum_utils/*` | `einsum_auxiliary_ops.cc` calls `ReductionOps::ReduceCompute` (framework-only) | Extract `ReduceCompute` into a shared interface or reimplement the reduction path. |
-| `tensor/identity_op.cc` | Uses `TensorSeq` (incomplete type in plugin) | Add `TensorSeq` adapter to the EP adapter layer. |
-| `tensor/sequence_op.cc` | Uses `TensorSeq` (incomplete type in plugin) | Same as above. |
-| `tensor/space_depth_ops.cc` | Inherits `SpaceDepthBase` (CPU provider) | Constructor templatized on `KernelInfoType` (#27628). Remaining: inline `SpaceDepthCompute` validation logic. |
-| `tensor/upsample.cc` | `UpsampleBase` uses `InputDefs()` and `OpKernelInfo::GetAllocator()` | `AdjustOutputSizeAsPolicy` moved to header (#27628). Remaining: extend adapter with `GetAllocator()` and `InputDefs()`. |
-| `tensor/resize.cc` | Inherits from `Upsample` (excluded above) | Fix `Upsample` first, then `Resize` follows. |
-| `generator/constant_of_shape.cc` | `ConstantOfShapeBase` depends on `TensorProto`/`UnpackTensor` | Plugin already has self-contained implementation in `constant_of_shape.h` via `#ifdef BUILD_CUDA_EP_AS_PLUGIN`. The `.cc` is excluded but the kernel works. |
-| `object_detection/*` | `NonMaxSuppressionBase`, `RoiAlignBase` from CPU provider | `NonMaxSuppressionBaseImpl` template (#27617), `RoiAlignBase` constructor templatized (#27628). Remaining: integration verification. |
-| `llm/*` | Attention ops dereference `onnxruntime::Stream*` (not adapter-compatible) | Extend adapter `OpKernelContext::GetComputeStream()` to return a full `Stream*` implementation. |
-| `contrib_ops/cuda/llm/*` | Same as above | Same as above. |
-| `contrib_ops/cuda/bert/attention.cc` | `GetComputeStream()` returns real `Stream*` which is needed | `AttentionBase` helpers moved to header (#27628). Remaining: `Stream*` adapter extension for `QkvToContext`. |
-| `contrib_ops/cuda/bert/decoder_attention.cc` | Same | Same. |
-| `contrib_ops/cuda/bert/decoder_masked_self_attention.cc` | Same | Same. |
-| `contrib_ops/cuda/bert/embed_layer_norm.cc` | `EmbedLayerNormHelper` CPU base class | Already refactored helper; needs `GetComputeStream()` fix. |
-| `contrib_ops/cuda/bert/fast_gelu.cc` | Was excluded due to `bias_gelu_helper` CPU base class dep | `bias_gelu_helper::CheckInputs` is now inlined. Remove this exclusion and verify. |
-| `contrib_ops/cuda/bert/group_query_attention.cc` | `GetComputeStream()` / attention infra | Same `Stream*` adapter extension. |
-| `contrib_ops/cuda/bert/longformer_attention.cc` | `LongformerAttentionBase::CheckInputs` moved to header (#27628) | `Stream*` adapter extension. |
-| `contrib_ops/cuda/bert/multihead_attention.cc` | Same | Same. |
-| `contrib_ops/cuda/bert/packed_attention.cc` | Same | Same. |
-| `contrib_ops/cuda/bert/packed_multihead_attention.cc` | Same | Same. |
-| `contrib_ops/cuda/bert/paged_attention.cc` | Same | Same. |
-| `contrib_ops/cuda/bert/relative_attn_bias.cc` | Same | Same. |
-| `contrib_ops/cuda/bert/remove_padding.cc` | Same | Same. |
-| `contrib_ops/cuda/diffusion/group_norm.cc` | `GetComputeStream()` | Same `Stream*` adapter extension. |
-| `contrib_ops/cuda/fused_conv.cc` | Framework type deps | Audit specific deps; likely `Stream*` related. |
-| `contrib_ops/cuda/inverse.cc` | Framework type deps | Audit specific deps. |
-| `contrib_ops/cuda/math/bias_dropout.cc` | `GetComputeStream()` | Same `Stream*` adapter extension. |
-| `contrib_ops/cuda/math/fft_ops.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/math/gemm_float8.cc`/`.cu` | `GetComputeStream()` in `.cu` file | Same, plus NVCC compatibility. |
-| `contrib_ops/cuda/moe/moe.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/sparse/sparse_attention.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/tensor/crop.cc` | `CropBase` constructor templatized (#27628). No `GetComputeStream()` usage. | Verify compilation — very low effort. |
-| `contrib_ops/cuda/tensor/dynamic_time_warping.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/tensor/dynamicslice.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/tensor/shrunken_gather.cc` | Training op, `provider_api.h` header dep | Low priority (training). |
-| `contrib_ops/cuda/quantization/attention_quantization.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/quantization/matmul_bnb4.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/quantization/matmul_nbits.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/quantization/moe_quantization.cc` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/quantization/qordered_ops/*` | `GetComputeStream()` | Same. |
-| `contrib_ops/cuda/transformers/*` | Beam search, greedy search, sampling | Complex framework deps; needs significant adapter work. |
-| `aten_ops/*` | ATen interop | Out of scope for plugin. |
-| `collective/*` | NCCL collective ops | Out of scope for plugin. |
+| File / Pattern | Why It Is Excluded Today | What Would Unblock It |
+|----------------|--------------------------|------------------------|
+| `core/providers/cuda/controlflow/*` | Framework controlflow kernels are omitted from the source list | Plugin equivalents already exist in `cuda_controlflow_plugin.cc`; the framework sources stay excluded by design |
+| `tunable/*` | Depends on the real tuning context and framework CUDA EP infrastructure | Add a plugin-capable tuning context and remove the remaining tunable guards |
+| `math/einsum.cc` | The top-level framework einsum source is still excluded | Provide a plugin-safe top-level einsum provider path; `einsum_utils/*` are no longer excluded |
+| `tensor/identity_op.cc` | Uses `TensorSeq`, which is still not adapter-safe here | Add `TensorSeq` adapter coverage |
+| `tensor/sequence_op.cc` | Uses `TensorSeq`, which is still not adapter-safe here | Same as above |
+| `contrib_ops/cuda/llm/*` | Contrib LLM kernels still need their own plugin migration pass | Finish contrib-LLM-specific adapter work |
+| `contrib_ops/cuda/tensor/shrunken_gather.cc` | Training header path still depends on framework/provider API wiring | Low-priority training-specific adapter work |
+| `contrib_ops/cuda/math/fft_ops.cc` | Still excluded in CMake due to remaining framework/stream assumptions | Finish FFT-specific adapter cleanup |
+| `contrib_ops/cuda/tensor/crop.cc` | Still excluded in CMake even though the constructor-side helper work is mostly done | Finish and validate the remaining plugin-safe path, then remove the CMake exclusion |
+| `contrib_ops/cuda/tensor/dynamicslice.cc` | Still excluded in CMake due to remaining framework assumptions | Finish dynamicslice-specific adapter cleanup |
+| `contrib_ops/cuda/transformers/*` | Beam search / greedy search / sampling require broader framework integration | Significant adapter and subgraph support work |
+| `onnxruntime/contrib_ops/cuda/aten_ops/*` | ATen interop is out of scope for the plugin build | Separate ATen plugin strategy |
+| `onnxruntime/contrib_ops/cuda/collective/*` | Collective/NCCL path is out of scope for the plugin build | Separate collective/NCCL plugin strategy |
 
 ### 7.4 Common Exclusion Themes
 
-The majority of excluded operators fall into a few categories:
+The current exclusions fall into a few categories:
 
-1. **`GetComputeStream()` returning `onnxruntime::Stream*`** (~25 ops) — The adapter's `GetComputeStream()` returns a `PluginCudaComputeStreamShim` which wraps a raw `cudaStream_t`. Many attention/LLM ops dereference `Stream*` expecting a `CudaStream` with extra members. **Unblocking this is the single highest-impact change.**
+1. **Tunable/framework-dependent infrastructure** — `tunable/*`, contrib transformers, and some contrib LLM paths still rely on framework-only execution-provider services.
 
-2. **CPU base class inheritance** (~5 ops) — Some ops inherit from CPU base classes not linked into the plugin. Most have been refactored with the inline-header pattern. `SpaceDepthBase` and `RoiAlignBase` constructors are now templatized (#27628); `NonMaxSuppressionBase` refactored to a template (#27617); `UpsampleBase::AdjustOutputSizeAsPolicy` moved to header (#27628). Remaining: `UpsampleBase` `InputDefs()`/`GetAllocator()`.
+2. **Remaining adapter gaps** — `TensorSeq`, some contrib FFT/crop/dynamicslice paths, and contrib-LLM-specific plumbing still need dedicated adapter work.
 
-3. **Missing C API features** (~2 ops) — RNN ops need string-array attribute support via the C API.
+3. **Deliberate scope cuts** — ATen and collective/NCCL sources remain intentionally out of scope for the standalone CUDA plugin.
 
-4. **Framework-only code paths** (~3 ops) — Einsum's reduction path, tunable infrastructure.
+4. **Top-level framework wrappers still excluded** — `math/einsum.cc` remains excluded even though supporting pieces such as `einsum_utils/*` are now plugin-safe.
 
 ---
 
 ## 8. Remaining `#ifdef` Guards in Kernel Code
 
-After refactoring, only 6 files contain `BUILD_CUDA_EP_AS_PLUGIN` or `ORT_USE_EP_API_ADAPTERS` guards:
+The branch still contains a small set of plugin guards in both infrastructure and operator code. The important pattern has not changed:
 
-| File | Guard | Purpose | Removable? |
-|------|-------|---------|------------|
-| `cuda_kernel.h` | Both | Three-way gate: plugin → adapter; in-tree → real CudaKernel | No — infrastructure |
-| `cuda_common.h` | Both | Logging macros, error macros, `HalfGemmOptions` | No — infrastructure |
-| `cuda_execution_provider.h` | `ORT_USE_EP_API_ADAPTERS` | Skip entire class in plugin build | No — infrastructure |
-| `generator/constant_of_shape.h` | `BUILD_CUDA_EP_AS_PLUGIN` | Self-contained plugin implementation | No — can't inline `ConstantOfShapeBase` |
-| `math/matmul.cc` | `ORT_USE_EP_API_ADAPTERS` | Guards `FuncManager` registration (tunable) | Only when tunable is supported |
-| `math/gemm.cc` | `ORT_USE_EP_API_ADAPTERS` | Guards `FuncManager` registration (tunable) | Only when tunable is supported |
+- Infrastructure files such as `cuda_kernel.h`, `cuda_common.h`, and `cudnn_common.h` still need build-mode gates.
+- `generator/constant_of_shape.h` still needs a plugin-specific path because `ConstantOfShapeBase` depends on framework-only tensor-attribute helpers.
+- Tunable kernels such as `math/matmul.cc` still gate framework-only registration paths.
+- A few tensor kernels (`pad.cc`, `tile.cc`, `unsqueeze.cc`, `upsample.*`, `space_depth_ops.h`, `scatter_nd.*`) still contain localized plugin guards where adapter and framework paths have not fully converged.
 
-All kernel-level `#ifdef` guards in operator `.cc` files have been eliminated through the inline-header refactoring pattern, except for `matmul.cc`, `gemm.cc` (tunable dispatch), and `constant_of_shape.h` (protobuf dependency).
+The broad trend remains positive: most operator-level plugin conditionals were removed by moving reusable CPU/helper logic into shared headers and by centralizing stream bridging in `CudaKernel` helpers.
 
 ---
 
@@ -567,17 +530,17 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 
 ### 10.1 Test Script
 
-`onnxruntime/test/python/transformers/test_cuda_plugin_ep.py` provides multi-stage testing:
+`onnxruntime/test/python/transformers/test_cuda_plugin_ep.py` provides the current focused plugin validation flow:
 
 | Stage | What It Tests |
 |-------|---------------|
+| Registration | Dynamic loading via `register_execution_provider_library()` and EP device discovery |
 | Stage 2 | Basic ops: Add, MatMul, Gemm, Conv |
 | Stage 3 | NHWC layout: Conv, BatchNorm, MaxPool, AveragePool |
-| Stage 4 | CUDA Graph capture/replay |
 | Stage 5A | Standard ops: Reshape, Split, Concat, Gather, Unsqueeze |
 | Stage 5B | More ops: Tile, CumSum, ConstantOfShape, SpaceToDepth, Pad, Slice, Resize, Sum |
 | Stage 5C | CPU base class ops: Upsample, DepthToSpace |
-| Stage 5D | Contrib ops: FastGelu, BiasDropout, SkipLayerNorm |
+| Stage 5D | Contrib ops: FastGelu, SkipLayerNorm (BiasDropout is currently skipped as a known issue in the script) |
 
 ### 10.2 Running Tests
 
@@ -588,6 +551,8 @@ After building and deploying the plugin (see [Section 9.5](#95-deployment)):
 cd /tmp
 python /path/to/onnxruntime/test/python/transformers/test_cuda_plugin_ep.py
 ```
+
+The current branch has been validated with `./cuda_plugin.sh --build --test_plugin`, which runs this script against the locally built plugin library.
 
 ### 10.3 Parity Report
 
@@ -636,12 +601,14 @@ static void ComputePadsImpl(KernelContextType& ctx, ...) { ... }
 
 The CUDA kernel calls `ComputePadsImpl(*ctx, ...)` directly.
 
-### 11.4 If the kernel uses GetComputeStream()
+### 11.4 If the kernel uses stream helpers
 
-Check whether the kernel actually dereferences the `Stream*` or just needs the raw `cudaStream_t`:
+Prefer the shared helpers in `CudaKernel` instead of introducing new plugin-only stream shims:
 
-- If it only needs `stream->GetHandle()` → use `Stream(ctx)` instead (returns `cudaStream_t`)
-- If it dereferences `CudaStream*` members → the kernel is blocked until the `Stream*` adapter is extended
+- If the code only needs a raw CUDA stream, use `Stream(ctx)`.
+- If the shared helper API accepts the adapter's opaque stream handle, use `GetComputeStream(ctx)`.
+- If framework-style helper code still expects `onnxruntime::Stream*`, use `GetOrtStream(ctx)`.
+- Prefer `GetCublasHandle(ctx)`, `GetCudnnHandle(ctx)`, and `GetCublasLtHandle(ctx)` over re-discovering handles from the stream manually.
 
 ### 11.5 If the kernel uses handle accessors
 
@@ -659,8 +626,7 @@ Use the plugin-compatible overloads already in `CudaKernel`:
 ```
 onnxruntime/core/providers/cuda/plugin/
 ├── cuda_kernel_adapter.h        # CudaKernel base, macros, CPU shims (force-included)
-├── cuda_ep_provider.h           # Plugin-local CUDAExecutionProvider
-├── cuda_ep.h / .cc              # CudaEp : adapter::Ep
+├── cuda_ep.h / .cc              # CudaEp : OrtEp implementation
 ├── cuda_ep_factory.h / .cc      # CudaEpFactory : OrtEpFactory
 ├── cuda_plugin_ep.cc            # DLL entry points (CreateEpFactories/ReleaseEpFactory)
 ├── cuda_plugin_kernels.h / .cu  # Kernel registry creation
@@ -668,10 +634,7 @@ onnxruntime/core/providers/cuda/plugin/
 ├── cuda_allocator_plugin.h / .cc    # Device/pinned allocators
 ├── cuda_data_transfer_plugin.h / .cc # GPU↔CPU data transfer
 ├── cuda_controlflow_plugin.h / .cc / .cu  # If/Loop/Scan wrappers
-├── cuda_graph_plugin.h / .cc    # CUDA Graph support
 ├── cuda_plugin_utils.h          # Common macros, error handling
-├── cuda_iallocator_plugin.h     # IAllocator declarations
-├── cuda_idata_transfer_plugin.h # IDataTransfer declarations
 └── provider_api_shims.cc        # Reimplemented utility functions
 
 include/onnxruntime/ep/
@@ -696,14 +659,14 @@ include/onnxruntime/ep/
 
 ## 13. Future Work
 
-1. **`Stream*` adapter** — Extend the adapter `OpKernelContext::GetComputeStream()` to return a full `Stream*` that attention/LLM ops can use. This unblocks ~25 operators.
+1. **Contrib LLM migration pass** — The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` is still excluded as a separate follow-up.
 
 2. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc`.
 
-3. **String-array C API** — Add `KernelInfoGetAttributeArray_string` to the ORT C API to unblock RNN ops.
+3. **TensorSeq adapter coverage** — Add enough sequence/tensor-sequence support to unblock `identity_op.cc` and `sequence_op.cc`.
 
-4. **Remaining CPU base classes** — Inline `SpaceDepthBase`, `UpsampleBase`, and object detection base classes.
+4. **Remaining contrib exclusions** — Remove the CMake exclusions for FFT, crop, and dynamicslice once their remaining framework assumptions are gone.
 
 5. **CI integration** — Add plugin build + test to the CI pipeline.
 
-6. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure (`cuda_graph_plugin.h/.cc`, `CudaEp` state machine) is already implemented and will activate once the API is extended.
+6. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure will be reintroduced once the API is extended.

@@ -90,7 +90,14 @@ class CudaEpFactory : public OrtEpFactory {
   // Memory info for GPU device and CPU pinned memory
   Ort::MemoryInfo default_memory_info_{nullptr};
   Ort::MemoryInfo pinned_memory_info_{nullptr};
+
+  std::mutex cached_memory_info_mutex_;
+  std::vector<Ort::MemoryInfo> cached_memory_infos_;
   int device_id_ = 0;
+
+  // Map ORT hardware device pointers to internal CUDA ordinal indices
+  std::mutex device_map_mutex_;
+  std::unordered_map<const OrtHardwareDevice*, int> hw_device_to_cuda_index_;
 
   // Kernel registry (cached, shared across EP instances)
   OrtKernelRegistry* kernel_registry_ = nullptr;

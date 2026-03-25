@@ -3,6 +3,7 @@
 
 #include "cuda_stream_plugin.h"
 #include "cuda_ep_factory.h"
+#include <atomic>
 #include <mutex>
 #include <shared_mutex>
 
@@ -24,6 +25,13 @@ StreamMap& GetStreamMap() {
 std::shared_mutex& GetStreamMapMutex() {
   static std::shared_mutex stream_map_mutex;
   return stream_map_mutex;
+}
+
+// Monotonically increasing generation counter, bumped on every UnregisterStream
+// so that TLS caches can detect stale entries without acquiring a lock.
+std::atomic<uint64_t>& GetStreamMapGeneration() {
+  static std::atomic<uint64_t> generation{0};
+  return generation;
 }
 }  // namespace
 
@@ -122,10 +130,16 @@ void CudaSyncStream::CleanupDeferredCPUBuffers() {
     return nullptr;
   }
 
-  // Thread-local TLS cache to mitigate lock contention on the hot path
+  // Thread-local TLS cache to mitigate lock contention on the hot path.
+  // The generation counter is bumped on every UnregisterStream() so that
+  // stale TLS entries (pointing to destroyed CudaSyncStream objects) are
+  // automatically invalidated without requiring per-thread notification.
   thread_local cudaStream_t tls_last_stream = nullptr;
   thread_local CudaSyncStream* tls_last_sync_stream = nullptr;
-  if (stream == tls_last_stream) {
+  thread_local uint64_t tls_generation = 0;
+
+  uint64_t current_gen = GetStreamMapGeneration().load(std::memory_order_acquire);
+  if (stream == tls_last_stream && tls_generation == current_gen) {
     return tls_last_sync_stream;
   }
 
@@ -135,6 +149,7 @@ void CudaSyncStream::CleanupDeferredCPUBuffers() {
   if (it != stream_map.end()) {
     tls_last_stream = stream;
     tls_last_sync_stream = it->second;
+    tls_generation = current_gen;
     return it->second;
   }
   return nullptr;
@@ -150,6 +165,8 @@ void CudaSyncStream::CleanupDeferredCPUBuffers() {
   auto& stream_map = GetStreamMap();
   std::unique_lock<std::shared_mutex> lock(GetStreamMapMutex());
   stream_map.erase(stream);
+  // Bump generation so TLS caches in other threads are invalidated.
+  GetStreamMapGeneration().fetch_add(1, std::memory_order_release);
 }
 
 // ---------------------------------------------------------------------------

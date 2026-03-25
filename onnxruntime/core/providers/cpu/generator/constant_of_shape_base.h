@@ -3,6 +3,11 @@
 
 #pragma once
 
+// SHARED_PROVIDER is defined in the in-tree CUDA EP shared library build
+// (onnxruntime_providers_cuda). It gates out framework headers that are
+// re-exported via the DLL-boundary proxy.  The plugin EP build uses a
+// different flag (BUILD_CUDA_EP_AS_PLUGIN) and the force-include adapter
+// headers instead.  Both builds need these headers excluded.
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/type_list.h"

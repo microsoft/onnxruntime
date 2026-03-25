@@ -51,6 +51,7 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* dt = static_cast<CudaDataTransfer*>(this_ptr);
+  bool need_stream_sync = false;
 
   for (size_t i = 0; i < count; ++i) {
     Ort::ConstValue src{src_tensors[i]};
@@ -73,6 +74,7 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
     const OrtMemoryDevice* dst_dev = dt->ep_api_.MemoryInfo_GetMemoryDevice(dst_mem_info);
     auto src_dev_type = dt->ep_api_.MemoryDevice_GetDeviceType(src_dev);
     auto dst_dev_type = dt->ep_api_.MemoryDevice_GetDeviceType(dst_dev);
+    auto src_mem_type = dt->ep_api_.MemoryDevice_GetMemoryType(src_dev);
 
     cudaMemcpyKind copy_kind;
     if (src_dev_type == OrtMemoryInfoDeviceType_CPU && dst_dev_type == OrtMemoryInfoDeviceType_GPU) {
@@ -91,8 +93,25 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
           Ort::GetApi().SyncStream_GetHandle(streams[i]));
       PL_CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, copy_kind, cuda_stream));
     } else {
+      if (copy_kind == cudaMemcpyDeviceToDevice && dst_data == src_data) {
+        continue;
+      }
+
       PL_CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, copy_kind));
+
+      if (copy_kind == cudaMemcpyDeviceToDevice) {
+        // Match the built-in CUDA EP: cudaMemcpy D2D launches on the default
+        // stream but does not guarantee host-side completion on return.
+        need_stream_sync = true;
+      } else if (copy_kind == cudaMemcpyHostToDevice && src_mem_type != OrtDeviceMemoryType_HOST_ACCESSIBLE) {
+        // Pageable host memory may still be in flight after cudaMemcpy returns.
+        need_stream_sync = true;
+      }
     }
+  }
+
+  if (need_stream_sync) {
+    PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
   }
 
   return nullptr;
