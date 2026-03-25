@@ -19,7 +19,8 @@ Status DeformConvAddBiasImpl(
     int64_t N,
     int64_t M,
     int64_t out_h,
-    int64_t out_w);
+    int64_t out_w,
+    int64_t max_grid_y);
 
 // Fills col_buffer with deformable im2col. col_buffer layout: row-major [C*kH*kW, parallel_imgs*out_h*out_w].
 // Called once per batch block; caller does GEMM and bias. T may be float, double, MLFloat16 (FP16), or BFloat16.
