@@ -162,8 +162,8 @@ stages:
       - ${{ if eq(parameters.arch, 'x64') }}:
         - script: |
             mkdir $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
-            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
-            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
+            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\${{ parameters.cmake_build_type }}\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
+            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\${{ parameters.cmake_build_type }}\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
           displayName: 'Copy WebGPU build tools'
 
       # Esrp signing
