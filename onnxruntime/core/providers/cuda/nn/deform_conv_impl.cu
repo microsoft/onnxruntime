@@ -299,9 +299,7 @@ __global__ void DeformableIm2ColKernel(
     const CoordT base_h_im = static_cast<CoordT>(out_y * stride_h - pad_h);
     const CoordT base_w_im = static_cast<CoordT>(out_x * stride_w - pad_w);
 
-    // Shared per-kernel-point body for both fixed and dynamic paths.
-    // Keep pointer arguments explicit so dynamic loops can advance pointers with adds
-    // (instead of rebuilding kernel_idx * stride addresses every iteration).
+    // Per (output location, channel): one sample from offset/mask tensors and bilinear input.
     auto process_kernel_point = [&](const T* offset_h_ptr, const T* offset_w_ptr, const T* mask_ptr, T* data_col_ptr,
                                     CoordT h_base, CoordT w_base) {
       T mask_val = static_cast<T>(1);
@@ -321,63 +319,25 @@ __global__ void DeformableIm2ColKernel(
       // Match CPU path: always interpolate then apply mask to keep branch-free hot loop.
       *data_col_ptr = val * mask_val;
     };
-    auto emit_fixed_point = [&](int i, int j) {
-      const IndexT i_idx = static_cast<IndexT>(i);
-      const IndexT j_idx = static_cast<IndexT>(j);
-      const IndexT kernel_idx = static_cast<IndexT>(i_idx * w_dim + j_idx);
-      const CoordT h_base = base_h_im + static_cast<CoordT>(i_idx * dilation_h);
-      const CoordT w_base = base_w_im + static_cast<CoordT>(j_idx * dilation_w);
-      const IndexT offset_offset_idx = static_cast<IndexT>(2 * kernel_idx) * out_size;
-      const T* offset_h_ptr = offset_ptr_base + offset_offset_idx;
+
+    // One row of kernel weights (fixed kW or runtime weight_w): compute row base once, then walk j with pointer
+    // adds only (no kernel_idx * stride rebuild each j). Shared by compile-time and dynamic kernel sizes.
+    const IndexT offset_pair_stride = static_cast<IndexT>(2) * out_size;
+    auto run_deform_row = [&](IndexT row_kernel_base, CoordT h_base, IndexT row_width) {
+      CoordT w_base = base_w_im;
+      const IndexT offset_byte_offset = static_cast<IndexT>(2 * row_kernel_base) * out_size;
+      const T* offset_h_ptr = offset_ptr_base + offset_byte_offset;
       const T* offset_w_ptr = offset_h_ptr + out_size;
       const T* mask_ptr = nullptr;
       if constexpr (UseMask) {
-        mask_ptr = mask_ptr_base + kernel_idx * out_size;
+        mask_ptr = mask_ptr_base + row_kernel_base * out_size;
       }
-      T* data_col_ptr = data_col_ptr_base + kernel_idx * col_stride;
-      process_kernel_point(offset_h_ptr, offset_w_ptr, mask_ptr, data_col_ptr, h_base, w_base);
-    };
+      T* data_col_ptr = data_col_ptr_base + row_kernel_base * col_stride;
 
-    if constexpr (is_fixed) {
-      if constexpr (kH * kW <= 9) {
-        // For 1x1 and 3x3, fully unroll both loops
+      // Small fixed kernels: unroll inner j so codegen matches the old fully-unrolled 1x1/3x3 path.
+      if constexpr (is_fixed && kH * kW <= 9) {
 #pragma unroll
-        for (int i = 0; i < kH; ++i) {
-#pragma unroll
-          for (int j = 0; j < kW; ++j) {
-            emit_fixed_point(i, j);
-          }
-        }
-      } else {
-        // For 5x5 (25 iterations), fully unrolling causes register spilling and I-cache thrashing.
-        // Unroll only the inner loop to balance loop overhead and instruction footprint.
-        for (int i = 0; i < kH; ++i) {
-#pragma unroll
-          for (int j = 0; j < kW; ++j) {
-            emit_fixed_point(i, j);
-          }
-        }
-      }
-    } else {
-      const IndexT weight_h_idx = static_cast<IndexT>(weight_h);
-      const IndexT weight_w_idx = static_cast<IndexT>(weight_w);
-      const IndexT offset_pair_stride = static_cast<IndexT>(2) * out_size;
-      for (IndexT i = 0; i < weight_h_idx; ++i) {
-        // Dynamic-size path: use incremental pointers/w_base inside the inner loop instead
-        // of rebuilding kernel_idx*stride addresses each iteration. This trims integer
-        // address math in the hot path and usually maps to simpler add chains in SASS.
-        const CoordT h_base = base_h_im + static_cast<CoordT>(i * dilation_h);
-        const IndexT kernel_idx_row = static_cast<IndexT>(i * weight_w_idx);
-        CoordT w_base = base_w_im;
-        const IndexT offset_offset_row = static_cast<IndexT>(2 * kernel_idx_row) * out_size;
-        const T* offset_h_ptr = offset_ptr_base + offset_offset_row;
-        const T* offset_w_ptr = offset_h_ptr + out_size;
-        const T* mask_ptr = nullptr;
-        if constexpr (UseMask) {
-          mask_ptr = mask_ptr_base + kernel_idx_row * out_size;
-        }
-        T* data_col_ptr = data_col_ptr_base + kernel_idx_row * col_stride;
-        for (IndexT j = 0; j < weight_w_idx; ++j) {
+        for (IndexT j = 0; j < row_width; ++j) {
           process_kernel_point(offset_h_ptr, offset_w_ptr, mask_ptr, data_col_ptr, h_base, w_base);
           offset_h_ptr += offset_pair_stride;
           offset_w_ptr += offset_pair_stride;
@@ -387,6 +347,41 @@ __global__ void DeformableIm2ColKernel(
           data_col_ptr += col_stride;
           w_base += static_cast<CoordT>(dilation_w);
         }
+      } else {
+        for (IndexT j = 0; j < row_width; ++j) {
+          process_kernel_point(offset_h_ptr, offset_w_ptr, mask_ptr, data_col_ptr, h_base, w_base);
+          offset_h_ptr += offset_pair_stride;
+          offset_w_ptr += offset_pair_stride;
+          if constexpr (UseMask) {
+            mask_ptr += out_size;
+          }
+          data_col_ptr += col_stride;
+          w_base += static_cast<CoordT>(dilation_w);
+        }
+      }
+    };
+
+    if constexpr (is_fixed) {
+      if constexpr (kH * kW <= 9) {
+        // For 1x1 and 3x3, unroll the outer i loop; inner j uses run_deform_row with #pragma unroll there.
+#pragma unroll
+        for (int i = 0; i < kH; ++i) {
+          const IndexT i_idx = static_cast<IndexT>(i);
+          run_deform_row(i_idx * w_dim, base_h_im + static_cast<CoordT>(i_idx * dilation_h), w_dim);
+        }
+      } else {
+        // For 5x5 (25 iterations), fully unrolling both dimensions hurts registers and I-cache; keep outer rolled.
+        for (int i = 0; i < kH; ++i) {
+          const IndexT i_idx = static_cast<IndexT>(i);
+          run_deform_row(i_idx * w_dim, base_h_im + static_cast<CoordT>(i_idx * dilation_h), w_dim);
+        }
+      }
+    } else {
+      const IndexT weight_h_idx = static_cast<IndexT>(weight_h);
+      const IndexT weight_w_idx = static_cast<IndexT>(weight_w);
+      for (IndexT i = 0; i < weight_h_idx; ++i) {
+        const IndexT row_base_idx = static_cast<IndexT>(i * weight_w_idx);
+        run_deform_row(row_base_idx, base_h_im + static_cast<CoordT>(i * dilation_h), weight_w_idx);
       }
     }
   }
