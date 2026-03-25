@@ -10,38 +10,29 @@
  * Java (such as fp16) are converted into the nearest Java primitive type when accessed through this
  * API.
  *
- * <p>There are two shared libraries required: <code>onnxruntime</code> and <code>onnxruntime4j_jni
- * </code>. The loader is in {@link ai.onnxruntime.OnnxRuntime} and the logic is in this order:
+ * <p>There are three shared libraries required: <code>onnxruntime</code>, <code>onnxruntime4j_jni
+ * </code> and <code>onnxruntime_providers_shared</code>. Additional execution providers such as
+ * CUDA, ROCM, DNNL, OpenVINO and TensorRT need additional libraries, e.g. <code>
+ * onnxruntime_providers_cuda</code>. On non-Android systems all libraries are linked (or copied if
+ * linking fails) into a temporary staging directory. From there {@link java.lang.System#load} is
+ * called on <code>onnxruntime4j_jni</code> (except if staging of it was exempted by one of the
+ * following rules).
+ *
+ * <p>This behavior can be influneced; the loader is in {@link ai.onnxruntime.OnnxRuntime} and
+ * chooses the libraries to add to the staging direcgory in this order:
  *
  * <ol>
- *   <li>The user may signal to skip loading of a shared library using a property in the form <code>
+ *   <li>The user may signal to skip staging of a shared library using a property in the form <code>
  *       onnxruntime.native.LIB_NAME.skip</code> with a value of <code>true</code>. This means the
  *       user has decided to load the library by some other means.
  *   <li>The user may specify an explicit location of all native library files using a property in
- *       the form <code>onnxruntime.native.path</code>. This uses {@link java.lang.System#load}.
+ *       the form <code>onnxruntime.native.path</code>.
  *   <li>The user may specify an explicit location of the shared library file using a property in
- *       the form <code>onnxruntime.native.LIB_NAME.path</code>. This uses {@link
- *       java.lang.System#load}.
- *   <li>The shared library is autodiscovered:
- *       <ol>
- *         <li>If the shared library is present in the classpath resources, load using {@link
- *             java.lang.System#load} via a temporary file. Ideally, this should be the default use
- *             case when adding JAR's/dependencies containing the shared libraries to your
- *             classpath.
- *         <li>If the shared library is not present in the classpath resources, then load using
- *             {@link java.lang.System#loadLibrary}, which usually looks elsewhere on the filesystem
- *             for the library. The semantics and behavior of that method are system/JVM dependent.
- *             Typically, the <code>java.library.path</code> property is used to specify the
- *             location of native libraries.
- *       </ol>
+ *       the form <code>onnxruntime.native.LIB_NAME.path</code>.
+ *   <li>Lastly, if no matching property is set, the library is copied from the JARs classpath.
  * </ol>
  *
- * For troubleshooting, all shared library loading events are reported to Java logging at the level
- * FINE.
- *
- * <p>Note that CUDA, ROCM, DNNL, OpenVINO and TensorRT are all "shared library execution providers"
- * and must be stored either in the directory containing the ONNX Runtime core native library, or as
- * a classpath resource. This is because these providers are loaded by the ONNX Runtime native
- * library itself and the Java API cannot control the loading location.
+ * <p>For troubleshooting, all shared library loading events are reported to Java logging at the
+ * level FINE.
  */
 package ai.onnxruntime;
