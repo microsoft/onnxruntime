@@ -51,12 +51,14 @@ struct SelectionEpInfo {
   ProviderOptions ep_options;
 };
 
-class ModelPackageManifestParser {
+class ModelPackageDescriptorParser {
  public:
-  explicit ModelPackageManifestParser(const logging::Logger& logger) : logger_(logger) {}
+  explicit ModelPackageDescriptorParser(const logging::Logger& logger) : logger_(logger) {}
 
   Status ParseManifest(const std::filesystem::path& package_root,
-                       /*out*/ std::vector<ModelVariantInfo>& components);
+                       /*out*/ std::vector<ModelVariantInfo>& components) const;
+
+  Status ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& variant) const;
 
  private:
   const logging::Logger& logger_;

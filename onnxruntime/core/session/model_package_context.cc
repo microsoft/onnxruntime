@@ -132,39 +132,17 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
 
   return true;
 }
-
-Status ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& variant) {
-  if (!constraints.is_object()) {
-    return Status::OK();
-  }
-
-  if (constraints.contains(kEpKey) && constraints[kEpKey].is_string()) {
-    variant.ep = constraints[kEpKey].get<std::string>();
-  }
-  if (constraints.contains(kDeviceKey) && constraints[kDeviceKey].is_string()) {
-    variant.device = constraints[kDeviceKey].get<std::string>();
-  }
-  if (constraints.contains(kArchitectureKey) && constraints[kArchitectureKey].is_string()) {
-    variant.architecture = constraints[kArchitectureKey].get<std::string>();
-  }
-  if (constraints.contains(kEpCompatibilityInfoKey) && constraints[kEpCompatibilityInfoKey].is_string()) {
-    variant.compatibility_info = constraints[kEpCompatibilityInfoKey].get<std::string>();
-  }
-  if (constraints.contains(kSdkVersionKey) && constraints[kSdkVersionKey].is_string()) {
-    variant.metadata[kSdkVersionKey] = constraints[kSdkVersionKey].get<std::string>();
-  }
-
-  return Status::OK();
-}
-
 }  // namespace
 
-// This function parses manifest.json and metadata.json for all component models as well as
+// This function parses information from manifest.json and metadata.json for all component models as well as
 // their associated model variants, producing a unified list of EpContextVariantInfo.
 //
-// Note: If a variant appears in both, it choses metadata.json as the source of truth, but falls back to manifest.json
-//       if metadata.json is missing required fields.
+// If a model variant appears in both, it chooses component model's metadata.json as the source of truth, but
+// falls back to manifest.json if metadata.json is missing required fields.
 //
+// Note: In this initial implementation, we expect only one component model existing in the package, in the future
+//       we will have the "pipeline" ability to execute multiple component models in sequence to better provide the
+//       ease of use for the cases where multiple models are needed (ex: pre/post processing, multi-stage models, etc).
 //
 // A manifest.json may look like this:
 //
@@ -172,8 +150,6 @@ Status ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& v
 //     "name" : <logical_model_name>,
 //     "component_models" : {
 //         <model_name_1> : {
-//         },
-//         <model_name_2> : {
 //         }
 //     }
 // }
@@ -194,9 +170,6 @@ Status ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& v
 //                     }
 //                 }
 //             }
-//         },
-//         <model_name_2> : {
-//            ...
 //         }
 //     }
 // }
@@ -223,8 +196,9 @@ Status ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& v
 //             }
 //         }
 //     }
-Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& package_root,
-                                                 /*out*/ std::vector<ModelVariantInfo>& variants) {
+// }
+Status ModelPackageDescriptorParser::ParseManifest(const std::filesystem::path& package_root,
+                                                   /*out*/ std::vector<ModelVariantInfo>& variants) const {
   variants.clear();
   const auto manifest_path = package_root / kModelPackageManifestFileName;
   if (!std::filesystem::exists(manifest_path)) {
@@ -258,6 +232,11 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
   }
 
   const auto& components = doc[kComponentModelsKey];
+
+  if (components.size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "manifest.json should contain exactly one model component field.");
+  }
 
   for (const auto& item : components.items()) {
     const std::string& component_model_name = item.key();
@@ -328,7 +307,7 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
       const json* chosen_variant = metadata_variant != nullptr ? metadata_variant : manifest_variant;
       if (chosen_variant == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Variant '", variant_name,
+                               "Model variant '", variant_name,
                                "' missing in both manifest and metadata for component model: ",
                                component_model_name);
       }
@@ -372,6 +351,30 @@ Status ModelPackageManifestParser::ParseManifest(const std::filesystem::path& pa
   return Status::OK();
 }
 
+Status ModelPackageDescriptorParser::ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& variant) const {
+  if (!constraints.is_object()) {
+    return Status::OK();
+  }
+
+  if (constraints.contains(kEpKey) && constraints[kEpKey].is_string()) {
+    variant.ep = constraints[kEpKey].get<std::string>();
+  }
+  if (constraints.contains(kDeviceKey) && constraints[kDeviceKey].is_string()) {
+    variant.device = constraints[kDeviceKey].get<std::string>();
+  }
+  if (constraints.contains(kArchitectureKey) && constraints[kArchitectureKey].is_string()) {
+    variant.architecture = constraints[kArchitectureKey].get<std::string>();
+  }
+  if (constraints.contains(kEpCompatibilityInfoKey) && constraints[kEpCompatibilityInfoKey].is_string()) {
+    variant.compatibility_info = constraints[kEpCompatibilityInfoKey].get<std::string>();
+  }
+  if (constraints.contains(kSdkVersionKey) && constraints[kSdkVersionKey].is_string()) {
+    variant.metadata[kSdkVersionKey] = constraints[kSdkVersionKey].get<std::string>();
+  }
+
+  return Status::OK();
+}
+
 // Calculate a score for the model variant based on its constraints and metadata.
 //
 // It's only used to choose the best model variant among multiple candidates that match constraints.
@@ -405,7 +408,7 @@ Status ModelVariantSelector::SelectVariant(gsl::span<ModelVariantInfo> variants,
     return Status::OK();
   }
 
-  // For simplicity, there is a constraint in this initial implementation:
+  // There is a constraint for this initial implementation:
   // - Only one SelectionEpInfo in `ep_infos` is supported
 
   std::unordered_set<size_t> candidate_indices_set;
@@ -479,7 +482,7 @@ Status ModelVariantSelector::SelectVariant(gsl::span<ModelVariantInfo> variants,
 }
 
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
-  ModelPackageManifestParser parser(logging::LoggingManager::DefaultLogger());
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
   ORT_THROW_IF_ERROR(parser.ParseManifest(package_root, model_variant_infos_));
 }
 

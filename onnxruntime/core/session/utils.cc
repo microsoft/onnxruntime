@@ -391,7 +391,7 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
 }
 
 // Internal function that creates an InferenceSession and loads the model.
-// Caller should provide either a single model file path, model_data + model_data_length, or a model package directory.
+// Caller should provide either a model file path, model_data + model_data_length, or a model package directory.
 static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* options,
                                                 const onnxruntime::Environment& env,
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
@@ -399,85 +399,84 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
                                                 size_t model_data_length,
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // Model path could be an onnx model file, or a model package directory.
-  //
-  // To support model package, ORT allows the model path to be a directory
-  // with a manifest.json describing the components of the package.
   const ORTCHAR_T* model_path_to_use = model_path;
 
-  std::error_code ec;
-  std::filesystem::path package_root{model_path_to_use};
+  if (model_path_to_use != nullptr) {
+    std::error_code ec;
+    std::filesystem::path package_root{model_path_to_use};
 
-  if (model_path_to_use != nullptr &&
-      std::filesystem::is_directory(package_root, ec) &&
-      !ec) {
+    if (std::filesystem::is_directory(package_root, ec) &&
+        !ec) {
 #if !defined(ORT_MINIMAL_BUILD)
-    OrtSessionOptions* options_to_use = nullptr;
-    OrtSessionOptions ort_sess_options = options ? *options : OrtSessionOptions();
-    if (options) {
-      options_to_use = &ort_sess_options;
-    }
-
-    std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
-    const bool has_provider_factories = options_to_use != nullptr && !options_to_use->provider_factories.empty();
-    ProviderPolicyContext provider_policy_context;
-    std::vector<const OrtEpDevice*> execution_devices;
-    std::vector<const OrtEpDevice*> devices_selected;
-
-    // Create the IExecutionProvider instances to gather EP name and EP devices.
-    if (has_provider_factories) {
-      for (auto& factory : options_to_use->provider_factories) {
-        auto provider = factory->CreateProvider(*options_to_use, *logging::LoggingManager::DefaultLogger().ToExternal());
-        provider_list.push_back(std::move(provider));
+      OrtSessionOptions* options_to_use = nullptr;
+      OrtSessionOptions ort_sess_options = options ? *options : OrtSessionOptions();
+      if (options) {
+        options_to_use = &ort_sess_options;
       }
-    } else if (options_to_use != nullptr && options_to_use->value.ep_selection_policy.enable) {
-      // No model loaded yet, so no model metadata. Pass empty metadata for now.
-      // TODO: Pass metadata from manifest json to delegate policy?
-      OrtKeyValuePairs model_metadata;
-      auto status = provider_policy_context.SelectEpsForModelPackage(env, *options_to_use, model_metadata,
-                                                                     execution_devices, devices_selected,
-                                                                     provider_list);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
+      const bool has_provider_factories = options_to_use != nullptr && !options_to_use->provider_factories.empty();
+      ProviderPolicyContext provider_policy_context;
+      std::vector<const OrtEpDevice*> execution_devices;
+      std::vector<const OrtEpDevice*> devices_selected;
+
+      // Create the IExecutionProvider instances to gather EP name and EP devices.
+      if (has_provider_factories) {
+        for (auto& factory : options_to_use->provider_factories) {
+          auto provider = factory->CreateProvider(*options_to_use, *logging::LoggingManager::DefaultLogger().ToExternal());
+          provider_list.push_back(std::move(provider));
+        }
+      } else if (options_to_use != nullptr && options_to_use->value.ep_selection_policy.enable) {
+        // No model loaded yet, so no model metadata. Pass empty metadata for now.
+        // TODO: Pass metadata from manifest json to delegate policy?
+        OrtKeyValuePairs model_metadata;
+        auto status = provider_policy_context.SelectEpsForModelPackage(env, *options_to_use, model_metadata,
+                                                                       execution_devices, devices_selected,
+                                                                       provider_list);
+        ORT_API_RETURN_IF_STATUS_NOT_OK(status);
+      }
+
+      // Build EP info from finalized providers.
+      std::vector<SelectionEpInfo> ep_infos;
+
+      ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(options_to_use, provider_list, ep_infos));
+
+      // Select a model variant based on EP info and component metadata and get its path.
+      ModelPackageContext model_package_context(package_root);
+
+      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.SelectModelVariant(ep_infos));
+      if (model_package_context.GetSelectedModelVariantPath().has_value()) {
+        model_path_to_use = model_package_context.GetSelectedModelVariantPath()->c_str();
+      } else {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "No suitable model variant found for the available execution providers."
+                                     "Try specifying the model file path instead.");
+      }
+
+      Status status;
+      status = ToStatusAndRelease(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
+                                                                      model_data, model_data_length, sess));
       ORT_API_RETURN_IF_STATUS_NOT_OK(status);
-    }
 
-    // Build EP info from finalized providers.
-    std::vector<SelectionEpInfo> ep_infos;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(options_to_use, provider_list, ep_infos));
-
-    // Select model variant based on EP info and component metadata and get the model path.
-    ModelPackageContext model_package_context(package_root);
-    ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.SelectModelVariant(ep_infos));
-    if (model_package_context.GetSelectedModelVariantPath().has_value()) {
-      model_path_to_use = model_package_context.GetSelectedModelVariantPath()->c_str();
-    } else {
-      return OrtApis::CreateStatus(ORT_FAIL,
-                                   "No suitable model variant found for the available execution providers."
-                                   "Try specifying the model file path instead.");
-    }
-
-    Status status;
-    status = ToStatusAndRelease(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
-                                                                    model_data, model_data_length, sess));
-    ORT_API_RETURN_IF_STATUS_NOT_OK(status);
-
-    // Register execution providers
-    for (auto& provider : provider_list) {
-      if (provider) {
-        ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
+      // Register execution providers
+      for (auto& provider : provider_list) {
+        if (provider) {
+          ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
+        }
       }
-    }
 
-    // For auto EP selection.
-    if (!has_provider_factories &&
-        options_to_use != nullptr &&
-        options_to_use->value.ep_selection_policy.enable) {
       // Log telemetry for auto EP selection
-      ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(*sess, *options_to_use,
-                                                                           execution_devices, devices_selected));
-    }
+      if (!has_provider_factories &&
+          options_to_use != nullptr &&
+          options_to_use->value.ep_selection_policy.enable) {
+        ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(*sess, *options_to_use,
+                                                                             execution_devices, devices_selected));
+      }
 #else
-    return OrtApis::CreateStatus(ORT_FAIL, "Model package is not supported in this build.");
+      return OrtApis::CreateStatus(ORT_FAIL, "Model package is not supported in this build.");
 #endif
-    return nullptr;
+      return nullptr;
+    }
   }
 
   return CreateSessionAndLoadSingleModelImpl(options, env, model_path, model_data, model_data_length, sess);
