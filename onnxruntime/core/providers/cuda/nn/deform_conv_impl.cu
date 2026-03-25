@@ -227,12 +227,7 @@ __global__ void DeformableIm2ColKernel(
   const int64_t channel_hw_i64 = static_cast<int64_t>(height) * static_cast<int64_t>(width);
   const int64_t batch_input_stride_i64 = static_cast<int64_t>(channels) * channel_hw_i64;
   const int64_t offset_group_block_size_i64 = static_cast<int64_t>(2) * h_dim_i64 * w_dim_i64 * out_size_i64;
-  int64_t mask_group_block_size_i64 = 0;
-  if constexpr (UseMask) {
-    mask_group_block_size_i64 = h_dim_i64 * w_dim_i64 * out_size_i64;
-  } else {
-    ORT_UNUSED_PARAMETER(mask_group_block_size_i64);
-  }
+  [[maybe_unused]] const int64_t mask_group_block_size_i64 = UseMask ? (h_dim_i64 * w_dim_i64 * out_size_i64) : int64_t{0};
   const int height_i = static_cast<int>(height);
   const int width_i = static_cast<int>(width);
 
