@@ -147,7 +147,6 @@ struct MIGraphX_Provider final : Provider {
     }
 
     migx_options->migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
-
     migx_options->migraphx_arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
     migx_options->migraphx_mem_limit = internal_options.mem_limit;
   }

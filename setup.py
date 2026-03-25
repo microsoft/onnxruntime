@@ -247,8 +247,10 @@ try:
 
                 migraphx_dependencies = [
                     "libamd_comgr.so.2",
+                    "libamd_comgr.so.3",
                     "libamdhip64.so.5",
                     "libamdhip64.so.6",
+                    "libamdhip64.so.7",
                     "libdrm.so.2",
                     "libdrm_amdgpu.so.1",
                     "libelf.so.1",
@@ -266,12 +268,14 @@ try:
                     "libroctx64.so.4",
                     "librocm_smi64.so.5",
                     "librocm_smi64.so.6",
+                    "librocprofiler-register.so.0",
                     "libroctracer64.so.4",
                     "libtinfo.so.6",
                     "libmigraphx_c.so.3",
                     "libmigraphx.so.2",
                     "libmigraphx_onnx.so.2",
                     "libmigraphx_tf.so.2",
+                    "libzstd.so.1"
                 ]
 
                 tensorrt_dependencies = ["libnvinfer.so.10", "libnvinfer_plugin.so.10", "libnvonnxparser.so.10"]

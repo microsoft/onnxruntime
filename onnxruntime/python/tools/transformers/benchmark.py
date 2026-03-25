@@ -203,6 +203,8 @@ def run_onnxruntime(
             if not is_valid_onnx_model:
                 continue
 
+            provider_options = {"MIGraphXExecutionProvider": {"migraphx_max_dynamic_batch": str(max(batch_sizes))}} if provider == "migraphx" else None
+
             ort_session = create_onnxruntime_session(
                 onnx_model_file,
                 use_gpu,
@@ -211,6 +213,7 @@ def run_onnxruntime(
                 num_threads=num_threads,
                 verbose=verbose,
                 enable_mlas_gemm_fastmath_arm64_bfloat16=enable_arm64_bfloat16_fastmath_mlas_gemm,
+                provider_options=provider_options,
             )
             if ort_session is None:
                 continue

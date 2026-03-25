@@ -17,8 +17,8 @@ MODEL_CLASSES = [
 # Some models like GPT, T5, Bart etc has its own convert_to_onnx.py in models sub-directory, and they are excluded here.
 MODELS = {
     # BERT
-    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 16, False, "bert"),
-    "bert-large-cased": (["input_ids", "attention_mask", "token_type_ids"], 16, False, "bert"),
+    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 18, False, "bert"),
+    "bert-large-cased": (["input_ids", "attention_mask", "token_type_ids"], 18, False, "bert"),
     # Transformer-XL (Models uses Einsum, which need opset version 16 or later.)
     "transfo-xl-wt103": (["input_ids", "mems"], 16, False, "bert"),
     # XLNet
