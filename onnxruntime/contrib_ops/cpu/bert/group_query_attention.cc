@@ -12,6 +12,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
+#include "core/mlas/inc/mlas.h"
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
@@ -181,31 +182,101 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       q_rotary = RotaryQ.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = RotaryK.GetMutable<Tensor>()->MutableData<T>();
     }
-    // Run rotary embedding for Q and K
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
-                                              pos_ids_data, cos_cache->Data<T>(),
-                                              sin_cache->Data<T>(), q_rotary, rotary_interleaved_));
+    // Fused rotary embedding for Q, K, and V packing in a single parallel region
+    // to eliminate multiple fork-join barriers that dominate runtime for small inputs.
+    {
+      const int rotary_emb_dim = parameters.rotary_dim;
+      const int half_rotary_emb_dim = rotary_emb_dim / 2;
+      const int max_sequence_length = static_cast<int>(cos_cache->Shape().GetDims()[0]);
+      const int q_head_stride = rotary_params.head_stride;
+      const int q_seq_stride = rotary_params.seq_stride;
+      const int q_batch_stride = rotary_params.batch_stride;
+      const int position_ids_format = rotary_params.position_ids_format;
+      const T* cos_data = cos_cache->Data<T>();
+      const T* sin_data = sin_cache->Data<T>();
 
-    rotary_params.num_heads = kv_num_heads_;
-    rotary_params.hidden_size = parameters.kv_hidden_size;
-    if (!packed_qkv) {
-      rotary_params.batch_stride = kv_num_heads_ * rotary_params.head_stride;
-    }
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
-                                              pos_ids_data, cos_cache->Data<T>(),
-                                              sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
-    // Pack V into rotary QKV buffer
-    if (packed_qkv) {
-      const T* v_input = k_input + kv_num_heads_ * sequence_length * head_size;
-      T* v_rotary = k_rotary + kv_num_heads_ * sequence_length * head_size;
-      ORT_RETURN_IF_ERROR(rotary_helper::PackVIntoRotaryQKV<T>(tp,
-                                                               parameters.batch_size,
-                                                               parameters.sequence_length,
-                                                               parameters.num_heads,
-                                                               parameters.kv_num_heads,
-                                                               parameters.head_size,
-                                                               v_input,
-                                                               v_rotary));
+      // K rotary params
+      const int k_num_heads = kv_num_heads_;
+      const int k_batch_stride = packed_qkv ? q_batch_stride : (kv_num_heads_ * q_head_stride);
+
+      // Total work: Q rotary + K rotary (+ V packing if packed_qkv)
+      const int q_loop_len = batch_size * sequence_length * num_heads_;
+      const int k_loop_len = batch_size * sequence_length * kv_num_heads_;
+      const int v_loop_len = packed_qkv ? k_loop_len : 0;
+      const int total_loop_len = q_loop_len + k_loop_len + v_loop_len;
+
+      const double cost = static_cast<double>(head_size * sizeof(T) * 2 + rotary_emb_dim * 32);
+
+      // V packing pointers (only used when packed_qkv)
+      const T* v_input = packed_qkv ? (k_input + kv_num_heads_ * sequence_length * head_size) : nullptr;
+      T* v_rotary = packed_qkv ? (k_rotary + kv_num_heads_ * sequence_length * head_size) : nullptr;
+
+      // Validate position_ids values are within cos/sin cache bounds
+      if (position_ids_format == 0) {
+        int64_t base_pos = pos_ids_data[0];
+        int64_t max_valid_base = static_cast<int64_t>(max_sequence_length) - static_cast<int64_t>(sequence_length);
+        ORT_RETURN_IF(base_pos < 0 || base_pos > max_valid_base,
+                      "position_ids base value out of cos/sin cache range");
+      } else if (position_ids_format == 1) {
+        for (int i = 0; i < batch_size * sequence_length; ++i) {
+          int64_t pos = pos_ids_data[i];
+          ORT_RETURN_IF(pos < 0 || pos >= static_cast<int64_t>(max_sequence_length),
+                        "position_ids value out of range");
+        }
+      }
+
+      ThreadPool::TryParallelFor(tp, total_loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
+          if (ptr < q_loop_len) {
+            // Q rotary embedding
+            const int b = static_cast<int>((ptr / num_heads_) / sequence_length);
+            const int s = static_cast<int>((ptr / num_heads_) % sequence_length);
+            const int n = static_cast<int>(ptr % num_heads_);
+            const int block_offset = b * q_batch_stride + s * q_seq_stride + n * q_head_stride;
+
+            const int position_id = (position_ids_format == 0)
+                                        ? static_cast<int>(pos_ids_data[0]) + s
+                                        : static_cast<int>(pos_ids_data[b * sequence_length + s]);
+            const int cache_offset = position_id * half_rotary_emb_dim;
+
+            MlasRotaryEmbedOneRow<T>(q_input + block_offset, sin_data + cache_offset, cos_data + cache_offset,
+                                     rotary_emb_dim, rotary_interleaved_, q_rotary + block_offset);
+            if (rotary_emb_dim < head_size) {
+              std::memcpy(q_rotary + block_offset + rotary_emb_dim,
+                          q_input + block_offset + rotary_emb_dim,
+                          (head_size - rotary_emb_dim) * sizeof(T));
+            }
+          } else if (ptr < q_loop_len + k_loop_len) {
+            // K rotary embedding
+            const std::ptrdiff_t k_ptr = ptr - q_loop_len;
+            const int b = static_cast<int>((k_ptr / k_num_heads) / sequence_length);
+            const int s = static_cast<int>((k_ptr / k_num_heads) % sequence_length);
+            const int n = static_cast<int>(k_ptr % k_num_heads);
+            const int block_offset = b * k_batch_stride + s * q_seq_stride + n * q_head_stride;
+
+            const int position_id = (position_ids_format == 0)
+                                        ? static_cast<int>(pos_ids_data[0]) + s
+                                        : static_cast<int>(pos_ids_data[b * sequence_length + s]);
+            const int cache_offset = position_id * half_rotary_emb_dim;
+
+            MlasRotaryEmbedOneRow<T>(k_input + block_offset, sin_data + cache_offset, cos_data + cache_offset,
+                                     rotary_emb_dim, rotary_interleaved_, k_rotary + block_offset);
+            if (rotary_emb_dim < head_size) {
+              std::memcpy(k_rotary + block_offset + rotary_emb_dim,
+                          k_input + block_offset + rotary_emb_dim,
+                          (head_size - rotary_emb_dim) * sizeof(T));
+            }
+          } else {
+            // V packing (only when packed_qkv)
+            const std::ptrdiff_t v_ptr = ptr - q_loop_len - k_loop_len;
+            const int b = static_cast<int>((v_ptr / kv_num_heads_) / sequence_length);
+            const int s = static_cast<int>((v_ptr / kv_num_heads_) % sequence_length);
+            const int n = static_cast<int>(v_ptr % kv_num_heads_);
+            const int block_offset = b * q_batch_stride + s * q_seq_stride + n * q_head_stride;
+            std::memcpy(v_rotary + block_offset, v_input + block_offset, head_size * sizeof(T));
+          }
+        }
+      });
     }
   }
 
