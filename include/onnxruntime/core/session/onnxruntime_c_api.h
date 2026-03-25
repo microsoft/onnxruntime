@@ -40,6 +40,10 @@
  */
 #define ORT_API_VERSION 25
 
+#ifndef ORT_API_TARGET_VERSION
+#define ORT_API_TARGET_VERSION ORT_API_VERSION
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -7284,6 +7288,8 @@ struct OrtApi {
                   _Outptr_result_maybenull_ const int64_t** shape_data,
                   _Out_ size_t* shape_data_count);
 
+#if ORT_API_TARGET_VERSION >= 25
+
   /** \brief Enable profiling for this run
    *
    * \param[in] options
@@ -7327,6 +7333,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size);
+#endif
 };
 
 /*
