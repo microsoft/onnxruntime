@@ -5,6 +5,7 @@
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/run_options.h"
+#include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
