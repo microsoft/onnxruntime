@@ -434,23 +434,18 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       // No model loaded yet, so no model metadata. Pass empty metadata for now.
       // TODO: Pass metadata from manifest json to delegate policy?
       OrtKeyValuePairs model_metadata;
-
-      ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.SelectEpsForModelPackage(env, *options_to_use, model_metadata,
-                                                                                       execution_devices, devices_selected,
-                                                                                       provider_list));
+      auto status = provider_policy_context.SelectEpsForModelPackage(env, *options_to_use, model_metadata,
+                                                                     execution_devices, devices_selected,
+                                                                     provider_list);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(status);
     }
 
     // Build EP info from finalized providers.
     std::vector<SelectionEpInfo> ep_infos;
     ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(options_to_use, provider_list, ep_infos));
 
-    // Parse manifest and gather components.
-    ModelPackageManifestParser parser(logging::LoggingManager::DefaultLogger());
-    std::vector<EpContextVariantInfo> components;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(parser.ParseManifest(package_root, components));
-
-    ModelPackageContext context;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectComponent(components, ep_infos, component_path));
+    ModelPackageContext model_package_context(package_root);
+    ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.SelectModelVariant(ep_infos, component_path));
     if (component_path.has_value()) {
       model_path_to_use = component_path->c_str();
     }

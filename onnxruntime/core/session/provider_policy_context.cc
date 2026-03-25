@@ -143,7 +143,7 @@ std::vector<const OrtEpDevice*> ProviderPolicyContext::OrderDevices(const std::v
 Status ProviderPolicyContext::SelectEpDevices(std::vector<const OrtEpDevice*>& execution_devices,
                                               const OrtSessionOptions& options,
                                               OrtKeyValuePairs& model_metadata,
-                                              std::vector<const OrtEpDevice*> devices_selected) {
+                                              std::vector<const OrtEpDevice*>& devices_selected) {
   // Run the delegate if it was passed in lieu of any other policy
   if (options.value.ep_selection_policy.delegate) {
     OrtKeyValuePairs runtime_metadata;  // TODO: where should this come from?
