@@ -21,31 +21,29 @@ namespace {
 
 constexpr int kMaxParallelImgs = 32;
 
-// Returns the greatest divisor of n that is <= bound. Used to choose uniform batch chunk sizes.
-// Fast path: if n % bound == 0 (common for batch 32/64/128), return immediately.
-// When n >= bound^2, linear scan from bound down is O(bound). Otherwise divisor enumeration
-// from 1 to sqrt(n) is O(sqrt(n)). Uses integer comparison (no sqrt) for branch decision.
-int GetGreatestDivisorBelowBound(int n, int bound) {
-  if (bound <= 0 || n <= 0) return 1;
-  if (n % bound == 0) return bound;  // Fast path: batch is multiple of target
+// ceil(numer / denom) for numer >= 0, denom > 0 (integer, no floating point).
+inline int CeilDiv(int numer, int denom) {
+  return (numer + denom - 1) / denom;
+}
 
-  // n >= bound^2 <=> bound <= sqrt(n) => linear scan is cheaper
-  if (static_cast<int64_t>(n) >= static_cast<int64_t>(bound) * bound) {
-    for (int k = bound - 1; k > 1; --k) {
-      if (n % k == 0) return k;
-    }
-  } else {
-    // n < bound^2 <=> bound > sqrt(n) => divisor enumeration is cheaper
-    int best = 1;
-    for (int i = 1; static_cast<int64_t>(i) * i <= static_cast<int64_t>(n); ++i) {
-      if (n % i != 0) continue;
-      const int q = n / i;
-      if (q <= bound && q > best) best = q;
-      if (i <= bound && i > best) best = i;
-    }
-    return best;
-  }
-  return 1;
+// Chooses DeformConv batch chunk size k (images per outer-loop iteration) given batch N and
+// a hard cap T from temp-memory budget (target_parallel_imgs).
+//
+// Goals (in order):
+//   1) Minimize the number of outer rounds I = ceil(N / k). Under k <= T, the minimum achievable
+//      I is I* = ceil(N / min(N, T)) — take the largest allowed step min(N, T), same as always
+//      using k = T when N > T, or one round when N <= T.
+//   2) Among all k with ceil(N/k) == I*, pick k = ceil(N / I*) so chunk sizes are as balanced as
+//      possible (last chunk is only slightly smaller than full chunks). k need not divide N; choosing
+//      k = ceil(N / I*) instead of always k = T often shrinks col_buffer stride when a full-T last
+//      chunk would leave a much smaller tail.
+//
+// Closed form: k_cap = min(N, T), I = ceil(N / k_cap), return ceil(N / I).
+inline int GetDeformConvParallelChunkSize(int N, int T) {
+  if (N <= 0 || T <= 0) return 1;
+  const int k_cap = std::min(N, T);
+  const int num_rounds = CeilDiv(N, k_cap);
+  return CeilDiv(N, num_rounds);
 }
 
 // Returns the maximum temp memory (bytes) allowed for DeformConv's im2col + GEMM buffers.
@@ -76,10 +74,10 @@ size_t GetDeformConvEffectiveMaxTempBytes(size_t total_global_mem) {
 }
 
 // Returns how many images to process in parallel per batch chunk for DeformConv.
-// Chooses the largest divisor of batch size N that fits in the temp budget and does not
-// exceed kMaxParallelImgs, so that batch dimension is split evenly (no remainder).
-// Note: if N is prime and N > target_parallel_imgs, the greatest divisor <= target_parallel_imgs is 1,
-// so batching is effectively disabled (single-image chunks).
+//
+// Temp budget → cap T (see below). Chunk size k = GetDeformConvParallelChunkSize(N, T): minimize
+// outer-loop rounds first, then balance chunk sizes via ceil(N / ceil(N / min(N,T))).
+// The host loop still uses cur_parallel = min(k, N - b), so k need not divide N.
 //
 // Formulas:
 //   kernel_size = kH * kW
@@ -87,8 +85,8 @@ size_t GetDeformConvEffectiveMaxTempBytes(size_t total_global_mem) {
 //   bytes_per_image = output_image_size * C * kernel_size * sizeof(T)
 //     (temp bytes per image: im2col col buffer only; GEMM writes directly to Y)
 //   max_parallel_imgs_mem = max(1, floor(effective_max_temp / bytes_per_image))
-//   target_parallel_imgs = min(kMaxParallelImgs, max_parallel_imgs_mem)
-//   return GetGreatestDivisorBelowBound(N, target_parallel_imgs)
+//   target_parallel_imgs T = min(kMaxParallelImgs, max_parallel_imgs_mem)
+//   return GetDeformConvParallelChunkSize(N, T)
 template <typename T>
 int GetNParallelImgs(const DeformConvParams& params, size_t total_global_mem) {
   const size_t effective_max_temp = GetDeformConvEffectiveMaxTempBytes(total_global_mem);
@@ -97,7 +95,7 @@ int GetNParallelImgs(const DeformConvParams& params, size_t total_global_mem) {
   const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * params.C * kernel_size * sizeof(T);
   const int max_parallel_imgs_mem = std::max(1, static_cast<int>(effective_max_temp / std::max(size_t(1), bytes_per_image)));
   const int target_parallel_imgs = std::min(kMaxParallelImgs, max_parallel_imgs_mem);
-  return GetGreatestDivisorBelowBound(static_cast<int>(params.N), target_parallel_imgs);
+  return GetDeformConvParallelChunkSize(narrow<int>(params.N), target_parallel_imgs);
 }
 
 }  // namespace
