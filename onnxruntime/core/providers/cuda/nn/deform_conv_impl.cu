@@ -228,34 +228,42 @@ __global__ void DeformableIm2ColKernel(
     // Pre-calculate base pointers to reduce integer arithmetic inside the inner loops.
 
     // 1. Input pointer base for this batch and channel.
-    const T* input_ptr =
-        input + static_cast<int64_t>(out_b) * batch_input_stride_i64 + static_cast<int64_t>(in_c) * channel_hw_i64;
+    const IndexT channel_hw = static_cast<IndexT>(channel_hw_i64);
+    const IndexT batch_input_stride = static_cast<IndexT>(batch_input_stride_i64);
+    const IndexT input_base = out_b * batch_input_stride + in_c * channel_hw;
+    const T* input_ptr = input + static_cast<int64_t>(input_base);
 
     // 2. Spatial index in the output feature map.
     const IndexT spatial_idx = static_cast<IndexT>(out_y * out_w + out_x);
-    const int64_t spatial_idx_i64 = static_cast<int64_t>(spatial_idx);
 
     // 3. Offset pointer base calculation.
     // Layout: (N, offset_groups, 2*KH*KW, OH, OW)
     // We pre-calculate the pointer to the start of the specific (n, g) block, plus spatial_idx.
+    const IndexT offset_group_idx = static_cast<IndexT>(offset_group);
+    const IndexT ng = out_b * offset_group_idx + offset_grp;  // n * offset_group + g
+    const IndexT offset_group_block_size = static_cast<IndexT>(offset_group_block_size_i64);
+    const IndexT offset_base = ng * offset_group_block_size + spatial_idx;
     const T* offset_ptr_base =
-        offset + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * offset_group_block_size_i64 + spatial_idx_i64;
+        offset + static_cast<int64_t>(offset_base);
 
     // 4. Mask pointer base calculation (if used).
     // Layout: (N, offset_groups, KH*KW, OH, OW)
     const T* mask_ptr_base = nullptr;
     if constexpr (UseMask) {
+      const IndexT mask_group_block_size = static_cast<IndexT>(mask_group_block_size_i64);
+      const IndexT mask_base = ng * mask_group_block_size + spatial_idx;
       mask_ptr_base =
-          mask + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * mask_group_block_size_i64 + spatial_idx_i64;
+          mask + static_cast<int64_t>(mask_base);
     }
 
     // 5. Output pointer base calculation.
     // data_col Layout: (C * KH * KW, N * OH * OW)
     // The current thread writes to the column `c_col` = (b * OH * OW) + spatial_idx.
     // The starting row for this channel is `in_c * KH * KW`.
-    const int64_t c_col = static_cast<int64_t>(out_b) * out_size_i64 + spatial_idx_i64;
+    const IndexT c_col = out_b * out_size + spatial_idx;
+    const IndexT row_base = static_cast<IndexT>((in_c * h_dim) * w_dim);
     T* data_col_ptr_base =
-        data_col + (static_cast<int64_t>(in_c) * h_dim_i64 * w_dim_i64) * col_stride_i64 + c_col;
+        data_col + static_cast<int64_t>(row_base) * col_stride_i64 + static_cast<int64_t>(c_col);
 
     // 6. Pre-calculate invariant coordinate parts.
     // Use float for coordinate math when T is half or BFloat16 to avoid precision loss.
@@ -288,7 +296,7 @@ __global__ void DeformableIm2ColKernel(
       T val = BilinearInterpolate(input_ptr, height_i, width_i, h_im, w_im);
 
       // Match CPU path: always interpolate then apply mask to keep branch-free hot loop.
-      data_col_ptr_base[static_cast<int64_t>(kernel_idx) * col_stride_i64] = val * mask_val;
+      data_col_ptr_base[kernel_idx * col_stride] = val * mask_val;
     };
 
     if constexpr (is_fixed) {
@@ -419,6 +427,47 @@ Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, i
   return CUDA_CALL(cudaGetLastError());
 }
 
+// Determine if we need to fall back to 64-bit integer arithmetic in the CUDA kernel.
+// 32-bit arithmetic is significantly faster and uses fewer registers.
+// We check if any of the intermediate index calculations could exceed INT32_MAX (~2.14 billion).
+// The most likely variable to exceed this is `col_numel`:
+// col_numel = C * kH * kW * parallel_imgs * out_h * out_w
+//
+// Examples of when 64-bit fallback is triggered (col_numel > 2,147,483,647):
+// - High Resolution (1K): C=256, kH=3, kW=3, parallel_imgs=1, out_h=1024, out_w=1024
+//   col_numel = 256 * 3 * 3 * 1 * 1024 * 1024 = 2,415,919,104 (> 2.14B)
+// - Large Kernel & Batch: C=128, kH=5, kW=5, parallel_imgs=11, out_h=256, out_w=256
+//   col_numel = 128 * 5 * 5 * 11 * 256 * 256 = 2,306,867,200 (> 2.14B)
+// - Massive Channels: C=4096, kH=3, kW=3, parallel_imgs=1, out_h=256, out_w=256
+//   col_numel = 4096 * 3 * 3 * 1 * 256 * 256 = 2,415,919,104 (> 2.14B)
+// - 3D-like Large Kernel: C=512, kH=7, kW=7, parallel_imgs=1, out_h=512, out_w=512
+//   col_numel = 512 * 7 * 7 * 1 * 512 * 512 = 6,576,668,672 (> 2.14B)
+//
+// Example of a safe 32-bit case:
+// - Typical ResNet: C=256, kH=3, kW=3, parallel_imgs=32, out_h=128, out_w=128
+//   col_numel = 256 * 3 * 3 * 32 * 128 * 128 = 1,207,959,552 (< 2.14B)
+//
+// In practice, due to the 2GB hard limit on temp memory allocation in GetDeformConvEffectiveMaxTempBytes(),
+// col_numel will almost never exceed INT32_MAX without OOMing first.
+inline bool CheckDeformConvNeeds64BitIndex(
+    int64_t num_kernels, int64_t C, int64_t H, int64_t W, int64_t kH, int64_t kW, int64_t out_h, int64_t out_w,
+    int64_t parallel_imgs, int64_t offset_group) {
+  const int64_t col_numel = static_cast<int64_t>(C) * kH * kW * parallel_imgs * out_h * out_w;
+  const int64_t offset_inner_size = static_cast<int64_t>(2) * kH * kW * out_h * out_w;
+  const int64_t mask_inner_size = kH * kW * out_h * out_w;
+  const int64_t offset_numel = parallel_imgs * offset_group * offset_inner_size;
+  const int64_t mask_numel = parallel_imgs * offset_group * mask_inner_size;
+  const int64_t channel_hw = H * W;
+  const int64_t batch_input_stride = C * channel_hw;
+  const int64_t input_numel = parallel_imgs * batch_input_stride;
+  const int64_t out_size = out_h * out_w;
+  const int64_t col_stride = parallel_imgs * out_size;
+  const int64_t max_col_write_idx = static_cast<int64_t>(kH * kW - 1) * col_stride;
+
+  return Needs64BitIndex(num_kernels, col_numel, offset_inner_size, mask_inner_size, offset_numel, mask_numel,
+                         max_col_write_idx, channel_hw, batch_input_stride, input_numel, offset_group);
+}
+
 template <typename T>
 Status DeformConvIm2ColImpl(
     cudaStream_t stream,
@@ -447,12 +496,7 @@ Status DeformConvIm2ColImpl(
     return Status::OK();
   }
 
-  const int64_t col_numel = static_cast<int64_t>(C) * kH * kW * parallel_imgs * out_h * out_w;
-  const int64_t offset_inner_size = static_cast<int64_t>(2) * kH * kW * out_h * out_w;
-  const int64_t out_size = out_h * out_w;
-  const int64_t col_stride = parallel_imgs * out_size;
-  const int64_t max_col_write_idx = static_cast<int64_t>(kH * kW - 1) * col_stride;
-  const bool use_64bit = Needs64BitIndex(num_kernels, col_numel, offset_inner_size, max_col_write_idx);
+  const bool use_64bit = CheckDeformConvNeeds64BitIndex(num_kernels, C, H, W, kH, kW, out_h, out_w, parallel_imgs, offset_group);
 
   int blocks = GetGridSize(static_cast<size_t>(num_kernels), kDeformConvThreadsPerBlock);
 
