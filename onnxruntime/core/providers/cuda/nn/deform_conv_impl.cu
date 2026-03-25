@@ -270,11 +270,10 @@ __global__ void DeformableIm2ColKernel(
     const CoordT base_h_im = static_cast<CoordT>(out_y * stride_h - pad_h);
     const CoordT base_w_im = static_cast<CoordT>(out_x * stride_w - pad_w);
 
-    auto process_kernel_point = [&](IndexT i, IndexT j) {
-      // Keep hot-loop indexing in IndexT to reduce 64-bit integer instruction chains.
-      // Safety: launch-side gating uses use_64bit (num_kernels/col_numel) and shared shape validation
-      // ((H+1)*W <= INT_MAX), so int32 path has bounded index products here.
-      const IndexT kernel_idx = static_cast<IndexT>(i * w_dim + j);
+    // Shared per-kernel-point body for both fixed and dynamic paths.
+    // Keeping one implementation avoids logic drift between code paths and makes
+    // future tuning (addressing/math changes) apply consistently.
+    auto process_kernel_point = [&](IndexT kernel_idx, CoordT h_base, CoordT w_base) {
       T mask_val = static_cast<T>(1);
       if constexpr (UseMask) {
         // Access mask using pre-calculated base and stride.
@@ -289,14 +288,22 @@ __global__ void DeformableIm2ColKernel(
       const CoordT offset_h = static_cast<CoordT>(DeformConvLdg(offset_ptr_base + offset_offset_idx));
       const CoordT offset_w = static_cast<CoordT>(DeformConvLdg(offset_ptr_base + offset_offset_idx + out_size));
 
-      const CoordT h_im = base_h_im + static_cast<CoordT>(i * dilation_h) + offset_h;
-      const CoordT w_im = base_w_im + static_cast<CoordT>(j * dilation_w) + offset_w;
+      const CoordT h_im = h_base + offset_h;
+      const CoordT w_im = w_base + offset_w;
 
       // height/width are validated on host (DeformConvValidateAndParse) so int is safe here.
       T val = BilinearInterpolate(input_ptr, height_i, width_i, h_im, w_im);
 
       // Match CPU path: always interpolate then apply mask to keep branch-free hot loop.
       data_col_ptr_base[kernel_idx * col_stride] = val * mask_val;
+    };
+    auto emit_fixed_point = [&](int i, int j) {
+      const IndexT i_idx = static_cast<IndexT>(i);
+      const IndexT j_idx = static_cast<IndexT>(j);
+      const IndexT kernel_idx = static_cast<IndexT>(i_idx * w_dim + j_idx);
+      const CoordT h_base = base_h_im + static_cast<CoordT>(i_idx * dilation_h);
+      const CoordT w_base = base_w_im + static_cast<CoordT>(j_idx * dilation_w);
+      process_kernel_point(kernel_idx, h_base, w_base);
     };
 
     if constexpr (is_fixed) {
@@ -306,7 +313,7 @@ __global__ void DeformableIm2ColKernel(
         for (int i = 0; i < kH; ++i) {
 #pragma unroll
           for (int j = 0; j < kW; ++j) {
-            process_kernel_point(static_cast<IndexT>(i), static_cast<IndexT>(j));
+            emit_fixed_point(i, j);
           }
         }
       } else {
@@ -315,7 +322,7 @@ __global__ void DeformableIm2ColKernel(
         for (int i = 0; i < kH; ++i) {
 #pragma unroll
           for (int j = 0; j < kW; ++j) {
-            process_kernel_point(static_cast<IndexT>(i), static_cast<IndexT>(j));
+            emit_fixed_point(i, j);
           }
         }
       }
@@ -323,8 +330,17 @@ __global__ void DeformableIm2ColKernel(
       const IndexT weight_h_idx = static_cast<IndexT>(weight_h);
       const IndexT weight_w_idx = static_cast<IndexT>(weight_w);
       for (IndexT i = 0; i < weight_h_idx; ++i) {
+        // Dynamic-size path: use incremental kernel_idx/w_base inside the inner loop
+        // instead of recomputing (i * weight_w + j) and (base_w + j * dilation_w) each
+        // iteration. This trims integer address math in the hot path and usually maps to
+        // simpler add chains in SASS.
+        const CoordT h_base = base_h_im + static_cast<CoordT>(i * dilation_h);
+        IndexT kernel_idx = static_cast<IndexT>(i * weight_w_idx);
+        CoordT w_base = base_w_im;
         for (IndexT j = 0; j < weight_w_idx; ++j) {
-          process_kernel_point(static_cast<IndexT>(i), static_cast<IndexT>(j));
+          process_kernel_point(kernel_idx, h_base, w_base);
+          ++kernel_idx;
+          w_base += static_cast<CoordT>(dilation_w);
         }
       }
     }
