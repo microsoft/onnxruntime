@@ -45,6 +45,7 @@ stages:
           codeSignValidation:
             enabled: true
             break: true
+            additionalTargetsGlobPattern: '-|**\clang-tblgen.exe;-|**\llvm-tblgen.exe'
           psscriptanalyzer:
             enabled: true
           binskim:
