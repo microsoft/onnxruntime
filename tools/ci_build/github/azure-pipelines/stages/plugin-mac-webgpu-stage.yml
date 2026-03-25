@@ -81,4 +81,10 @@ stages:
         SourceFolder: '$(Build.SourcesDirectory)/build/${{ parameters.cmake_build_type }}'
         Contents: |
           libonnxruntime_providers_webgpu.dylib
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/bin'
+
+    - script: |
+        set -e -x
+        mkdir -p "$(Build.ArtifactStagingDirectory)/version"
+        touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
+      displayName: 'Create version marker file'

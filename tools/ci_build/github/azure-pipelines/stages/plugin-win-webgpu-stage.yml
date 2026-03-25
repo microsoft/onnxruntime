@@ -183,4 +183,9 @@ stages:
             onnxruntime_providers_webgpu.pdb
             dxcompiler.dll
             dxil.dll
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
+
+      - script: |
+          mkdir "$(Build.ArtifactStagingDirectory)\version"
+          type nul > "$(Build.ArtifactStagingDirectory)\version\$(PluginPackageVersion)"
+        displayName: 'Create version marker file'

@@ -69,6 +69,12 @@ stages:
 
       - script: |
           set -e -x
-          mkdir -p $(Build.ArtifactStagingDirectory)/plugin
-          cp $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_webgpu.so $(Build.ArtifactStagingDirectory)/plugin/ || true
+          mkdir -p $(Build.ArtifactStagingDirectory)/bin
+          cp $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_webgpu.so $(Build.ArtifactStagingDirectory)/bin/ || true
         displayName: 'Copy plugin binaries'
+
+      - script: |
+          set -e -x
+          mkdir -p "$(Build.ArtifactStagingDirectory)/version"
+          touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
+        displayName: 'Create version marker file'
