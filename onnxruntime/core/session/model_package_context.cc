@@ -115,7 +115,8 @@ Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
 
 bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
   // Check EP constraint
-  if (!variant.ep.empty() && variant.ep != ep_info.ep_name) {
+  if (variant.ep.empty() ||
+      (!variant.ep.empty() && variant.ep != ep_info.ep_name)) {
     return false;
   }
 
@@ -137,7 +138,8 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
     return false;
   }
 
-  // If provider options contain keys related to device type, then the value must match (and narrow) the device constraint if any.
+  // If provider option contains key related to device type, then the value must match the device constraint if any.
+  // Gets the target device if matched.
   for (const auto& [key, value] : ep_info.ep_options) {
     if (!MatchesDeviceTypeProviderOption(key, value, variant.device, ep_info.hardware_devices, constraint_devices)) {
       return false;

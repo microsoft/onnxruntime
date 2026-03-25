@@ -401,6 +401,9 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   // Model path could be an onnx model file, or a model package directory.
   const ORTCHAR_T* model_path_to_use = model_path;
 
+  // For model package selected model path.
+  std::filesystem::path selected_model_path;
+
   if (model_path_to_use != nullptr) {
     std::error_code ec;
     std::filesystem::path package_root{model_path_to_use};
@@ -446,7 +449,8 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
       ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.SelectModelVariant(ep_infos));
       if (model_package_context.GetSelectedModelVariantPath().has_value()) {
-        model_path_to_use = model_package_context.GetSelectedModelVariantPath()->c_str();
+        selected_model_path = *model_package_context.GetSelectedModelVariantPath();
+        model_path_to_use = selected_model_path.c_str();
       } else {
         return OrtApis::CreateStatus(ORT_FAIL,
                                      "No suitable model variant found for the available execution providers."
