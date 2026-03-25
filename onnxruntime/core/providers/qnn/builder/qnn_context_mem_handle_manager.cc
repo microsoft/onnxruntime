@@ -110,6 +110,119 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
   }
 }
 
+Status QnnContextMemHandleManager::BatchGetOrRegister(gsl::span<const MemRegistrationEntry> entries,
+                                                      InlinedVector<MemRegistrationResult>& results) {
+  results.resize(entries.size());
+
+  std::scoped_lock g{mem_handles_mutex_};
+
+  // Phase 1: Check existing registrations, collect indices of entries that need new registration.
+  struct PendingRegistration {
+    size_t entry_index;
+    HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info;
+    size_t tensor_data_size;
+  };
+
+  InlinedVector<PendingRegistration> pending;
+
+  for (size_t i = 0; i < entries.size(); ++i) {
+    const auto& entry = entries[i];
+    const auto& qnn_tensor = *entry.qnn_tensor;
+    const auto qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
+    auto* const qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
+    const auto qnn_tensor_data_type = GetQnnTensorDataType(qnn_tensor);
+    const size_t qnn_tensor_data_size =
+        utils::GetQnnTensorDataSizeInBytes(gsl::span{qnn_tensor_dims, size_t{qnn_tensor_rank}}, qnn_tensor_data_type);
+
+    if (const auto mem_handles_it = mem_handles_.find(entry.shared_memory_address);
+        mem_handles_it != mem_handles_.end()) {
+      const auto& mem_handle_record = mem_handles_it->second;
+      ORT_RETURN_IF_NOT(qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size,
+                        "Actual tensor data size (", qnn_tensor_data_size,
+                        ") is larger than registered tensor data size (", mem_handle_record.registered_tensor_data_size,
+                        ").");
+      results[i] = {mem_handle_record.mem_handle.get(), false};
+    } else {
+      HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info{};
+      ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(entry.shared_memory_address,
+                                                                                  shared_memory_info));
+      pending.push_back({i, shared_memory_info, qnn_tensor_data_size});
+    }
+  }
+
+  if (pending.empty()) {
+    return Status::OK();
+  }
+
+  // Phase 2: Build descriptors and batch-register all new mem handles in a single call.
+  InlinedVector<Qnn_MemDescriptor_t> descriptors(pending.size());
+  InlinedVector<QnnMemHtp_Descriptor_t> htp_descriptors(pending.size());
+
+  for (size_t j = 0; j < pending.size(); ++j) {
+    const auto& p = pending[j];
+    const auto& entry = entries[p.entry_index];
+    const auto& qnn_tensor = *entry.qnn_tensor;
+
+    htp_descriptors[j] = {};
+    htp_descriptors[j].type = QNN_HTP_MEM_SHARED_BUFFER;
+    htp_descriptors[j].size = p.shared_memory_info.total_size;
+    htp_descriptors[j].sharedBufferConfig.fd = p.shared_memory_info.fd;
+    htp_descriptors[j].sharedBufferConfig.offset = p.shared_memory_info.offset;
+
+    descriptors[j] = QNN_MEM_DESCRIPTOR_INIT;
+    descriptors[j].memShape.dimSize = GetQnnTensorDims(qnn_tensor);
+    descriptors[j].memShape.numDim = GetQnnTensorRank(qnn_tensor);
+    descriptors[j].memShape.shapeConfig = nullptr;
+    descriptors[j].dataType = GetQnnTensorDataType(qnn_tensor);
+    descriptors[j].memType = QNN_MEM_TYPE_CUSTOM;
+    descriptors[j].customInfo = &htp_descriptors[j];
+
+    LOGS(logger_, VERBOSE) << "Registering QNN mem handle for context: " << context_
+                           << ", shared memory (address: " << entry.shared_memory_address
+                           << ", offset: " << p.shared_memory_info.offset
+                           << ", fd: " << p.shared_memory_info.fd
+                           << ")";
+  }
+
+  InlinedVector<Qnn_MemHandle_t> raw_mem_handles(pending.size(), nullptr);
+  const auto register_result = qnn_interface_.memRegister(context_, descriptors.data(),
+                                                          static_cast<uint32_t>(pending.size()),
+                                                          raw_mem_handles.data());
+  ORT_RETURN_IF_NOT(register_result == QNN_SUCCESS,
+                    "qnn_interface.memRegister() failed: ",
+                    utils::GetVerboseQnnErrorMessage(qnn_interface_, register_result));
+
+  // Phase 3: Store all new handles and populate results.
+  // NOTE: Must use the default ORT logger inside this lambda. Don't capture this->logger_ because it may be deleted
+  // by the time we need to unregister all memory handles. This happens when this->logger_ is a session logger:
+  //   ~InferenceSession() -> ~Logger() -> ~QnnExecutionProvider() -> ~QnnBackendManager() ->
+  //   ~QnnContextMemHandleManager() -> unregister_mem_handle() segfault
+  const auto unregister_mem_handle = [&qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
+    LOGS_DEFAULT(VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
+
+    const auto unregister_result = qnn_interface.memDeRegister(&raw_mem_handle, 1);
+    if (unregister_result != QNN_SUCCESS) {
+      LOGS_DEFAULT(ERROR) << "qnn_interface.memDeRegister() failed: "
+                          << utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result);
+    }
+  };
+
+  for (size_t j = 0; j < pending.size(); ++j) {
+    const auto& p = pending[j];
+    const auto& entry = entries[p.entry_index];
+
+    LOGS(logger_, VERBOSE) << "Registered QNN mem handle. mem_handle: " << raw_mem_handles[j];
+
+    UniqueQnnMemHandle mem_handle(raw_mem_handles[j], unregister_mem_handle);
+    MemHandleRecord mem_handle_record{p.tensor_data_size, std::move(mem_handle)};
+    mem_handles_.emplace(entry.shared_memory_address, std::move(mem_handle_record));
+
+    results[p.entry_index] = {raw_mem_handles[j], true};
+  }
+
+  return Status::OK();
+}
+
 Status QnnContextMemHandleManager::Unregister(void* shared_memory_address) {
   std::scoped_lock g{mem_handles_mutex_};
 

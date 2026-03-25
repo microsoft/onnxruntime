@@ -237,6 +237,12 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                        const Qnn_Tensor_t& qnn_tensor,
                                        Qnn_MemHandle_t& mem_handle);
 
+  // Batch version of GetOrRegisterContextMemHandle. Registers all new mem handles in a single QNN API call.
+  Status BatchGetOrRegisterContextMemHandles(
+      Qnn_ContextHandle_t context,
+      gsl::span<const QnnContextMemHandleManager::MemRegistrationEntry> entries,
+      InlinedVector<QnnContextMemHandleManager::MemRegistrationResult>& results);
+
   Status ParseLoraConfig(std::string lora_config);
 
   QnnSerializerConfig* GetQnnSerializerConfig();

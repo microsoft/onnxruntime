@@ -418,31 +418,10 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   return Status::OK();
 }
 
-static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
-                                                  QnnBackendManager& qnn_backend_manager,
-                                                  const OrtMemoryInfo& ort_value_memory_info,
-                                                  void* ort_value_data, uint32_t ort_value_data_size,
-                                                  Qnn_ContextHandle_t qnn_context,
-                                                  Qnn_Tensor_t& qnn_tensor) {
-  // either set qnn_tensor memHandle or clientBuf
+static bool UsesSharedMemory(const OrtMemoryInfo& ort_value_memory_info) {
   const static auto htp_shared_mem_info = HtpSharedMemoryAllocator::AssociatedMemoryInfo();
-  const bool uses_shared_memory = (ort_value_memory_info.device.Type() == htp_shared_mem_info.device.Type() &&
-                                   ort_value_memory_info.device.MemType() == htp_shared_mem_info.device.MemType());
-
-  if (!uses_shared_memory) {
-    LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
-    SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_RAW);
-    SetQnnTensorClientBuf(qnn_tensor, ort_value_data, ort_value_data_size);
-  } else {
-    LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
-    Qnn_MemHandle_t qnn_mem_handle{};
-    ORT_RETURN_IF_ERROR(qnn_backend_manager.GetOrRegisterContextMemHandle(qnn_context, ort_value_data, qnn_tensor,
-                                                                          qnn_mem_handle));
-    SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
-    SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle);
-  }
-
-  return Status::OK();
+  return (ort_value_memory_info.device.Type() == htp_shared_mem_info.device.Type() &&
+          ort_value_memory_info.device.MemType() == htp_shared_mem_info.device.MemType());
 }
 
 Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
@@ -462,6 +441,11 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
     return element_size * length;
   };
 
+  // Collect pending shared memory registrations across both inputs and outputs.
+  // Pointers into qnn_inputs/qnn_outputs are safe because we reserve exact capacity upfront.
+  InlinedVector<QnnContextMemHandleManager::MemRegistrationEntry> mem_reg_entries;
+  InlinedVector<Qnn_Tensor_t*> mem_reg_qnn_tensors;
+
   std::vector<Qnn_Tensor_t> qnn_inputs;
   qnn_inputs.reserve(qnn_input_infos_.size());
 
@@ -477,13 +461,17 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
 
-    ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
-        logger,
-        *qnn_backend_manager_,
-        *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
-        const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size,
-        graph_info_->GraphContext(),
-        qnn_inputs.back()));
+    const auto& mem_info = *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo());
+    if (!UsesSharedMemory(mem_info)) {
+      LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
+      SetQnnTensorMemType(qnn_inputs.back(), QNN_TENSORMEMTYPE_RAW);
+      SetQnnTensorClientBuf(qnn_inputs.back(), const_cast<void*>(ort_input_tensor.GetTensorRawData()),
+                            qnn_input_info.tensor_byte_size);
+    } else {
+      LOGS(logger, VERBOSE) << "Deferring Qnn_Tensor_t memHandle registration for batch.";
+      mem_reg_entries.push_back({const_cast<void*>(ort_input_tensor.GetTensorRawData()), &qnn_inputs.back()});
+      mem_reg_qnn_tensors.push_back(&qnn_inputs.back());
+    }
   }
 
   std::vector<Qnn_Tensor_t> qnn_outputs;
@@ -503,13 +491,29 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
 
-    ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
-        logger,
-        *qnn_backend_manager_,
-        *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
-        ort_output_tensor.GetTensorMutableRawData(), qnn_output_info.tensor_byte_size,
-        graph_info_->GraphContext(),
-        qnn_outputs.back()));
+    const auto& mem_info = *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo());
+    if (!UsesSharedMemory(mem_info)) {
+      LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
+      SetQnnTensorMemType(qnn_outputs.back(), QNN_TENSORMEMTYPE_RAW);
+      SetQnnTensorClientBuf(qnn_outputs.back(), ort_output_tensor.GetTensorMutableRawData(),
+                            qnn_output_info.tensor_byte_size);
+    } else {
+      LOGS(logger, VERBOSE) << "Deferring Qnn_Tensor_t memHandle registration for batch.";
+      mem_reg_entries.push_back({ort_output_tensor.GetTensorMutableRawData(), &qnn_outputs.back()});
+      mem_reg_qnn_tensors.push_back(&qnn_outputs.back());
+    }
+  }
+
+  // Batch-register all shared memory tensors in a single QNN API call.
+  if (!mem_reg_entries.empty()) {
+    InlinedVector<QnnContextMemHandleManager::MemRegistrationResult> mem_reg_results;
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->BatchGetOrRegisterContextMemHandles(
+        graph_info_->GraphContext(), mem_reg_entries, mem_reg_results));
+
+    for (size_t i = 0; i < mem_reg_entries.size(); ++i) {
+      SetQnnTensorMemType(*mem_reg_qnn_tensors[i], QNN_TENSORMEMTYPE_MEMHANDLE);
+      SetQnnTensorMemHandle(*mem_reg_qnn_tensors[i], mem_reg_results[i].mem_handle);
+    }
   }
 
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
