@@ -137,7 +137,7 @@ def create_attention_node_and_io(
         present_kv_seqlen = config.kv_sequence_length
 
     # Effective v_head_size: defaults to head_size when not explicitly set
-    effective_v_head_size = config.v_head_size if config.v_head_size else config.head_size
+    effective_v_head_size = config.v_head_size or config.head_size
 
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -454,7 +454,7 @@ def attention_prompt_func(
         bind_tensor(io_binding, "nonpad_kv_seqlen", nonpad_kv_seqlen, device, TensorProto.INT64)
 
     # Bind Outputs
-    effective_v_head_size = config.v_head_size if config.v_head_size else config.head_size
+    effective_v_head_size = config.v_head_size or config.head_size
     output_hidden_size = config.q_num_heads * effective_v_head_size
     out_dtype = _get_out_dtype(ort_type)
 
@@ -574,7 +574,7 @@ def attention_past_func(
     bind_tensor(io_binding, "past_value", past_v_sliced, device, cache_ort_type)
 
     # Bind Outputs
-    effective_v_head_size = config.v_head_size if config.v_head_size else config.head_size
+    effective_v_head_size = config.v_head_size or config.head_size
     output_hidden_size = config.q_num_heads * effective_v_head_size
     out_dtype = _get_out_dtype(ort_type)
 
