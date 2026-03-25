@@ -673,10 +673,10 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   // shared_mutex, atomic reference counting, and mutable state in the OpKernel.
   // The computation cost (a few dozen cycles) is vastly lower than lock/atomic overhead.
   const size_t kernel_size_sz = static_cast<size_t>(common_dims.kernel_size);
-  // 25 is enough to inline up to 5x5 kernels without heap allocation.
-  onnxruntime::InlinedVector<size_t, 25> offset_base_delta(kernel_size_sz);
-  onnxruntime::InlinedVector<T, 25> base_h(kernel_size_sz);
-  onnxruntime::InlinedVector<T, 25> base_w(kernel_size_sz);
+  // 49 is enough to inline up to 7x7 kernels without heap allocation.
+  onnxruntime::InlinedVector<size_t, 49> offset_base_delta(kernel_size_sz);
+  onnxruntime::InlinedVector<T, 49> base_h(kernel_size_sz);
+  onnxruntime::InlinedVector<T, 49> base_w(kernel_size_sz);
   for (int64_t kernel_idx = 0; kernel_idx < common_dims.kernel_size; ++kernel_idx) {
     const int64_t i = kernel_idx / params.kW;
     const int64_t j = kernel_idx % params.kW;
