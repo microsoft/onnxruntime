@@ -44,7 +44,8 @@ std::filesystem::path ResolveInternalTestPath(const std::filesystem::path& path)
   }
 
   std::filesystem::path candidate = std::filesystem::current_path() / path;
-  if (std::filesystem::exists(candidate)) {
+  std::error_code ec;
+  if (std::filesystem::exists(candidate, ec)) {
     return candidate;
   }
 
