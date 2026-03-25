@@ -282,7 +282,8 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (Bdata != nullptr) {
-    ORT_RETURN_IF_ERROR(DeformConvAddBiasImpl<T>(stream, Ydata, Bdata, N, M, out_h, out_w));
+    ORT_RETURN_IF_ERROR(DeformConvAddBiasImpl<T>(stream, Ydata, Bdata, N, M, out_h, out_w,
+                                                 static_cast<int64_t>(device_prop.maxGridSize[1])));
   }
 
   return Status::OK();

@@ -352,20 +352,53 @@ __global__ void DeformConvAddBiasKernel(
   }
 }
 
+// 2D path only when N*M <= max_grid_y. If !Needs64BitIndex(total, out_size, M), then total <= INT32_MAX so
+// batch_channel_idx * spatial_size + pixel_idx < total fits int32; use IndexT=int32_t. Otherwise int64_t.
+template <typename T, typename IndexT>
+__global__ void DeformConvAddBias2DKernel(T* Y, const T* B, IndexT spatial_size, int32_t channels) {
+  // blockIdx.y maps to batch_channel_idx (N * M)
+  const IndexT batch_channel_idx = static_cast<IndexT>(blockIdx.y);
+  const IndexT channel_idx = batch_channel_idx % static_cast<IndexT>(channels);
+  T bias_val = DeformConvLdg(B + channel_idx);
+
+  const IndexT pixel_idx =
+      static_cast<IndexT>(blockIdx.x) * static_cast<IndexT>(blockDim.x) + static_cast<IndexT>(threadIdx.x);
+  if (pixel_idx < spatial_size) {
+    Y[batch_channel_idx * spatial_size + pixel_idx] += bias_val;
+  }
+}
+
 }  // namespace
 
 template <typename T>
-Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, int64_t M, int64_t out_h, int64_t out_w) {
+Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, int64_t M, int64_t out_h, int64_t out_w, int64_t max_grid_y) {
   int64_t total = N * M * out_h * out_w;
   if (total <= 0) return Status::OK();
 
   // 1. Prepare divisor
   const int64_t out_size = out_h * out_w;
-
+  const int64_t batch_channels = N * M;
+  // For 1D DivMod kernel only: int32 fast path vs int64. Orthogonal to 2D launch (gridDim.y limit).
   const bool use_64bit = Needs64BitIndex(total, out_size, M);
 
-  int blocks = GetGridSize(static_cast<size_t>(total), kDeformConvThreadsPerBlock);
+  // Fast 2D launch path: map blockIdx.y to (N*M) to avoid per-thread DivMod in bias add.
+  // Keep this path only when max_grid_y is reasonably large (>32); very small y-dimension limits
+  // provide too little parallelism in y and often don't justify the extra path/launch logic.
+  if (max_grid_y > 32 && batch_channels <= static_cast<int64_t>(max_grid_y)) {
+    dim3 block(kDeformConvThreadsPerBlock);
+    dim3 grid(static_cast<unsigned int>(GetGridSize(static_cast<size_t>(out_size), block.x)),
+              static_cast<unsigned int>(batch_channels));
+    const int32_t m_i32 = static_cast<int32_t>(M);
+    if (use_64bit) {
+      DeformConvAddBias2DKernel<T, int64_t><<<grid, block, 0, stream>>>(Y, B, out_size, m_i32);
+    } else {
+      DeformConvAddBias2DKernel<T, int32_t><<<grid, block, 0, stream>>>(
+          Y, B, static_cast<int32_t>(out_size), m_i32);
+    }
+    return CUDA_CALL(cudaGetLastError());
+  }
 
+  int blocks = GetGridSize(static_cast<size_t>(total), kDeformConvThreadsPerBlock);
   if (use_64bit) {
     // 2. Create FastDivMod object (note: ensure int64_t version of DivMod is used here)
     // 3. Pass DivMod objects
@@ -473,10 +506,10 @@ INST_DeformConvIm2ColImpl(double);
 INST_DeformConvIm2ColImpl(half);
 INST_DeformConvIm2ColImpl(BFloat16);
 
-template Status DeformConvAddBiasImpl<float>(cudaStream_t, float*, const float*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvAddBiasImpl<double>(cudaStream_t, double*, const double*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvAddBiasImpl<half>(cudaStream_t, half*, const half*, int64_t, int64_t, int64_t, int64_t);
-template Status DeformConvAddBiasImpl<BFloat16>(cudaStream_t, BFloat16*, const BFloat16*, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvAddBiasImpl<float>(cudaStream_t, float*, const float*, int64_t, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvAddBiasImpl<double>(cudaStream_t, double*, const double*, int64_t, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvAddBiasImpl<half>(cudaStream_t, half*, const half*, int64_t, int64_t, int64_t, int64_t, int64_t);
+template Status DeformConvAddBiasImpl<BFloat16>(cudaStream_t, BFloat16*, const BFloat16*, int64_t, int64_t, int64_t, int64_t, int64_t);
 
 // Delegate ORT type to CUDA type (e.g. MLFloat16 -> half); avoids repeating three identical specializations.
 #define DELEGATE_DEFORM_CONV_IMPL(ORT_T, CUDA_T)                                                                    \
@@ -497,9 +530,9 @@ template Status DeformConvAddBiasImpl<BFloat16>(cudaStream_t, BFloat16*, const B
   }                                                                                                                 \
   template <>                                                                                                       \
   Status DeformConvAddBiasImpl<ORT_T>(cudaStream_t stream, ORT_T * Y, const ORT_T* B,                               \
-                                      int64_t N, int64_t M, int64_t out_h, int64_t out_w) {                         \
+                                      int64_t N, int64_t M, int64_t out_h, int64_t out_w, int64_t max_grid_y) {     \
     return DeformConvAddBiasImpl<CUDA_T>(stream, reinterpret_cast<CUDA_T*>(Y),                                      \
-                                         reinterpret_cast<const CUDA_T*>(B), N, M, out_h, out_w);                   \
+                                         reinterpret_cast<const CUDA_T*>(B), N, M, out_h, out_w, max_grid_y);       \
   }
 
 // BFloat16 is not delegated: ORT's BFloat16 is the same type used in device code (ToCudaType<BFloat16> in
