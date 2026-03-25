@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <vector>
+#include "core/common/cpuid_info.h"
 #include "core/graph/constants.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
@@ -33,6 +34,13 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
   auto& base_node = NodeFromApiNode(node);
 
   ORT_UNUSED_PARAMETER(graph);
+#if !defined(__aarch64__)
+  return false;
+#else
+  if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME()) {
+    return false;
+  }
+
   if (base_node.InputDefs().size() < 2) {
     return false;
   }
@@ -48,6 +56,7 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
   }
 
   return true;
+#endif
 }
 #endif
 

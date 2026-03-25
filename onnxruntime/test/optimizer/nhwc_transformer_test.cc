@@ -38,6 +38,7 @@ NodeArg* NhwcMakeInitializer(ModelTestBuilder& builder, const std::vector<int64_
                                     NhwcWeightsRange<T>::max_value);
 }
 
+#if defined(USE_KLEIDIAI) && defined(__aarch64__)
 static bool HasFloatNhwcFusedConvKernel() {
   auto* cpu_ep = TestCPUExecutionProvider();
   auto kernel_registry = cpu_ep->GetKernelRegistry();
@@ -61,6 +62,7 @@ static bool HasFloatNhwcFusedConvKernel() {
 
   return status.IsOK() && kernel_create_info != nullptr;
 }
+#endif
 
 static bool HasFloatNhwcRuntimeSupport() {
 #if defined(USE_KLEIDIAI) && defined(__aarch64__)
