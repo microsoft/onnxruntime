@@ -50,6 +50,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_openvino.yml | BUILD_OPENVINO_EP
 
       - name: Download OpenVINO Toolkit v2025.4.1
         env:

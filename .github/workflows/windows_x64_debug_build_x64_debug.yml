@@ -36,6 +36,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env # Use the composite action
         with:
           architecture: x64
+          cache_key: windows_x64_debug_build_x64_debug.yml | build_x64_debug
 
       - name: Install python modules
         shell: cmd

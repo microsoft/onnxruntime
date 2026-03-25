@@ -5,6 +5,9 @@ inputs:
     description: 'Target architecture (x64 or x86)'
     required: true
     default: 'x64'
+  cache_key:
+    description: 'a workflow & job qualified unique key to distinguish a cache. used as a suffix for subcaches.'
+    required: true
 outputs:
   vcvarsall_path:
     description: "Path to vcvarsall.bat"
@@ -78,3 +81,38 @@ runs:
 
         REM Call the Python script to update the GitHub Actions environment
         python ${{ github.action_path }}\update_environment.py
+
+    - name: Set cache dir env vars
+      env:
+        github_runner_temp: ${{ runner.temp }}
+      shell: pwsh
+      run: |
+        echo "CCACHE_DIR=${env:github_runner_temp}/.ccache" >> "${env:GITHUB_ENV}"
+        echo "VCPKG_DEFAULT_BINARY_CACHE=${env:github_runner_temp}/.vcpkg-cache" >> "${env:GITHUB_ENV}"
+
+        # vcpkg will error/exit if `VCPKG_DEFAULT_BINARY_CACHE` does not exist as a directory.
+        # c.f.  ccache happily creates the cache dir if it does not exist.
+        #       Don't create ccache's dir so that `action/cache` skips if ccache isn't populated.
+        New-Item -ItemType Directory -Path "${env:github_runner_temp}/.vcpkg-cache" -Force
+
+        # HACK: `actions/cache` will somehow pick up `tar` from the git installation. This bin dir is not on the PATH.
+        #       `tar` tries to find `gzip` (which is right next to it), and fails b/c the git bin dir isn't on the PATH.
+        #       This breaks attempts to download/upload caches.
+        #       Add git's bin dir to the PATH so that `actions/cache`'s invoke of `tar` can find `gzip`.
+        echo "PATH=${env:PATH};C:\\Program Files\\Git\\usr\\bin" >> "${env:GITHUB_ENV}"
+
+    # n.b. Caller is responsible for building w/ ccache enabled via `--use_cache`
+    #      We could set the env var `ORT_BUILD_WITH_CACHE` to indirectly enable it, but this hack seems deprecated.
+    #      Ideally ccache should be auto-enabled by the build system if ccache/sccache is detected on the PATH.
+    - name: Setup CCache
+      uses: actions/cache@v4
+      with:
+        # Fully qualify by `cache_key`. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+        key: ccache | ${{ inputs.cache_key }}
+        path: ${{ runner.temp }}/.ccache # ensure this is coordinated/matches w/ env-vars step above
+
+    - name: Setup VCPKG Cache
+      uses: actions/cache@v4
+      with:
+        key: vcpkg-cache | ${{ inputs.cache_key }}
+        path: ${{ runner.temp }}/.vcpkg-cache

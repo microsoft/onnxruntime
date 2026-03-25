@@ -36,6 +36,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x86 # x86 architecture for vcvarsall
+          cache_key: windows_x86.yml | build_x86_release
 
       - name: Install python modules
         shell: cmd

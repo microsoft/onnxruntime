@@ -47,6 +47,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_qnn_x64.yml | build_test_qnn_ep_${{ matrix.QnnLibKind }}
 
       - name: Download QNN SDK
         working-directory: ${{ runner.temp }}

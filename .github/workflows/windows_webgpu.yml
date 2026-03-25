@@ -53,6 +53,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_webgpu.yml | webgpu_build_x64_RelWithDebInfo_${{ matrix.vcpkg_option }}_${{ matrix.wgsl_template }}
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
@@ -186,6 +187,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_webgpu.yml | webgpu_plugin_build_x64_RelWithDebInfo
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
@@ -259,6 +261,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_webgpu.yml | webgpu_external_dawn_build_x64_RelWithDebInfo
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
@@ -316,6 +319,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_webgpu.yml | webgpu_minimal_build_edge_build_x64_RelWithDebInfo
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
