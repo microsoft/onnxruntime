@@ -24,7 +24,7 @@ parameters:
 
 - name: npm_registry_url
   type: string
-  default: 'https://pkgs.dev.azure.com/aiinfra/_packaging/Guardian1ESPTUpstreamOrgFeed/npm/registry/'
+  default: 'https://pkgs.dev.azure.com/aiinfra/_packaging/ONNXRuntime_WebGPU_BuildDependencies/npm/registry/'
 
 stages:
   - stage: Win_plugin_webgpu_${{ parameters.arch }}_Build
