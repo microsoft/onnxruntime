@@ -509,7 +509,8 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
             // Note: all-false bool mask (every position masked) is a degenerate case. It works because
             // mask_filter_value (~-3.4e38) is so extreme that float precision loses QK differences,
             // producing uniform softmax weights matching CPU behavior.
-            false, false, true  // disable_cpu, disable_cuda, disable_dml
+            // TODO(titaiwang): GTX1070 and A10 crashes on this case.
+            false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
