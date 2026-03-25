@@ -69,7 +69,6 @@ class LinearAttention : public WebGpuKernel {
  protected:
   LinearAttentionUpdateRule update_rule_;
   float scale_;
-  int64_t chunk_size_;
 };
 
 }  // namespace webgpu

@@ -2242,10 +2242,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default is 'silu'.",
               AttributeProto::STRING,
               std::string("silu"))
-        .Attr("group",
-              "group for convolution. Default is 1, which means normal convolution. When group equals to input channels, it becomes depthwise convolution.",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, channels, length). Channels-first layout.",
@@ -2302,7 +2298,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* LinearAttention_ver1_doc = R"DOC(
-Linear Attention operator (chunk-parallel).
+Linear Attention operator.
 
 Processes a sequence of tokens using linear attention with a recurrent state matrix.
 When sequence_length=1, this is equivalent to a single recurrent decode step.
@@ -2333,10 +2329,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Output scaling factor. When 0.0 (default), uses 1/sqrt(d_k) where d_k is the key dimension.",
               AttributeProto::FLOAT,
               0.0f)
-        .Attr("chunk_size",
-              "Chunk size for parallel computation. Only a hint for the implementation.",
-              AttributeProto::INT,
-              static_cast<int64_t>(64))
         .Input(0,
                "query",
                "Query vectors with shape (batch_size, num_heads, sequence_length, head_dim_k)",
@@ -2359,14 +2351,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(4,
                "decay",
                "Exponential decay gate in log-space with shape broadcastable to "
-               "(batch_size, num_heads, sequence_length, head_dim_k). "
+               "(batch_size, num_heads, sequence_length, [head_dim_k]). "
                "Required for 'gated' and 'gated_delta' modes.",
                "T",
                OpSchema::Optional)
         .Input(5,
                "beta",
                "Update rate (sigmoid output) with shape broadcastable to "
-               "(batch_size, num_heads, sequence_length, 1). "
+               "(batch_size, num_heads, sequence_length, [1]). "
                "Required for 'delta' and 'gated_delta' modes.",
                "T",
                OpSchema::Optional)

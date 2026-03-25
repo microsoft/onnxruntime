@@ -244,7 +244,6 @@ LinearAttention::LinearAttention(const OpKernelInfo& info)
   std::string update_rule_str = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
   update_rule_ = ParseUpdateRule(update_rule_str);
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-  chunk_size_ = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
 }
 
 
