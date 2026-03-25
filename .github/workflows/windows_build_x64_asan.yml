@@ -42,6 +42,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env # Use the composite action
         with:
           architecture: x64
+          cache_key: windows_build_x64_asan.yml | build_x64
 
       - name: Write shared build options
         shell: pwsh

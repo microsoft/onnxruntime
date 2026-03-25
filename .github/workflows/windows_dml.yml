@@ -45,6 +45,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_dml.yml | build_x64_RelWithDebInfo
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt

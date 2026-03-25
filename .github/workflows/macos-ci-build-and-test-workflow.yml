@@ -52,7 +52,8 @@ jobs:
     # see also: https://github.com/actions/runner-images/blob/main/README.md
     runs-on: ${{ matrix.machine == 'x86_64' && 'macos-13' || 'macos-15' }}
     env:
-      build_flags: >
+      CCACHE_DIR: ~/.cache/ccache # be explicit. must match `action/cache` below.
+      build_flags: >-
         --build_dir ./build
         --skip_submodule_sync
         --parallel
@@ -66,7 +67,9 @@ jobs:
         ${{ inputs.use_webgpu && '--use_webgpu' || '' }}
         ${{ inputs.use_xnnpack && '--use_xnnpack' || '' }}
         ${{ inputs.use_coreml && '--use_coreml --skip_onnx_tests' || '' }}
-        --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+        --use_cache
+        --use_vcpkg
+        --use_vcpkg_ms_internal_asset_cache
         --config ${{ matrix.build_config }}
         --osx_arch ${{ matrix.target }}
 
@@ -76,13 +79,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
+          ccache-version: 4.13.1
+          ccache-hash: d831cbd84ac1efb32441c5bfbc7cc662830c0c22e96c5b5b27a6ce4746c81d6076261cf61217fb67ff4585fbd6cbd91ea817aa4ed904b81fcba621bb60881f56
           vcpkg-version: '2025.08.27'
           vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
           cmake-version: '3.31.8'
           cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
-          add-cmake-to-path: 'true'
           disable-terrapin: 'true'
 
       - name: macOS CI pipeline prepare steps
@@ -92,6 +97,18 @@ jobs:
           python_version: ${{ inputs.python_version }}
           xcode_version: ${{ env.xcode_version }}
           use_cache: true
+
+      - name: Setup CCache
+        uses: actions/cache@v4
+        with:
+          key: ccache | macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}
+          path: ~/.cache/ccache
+
+      - name: Setup VCPKG Cache
+        uses: actions/cache@v4
+        with:
+          key: vcpkg-cache | macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }} # build config doesn't matter, vcpkg builds both
+          path: ~/.cache/vcpkg
 
       - uses: actions/cache@v5
         id: onnx-node-tests-cache
