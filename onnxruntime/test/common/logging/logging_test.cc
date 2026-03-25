@@ -27,9 +27,6 @@ using InstanceType = LoggingManager::InstanceType;
 
 namespace test {
 
-using ::onnxruntime::test::EnvVarMap;
-using ::onnxruntime::test::ScopedEnvironmentVariables;
-
 static std::string default_logger_id{"TestFixtureDefaultLogger"};
 
 // class to provide single default instance of LoggingManager for use with macros involving 'DEFAULT'
