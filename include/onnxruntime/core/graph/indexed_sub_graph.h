@@ -93,6 +93,17 @@ struct IndexedSubGraph {
     resource_accountant->AddConsumedAmount(nodes_costs[cost_index]);
   }
 
+  // Accounts for all constituent nodes by summing their pre-stored costs.
+  // Use this when fusing nodes into a single node so the total cost
+  // reflects what was computed during GetCapability() (with correct
+  // cross-node weight deduplication already applied).
+  void AccountForAllNodes() const {
+    assert(resource_accountant != nullptr);
+    for (const auto& cost : nodes_costs) {
+      resource_accountant->AddConsumedAmount(cost);
+    }
+  }
+
   // This computes and accounts for the resource cost for the node that just
   // been fused from other nodes, and the EP did not had a chance to compute the costs.
   void ComputeAndAccountForNode(const Node& node) const {
