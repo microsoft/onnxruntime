@@ -760,6 +760,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 }
 
 // expand any nodes that have an ONNX function definition but no matching ORT kernel
+// expand any nodes that have an ONNX function definition but no matching ORT kernel
 static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* layering_index) {
   // recurse into nested graphs first so we process from bottom up
   for (auto& node : graph.Nodes()) {
@@ -785,15 +786,32 @@ static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* lay
   InlinedVector<NodeIndex> new_node_indices;
 
   for (auto* node : nodes_to_inline) {
-    // Only track new nodes when the parent has an annotation that will be inherited.
-    const bool has_annotation = layering_index != nullptr &&
-                                !node->GetLayeringAnnotation().empty();
-    const int max_before = has_annotation ? graph.MaxNodeIndex() : 0;
+    // Check for an effective layering assignment: either from an explicit annotation
+    // on the node, or from an inherited assignment via the LayeringIndex (e.g., a function
+    // call node inside an annotated If/Loop subgraph that inherited its parent's rule).
+    const bool has_explicit_annotation = !node->GetLayeringAnnotation().empty();
+    bool has_effective_assignment = has_explicit_annotation;
+
+    if (layering_index != nullptr && !has_explicit_annotation) {
+      // The node may have an inherited-only assignment with no stored annotation string.
+      // Materialize the annotation on the node so Graph::InlineFunction propagates it
+      // to the newly created inlined nodes.
+      auto rule_idx = layering_index->GetNodeAssignment(graph, node->Index());
+      if (rule_idx) {
+        has_effective_assignment = true;
+        const auto& rules = layering_index->GetRules();
+        if (*rule_idx < rules.rules.size()) {
+          node->SetLayeringAnnotation(rules.rules[*rule_idx].annotation);
+        }
+      }
+    }
+
+    const int max_before = has_effective_assignment ? graph.MaxNodeIndex() : 0;
 
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
     modified_graph = true;
 
-    if (has_annotation) {
+    if (has_effective_assignment) {
       const int max_after = graph.MaxNodeIndex();
       for (int i = max_before; i < max_after; ++i) {
         if (graph.GetNode(static_cast<NodeIndex>(i)) != nullptr) {
@@ -811,6 +829,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* lay
 
   return Status::OK();
 }
+
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,

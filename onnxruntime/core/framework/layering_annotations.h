@@ -148,6 +148,9 @@ class LayeringIndex {
   std::optional<std::reference_wrapper<const InlinedHashSet<size_t>>>
   GetLayeringRulesForThisEp(const std::string& ep_type) const;
 
+  // Returns the parsed layering rules
+  const LayeringRules& GetRules() const noexcept { return rules_; }
+
   // This function returns an index for the Layering rule the node is assigned to if any
   std::optional<size_t> GetNodeAssignment(const Graph& graph, NodeIndex node_id) const;
 
