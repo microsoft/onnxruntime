@@ -370,7 +370,9 @@ __global__ void DeformableIm2ColKernel(
           run_deform_row(i_idx * w_dim, base_h_im + static_cast<CoordT>(i_idx * dilation_h), w_dim);
         }
       } else {
-        // For 5x5 (25 iterations), fully unrolling both dimensions hurts registers and I-cache; keep outer rolled.
+        // Larger fixed kernels (including 7x7): keep both outer i and inner j rolled to limit register
+        // pressure from the heavy bilinear body. 7x7 still benefits from launch-time kH/kW constants
+        // without inner #pragma unroll.
         for (int i = 0; i < kH; ++i) {
           const IndexT i_idx = static_cast<IndexT>(i);
           run_deform_row(i_idx * w_dim, base_h_im + static_cast<CoordT>(i_idx * dilation_h), w_dim);
@@ -590,8 +592,8 @@ Status DeformConvIm2ColImpl(
     launch_with_mask(DeformConvKSize<1>{}, DeformConvKSize<1>{});
   } else if (kH == 3 && kW == 3) {
     launch_with_mask(DeformConvKSize<3>{}, DeformConvKSize<3>{});
-  } else if (kH == 5 && kW == 5) {
-    launch_with_mask(DeformConvKSize<5>{}, DeformConvKSize<5>{});
+  } else if (kH == 7 && kW == 7) {
+    launch_with_mask(DeformConvKSize<7>{}, DeformConvKSize<7>{});
   } else {
     launch_with_mask(DeformConvKSize<-1>{}, DeformConvKSize<-1>{});
   }
