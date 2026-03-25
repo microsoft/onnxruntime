@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include <limits>
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/run_options.h"
+#include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/util/include/default_providers.h"
+
+#include <limits>
 
 namespace onnxruntime {
 namespace test {
@@ -1694,23 +1695,14 @@ TEST(GemmOpTest, GemmTransB_f16_32x32x128) {
       .RunWithConfig();
 }
 
-// Declared in gemm.cc — not in a public header, so forward-declare here.
-bool GemmPackBFp32(AllocatorPtr& alloc,
-                   const Tensor& tensor_b,
-                   bool trans_a,
-                   bool trans_b,
-                   IAllocatorUniquePtr<void>& packed_b,
-                   size_t& packed_b_size,
-                   TensorShape& b_shape,
-                   const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
-
 // Direct tests for GemmPackBFp32 with invalid dimensions that can't go through
 // OpTester (which validates shapes before the model runs). These test the
 // dimension validation added to prevent the MlasSgemmTransposePackB OOB crash.
 class GemmPackBValidationTest : public ::testing::TestWithParam<std::pair<int64_t, int64_t>> {};
 
 TEST_P(GemmPackBValidationTest, InvalidDimensionsReturnFalse) {
-  auto [dim0, dim1] = GetParam();
+  int64_t dim0 = GetParam().first;
+  int64_t dim1 = GetParam().second;
 
   // Create a minimal tensor with the given shape. We use a small backing
   // buffer — the point is that GemmPackBFp32 should reject the shape before
@@ -1720,7 +1712,7 @@ TEST_P(GemmPackBValidationTest, InvalidDimensionsReturnFalse) {
   OrtMemoryInfo cpu_info("Cpu", OrtAllocatorType::OrtDeviceAllocator);
   Tensor tensor_b(DataTypeImpl::GetType<float>(), shape, dummy_data, cpu_info);
 
-  auto alloc = std::make_shared<CPUAllocator>();
+  AllocatorPtr alloc = std::make_shared<CPUAllocator>();
   IAllocatorUniquePtr<void> packed_b;
   size_t packed_b_size = 0;
   TensorShape b_shape;
@@ -1733,27 +1725,30 @@ TEST_P(GemmPackBValidationTest, InvalidDimensionsReturnFalse) {
                        << dim0 << ", " << dim1 << "}";
 }
 
+static std::string GemmPackBTestName(
+    const ::testing::TestParamInfo<std::pair<int64_t, int64_t>>& info) {
+  int64_t d0 = info.param.first;
+  int64_t d1 = info.param.second;
+  auto dim_str = [](int64_t v) -> std::string {
+    if (v >= 0) return std::to_string(v);
+    if (v == std::numeric_limits<int64_t>::min()) return "INT64_MIN";
+    return "neg" + std::to_string(-v);
+  };
+  return dim_str(d0) + "x" + dim_str(d1);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     InvalidDimensions,
     GemmPackBValidationTest,
     ::testing::Values(
-        std::make_pair(int64_t{-1}, int64_t{4}),                                  // Negative dim0
-        std::make_pair(int64_t{4}, int64_t{-1}),                                  // Negative dim1
-        std::make_pair(int64_t{-1}, int64_t{-1}),                                 // Both negative
-        std::make_pair(std::numeric_limits<int64_t>::min(), int64_t{4}),           // INT64_MIN dim0
-        std::make_pair(int64_t{4}, std::numeric_limits<int64_t>::min()),           // INT64_MIN dim1
-        std::make_pair(std::numeric_limits<int64_t>::max(), int64_t{4}),           // Huge dim0
-        std::make_pair(int64_t{4}, std::numeric_limits<int64_t>::max())            // Huge dim1
-    ),
-    [](const ::testing::TestParamInfo<std::pair<int64_t, int64_t>>& info) {
-      auto [d0, d1] = info.param;
-      auto dim_str = [](int64_t v) -> std::string {
-        if (v >= 0) return std::to_string(v);
-        if (v == std::numeric_limits<int64_t>::min()) return "INT64_MIN";
-        return "neg" + std::to_string(-v);
-      };
-      return dim_str(d0) + "x" + dim_str(d1);
-    });
+        std::make_pair(int64_t{-1}, int64_t{4}),
+        std::make_pair(int64_t{4}, int64_t{-1}),
+        std::make_pair(int64_t{-1}, int64_t{-1}),
+        std::make_pair(std::numeric_limits<int64_t>::min(), int64_t{4}),
+        std::make_pair(int64_t{4}, std::numeric_limits<int64_t>::min()),
+        std::make_pair(std::numeric_limits<int64_t>::max(), int64_t{4}),
+        std::make_pair(int64_t{4}, std::numeric_limits<int64_t>::max())),
+    GemmPackBTestName);
 
 }  // namespace test
 }  // namespace onnxruntime
