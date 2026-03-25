@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 // Provider API shims used by migrated CUDA kernels.
-// Direct implementations — no SHARED_PROVIDER bridge needed.
+// Provides direct implementations of utility functions that in-tree kernels
+// obtain via the SHARED_PROVIDER bridge (GetEnvironmentVar, floatToHalf,
+// halfToFloat). Plugin builds skip SHARED_PROVIDER entirely, so these thin
+// wrappers ensure the migrated kernel code compiles and links.
 
 #include <string>
 #include <cstdlib>

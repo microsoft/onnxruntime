@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// CUDA stream and event-based synchronization primitives for the plugin EP.
+// CudaSyncStream wraps a cudaStream_t plus cuBLAS/cuDNN/cuBLASLt handles.
+// CudaSyncNotification wraps a cudaEvent_t for cross-stream synchronization.
+// A global stream registry (with TLS-cached lookups) allows migrated kernels
+// to obtain their compute handles from a raw cudaStream_t.
+
 #pragma once
 
 #include "cuda_plugin_utils.h"
@@ -32,6 +38,9 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   void EnqueueDeferredCPUBuffer(void* cpu_buffer);
   OrtStatus* InitHandles();
 
+  /// Look up the CudaSyncStream wrapper from a raw cudaStream_t handle.
+  /// Uses a thread-local TLS cache with a generation counter to avoid lock
+  /// contention on this hot path (called on every kernel launch).
   static CudaSyncStream* FromCudaStream(cudaStream_t stream);
 
  private:
@@ -53,6 +62,9 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   cudnnHandle_t cudnn_handle_ = nullptr;
   cublasLtHandle_t cublas_lt_handle_ = nullptr;
 
+  // CPU buffers whose deallocation is deferred to OnSessionRunEnd.
+  // Pinned memory must remain valid until all async device operations that
+  // reference it have completed, so we synchronize the stream first.
   std::vector<void*> deferred_cpu_buffers_;
 };
 

@@ -246,6 +246,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // Plugin build: use GetScratchBuffer (adapter-compatible) instead of
+  // IAllocator::MakeUniquePtr which requires the full allocator interface.
   IAllocatorUniquePtr<void> gemm_buffer = GetScratchBuffer<void>(static_cast<size_t>(m * n) * sizeof(T), GetComputeStream(context));
 #else
   IAllocatorUniquePtr<void> gemm_buffer = IAllocator::MakeUniquePtr<void>(allocator, static_cast<size_t>(m * n) * sizeof(T), false, context->GetComputeStream());

@@ -12,6 +12,9 @@ namespace cuda {
 namespace {
 
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
+// PLUGIN BUILD ADAPTATION: TileOp::IsTileMemcpy (CPU provider) cannot be
+// linked into the plugin. Reimplement the memcpy fast-path check here.
+// Keep in sync with TileOp::IsTileMemcpy in cpu/tensor/tile.cc.
 bool IsTileMemcpyForPlugin(const TensorShape& input_shape,
                            const int64_t* repeats,
                            size_t rank,

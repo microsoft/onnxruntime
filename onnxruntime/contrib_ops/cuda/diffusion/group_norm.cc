@@ -67,6 +67,9 @@ struct DispatchGroupNorm {
   }
 
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // Plugin overload: accepts PluginTuningContextStub* (unused) and raw void*
+  // stream handle instead of IKernelExplorer*/Stream* which are not available
+  // in the plugin build. Uses OrtStreamAdapter to bridge to the _impl kernel.
   Status operator()(CudaKernel::PluginTuningContextStub* tuning_ctx,
                     void* ort_stream,
                     Tensor* output,

@@ -8,8 +8,9 @@
 #include "core/providers/cpu/tensor/utils.h"
 
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-// In the plugin build, SCATTER_ND_VALIDATE_SHAPES is not accessible
-// (it lives in the CPU provider). Provide an inline equivalent.
+// PLUGIN BUILD ADAPTATION: SCATTER_ND_VALIDATE_SHAPES is defined in the CPU
+// provider (scatter_nd.h) which cannot be linked into the plugin. Inline the
+// same validation logic here. Keep in sync with ScatterND::ValidateShapes.
 namespace onnxruntime {
 namespace scatter_nd_plugin {
 inline Status ValidateShapes(const TensorShape& input_shape,

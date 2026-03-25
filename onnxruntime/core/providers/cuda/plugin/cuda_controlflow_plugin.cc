@@ -14,6 +14,9 @@ namespace plugin {
 
 namespace {
 
+/// Determine byte size of a single element for the given ONNX data type.
+/// Used by Scan transpose kernel to allocate and copy tensor data.
+/// Returns error for sub-byte types (INT4, UINT4) and strings.
 Status GetTensorElementStorageSize(ONNXTensorElementDataType elem_type, size_t& element_size) {
   switch (elem_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:

@@ -31,6 +31,10 @@ REGISTER_KERNEL_TYPED(double)
 using namespace ONNX_NAMESPACE;
 
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
+// PLUGIN BUILD ADAPTATION: bias_gelu_helper::CheckInputs lives in the CPU
+// provider and cannot be linked into the plugin. Reimplement the same input
+// validation (rank checks, bias shape matching) inline.
+// Keep in sync with contrib_ops/cpu/bert/bias_gelu_helper.h.
 static Status CheckInputsForPlugin(const OpKernelContext* context) {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* bias = context->Input<Tensor>(1);

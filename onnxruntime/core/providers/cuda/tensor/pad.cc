@@ -115,6 +115,9 @@ namespace cuda {
 
 using PadsVector = PadBase::PadsVector;
 
+// In the plugin build, PadBase::ComputePads is not accessible because it
+// depends on CPU provider internals. ComputePadsImpl is a minimal inline
+// equivalent. Keep in sync with PadBase::ComputePads in pad.h.
 template <typename KernelContextType>
 static void ComputePadsLocal(KernelContextType& ctx,
                              size_t data_rank,
@@ -127,6 +130,9 @@ static void ComputePadsLocal(KernelContextType& ctx,
 #endif
 }
 
+// In the plugin build, PadBase::HandleDimValueZero lives in CPU provider code
+// that cannot be linked into the plugin. Inline the same validation here.
+// Keep in sync with PadBase::HandleDimValueZero in pad.h.
 static Status HandleDimValueZeroLocal(const Mode& mode,
                                       const TensorShape& input_shape,
                                       const TensorShape& output_shape) {

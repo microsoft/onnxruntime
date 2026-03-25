@@ -42,6 +42,9 @@ ONNX_OPERATOR_KERNEL_EX(Split,
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split_18);
 
+// Self-contained split preparation that replaces SplitBase::PrepareForCompute.
+// The base class method is not available in plugin builds because SplitBase
+// depends on CPU provider internals. Keep logic in sync with SplitBase.
 Status SplitKernel::PrepareForComputeLocal(const TensorShape& input_shape,
                                            int num_outputs,
                                            int64_t& axis,

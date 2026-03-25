@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// CUDA device and pinned memory allocator implementations for the plugin EP.
+// Provides CudaDeviceAllocator (cudaMalloc/cudaFree) and CudaPinnedAllocator
+// (cudaHostAlloc/cudaFreeHost) conforming to the OrtAllocator interface.
+// No arena or caching layer; every allocation goes directly to CUDA.
+
 #pragma once
 
 #include "cuda_plugin_utils.h"
@@ -8,11 +13,13 @@
 namespace onnxruntime {
 namespace cuda_plugin {
 
+/// Allocator type: device memory (GPU) or pinned (page-locked host) memory.
 enum class CudaAllocatorKind {
-  kDevice,
-  kPinned,
+  kDevice,   ///< GPU device memory via cudaMalloc
+  kPinned,   ///< Page-locked host memory via cudaHostAlloc
 };
 
+/// Base class for CUDA allocators implementing the OrtAllocator C interface.
 class CudaAllocatorBase : public OrtAllocator {
  public:
   explicit CudaAllocatorBase(CudaAllocatorKind kind, const OrtMemoryInfo* memory_info)

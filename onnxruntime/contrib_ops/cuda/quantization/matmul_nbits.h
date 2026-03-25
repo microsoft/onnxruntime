@@ -50,13 +50,15 @@ class MatMulNBits final : public CudaKernel {
     constexpr int kInputIndexBias = 5;
 
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-    // Plugin adapter Node does not have InputDefs(). Defer existence checks to ComputeInternal
-    // where we can check if the actual input tensor is null or not.
-    ORT_UNUSED_PARAMETER(kInputIndexScale);  // used only in non-plugin path
+    // PLUGIN BUILD ADAPTATION: The adapter Node does not expose InputDefs(),
+    // so we cannot check whether optional inputs (zero_points, g_idx, bias)
+    // truly exist at construction time. Instead, we check input count here
+    // and verify actual tensor presence in ComputeInternal.
+    ORT_UNUSED_PARAMETER(kInputIndexScale);  // only used in non-plugin path for type checking
     has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints;
     has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex;
     has_bias_ = info.GetInputCount() > kInputIndexBias;
-    // is_zero_points_scale_same_type_ defaults to false; runtime will handle differences.
+    // is_zero_points_scale_same_type_ defaults to false; checked at runtime in plugin path.
 #else
     has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
     has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();

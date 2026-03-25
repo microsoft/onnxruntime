@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// CUDA data transfer implementation for CPU<->GPU and GPU<->GPU memory copies.
+// Implements OrtDataTransferImpl to handle synchronous and async copies
+// via cudaMemcpy/cudaMemcpyAsync.
+
 #pragma once
 
 #include "cuda_plugin_utils.h"

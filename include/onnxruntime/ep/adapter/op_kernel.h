@@ -93,6 +93,8 @@ struct OpKernelContext {
     input_tensors_[index] = CreateTensorFromApiValue(const_cast<OrtValue*>(static_cast<const OrtValue*>(input)));
     return &input_tensors_[index];
   }
+  /// Get a required (non-optional) input tensor. Throws if the input is null.
+  /// Use Input<T>() for optional inputs that may legitimately be absent.
   template <typename T,
             typename = std::enable_if_t<std::is_same_v<T, Tensor>>>
   const T& RequiredInput(int index) const {
@@ -116,6 +118,7 @@ struct OpKernelContext {
     output_tensors_[index] = CreateTensorFromApiValue(output);
     return &output_tensors_[index];
   }
+  /// Get a required (non-optional) output tensor. Throws if the output is null.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {
     auto* output = Output(index, shape);
     ORT_ENFORCE(output != nullptr, "Required output ", index, " is null");

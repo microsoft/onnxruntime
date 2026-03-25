@@ -30,6 +30,8 @@ class CudaEpFactory : public OrtEpFactory {
   const std::string& GetEpName() const { return ep_name_; }
 
   /// Get or create the shared kernel registry for this factory.
+  /// Lazily created on first call; subsequent calls return the cached instance.
+  /// Thread-safe: protected by registry_mutex_.
   OrtStatus* GetKernelRegistryForEp(CudaEp& ep,
                                     const OrtKernelRegistry** out_kernel_registry);
 

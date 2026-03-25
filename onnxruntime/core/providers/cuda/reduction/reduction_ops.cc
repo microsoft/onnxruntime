@@ -335,6 +335,9 @@ Status PrepareForReduce(const Tensor* X,
   return Status::OK();
 }
 
+// Unified scratch buffer allocation: when a CudaKernel pointer is available
+// (plugin build path), use GetScratchBuffer which routes through the adapter
+// allocator. Otherwise fall back to IAllocator::MakeUniquePtr (in-tree path).
 template <typename T>
 inline IAllocatorUniquePtr<T> AllocateScratchBuffer(
     const AllocatorPtr& gpu_allocator, const CudaKernel* kernel, size_t count, void* compute_stream) {

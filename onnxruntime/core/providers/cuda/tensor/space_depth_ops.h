@@ -12,9 +12,10 @@ namespace onnxruntime {
 namespace cuda {
 
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-// Plugin-local equivalent of SpaceDepthBase.
-// The CPU header cannot be included in the plugin build because it pulls in
-// core/framework/op_kernel.h which conflicts with the adapter types.
+// PLUGIN BUILD ADAPTATION: SpaceDepthBase (in cpu/tensor/space_depth_ops.h)
+// cannot be included because it pulls in core/framework/op_kernel.h which
+// conflicts with the adapter types. This inline namespace reimplements the
+// validation and dimension-calculation logic. Keep in sync with SpaceDepthBase.
 namespace detail {
 
 template <bool IsNHWC = false>
@@ -84,6 +85,8 @@ class SpaceToDepth final : public CudaKernel
 #endif
   {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
+    // Plugin builds cannot inherit from SpaceDepthBase, so extract the
+    // blocksize attribute directly from OpKernelInfo.
     ORT_ENFORCE(info.GetAttr("blocksize", &blocksize_).IsOK(),
                 "Attribute blocksize is not set.");
 #endif
@@ -124,6 +127,8 @@ class DepthToSpace final : public CudaKernel
 #endif
   {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
+    // Plugin builds cannot inherit from SpaceDepthBase, so extract the
+    // blocksize attribute directly from OpKernelInfo.
     ORT_ENFORCE(info.GetAttr("blocksize", &blocksize_).IsOK(),
                 "Attribute blocksize is not set.");
 #endif

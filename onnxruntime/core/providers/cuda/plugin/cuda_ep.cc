@@ -41,7 +41,10 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
                                                    "CUDA Plugin EP created",
                                                    ORT_FILE, __LINE__, __FUNCTION__));
 
-  // Seed adapter-level runtime options for migrated kernels.
+  // Store per-EP runtime configuration (TF32, device ID, tuning options, etc.)
+  // in a global map keyed by OrtEp pointer. Migrated kernels retrieve these
+  // settings at runtime via GetCudaKernelAdapterRuntimeConfig() without needing
+  // to thread the config through multiple layers of framework code.
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(static_cast<const OrtEp*>(this)),
       config_.use_tf32, config_.device_id, config_.enable_skip_layer_norm_strict_mode,
@@ -72,6 +75,12 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   if (all_nodes.empty()) {
     return nullptr;
   }
+
+  // Three-phase filtering determines which graph nodes run on this EP:
+  // Phase 1: Collect tentative nodes that have a registered CUDA kernel.
+  // Phase 2: Filter out CPU-preferred nodes (cheap ops where device-to-host
+  //          copy overhead would exceed the compute benefit).
+  // Phase 3: Register remaining nodes as supported by this EP.
 
   // Phase 1: Collect tentative nodes — those for which we have a registered kernel.
   std::vector<const OrtNode*> tentative_nodes;
