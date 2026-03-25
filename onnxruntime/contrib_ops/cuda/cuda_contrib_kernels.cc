@@ -121,6 +121,8 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_uint8_t, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention);
 #endif
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention);
@@ -378,6 +380,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, GroupQueryAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention)>,
 #endif
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention)>,

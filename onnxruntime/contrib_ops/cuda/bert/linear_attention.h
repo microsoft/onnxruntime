@@ -1,0 +1,28 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include "core/providers/cuda/cuda_kernel.h"
+#include "contrib_ops/cpu/bert/linear_attention.h"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+using namespace onnxruntime::cuda;
+
+template <typename T>
+class LinearAttention final : public CudaKernel {
+ public:
+  LinearAttention(const OpKernelInfo& info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  LinearAttentionUpdateRule update_rule_;
+  float scale_;
+};
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
