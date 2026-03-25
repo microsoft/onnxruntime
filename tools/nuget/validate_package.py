@@ -5,6 +5,8 @@ import argparse
 import glob
 import os
 import re
+import shutil
+import subprocess
 import sys
 import zipfile  # Available Python 3.2 or higher
 
@@ -229,7 +231,8 @@ def validate_tarball(args):
         print(files)
         raise Exception("No packages / more than one packages found in the given path.")
 
-    package_name = args.package_name
+    tarball_path = files[0]
+    package_name = os.path.basename(tarball_path)
     if "-gpu-" in package_name.lower():
         is_gpu_package = True
     else:
@@ -237,8 +240,8 @@ def validate_tarball(args):
 
     package_folder = re.search("(.*)[.].*", package_name).group(1)
 
-    print("tar zxvf " + package_name)
-    os.system("tar zxvf " + package_name)
+    print("tar zxvf " + tarball_path)
+    subprocess.run(["tar", "zxvf", "--", tarball_path], check=True)
 
     is_windows_ai_package = False
     zip_file = None
@@ -336,7 +339,7 @@ def validate_nuget(args):
 
         # Make a copy of the Nuget package
         print("Copying [" + full_nuget_path + "] -> [" + nupkg_copy_name + "], and extracting its contents")
-        os.system("copy " + full_nuget_path + " " + nupkg_copy_name)
+        shutil.copy2(full_nuget_path, nupkg_copy_name)
 
         # Convert nupkg to zip
         os.rename(nupkg_copy_name, zip_copy_name)
