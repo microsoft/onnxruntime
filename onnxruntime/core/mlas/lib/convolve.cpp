@@ -1279,6 +1279,16 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
     float Beta)
 {
 #if !defined(USE_KLEIDIAI) || !defined(__aarch64__)
+    MLAS_UNREFERENCED_PARAMETER(Dimensions);
+    MLAS_UNREFERENCED_PARAMETER(BatchCount);
+    MLAS_UNREFERENCED_PARAMETER(GroupCount);
+    MLAS_UNREFERENCED_PARAMETER(InputShape);
+    MLAS_UNREFERENCED_PARAMETER(KernelShape);
+    MLAS_UNREFERENCED_PARAMETER(DilationShape);
+    MLAS_UNREFERENCED_PARAMETER(Padding);
+    MLAS_UNREFERENCED_PARAMETER(StrideShape);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(Beta);
     return false;
 #else
     // Channels-last float convolution is only implemented by the KleidiAI
