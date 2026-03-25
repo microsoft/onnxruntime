@@ -88,3 +88,19 @@ stages:
         mkdir -p "$(Build.ArtifactStagingDirectory)/version"
         touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
       displayName: 'Create version marker file'
+
+    - script: |
+        set -e -x
+        mkdir -p "$(Build.BinariesDirectory)/universal_package"
+        cp -R "$(Build.ArtifactStagingDirectory)/bin/"* "$(Build.BinariesDirectory)/universal_package/"
+      displayName: 'Stage binaries for universal package'
+
+    - task: UniversalPackages@0
+      displayName: 'Publish universal package'
+      inputs:
+        command: publish
+        publishDirectory: '$(Build.BinariesDirectory)/universal_package'
+        vstsFeedPublish: 'PublicPackages/ORT-Nightly'
+        vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-macos-arm64-api${{ parameters.api_version }}'
+        versionOption: custom
+        versionPublish: '$(PluginUniversalPackageVersion)'
