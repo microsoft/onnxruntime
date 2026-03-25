@@ -663,12 +663,14 @@ Status Attention<T>::RunMemoryEfficientAttention(
     }
 
     // Step 3: Fused concat: past_key + new_key → present_key (BNSH).
-    // NOTE: When bool masks produce variable per-batch past_seq_lens, positions in the range
-    // [past_seq_lens[b] + kv_sequence_length, total_sequence_length) for each batch b are left
-    // uninitialized by the concat kernel. Unlike Flash (which bounds reads via seqlens_k), MEA
-    // reads all total_sequence_length positions but masks out invalid ones via additive bias
-    // (mask_filter_value ≈ -65504 for fp16), producing near-zero softmax weights. This matches
-    // the pattern used by contrib GQA's MEA path and is safe in practice.
+    // When bool masks produce variable per-batch past_seq_lens, positions in the range
+    // [past_seq_lens[b] + kv_sequence_length, total_sequence_length) are not written by
+    // the concat kernel. Zero the buffers first to prevent NaN propagation — MEA reads
+    // all positions (masked by additive bias), unlike Flash which bounds reads via seqlens_k.
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_key->MutableData<T>(), 0,
+                                         present_key->SizeInBytes(), cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_value->MutableData<T>(), 0,
+                                         present_value->SizeInBytes(), cuda_stream));
     ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<NativeCudaT>(
         parameters.batch_size,
         parameters.kv_num_heads,
