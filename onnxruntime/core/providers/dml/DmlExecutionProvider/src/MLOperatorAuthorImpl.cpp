@@ -1590,6 +1590,9 @@ namespace Windows::AI::MachineLearning::Adapter
                     auto dst = gsl::make_span<unsigned char>(m_unpackedTensor.get(), safeTensorByteSize);
                     size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(impl->data_type());
 
+                    // If element size is unknown, set it to 1 to disable byteswapping
+                    if (element_size < 1) element_size = 1;
+
                     THROW_IF_NOT_OK(onnxruntime::utils::ReadLittleEndian(element_size, src, dst));
 
                     m_dataPtr = m_unpackedTensor.get();

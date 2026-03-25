@@ -485,6 +485,9 @@ Status SaveOrtTensorOrtFormat(
     auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
     auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(unpacked_tensor_data.data()), unpacked_tensor_data.size());
 
+    // If element size is unknown, set it to 1 to disable byteswapping
+    if (element_size < 1) element_size = 1;
+
     return onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span);
   };
 

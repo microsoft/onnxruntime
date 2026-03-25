@@ -131,6 +131,9 @@ namespace DmlGraphFusionHelper
                     auto dst = gsl::make_span<unsigned char>(unpackedTensor.get(), safeTensorByteSize);
                     size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(initializer->data_type());
 
+                    // If element size is unknown, set it to 1 to disable byteswapping
+                    if (element_size < 1) element_size = 1;
+
                     THROW_IF_NOT_OK(onnxruntime::utils::ReadLittleEndian(element_size, src, dst));
 
                     tensorPtr = unpackedTensor.get();
