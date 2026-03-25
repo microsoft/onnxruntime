@@ -31,6 +31,12 @@ inline int GetGridSize(size_t n, size_t threads_per_block) {
   return static_cast<int>(std::min(blocks_needed, static_cast<size_t>(std::numeric_limits<int>::max())));
 }
 
+template <typename... Values>
+inline bool Needs64BitIndex(Values... values) {
+  constexpr int64_t kInt32Max = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+  return ((static_cast<int64_t>(values) > kInt32Max) || ...);
+}
+
 // __ldg has no overload for BFloat16*; use 16-bit load + FromBits. Other types use __ldg directly.
 template <typename T>
 __device__ __inline__ T DeformConvLdg(const T* p) {
@@ -318,28 +324,28 @@ __global__ void DeformableIm2ColKernel(
 }
 
 // Bias add: Y[n,m,oh,ow] += B[m]. Layout NCHW.
-template <typename T>
+template <typename T, typename IndexT>
 __global__ void DeformConvAddBiasKernel(
     T* Y,
     const T* B,
-    DivMod<int64_t> spatial_div,  // For dividing by (H * W)
-    DivMod<int64_t> channel_div,  // For dividing by M (channel count)
-    int64_t total_elements) {
-  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < total_elements; idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
-    int64_t val = idx;
-    int64_t batch_channel_idx, pixel_idx;
+    DivMod<IndexT> spatial_div,  // For dividing by (H * W)
+    DivMod<IndexT> channel_div,  // For dividing by M (channel count)
+    IndexT total_elements) {
+  for (IndexT idx = static_cast<IndexT>(blockIdx.x) * blockDim.x + threadIdx.x; idx < total_elements;
+       idx += static_cast<IndexT>(blockDim.x) * gridDim.x) {
+    IndexT val = idx;
+    IndexT batch_channel_idx, pixel_idx;
 
     // 1. First decomposition: decompose idx into (batch_channel_idx, pixel_idx)
     // Equivalent to: batch_channel_idx = idx / (H*W); pixel_idx = idx % (H*W);
     spatial_div.divmod(val, batch_channel_idx, pixel_idx);
 
-    int64_t batch_idx, channel_idx;
-
     // 2. Second decomposition: decompose batch_channel_idx into (batch_idx, channel_idx)
     // Equivalent to: channel_idx = batch_channel_idx % M;
     // We only need channel_idx (i.e. m)
+    IndexT batch_idx, channel_idx;
     channel_div.divmod(batch_channel_idx, batch_idx, channel_idx);
-    (void)batch_idx;  // Only channel_idx is needed
+    ORT_UNUSED_PARAMETER(batch_idx);  // Only channel_idx is needed
 
     // channel_idx is what we need (i.e. m)
     Y[idx] += DeformConvLdg(B + channel_idx);
@@ -354,21 +360,29 @@ Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, i
   if (total <= 0) return Status::OK();
 
   // 1. Prepare divisor
-  int64_t out_size = out_h * out_w;
+  const int64_t out_size = out_h * out_w;
 
-  // 2. Create FastDivMod object (note: ensure int64_t version of DivMod is used here)
-  DivMod<int64_t> spatial_div(out_size);
-  DivMod<int64_t> channel_div(M);
+  const bool use_64bit = Needs64BitIndex(total, out_size, M);
 
   int blocks = GetGridSize(static_cast<size_t>(total), kDeformConvThreadsPerBlock);
 
-  // 3. Pass DivMod objects
-  DeformConvAddBiasKernel<T><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
-      Y,
-      B,
-      spatial_div,
-      channel_div,
-      total);
+  if (use_64bit) {
+    // 2. Create FastDivMod object (note: ensure int64_t version of DivMod is used here)
+    // 3. Pass DivMod objects
+    DeformConvAddBiasKernel<T, int64_t><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+        Y, B,
+        DivMod<int64_t>(out_size),
+        DivMod<int64_t>(M),
+        total);
+  } else {
+    // 2. Create FastDivMod object
+    // 3. Pass DivMod objects
+    DeformConvAddBiasKernel<T, int32_t><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+        Y, B,
+        DivMod<int32_t>(static_cast<int32_t>(out_size)),
+        DivMod<int32_t>(static_cast<int32_t>(M)),
+        static_cast<int32_t>(total));
+  }
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -405,10 +419,7 @@ Status DeformConvIm2ColImpl(
   const int64_t out_size = out_h * out_w;
   const int64_t col_stride = parallel_imgs * out_size;
   const int64_t max_col_write_idx = static_cast<int64_t>(kH * kW - 1) * col_stride;
-  const bool use_64bit = (num_kernels > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) ||
-                         (col_numel > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) ||
-                         (offset_inner_size > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) ||
-                         (max_col_write_idx > static_cast<int64_t>(std::numeric_limits<int32_t>::max()));
+  const bool use_64bit = Needs64BitIndex(num_kernels, col_numel, offset_inner_size, max_col_write_idx);
 
   int blocks = GetGridSize(static_cast<size_t>(num_kernels), kDeformConvThreadsPerBlock);
 
