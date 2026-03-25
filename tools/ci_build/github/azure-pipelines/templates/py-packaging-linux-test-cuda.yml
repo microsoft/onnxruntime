@@ -51,7 +51,9 @@ jobs:
       value: ${{ variables.linux_trt_version_cuda12 }}
   workspace:
     clean: all
-  pool: ${{ parameters.machine_pool }}
+  pool:
+    name: ${{ parameters.machine_pool }}
+    demands: HoldMachine -equals true
   steps:
   - checkout: self
     clean: true
