@@ -2072,6 +2072,32 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+// Defined early so Mod constructor can use it via the type dispatcher.
+namespace mod_internal {
+
+template <class T, typename Enable = void>
+struct CheckZeroDivisorImpl;
+
+// Integer types: scan for zeros.
+template <class T>
+struct CheckZeroDivisorImpl<T, typename std::enable_if<std::is_integral<T>::value>::type> {
+  void operator()(const Tensor& B) const {
+    const T* b_data = B.Data<T>();
+    const int64_t b_size = B.Shape().Size();
+    for (int64_t i = 0; i < b_size; ++i) {
+      ORT_ENFORCE(b_data[i] != T{0}, "Integer modulo by zero");
+    }
+  }
+};
+
+// Non-integer types: modulo by zero produces NaN / is well-defined; no check needed.
+template <class T>
+struct CheckZeroDivisorImpl<T, typename std::enable_if<!std::is_integral<T>::value>::type> {
+  void operator()(const Tensor&) const {}
+};
+
+}  // namespace mod_internal
+
 class Mod final : public OpKernel {
  public:
   Mod(const OpKernelInfo& info) : OpKernel(info) {
@@ -2081,12 +2107,23 @@ class Mod final : public OpKernel {
       ORT_ENFORCE((fmod == 0) || (fmod == 1), "fmod must have value either 0 or 1");
       fmod_ = (fmod == 1);
     }
+
+    // If the divisor is a constant initializer, validate for integer modulo by zero once
+    // during kernel creation instead of on every Compute call.
+    const Tensor* constant_divisor = nullptr;
+    if (info.TryGetConstantInput(1, &constant_divisor)) {
+      const auto dt_type = constant_divisor->GetElementType();
+      utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
+      check_disp.Invoke<mod_internal::CheckZeroDivisorImpl>(*constant_divisor);
+      divisor_is_validated_constant_ = true;
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   bool fmod_{false};
+  bool divisor_is_validated_constant_{false};
 };
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -2269,6 +2306,15 @@ struct CallModImpl<MLFloat16> {
 Status Mod::Compute(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
   const auto dt_type = X.GetElementType();
+
+  // Integer modulo by zero is undefined behavior in C++ and causes a hardware exception.
+  // Check for zeros in the divisor before performing the mod.
+  // Skip the check if the divisor was already validated as a constant initializer during kernel creation.
+  if (!divisor_is_validated_constant_) {
+    const Tensor& B = *context->Input<Tensor>(1);
+    utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
+    check_disp.Invoke<mod_internal::CheckZeroDivisorImpl>(B);
+  }
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> t_disp(dt_type);
   t_disp.Invoke<mod_internal::CallModImpl>(fmod_, context);
