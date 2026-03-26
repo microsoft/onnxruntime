@@ -344,9 +344,10 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
 /// Where:
 /// - device1, device2, ... are the recognized device names to be matched against EPs configured in
 ///   the given session.
-/// - annotation1, annotation2, ... are the exact annotation strings to be matched against node annotations
-/// - =annotation3 indicates a prefix match for annotation3. Any node annotation that starts with
-///   'annotation3' will be matched.
+/// - annotation1, annotation2, ... are annotation prefixes to be matched against node annotations. Any
+///   node annotation that starts with one of these prefixes will be matched.
+/// - =annotation3 indicates an exact match for annotation3. Only node annotations that are exactly
+///   equal to 'annotation3' will be matched.
 /// TODO: add a list of recognized devices here.
 /// </summary>
 static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.layer_assignment_settings";
