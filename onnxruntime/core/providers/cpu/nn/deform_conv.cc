@@ -359,9 +359,10 @@ void BuildAllBilinearSamplingPlansImpl(
   // Flatten (row, output pixel) to one task range so TryParallelFor can split fine-grained work even when
   // offset_group * kernel_size is small (parallelizing only the outer dimension would under-use threads).
   const int64_t total_plan_tasks = plan_rows * output_size_i64;
-  // Unit cost is a dimensionless heuristic for ORT's thread pool splitter, not CPU cycles. Tuned so plan build
-  // parallelizes when it is large enough to matter; values need not match real instruction counts.
-  constexpr double kCostPerBilinearSample = 12.0;
+  // Unit cost is a dimensionless heuristic for ORT's thread pool splitter, not CPU cycles.
+  // We keep plan-build chunking slightly finer than before so offset_group==1 cases can expose
+  // enough parallel tasks early instead of leaving work concentrated in the later fill stage.
+  constexpr double kCostPerBilinearSample = 8.0;
   concurrency::ThreadPool::TryParallelFor(
       thread_pool,
       static_cast<std::ptrdiff_t>(total_plan_tasks),
@@ -484,7 +485,11 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
 
   // Heuristic cost per im2col row (one channel x one kernel tap): ~one full pass over output pixels with gathers.
   // Slightly higher when UseMask (extra multiply per pixel). Same note as kCostPerBilinearSample: for scheduling only.
-  const double parallel_cost = static_cast<double>(output_size) * (UseMask ? 12.0 : 10.0);
+  // For small offset_group (especially 1), each sampling-plan row is reused by many channels, so this stage
+  // dominates; reduce cost to encourage finer split and better load balance at high C.
+  const double base_cost = static_cast<double>(output_size) * (UseMask ? 12.0 : 10.0);
+  const double offset_group_adjust = (ctx.offset_groups == 1) ? 0.5 : 1.0;
+  const double parallel_cost = base_cost * offset_group_adjust;
   concurrency::ThreadPool::TryParallelFor(
       ctx.thread_pool,
       static_cast<std::ptrdiff_t>(ctx.channels * kernel_size),
