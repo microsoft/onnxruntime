@@ -54,6 +54,20 @@ inline bool Needs64BitIndex(Values... values) {
   return ((static_cast<int64_t>(values) > kInt32Max) || ...);
 }
 
+inline bool ProductExceedsInt32Max(std::initializer_list<int64_t> factors) {
+  constexpr int64_t kInt32Max = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+  int64_t acc = 1;
+  for (int64_t v : factors) {
+    // DeformConv dimensions are expected to be non-negative after validation.
+    // If violated unexpectedly, conservatively force the 64-bit kernel path.
+    if (v < 0) return true;
+    if (v == 0) return false;
+    if (acc > kInt32Max / v) return true;
+    acc *= v;
+  }
+  return false;
+}
+
 // __ldg has no overload for BFloat16*; use 16-bit load + FromBits. Other types use __ldg directly.
 template <typename T>
 __device__ __inline__ T DeformConvLdg(const T* p) {
@@ -524,17 +538,19 @@ Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, i
 inline bool CheckDeformConvNeeds64BitIndex(
     int64_t num_kernels, int64_t C, int64_t H, int64_t W, int64_t kH, int64_t kW, int64_t out_h, int64_t out_w,
     int64_t parallel_imgs, int64_t offset_group) {
-  const int64_t col_numel = static_cast<int64_t>(C) * kH * kW * parallel_imgs * out_h * out_w;
-  const int64_t offset_inner_size = static_cast<int64_t>(2) * kH * kW * out_h * out_w;
-  const int64_t mask_inner_size = kH * kW * out_h * out_w;
-  const int64_t offset_numel = parallel_imgs * offset_group * offset_inner_size;
-  const int64_t mask_numel = parallel_imgs * offset_group * mask_inner_size;
-  const int64_t channel_hw = H * W;
-  const int64_t batch_input_stride = C * channel_hw;
-  const int64_t input_numel = parallel_imgs * batch_input_stride;
+  if (Needs64BitIndex(num_kernels, C, H, W, kH, kW, out_h, out_w, parallel_imgs, offset_group)) {
+    return true;
+  }
 
-  return Needs64BitIndex(num_kernels, col_numel, offset_inner_size, mask_inner_size, offset_numel, mask_numel,
-                         channel_hw, batch_input_stride, input_numel, offset_group);
+  // Check potentially large products without evaluating intermediate multiplications.
+  return ProductExceedsInt32Max({C, kH, kW, parallel_imgs, out_h, out_w}) ||                // col_numel
+         ProductExceedsInt32Max({2, kH, kW, out_h, out_w}) ||                               // offset_inner_size
+         ProductExceedsInt32Max({kH, kW, out_h, out_w}) ||                                  // mask_inner_size
+         ProductExceedsInt32Max({parallel_imgs, offset_group, 2, kH, kW, out_h, out_w}) ||  // offset_numel
+         ProductExceedsInt32Max({parallel_imgs, offset_group, kH, kW, out_h, out_w}) ||     // mask_numel
+         ProductExceedsInt32Max({H, W}) ||                                                  // channel_hw
+         ProductExceedsInt32Max({C, H, W}) ||                                               // batch_input_stride
+         ProductExceedsInt32Max({parallel_imgs, C, H, W});                                  // input_numel
 }
 
 template <typename T>
