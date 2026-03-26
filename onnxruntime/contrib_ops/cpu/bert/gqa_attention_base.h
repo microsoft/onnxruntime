@@ -7,6 +7,7 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_helper.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/bert/gqa_fused_arm64.h"
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -82,13 +83,6 @@ class GQAAttentionBase {
     }
     int seqlen_present_kv_cache = static_cast<int>(present_key->Shape().GetDims()[2]);
 
-    // Compute the attention score.
-    bool gqa_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
-                              MlasGQASupported<T>(CblasNoTrans, CblasNoTrans);
-    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * seqlen_present_kv_cache * (gqa_mlas_supported ? sizeof(T) : sizeof(float));
-    auto attention_probs = allocator->Alloc(bytes);
-    BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
-
     const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
     T* present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
     const T* past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
@@ -100,8 +94,44 @@ class GQAAttentionBase {
     bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
+    const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
 
     T* output_qk_buffer = output_qk != nullptr ? output_qk->MutableData<T>() : nullptr;
+
+    // Try the fused flash-attention path which eliminates the attention_probs
+    // intermediate buffer and improves cache utilization.
+    if (gqa_fused::ShouldUseFusedAttention(batch_size, sequence_length, total_sequence_length,
+                                           seqlen_present_kv_cache, qk_output_)) {
+      const float fused_alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
+
+      gqa_fused::FusedGQAAttention<T>(
+          Q, k, v,
+          output->MutableData<T>(),
+          past_key_data, present_key_data,
+          past_value_data, present_value_data,
+          seqlens_k->Data<int32_t>(),
+          head_sink,
+          attention_bias_data, attention_bias_shape,
+          output_qk_buffer, qk_output_,
+          batch_size, sequence_length, total_sequence_length,
+          head_size, hidden_size,
+          num_heads_, kv_num_heads_,
+          seqlen_past_kv_cache, seqlen_present_kv_cache,
+          fused_alpha, softcap_, local_window_size_,
+          use_smooth_softmax_,
+          past_present_share_buffer, packed_qkv, is_prompt,
+          tp, allocator);
+
+      return Status::OK();
+    }
+
+    // Fallback to the original two-pass implementation
+    // Compute the attention score.
+    bool gqa_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
+                              MlasGQASupported<T>(CblasNoTrans, CblasNoTrans);
+    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * seqlen_present_kv_cache * (gqa_mlas_supported ? sizeof(T) : sizeof(float));
+    auto attention_probs = allocator->Alloc(bytes);
+    BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
     if (gqa_mlas_supported) {
       ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
