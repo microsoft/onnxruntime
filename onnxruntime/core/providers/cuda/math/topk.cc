@@ -17,7 +17,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
                               DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>()}),
+                              DataTypeImpl::GetTensorType<int64_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>(),
+                              DataTypeImpl::GetTensorType<int16_t>(),
+                              DataTypeImpl::GetTensorType<uint8_t>()}),
     TopK<false>);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -31,7 +34,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
                               DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>()})
+                              DataTypeImpl::GetTensorType<int64_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>(),
+                              DataTypeImpl::GetTensorType<int16_t>(),
+                              DataTypeImpl::GetTensorType<uint8_t>()})
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
@@ -46,7 +52,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
                               DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
-                              DataTypeImpl::GetTensorType<int64_t>()})
+                              DataTypeImpl::GetTensorType<int64_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>(),
+                              DataTypeImpl::GetTensorType<int16_t>(),
+                              DataTypeImpl::GetTensorType<uint8_t>()})
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
 
@@ -62,6 +71,9 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
                               DataTypeImpl::GetTensorType<int64_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>(),
+                              DataTypeImpl::GetTensorType<int16_t>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
                               DataTypeImpl::GetTensorType<BFloat16>()})
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
@@ -137,6 +149,9 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (IS_PRIM_TYPE(int32_t)) return TOPKIMPL(int32_t);
   if (IS_PRIM_TYPE(int64_t)) return TOPKIMPL(int64_t);
+  if (IS_PRIM_TYPE(int8_t)) return TOPKIMPL(int8_t);
+  if (IS_PRIM_TYPE(int16_t)) return TOPKIMPL(int16_t);
+  if (IS_PRIM_TYPE(uint8_t)) return TOPKIMPL(uint8_t);
   if (IS_PRIM_TYPE(MLFloat16)) return TOPKIMPL(MLFloat16);
   if (IS_PRIM_TYPE(float)) return TOPKIMPL(float);
   if (IS_PRIM_TYPE(double)) return TOPKIMPL(double);
