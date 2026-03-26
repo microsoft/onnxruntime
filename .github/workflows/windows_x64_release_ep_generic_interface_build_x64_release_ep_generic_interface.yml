@@ -84,11 +84,26 @@ jobs:
       - name: Build and test
         shell: pwsh
         run: |
-          python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --test --enable_generic_interface --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          python.exe "${env:GITHUB_WORKSPACE}\tools\ci_build\build.py" `
+            --build `
+            --build_csharp `
+            --build_dir "${env:GITHUB_WORKSPACE}\build" `
+            --build_shared_lib `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --enable_generic_interface `
+            --parallel `
+            --skip_submodule_sync `
+            --test `
+            --update `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-          Remove-Item "${{ github.workspace }}\build\RelWithDebInfo" -Include "*.obj" -Recurse
+          Remove-Item "${env:GITHUB_WORKSPACE}\build\RelWithDebInfo" -Include "*.obj" -Recurse
         env:
           ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
 
