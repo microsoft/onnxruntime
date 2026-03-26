@@ -930,6 +930,56 @@ TEST(MathOpTest, Div_uint64) {
   test.Run();
 }
 
+TEST(MathOpTest, Div_int8_by_zero) {
+  OpTester test("Div", 14);
+  test.AddInput<int8_t>("A", {3}, {4, 8, 8});
+  test.AddInput<int8_t>("B", {3}, {1, 0, 2});
+  test.AddOutput<int8_t>("C", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer division by zero",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Div_int32_by_zero) {
+  OpTester test("Div");
+  test.AddInput<int32_t>("A", {3}, {4, 8, 8});
+  test.AddInput<int32_t>("B", {3}, {1, 0, 2});
+  test.AddOutput<int32_t>("C", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer division by zero",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Div_int64_by_zero_scalar) {
+  // Scalar divisor of 0 (the exact scenario from the bug report)
+  OpTester test("Div");
+  test.AddInput<int64_t>("A", {3}, {4, 8, 8});
+  test.AddInput<int64_t>("B", {}, {0});
+  test.AddOutput<int64_t>("C", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer division by zero",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Div_int32_by_zero_constant_initializer) {
+  // Divisor is a constant initializer — validated once at kernel creation time
+  OpTester test("Div");
+  test.AddInput<int32_t>("A", {3}, {4, 8, 8});
+  test.AddInput<int32_t>("B", {3}, {1, 0, 2}, true);  // is_initializer = true
+  test.AddOutput<int32_t>("C", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer division by zero",
+           {}, nullptr, &execution_providers);
+}
+
 TEST(MathOpTest, Div_float) {
   OpTester test("Div");
   std::vector<int64_t> dims{2, 3};
