@@ -1650,8 +1650,12 @@ struct OrtEpApi {
    * \param[in] process_id Process ID. Set to -1 if does not apply.
    * \param[in] thread_id Thread ID. Set to -1 if does not apply.
    * \param[in] event_name Null-terminated string representing the event name. ORT copies this string.
-   * \param[in] timestamp_us Starting timestamp in microseconds relative to the profiling start time
-   *                         (i.e., MUST be relative to the `profile_start_time_ns` value passed to EndProfiling).
+   * \param[in] timestamp_us Starting timestamp in microseconds relative to the profiling start time.
+   *                         An OrtEpProfilerImpl should record its own clock's profiling start time and
+   *                         use the `ep_profiling_start_offset_ns` value passed to OrtEpProfilerImpl::StartProfiling
+   *                         to compute this value as:
+   *                           timestamp_us = (ep_profiling_start_offset_ns +
+   *                                           (ep_event_time_ns - ep_profiling_start_time_ns)) / 1000
    * \param[in] duration_us Duration in microseconds.
    * \param[in] arg_keys Array of null-terminated argument key strings. Can be NULL if num_args is 0.
    *                     ORT copies these strings.
