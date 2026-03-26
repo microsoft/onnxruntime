@@ -6102,7 +6102,8 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
   return Status::OK();
 }
 
-Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline) {
+Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline,
+                                  const std::string& parent_annotation) {
   auto to_node_arg = [this](const std::string& name) {
     return &this->GetOrCreateNodeArg(name, nullptr);
   };
@@ -6137,22 +6138,21 @@ Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_i
     for (const auto& node_attr : inlined_node->attribute()) {
       new_attr_map.insert_or_assign(node_attr.name(), node_attr);
     }
-    ORT_IGNORE_RETURN_VALUE(AddNode(inlined_node->name(), inlined_node->op_type(),
-                                    inlined_node->doc_string(), inputs, outputs,
-                                    &new_attr_map, inlined_node->domain()));
+    auto& new_node = AddNode(inlined_node->name(), inlined_node->op_type(),
+                             inlined_node->doc_string(), inputs, outputs,
+                             &new_attr_map, inlined_node->domain());
+
+    // Nodes that come from function_proto currently can not have any annotations.
+    // So we set it to parent.
+    if (!parent_annotation.empty()) {
+      new_node.SetLayeringAnnotation(parent_annotation);
+    }
   }
 
   return Status::OK();
 }
 
 Status Graph::InlineFunction(Node& callnode) {
-  // Remove output edges. Requirement for RemoveNode() below.
-  auto output_edges = callnode.GetRelationships().output_edges;  // copy so RemoveEdge doesn't invalidate iterator
-  for (const auto& output_edge : output_edges) {
-    RemoveEdge(callnode.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(),
-               output_edge.GetDstArgIndex());
-  }
-
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
   std::string base_uniq_identifier{"_inlfunc_"};
@@ -6162,9 +6162,6 @@ Status Graph::InlineFunction(Node& callnode) {
   // Capture the parent function node's layering annotation before inlining.
   // Inlined nodes that don't already have their own annotation will inherit this.
   const std::string parent_annotation = callnode.GetLayeringAnnotation();
-
-  // Record the current max node index so we can identify newly inlined nodes afterward.
-  const int max_node_index_before_inline = MaxNodeIndex();
 
   // Replace a (function-call) node by an inlined graph.
   if (!callnode.GetFunctionBody()) {
@@ -6177,7 +6174,7 @@ Status Graph::InlineFunction(Node& callnode) {
     function_utils::Specialize(inlined_fp, callnode, uniq_identifier);
 
     // In this case, global Resolve() will take care of everything.
-    ORT_RETURN_IF_ERROR(InlineFunctionProto(inlined_fp));
+    ORT_RETURN_IF_ERROR(InlineFunctionProto(inlined_fp, parent_annotation));
   } else {
     // Uncommon scenario. Inlining a node representing a fused sub-graph.
     // TODO: Unclear that this feature is needed. Can this be removed?
@@ -6196,11 +6193,18 @@ Status Graph::InlineFunction(Node& callnode) {
           outputs.push_back(&n_output);
         }
 
-        AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
-                inputs,
-                outputs,
-                &subgraph_node.GetAttributes(),
-                subgraph_node.Domain());
+        auto& new_node = AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(),
+                                 subgraph_node.Description(),
+                                 inputs,
+                                 outputs,
+                                 &subgraph_node.GetAttributes(),
+                                 subgraph_node.Domain());
+        if (!subgraph_node.GetLayeringAnnotation().empty()) {
+          new_node.SetLayeringAnnotation(subgraph_node.GetLayeringAnnotation());
+        } else if (!parent_annotation.empty()) {
+          // If the subgraph node doesn't have its own annotation, use the parent function node's annotation.
+          new_node.SetLayeringAnnotation(parent_annotation);
+        }
       }
     }
 
@@ -6227,24 +6231,19 @@ Status Graph::InlineFunction(Node& callnode) {
     }
   }
 
-  // Propagate the parent function node's layering annotation to all newly inlined nodes
-  // that don't already have their own annotation.
-  if (!parent_annotation.empty()) {
-    const int max_node_index_after_inline = MaxNodeIndex();
-    for (int i = max_node_index_before_inline; i < max_node_index_after_inline; ++i) {
-      Node* node = GetNode(static_cast<NodeIndex>(i));
-      if (node != nullptr && node->GetLayeringAnnotation().empty()) {
-        node->SetLayeringAnnotation(parent_annotation);
-      }
-    }
+  // Requirement for RemoveNode() below.
+  // copy so RemoveEdge doesn't invalidate iterator
+  auto output_edges = callnode.GetRelationships().output_edges;
+  for (const auto& output_edge : output_edges) {
+    RemoveEdge(callnode.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(),
+               output_edge.GetDstArgIndex());
   }
 
   RemoveNode(callnode.Index());
 
-  // std::cout << "Graph after inlining\n\n" << *this << std::endl << std::flush;
-
   return Status::OK();
 }
+
 void Graph::SetInputs(gsl::span<const NodeArg* const> inputs) {
   graph_inputs_including_initializers_.clear();
   graph_inputs_excluding_initializers_.clear();

@@ -1338,10 +1338,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   The Graph needs to be Resolve()d after this call.
   @param func_to_inline
+  @param parent_annotation. Annotation inherited from the parent node that is being inlined.
   @returns Status indicating success or providing an error message.
   */
 
-  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
+  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline,
+                             const std::string& parent_annotation);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node.
