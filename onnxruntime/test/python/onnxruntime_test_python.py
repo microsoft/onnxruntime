@@ -1475,6 +1475,95 @@ class TestInferenceSession(unittest.TestCase):
                 ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack_protocol(self):
+        """Test __dlpack__ and __dlpack_device__ on Python-level OrtValue."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # __dlpack__ should return a capsule
+        capsule = ortvalue.__dlpack__()
+        self.assertIn("PyCapsule", str(type(capsule)))
+
+        # __dlpack_device__ should return (kDLCPU=1, device_id=0)
+        device = ortvalue.__dlpack_device__()
+        self.assertEqual(device, (1, 0))
+
+        # Round-trip through from_dlpack with capsule
+        ortvalue2 = onnxrt.OrtValue.from_dlpack(ortvalue.__dlpack__())
+        np.testing.assert_equal(numpy_arr, ortvalue2.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_protocol_object(self):
+        """Test from_dlpack accepting objects with __dlpack__ protocol (e.g., numpy arrays)."""
+        numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+
+        # numpy arrays implement __dlpack__; from_dlpack should call it automatically
+        if hasattr(numpy_arr, "__dlpack__"):
+            ortvalue = onnxrt.OrtValue.from_dlpack(numpy_arr)
+            self.assertEqual(list(ortvalue.shape()), [3])
+            np.testing.assert_equal(numpy_arr, ortvalue.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_raw_capsule(self):
+        """Test from_dlpack accepting a raw DLPack capsule."""
+        numpy_arr = np.array([[1, 2], [3, 4]], dtype=np.int64)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+        capsule = ortvalue._ortvalue.to_dlpack()
+        ortvalue2 = onnxrt.OrtValue.from_dlpack(capsule)
+        np.testing.assert_equal(numpy_arr, ortvalue2.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_roundtrip(self):
+        """Test OrtValue → dlpack → OrtValue round-trip via the Python-level API."""
+        numpy_arr = np.array([10, 20, 30], dtype=np.int32)
+        ov1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # Round-trip: OrtValue.from_dlpack should accept another OrtValue via __dlpack__
+        ov2 = onnxrt.OrtValue.from_dlpack(ov1)
+        np.testing.assert_equal(numpy_arr, ov2.numpy())
+        # Data should be shared (same pointer)
+        self.assertEqual(ov1.data_ptr(), ov2.data_ptr())
+
+    def test_ort_value_array_protocol(self):
+        """Test __array__ protocol: np.asarray(ort_value) and np.array(ort_value)."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # np.asarray should work via __array__
+        result = np.asarray(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+        self.assertEqual(result.dtype, np.float32)
+
+        # np.array with dtype conversion
+        result64 = np.array(ortvalue, dtype=np.float64)
+        np.testing.assert_equal(numpy_arr.astype(np.float64), result64)
+        self.assertEqual(result64.dtype, np.float64)
+
+    def test_ort_value_array_protocol_copy_false(self):
+        """Test __array__ with copy=False returns zero-copy when possible."""
+        numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # copy=False with matching dtype should succeed (zero-copy)
+        result = ortvalue.__array__(copy=False)
+        np.testing.assert_equal(numpy_arr, result)
+
+        # copy=False with dtype mismatch should raise ValueError
+        with self.assertRaises(ValueError):
+            ortvalue.__array__(np.float64, copy=False)
+
+    def test_ort_value_array_protocol_copy_true(self):
+        """Test __array__ with copy=True always returns a copy."""
+        numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        result = ortvalue.__array__(copy=True)
+        np.testing.assert_equal(numpy_arr, result)
+        # Modifying the copy should not affect the original
+        result[0] = 999.0
+        self.assertAlmostEqual(ortvalue.numpy()[0], 1.0)
+
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         shape = [9, 9]
