@@ -1636,8 +1636,10 @@ TEST(LayeringIndexPartitionerTest, NoLayeringIndexAllNodesVisible) {
 
 TEST(LayeringIndexPartitionerTest, EpWithNoLayeringRulesSeesAllUnassignedNodes) {
   // An EP that has no rules in the LayeringIndex (i.e., GetLayeringRulesForThisEp returns nullopt)
-  // should see all unassigned nodes but not nodes assigned to other EPs.
-  // This is the behavior when a CPU fallback EP is not mentioned in layering config.
+  // should still see unassigned nodes, but nodes assigned to other EPs are excluded.
+  // This is the behavior for a CPU fallback EP not mentioned in layering config,
+  // as implemented in graph_partitioner.cc create_graph_viewer:
+  //   if (!rules_opt || rules_opt->get().count(*rule_idx_opt) == 0) { include = false; }
 
   auto h = SimpleGraphHelper::Create(4);
   auto* node0 = h.graph->GetNode(h.node_indices[0]);
@@ -1653,14 +1655,39 @@ TEST(LayeringIndexPartitionerTest, EpWithNoLayeringRulesSeesAllUnassignedNodes) 
   auto rules_cpu = index.GetLayeringRulesForThisEp("CPUDevice");
   EXPECT_FALSE(rules_cpu.has_value());
 
-  // In the partitioner, when GetLayeringRulesForThisEp returns nullopt,
-  // the create_graph_viewer lambda creates a standard (unfiltered) GraphViewer.
-  // This means CPUDevice sees ALL nodes including those assigned to other EPs.
-  // This is by design: the layering filtering only activates for EPs that have rules.
-  GraphViewer viewer(*h.graph);
-  EXPECT_EQ(viewer.NumberOfNodes(), 4);
-}
+  // Replicate create_graph_viewer filtering logic for an EP with no rules.
+  // When rules_opt is nullopt, any node with an assignment is excluded:
+  //   if (!rules_opt || ...) { include = false; }
+  // Unassigned nodes remain included.
+  InlinedVector<const Node*> filtered_for_cpu;
+  for (auto& node : h.graph->Nodes()) {
+    auto rule_idx_opt = index.GetNodeAssignment(*h.graph, node.Index());
+    bool include = true;
+    if (rule_idx_opt) {
+      if (!rules_cpu || rules_cpu->get().count(*rule_idx_opt) == 0) {
+        include = false;
+      }
+    }
+    if (include) {
+      filtered_for_cpu.push_back(&node);
+    }
+  }
 
+  // CPUDevice should see only the 2 unassigned nodes (node1, node3).
+  // node0 (RuleA/DeviceA) and node2 (RuleB/DeviceB) are excluded.
+  EXPECT_EQ(filtered_for_cpu.size(), 2u);
+
+  bool found[4] = {};
+  for (const auto* n : filtered_for_cpu) {
+    for (size_t i = 0; i < std::size(found); ++i) {
+      if (n->Index() == h.node_indices[i]) found[i] = true;
+    }
+  }
+  EXPECT_FALSE(found[0]) << "node0 assigned to DeviceA should be excluded";
+  EXPECT_TRUE(found[1]) << "node1 unassigned should be included";
+  EXPECT_FALSE(found[2]) << "node2 assigned to DeviceB should be excluded";
+  EXPECT_TRUE(found[3]) << "node3 unassigned should be included";
+}
 TEST(LayeringIndexPartitionerTest, MultipleRulesForSameEp) {
   // An EP can have multiple rules assigned to it. All nodes matching any of its
   // rules should be visible to it, while nodes matching other EP rules should not.
