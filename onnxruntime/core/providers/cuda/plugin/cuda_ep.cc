@@ -48,7 +48,8 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(static_cast<const OrtEp*>(this)),
       config_.use_tf32, config_.device_id, config_.enable_skip_layer_norm_strict_mode,
-      config_.cudnn_conv_algo, config_.cudnn_conv_use_max_workspace, config_.cudnn_conv1d_pad_to_nc1d);
+      config_.cudnn_conv_algo, config_.cudnn_conv_use_max_workspace, config_.cudnn_conv1d_pad_to_nc1d,
+      config_.fuse_conv_bias, config_.sdpa_kernel);
 }
 
 CudaEp::~CudaEp() {

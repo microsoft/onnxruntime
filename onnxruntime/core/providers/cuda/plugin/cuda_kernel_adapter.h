@@ -345,8 +345,11 @@ struct CudaKernelAdapterRuntimeConfig {
   int cudnn_conv_algo = 0;
   bool cudnn_conv_use_max_workspace = true;
   bool cudnn_conv1d_pad_to_nc1d = false;
+  bool fuse_conv_bias = false;
+  int sdpa_kernel = 0;
   int device_id = 0;
   cudaDeviceProp device_prop{};
+  onnxruntime::AttentionKernelOptions attention_kernel_options;
 };
 // Shared storage for per-provider runtime configurations.
 // Both Get and Remove must operate on the same static map instance,
@@ -511,7 +514,12 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
     return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).use_tf32;
   }
   bool IsFuseConvBias() const {
-    return false;
+    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).fuse_conv_bias;
+  }
+  const onnxruntime::AttentionKernelOptions* GetAttentionKernelOptions() const {
+    auto& config = cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this);
+    config.attention_kernel_options.InitializeOnce(config.sdpa_kernel, true, true);
+    return &config.attention_kernel_options;
   }
   const cudaDeviceProp& GetDeviceProp() const {
     return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).device_prop;
@@ -527,13 +535,17 @@ namespace cuda {
 inline void SetCudaKernelAdapterRuntimeConfigForProvider(const void* provider, bool use_tf32, int device_id,
                                                          bool skip_layer_norm_strict_mode = false,
                                                          int cudnn_conv_algo = 0, bool cudnn_conv_use_max_workspace = true,
-                                                         bool cudnn_conv1d_pad_to_nc1d = false) {
+                                                         bool cudnn_conv1d_pad_to_nc1d = false,
+                                                         bool fuse_conv_bias = false,
+                                                         int sdpa_kernel = 0) {
   auto& config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
   config.use_tf32 = use_tf32;
   config.skip_layer_norm_strict_mode = skip_layer_norm_strict_mode;
   config.cudnn_conv_algo = cudnn_conv_algo;
   config.cudnn_conv_use_max_workspace = cudnn_conv_use_max_workspace;
   config.cudnn_conv1d_pad_to_nc1d = cudnn_conv1d_pad_to_nc1d;
+  config.fuse_conv_bias = fuse_conv_bias;
+  config.sdpa_kernel = sdpa_kernel;
   config.device_id = device_id;
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config.device_prop, device_id));
 }
@@ -802,8 +814,7 @@ class CudaKernel : public OpKernel {
   bool IsArchAvailable(int arch) const { return device_prop_.major >= arch; }
   const OpKernelInfo& Info() const { return info_; }
   const onnxruntime::AttentionKernelOptions* GetAttentionKernelOptions() const {
-    static onnxruntime::AttentionKernelOptions options;
-    return &options;
+    return static_cast<const CUDAExecutionProvider*>(info_.GetExecutionProvider())->GetAttentionKernelOptions();
   }
 
   // Stub for GetTuningContext — tunable ops are not supported in the plugin.

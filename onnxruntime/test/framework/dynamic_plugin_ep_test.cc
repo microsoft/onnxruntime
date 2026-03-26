@@ -8,6 +8,11 @@
 
 #include "test/util/include/asserts.h"
 
+#if defined(USE_CUDA) && defined(ORT_USE_EP_API_ADAPTERS)
+#include "contrib_ops/cpu/bert/attention_common.h"
+#include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#endif
+
 namespace onnxruntime::test {
 
 namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
@@ -90,5 +95,24 @@ TEST(DynamicPluginEpInfraTest, UninitializedStateReturnsSafeDefaults) {
   EXPECT_FALSE(dynamic_plugin_ep_infra::GetEpName().has_value());
   EXPECT_TRUE(dynamic_plugin_ep_infra::GetTestsToSkip().empty());
 }
+
+#if defined(USE_CUDA) && defined(ORT_USE_EP_API_ADAPTERS)
+TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBiasAndSdpaKernel) {
+  onnxruntime::cuda::CUDAExecutionProvider provider{"CudaPluginExecutionProvider"};
+  auto& config = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(&provider);
+  config.fuse_conv_bias = true;
+  config.sdpa_kernel = static_cast<int>(onnxruntime::contrib::attention::AttentionBackend::MATH);
+
+  EXPECT_TRUE(provider.IsFuseConvBias());
+
+  const auto* attention_kernel_options = provider.GetAttentionKernelOptions();
+  EXPECT_TRUE(attention_kernel_options->UseUnfusedAttention());
+  EXPECT_FALSE(attention_kernel_options->UseFlashAttention());
+  EXPECT_FALSE(attention_kernel_options->UseEfficientAttention());
+  EXPECT_FALSE(attention_kernel_options->UseCudnnFlashAttention());
+
+  onnxruntime::cuda::detail::RemoveCudaKernelAdapterRuntimeConfigForProvider(&provider);
+}
+#endif
 
 }  // namespace onnxruntime::test

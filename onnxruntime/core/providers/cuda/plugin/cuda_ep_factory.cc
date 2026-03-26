@@ -346,6 +346,24 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     }
   };
 
+  auto read_session_config_int = [&](std::initializer_list<std::string_view> keys, int& value) {
+    for (const auto& key : keys) {
+      auto raw_value = try_get_session_config(key);
+      if (!raw_value.has_value()) {
+        continue;
+      }
+
+      try {
+        value = std::stoi(*raw_value);
+        return;
+      } catch (const std::exception&) {
+      }
+
+      log_invalid_session_config(key, "an integer");
+      return;
+    }
+  };
+
   const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(factory->GetEpName().c_str());
   const std::string prefer_nhwc_key = ep_options_prefix + "prefer_nhwc";
   const std::string prefer_nhwc_layout_key = ep_options_prefix + "prefer_nhwc_layout";
@@ -355,6 +373,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string cudnn_conv1d_pad_key = ep_options_prefix + "cudnn_conv1d_pad_to_nc1d";
   const std::string cudnn_conv_algo_key = ep_options_prefix + "cudnn_conv_algo";
   const std::string cudnn_conv_algo_search_key = ep_options_prefix + "cudnn_conv_algo_search";
+  const std::string fuse_conv_bias_key = ep_options_prefix + "fuse_conv_bias";
+  const std::string sdpa_kernel_key = ep_options_prefix + "sdpa_kernel";
 
   // Prefer plugin-provider-option keys, then fall back to the legacy ep.cuda.*
   // aliases and finally to the historical flat session config names.
@@ -375,6 +395,12 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       {cudnn_conv_algo_search_key, cudnn_conv_algo_key, "ep.cuda.cudnn_conv_algo_search", "ep.cuda.cudnn_conv_algo",
        "cudnn_conv_algo_search", "cudnn_conv_algo"},
       config.cudnn_conv_algo);
+  read_session_config_bool(
+      {fuse_conv_bias_key, "ep.cuda.fuse_conv_bias", "fuse_conv_bias"},
+      config.fuse_conv_bias);
+  read_session_config_int(
+      {sdpa_kernel_key, "ep.cuda.sdpa_kernel", "sdpa_kernel"},
+      config.sdpa_kernel);
 
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);

@@ -25,6 +25,8 @@ class CudaEp : public OrtEp {
     int cudnn_conv_algo = 0;                          ///< cuDNN convolution algorithm selection.
     bool cudnn_conv_use_max_workspace = true;         ///< Use maximum workspace for cuDNN conv algo search.
     bool cudnn_conv1d_pad_to_nc1d = false;            ///< Pad 1D convolutions to NC1D format.
+    bool fuse_conv_bias = false;                      ///< Enable cuDNN frontend conv+bias fusion.
+    int sdpa_kernel = 0;                              ///< Attention backend bitmask override.
   };
 
   CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger);
