@@ -114,22 +114,13 @@ struct TreeEnsembleAttributesV3 {
                 "nodes_modes size (", nodes_modes.size(), ") exceeds uint32_t max");
 
     if (classifier) {
-        if (n_targets_or_classes == 1) {
-          if (base_values_as_tensor.empty()) {
-            ORT_ENFORCE(base_values.size() <= 2, "base_values should have 0, 1, or 2 values.");
-          } else {
-            ORT_ENFORCE(base_values_as_tensor.size() <= 2, "base_values_as_tensor should have 0, 1, or 2 values.");
-          }
+      if (n_targets_or_classes == 1) {
+        if (base_values_as_tensor.empty()) {
+          ORT_ENFORCE(base_values.size() <= 2, "base_values should have 0, 1, or 2 values.");
         } else {
-          if (base_values_as_tensor.empty()) {
-            ORT_ENFORCE(base_values.size() == static_cast<size_t>(n_targets_or_classes) || base_values.size() == 0,
-                        "base_values should have 0 or ", n_targets_or_classes, " values.");
-          } else {
-            ORT_ENFORCE(base_values_as_tensor.size() == static_cast<size_t>(n_targets_or_classes) || base_values_as_tensor.size() == 0,
-                        "base_values_as_tensor should have 0 or ", n_targets_or_classes, " values.");
-          }
-      }
-    } else {
+          ORT_ENFORCE(base_values_as_tensor.size() <= 2, "base_values_as_tensor should have 0, 1, or 2 values.");
+        }
+      } else {
         if (base_values_as_tensor.empty()) {
           ORT_ENFORCE(base_values.size() == static_cast<size_t>(n_targets_or_classes) || base_values.size() == 0,
                       "base_values should have 0 or ", n_targets_or_classes, " values.");
@@ -137,6 +128,15 @@ struct TreeEnsembleAttributesV3 {
           ORT_ENFORCE(base_values_as_tensor.size() == static_cast<size_t>(n_targets_or_classes) || base_values_as_tensor.size() == 0,
                       "base_values_as_tensor should have 0 or ", n_targets_or_classes, " values.");
         }
+      }
+    } else {
+      if (base_values_as_tensor.empty()) {
+        ORT_ENFORCE(base_values.size() == static_cast<size_t>(n_targets_or_classes) || base_values.size() == 0,
+                    "base_values should have 0 or ", n_targets_or_classes, " values.");
+      } else {
+        ORT_ENFORCE(base_values_as_tensor.size() == static_cast<size_t>(n_targets_or_classes) || base_values_as_tensor.size() == 0,
+                    "base_values_as_tensor should have 0 or ", n_targets_or_classes, " values.");
+      }
     }
   }
 
