@@ -14,6 +14,8 @@
 #include <fstream>
 #include <random>
 
+#include "nlohmann/json.hpp"
+
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
@@ -621,6 +623,101 @@ TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
   std::remove(profile_file.c_str());
 }
 #endif  // __wasm__
+
+// Test that run-level profiling captures operators inside subgraphs (e.g., If branches).
+// This test is expected to FAIL until the run profiler subgraph bug is fixed:
+// ExecuteSubgraph does not forward the run_profiler, so nested ops are not profiled.
+TEST(InferenceSessionTests, CheckRunProfilerWithSubgraph) {
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfilerWithSubgraph";
+  // Session-level profiling is disabled; we use run-level profiling instead.
+  so.enable_profiling = false;
+
+  InferenceSession session_object(so, GetEnvironment());
+  ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("testdata/if_mul.onnx")));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Prepare inputs for if_mul.onnx:
+  //   A (bool, [1])    - condition (true -> then branch: B * 2)
+  //   B (float, [3,2]) - data
+  std::vector<int64_t> dims_a = {1};
+  std::vector<int64_t> dims_b = {3, 2};
+  std::vector<float> values_b = {2.0f, 3.0f, 4.0f, -5.0f, 6.0f, 7.0f};
+
+  // Create bool tensor for condition A = true (run the then-branch with mul_0).
+  OrtValue ml_value_a;
+  bool condition = true;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<bool>(), TensorShape(dims_a),
+                       &condition, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), ml_value_a);
+
+  OrtValue ml_value_b;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_b, values_b,
+                       &ml_value_b);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("A", ml_value_a));
+  feeds.insert(std::make_pair("B", ml_value_b));
+
+  std::vector<std::string> output_names = {"C"};
+  std::vector<OrtValue> fetches;
+
+  // Enable run-level profiling
+  RunOptions run_options;
+  run_options.run_tag = "RunTag";
+  run_options.enable_profiling = true;
+  run_options.profile_file_prefix = ORT_TSTR("ort_run_profile_subgraph_test");
+
+  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+
+  // Verify output: condition=true -> then branch -> B * 2
+  std::vector<int64_t> expected_dims = {3, 2};
+  std::vector<float> expected_values = {4.0f, 6.0f, 8.0f, -10.0f, 12.0f, 14.0f};
+  VerifySingleOutput(fetches, expected_dims, expected_values);
+
+  // Find the generated profile JSON file
+  std::string profile_file;
+  for (const auto& entry : std::filesystem::directory_iterator(".")) {
+    std::string filename = entry.path().filename().string();
+    if (filename.find("ort_run_profile_subgraph_test") == 0 && filename.find(".json") != std::string::npos) {
+      profile_file = entry.path().string();
+      break;
+    }
+  }
+
+  ASSERT_FALSE(profile_file.empty()) << "Profile file with prefix 'ort_run_profile_subgraph_test' not found";
+
+  // Parse the profile JSON
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good()) << "Failed to open profile file: " << profile_file;
+
+  nlohmann::json profile_json;
+  profile_stream >> profile_json;
+  profile_stream.close();
+
+  ASSERT_TRUE(profile_json.is_array()) << "Profile JSON should be an array";
+  ASSERT_FALSE(profile_json.empty()) << "Profile JSON should not be empty";
+
+  // Check that the profile contains an entry for the Mul op inside the If's then-branch (mul_0).
+  bool found_subgraph_mul = false;
+  for (const auto& entry : profile_json) {
+    if (entry.contains("name")) {
+      const std::string name = entry["name"].get<std::string>();
+      if (name.find("mul_0") != std::string::npos) {
+        found_subgraph_mul = true;
+        break;
+      }
+    }
+  }
+
+  EXPECT_TRUE(found_subgraph_mul)
+      << "Profile should contain an entry for 'mul_0' (Mul op inside If's then-branch). "
+         "This fails because run-level profiling does not propagate to subgraphs.";
+
+  // Clean up the profile file
+  std::remove(profile_file.c_str());
+}
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   // Test whether the InferenceSession can access the profiler's start time
