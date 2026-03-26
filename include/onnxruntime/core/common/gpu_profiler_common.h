@@ -377,6 +377,10 @@ class GPUProfilerBase : public EpProfiler {
   virtual ~GPUProfilerBase() {}
 
   void MergeEvents(std::map<uint64_t, Events>& events_to_merge, Events& events) {
+    // TODO: Fix incorrect assumption that ORT events are sorted by non-decreasing stat time.
+    // They are actually sorted by non-decreasing end time, which prevents this algorithm
+    // from properly merging and annotating all EP events.
+    // See Profiler::EndTimeAndRecordEvent() in onnxruntime/core/common/profiler.cc
     Events merged_events;
 
     auto event_iter = events.begin();

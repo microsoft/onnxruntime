@@ -2069,7 +2069,7 @@ struct OrtEp {
    */
   ORT_API2_STATUS(IsConcurrentRunSupported, _In_ OrtEp* this_ptr, _Outptr_ bool* is_supported);
 
-  /** \brief Gets the execution provider's profiler, if any.
+  /** \brief Return a new profiler for the execution provider.
    *
    * If the EP supports profiling, it should create and return an OrtEpProfilerImpl instance.
    * ORT takes ownership of each non-NULL instance returned and will call OrtEpProfilerImpl::Release when
