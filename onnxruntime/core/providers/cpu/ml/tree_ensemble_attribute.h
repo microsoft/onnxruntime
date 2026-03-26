@@ -116,26 +116,26 @@ struct TreeEnsembleAttributesV3 {
     if (classifier) {
         if (n_targets_or_classes == 1) {
           if (base_values_as_tensor.empty()) {
-            ORT_ENFORCE(base_values.size() <= 2, "base_value_as_tensor should have 0, 1 or 2 values.");
+            ORT_ENFORCE(base_values.size() <= 2, "base_values should have 0, 1, or 2 values.");
           } else {
-            ORT_ENFORCE(base_values_as_tensor.size() <= 2, "base_value_as_tensor should have 0, 1, 2 values.");
+            ORT_ENFORCE(base_values_as_tensor.size() <= 2, "base_values_as_tensor should have 0, 1, or 2 values.");
           }
         } else {
           if (base_values_as_tensor.empty()) {
             ORT_ENFORCE(base_values.size() == static_cast<size_t>(n_targets_or_classes) || base_values.size() == 0,
-                        "base_value_as_tensor should have 0 or ", n_targets_or_classes, "values.");
+                        "base_values should have 0 or ", n_targets_or_classes, " values.");
           } else {
             ORT_ENFORCE(base_values_as_tensor.size() == static_cast<size_t>(n_targets_or_classes) || base_values_as_tensor.size() == 0,
-                        "base_value_as_tensor should have 0 or ", n_targets_or_classes, "values.");
+                        "base_values_as_tensor should have 0 or ", n_targets_or_classes, " values.");
           }
       }
     } else {
         if (base_values_as_tensor.empty()) {
           ORT_ENFORCE(base_values.size() == static_cast<size_t>(n_targets_or_classes) || base_values.size() == 0,
-                      "base_value_as_tensor should have 0 or ", n_targets_or_classes, "values.");
+                      "base_values should have 0 or ", n_targets_or_classes, " values.");
         } else {
           ORT_ENFORCE(base_values_as_tensor.size() == static_cast<size_t>(n_targets_or_classes) || base_values_as_tensor.size() == 0,
-                      "base_value_as_tensor should have 0 or ", n_targets_or_classes, "values.");
+                      "base_values_as_tensor should have 0 or ", n_targets_or_classes, " values.");
         }
     }
   }
