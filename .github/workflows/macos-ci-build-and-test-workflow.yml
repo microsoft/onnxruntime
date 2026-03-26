@@ -107,7 +107,7 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@v4
         with:
-          key: vcpkg-cache | macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }} # build config doesn't matter, vcpkg builds both
+          key: vcpkg-cache | macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}
           path: ~/.cache/vcpkg
 
       - uses: actions/cache@v5
