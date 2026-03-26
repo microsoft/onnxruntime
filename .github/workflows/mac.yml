@@ -160,10 +160,10 @@ jobs:
           ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
   Objective-C-StaticAnalysis:
-    runs-on: macos-14
+    runs-on: macos-26
 
     env:
-      xcode_version: 15.2
+      xcode_version: 26.3
 
     timeout-minutes: 30
 
@@ -209,7 +209,7 @@ jobs:
         run: |
           CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
 
-          "$(brew --prefix llvm@15)/bin/clang-tidy" \
+          "$(brew --prefix llvm@20)/bin/clang-tidy" \
             -p=./build/Debug \
             --checks="${CLANG_TIDY_CHECKS}" \
             --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
