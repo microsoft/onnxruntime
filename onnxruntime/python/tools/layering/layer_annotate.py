@@ -1,7 +1,6 @@
 import argparse
 import logging
 import pathlib
-import threading
 
 import onnx
 
@@ -79,7 +78,7 @@ def process_nodes(nodes, substring_annotations):
     Helper function to process a list of nodes sequentially.
     """
     logger = get_logger("annotate_model")
-    logger.info(f"Thread {threading.get_ident()} processing {len(nodes)} nodes.")
+    logger.info(f"Processing {len(nodes)} nodes.")
 
     for node in nodes:
         matched_annotation = None
@@ -105,13 +104,13 @@ def process_nodes(nodes, substring_annotations):
         # Recurse into subgraphs for control flow nodes
         for attr in node.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
-                annotate_graph(attr.g, substring_annotations, parallel=False)
+                annotate_graph(attr.g, substring_annotations)
             elif attr.type == onnx.AttributeProto.GRAPHS:
                 for sub_graph in attr.graphs:
-                    annotate_graph(sub_graph, substring_annotations, parallel=False)
+                    annotate_graph(sub_graph, substring_annotations)
 
 
-def annotate_graph(graph, substring_annotations, parallel=False):
+def annotate_graph(graph, substring_annotations):
     """
     Recursively applies annotations to nodes where a configured substring appears in the node name.
 
@@ -127,19 +126,7 @@ def annotate_graph(graph, substring_annotations, parallel=False):
     Args:
         graph (onnx.GraphProto): The ONNX graph to process.
         substring_annotations (list): A list of tuples (substring, annotation_string).
-        parallel (bool): If True, process the graph's nodes in parallel chunks.
     """
-    if parallel:
-        # Parallel processing with threads has been disabled due to lack of thread-safety
-        # guarantees for ONNX/protobuf objects during concurrent writes. Fall back to
-        # sequential processing while retaining the 'parallel' argument for API compatibility.
-        logger = get_logger("annotate_model")
-        logger.info(
-            "Parallel annotation requested, but thread-based parallelism is disabled "
-            "to avoid unsafe concurrent writes to ONNX/protobuf objects. "
-            "Proceeding with sequential processing."
-        )
-
     process_nodes(graph.node, substring_annotations)
 
 
@@ -154,7 +141,7 @@ def annotate_model(model, substring_annotations):
         model (onnx.ModelProto): The ONNX model to annotate.
         substring_annotations (list): A list of tuples (substring, annotation_string).
     """
-    annotate_graph(model.graph, substring_annotations, parallel=True)
+    annotate_graph(model.graph, substring_annotations)
 
 
 if __name__ == "__main__":
