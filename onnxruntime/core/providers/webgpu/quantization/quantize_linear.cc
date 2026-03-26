@@ -23,20 +23,21 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n";
 
   // Get x input
-  if (packed_4bit_) {
+  if (packing_ == PackingMode::Packed4) {
     // 4-bit packing: 8 elements per u32
     shader.MainFunctionBody()
         << "let x = " << x.GetByOffset("global_idx / 8") << ";\n"
         << "let x_raw = (x >> ((global_idx % 8u) * 4u)) & 0xFu;\n";
-    if (signed_) {
+    if (packed_signed_) {
       shader.MainFunctionBody()
           << "let x_value = select(input_element_t(x_raw), input_element_t(x_raw) - 16, x_raw >= 8u);\n";
     } else {
       shader.MainFunctionBody()
           << "let x_value = input_element_t(x_raw);\n";
     }
-  } else if (packed_) {
-    std::string unpack = (signed_) ? "unpack4xI8(x)" : "unpack4xU8(x)";
+  } else if (packing_ == PackingMode::Packed8) {
+    // 8-bit packing: 4 elements per u32
+    std::string unpack = (packed_signed_) ? "unpack4xI8(x)" : "unpack4xU8(x)";
     if (output.NumComponents() == 1) {
       shader.MainFunctionBody()
           << "let x = " << x.GetByOffset("global_idx / 4") << ";\n"
@@ -81,10 +82,10 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_zeropoint_) {
     const auto& zero_point = shader.AddInput("zero_point", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
-    if (packed_4bit_) {
+    if (packing_ == PackingMode::Packed4) {
       // 4-bit zero-point: 8 elements per u32, with sign extension for signed types
-      std::string sign_extend_prefix = signed_ ? "let zp_raw = " : "let zero_point_value = input_element_t(";
-      std::string sign_extend_suffix = signed_ ? ";\nlet zero_point_value = select(input_element_t(zp_raw), input_element_t(zp_raw) - 16, zp_raw >= 8u);\n"
+      std::string sign_extend_prefix = packed_signed_ ? "let zp_raw = " : "let zero_point_value = input_element_t(";
+      std::string sign_extend_suffix = packed_signed_ ? ";\nlet zero_point_value = select(input_element_t(zp_raw), input_element_t(zp_raw) - 16, zp_raw >= 8u);\n"
                                                : ");\n";
       if (per_layer_) {
         shader.MainFunctionBody()
@@ -101,10 +102,10 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
             << sign_extend_prefix << "(zero_point_packed >> ((zero_point_offset % 8u) * 4u)) & 0xFu" << sign_extend_suffix;
       }
     } else {
-      std::string unpack = (signed_) ? "unpack4xI8(zero_point_input)" : "unpack4xU8(zero_point_input)";
+      std::string unpack = (packed_signed_) ? "unpack4xI8(zero_point_input)" : "unpack4xU8(zero_point_input)";
       if (per_layer_) {
         // zero-point input is a scalar
-        if (packed_) {
+        if (packing_ == PackingMode::Packed8) {
           shader.MainFunctionBody()
               << "let zero_point_input = " << zero_point.GetByOffset("0") << ";\n"
               << "let zero_point_vec = " << unpack << ";\n"
@@ -115,7 +116,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
         }
       } else if (per_axis_) {
         // zero-point input is a 1D tensor
-        if (packed_) {
+        if (packing_ == PackingMode::Packed8) {
           shader.MainFunctionBody()
               << "let zero_point_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
               << "let zero_point_input = " << zero_point.GetByOffset("zero_point_index / 4") << ";\n"
@@ -128,7 +129,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
         }
       } else {
         // BlockedQuantization. The zero-point input shape is the same as the scale input shape.
-        if (packed_) {
+        if (packing_ == PackingMode::Packed8) {
           shader.MainFunctionBody()
               << "let zero_point_offset = " << scale.IndicesToOffset("scale_indices") << ";\n"
               << "let zero_point_input = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
@@ -164,9 +165,13 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
 
   auto x_type = x->GetElementType();
 
-  bool packed_4bit = x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
-  bool packed = packed_4bit || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
-  bool is_signed = x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+  PackingMode packing = (x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4)
+                            ? PackingMode::Packed4
+                        : (x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8)
+                            ? PackingMode::Packed8
+                            : PackingMode::None;
+  bool packed = packing != PackingMode::None;
+  bool is_packed_signed = x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
   int64_t axis = (axis_ >= 0) ? axis_ : axis_ + x_shape.NumDimensions();
 
   int max_components = GetMaxComponents(x_size);
@@ -206,14 +211,14 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  bool use_components = per_layer && !packed_4bit && (!packed || max_components == 4);
+  bool use_components = per_layer && packing != PackingMode::Packed4 && (!packed || max_components == 4);
   int components = use_components ? max_components : 1;
   int input_component = use_components ? max_components : 1;
   // For 4-bit types, each u32 holds 8 elements; for 8-bit types, 4 elements.
-  int pack_factor = packed_4bit ? 8 : 4;
+  int pack_factor = (packing == PackingMode::Packed4) ? 8 : 4;
 
-  DequantizeLinearProgram program{packed, is_signed, per_layer, per_axis, x_zeropoint != nullptr,
-                                  static_cast<int>(x_shape.NumDimensions()), packed_4bit};
+  DequantizeLinearProgram program{packing, is_packed_signed, per_layer, per_axis, x_zeropoint != nullptr,
+                                  static_cast<int>(x_shape.NumDimensions())};
 
   program
       .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, packed ? pack_factor : input_component}})
@@ -225,7 +230,7 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{static_cast<uint32_t>(axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size)}})
       .AddUniformVariables({{static_cast<uint32_t>(x_size / components)}})
-      .CacheHint(std::to_string(axis), std::to_string(is_signed), std::to_string(per_layer), std::to_string(per_axis), std::to_string(block_size), std::to_string(packed_4bit));
+      .CacheHint(std::to_string(axis), std::to_string(is_packed_signed), std::to_string(per_layer), std::to_string(per_axis), std::to_string(block_size), std::to_string(static_cast<int>(packing)));
 
   if (x_zeropoint != nullptr) {
     program.AddInputs({{x_zeropoint, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, packed ? pack_factor : 1}});

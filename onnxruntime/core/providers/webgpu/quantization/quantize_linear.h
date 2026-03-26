@@ -8,18 +8,24 @@
 namespace onnxruntime {
 namespace webgpu {
 
+// How the quantized input is packed into u32 words.
+enum class PackingMode {
+  None,      // no packing (e.g. int32)
+  Packed8,   // 8-bit: 4 elements per u32, uses unpack4x[I/U]8
+  Packed4,   // 4-bit: 8 elements per u32, manual bit extraction
+};
+
 class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
  public:
-  DequantizeLinearProgram(const bool packed, const bool issigned, const bool per_layer,
-                          const bool per_axis, bool has_zeropoint, int rank = 0,
-                          bool packed_4bit = false) : Program<DequantizeLinearProgram>{"DequantizeLinear"},
-                                                      packed_{packed},
-                                                      signed_{issigned},
-                                                      per_layer_{per_layer},
-                                                      per_axis_{per_axis},
-                                                      has_zeropoint_{has_zeropoint},
-                                                      rank_{rank},
-                                                      packed_4bit_{packed_4bit} {}
+  DequantizeLinearProgram(PackingMode packing, bool is_packed_signed, bool per_layer,
+                          bool per_axis, bool has_zeropoint, int rank = 0)
+      : Program<DequantizeLinearProgram>{"DequantizeLinear"},
+        packing_{packing},
+        packed_signed_{is_packed_signed},
+        per_layer_{per_layer},
+        per_axis_{per_axis},
+        has_zeropoint_{has_zeropoint},
+        rank_{rank} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -28,13 +34,12 @@ class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
                                           {"output_size", ProgramUniformVariableDataType::Uint32});
 
  private:
-  bool packed_;
-  bool signed_;
+  PackingMode packing_;
+  bool packed_signed_;
   bool per_layer_;
   bool per_axis_;
   bool has_zeropoint_;
   int rank_;
-  bool packed_4bit_;
 };
 
 class DequantizeLinear final : public WebGpuKernel {
