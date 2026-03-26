@@ -45,21 +45,22 @@ jobs:
     env:
       buildArch: x64
       common_build_args: >-
-        --parallel
-        --use_cache
-        ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
-        --config ${{ inputs.build_config }}
-        --skip_submodule_sync
         --build_wasm
+        --config '${{ inputs.build_config }}'
         --enable_wasm_simd
+        --parallel
+        --skip_submodule_sync
+        --use_cache
         ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }}
+        ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
         ${{ inputs.extra_build_args }}
+
       reduced_size_build_args: >-
-        --disable_ml_ops
         --disable_generation_ops
+        --disable_ml_ops
         --disable_types string float4 float8 optional sparsetensor
-        --include_ops_by_config onnxruntime/wasm/reduced_types.config
         --enable_reduced_operator_type_support
+        --include_ops_by_config onnxruntime/wasm/reduced_types.config
 
     steps:
       - name: Checkout code
@@ -106,20 +107,24 @@ jobs:
           disable-terrapin: 'true'
 
       - name: Build (simd + threads)
+        shell: bash
         run: |
+          set -euo pipefail
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
-            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --build_dir "${GITHUB_WORKSPACE}/build/wasm_inferencing" \
             ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
       - name: Build (simd + threads + JSEP)
         if: ${{ inputs.build_jsep == true }}
+        shell: bash
         run: |
+          set -euo pipefail
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
-            --build_dir ${{ github.workspace }}/build/wasm_inferencing_jsep \
+            --build_dir "${GITHUB_WORKSPACE}/build/wasm_inferencing_jsep" \
             --use_jsep \
             --use_webnn \
             --target onnxruntime_webassembly \
@@ -129,10 +134,12 @@ jobs:
 
       - name: Build (simd + threads + WebGPU experimental)
         if: ${{ inputs.build_webgpu == true }}
+        shell: bash
         run: |
+          set -euo pipefail
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
-            --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu \
+            --build_dir "${GITHUB_WORKSPACE}/build/wasm_inferencing_webgpu" \
             --use_webgpu \
             --use_webnn \
             --target onnxruntime_webassembly \
@@ -143,10 +150,12 @@ jobs:
 
       - name: Build (simd + threads + WebGPU experimental, JSPI)
         if: ${{ inputs.build_webgpu == true }}
+        shell: bash
         run: |
+          set -euo pipefail
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
-            --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi \
+            --build_dir "${GITHUB_WORKSPACE}/build/wasm_inferencing_webgpu_jspi" \
             --use_webgpu \
             --use_webnn \
             --enable_wasm_jspi \
@@ -157,21 +166,25 @@ jobs:
 
       - name: Create Artifacts
         if: ${{ inputs.skip_publish != true }}
+        shell: bash
+        env:
+          build_cfg: ${{ inputs.build_config }}
         run: |
-          mkdir -p ${{ github.workspace }}/artifacts/wasm/
-          cp ${{ github.workspace }}/build/wasm_inferencing/${{ inputs.build_config }}/ort-wasm-simd-threaded.wasm ${{ github.workspace }}/artifacts/wasm/
-          cp ${{ github.workspace }}/build/wasm_inferencing/${{ inputs.build_config }}/ort-wasm-simd-threaded.mjs ${{ github.workspace }}/artifacts/wasm/
-          if [ -d ${{ github.workspace }}/build/wasm_inferencing_jsep ]; then
-            cp ${{ github.workspace }}/build/wasm_inferencing_jsep/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.wasm ${{ github.workspace }}/artifacts/wasm/
-            cp ${{ github.workspace }}/build/wasm_inferencing_jsep/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.mjs ${{ github.workspace }}/artifacts/wasm/
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/artifacts/wasm/"
+          cp "${GITHUB_WORKSPACE}/build/wasm_inferencing/${build_cfg}/ort-wasm-simd-threaded.wasm" "${GITHUB_WORKSPACE}/artifacts/wasm/"
+          cp "${GITHUB_WORKSPACE}/build/wasm_inferencing/${build_cfg}/ort-wasm-simd-threaded.mjs" "${GITHUB_WORKSPACE}/artifacts/wasm/"
+          if [ -d "${GITHUB_WORKSPACE}/build/wasm_inferencing_jsep" ]; then
+            cp "${GITHUB_WORKSPACE}/build/wasm_inferencing_jsep/${build_cfg}/ort-wasm-simd-threaded.jsep.wasm" "${GITHUB_WORKSPACE}/artifacts/wasm/"
+            cp "${GITHUB_WORKSPACE}/build/wasm_inferencing_jsep/${build_cfg}/ort-wasm-simd-threaded.jsep.mjs" "${GITHUB_WORKSPACE}/artifacts/wasm/"
           fi
-          if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu ]; then
-            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.wasm ${{ github.workspace }}/artifacts/wasm/
-            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.mjs ${{ github.workspace }}/artifacts/wasm/
+          if [ -d "${GITHUB_WORKSPACE}/build/wasm_inferencing_webgpu" ]; then
+            cp "${GITHUB_WORKSPACE}/build/wasm_inferencing_webgpu/${build_cfg}/ort-wasm-simd-threaded.asyncify.wasm" "${GITHUB_WORKSPACE}/artifacts/wasm/"
+            cp "${GITHUB_WORKSPACE}/build/wasm_inferencing_webgpu/${build_cfg}/ort-wasm-simd-threaded.asyncify.mjs" "${GITHUB_WORKSPACE}/artifacts/wasm/"
           fi
-          if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi ]; then
-            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.wasm ${{ github.workspace }}/artifacts/wasm/
-            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.mjs ${{ github.workspace }}/artifacts/wasm/
+          if [ -d "${GITHUB_WORKSPACE}/build/wasm_inferencing_webgpu_jspi" ]; then
+            cp "${GITHUB_WORKSPACE}/build/wasm_inferencing_webgpu_jspi/${build_cfg}/ort-wasm-simd-threaded.jspi.wasm" "${GITHUB_WORKSPACE}/artifacts/wasm/"
+            cp "${GITHUB_WORKSPACE}/build/wasm_inferencing_webgpu_jspi/${build_cfg}/ort-wasm-simd-threaded.jspi.mjs" "${GITHUB_WORKSPACE}/artifacts/wasm/"
           fi
 
       - name: Upload WASM artifacts
@@ -184,20 +197,24 @@ jobs:
       - name: Test (Node.js) (simd + threads)
         # unit tests are currently only supported in Debug builds because they require exceptions, which are disabled in Release builds.
         if: ${{ inputs.build_config == 'Debug' }}
+        shell: bash
         run: |
+          set -euo pipefail
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
-            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --build_dir build/wasm_inferencing \
             --test
         working-directory: ${{ github.workspace }}
 
       - name: Test (browser) (simd + threads)
         # unit tests are currently only supported in Debug builds because they require exceptions, which are disabled in Release builds.
         if: ${{ inputs.build_config == 'Debug' }}
+        shell: bash
         run: |
+          set -euo pipefail
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
-            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --build_dir build/wasm_inferencing \
             --wasm_run_tests_in_browser \
             --targets onnxruntime_test_all onnxruntime_provider_test \
             --update --build --test
