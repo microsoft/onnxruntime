@@ -282,17 +282,47 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                  PluginIfKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
+                                  kOnnxDomain,
+                                  19, 20,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                  PluginIfKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
+                                  kOnnxDomain,
+                                  21, 22,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                  PluginIfKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
+                                  kOnnxDomain,
+                                  23, 24,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
                                   PluginIfKernel);
 
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
-                        19,
+                        25,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
                         PluginIfKernel);
 
 // --- Loop ---
@@ -330,19 +360,55 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                       .InputMemoryType(OrtMemTypeCPUInput, 1)
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                  PluginLoopKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
+                                  kOnnxDomain,
+                                  19, 20,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                  PluginLoopKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
+                                  kOnnxDomain,
+                                  21, 22,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                  PluginLoopKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
+                                  kOnnxDomain,
+                                  23, 24,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
                                   PluginLoopKernel);
 
 ONNX_OPERATOR_KERNEL_EX(Loop,
                         kOnnxDomain,
-                        19,
+                        25,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)
                             .InputMemoryType(OrtMemTypeCPUInput, 1)
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
                         PluginLoopKernel);
 
 // --- Scan (opset 8) ---
@@ -383,9 +449,33 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   PluginScanKernel);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  19, 20,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                                  PluginScanKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  21, 22,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                                  PluginScanKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  23, 24,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
+                                  PluginScanKernel);
+
 ONNX_OPERATOR_KERNEL_EX(Scan,
                         kOnnxDomain,
-                        19,
+                        25,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypesIRv9()),
