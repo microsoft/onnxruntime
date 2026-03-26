@@ -688,6 +688,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSubgraph) {
 
   ASSERT_FALSE(profile_file.empty()) << "Profile file with prefix 'ort_run_profile_subgraph_test' not found";
 
+  // Ensure the profile file is cleaned up even if an assertion fails.
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
   // Parse the profile JSON
   std::ifstream profile_stream(profile_file);
   ASSERT_TRUE(profile_stream.good()) << "Failed to open profile file: " << profile_file;
@@ -714,9 +717,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSubgraph) {
   EXPECT_TRUE(found_subgraph_mul)
       << "Profile should contain an entry for 'mul_0' (Mul op inside If's then-branch). "
          "This fails because run-level profiling does not propagate to subgraphs.";
-
-  // Clean up the profile file
-  std::remove(profile_file.c_str());
 }
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
