@@ -10,9 +10,9 @@ namespace webgpu {
 
 // How the quantized input is packed into u32 words.
 enum class PackingMode {
-  None,      // no packing (e.g. int32)
-  Packed8,   // 8-bit: 4 elements per u32, uses unpack4x[I/U]8
-  Packed4,   // 4-bit: 8 elements per u32, manual bit extraction
+  None,     // no packing (e.g. int32)
+  Packed8,  // 8-bit: 4 elements per u32, uses unpack4x[I/U]8
+  Packed4,  // 4-bit: 8 elements per u32, manual bit extraction
 };
 
 class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {

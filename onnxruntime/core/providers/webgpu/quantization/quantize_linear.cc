@@ -86,7 +86,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       // 4-bit zero-point: 8 elements per u32, with sign extension for signed types
       std::string sign_extend_prefix = packed_signed_ ? "let zp_raw = " : "let zero_point_value = input_element_t(";
       std::string sign_extend_suffix = packed_signed_ ? ";\nlet zero_point_value = select(input_element_t(zp_raw), input_element_t(zp_raw) - 16, zp_raw >= 8u);\n"
-                                               : ");\n";
+                                                      : ");\n";
       if (per_layer_) {
         shader.MainFunctionBody()
             << sign_extend_prefix << zero_point.GetByOffset("0") << " & 0xFu" << sign_extend_suffix;
