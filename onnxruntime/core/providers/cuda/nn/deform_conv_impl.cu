@@ -188,28 +188,28 @@ __device__ __inline__ T BilinearInterpolate(
   CoordT hh = static_cast<CoordT>(1) - lh;
   CoordT hw = static_cast<CoordT>(1) - lw;
 
-  // [Optimization 4]: Branchless neighbor loads via "safe address + validity mask".
-  // 1) Clamp each coordinate to a legal address first (prevents illegal memory access).
-  // 2) Compute validity predicates for the true (possibly OOB) coordinates.
-  // 3) Always load from clamped address and mask invalid neighbors to zero.
-  // Modern CUDA compilers usually lower this to predicated/selp-style code without control-flow branches.
-  const int safe_h_low = max(0, min(h_low, height - 1));
-  const int safe_h_high = max(0, min(h_high, height - 1));
-  const int safe_w_low = max(0, min(w_low, width - 1));
-  const int safe_w_high = max(0, min(w_high, width - 1));
+  // [Optimization 3]: Branchless neighbor loads via "safe address + one-sided clamp".
+  // Given the early return above, coordinates are in (-1, H) x (-1, W), so each index only needs one-sided clamp:
+  //   h_low in [-1, H-1], h_high in [0, H], w_low in [-1, W-1], w_high in [0, W].
+  // We always load from legal addresses; validity is applied by 2D neighbor masks below.
+  // CUDA compilers usually lower this to predicated/selp-style code without control-flow branches.
+  const int safe_h_low = max(0, h_low);
+  const int safe_h_high = min(h_high, height - 1);
+  const int safe_w_low = max(0, w_low);
+  const int safe_w_high = min(w_high, width - 1);
+
+  // [Optimization 4]: One-sided validity checks under the same invariant.
+  // Keep 2D neighbor masks (m1..m4), algebraically equivalent to masking invalid neighbor terms to zero.
+  // Use one/zero ternaries directly in CoordT to encourage selp.f32/f16 generation.
+  const CoordT one = static_cast<CoordT>(1);
+  const CoordT zero = static_cast<CoordT>(0);
+  const CoordT m1 = (h_low >= 0 && w_low >= 0) ? one : zero;
+  const CoordT m2 = (h_low >= 0 && w_high < width) ? one : zero;
+  const CoordT m3 = (h_high < height && w_low >= 0) ? one : zero;
+  const CoordT m4 = (h_high < height && w_high < width) ? one : zero;
 
   const int safe_base_low = safe_h_low * width;
   const int safe_base_high = safe_h_high * width;
-
-  const bool h_low_valid = (h_low >= 0 && h_low < height);
-  const bool h_high_valid = (h_high >= 0 && h_high < height);
-  const bool w_low_valid = (w_low >= 0 && w_low < width);
-  const bool w_high_valid = (w_high >= 0 && w_high < width);
-
-  const CoordT m1 = static_cast<CoordT>(h_low_valid && w_low_valid);
-  const CoordT m2 = static_cast<CoordT>(h_low_valid && w_high_valid);
-  const CoordT m3 = static_cast<CoordT>(h_high_valid && w_low_valid);
-  const CoordT m4 = static_cast<CoordT>(h_high_valid && w_high_valid);
 
   const CoordT v1 = Traits::Load(in + safe_base_low + safe_w_low) * m1;
   const CoordT v2 = Traits::Load(in + safe_base_low + safe_w_high) * m2;
