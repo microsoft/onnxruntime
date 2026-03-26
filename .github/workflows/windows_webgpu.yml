@@ -108,29 +108,31 @@ jobs:
 
       - name: Build and Test
         shell: pwsh
+        env:
+          wgsl_template: ${{ matrix.wgsl_template }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
-            --config RelWithDebInfo `
-            --build_dir ${{ github.workspace }} `
-            --skip_submodule_sync `
+          python.exe "${env:GITHUB_WORKSPACE}\tools\ci_build\build.py" `
             --build_csharp `
-            --parallel `
-            --use_binskim_compliant_compile_flags `
-            --cmake_generator "Visual Studio 17 2022" `
-            --build_shared_lib `
-            --enable_onnx_tests `
-            --build_nodejs `
+            --build_dir "${env:GITHUB_WORKSPACE}" `
             --build_java `
+            --build_nodejs `
+            --build_shared_lib `
+            --cmake_extra_defines onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON `
+            --cmake_generator "Visual Studio 17 2022" `
+            --config RelWithDebInfo `
+            --enable_onnx_tests `
+            --parallel `
+            --skip_submodule_sync `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
             --use_webgpu `
-            --wgsl_template ${{ matrix.wgsl_template }} `
-            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
-            --cmake_extra_defines `
-            onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
+            --wgsl_template "${env:wgsl_template}" `
+            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+          Remove-Item "${env:GITHUB_WORKSPACE}\RelWithDebInfo" -Include "*.obj" -Recurse
 
       - name: Run tests (onnxruntime_test_all, onnxruntime_provider_test) with verbose logging
         shell: pwsh

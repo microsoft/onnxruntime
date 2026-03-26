@@ -40,9 +40,18 @@ jobs:
           cache_key: windows_build_x64_asan.yml | build_x64
 
       - name: Build and Test (Combined)
-        shell: cmd
+        shell: pwsh
         run: |
-          @echo off
-          echo %PATH%
-          python -m pip install -r "%GITHUB_WORKSPACE%\tools\ci_build/github/windows\python\requirements.txt"
-          python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%RUNNER_TEMP%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+          echo ${env:PATH}
+          python -m pip install -r "${env:GITHUB_WORKSPACE}\tools\ci_build\github\windows\python\requirements.txt"
+          python "${env:GITHUB_WORKSPACE}\tools\ci_build\build.py" `
+            --build_dir "${env:RUNNER_TEMP}\build" `
+            --cmake_generator "Visual Studio 17 2022" `
+            --config Debug `
+            --disable_memleak_checker `
+            --enable_address_sanitizer `
+            --parallel `
+            --skip_submodule_sync `
+            --use_cache `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache
