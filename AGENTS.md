@@ -1,8 +1,8 @@
-# Copilot Instructions for ONNX Runtime
+# Agent Instructions for ONNX Runtime
 
 ## Build
 
-All build scripts delegate to `tools/ci_build/build.py`, which has three main phases:
+Main build scripts are `build.sh` and `build.bat`. They delegate to `tools/ci_build/build.py`, which has three main phases:
 
 - `--update` — generate CMake build files
 - `--build` — compile (add `--parallel` to speed this up)
@@ -29,7 +29,7 @@ For native builds, if none of `--update`, `--build`, or `--test` are specified a
 ./build.sh --config Release --parallel --build_wheel
 ```
 
-Key flags: `--config` (Debug|MinSizeRel|Release|RelWithDebInfo), `--parallel`, `--skip_tests`, `--build_wheel`, `--use_cuda`, `--use_tensorrt`, `--use_dml`, `--use_openvino`, `--enable_training`.
+Key flags: `--config` (Debug|MinSizeRel|Release|RelWithDebInfo), `--parallel`, `--skip_tests`, `--build_wheel`, `--use_cuda`, `--use_tensorrt`, `--use_dml`, `--use_openvino`.
 
 ## Test
 
@@ -93,7 +93,7 @@ Training-specific code (gradient ops, loss functions, optimizers, `TrainingSessi
 
 ## C++ Conventions
 
-**Style**: Google C++ Style with modifications. Max line length 120 (aim for 80). Configured in `.clang-format` and `.clang-tidy`.
+**Style**: Google C++ Style with modifications. Max line length 120. Configured in `.clang-format` and `.clang-tidy`.
 
 ### Error handling
 
@@ -104,6 +104,8 @@ Functions that can fail return `onnxruntime::common::Status`. Use these macros f
 - `ORT_RETURN_IF(condition, ...)` / `ORT_RETURN_IF_NOT(condition, ...)` — conditional early-return with message
 - `ORT_ENFORCE(condition, ...)` — assert-like; throws `OnnxRuntimeException` on failure
 - `ORT_MAKE_STATUS(category, code, ...)` — construct a Status object
+
+Exceptions may be disabled in a build, in which case, the throwing macros will terminate instead.
 
 In the C API boundary, use `API_IMPL_BEGIN` / `API_IMPL_END` to catch exceptions—C++ exceptions must never cross the C API boundary.
 
@@ -130,23 +132,6 @@ Use `reserve()` not `resize()`. Do not use `absl::` directly—use the ORT typed
 - `using namespace` is allowed in limited scope but never at global scope in headers.
 - Use `std::make_unique()` for heap allocations; prefer `std::optional` over `unique_ptr` for optional/delayed construction.
 
-### Operator kernel registration pattern
-
-Kernels are declared with macros and registered in a `BuildKernelCreateInfo` list:
-
-```cpp
-// Forward declaration
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, float, Relu);
-
-// Registration in RegisterCPUKernels() / RegisterCpuContribKernels()
-BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, float, Relu)>,
-
-// Kernel implementation
-ONNX_OPERATOR_KERNEL_EX(OpName, domain, opset, provider, kernel_def, KernelClass);
-```
-
-For CUDA ops: host code goes in `.cc`, device kernels in `.cu`/`.cuh`. Use `ToCudaType<T>::MappedType` for type mapping. CUDA kernel classes inherit `CudaKernel` and override `ComputeInternal`.
-
 ## Python Conventions
 
 - Follow [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) (extension of PEP 8).
@@ -157,7 +142,7 @@ For CUDA ops: host code goes in `.cc`, device kernels in `.cu`/`.cuh`. Use `ToCu
 
 ## C API Conventions
 
-The public C API is in `include/onnxruntime/core/session/onnxruntime_c_api.h`:
+The main public C API header is in `include/onnxruntime/core/session/onnxruntime_c_api.h`:
 
 - Functions that may fail return `OrtStatus*` (`nullptr` on success); release/cleanup functions (e.g., `OrtReleaseXxx`) return `void`.
 - Object lifecycle: `OrtCreateXxx` / `OrtReleaseXxx`.
@@ -165,6 +150,10 @@ The public C API is in `include/onnxruntime/core/session/onnxruntime_c_api.h`:
 - Use `int64_t` for dimensions, `size_t` for counts and memory sizes.
 - APIs requiring allocation take an `OrtAllocator*` parameter.
 - Failed calls must not modify out-parameters.
+
+Other public C/C++ API headers are named like `onnxruntime_*.h` and located in one of these directories:
+- `include/onnxruntime/core/session/`
+- `orttraining/orttraining/training_api/include/`
 
 ## PR Guidelines
 
