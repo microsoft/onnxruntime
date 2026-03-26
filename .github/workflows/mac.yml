@@ -118,7 +118,7 @@ jobs:
         env:
           ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
-  iphone_simulator_pod:
+  ios_pod:
     runs-on: macos-26
 
     env:
@@ -155,7 +155,7 @@ jobs:
             --build-dir ./build \
             --staging-dir ./staging \
             --test \
-            --build-settings-file ./tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
+            --build-settings-file ./tools/ci_build/github/apple/test_ios_framework_build_settings.json
         env:
           ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
