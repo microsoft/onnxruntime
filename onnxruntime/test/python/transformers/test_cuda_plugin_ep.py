@@ -227,6 +227,37 @@ def create_avgpool_model(model_path):
     save(model_def, model_path)
 
 
+def make_bias_dropout_model():
+    """Create a deterministic BiasDropout model by forcing inference mode."""
+    node = helper.make_node(
+        "BiasDropout",
+        ["X", "bias", "residual", "ratio", "training_mode"],
+        ["Y", "mask"],
+        domain="com.microsoft",
+    )
+    graph = helper.make_graph(
+        [node],
+        "test-BiasDropout",
+        [
+            helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 4]),
+            helper.make_tensor_value_info("bias", TensorProto.FLOAT, [4]),
+            helper.make_tensor_value_info("residual", TensorProto.FLOAT, [2, 4]),
+            helper.make_tensor_value_info("ratio", TensorProto.FLOAT, []),
+            helper.make_tensor_value_info("training_mode", TensorProto.BOOL, []),
+        ],
+        [
+            helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 4]),
+            helper.make_tensor_value_info("mask", TensorProto.BOOL, [2, 4]),
+        ],
+    )
+    opset_onnx = onnx.OperatorSetIdProto()
+    opset_onnx.version = 13
+    opset_ms = onnx.OperatorSetIdProto()
+    opset_ms.domain = "com.microsoft"
+    opset_ms.version = 1
+    return helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])
+
+
 def run_operator_test(
     target_device, model_creator, inputs, expected_fn, ep_name=CUDA_PLUGIN_EP_NAME, session_config=None
 ):
@@ -335,7 +366,7 @@ def _run_registration_checks(test_case: unittest.TestCase):
     for name, model_creator, inputs, expected_fn, session_config in stage2_cases:
         print(f"Testing {name}...", end=" ", flush=True)
         result = run_operator_test(target_device, model_creator, inputs, expected_fn, session_config=session_config)
-        with test_case.subTest(stage="stage2", op=name):
+        with test_case.subTest(op=name):
             test_case.assertTrue(
                 result,
                 f"{name} plugin registration test failed",
@@ -382,7 +413,7 @@ def _run_registration_checks(test_case: unittest.TestCase):
     for name, model_creator, inputs, expected_fn in stage3_cases:
         print(f"Testing {name}...", end=" ", flush=True)
         result = run_operator_test(target_device, model_creator, inputs, expected_fn, session_config=nhwc_config)
-        with test_case.subTest(stage="stage3", op=name):
+        with test_case.subTest(op=name):
             test_case.assertTrue(
                 result,
                 f"{name} plugin NHWC test failed",
@@ -400,7 +431,7 @@ def _run_registration_checks(test_case: unittest.TestCase):
     for name, provider_options, expect_plugin_provider in provider_option_cases:
         print(f"Testing {name}...", end=" ", flush=True)
         result = run_provider_options_test(provider_options, expect_plugin_provider=expect_plugin_provider)
-        with test_case.subTest(stage="provider_options", op=name):
+        with test_case.subTest(op=name):
             test_case.assertTrue(
                 result,
                 f"{name} failed",
@@ -481,7 +512,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         nonlocal passed, failed, skipped
         print(f"  {name}...", end=" ", flush=True)
         result = _run_model_test(target_device, name, model, feed, expected_fn, rtol=rtol, atol=atol)
-        with test_case.subTest(stage="stage5", op=name):
+        with test_case.subTest(op=name):
             if result == TEST_PASS:
                 passed += 1
                 print(TEST_PASS, flush=True)
@@ -759,12 +790,25 @@ def _run_stage5_checks(test_case: unittest.TestCase):
 
     run_test("FastGelu", model, {"X": x}, fast_gelu_ref, rtol=1e-2, atol=1e-2)
 
-    # BiasDropout (com.microsoft, with ratio=0 for deterministic test)
-    # Known issue: BiasDropout may not be claimed by plugin EP due to type constraint
-    # matching differences in the adapter's kernel registry lookup.
-    print("  BiasDropout... SKIP (known issue: provider type not set for contrib op)", flush=True)
-    with test_case.subTest(stage="stage5", op="BiasDropout"):
-        skipped += 1
+    # BiasDropout (com.microsoft). We force inference mode so the op is deterministic.
+    model = make_bias_dropout_model()
+    x = np.random.rand(2, 4).astype(np.float32)
+    bias = np.random.rand(4).astype(np.float32)
+    residual = np.random.rand(2, 4).astype(np.float32)
+    ratio = np.array(0.5, dtype=np.float32)
+    training_mode = np.array(False, dtype=np.bool_)
+    run_test(
+        "BiasDropout",
+        model,
+        {
+            "X": x,
+            "bias": bias,
+            "residual": residual,
+            "ratio": ratio,
+            "training_mode": training_mode,
+        },
+        lambda feed: feed["X"] + feed["bias"] + feed["residual"],
+    )
 
     # SkipLayerNormalization (com.microsoft)
     hidden_size = 8
