@@ -9,7 +9,7 @@ import numpy as np
 import onnx
 import torch
 import torch.nn.functional as F
-from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, _get_default_cuda_plugin_ep_path, should_test_with_cuda_plugin_ep
+from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, ensure_cuda_plugin_ep_registered, should_test_with_cuda_plugin_ep
 from onnx import TensorProto, helper, save
 
 import onnxruntime as onnxrt
@@ -22,11 +22,6 @@ except ImportError:
     pass
 
 
-class _PluginRegistrationState:
-    attempted = False
-    succeeded = False
-
-
 TEST_PASS = "PASS"
 TEST_SKIP = "SKIP"
 TEST_FAIL = "FAIL"
@@ -36,37 +31,18 @@ def require_cuda_plugin_ep():
     if not should_test_with_cuda_plugin_ep():
         raise unittest.SkipTest("CUDA plugin EP is not enabled for testing")
 
-    if _PluginRegistrationState.attempted:
-        if not _PluginRegistrationState.succeeded:
-            raise unittest.SkipTest("CUDA plugin EP is not built or could not be registered")
-        return
-
-    _PluginRegistrationState.attempted = True
-
-    ep_lib_path = os.environ.get("ORT_CUDA_PLUGIN_PATH", "")
-    if not ep_lib_path:
-        detected_path = _get_default_cuda_plugin_ep_path()
-        ep_lib_path = detected_path if detected_path else ""
-
-    if not ep_lib_path or not os.path.exists(ep_lib_path):
-        raise unittest.SkipTest("CUDA plugin EP is not built or could not be registered")
-
-    try:
-        onnxrt.register_execution_provider_library(CUDA_PLUGIN_EP_NAME, ep_lib_path)
-        _PluginRegistrationState.succeeded = True
-    except Exception:
-        providers = {device.ep_name for device in onnxrt.get_ep_devices()}
-        if CUDA_PLUGIN_EP_NAME in providers:
-            _PluginRegistrationState.succeeded = True
-
-    if not _PluginRegistrationState.succeeded:
+    if not ensure_cuda_plugin_ep_registered():
         raise unittest.SkipTest("CUDA plugin EP is not built or could not be registered")
 
 
 def get_cuda_plugin_device():
     require_cuda_plugin_ep()
 
-    devices = onnxrt.get_ep_devices()
+    try:
+        devices = onnxrt.get_ep_devices()
+    except Exception as exc:
+        raise unittest.SkipTest(f"Failed to enumerate CUDA plugin EP devices: {exc}") from exc
+
     plugin_devices = [device for device in devices if device.ep_name == CUDA_PLUGIN_EP_NAME]
     if not plugin_devices:
         raise unittest.SkipTest("CUDA plugin EP registered, but no plugin devices were enumerated")
@@ -232,7 +208,7 @@ def make_bias_dropout_model():
     node = helper.make_node(
         "BiasDropout",
         ["X", "bias", "residual", "ratio", "training_mode"],
-        ["Y", "mask"],
+        ["Y", ""],
         domain="com.microsoft",
     )
     graph = helper.make_graph(
@@ -245,10 +221,7 @@ def make_bias_dropout_model():
             helper.make_tensor_value_info("ratio", TensorProto.FLOAT, []),
             helper.make_tensor_value_info("training_mode", TensorProto.BOOL, []),
         ],
-        [
-            helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 4]),
-            helper.make_tensor_value_info("mask", TensorProto.BOOL, [2, 4]),
-        ],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 4])],
     )
     opset_onnx = onnx.OperatorSetIdProto()
     opset_onnx.version = 13
@@ -488,7 +461,10 @@ def _run_model_test(
         res = sess.run(None, feed_dict)
         expected = expected_fn(feed_dict)
         if isinstance(expected, (list, tuple)):
-            for r, e in zip(res, expected, strict=False):
+            if len(res) != len(expected):
+                raise AssertionError(f"{op_name} produced {len(res)} outputs, expected {len(expected)}")
+
+            for r, e in zip(res, expected, strict=True):
                 np.testing.assert_allclose(r, e, rtol=rtol, atol=atol)
         else:
             np.testing.assert_allclose(res[0], expected, rtol=rtol, atol=atol)
@@ -815,7 +791,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
     node = helper.make_node(
         "SkipLayerNormalization",
         ["X", "skip", "gamma", "beta"],
-        ["Y", "mean", "inv_std_var", "input_skip_bias_sum"],
+        ["Y", "", "", "input_skip_bias_sum"],
         domain="com.microsoft",
         epsilon=1e-5,
     )
@@ -830,8 +806,6 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         ],
         [
             helper.make_tensor_value_info("Y", f_dtype, [2, hidden_size]),
-            helper.make_tensor_value_info("mean", f_dtype, None),
-            helper.make_tensor_value_info("inv_std_var", f_dtype, None),
             helper.make_tensor_value_info("input_skip_bias_sum", f_dtype, None),
         ],
     )
@@ -851,7 +825,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         mean = added.mean(axis=-1, keepdims=True)
         var = added.var(axis=-1, keepdims=True)
         normed = (added - mean) / np.sqrt(var + 1e-5)
-        return normed * f["gamma"] + f["beta"]
+        return [normed * f["gamma"] + f["beta"], added]
 
     run_test(
         "SkipLayerNorm",

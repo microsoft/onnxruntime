@@ -1,14 +1,6 @@
-# --------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation.  All rights reserved.
-# Licensed under the MIT License.  See License.txt in the project root for
-# license information.
-# --------------------------------------------------------------------------
-# Copyright 2020 The HuggingFace Inc. team
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
-# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 import os
 import sys
 from importlib.metadata import PackageNotFoundError, distribution
@@ -120,11 +112,6 @@ def ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep: bool = Tr
     if not should_test_with_cuda_plugin_ep(default_test_with_cuda_plugin_ep):
         return False
 
-    if _CudaPluginRegistrationState.attempted:
-        return False
-
-    _CudaPluginRegistrationState.attempted = True
-
     if not _is_cuda_plugin_ep_built():
         return False
 
@@ -137,6 +124,8 @@ def ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep: bool = Tr
         if enable_debug_print:
             print(f"CUDA Plugin EP library not found: {ep_lib_path}")
         return False
+
+    _CudaPluginRegistrationState.attempted = True
 
     try:
         onnxrt.register_execution_provider_library(CUDA_PLUGIN_EP_NAME, ep_lib_path)
