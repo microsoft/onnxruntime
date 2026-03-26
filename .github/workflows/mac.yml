@@ -66,11 +66,11 @@ jobs:
       python_version: "3.14"
 
   iphone_simulator:
-    runs-on: macos-15
+    runs-on: macos-26
 
     env:
-      xcode_version: 16.4
-      simulator_runtime_version: 18.5
+      xcode_version: 26.3
+      simulator_runtime_version: 26.2
 
     strategy:
       matrix:
