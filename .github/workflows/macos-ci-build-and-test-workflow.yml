@@ -119,7 +119,7 @@ jobs:
       - name: Setup environment variables
         shell: bash
         run: |
-          set -e -x
+          set -xeuo pipefail
           export PATH=${{ github.workspace }}/build/installed/bin:$PATH
           export ONNX_ML=1
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
@@ -129,6 +129,8 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
+          set -euo pipefail
+          ccache --zero-stats
           rm -rf ${{ github.workspace }}/build/${{ matrix.build_config }}
           python ./tools/ci_build/build.py --update ${{ env.build_flags }}
 
@@ -136,12 +138,20 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
+          set -euo pipefail
           python ./tools/ci_build/build.py --build ${{ env.build_flags }}
+
+      - name: CCache stats
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          ccache --show-stats -vv
 
       - name: Install
         shell: bash
         run: |
-          set -e -x
+          set -xeuo pipefail
           rm -rf ${{ github.workspace }}/build/installed
           cd ${{ github.workspace }}/build/${{ matrix.build_config }}
           make install DESTDIR=${{ github.workspace }}/build/installed
@@ -152,4 +162,5 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
+          set -euo pipefail
           python ./tools/ci_build/build.py --test ${{ env.build_flags }}
