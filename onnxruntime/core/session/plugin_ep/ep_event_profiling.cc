@@ -48,6 +48,10 @@ PluginEpProfiler::~PluginEpProfiler() {
 }
 
 bool PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
+  // Store the epoch-based profiling start time for computing absolute correlation IDs in Start()/Stop().
+  profiling_start_time_epoch_us_ = static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count());
+
   // Compute the elapsed time since ORT's profiling start. This offset is epoch-independent.
   int64_t offset_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::high_resolution_clock::now() - profiling_start_time)
@@ -93,12 +97,14 @@ void PluginEpProfiler::EndProfiling(TimePoint start_time, profiling::Events& eve
   }
 }
 
-void PluginEpProfiler::Start(uint64_t ort_event_id) {
+void PluginEpProfiler::Start(uint64_t relative_ort_event_id) {
   if (profiler_impl_.StartEvent == nullptr) {
     return;
   }
 
-  Status status = ToStatusAndRelease(profiler_impl_.StartEvent(&profiler_impl_, ort_event_id));
+  // Convert relative ORT event ID to an absolute correlation ID for the C API.
+  uint64_t ort_event_correlation_id = relative_ort_event_id + profiling_start_time_epoch_us_;
+  Status status = ToStatusAndRelease(profiler_impl_.StartEvent(&profiler_impl_, ort_event_correlation_id));
   if (!status.IsOK()) {
     // Log error but don't throw as profiling failures shouldn't break execution.
     LOGS(logger_, ERROR) << "OrtEpProfilerImpl::StartEvent() for " << ep_name_ << " returned an error OrtStatus: "
@@ -106,12 +112,14 @@ void PluginEpProfiler::Start(uint64_t ort_event_id) {
   }
 }
 
-void PluginEpProfiler::Stop(uint64_t ort_event_id, const profiling::EventRecord& ort_event) {
+void PluginEpProfiler::Stop(uint64_t relative_ort_event_id, const profiling::EventRecord& ort_event) {
   if (profiler_impl_.StopEvent == nullptr) {
     return;
   }
 
-  Status status = ToStatusAndRelease(profiler_impl_.StopEvent(&profiler_impl_, ort_event_id,
+  // Convert relative ORT event ID to an absolute correlation ID for the C API.
+  uint64_t ort_event_correlation_id = relative_ort_event_id + profiling_start_time_epoch_us_;
+  Status status = ToStatusAndRelease(profiler_impl_.StopEvent(&profiler_impl_, ort_event_correlation_id,
                                                               ToOpaqueProfilingEvent(&ort_event)));
   if (!status.IsOK()) {
     // Log error but don't throw as profiling failures shouldn't break execution.

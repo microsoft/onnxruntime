@@ -36,8 +36,8 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
                                                     int64_t ep_profiling_start_offset_ns,
                                                     bool* success_out) noexcept;
 
-  static OrtStatus* ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept;
-  static OrtStatus* ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id,
+  static OrtStatus* ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_correlation_id) noexcept;
+  static OrtStatus* ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_correlation_id,
                                                const OrtProfilingEvent* ort_event) noexcept;
   static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
                                                   int64_t ep_profiling_end_offset_ns,

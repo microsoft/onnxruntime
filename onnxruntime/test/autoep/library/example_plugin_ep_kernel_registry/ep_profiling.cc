@@ -152,7 +152,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StartProfilingImpl(OrtEpProfile
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StartEventImpl(OrtEpProfilerImpl* this_ptr,
-                                                                uint64_t /*ort_event_id*/) noexcept {
+                                                                uint64_t /*ort_event_correlation_id*/) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
   auto& ep_event_manager = EpEventManager::GetInstance();
@@ -164,7 +164,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StartEventImpl(OrtEpProfilerImp
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StopEventImpl(OrtEpProfilerImpl* this_ptr,
-                                                               uint64_t /*ort_event_id*/,
+                                                               uint64_t /*ort_event_correlation_id*/,
                                                                const OrtProfilingEvent* c_ort_event) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);

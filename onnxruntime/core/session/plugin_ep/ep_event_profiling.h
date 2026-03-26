@@ -56,13 +56,14 @@ class PluginEpProfiler final : public profiling::EpProfiler {
   bool StartProfiling(TimePoint profiling_start_time) override;
   void EndProfiling(TimePoint start_time, profiling::Events& events) override;
 
-  void Start(uint64_t ort_event_id) override;
-  void Stop(uint64_t ort_event_id, const profiling::EventRecord& ort_event) override;
+  void Start(uint64_t relative_ort_event_id) override;
+  void Stop(uint64_t relative_ort_event_id, const profiling::EventRecord& ort_event) override;
 
  private:
   OrtEpProfilerImpl& profiler_impl_;
   const logging::Logger& logger_;
   std::string ep_name_;
+  uint64_t profiling_start_time_epoch_us_{0};
 };
 
 }  // namespace onnxruntime

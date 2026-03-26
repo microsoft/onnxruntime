@@ -101,31 +101,35 @@ class EpProfiler {
   /// Optional to override (default implementation does nothing).
   ///
   /// Called when an ORT event (e.g., session initialization, node kernel execution, etc.) starts.
-  /// ORT pairs every Start call with a corresponding call to Stop with the same ORT event ID.
+  /// ORT pairs every Start call with a corresponding call to Stop with the same relative ORT event ID.
   /// EP profiler implementations may use the calls to Start and Stop to maintain a stack of ORT event IDs
   /// that can be correlated with EP events (e.g., GPU kernel events).
   ///
-  /// An ORT event ID is computed as a timestamp offset relative to the profiling start time:
-  ///     ort_event_id =
+  /// A relative ORT event ID is computed as a timestamp offset relative to the profiling start time:
+  ///     relative_ort_event_id =
   ///         std::chrono::duration_cast<std::chrono::microseconds>(event_start_time - profiling_start_time).count();
   ///
-  /// Because ORT event IDs are relative, different profiling sessions may reuse the same ORT event IDs. If the EP's
-  /// profiling utilities (e.g., CUPTI or ROCTracer) require globally unique correlation IDs, then the EP profiler
-  /// should internally use event_start_time as a correlation ID:
-  ///     internal_ort_correlation_id =
-  ///        ort_event_id +
+  /// Because relative ORT event IDs are relative to profiling start, different profiling sessions may reuse the same
+  /// values. If the EP's profiling utilities (e.g., CUPTI or ROCTracer) require correlation IDs that are unique
+  /// across concurrent profiling sessions, then the EP profiler should compute an absolute correlation ID:
+  ///     absolute_ort_correlation_id =
+  ///        relative_ort_event_id +
   ///        std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
+  ///
+  /// Note: For plugin EPs using the binary-stable C API (OrtEpProfilerImpl), ORT performs this conversion
+  /// automatically. The C API's StartEvent/StopEvent receive the absolute correlation ID directly.
   /// </summary>
-  /// <param name="ort_event_id">
-  /// ID of the ORT event that is starting. The same value is passed to a corresponding call to Stop.
+  /// <param name="relative_ort_event_id">
+  /// Relative ID of the ORT event that is starting (microseconds since profiling start).
+  /// The same value is passed to a corresponding call to Stop.
   /// </param>
-  virtual void Start(uint64_t /*ort_event_id*/) {}
+  virtual void Start(uint64_t /*relative_ort_event_id*/) {}
 
   /// <summary>
   /// Optional to override (default implementation does nothing).
   ///
   /// Called when an ORT event (e.g., session initialization, node kernel execution, etc.) ends.
-  /// ORT pairs every Start call with a corresponding call to Stop with the same ORT event ID.
+  /// ORT pairs every Start call with a corresponding call to Stop with the same relative ORT event ID.
   /// EP profiler implementations may use the calls to Start and Stop to maintain a stack of ORT event IDs
   /// that can be correlated with EP events (e.g., GPU kernel events).
   ///
@@ -133,13 +137,14 @@ class EpProfiler {
   /// (in event args), event name, category, timestamps, etc. EP profilers can use this to annotate
   /// their own events with ORT event context.
   /// </summary>
-  /// <param name="ort_event_id">
-  /// ID of the ORT event that is ending. The same value is passed to a corresponding call to Start.
+  /// <param name="relative_ort_event_id">
+  /// Relative ID of the ORT event that is ending (microseconds since profiling start).
+  /// The same value was passed to a corresponding call to Start.
   /// </param>
   /// <param name="ort_event">
   /// The ORT event record containing metadata for this event.
   /// </param>
-  virtual void Stop(uint64_t /*ort_event_id*/, const EventRecord& /*ort_event*/) {}
+  virtual void Stop(uint64_t /*relative_ort_event_id*/, const EventRecord& /*ort_event*/) {}
 };
 
 // Demangle C++ symbols

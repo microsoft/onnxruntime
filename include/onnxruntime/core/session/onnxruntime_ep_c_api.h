@@ -514,9 +514,9 @@ struct OrtEpProfilerImpl {
 
   /** \brief Called when an ORT event (e.g., session initialization, node kernel execution, etc.) begins.
    *
-   * ORT pairs every StartEvent call with a corresponding call to StopEvent with the same ORT event ID.
-   * EP profiler implementations may use the calls to StartEvent and StopEvent to maintain a stack of ORT event IDs
-   * that can be correlated with EP events (e.g., GPU kernel events). For example:
+   * ORT pairs every StartEvent call with a corresponding call to StopEvent with the same ORT event correlation ID.
+   * EP profiler implementations may use the calls to StartEvent and StopEvent to maintain a stack of ORT event
+   * correlation IDs that can be correlated with EP events (e.g., GPU kernel events). For example:
    *
    *   OrtEpProfilerImpl::StartEvent(x) -> EP ort event stack: [x]    <- top of stack
    *       [EP events are tagged with 'x']
@@ -528,20 +528,18 @@ struct OrtEpProfilerImpl {
    *   OrtEpProfilerImpl::StopEvent(z) ->  EP ort event stack: [x]    <- top of stack
    *   OrtEpProfilerImpl::StopEvent(x) ->  EP ort event stack: [ ]    <- top of stack
    *
-   * Tagging EP events with the correlated ORT event ID enables the EP to annotate its own events
+   * Tagging EP events with the ORT event correlation ID enables the EP to annotate its own events
    * with metadata from the parent ORT event (e.g., operator name).
    *
-   * \note An ORT event ID is internally computed as a timestamp offset (in microseconds) relative to ORT's
-   *       profiling start time: ort_event_id = ort_event_start_us - ort_profiling_start_time_us.
-   *       Because ORT event IDs are relative, different profiling sessions may reuse the same ORT event IDs.
-   *       If the EP's profiling utilities (e.g., CUPTI or ROCTracer) require globally unique correlation IDs, then
-   *       the EP profiler can compute its own `internal_ort_event_id` that adds the EP profiler's profiling start time
-   *       (recorded in OrtEpProfilerImpl::StartProfiling()) to the given ort_event_id:
-   *           internal_ort_event_id = ort_event_id + ep_profiling_start_time_us.
+   * \note The ORT event correlation ID is an absolute, epoch-based timestamp in microseconds. It is computed
+   *       from the ORT event's start time using std::chrono::high_resolution_clock (platform-defined epoch).
+   *       Because it is absolute rather than relative to profiling start, it is unique across concurrent profiling
+   *       sessions within the same process and can be used directly as a correlation ID for EP profiling
+   *       utilities (e.g., CUPTI or ROCTracer).
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
-   * \param[in] ort_event_id The ID of the ORT event that is starting.
-   *                         The same value is passed to the corresponding StopEvent call.
+   * \param[in] ort_event_correlation_id Absolute, epoch-based correlation ID for the ORT event that is starting.
+   *                                     The same value is passed to the corresponding StopEvent call.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -550,13 +548,13 @@ struct OrtEpProfilerImpl {
    *
    * \since Version 1.25.
    */
-  ORT_API2_STATUS(StartEvent, _In_ OrtEpProfilerImpl* this_ptr, _In_ uint64_t ort_event_id);
+  ORT_API2_STATUS(StartEvent, _In_ OrtEpProfilerImpl* this_ptr, _In_ uint64_t ort_event_correlation_id);
 
   /** \brief Called when a profiled ORT event (e.g., session initialization, node kernel execution, etc.) ends.
    *
-   * ORT pairs every StartEvent call with a corresponding call to StopEvent with the same ORT event ID.
-   * EP profiler implementations may use the calls to StartEvent and StopEvent to maintain a stack of ORT event IDs
-   * that can be correlated with EP events (e.g., GPU kernel events). For example:
+   * ORT pairs every StartEvent call with a corresponding call to StopEvent with the same ORT event correlation ID.
+   * EP profiler implementations may use the calls to StartEvent and StopEvent to maintain a stack of ORT event
+   * correlation IDs that can be correlated with EP events (e.g., GPU kernel events). For example:
    *
    *   OrtEpProfilerImpl::StartEvent(x) -> EP ort event stack: [x]    <- top of stack
    *       [EP events are tagged with 'x']
@@ -568,20 +566,18 @@ struct OrtEpProfilerImpl {
    *   OrtEpProfilerImpl::StopEvent(z) ->  EP ort event stack: [x]    <- top of stack
    *   OrtEpProfilerImpl::StopEvent(x) ->  EP ort event stack: [ ]    <- top of stack
    *
-   * Tagging EP events with the correlated ORT event ID enables the EP to annotate its own events
+   * Tagging EP events with the ORT event correlation ID enables the EP to annotate its own events
    * with metadata from the parent ORT event (e.g., operator name).
    *
-   * \note An ORT event ID is internally computed as a timestamp offset (in microseconds) relative to ORT's
-   *       profiling start time: ort_event_id = ort_event_start_us - ort_profiling_start_time_us.
-   *       Because ORT event IDs are relative, different profiling sessions may reuse the same ORT event IDs.
-   *       If the EP's profiling utilities (e.g., CUPTI or ROCTracer) require globally unique correlation IDs, then
-   *       the EP profiler can compute its own `internal_ort_event_id` that adds the EP profiler's profiling start time
-   *       (recorded in OrtEpProfilerImpl::StartProfiling()) to the given ort_event_id:
-   *           internal_ort_event_id = ort_event_id + ep_profiling_start_time_us.
+   * \note The ORT event correlation ID is an absolute, epoch-based timestamp in microseconds. It is computed
+   *       from the ORT event's start time using std::chrono::high_resolution_clock (platform-defined epoch).
+   *       Because it is absolute rather than relative to profiling start, it is unique across concurrent profiling
+   *       sessions within the same process and can be used directly as a correlation ID for EP profiling
+   *       utilities (e.g., CUPTI or ROCTracer).
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
-   * \param[in] ort_event_id The ID of the ORT event that is ending.
-   *                         The same value was passed to the corresponding StartEvent call.
+   * \param[in] ort_event_correlation_id Absolute, epoch-based correlation ID for the ORT event that is ending.
+   *                                     The same value was passed to the corresponding StartEvent call.
    * \param[in] ort_event Opaque pointer to the ORT profiling event. Valid only during this call.
    *                      Use OrtEpApi accessor functions to read event fields.
    *
@@ -592,7 +588,7 @@ struct OrtEpProfilerImpl {
    *
    * \since Version 1.25.
    */
-  ORT_API2_STATUS(StopEvent, _In_ OrtEpProfilerImpl* this_ptr, _In_ uint64_t ort_event_id,
+  ORT_API2_STATUS(StopEvent, _In_ OrtEpProfilerImpl* this_ptr, _In_ uint64_t ort_event_correlation_id,
                   _In_ const OrtProfilingEvent* ort_event);
 
   /** \brief Called when profiling ends to collect the EP's new profiling events since the call to StartProfiling.
