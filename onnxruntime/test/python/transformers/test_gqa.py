@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 import numpy
 import torch
+from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from einops import rearrange, repeat
 
 # --- ONNX and Torch/Numpy Dtype Mappings ---
@@ -456,7 +457,7 @@ def gqa_prompt_func(
         new_v = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
 
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[resolve_cuda_plugin_ep(ep)])
     io_binding = ort_session.io_binding()
 
     # Determine input device for binding
@@ -492,8 +493,9 @@ def gqa_prompt_func(
 
     # total_sequence_length is INT32 [1]
     # Schema requires this to be on CPU (OrtMemTypeCPUInput)
-    tsl = torch.tensor([config.q_sequence_length], dtype=torch.int32, device="cpu")
-    bind_tensor(io_binding, "total_sequence_length", tsl, "cpu", TensorProto.INT32)
+    cpu_device = torch.device("cpu")
+    tsl = torch.tensor([config.q_sequence_length], dtype=torch.int32, device=cpu_device)
+    bind_tensor(io_binding, "total_sequence_length", tsl, cpu_device, TensorProto.INT32)
 
     # 5. Optional inputs
     if cos is not None:
@@ -616,7 +618,7 @@ def gqa_past_func(
 
     sess_options = SessionOptions()
     # sess_options.log_severity_level = 0
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[resolve_cuda_plugin_ep(ep)])
     io_binding = ort_session.io_binding()
 
     # Common inputs
@@ -653,8 +655,10 @@ def gqa_past_func(
     seqlens_k_int32 = seqlens_k.to(dtype=torch.int32, device=device)
     bind_tensor(io_binding, "seqlens_k", seqlens_k_int32, device, TensorProto.INT32)
 
-    tsl = torch.tensor([total_seq_len], dtype=torch.int32, device=device)
-    bind_tensor(io_binding, "total_sequence_length", tsl, device, TensorProto.INT32)
+    # GroupQueryAttention expects total_sequence_length as CPU input.
+    cpu_device = torch.device("cpu")
+    tsl = torch.tensor([total_seq_len], dtype=torch.int32, device=cpu_device)
+    bind_tensor(io_binding, "total_sequence_length", tsl, cpu_device, TensorProto.INT32)
 
     # 5. Optional inputs
     if cos is not None:
