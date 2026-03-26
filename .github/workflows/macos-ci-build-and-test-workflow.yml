@@ -99,13 +99,13 @@ jobs:
           use_cache: true
 
       - name: Setup CCache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           key: ccache | macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           key: vcpkg-cache | macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}
           path: ~/.cache/vcpkg
