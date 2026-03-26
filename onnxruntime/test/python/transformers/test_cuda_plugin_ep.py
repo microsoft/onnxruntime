@@ -6,11 +6,10 @@ import tempfile
 import unittest
 
 import numpy as np
-import onnx
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, ensure_cuda_plugin_ep_registered, should_test_with_cuda_plugin_ep
-from onnx import TensorProto, helper, save
+from onnx import OperatorSetIdProto, TensorProto, helper, save
 
 import onnxruntime as onnxrt
 
@@ -19,6 +18,7 @@ try:
 
     faulthandler.enable()
 except ImportError:
+    # faulthandler is optional in some Python runtimes used by CI.
     pass
 
 
@@ -119,7 +119,7 @@ def create_conv_model(model_path):
         ],
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3, 4, 4])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 11
     model_def = helper.make_model(graph_def, producer_name="onnx-example", opset_imports=[opset])
     save(model_def, model_path)
@@ -155,7 +155,7 @@ def create_batch_norm_model(model_path):
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, num_channels, 4, 4])],
         initializer=[scale_init, bias_init, mean_init, var_init],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 15
     model_def = helper.make_model(graph_def, producer_name="onnx-example", opset_imports=[opset])
     save(model_def, model_path)
@@ -176,7 +176,7 @@ def create_maxpool_model(model_path):
         [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 3, 4, 4])],
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3, 2, 2])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 12
     model_def = helper.make_model(graph_def, producer_name="onnx-example", opset_imports=[opset])
     save(model_def, model_path)
@@ -197,7 +197,7 @@ def create_avgpool_model(model_path):
         [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 3, 4, 4])],
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3, 2, 2])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 12
     model_def = helper.make_model(graph_def, producer_name="onnx-example", opset_imports=[opset])
     save(model_def, model_path)
@@ -223,9 +223,9 @@ def make_bias_dropout_model():
         ],
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 4])],
     )
-    opset_onnx = onnx.OperatorSetIdProto()
+    opset_onnx = OperatorSetIdProto()
     opset_onnx.version = 13
-    opset_ms = onnx.OperatorSetIdProto()
+    opset_ms = OperatorSetIdProto()
     opset_ms.domain = "com.microsoft"
     opset_ms.version = 1
     return helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])
@@ -432,10 +432,10 @@ def _make_simple_model(op_type, inputs_info, outputs_info, attrs=None, opset=13,
         [helper.make_tensor_value_info(n, t, s) for n, t, s in inputs_info],
         [helper.make_tensor_value_info(n, t, s) for n, t, s in outputs_info],
     )
-    opset_import = [onnx.OperatorSetIdProto()]
+    opset_import = [OperatorSetIdProto()]
     opset_import[0].version = opset
     if domain:
-        ms_opset = onnx.OperatorSetIdProto()
+        ms_opset = OperatorSetIdProto()
         ms_opset.domain = domain
         ms_opset.version = 1
         opset_import.append(ms_opset)
@@ -527,7 +527,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [6, 4])],
         [helper.make_tensor_value_info("Y1", f_dtype, [3, 4]), helper.make_tensor_value_info("Y2", f_dtype, [3, 4])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 13
     model = helper.make_model(graph, opset_imports=[opset])
     model.graph.initializer.append(helper.make_tensor("split", TensorProto.INT64, [2], [3, 3]))
@@ -562,7 +562,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [3, 4])],
         [helper.make_tensor_value_info("Y", f_dtype, [1, 3, 4])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 13
     model = helper.make_model(graph, opset_imports=[opset])
     axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [0])
@@ -578,7 +578,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [2, 3])],
         [helper.make_tensor_value_info("Y", f_dtype, [4, 9])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 13
     model = helper.make_model(graph, opset_imports=[opset])
     repeats_init = helper.make_tensor("repeats", TensorProto.INT64, [2], [2, 3])
@@ -594,7 +594,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [3, 4])],
         [helper.make_tensor_value_info("Y", f_dtype, [3, 4])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 14
     model = helper.make_model(graph, opset_imports=[opset])
     axis_init = helper.make_tensor("axis", TensorProto.INT64, [], [1])
@@ -612,7 +612,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("shape", TensorProto.INT64, [2])],
         [helper.make_tensor_value_info("Y", f_dtype, None)],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 9
     model = helper.make_model(graph, opset_imports=[opset])
     run_test(
@@ -648,7 +648,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [2, 3])],
         [helper.make_tensor_value_info("Y", f_dtype, [4, 5])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 13
     model = helper.make_model(graph, opset_imports=[opset])
     model.graph.initializer.append(helper.make_tensor("pads", TensorProto.INT64, [4], [1, 1, 1, 1]))
@@ -664,7 +664,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [4, 6])],
         [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 13
     model = helper.make_model(graph, opset_imports=[opset])
     model.graph.initializer.append(helper.make_tensor("starts", TensorProto.INT64, [2], [1, 1]))
@@ -681,7 +681,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [1, 1, 2, 2])],
         [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 4, 4])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 13
     model = helper.make_model(graph, opset_imports=[opset])
     model.graph.initializer.append(helper.make_tensor("scales", TensorProto.FLOAT, [4], [1.0, 1.0, 2.0, 2.0]))
@@ -711,7 +711,7 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [1, 1, 2, 2])],
         [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 4, 4])],
     )
-    opset = onnx.OperatorSetIdProto()
+    opset = OperatorSetIdProto()
     opset.version = 9
     model = helper.make_model(graph, opset_imports=[opset])
     model.graph.initializer.append(helper.make_tensor("scales", TensorProto.FLOAT, [4], [1.0, 1.0, 2.0, 2.0]))
@@ -751,9 +751,9 @@ def _run_stage5_checks(test_case: unittest.TestCase):
         [helper.make_tensor_value_info("X", f_dtype, [2, 4])],
         [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
     )
-    opset_onnx = onnx.OperatorSetIdProto()
+    opset_onnx = OperatorSetIdProto()
     opset_onnx.version = 13
-    opset_ms = onnx.OperatorSetIdProto()
+    opset_ms = OperatorSetIdProto()
     opset_ms.domain = "com.microsoft"
     opset_ms.version = 1
     model = helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])
@@ -809,9 +809,9 @@ def _run_stage5_checks(test_case: unittest.TestCase):
             helper.make_tensor_value_info("input_skip_bias_sum", f_dtype, None),
         ],
     )
-    opset_onnx = onnx.OperatorSetIdProto()
+    opset_onnx = OperatorSetIdProto()
     opset_onnx.version = 13
-    opset_ms = onnx.OperatorSetIdProto()
+    opset_ms = OperatorSetIdProto()
     opset_ms.domain = "com.microsoft"
     opset_ms.version = 1
     model = helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])

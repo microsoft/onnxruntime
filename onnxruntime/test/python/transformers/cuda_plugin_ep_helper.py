@@ -7,7 +7,6 @@ from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
 import onnxruntime as onnxrt
-from onnxruntime import get_build_info
 
 
 class _CudaPluginRegistrationState:
@@ -38,13 +37,14 @@ def _get_package_root(package_name: str, directory_name: str | None = None):
                 if file.name.endswith("__init__.py"):
                     return file.locate().parent
     except PackageNotFoundError:
+        # Some test environments only have an in-tree build, not an installed wheel.
         pass
 
     return None
 
 
 def _is_cuda_plugin_ep_built() -> bool:
-    build_info = get_build_info()
+    build_info = onnxrt.get_build_info()
     return ", cuda-plugin-ep=" in build_info
 
 
