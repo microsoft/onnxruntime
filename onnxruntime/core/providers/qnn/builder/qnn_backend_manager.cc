@@ -1365,7 +1365,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     if (use_file_mapping) {
       use_file_mapping = false;
       LOGS(*logger_, WARNING) << "Node " << node_name << " is using an embedded cache."
-                              << "Disabling file mappping for this node.";
+                              << "Disabling file mapping for this node.";
     }
     ORT_RETURN_IF(buffer == nullptr, "Attempting to load QNN context from buffer but buffer is null");
     bin_buffer = static_cast<void*>(buffer);
@@ -1533,7 +1533,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     }
 
     if (!use_file_mapping || rt != QNN_SUCCESS)
-#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+#endif
     {
       rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                                   device_handle_,
