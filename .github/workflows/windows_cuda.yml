@@ -110,19 +110,42 @@ jobs:
 
       - name: Build and Clean Binaries
         working-directory: ${{ runner.temp }}
+        shell: pwsh
         run: |
           npm install -g typescript
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
           # Execute the build process
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 1 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build `
+            --build_csharp `
+            --build_dir build `
+            --build_java `
+            --build_shared_lib `
+            --build_wheel `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
+            --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --cuda_home="$env:RUNNER_TEMP\v12.8" `
+            --enable_cuda_profiling `
+            --enable_transformers_tool_test `
+            --nvcc_threads 1 `
+            --parallel `
+            --skip_submodule_sync `
+            --update `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
+            --use_cuda `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
 
           # Clean up the output directory before uploading artifacts
-          $outputDir = "${{ runner.temp }}\build\RelWithDebInfo"
+          $outputDir = "$env:RUNNER_TEMP\build\RelWithDebInfo"
           Write-Host "Cleaning up files from $outputDir..."
 
           Remove-Item -Path "$outputDir\onnxruntime" -Recurse -Force -ErrorAction SilentlyContinue
@@ -134,7 +157,6 @@ jobs:
           Remove-Item -Path "$outputDir\CMakeFiles" -Recurse -Force -ErrorAction SilentlyContinue
           # Remove intermediate object files as in the original script
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
-        shell: pwsh
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -225,6 +247,7 @@ jobs:
           whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\dist
 
       - name: Run Tests
+        shell: pwsh
         working-directory: ${{ runner.temp }}
         run: |
           npm install -g typescript
@@ -232,16 +255,36 @@ jobs:
             exit $lastExitCode
           }
 
-          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py   "${{ runner.temp }}\build\RelWithDebInfo\CTestTestfile.cmake" "${{ runner.temp }}\build\RelWithDebInfo"
+          python.exe ${env:GITHUB_WORKSPACE}\tools\python\update_ctest_path.py "${env:RUNNER_TEMP}\build\RelWithDebInfo\CTestTestfile.cmake" "${env:RUNNER_TEMP}\build\RelWithDebInfo"
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
 
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 1 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build_csharp `
+            --build_dir build `
+            --build_java `
+            --build_shared_lib `
+            --build_wheel `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  `
+            --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --cuda_home "${env:RUNNER_TEMP}\v12.8" `
+            --enable_cuda_profiling `
+            --enable_transformers_tool_test `
+            --nvcc_threads 1 `
+            --parallel `
+            --skip_submodule_sync `
+            --test `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
+            --use_cuda `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-        shell: pwsh
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
