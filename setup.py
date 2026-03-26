@@ -387,6 +387,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     libs.append(providers_qnn)
     # QNN
     qnn_deps = [
+        "libGenie.so",
         "libQnnCpu.so",
         "libQnnGpu.so",
         "libQnnHtp.so",
@@ -449,6 +450,7 @@ else:
     libs.extend(["dxcompiler.dll", "dxil.dll"])
     # QNN V68/V73/V81 dependencies
     qnn_deps = [
+        "Genie.dll",
         "QnnCpu.dll",
         "QnnGpu.dll",
         "QnnHtp.dll",
