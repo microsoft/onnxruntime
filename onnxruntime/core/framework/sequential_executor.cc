@@ -253,6 +253,8 @@ class SessionScope {
     return run_profiler_ && run_profiler_->IsEnabled();
   }
 
+  profiling::Profiler* GetRunProfiler() const { return run_profiler_; }
+
   void StopProfilingIfEnabled(profiling::EventCategory category,
                               const std::string& event_name,
                               const TimePoint& start_time,
@@ -490,7 +492,8 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                      *p_kernel,
                                      ctx.GetLogger(),
                                      terminate_flag,
-                                     ctx.GetDeviceStream(stream_idx));
+                                     ctx.GetDeviceStream(stream_idx),
+                                     session_scope.GetRunProfiler());
   onnxruntime::Status status;
   auto& logger = ctx.GetLogger();
   if (p_kernel->IsAsync()) {
