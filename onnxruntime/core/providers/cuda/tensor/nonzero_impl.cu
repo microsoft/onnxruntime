@@ -107,7 +107,7 @@ cudaError_t NonZeroCountEachBlock(cudaStream_t stream, const InputT* x, int64_t 
   int num_blocks = NonZeroCalcBlockCount(x_size);
   NonZeroCountEachBlockKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK, 0, stream>>>(
       x, x_size, count_in_blocks);
-  return cudaSuccess;
+  return cudaGetLastError();
 }
 
 template <typename InputT>
@@ -124,7 +124,7 @@ cudaError_t NonZeroOutputPositions(
         x, x_size, x_rank, x_strides,
         prefix_counts, nonzero_elements, results);
   }
-  return cudaSuccess;
+  return cudaGetLastError();
 }
 
 template cudaError_t NonZeroCountEachBlock(cudaStream_t stream, const bool*, int64_t, int*);
