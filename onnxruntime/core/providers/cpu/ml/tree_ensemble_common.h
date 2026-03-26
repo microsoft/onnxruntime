@@ -311,9 +311,13 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
       continue;
     }
-    ORT_ENFORCE(i < attributes.target_class_ids.size());
-    ORT_ENFORCE(!attributes.target_class_weights_as_tensor.empty() || i < attributes.target_class_weights.size());
-    ORT_ENFORCE(attributes.target_class_weights_as_tensor.empty() || i < attributes.target_class_weights_as_tensor.size());
+    ORT_ENFORCE(i < attributes.target_class_ids.size(),
+                "Index i=", i, " is out of bounds for target_class_ids (size=", attributes.target_class_ids.size(), ")");
+    ORT_ENFORCE(!attributes.target_class_weights_as_tensor.empty() || i < attributes.target_class_weights.size(),
+                "Index i=", i, " is out of bounds for target_class_weights (size=", attributes.target_class_weights.size(), ")");
+    ORT_ENFORCE(attributes.target_class_weights_as_tensor.empty() || i < attributes.target_class_weights_as_tensor.size(),
+                "Index i=", i, " is out of bounds for target_class_weights_as_tensor (size=",
+                attributes.target_class_weights_as_tensor.size(), ")");
     w.i = attributes.target_class_ids[i];
     w.value = attributes.target_class_weights_as_tensor.empty()
                   ? static_cast<ThresholdType>(attributes.target_class_weights[i])
