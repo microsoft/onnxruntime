@@ -795,6 +795,11 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwFloatKernel;
+#if defined(__aarch64__) && defined(__linux__)
+        if (WorkBlock->UseBf16) {
+            Kernel = GetMlasPlatform().ConvNchwBf16Kernel;
+        }
+#endif
 #else
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwFloatKernel;
 #endif
@@ -1048,6 +1053,11 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* const KernelFast = MlasConvDepthwiseFloatKernelNeonAsm;
 #endif
+#if defined(__aarch64__) && defined(__linux__)
+        if (WorkBlock->UseBf16) {
+            Kernel = GetMlasPlatform().ConvDepthwiseBf16Kernel;
+        }
+#endif
 #else
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasConvDepthwiseFloatKernel;
 #endif
@@ -1073,7 +1083,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
             MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* KernelToUse = Kernel;
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
-            if (OutputWidth >= 4) {
+            if (!WorkBlock->UseBf16 && OutputWidth >= 4) {
                 KernelToUse = KernelFast;
             }
 #endif
