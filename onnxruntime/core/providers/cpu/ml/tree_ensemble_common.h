@@ -296,7 +296,19 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   TreeNodeElementId ind;
   SparseValue<ThresholdType> w;
   size_t indi;
-  for (indi = 0, limit = attributes.target_class_nodeids.size(); indi < limit; ++indi) {
+  limit = attributes.target_class_nodeids.size();
+  ORT_ENFORCE(attributes.target_class_ids.size() == limit,
+              "target_class_ids size (", attributes.target_class_ids.size(),
+              ") must match target_class_nodeids size (", limit, ")");
+  ORT_ENFORCE(attributes.target_class_weights_as_tensor.empty() ||
+                  attributes.target_class_weights_as_tensor.size() == limit,
+              "target_class_weights_as_tensor size (", attributes.target_class_weights_as_tensor.size(),
+              ") must match target_class_nodeids size (", limit, ")");
+  ORT_ENFORCE(!attributes.target_class_weights_as_tensor.empty() ||
+                  attributes.target_class_weights.size() == limit,
+              "target_class_weights size (", attributes.target_class_weights.size(),
+              ") must match target_class_nodeids size (", limit, ")");
+  for (indi = 0; indi < limit; ++indi) {
     ind = indices[indi].first;
     i = indices[indi].second;
     auto found = node_tree_ids_map.find(ind);
@@ -311,13 +323,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
       continue;
     }
-    ORT_ENFORCE(i < attributes.target_class_ids.size(),
-                "Index i=", i, " is out of bounds for target_class_ids (size=", attributes.target_class_ids.size(), ")");
-    ORT_ENFORCE(!attributes.target_class_weights_as_tensor.empty() || i < attributes.target_class_weights.size(),
-                "Index i=", i, " is out of bounds for target_class_weights (size=", attributes.target_class_weights.size(), ")");
-    ORT_ENFORCE(attributes.target_class_weights_as_tensor.empty() || i < attributes.target_class_weights_as_tensor.size(),
-                "Index i=", i, " is out of bounds for target_class_weights_as_tensor (size=",
-                attributes.target_class_weights_as_tensor.size(), ")");
     w.i = attributes.target_class_ids[i];
     w.value = attributes.target_class_weights_as_tensor.empty()
                   ? static_cast<ThresholdType>(attributes.target_class_weights[i])
