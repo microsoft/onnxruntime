@@ -3,6 +3,8 @@
 #include "DmlGraphFusionHelper.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 
+#include "core/framework/endian_utils.h"
+
 using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml

@@ -4,6 +4,7 @@
 #include "precomp.h"
 
 #include "core/framework/customregistry.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/TensorSeq.h"
 
