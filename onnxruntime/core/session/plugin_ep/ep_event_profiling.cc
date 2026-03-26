@@ -103,6 +103,9 @@ void PluginEpProfiler::Start(uint64_t relative_ort_event_id) {
   }
 
   // Convert relative ORT event ID to an absolute correlation ID for the C API.
+  // Because it is absolute rather than relative to profiling start, it is unique across concurrent profiling
+  // sessions within the same process and can be used directly as a correlation ID for EP profiling
+  // utilities (e.g., CUPTI or ROCTracer).
   uint64_t ort_event_correlation_id = relative_ort_event_id + profiling_start_time_epoch_us_;
   Status status = ToStatusAndRelease(profiler_impl_.StartEvent(&profiler_impl_, ort_event_correlation_id));
   if (!status.IsOK()) {
@@ -118,6 +121,9 @@ void PluginEpProfiler::Stop(uint64_t relative_ort_event_id, const profiling::Eve
   }
 
   // Convert relative ORT event ID to an absolute correlation ID for the C API.
+  // Because it is absolute rather than relative to profiling start, it is unique across concurrent profiling
+  // sessions within the same process and can be used directly as a correlation ID for EP profiling
+  // utilities (e.g., CUPTI or ROCTracer).
   uint64_t ort_event_correlation_id = relative_ort_event_id + profiling_start_time_epoch_us_;
   Status status = ToStatusAndRelease(profiler_impl_.StopEvent(&profiler_impl_, ort_event_correlation_id,
                                                               ToOpaqueProfilingEvent(&ort_event)));
