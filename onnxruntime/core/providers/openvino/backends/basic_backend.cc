@@ -148,6 +148,13 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
 
   infer_req_pool_ = std::make_unique<InferRequestPool>(exe_network_, num_infer_req, std::move(initializer));
   bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
+
+  std::string perf_count = openvino_ep::backend_utils::GetPerfCountDumpPath();
+  if (!perf_count.empty()) {
+    PerfDirCreate(perf_count);
+  } else {
+    dir_.clear();
+  }
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -178,11 +185,6 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
         device_config.emplace(ov::hint::inference_precision(subgraph_context_.model_precision));
     }
   }
-#ifndef NDEBUG
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    device_config.emplace(ov::enable_profiling(true));
-  }
-#endif
 
   // Set a priority level for the current workload for preemption;  default priority is "DEFAULT"
   // CPU Plugin doesn't support workload priority
@@ -317,7 +319,7 @@ void BasicBackend::ReorderKVCache(const std::vector<int32_t>& src_indices, const
   });
 }
 
-void BasicBackend::Infer(OrtKernelContext* ctx) const {
+void BasicBackend::Infer(OrtKernelContext* ctx) {
   Ort::KernelContext context(ctx);
 
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
@@ -418,13 +420,71 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
     std::cout << "Inference successful" << std::endl;
   }
 
-#ifndef NDEBUG
-  // Print performance counts before releasing the infer_request for thread safety
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    std::string& hw_target = session_context_.device_type;
-    printPerformanceCounts(infer_request, std::cout, hw_target);
+  if (!dir_.empty()) {
+    PerfDump(infer_request);
   }
-#endif
+}
+
+void BasicBackend::PerfDirCreate(const std::string& perf_count) {
+  bool is_profiling_enabled = false;
+  try {
+    is_profiling_enabled = GetOVCompiledModel().get_property(ov::enable_profiling);
+  } catch (const ov::Exception& e) {
+    LOGS_DEFAULT(INFO) << log_tag << e.what();
+  }
+
+  if (!is_profiling_enabled) {
+    LOGS_DEFAULT(WARNING) << log_tag
+                          << "Performance counting was requested, but OpenVINO compiled model profiling "
+                          << "(ov::enable_profiling) is disabled. No perf CSV will be produced.";
+    dir_.clear();
+    return;
+  }
+
+  try {
+    std::filesystem::path perf_path(perf_count);
+    if (std::filesystem::exists(perf_path)) {
+      if (!std::filesystem::is_directory(perf_path)) {
+        LOGS_DEFAULT(INFO) << log_tag << "Perf count path '" << perf_path.string() << "' exists but is not a directory.";
+        dir_.clear();
+        return;
+      }
+    } else {
+      std::filesystem::create_directories(perf_path);
+    }
+    dir_ = std::move(perf_path);
+  } catch (const std::filesystem::filesystem_error& e) {
+    LOGS_DEFAULT(INFO) << log_tag << "Filesystem error for perf count path '" << perf_count << "': " << e.what();
+    dir_.clear();
+  }
+}
+
+void BasicBackend::PerfDump(OVInferRequestPtr infer_request) {
+  // Print performance counts before releasing the infer_request for thread safety
+  static std::mutex _mutex;
+  const std::string prefix = "OpenVINOExecutionProvider_OpenVINO-EP";
+  std::string subgraph_suffix;
+  if (subgraph_context_.subgraph_name.size() >= prefix.size() &&
+      subgraph_context_.subgraph_name.compare(0, prefix.size(), prefix) == 0) {
+    subgraph_suffix = subgraph_context_.subgraph_name.substr(prefix.size());
+  } else {
+    // Fallback: use the full subgraph name if it does not start with the expected prefix
+    subgraph_suffix = subgraph_context_.subgraph_name;
+  }
+
+  std::string filestring = subgraph_suffix + "_perf_count.csv";
+  std::filesystem::path filename(session_context_.GetModelPath().stem().string() + filestring);
+  filename = dir_ / filename;
+  std::unique_lock<std::mutex> lock(_mutex);
+  std::ofstream out(filename);
+  {
+    if (out.is_open()) {
+      printPerformanceCounts(infer_request, out);
+      out.close();
+    } else {
+      LOGS_DEFAULT(INFO) << log_tag << filename << ": File error";
+    }
+  }
 }
 
 }  // namespace openvino_ep
