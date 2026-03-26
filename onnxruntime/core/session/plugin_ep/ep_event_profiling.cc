@@ -13,9 +13,11 @@ Status PluginEpProfiler::Create(OrtEpProfilerImpl& profiler_impl, const logging:
                                 const std::string& ep_name, std::unique_ptr<PluginEpProfiler>& profiler_out) {
   // plugin EP profiling APIs were introduced in ORT 1.25
   if (auto profiler_version = profiler_impl.ort_version_supported; profiler_version < 25) {
-    if (profiler_impl.Release != nullptr) {
-      profiler_impl.Release(&profiler_impl);
-    }
+    // Note: it is not clear whether ORT should try to release the EP's profiler if the version is incorrect
+    // since Release() was introduced in version 25 (along with the all profiling APIs).
+    // if (profiler_impl.Release != nullptr) {
+    //   profiler_impl.Release(&profiler_impl);
+    // }
 
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtEpProfilerImpl::ort_version_supported (", profiler_version, ") for ",
                            ep_name, " expected to be >= 25");
@@ -49,7 +51,17 @@ bool PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
   int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                    profiling_start_time.time_since_epoch())
                    .count();
-  return profiler_impl_.StartProfiling(&profiler_impl_, ns);
+  bool success = false;
+  Status status = ToStatusAndRelease(profiler_impl_.StartProfiling(&profiler_impl_, ns, &success));
+
+  if (!status.IsOK()) {
+    // Log error but don't throw as profiling failures shouldn't break execution.
+    LOGS(logger_, ERROR) << "OrtEpProfilerImpl::StartProfiling() for " << ep_name_ << " returned an error OrtStatus: "
+                         << status.ErrorMessage();
+    success = false;
+  }
+
+  return success;
 }
 
 void PluginEpProfiler::EndProfiling(TimePoint start_time, profiling::Events& events) {
@@ -80,14 +92,29 @@ void PluginEpProfiler::EndProfiling(TimePoint start_time, profiling::Events& eve
 }
 
 void PluginEpProfiler::Start(uint64_t ort_event_id) {
-  if (profiler_impl_.ort_version_supported >= 25 && profiler_impl_.StartEvent != nullptr) {
-    profiler_impl_.StartEvent(&profiler_impl_, ort_event_id);
+  if (profiler_impl_.StartEvent == nullptr) {
+    return;
+  }
+
+  Status status = ToStatusAndRelease(profiler_impl_.StartEvent(&profiler_impl_, ort_event_id));
+  if (!status.IsOK()) {
+    // Log error but don't throw as profiling failures shouldn't break execution.
+    LOGS(logger_, ERROR) << "OrtEpProfilerImpl::StartEvent() for " << ep_name_ << " returned an error OrtStatus: "
+                         << status.ErrorMessage();
   }
 }
 
 void PluginEpProfiler::Stop(uint64_t ort_event_id, const profiling::EventRecord& ort_event) {
-  if (profiler_impl_.ort_version_supported >= 25 && profiler_impl_.StopEvent != nullptr) {
-    profiler_impl_.StopEvent(&profiler_impl_, ort_event_id, ToOpaqueProfilingEvent(&ort_event));
+  if (profiler_impl_.StopEvent == nullptr) {
+    return;
+  }
+
+  Status status = ToStatusAndRelease(profiler_impl_.StopEvent(&profiler_impl_, ort_event_id,
+                                                              ToOpaqueProfilingEvent(&ort_event)));
+  if (!status.IsOK()) {
+    // Log error but don't throw as profiling failures shouldn't break execution.
+    LOGS(logger_, ERROR) << "OrtEpProfilerImpl::StopEvent() for " << ep_name_ << " returned an error OrtStatus: "
+                         << status.ErrorMessage();
   }
 }
 }  // namespace onnxruntime

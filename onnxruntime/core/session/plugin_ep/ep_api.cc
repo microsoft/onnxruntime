@@ -866,24 +866,48 @@ ORT_API(void, ReleaseProfilingEvent, _Frees_ptr_opt_ OrtProfilingEvent* event) {
   delete FromOpaqueProfilingEvent(event);
 }
 
-ORT_API(OrtProfilingEventCategory, ProfilingEvent_GetCategory, _In_ const OrtProfilingEvent* event) {
+ORT_API_STATUS_IMPL(ProfilingEvent_GetCategory, _In_ const OrtProfilingEvent* event,
+                    _Out_ OrtProfilingEventCategory* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEventCategory output parameter is NULL");
   const auto* record = FromOpaqueProfilingEvent(event);
-  return static_cast<OrtProfilingEventCategory>(record->cat);
+  *out = static_cast<OrtProfilingEventCategory>(record->cat);
+  return nullptr;
+  API_IMPL_END
 }
 
-ORT_API(const char*, ProfilingEvent_GetName, _In_ const OrtProfilingEvent* event) {
+ORT_API_STATUS_IMPL(ProfilingEvent_GetName, _In_ const OrtProfilingEvent* event,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "output parameter for the event name is NULL");
   const auto* record = FromOpaqueProfilingEvent(event);
-  return record->name.c_str();
+  *out = record->name.c_str();
+  return nullptr;
+  API_IMPL_END
 }
 
-ORT_API(int64_t, ProfilingEvent_GetTimestampUs, _In_ const OrtProfilingEvent* event) {
+ORT_API_STATUS_IMPL(ProfilingEvent_GetTimestampUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "output parameter for the event timestamp is NULL");
   const auto* record = FromOpaqueProfilingEvent(event);
-  return static_cast<int64_t>(record->ts);
+  *out = static_cast<int64_t>(record->ts);
+  return nullptr;
+  API_IMPL_END
 }
 
-ORT_API(int64_t, ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* event) {
+ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "output parameter for the event duration is NULL");
   const auto* record = FromOpaqueProfilingEvent(event);
-  return static_cast<int64_t>(record->dur);
+  *out = static_cast<int64_t>(record->dur);
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue,
@@ -922,6 +946,13 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
 
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API(int64_t, GetProfilingClockTimeSinceEpochInNanoseconds) {
+  // This entire expression is "noexcept(true)"
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::high_resolution_clock::now().time_since_epoch())
+      .count();
 }
 
 static constexpr OrtEpApi ort_ep_api = {
@@ -996,6 +1027,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEvent_GetDurationUs,
     &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
+    &OrtExecutionProviderApi::GetProfilingClockTimeSinceEpochInNanoseconds,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1005,6 +1037,8 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
+static_assert(offsetof(OrtEpApi, GetProfilingClockTimeSinceEpochInNanoseconds) / sizeof(void*) == 58,
+              "Size of version 25 API cannot change");
 }  // namespace OrtExecutionProviderApi
 
 ORT_API(const OrtEpApi*, OrtExecutionProviderApi::GetEpApi) {

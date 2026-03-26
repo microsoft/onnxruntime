@@ -136,15 +136,10 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
     kernel_end_ts = std::chrono::high_resolution_clock::now();
 
     auto& ep_event_manager = EpEventManager::GetInstance();
-    int64_t ts_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel_start_ts.time_since_epoch()).count();
-    int64_t dur_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                         kernel_end_ts.time_since_epoch() - kernel_start_ts.time_since_epoch())
-                         .count();
-
     std::string event_name = "ExampleKernelEp_";
     event_name += op_type;
 
-    EpEventManager::Event event(std::move(event_name), ts_ns, dur_ns);
+    EpEventManager::Event event(std::move(event_name), kernel_start_ts, kernel_end_ts);
     ep_event_manager.AddEpEvent(*active_profiler_id, std::move(event));
   }
   return nullptr;

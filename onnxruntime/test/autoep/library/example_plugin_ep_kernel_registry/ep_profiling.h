@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -13,7 +14,7 @@
 
 /// <summary>
 /// Example implementation of OrtEpProfilerImpl. ORT obtains an instance of this EP profiler by calling
-/// OrtEp::GetProfiler().
+/// OrtEp::CreateProfiler().
 ///
 /// ORT calls the function pointers at appropriate times during a profiling session:
 ///   - StartProfiling once when profiling begins.
@@ -23,19 +24,20 @@
 /// </summary>
 struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
   const OrtEpApi& ep_api;
-  int64_t profiling_start_time_ns = 0;
+  int64_t ep_ort_epoch_offset_ = 0;
   uint64_t profiler_id = 0;
 
   explicit ExampleKernelEpProfiler(const OrtEpApi& api);
   ~ExampleKernelEpProfiler();
 
   static void ORT_API_CALL ReleaseImpl(OrtEpProfilerImpl* this_ptr) noexcept;
-  static bool ORT_API_CALL StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
-                                              int64_t profiling_start_time_ns) noexcept;
+  static OrtStatus* ORT_API_CALL StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
+                                                    int64_t profiling_start_time_ns,
+                                                    bool* success_out) noexcept;
 
-  static void ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept;
-  static void ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id,
-                                         const OrtProfilingEvent* ort_event) noexcept;
+  static OrtStatus* ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept;
+  static OrtStatus* ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id,
+                                               const OrtProfilingEvent* ort_event) noexcept;
   static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
                                                   int64_t profiling_start_time_ns,
                                                   OrtProfilingEventsContainer* events_container) noexcept;
@@ -59,12 +61,13 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
 class EpEventManager {
  public:
   struct Event {
-    Event(std::string event_name, int64_t timestamp_ns, int64_t duration_ns)
-        : name(std::move(event_name)), ts_ns(timestamp_ns), dur_ns(duration_ns), thread_id(std::this_thread::get_id()) {}
+    Event(std::string event_name, std::chrono::high_resolution_clock::time_point start_ts,
+          std::chrono::high_resolution_clock::time_point end_ts)
+        : name(std::move(event_name)), start_time(start_ts), end_time(end_ts), thread_id(std::this_thread::get_id()) {}
 
     std::string name;
-    int64_t ts_ns;
-    int64_t dur_ns;
+    std::chrono::high_resolution_clock::time_point start_time;
+    std::chrono::high_resolution_clock::time_point end_time;
     std::string ort_event_name;  // Set from the correlated ORT event
     std::thread::id thread_id;   // Thread that created this event
   };

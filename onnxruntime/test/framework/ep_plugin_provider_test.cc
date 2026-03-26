@@ -796,7 +796,10 @@ TEST(PluginExecutionProviderTest, CreateProfilingEvent_AllCategories) {
 
     ASSERT_TRUE(status.IsOK()) << "Failed for category " << static_cast<int>(cat);
     ASSERT_NE(event, nullptr);
-    EXPECT_EQ(Ort::GetEpApi().ProfilingEvent_GetCategory(event), cat);
+
+    OrtProfilingEventCategory actual_cat{};
+    ASSERT_ORTSTATUS_OK(Ort::GetEpApi().ProfilingEvent_GetCategory(event, &actual_cat));
+    EXPECT_EQ(actual_cat, cat);
   }
 }
 

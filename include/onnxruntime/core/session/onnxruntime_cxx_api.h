@@ -1260,6 +1260,8 @@ struct ConstProfilingEventImpl : Ort::detail::Base<T> {
 /** \brief Non-owning const wrapper around ::OrtProfilingEvent.
  *
  * Use this to read fields from the OrtProfilingEvent pointer passed to OrtEpProfilerImpl::StopEvent.
+ *
+ * This is based on the Trace Event Format's "complete event".
  * \since Version 1.25.
  */
 using ConstProfilingEvent = detail::ConstProfilingEventImpl<Ort::detail::Unowned<const OrtProfilingEvent>>;

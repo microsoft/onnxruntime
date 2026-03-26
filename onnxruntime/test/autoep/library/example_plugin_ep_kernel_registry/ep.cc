@@ -31,7 +31,7 @@ ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const Config& 
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
   GetKernelRegistry = GetKernelRegistryImpl;
-  GetProfiler = GetProfilerImpl;
+  CreateProfiler = CreateProfilerImpl;
 
   // This is not a compiling EP, so don't need the following
   Compile = nullptr;
@@ -125,8 +125,8 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetKernelRegistryImpl(
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleKernelEp::GetProfilerImpl(OrtEp* this_ptr,
-                                                         OrtEpProfilerImpl** profiler) noexcept {
+OrtStatus* ORT_API_CALL ExampleKernelEp::CreateProfilerImpl(OrtEp* this_ptr,
+                                                            OrtEpProfilerImpl** profiler) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   ExampleKernelEp* ep = static_cast<ExampleKernelEp*>(this_ptr);
   auto profiler_unique_ptr = std::make_unique<ExampleKernelEpProfiler>(ep->ep_api_);

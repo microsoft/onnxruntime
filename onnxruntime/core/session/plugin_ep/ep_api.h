@@ -141,10 +141,15 @@ ORT_API_STATUS_IMPL(CreateProfilingEvent,
 ORT_API(void, ReleaseProfilingEvent, _Frees_ptr_opt_ OrtProfilingEvent* event);
 
 // Profiling event accessors
-ORT_API(OrtProfilingEventCategory, ProfilingEvent_GetCategory, _In_ const OrtProfilingEvent* event);
-ORT_API(const char*, ProfilingEvent_GetName, _In_ const OrtProfilingEvent* event);
-ORT_API(int64_t, ProfilingEvent_GetTimestampUs, _In_ const OrtProfilingEvent* event);
-ORT_API(int64_t, ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* event);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetCategory, _In_ const OrtProfilingEvent* event,
+                    _Out_ OrtProfilingEventCategory* out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetName, _In_ const OrtProfilingEvent* event,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetTimestampUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out);
 ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
                     _Outptr_result_maybenull_ const char** out);
+ORT_API(int64_t, GetProfilingClockTimeSinceEpochInNanoseconds);
 }  // namespace OrtExecutionProviderApi

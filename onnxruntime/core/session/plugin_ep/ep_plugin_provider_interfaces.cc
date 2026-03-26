@@ -783,16 +783,16 @@ const OrtEp* PluginExecutionProvider::GetOrtEp() const {
 }
 
 std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
-  if (ort_ep_->ort_version_supported < 25 || ort_ep_->GetProfiler == nullptr) {
+  if (ort_ep_->ort_version_supported < 25 || ort_ep_->CreateProfiler == nullptr) {
     return {};
   }
 
   const logging::Logger& logger = GetEpLoggerOrDefault();
   OrtEpProfilerImpl* profiler_impl = nullptr;
-  Status status = ToStatusAndRelease(ort_ep_->GetProfiler(ort_ep_.get(), &profiler_impl));
+  Status status = ToStatusAndRelease(ort_ep_->CreateProfiler(ort_ep_.get(), &profiler_impl));
 
   if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "OrtEp::GetProfiler for " << Type() << " returned an error status: "
+    LOGS(logger, ERROR) << "OrtEp::CreateProfiler for " << Type() << " returned an error status: "
                         << status.ErrorMessage();
     return {};
   }

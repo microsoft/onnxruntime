@@ -806,22 +806,30 @@ inline std::string EpAssignedNodeImpl<T>::GetOperatorType() const {
 namespace detail {
 template <typename T>
 inline OrtProfilingEventCategory ConstProfilingEventImpl<T>::GetCategory() const {
-  return GetEpApi().ProfilingEvent_GetCategory(this->p_);
+  OrtProfilingEventCategory out{};
+  ThrowOnError(GetEpApi().ProfilingEvent_GetCategory(this->p_, &out));
+  return out;
 }
 
 template <typename T>
 inline const char* ConstProfilingEventImpl<T>::GetName() const {
-  return GetEpApi().ProfilingEvent_GetName(this->p_);
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetName(this->p_, &name));
+  return name;
 }
 
 template <typename T>
 inline int64_t ConstProfilingEventImpl<T>::GetTimestampUs() const {
-  return GetEpApi().ProfilingEvent_GetTimestampUs(this->p_);
+  int64_t out = 0;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetTimestampUs(this->p_, &out));
+  return out;
 }
 
 template <typename T>
 inline int64_t ConstProfilingEventImpl<T>::GetDurationUs() const {
-  return GetEpApi().ProfilingEvent_GetDurationUs(this->p_);
+  int64_t out = 0;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetDurationUs(this->p_, &out));
+  return out;
 }
 
 template <typename T>

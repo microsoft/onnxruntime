@@ -98,7 +98,9 @@ class EpProfiler {
   virtual void EndProfiling(TimePoint start_time, Events& events) = 0;
 
   /// <summary>
-  /// Optionally called when an ORT event (e.g., session initialization, node kernel execution, etc.) starts.
+  /// Optional to override (default implementation does nothing).
+  ///
+  /// Called when an ORT event (e.g., session initialization, node kernel execution, etc.) starts.
   /// ORT pairs every Start call with a corresponding call to Stop with the same ORT event ID.
   /// EP profiler implementations may use the calls to Start and Stop to maintain a stack of ORT event IDs
   /// that can be correlated with EP events (e.g., GPU kernel events).
@@ -120,7 +122,9 @@ class EpProfiler {
   virtual void Start(uint64_t /*ort_event_id*/) {}
 
   /// <summary>
-  /// Optionally called when an ORT event (e.g., session initialization, node kernel execution, etc.) ends.
+  /// Optional to override (default implementation does nothing).
+  ///
+  /// Called when an ORT event (e.g., session initialization, node kernel execution, etc.) ends.
   /// ORT pairs every Start call with a corresponding call to Stop with the same ORT event ID.
   /// EP profiler implementations may use the calls to Start and Stop to maintain a stack of ORT event IDs
   /// that can be correlated with EP events (e.g., GPU kernel events).
