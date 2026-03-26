@@ -15,6 +15,7 @@
 #include <random>
 
 #include "nlohmann/json.hpp"
+#include "onnxruntime_cxx_api.h"
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
@@ -64,6 +65,8 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::concurrency;
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
 struct KernelRegistryAndStatus {
@@ -622,59 +625,45 @@ TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
   // Clean up the profile file
   std::remove(profile_file.c_str());
 }
-#endif  // __wasm__
+#endif  // !defined(__wasm__) && !defined(_WIN32)
 
+#ifndef __wasm__
 // Test that run-level profiling captures operators inside subgraphs (e.g., If branches).
-// This test is expected to FAIL until the run profiler subgraph bug is fixed:
-// ExecuteSubgraph does not forward the run_profiler, so nested ops are not profiled.
 TEST(InferenceSessionTests, CheckRunProfilerWithSubgraph) {
-  SessionOptions so;
+  Ort::SessionOptions session_options;
 
-  so.session_logid = "CheckRunProfilerWithSubgraph";
-  // Session-level profiling is disabled; we use run-level profiling instead.
-  so.enable_profiling = false;
-
-  InferenceSession session_object(so, GetEnvironment());
-  ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("testdata/if_mul.onnx")));
-  ASSERT_STATUS_OK(session_object.Initialize());
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/if_mul.onnx"), session_options);
 
   // Prepare inputs for if_mul.onnx:
-  //   A (bool, [1])    - condition (true -> then branch: B * 2)
+  //   A (bool, [1])    - condition (true -> then branch: C = B * 2)
   //   B (float, [3,2]) - data
-  std::vector<int64_t> dims_a = {1};
-  std::vector<int64_t> dims_b = {3, 2};
-  std::vector<float> values_b = {2.0f, 3.0f, 4.0f, -5.0f, 6.0f, 7.0f};
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 1> a_shape = {1};
+  std::array<int64_t, 2> b_shape = {3, 2};
 
-  // Create bool tensor for condition A = true (run the then-branch with mul_0).
-  OrtValue ml_value_a;
-  bool condition = true;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<bool>(), TensorShape(dims_a),
-                       &condition, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), ml_value_a);
+  std::array<bool, 1> a_data = {true};
+  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, 6.f, 7.f};
 
-  OrtValue ml_value_b;
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_b, values_b,
-                       &ml_value_b);
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<bool>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), b_shape.data(), b_shape.size()));
 
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("A", ml_value_a));
-  feeds.insert(std::make_pair("B", ml_value_b));
+  std::array ort_input_names{"A", "B"};
+  std::array output_names{"C"};
 
-  std::vector<std::string> output_names = {"C"};
-  std::vector<OrtValue> fetches;
+  // Enable run-level profiling via RunOptions
+  Ort::RunOptions run_options;
+  run_options.EnableProfiling(ORT_TSTR("ort_run_profile_subgraph_test"));
 
-  // Enable run-level profiling
-  RunOptions run_options;
-  run_options.run_tag = "RunTag";
-  run_options.enable_profiling = true;
-  run_options.profile_file_prefix = ORT_TSTR("ort_run_profile_subgraph_test");
-
-  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  std::vector<Ort::Value> ort_outputs = session.Run(run_options, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
 
   // Verify output: condition=true -> then branch -> B * 2
-  std::vector<int64_t> expected_dims = {3, 2};
-  std::vector<float> expected_values = {4.0f, 6.0f, 8.0f, -10.0f, 12.0f, 14.0f};
-  VerifySingleOutput(fetches, expected_dims, expected_values);
+  const float* output_data = ort_outputs[0].GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(4.f, 6.f, 8.f, -10.f, 12.f, 14.f));
 
   // Find the generated profile JSON file
   std::string profile_file;
@@ -716,8 +705,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSubgraph) {
 
   EXPECT_TRUE(found_subgraph_mul)
       << "Profile should contain an entry for 'mul_0' (Mul op inside If's then-branch). "
-         "This fails because run-level profiling does not propagate to subgraphs.";
+      << "Profile contents: " << profile_json;
 }
+#endif  // !defined(__wasm__)
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   // Test whether the InferenceSession can access the profiler's start time
