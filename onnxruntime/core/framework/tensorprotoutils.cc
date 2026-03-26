@@ -2532,13 +2532,19 @@ Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer, std
 }
 
 std::optional<std::string> GetNodeProtoLayeringAnnotation(const ONNX_NAMESPACE::NodeProto& node_proto) {
+  size_t annotation_count = 0;
   std::optional<std::string> result;
   for (const auto& prop : node_proto.metadata_props()) {
     if (prop.key() == kNodeProtoLayerAnnotation) {
+      if (++annotation_count > 1) {
+        // Multiple annotations found, this is unexpected
+        ORT_THROW("Multiple '", kNodeProtoLayerAnnotation, "' annotations found in NodeProto '", node_proto.name(),
+                  "'. This is unexpected as only one annotation should be present.");
+      }
       if (!prop.value().empty()) {
         result = prop.value();
+        break;
       }
-      break;
     }
   }
   return result;
