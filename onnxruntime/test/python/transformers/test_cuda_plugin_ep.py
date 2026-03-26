@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 import os
-import sys
 import tempfile
 import unittest
 
@@ -10,7 +9,7 @@ import numpy as np
 import onnx
 import torch
 import torch.nn.functional as F
-from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, _get_default_cuda_plugin_ep_path
+from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, _get_default_cuda_plugin_ep_path, should_test_with_cuda_plugin_ep
 from onnx import TensorProto, helper, save
 
 import onnxruntime as onnxrt
@@ -22,21 +21,27 @@ try:
 except ImportError:
     pass
 
-os.environ.setdefault("ORT_TEST_GQA_USE_CUDA_PLUGIN_EP", "1")
 
-_plugin_registration_attempted = False
-_plugin_registration_succeeded = False
+class _PluginRegistrationState:
+    attempted = False
+    succeeded = False
+
+
+TEST_PASS = "PASS"
+TEST_SKIP = "SKIP"
+TEST_FAIL = "FAIL"
 
 
 def require_cuda_plugin_ep():
-    global _plugin_registration_attempted, _plugin_registration_succeeded
+    if not should_test_with_cuda_plugin_ep():
+        raise unittest.SkipTest("CUDA plugin EP is not enabled for testing")
 
-    if _plugin_registration_attempted:
-        if not _plugin_registration_succeeded:
+    if _PluginRegistrationState.attempted:
+        if not _PluginRegistrationState.succeeded:
             raise unittest.SkipTest("CUDA plugin EP is not built or could not be registered")
         return
 
-    _plugin_registration_attempted = True
+    _PluginRegistrationState.attempted = True
 
     ep_lib_path = os.environ.get("ORT_CUDA_PLUGIN_PATH", "")
     if not ep_lib_path:
@@ -48,14 +53,25 @@ def require_cuda_plugin_ep():
 
     try:
         onnxrt.register_execution_provider_library(CUDA_PLUGIN_EP_NAME, ep_lib_path)
-        _plugin_registration_succeeded = True
+        _PluginRegistrationState.succeeded = True
     except Exception:
         providers = {device.ep_name for device in onnxrt.get_ep_devices()}
         if CUDA_PLUGIN_EP_NAME in providers:
-            _plugin_registration_succeeded = True
+            _PluginRegistrationState.succeeded = True
 
-    if not _plugin_registration_succeeded:
+    if not _PluginRegistrationState.succeeded:
         raise unittest.SkipTest("CUDA plugin EP is not built or could not be registered")
+
+
+def get_cuda_plugin_device():
+    require_cuda_plugin_ep()
+
+    devices = onnxrt.get_ep_devices()
+    plugin_devices = [device for device in devices if device.ep_name == CUDA_PLUGIN_EP_NAME]
+    if not plugin_devices:
+        raise unittest.SkipTest("CUDA plugin EP registered, but no plugin devices were enumerated")
+
+    return plugin_devices[0]
 
 
 def create_add_model(model_path):
@@ -212,11 +228,10 @@ def create_avgpool_model(model_path):
 
 
 def run_operator_test(
-    target_device, model_creator, inputs, expected_fn, ep_name="CudaPluginExecutionProvider", session_config=None
+    target_device, model_creator, inputs, expected_fn, ep_name=CUDA_PLUGIN_EP_NAME, session_config=None
 ):
-    tmp = tempfile.NamedTemporaryFile(suffix=".onnx", delete=False)
-    model_path = tmp.name
-    tmp.close()
+    with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+        model_path = tmp.name
     try:
         model_creator(model_path)
         sess_options = onnxrt.SessionOptions()
@@ -245,20 +260,19 @@ def run_operator_test(
 
 def run_provider_options_test(provider_options, expect_plugin_provider=True):
     require_cuda_plugin_ep()
-    tmp = tempfile.NamedTemporaryFile(suffix=".onnx", delete=False)
-    model_path = tmp.name
-    tmp.close()
+    with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+        model_path = tmp.name
     try:
         create_add_model(model_path)
-        providers = [("CudaPluginExecutionProvider", provider_options), "CPUExecutionProvider"]
+        providers = [(CUDA_PLUGIN_EP_NAME, provider_options), "CPUExecutionProvider"]
         sess = onnxrt.InferenceSession(model_path, providers=providers)
         active_providers = sess.get_providers()
 
-        if expect_plugin_provider and "CudaPluginExecutionProvider" not in active_providers:
-            print(f"FAILURE: CudaPluginExecutionProvider is NOT active. Providers: {active_providers}")
+        if expect_plugin_provider and CUDA_PLUGIN_EP_NAME not in active_providers:
+            print(f"FAILURE: {CUDA_PLUGIN_EP_NAME} is NOT active. Providers: {active_providers}")
             return False
-        if not expect_plugin_provider and "CudaPluginExecutionProvider" in active_providers:
-            print(f"FAILURE: CudaPluginExecutionProvider unexpectedly active. Providers: {active_providers}")
+        if not expect_plugin_provider and CUDA_PLUGIN_EP_NAME in active_providers:
+            print(f"FAILURE: {CUDA_PLUGIN_EP_NAME} unexpectedly active. Providers: {active_providers}")
             return False
 
         a = np.random.rand(3, 2).astype(np.float32)
@@ -278,59 +292,10 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
             os.remove(model_path)
 
 
-def test_cuda_plugin_registration():
-    require_cuda_plugin_ep()
-
-    ep_name = CUDA_PLUGIN_EP_NAME
-    print(f"Using registered plugin: {ep_name}", flush=True)
-
-    devices = onnxrt.get_ep_devices()
-    plugin_devices = [d for d in devices if d.ep_name == ep_name]
-    if not plugin_devices:
-        raise unittest.SkipTest("CUDA plugin EP registered, but no plugin devices were enumerated")
-
-    target_device = plugin_devices[0]
+def _run_registration_checks(test_case: unittest.TestCase):
+    target_device = get_cuda_plugin_device()
+    print(f"Using registered plugin: {CUDA_PLUGIN_EP_NAME}", flush=True)
     print(f"Using device: {target_device.ep_name}", flush=True)
-
-    # Test Add
-    print("Testing Add...", end=" ", flush=True)
-    a = np.random.rand(3, 2).astype(np.float32)
-    b = np.random.rand(3, 2).astype(np.float32)
-    if run_operator_test(target_device, create_add_model, {"A": a, "B": b}, lambda x: x["A"] + x["B"]):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
-
-    # Test MatMul
-    print("Testing MatMul...", end=" ", flush=True)
-    a = np.random.rand(3, 4).astype(np.float32)
-    b = np.random.rand(4, 5).astype(np.float32)
-    if run_operator_test(target_device, create_matmul_model, {"A": a, "B": b}, lambda x: x["A"] @ x["B"]):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
-
-    # Test Gemm
-    print("Testing Gemm...", end=" ", flush=True)
-    alpha, beta = 2.0, 0.5
-    a = np.random.rand(3, 4).astype(np.float32)
-    b = np.random.rand(4, 5).astype(np.float32)
-    c = np.random.rand(5).astype(np.float32)
-    if run_operator_test(
-        target_device,
-        lambda p: create_gemm_model(p, alpha=alpha, beta=beta),
-        {"A": a, "B": b, "C": c},
-        lambda x: alpha * (x["A"] @ x["B"]) + beta * x["C"],
-    ):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
-
-    # Test Conv
-    print("Testing Conv...", end=" ", flush=True)
 
     x = np.random.rand(1, 2, 4, 4).astype(np.float32)
     w = np.random.rand(3, 2, 3, 3).astype(np.float32)
@@ -338,92 +303,109 @@ def test_cuda_plugin_registration():
     def expected_conv(inputs):
         return F.conv2d(torch.from_numpy(inputs["X"]), torch.from_numpy(inputs["W"]), padding=1).numpy()
 
-    if run_operator_test(target_device, create_conv_model, {"X": x, "W": w}, expected_conv):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
+    stage2_cases = [
+        (
+            "Add",
+            create_add_model,
+            {"A": np.random.rand(3, 2).astype(np.float32), "B": np.random.rand(3, 2).astype(np.float32)},
+            lambda feed: feed["A"] + feed["B"],
+            None,
+        ),
+        (
+            "MatMul",
+            create_matmul_model,
+            {"A": np.random.rand(3, 4).astype(np.float32), "B": np.random.rand(4, 5).astype(np.float32)},
+            lambda feed: feed["A"] @ feed["B"],
+            None,
+        ),
+        (
+            "Gemm",
+            lambda model_path: create_gemm_model(model_path, alpha=2.0, beta=0.5),
+            {
+                "A": np.random.rand(3, 4).astype(np.float32),
+                "B": np.random.rand(4, 5).astype(np.float32),
+                "C": np.random.rand(5).astype(np.float32),
+            },
+            lambda feed: 2.0 * (feed["A"] @ feed["B"]) + 0.5 * feed["C"],
+            None,
+        ),
+        ("Conv", create_conv_model, {"X": x, "W": w}, expected_conv, None),
+    ]
+
+    for name, model_creator, inputs, expected_fn, session_config in stage2_cases:
+        print(f"Testing {name}...", end=" ", flush=True)
+        result = run_operator_test(target_device, model_creator, inputs, expected_fn, session_config=session_config)
+        with test_case.subTest(stage="stage2", op=name):
+            test_case.assertTrue(
+                result,
+                f"{name} plugin registration test failed",
+            )
+        print(TEST_PASS if result else TEST_FAIL, flush=True)
 
     print("\nAll Stage 2 tests finished successfully.", flush=True)
 
-    # ==================== Stage 3: NHWC Tests ====================
     nhwc_config = {"ep.cuda.prefer_nhwc_layout": "1"}
 
-    # Test Conv with NHWC
-    print("\nTesting Conv (NHWC)...", end=" ", flush=True)
-    x = np.random.rand(1, 2, 4, 4).astype(np.float32)
-    w = np.random.rand(3, 2, 3, 3).astype(np.float32)
-
-    def expected_conv_nhwc(inputs):
-        return F.conv2d(torch.from_numpy(inputs["X"]), torch.from_numpy(inputs["W"]), padding=1).numpy()
-
-    if run_operator_test(
-        target_device, create_conv_model, {"X": x, "W": w}, expected_conv_nhwc, session_config=nhwc_config
-    ):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
-
-    # Test BatchNormalization with NHWC
-    print("Testing BatchNormalization (NHWC)...", end=" ", flush=True)
-    x = np.random.rand(1, 3, 4, 4).astype(np.float32)
-
     def expected_batchnorm(inputs):
-        # With scale=1, bias=0, mean=0, var=1, epsilon=1e-5:
-        # output = (input - 0) / sqrt(1 + 1e-5) * 1 + 0 ≈ input
         return inputs["X"] / np.sqrt(1.0 + 1e-5)
 
-    if run_operator_test(
-        target_device, create_batch_norm_model, {"X": x}, expected_batchnorm, session_config=nhwc_config
-    ):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
+    stage3_cases = [
+        (
+            "Conv (NHWC)",
+            create_conv_model,
+            {
+                "X": np.random.rand(1, 2, 4, 4).astype(np.float32),
+                "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
+            },
+            expected_conv,
+        ),
+        (
+            "BatchNormalization (NHWC)",
+            create_batch_norm_model,
+            {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)},
+            expected_batchnorm,
+        ),
+        (
+            "MaxPool (NHWC)",
+            create_maxpool_model,
+            {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)},
+            lambda feed: F.max_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
+        ),
+        (
+            "AveragePool (NHWC)",
+            create_avgpool_model,
+            {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)},
+            lambda feed: F.avg_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
+        ),
+    ]
 
-    # Test MaxPool with NHWC
-    print("Testing MaxPool (NHWC)...", end=" ", flush=True)
-    x = np.random.rand(1, 3, 4, 4).astype(np.float32)
-
-    def expected_maxpool(inputs):
-        return F.max_pool2d(torch.from_numpy(inputs["X"]), kernel_size=2, stride=2).numpy()
-
-    if run_operator_test(target_device, create_maxpool_model, {"X": x}, expected_maxpool, session_config=nhwc_config):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
-
-    # Test AveragePool with NHWC
-    print("Testing AveragePool (NHWC)...", end=" ", flush=True)
-    x = np.random.rand(1, 3, 4, 4).astype(np.float32)
-
-    def expected_avgpool(inputs):
-        return F.avg_pool2d(torch.from_numpy(inputs["X"]), kernel_size=2, stride=2).numpy()
-
-    if run_operator_test(target_device, create_avgpool_model, {"X": x}, expected_avgpool, session_config=nhwc_config):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
+    for name, model_creator, inputs, expected_fn in stage3_cases:
+        print(f"Testing {name}...", end=" ", flush=True)
+        result = run_operator_test(target_device, model_creator, inputs, expected_fn, session_config=nhwc_config)
+        with test_case.subTest(stage="stage3", op=name):
+            test_case.assertTrue(
+                result,
+                f"{name} plugin NHWC test failed",
+            )
+        print(TEST_PASS if result else TEST_FAIL, flush=True)
 
     print("\nAll Stage 3 NHWC tests finished successfully.", flush=True)
 
-    print("\nTesting provider options path...", flush=True)
-    print("Testing provider options with valid device_id/use_tf32...", end=" ", flush=True)
-    if run_provider_options_test({"device_id": "0", "use_tf32": "0"}):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
+    provider_option_cases = [
+        ("provider options with valid device_id/use_tf32", {"device_id": "0", "use_tf32": "0"}, True),
+        ("provider options with invalid device_id", {"device_id": "999"}, False),
+    ]
 
-    print("Testing provider options with invalid device_id...", end=" ", flush=True)
-    if run_provider_options_test({"device_id": "999"}, expect_plugin_provider=False):
-        print("PASS")
-    else:
-        print("FAIL")
-        sys.exit(1)
+    print("\nTesting provider options path...", flush=True)
+    for name, provider_options, expect_plugin_provider in provider_option_cases:
+        print(f"Testing {name}...", end=" ", flush=True)
+        result = run_provider_options_test(provider_options, expect_plugin_provider=expect_plugin_provider)
+        with test_case.subTest(stage="provider_options", op=name):
+            test_case.assertTrue(
+                result,
+                f"{name} failed",
+            )
+        print(TEST_PASS if result else TEST_FAIL, flush=True)
 
 
 def _make_simple_model(op_type, inputs_info, outputs_info, attrs=None, opset=13, domain=""):
@@ -458,12 +440,11 @@ def _make_simple_model(op_type, inputs_info, outputs_info, attrs=None, opset=13,
 
 
 def _run_model_test(
-    target_device, op_name, model, feed_dict, expected_fn, ep_name="CudaPluginExecutionProvider", rtol=1e-3, atol=1e-3
+    target_device, op_name, model, feed_dict, expected_fn, ep_name=CUDA_PLUGIN_EP_NAME, rtol=1e-3, atol=1e-3
 ):
     """Run a single op test: save model, create session, run, compare."""
-    tmp = tempfile.NamedTemporaryFile(suffix=f"_{op_name}.onnx", delete=False)
-    model_path = tmp.name
-    tmp.close()
+    with tempfile.NamedTemporaryFile(suffix=f"_{op_name}.onnx", delete=False) as tmp:
+        model_path = tmp.name
     try:
         save(model, model_path)
         sess_options = onnxrt.SessionOptions()
@@ -471,36 +452,27 @@ def _run_model_test(
         sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
         active_providers = sess.get_providers()
         if ep_name not in active_providers:
-            print(f"SKIP ({ep_name} not active)")
-            return True  # Don't fail, just skip
+            print(f"{TEST_SKIP} ({ep_name} not active)")
+            return TEST_SKIP
         res = sess.run(None, feed_dict)
         expected = expected_fn(feed_dict)
         if isinstance(expected, (list, tuple)):
-            for i, (r, e) in enumerate(zip(res, expected, strict=False)):
+            for r, e in zip(res, expected, strict=False):
                 np.testing.assert_allclose(r, e, rtol=rtol, atol=atol)
         else:
             np.testing.assert_allclose(res[0], expected, rtol=rtol, atol=atol)
-        return True
+        return TEST_PASS
     except Exception as e:
-        print(f"FAIL ({e})")
-        return False
+        print(f"{TEST_FAIL} ({e})")
+        return TEST_FAIL
     finally:
         if os.path.exists(model_path):
             os.remove(model_path)
 
 
-def test_cuda_plugin_stage5_ops():
+def _run_stage5_checks(test_case: unittest.TestCase):
     """Stage 5: Test all ops enabled during Stage 5 (5A through 5D)."""
-    require_cuda_plugin_ep()
-
-    ep_name = CUDA_PLUGIN_EP_NAME
-
-    devices = onnxrt.get_ep_devices()
-    plugin_devices = [d for d in devices if d.ep_name == ep_name]
-    if not plugin_devices:
-        raise unittest.SkipTest("CUDA plugin EP registered, but no plugin devices were enumerated")
-
-    target_device = plugin_devices[0]
+    target_device = get_cuda_plugin_device()
     passed = 0
     failed = 0
     skipped = 0
@@ -508,22 +480,31 @@ def test_cuda_plugin_stage5_ops():
     def run_test(name, model, feed, expected_fn, rtol=1e-3, atol=1e-3):
         nonlocal passed, failed, skipped
         print(f"  {name}...", end=" ", flush=True)
-        ok = _run_model_test(target_device, name, model, feed, expected_fn, rtol=rtol, atol=atol)
-        if ok:
-            passed += 1
-            print("PASS")
-        else:
+        result = _run_model_test(target_device, name, model, feed, expected_fn, rtol=rtol, atol=atol)
+        with test_case.subTest(stage="stage5", op=name):
+            if result == TEST_PASS:
+                passed += 1
+                print(TEST_PASS, flush=True)
+                return
+
+            if result == TEST_SKIP:
+                skipped += 1
+                print(TEST_SKIP, flush=True)
+                return
+
             failed += 1
+            print(TEST_FAIL, flush=True)
+            test_case.fail(f"{name} Stage 5 plugin op test failed")
 
     print("\n==================== Stage 5: Expanded Op Tests ====================", flush=True)
-    F_dtype = TensorProto.FLOAT
+    f_dtype = TensorProto.FLOAT
 
     # ---- 5A/5B: Standard ops ----
     print("\n--- Standard Ops (5A/5B) ---", flush=True)
 
     # Reshape
     model = _make_simple_model(
-        "Reshape", [("X", F_dtype, [2, 3, 4]), ("shape", TensorProto.INT64, [2])], [("Y", F_dtype, [6, 4])]
+        "Reshape", [("X", f_dtype, [2, 3, 4]), ("shape", TensorProto.INT64, [2])], [("Y", f_dtype, [6, 4])]
     )
     # Need shape as initializer; build manually
     shape_init = helper.make_tensor("shape", TensorProto.INT64, [2], [6, 4])
@@ -536,8 +517,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-Split",
-        [helper.make_tensor_value_info("X", F_dtype, [6, 4])],
-        [helper.make_tensor_value_info("Y1", F_dtype, [3, 4]), helper.make_tensor_value_info("Y2", F_dtype, [3, 4])],
+        [helper.make_tensor_value_info("X", f_dtype, [6, 4])],
+        [helper.make_tensor_value_info("Y1", f_dtype, [3, 4]), helper.make_tensor_value_info("Y2", f_dtype, [3, 4])],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 13
@@ -548,7 +529,7 @@ def test_cuda_plugin_stage5_ops():
 
     # Concat
     model = _make_simple_model(
-        "Concat", [("A", F_dtype, [2, 3]), ("B", F_dtype, [2, 3])], [("Y", F_dtype, [4, 3])], attrs={"axis": 0}
+        "Concat", [("A", f_dtype, [2, 3]), ("B", f_dtype, [2, 3])], [("Y", f_dtype, [4, 3])], attrs={"axis": 0}
     )
     a = np.random.rand(2, 3).astype(np.float32)
     b = np.random.rand(2, 3).astype(np.float32)
@@ -557,8 +538,8 @@ def test_cuda_plugin_stage5_ops():
     # Gather
     gather_model = _make_simple_model(
         "Gather",
-        [("X", F_dtype, [5, 4]), ("indices", TensorProto.INT64, [3])],
-        [("Y", F_dtype, [3, 4])],
+        [("X", f_dtype, [5, 4]), ("indices", TensorProto.INT64, [3])],
+        [("Y", f_dtype, [3, 4])],
         attrs={"axis": 0},
         opset=13,
     )
@@ -571,8 +552,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-Unsqueeze",
-        [helper.make_tensor_value_info("X", F_dtype, [3, 4])],
-        [helper.make_tensor_value_info("Y", F_dtype, [1, 3, 4])],
+        [helper.make_tensor_value_info("X", f_dtype, [3, 4])],
+        [helper.make_tensor_value_info("Y", f_dtype, [1, 3, 4])],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 13
@@ -587,8 +568,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-Tile",
-        [helper.make_tensor_value_info("X", F_dtype, [2, 3])],
-        [helper.make_tensor_value_info("Y", F_dtype, [4, 9])],
+        [helper.make_tensor_value_info("X", f_dtype, [2, 3])],
+        [helper.make_tensor_value_info("Y", f_dtype, [4, 9])],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 13
@@ -603,8 +584,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-CumSum",
-        [helper.make_tensor_value_info("X", F_dtype, [3, 4])],
-        [helper.make_tensor_value_info("Y", F_dtype, [3, 4])],
+        [helper.make_tensor_value_info("X", f_dtype, [3, 4])],
+        [helper.make_tensor_value_info("Y", f_dtype, [3, 4])],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 14
@@ -622,7 +603,7 @@ def test_cuda_plugin_stage5_ops():
         [node],
         "test-ConstantOfShape",
         [helper.make_tensor_value_info("shape", TensorProto.INT64, [2])],
-        [helper.make_tensor_value_info("Y", F_dtype, None)],
+        [helper.make_tensor_value_info("Y", f_dtype, None)],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 9
@@ -636,7 +617,7 @@ def test_cuda_plugin_stage5_ops():
 
     # SpaceToDepth
     model = _make_simple_model(
-        "SpaceToDepth", [("X", F_dtype, [1, 2, 4, 4])], [("Y", F_dtype, [1, 8, 2, 2])], attrs={"blocksize": 2}, opset=13
+        "SpaceToDepth", [("X", f_dtype, [1, 2, 4, 4])], [("Y", f_dtype, [1, 8, 2, 2])], attrs={"blocksize": 2}, opset=13
     )
     x = np.random.rand(1, 2, 4, 4).astype(np.float32)
 
@@ -657,8 +638,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-Pad",
-        [helper.make_tensor_value_info("X", F_dtype, [2, 3])],
-        [helper.make_tensor_value_info("Y", F_dtype, [4, 5])],
+        [helper.make_tensor_value_info("X", f_dtype, [2, 3])],
+        [helper.make_tensor_value_info("Y", f_dtype, [4, 5])],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 13
@@ -673,8 +654,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-Slice",
-        [helper.make_tensor_value_info("X", F_dtype, [4, 6])],
-        [helper.make_tensor_value_info("Y", F_dtype, [2, 4])],
+        [helper.make_tensor_value_info("X", f_dtype, [4, 6])],
+        [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 13
@@ -690,8 +671,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-Resize",
-        [helper.make_tensor_value_info("X", F_dtype, [1, 1, 2, 2])],
-        [helper.make_tensor_value_info("Y", F_dtype, [1, 1, 4, 4])],
+        [helper.make_tensor_value_info("X", f_dtype, [1, 1, 2, 2])],
+        [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 4, 4])],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 13
@@ -703,8 +684,8 @@ def test_cuda_plugin_stage5_ops():
     # Sum (variadic)
     model = _make_simple_model(
         "Sum",
-        [("A", F_dtype, [3, 4]), ("B", F_dtype, [3, 4]), ("C", F_dtype, [3, 4])],
-        [("Y", F_dtype, [3, 4])],
+        [("A", f_dtype, [3, 4]), ("B", f_dtype, [3, 4]), ("C", f_dtype, [3, 4])],
+        [("Y", f_dtype, [3, 4])],
         opset=13,
     )
     a = np.random.rand(3, 4).astype(np.float32)
@@ -720,8 +701,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-Upsample",
-        [helper.make_tensor_value_info("X", F_dtype, [1, 1, 2, 2])],
-        [helper.make_tensor_value_info("Y", F_dtype, [1, 1, 4, 4])],
+        [helper.make_tensor_value_info("X", f_dtype, [1, 1, 2, 2])],
+        [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 4, 4])],
     )
     opset = onnx.OperatorSetIdProto()
     opset.version = 9
@@ -733,8 +714,8 @@ def test_cuda_plugin_stage5_ops():
     # DepthToSpace
     model = _make_simple_model(
         "DepthToSpace",
-        [("X", F_dtype, [1, 8, 2, 2])],
-        [("Y", F_dtype, [1, 2, 4, 4])],
+        [("X", f_dtype, [1, 8, 2, 2])],
+        [("Y", f_dtype, [1, 2, 4, 4])],
         attrs={"blocksize": 2, "mode": "DCR"},
         opset=13,
     )
@@ -760,8 +741,8 @@ def test_cuda_plugin_stage5_ops():
     graph = helper.make_graph(
         [node],
         "test-FastGelu",
-        [helper.make_tensor_value_info("X", F_dtype, [2, 4])],
-        [helper.make_tensor_value_info("Y", F_dtype, [2, 4])],
+        [helper.make_tensor_value_info("X", f_dtype, [2, 4])],
+        [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
     )
     opset_onnx = onnx.OperatorSetIdProto()
     opset_onnx.version = 13
@@ -782,7 +763,8 @@ def test_cuda_plugin_stage5_ops():
     # Known issue: BiasDropout may not be claimed by plugin EP due to type constraint
     # matching differences in the adapter's kernel registry lookup.
     print("  BiasDropout... SKIP (known issue: provider type not set for contrib op)", flush=True)
-    passed += 1
+    with test_case.subTest(stage="stage5", op="BiasDropout"):
+        skipped += 1
 
     # SkipLayerNormalization (com.microsoft)
     hidden_size = 8
@@ -797,16 +779,16 @@ def test_cuda_plugin_stage5_ops():
         [node],
         "test-SkipLayerNorm",
         [
-            helper.make_tensor_value_info("X", F_dtype, [2, hidden_size]),
-            helper.make_tensor_value_info("skip", F_dtype, [2, hidden_size]),
-            helper.make_tensor_value_info("gamma", F_dtype, [hidden_size]),
-            helper.make_tensor_value_info("beta", F_dtype, [hidden_size]),
+            helper.make_tensor_value_info("X", f_dtype, [2, hidden_size]),
+            helper.make_tensor_value_info("skip", f_dtype, [2, hidden_size]),
+            helper.make_tensor_value_info("gamma", f_dtype, [hidden_size]),
+            helper.make_tensor_value_info("beta", f_dtype, [hidden_size]),
         ],
         [
-            helper.make_tensor_value_info("Y", F_dtype, [2, hidden_size]),
-            helper.make_tensor_value_info("mean", F_dtype, None),
-            helper.make_tensor_value_info("inv_std_var", F_dtype, None),
-            helper.make_tensor_value_info("input_skip_bias_sum", F_dtype, None),
+            helper.make_tensor_value_info("Y", f_dtype, [2, hidden_size]),
+            helper.make_tensor_value_info("mean", f_dtype, None),
+            helper.make_tensor_value_info("inv_std_var", f_dtype, None),
+            helper.make_tensor_value_info("input_skip_bias_sum", f_dtype, None),
         ],
     )
     opset_onnx = onnx.OperatorSetIdProto()
@@ -837,16 +819,19 @@ def test_cuda_plugin_stage5_ops():
     )
 
     # ---- Summary ----
-    total = passed + failed
-    print(f"\n--- Stage 5 Results: {passed}/{total} passed, {failed} failed ---", flush=True)
-    if failed > 0:
-        sys.exit(1)
+    total = passed + failed + skipped
+    print(f"\n--- Stage 5 Results: {passed} passed, {failed} failed, {skipped} skipped ({total} total) ---", flush=True)
+    test_case.assertEqual(failed, 0, f"Stage 5 had {failed} failing plugin op checks")
     print("All Stage 5 tests finished successfully.", flush=True)
 
 
+class TestCudaPluginEP(unittest.TestCase):
+    def test_cuda_plugin_registration(self):
+        _run_registration_checks(self)
+
+    def test_cuda_plugin_stage5_ops(self):
+        _run_stage5_checks(self)
+
+
 if __name__ == "__main__":
-    try:
-        test_cuda_plugin_registration()
-        test_cuda_plugin_stage5_ops()
-    except unittest.SkipTest as exc:
-        print(f"SKIP: {exc}", flush=True)
+    unittest.main()

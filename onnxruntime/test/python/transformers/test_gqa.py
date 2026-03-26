@@ -493,8 +493,9 @@ def gqa_prompt_func(
 
     # total_sequence_length is INT32 [1]
     # Schema requires this to be on CPU (OrtMemTypeCPUInput)
-    tsl = torch.tensor([config.q_sequence_length], dtype=torch.int32, device="cpu")
-    bind_tensor(io_binding, "total_sequence_length", tsl, "cpu", TensorProto.INT32)
+    cpu_device = torch.device("cpu")
+    tsl = torch.tensor([config.q_sequence_length], dtype=torch.int32, device=cpu_device)
+    bind_tensor(io_binding, "total_sequence_length", tsl, cpu_device, TensorProto.INT32)
 
     # 5. Optional inputs
     if cos is not None:
@@ -655,8 +656,9 @@ def gqa_past_func(
     bind_tensor(io_binding, "seqlens_k", seqlens_k_int32, device, TensorProto.INT32)
 
     # GroupQueryAttention expects total_sequence_length as CPU input.
-    tsl = torch.tensor([total_seq_len], dtype=torch.int32, device="cpu")
-    bind_tensor(io_binding, "total_sequence_length", tsl, "cpu", TensorProto.INT32)
+    cpu_device = torch.device("cpu")
+    tsl = torch.tensor([total_seq_len], dtype=torch.int32, device=cpu_device)
+    bind_tensor(io_binding, "total_sequence_length", tsl, cpu_device, TensorProto.INT32)
 
     # 5. Optional inputs
     if cos is not None:

@@ -27,15 +27,19 @@ import onnxruntime
 # Reduces number of tests to run for faster pipeline checks
 pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
-# Prefer CUDA plugin EP for this test when available.
-os.environ.setdefault("ORT_TEST_GQA_USE_CUDA_PLUGIN_EP", "1")
-
 onnxruntime.preload_dlls()
 
 # Determine the execution provider and device based on CUDA availability.
 use_cuda = "CUDAExecutionProvider" in onnxruntime.get_available_providers() and torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
-ort_provider = [resolve_cuda_plugin_ep("CUDAExecutionProvider")] if use_cuda else ["CPUExecutionProvider"]
+
+
+def get_ort_provider():
+    if not use_cuda:
+        return ["CPUExecutionProvider"]
+
+    return [resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+
 
 torch.manual_seed(42)
 numpy.random.seed(42)
@@ -590,11 +594,12 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         sess_options = SessionOptions()
         sess_options.log_severity_level = 2
+        providers = get_ort_provider()
 
         try:
-            ort_session = InferenceSession(moe_onnx_graph, sess_options, providers=ort_provider)
+            ort_session = InferenceSession(moe_onnx_graph, sess_options, providers=providers)
         except Exception as e:
-            print(f"Failed to create ONNX Runtime session with provider {ort_provider}: {e}")
+            print(f"Failed to create ONNX Runtime session with provider {providers}: {e}")
             print("Skipping ONNX Runtime execution for this test case.")
             return None
 
