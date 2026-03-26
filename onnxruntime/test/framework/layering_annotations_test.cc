@@ -1000,23 +1000,23 @@ TEST(LayeringRulesTest, FromConfigString_IgnoresEmptyEntries) {
 TEST(LayeringRulesTest, FromConfigString_RejectsDuplicateAnnotations) {
   LayeringRules rules;
 
-  // Duplicate exact annotation within the same device
+  // Duplicate prefix annotation within the same device
   EXPECT_FALSE(LayeringRules::FromConfigString("EP1(Ann1, Ann1)", rules).IsOK());
 
-  // Duplicate exact annotation across different devices
+  // Duplicate prefix annotation across different devices
   EXPECT_FALSE(LayeringRules::FromConfigString("EP1(Ann1); EP2(Ann1)", rules).IsOK());
 
-  // Duplicate prefix annotation within the same device
+  // Duplicate exact annotation within the same device
   EXPECT_FALSE(LayeringRules::FromConfigString("EP1(=Ann1, =Ann1)", rules).IsOK());
 
-  // Duplicate prefix annotation across different devices
+  // Duplicate exact annotation across different devices
   EXPECT_FALSE(LayeringRules::FromConfigString("EP1(=Ann1); EP2(=Ann1)", rules).IsOK());
 
-  // Same annotation but different match types (exact vs prefix) should be OK
+  // Same annotation but different match types (prefix vs exact) should be OK
   ASSERT_STATUS_OK(LayeringRules::FromConfigString("EP1(Ann1, =Ann1)", rules));
   ASSERT_EQ(rules.rules.size(), 2u);
-  EXPECT_FALSE(rules.rules[0].prefix_match);
-  EXPECT_TRUE(rules.rules[1].prefix_match);
+  EXPECT_TRUE(rules.rules[0].prefix_match);
+  EXPECT_FALSE(rules.rules[1].prefix_match);
 }
 
 TEST(LayeringIndexTest, MakeNodeUnassigned_PreservesEpRuleMapping) {
