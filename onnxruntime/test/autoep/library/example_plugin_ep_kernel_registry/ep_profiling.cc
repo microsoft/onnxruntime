@@ -144,7 +144,7 @@ ExampleKernelEpProfiler::ExampleKernelEpProfiler(const OrtEpApi& api) : OrtEpPro
     int64_t ep_ts = GetEpClockTimeSinceEpochInNanoseconds();
     int64_t ort_ts2 = api.GetProfilingClockTimeSinceEpochInNanoseconds();
 
-    int64_t ort_avg_ts = (ort_ts1 + ort_ts2) / 2;
+    int64_t ort_avg_ts = ort_ts1 + (ort_ts2 - ort_ts1) / 2;
     int64_t epoch_offset = ort_avg_ts - ep_ts;
     int64_t abs_epoch_offset = std::abs(epoch_offset);
 
