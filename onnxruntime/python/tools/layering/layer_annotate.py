@@ -132,61 +132,17 @@ def annotate_graph(graph, substring_annotations, parallel=False):
         parallel (bool): If True, process the graph's nodes in parallel chunks.
     """
     if parallel:
+        # Parallel processing with threads has been disabled due to lack of thread-safety
+        # guarantees for ONNX/protobuf objects during concurrent writes. Fall back to
+        # sequential processing while retaining the 'parallel' argument for API compatibility.
         logger = get_logger("annotate_model")
-        num_cores = os.cpu_count() or 1
-        nodes = graph.node
-        total_nodes = len(nodes)
-        min_nodes_per_thread = 1000
+        logger.info(
+            "Parallel annotation requested, but thread-based parallelism is disabled "
+            "to avoid unsafe concurrent writes to ONNX/protobuf objects. "
+            "Proceeding with sequential processing."
+        )
 
-        if total_nodes > 0:
-            # Ensure each thread processes at least min_nodes_per_thread, if possible
-            max_workers = max(1, total_nodes // min_nodes_per_thread)
-            num_workers = min(num_cores, max_workers)
-
-            logger.info(
-                f"Parallel processing configuration: Total Nodes={total_nodes}, Cores={num_cores}. "
-                f"Calculated Workers={num_workers} (Min nodes per thread={min_nodes_per_thread})."
-            )
-
-            chunks = []
-            start_index = 0
-            base_chunk_size = total_nodes // num_workers
-            remainder = total_nodes % num_workers
-
-            for i in range(num_workers):
-                # Distribute the remainder (extra nodes) across the first 'remainder' threads
-                # To avoid the last worker processing very small amount of nodes
-                current_chunk_size = base_chunk_size + (1 if i < remainder else 0)
-                end_index = start_index + current_chunk_size
-                chunks.append(nodes[start_index:end_index])
-                start_index = end_index
-
-            # Use current thread for one of the chunks to avoid idle main thread
-            if num_workers > 1:
-                # Execute num_workers - 1 chunks in background threads
-                # Execute the last chunk in the current (main) thread
-                background_chunks = chunks[:-1]
-                main_chunk = chunks[-1]
-
-                logger.info(f"Dispatching {len(background_chunks)} chunks to thread pool and 1 chunk to main thread.")
-
-                with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers - 1) as executor:
-                    futures = [
-                        executor.submit(process_nodes, chunk, substring_annotations) for chunk in background_chunks
-                    ]
-
-                    # Run last chunk here
-                    process_nodes(main_chunk, substring_annotations)
-
-                    concurrent.futures.wait(futures)
-            else:
-                # Only 1 worker needed, run in current thread
-                logger.info("Using single thread (current) for processing.")
-                process_nodes(chunks[0], substring_annotations)
-    else:
-        process_nodes(graph.node, substring_annotations)
-
-
+    process_nodes(graph.node, substring_annotations)
 def annotate_model(model, substring_annotations):
     """
     Annotates an ONNX model with metadata based on a provided mapping.
