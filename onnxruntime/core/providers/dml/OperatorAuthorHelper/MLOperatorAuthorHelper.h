@@ -5,6 +5,7 @@
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
+#include "core/providers/dml/DmlExecutionProvider/src/SafeMakeOrThrow.h"
 #include "core/framework/int4.h"
 #include <gsl/gsl>
 #include <optional>
@@ -972,23 +973,8 @@ public:
     {
         ORT_TRY
         {
-            // Use placement new instead of wil::MakeOrThrow to control allocation
-            // and deallocation directly, ensuring correctly-sized cleanup if the
-            // constructor throws an exception.
-            void* buffer = ::operator new(sizeof(MLOperatorKernel));
-            MLOperatorKernel* kernelRaw = nullptr;
-            try
-            {
-                kernelRaw = new (buffer) MLOperatorKernel(MLOperatorKernelCreationContext(&info));
-            }
-            catch (...)
-            {
-                ::operator delete(buffer, sizeof(MLOperatorKernel));
-                throw;
-            }
+            Microsoft::WRL::ComPtr<MLOperatorKernel> kernel = Dml::SafeMakeOrThrow<MLOperatorKernel>(MLOperatorKernelCreationContext(&info));
 
-            Microsoft::WRL::ComPtr<MLOperatorKernel> kernel;
-            kernel.Attach(kernelRaw);
             *opKernel = kernel.Detach();
             return S_OK;
         }
