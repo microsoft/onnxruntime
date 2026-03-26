@@ -572,9 +572,6 @@ void LayeringIndex::MakeNodeUnassigned(const Graph& graph, NodeIndex node_id) {
     auto layer_to_nodes_hit = graph_layering_index.layer_to_node_ids_.find(*layer_idx);
     if (layer_to_nodes_hit != graph_layering_index.layer_to_node_ids_.end()) {
       layer_to_nodes_hit->second.erase(node_id);
-      // If the layer has no more nodes assigned across this graph,
-      // remove the layer index from the EP mapping so subsequent
-      // partitioning passes no longer reserve this layer for the EP.
       if (layer_to_nodes_hit->second.empty()) {
         graph_layering_index.layer_to_node_ids_.erase(layer_to_nodes_hit);
       }
