@@ -8,7 +8,7 @@ All build scripts delegate to `tools/ci_build/build.py`, which has three main ph
 - `--build` — compile (add `--parallel` to speed this up)
 - `--test` — run tests
 
-If none of `--update`, `--build`, or `--test` are specified, **all three run by default**.
+For native builds, if none of `--update`, `--build`, or `--test` are specified and you do not pass `--skip_tests`, **all three run by default**. For cross-compiled builds, the default is `--update` + `--build` only, and you must specify `--test` explicitly if you want to run tests.
 
 ```bash
 # Full build (update + build + test)
@@ -29,7 +29,7 @@ If none of `--update`, `--build`, or `--test` are specified, **all three run by 
 ./build.sh --config Release --parallel --build_wheel
 ```
 
-Key flags: `--config` (Debug|Release|RelWithDebInfo), `--parallel`, `--skip_tests`, `--build_wheel`, `--use_cuda`, `--use_tensorrt`, `--use_dml`, `--use_openvino`, `--enable_training`.
+Key flags: `--config` (Debug|MinSizeRel|Release|RelWithDebInfo), `--parallel`, `--skip_tests`, `--build_wheel`, `--use_cuda`, `--use_tensorrt`, `--use_dml`, `--use_openvino`, `--enable_training`.
 
 ## Test
 
@@ -159,7 +159,7 @@ For CUDA ops: host code goes in `.cc`, device kernels in `.cu`/`.cuh`. Use `ToCu
 
 The public C API is in `include/onnxruntime/core/session/onnxruntime_c_api.h`:
 
-- All functions return `OrtStatus*` (`nullptr` on success).
+- Functions that may fail return `OrtStatus*` (`nullptr` on success); release/cleanup functions (e.g., `OrtReleaseXxx`) return `void`.
 - Object lifecycle: `OrtCreateXxx` / `OrtReleaseXxx`.
 - All strings are UTF-8 encoded.
 - Use `int64_t` for dimensions, `size_t` for counts and memory sizes.
@@ -169,6 +169,6 @@ The public C API is in `include/onnxruntime/core/session/onnxruntime_c_api.h`:
 ## PR Guidelines
 
 - Keep PRs small (aim for ≤10 files; separate cosmetic changes from functional ones).
-- All changes must have unit tests.
+- All changes must have unit tests, unless they are documentation-only or already adequately covered by existing unit tests.
 - Build and test locally on at least one platform before submitting.
 - PR author is responsible for merging after approval.
