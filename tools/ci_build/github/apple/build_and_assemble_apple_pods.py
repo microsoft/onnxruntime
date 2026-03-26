@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 
+from build_settings_utils import get_sysroot_arch_pairs, parse_build_settings_file
 from c.assemble_c_pod_package import assemble_c_pod_package
 from package_assembly_utils import get_ort_version
 
@@ -115,6 +116,15 @@ def main():
         run(build_apple_framework_args)
 
     if args.test:
+        build_settings = parse_build_settings_file(args.build_settings_file)
+        sysroot_arch_pairs = get_sysroot_arch_pairs(build_settings)
+
+        def has_sysroot(sysroot_name: str):
+            return any(sysroot == sysroot_name for (sysroot, _) in sysroot_arch_pairs)
+
+        has_macos_sysroot = has_sysroot("macosx")
+        has_catalyst_sysroot = has_sysroot("macabi")
+
         test_apple_packages_args = [
             sys.executable,
             str(SCRIPT_DIR / "test_apple_packages.py"),
@@ -126,6 +136,12 @@ def main():
             "--test_project_stage_dir",  # use a specific directory so it's easier to debug
             str(build_dir / "test_apple_packages_staging"),
         ]
+
+        if not has_macos_sysroot:
+            test_apple_packages_args += ["--skip_macos_test"]
+
+        if has_catalyst_sysroot:
+            test_apple_packages_args += ["--mac_catalyst_enabled"]
 
         run(test_apple_packages_args)
 
