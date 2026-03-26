@@ -531,12 +531,13 @@ struct OrtEpProfilerImpl {
    * Tagging EP events with the correlated ORT event ID enables the EP to annotate its own events
    * with metadata from the parent ORT event (e.g., operator name).
    *
-   * \note An ORT event ID is internally computed as a timestamp offset (in microseconds) relative to the
-   *       profiling start time: ort_event_id = ort_event_start_us - profiling_start_time_us.
-   *       Because ORT event IDs are relative, entirely different profiling sessions may reuse the same ORT event IDs.
+   * \note An ORT event ID is internally computed as a timestamp offset (in microseconds) relative to ORT's
+   *       profiling start time: ort_event_id = ort_event_start_us - ort_profiling_start_time_us.
+   *       Because ORT event IDs are relative, different profiling sessions may reuse the same ORT event IDs.
    *       If the EP's profiling utilities (e.g., CUPTI or ROCTracer) require globally unique correlation IDs, then
-   *       the EP should internally use ort_event_start_us as the correlation ID provided to the EP profiling utilities.
-   *       Ex: internal_ort_event_id = ort_event_id + profiling_start_time_us.
+   *       the EP profiler can compute its own `internal_ort_event_id` that adds the EP profiler's profiling start time
+   *       (recorded in OrtEpProfilerImpl::StartProfiling()) to the given ort_event_id:
+   *           internal_ort_event_id = ort_event_id + ep_profiling_start_time_us.
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
    * \param[in] ort_event_id The ID of the ORT event that is starting.
@@ -570,12 +571,13 @@ struct OrtEpProfilerImpl {
    * Tagging EP events with the correlated ORT event ID enables the EP to annotate its own events
    * with metadata from the parent ORT event (e.g., operator name).
    *
-   * \note An ORT event ID is internally computed as a timestamp offset (in microseconds) relative to the
-   *       profiling start time: ort_event_id = ort_event_start_us - profiling_start_time_us.
-   *       Because ORT event IDs are relative, entirely different profiling sessions may reuse the same ORT event IDs.
+   * \note An ORT event ID is internally computed as a timestamp offset (in microseconds) relative to ORT's
+   *       profiling start time: ort_event_id = ort_event_start_us - ort_profiling_start_time_us.
+   *       Because ORT event IDs are relative, different profiling sessions may reuse the same ORT event IDs.
    *       If the EP's profiling utilities (e.g., CUPTI or ROCTracer) require globally unique correlation IDs, then
-   *       the EP should internally use ort_event_start_us as the correlation ID provided to the EP profiling utilities.
-   *       Ex: internal_ort_event_id = ort_event_id + profiling_start_time_us.
+   *       the EP profiler can compute its own `internal_ort_event_id` that adds the EP profiler's profiling start time
+   *       (recorded in OrtEpProfilerImpl::StartProfiling()) to the given ort_event_id:
+   *           internal_ort_event_id = ort_event_id + ep_profiling_start_time_us.
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
    * \param[in] ort_event_id The ID of the ORT event that is ending.
