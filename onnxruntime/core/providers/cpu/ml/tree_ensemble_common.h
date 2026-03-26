@@ -849,7 +849,11 @@ inline bool SetMembershipCheck(T1 val, T2 mask) {
 template <typename InputType, typename ThresholdType, typename OutputType>
 TreeNodeElement<ThresholdType>*
 TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
-    TreeNodeElement<ThresholdType>* root, const InputType* x_data, const InputType* x_data_end) const {
+    TreeNodeElement<ThresholdType>* root, const InputType* x_data, const InputType*
+#ifndef NDEBUG  // if debug build
+                                                                       x_data_end
+#endif
+) const {
   InputType val;
   if (same_mode_) {
     switch (root->mode()) {
