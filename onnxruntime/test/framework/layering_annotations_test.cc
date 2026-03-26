@@ -915,7 +915,7 @@ TEST(LayeringRulesTest, LayeringRulesParsing) {
     ASSERT_EQ(rules.rules.size(), 1u);
     EXPECT_EQ(rules.rules[0].device, "EP1");
     EXPECT_EQ(rules.rules[0].annotation, "Annotation1");
-    EXPECT_FALSE(rules.rules[0].prefix_match);
+    EXPECT_TRUE(rules.rules[0].prefix_match);
   }
 
   // Test multiple annotations for one device
@@ -925,10 +925,10 @@ TEST(LayeringRulesTest, LayeringRulesParsing) {
     ASSERT_EQ(rules.rules.size(), 2u);
     EXPECT_EQ(rules.rules[0].device, "EP1");
     EXPECT_EQ(rules.rules[0].annotation, "Annotation1");
-    EXPECT_FALSE(rules.rules[0].prefix_match);
+    EXPECT_TRUE(rules.rules[0].prefix_match);
     EXPECT_EQ(rules.rules[1].device, "EP1");
     EXPECT_EQ(rules.rules[1].annotation, "Annotation2");
-    EXPECT_FALSE(rules.rules[1].prefix_match);
+    EXPECT_TRUE(rules.rules[1].prefix_match);
   }
 
   // Test multiple devices
@@ -938,20 +938,20 @@ TEST(LayeringRulesTest, LayeringRulesParsing) {
     ASSERT_EQ(rules.rules.size(), 2u);
     EXPECT_EQ(rules.rules[0].device, "EP1");
     EXPECT_EQ(rules.rules[0].annotation, "Annotation1");
-    EXPECT_FALSE(rules.rules[0].prefix_match);
+    EXPECT_TRUE(rules.rules[0].prefix_match);
     EXPECT_EQ(rules.rules[1].device, "EP2");
     EXPECT_EQ(rules.rules[1].annotation, "Annotation2");
-    EXPECT_FALSE(rules.rules[1].prefix_match);
+    EXPECT_TRUE(rules.rules[1].prefix_match);
   }
 
-  // Test prefix match
+  // Test exact match
   {
     LayeringRules rules;
     ASSERT_STATUS_OK(LayeringRules::FromConfigString("EP1(=Annotation1)", rules));
     ASSERT_EQ(rules.rules.size(), 1u);
     EXPECT_EQ(rules.rules[0].device, "EP1");
     EXPECT_EQ(rules.rules[0].annotation, "Annotation1");
-    EXPECT_TRUE(rules.rules[0].prefix_match);
+    EXPECT_FALSE(rules.rules[0].prefix_match);
   }
 
   // Test trimming whitespace
@@ -961,13 +961,13 @@ TEST(LayeringRulesTest, LayeringRulesParsing) {
     ASSERT_EQ(rules.rules.size(), 3u);
     EXPECT_EQ(rules.rules[0].device, "EP1");
     EXPECT_EQ(rules.rules[0].annotation, "Annotation1");
-    EXPECT_FALSE(rules.rules[0].prefix_match);
+    EXPECT_TRUE(rules.rules[0].prefix_match);
     EXPECT_EQ(rules.rules[1].device, "EP1");
     EXPECT_EQ(rules.rules[1].annotation, "Annotation2");
-    EXPECT_TRUE(rules.rules[1].prefix_match);
+    EXPECT_FALSE(rules.rules[1].prefix_match);
     EXPECT_EQ(rules.rules[2].device, "EP2");
     EXPECT_EQ(rules.rules[2].annotation, "Annotation3");
-    EXPECT_FALSE(rules.rules[2].prefix_match);
+    EXPECT_TRUE(rules.rules[2].prefix_match);
   }
 }
 
@@ -1057,6 +1057,7 @@ TEST(LayeringIndexTest, MakeNodeUnassigned_PreservesEpRuleMapping) {
   LayeringIndex::LayeringIndexToEpName rule_map;
   rule_map[0] = "DeviceA";
 
+  // 3. Create Index
   auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
 
   // Both nodes should be assigned
@@ -1098,7 +1099,6 @@ TEST(LayeringIndexTest, UpdateAfterFullUnassignment_RestoresVisibility) {
 
   Node& node0 = graph.AddNode("node0", "Abs", "Node 0", {input_arg}, {output_arg});
   node0.SetLayeringAnnotation("RuleA");
-
   ASSERT_STATUS_OK(graph.Resolve());
 
   // 2. Setup Rules: RuleA -> DeviceA
@@ -1119,7 +1119,8 @@ TEST(LayeringIndexTest, UpdateAfterFullUnassignment_RestoresVisibility) {
 
   // 4. Simulate layout transform adding a new node with inherited annotation
   NodeArg* new_output_arg = &graph.GetOrCreateNodeArg("new_output", &type_proto);
-  Node& new_node = graph.AddNode("new_node", "Abs", "New Node", {output_arg}, {new_output_arg});
+  Node& new_node = graph.AddNode("new_node", "Abs", "Node with inherited assignment",
+                                 {output_arg}, {new_output_arg});
   new_node.SetLayeringAnnotation("RuleA");  // Inherits parent's annotation
   ASSERT_STATUS_OK(graph.Resolve());
 
@@ -1313,10 +1314,11 @@ TEST(LayeringIndexPartitionerTest, ResetUnclaimedNodesRemovesAssignment) {
   // Nodes that were pre-assigned to an EP via layering but NOT claimed in capabilities
   // should be unassigned so subsequent EPs can pick them up.
 
-  auto h = SimpleGraphHelper::Create(3);
+  auto h = SimpleGraphHelper::Create(4);
   auto* node0 = h.graph->GetNode(h.node_indices[0]);
   auto* node1 = h.graph->GetNode(h.node_indices[1]);
   auto* node2 = h.graph->GetNode(h.node_indices[2]);
+
   node0->SetLayeringAnnotation("RuleA");
   node1->SetLayeringAnnotation("RuleA");
   node2->SetLayeringAnnotation("RuleA");
@@ -1370,20 +1372,12 @@ TEST(LayeringIndexPartitionerTest, UpdateAfterLayoutTransformAddsNewNodes) {
   // In GetCapabilityForEP, after layout transform, new nodes with inherited annotations
   // are added and the index is updated.
 
-  auto h = SimpleGraphHelper::Create(2);
+  auto h = SimpleGraphHelper::Create(1);
   auto* node0 = h.graph->GetNode(h.node_indices[0]);
   node0->SetLayeringAnnotation("RuleA");
   ASSERT_STATUS_OK(h.graph->Resolve());
 
-  LayeringRules rules;
-  rules.rules.push_back({"DeviceA", "RuleA", false});
-
-  LayeringIndex::EpNameToLayeringIndices ep_map;
-  ep_map["DeviceA"].insert(0);
-  LayeringIndex::LayeringIndexToEpName rule_map;
-  rule_map[0] = "DeviceA";
-
-  auto index = LayeringIndex::Create(*h.graph, std::move(ep_map), std::move(rule_map), std::move(rules));
+  auto index = CreateTwoEpIndex(*h.graph, "DeviceA", "RuleA", "DeviceB", "RuleB");
 
   // Record the max node index before "layout transformation"
   const NodeIndex first_new_node = h.graph->MaxNodeIndex();
@@ -1393,7 +1387,7 @@ TEST(LayeringIndexPartitionerTest, UpdateAfterLayoutTransformAddsNewNodes) {
   type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   NodeArg* extra_out = &h.graph->GetOrCreateNodeArg("extra_output", &type_proto);
   NodeArg* output_arg = &h.graph->GetOrCreateNodeArg("output", nullptr);  // reuse existing
-  Node& new_node = h.graph->AddNode("layout_inserted_node", "Abs", "Layout inserted",
+  Node& new_node = h.graph->AddNode("new_node", "Abs", "Node with inherited annotation",
                                     {output_arg}, {extra_out});
   new_node.SetLayeringAnnotation("RuleA");  // Inherits parent's annotation
   ASSERT_STATUS_OK(h.graph->Resolve());
@@ -1412,10 +1406,13 @@ TEST(LayeringIndexPartitionerTest, UpdateAfterLayoutTransformAddsNewNodes) {
   ASSERT_FALSE(new_node_indices.empty());
   index.Update(*h.graph, new_node_indices);
 
-  // New node should now be assigned to rule 0 (DeviceA)
+  // New node should be assigned to rule 0 (DeviceA)
   auto assign = index.GetNodeAssignment(*h.graph, new_node.Index());
   ASSERT_TRUE(assign.has_value());
   EXPECT_EQ(*assign, 0u);
+
+  // And the annotation string should be on the node
+  EXPECT_EQ(new_node.GetLayeringAnnotation(), "RuleA");
 }
 
 TEST(LayeringIndexPartitionerTest, UpdateWithUnannotatedNewNodeRemainsUnassigned) {
@@ -1427,15 +1424,7 @@ TEST(LayeringIndexPartitionerTest, UpdateWithUnannotatedNewNodeRemainsUnassigned
   node0->SetLayeringAnnotation("RuleA");
   ASSERT_STATUS_OK(h.graph->Resolve());
 
-  LayeringRules rules;
-  rules.rules.push_back({"DeviceA", "RuleA", false});
-
-  LayeringIndex::EpNameToLayeringIndices ep_map;
-  ep_map["DeviceA"].insert(0);
-  LayeringIndex::LayeringIndexToEpName rule_map;
-  rule_map[0] = "DeviceA";
-
-  auto index = LayeringIndex::Create(*h.graph, std::move(ep_map), std::move(rule_map), std::move(rules));
+  auto index = CreateTwoEpIndex(*h.graph, "DeviceA", "RuleA", "DeviceB", "RuleB");
 
   // Add a new node WITHOUT annotation
   ONNX_NAMESPACE::TypeProto type_proto;
@@ -1607,7 +1596,8 @@ TEST(LayeringIndexPartitionerTest, MakeUnassignedThenReassignViaPrefixRule) {
 
   // Add a new node with a different annotation that also matches the prefix
   NodeArg* new_out = &graph.GetOrCreateNodeArg("new_output", &type_proto);
-  Node& new_node = graph.AddNode("new_node", "Abs", "", {output_arg}, {new_out});
+  Node& new_node = graph.AddNode("new_node", "Abs", "Node with inherited annotation",
+                                 {output_arg}, {new_out});
   new_node.SetLayeringAnnotation("Layer_GPU_Memory");
   ASSERT_STATUS_OK(graph.Resolve());
 

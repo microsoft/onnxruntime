@@ -63,9 +63,9 @@ common::Status LayeringRules::FromConfigString(const std::string& config_value, 
         continue;
       }
 
-      bool prefix_match = false;
+      bool prefix_match = true;
       if (ann[0] == '=') {
-        prefix_match = true;
+        prefix_match = false;
         ann = ann.substr(1);
         ann = utils::TrimString(ann);
       }
