@@ -6,6 +6,7 @@
 #include <cassert>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "core/common/inlined_containers.h"
 #include "core/common/string_utils.h"
@@ -91,7 +92,8 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
 /// <param name="capability">Indexed subgraph which needs to be assigned</param>
 /// <param name="provider_type">The EP to assign the Indexed subgraph to</param>
 static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
-                           const std::string& provider_type) {
+                           const std::string& provider_type,
+                           std::vector<NodeIndex>* newly_assigned_nodes = nullptr) {
   // Before assigning the ep to any node, first walk through all the nodes and ensure
   // none of the nodes have already been assigned. If a node is assigned, simply return.
   for (auto node_index : capability.nodes) {
@@ -105,12 +107,27 @@ static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
   const bool acc_enabled = capability.IsAccountingEnabled();
   for (size_t i = 0, limit = capability.nodes.size(); i < limit; ++i) {
     auto* node = graph.GetNode(capability.nodes[i]);
+    const bool was_unassigned = node->GetExecutionProviderType().empty();
     node->SetExecutionProviderType(provider_type);
+    if (newly_assigned_nodes != nullptr && was_unassigned) {
+      newly_assigned_nodes->push_back(node->Index());
+    }
     if (acc_enabled) {
       capability.AccountForNode(i);
     }
   }
   return true;
+}
+
+static void ClearExecutionProviderAssignments(Graph& graph,
+                                              const std::vector<NodeIndex>& node_indices,
+                                              const std::string& provider_type) {
+  for (NodeIndex node_index : node_indices) {
+    auto* node = graph.GetNode(node_index);
+    if (node != nullptr && node->GetExecutionProviderType() == provider_type) {
+      node->SetExecutionProviderType("");
+    }
+  }
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -212,16 +229,22 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   // CPU EP layout transformation happens later when level 3 transformers are run.
   if (params.mode != GraphPartitioner::Mode::kAssignOnly && params.transform_layout.get() &&
       current_ep.GetPreferredLayout() == DataLayout::NHWC) {
+    std::vector<NodeIndex> nodes_temporarily_assigned_to_ep;
     for (auto& capability : capabilities) {
-      TryAssignNodes(graph, *capability->sub_graph, ep_type);
+      TryAssignNodes(graph, *capability->sub_graph, ep_type, &nodes_temporarily_assigned_to_ep);
     }
 
     const NodeIndex first_new_node = graph.MaxNodeIndex();
 
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
-    ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep, params.debug_graph_fn));
+    auto transform_status = params.transform_layout(graph, modified, current_ep, params.debug_graph_fn);
+    if (!transform_status.IsOK()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+      return transform_status;
+    }
     if (params.check_load_cancellation_fn()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
     }
@@ -239,6 +262,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     const NodeIndex end_node = graph.MaxNodeIndex();
 
+    ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
     capabilities.clear();
 
     const GraphViewer graph_viewer(graph);
