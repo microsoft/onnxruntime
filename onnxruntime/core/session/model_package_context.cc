@@ -13,6 +13,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/model_package_context.h"
+#include "core/session/model_package_descriptor_parser.h"
 
 namespace onnxruntime {
 namespace {
@@ -114,16 +115,23 @@ Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
 }
 
 bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
-  // Check EP constraint
+  // 1) Check EP constraint
   if (variant.ep.empty() ||
       (!variant.ep.empty() && variant.ep != ep_info.ep_name)) {
     return false;
   }
 
-  // Check device constraints
+  // 2) Check device constraint
   bool device_ok = variant.device.empty();
 
-  // This is the target device list that will be passed to ValidateCompiledModelCompatibilityInfo
+  // For some provider-bridge EPs, they may not implement OrtEpFactory::GetSupportedDevices, therefore ORT
+  // won't have the supported device information for those EPs and ep_info.hardware_devices will be empty.
+  // In that case, we will skip the device constraint validation for those EPs.
+  if (ep_info.hardware_devices.empty()) {
+    device_ok = true;
+  }
+
+  // The constraint_devices is the target device(s) and will be passed to ValidateCompiledModelCompatibilityInfo
   // for compatibility validation.
   std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
 
@@ -146,6 +154,8 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
     }
   }
 
+  // 3) Check ep_compatibility_info constraint
+  //
   // ORT doesn't directly check architecture constraint, but relies on ep_compatibility_info constraint containing the
   // architecture information if needed.
   //
@@ -172,247 +182,6 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
   return true;
 }
 }  // namespace
-
-// This function parses information from manifest.json and metadata.json for all component models as well as
-// their associated model variants, producing a unified list of EpContextVariantInfo.
-//
-// If a model variant appears in both, it chooses component model's metadata.json as the source of truth, but
-// falls back to manifest.json if metadata.json is missing required fields.
-//
-// Note: In this initial implementation, we expect only one component model existing in the package, in the future
-//       we will have the "pipeline" ability to execute multiple component models in sequence to better provide the
-//       ease of use for the cases where multiple models are needed (ex: pre/post processing, multi-stage models, etc).
-//
-// A manifest.json may look like this:
-//
-// {
-//     "name" : <logical_model_name>,
-//     "component_models" : {
-//         <model_name_1> : {
-//         }
-//     }
-// }
-//
-// or
-//
-// {
-//     "name" : <logical_model_name>,
-//     "component_models" : {
-//         <model_name_1> : {
-//             "model_variants" : {
-//                 <variant_name_1> : {
-//                     "file" : <ep_context_model_1 onnx file>,
-//                     "constraints" : {
-//                         "ep" : <ep_name>,
-//                         "device" : <device_type>,
-//                         "ep_compatibility_info" : <ep_compatibility_info_1>
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-// A metadata.json for the component model may look like this:
-//
-// {
-//    "model_name" : <model_name>,
-//    "model_variants" : {
-//        <variant_name_1> : {
-//            "file" : <ep_context_model_1 onnx file>,
-//            "constraints" : {
-//                "ep" : <ep_name>,
-//                "device" : <device_type>,
-//                "ep_compatibility_info" : <ep_compatibility_info_1>
-//            }
-//        },
-//        <variant_name_2> : {
-//             "file" : <ep_context_model_2 onnx file>,
-//             "constraints" : {
-//                 "ep" : <ep_name>,
-//                 "device" : <device_type>,
-//                 "ep_compatibility_info" : <ep_compatibility_info_1>
-//             }
-//         }
-//     }
-// }
-Status ModelPackageDescriptorParser::ParseManifest(const std::filesystem::path& package_root,
-                                                   /*out*/ std::vector<ModelVariantInfo>& variants) const {
-  variants.clear();
-  const auto manifest_path = package_root / kModelPackageManifestFileName;
-  if (!std::filesystem::exists(manifest_path)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "No manifest.json found at ", manifest_path.string());
-  }
-
-  std::ifstream f(manifest_path, std::ios::binary);
-  if (!f) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to open manifest.json at ", manifest_path.string());
-  }
-
-  json doc;
-  ORT_TRY {
-    doc = json::parse(f);
-  }
-  ORT_CATCH(const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json is not valid JSON: ", ex.what());
-  }
-
-  if (!doc.contains(kModelNameKey) || !doc[kModelNameKey].is_string()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "The \"name\" field in the manifest.json is missing or not a string");
-  }
-
-  if (!doc.contains(kComponentModelsKey) || !doc[kComponentModelsKey].is_object()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json must contain a \"component_models\" object");
-  }
-
-  const auto& components = doc[kComponentModelsKey];
-
-  if (components.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json should contain exactly one model component field.");
-  }
-
-  for (const auto& item : components.items()) {
-    const std::string& component_model_name = item.key();
-    const auto& component_obj = item.value();
-
-    // Load metadata.json (if present) for this component model
-    json metadata_doc;
-    const json* metadata_variants_obj = nullptr;
-    const auto metadata_path = package_root / "models" / component_model_name / kComponentModelMetadataFileName;
-    if (std::filesystem::exists(metadata_path)) {
-      std::ifstream mf(metadata_path, std::ios::binary);
-      if (mf) {
-        ORT_TRY {
-          metadata_doc = json::parse(mf);
-          if (metadata_doc.contains(kModelVariantsKey) && metadata_doc[kModelVariantsKey].is_object()) {
-            metadata_variants_obj = &metadata_doc[kModelVariantsKey];
-          }
-        }
-        ORT_CATCH(const std::exception&) {
-          // ignore metadata parse errors; fall back to manifest-only flow
-        }
-      }
-    }
-
-    const json* manifest_variants_obj =
-        (component_obj.contains(kModelVariantsKey) && component_obj[kModelVariantsKey].is_object())
-            ? &component_obj[kModelVariantsKey]
-            : nullptr;
-
-    // Build a combined, deterministic list of variant names:
-    //   1) all manifest variants in manifest order
-    //   2) any metadata-only variants appended after
-    std::vector<std::string> variant_names;
-    std::unordered_set<std::string> variant_name_set;
-    if (manifest_variants_obj != nullptr) {
-      for (const auto& variant_item : manifest_variants_obj->items()) {
-        variant_names.push_back(variant_item.key());
-        variant_name_set.insert(variant_item.key());
-      }
-    }
-    if (metadata_variants_obj != nullptr) {
-      for (const auto& variant_item : metadata_variants_obj->items()) {
-        const std::string& variant_name = variant_item.key();
-        if (variant_name_set.insert(variant_name).second) {
-          variant_names.push_back(variant_name);
-        }
-      }
-    }
-
-    for (const auto& variant_name : variant_names) {
-      const json* manifest_variant = nullptr;
-      if (manifest_variants_obj != nullptr) {
-        auto it = manifest_variants_obj->find(variant_name);
-        if (it != manifest_variants_obj->end()) {
-          manifest_variant = &it.value();
-        }
-      }
-
-      const json* metadata_variant = nullptr;
-      if (metadata_variants_obj != nullptr) {
-        auto it = metadata_variants_obj->find(variant_name);
-        if (it != metadata_variants_obj->end()) {
-          metadata_variant = &it.value();
-        }
-      }
-
-      // Pick the variant object (prefer metadata, fall back to manifest).
-      const json* chosen_variant = metadata_variant != nullptr ? metadata_variant : manifest_variant;
-      if (chosen_variant == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Model variant '", variant_name,
-                               "' missing in both manifest and metadata for component model: ",
-                               component_model_name);
-      }
-
-      // Local helper to parse a single variant for this component.
-      auto parse_variant = [&](const std::string& variant_name,
-                               const json& variant_json) -> Status {
-        ModelVariantInfo variant;
-        const std::filesystem::path model_dir =
-            package_root / "models" / component_model_name / variant_name;
-
-        if (!variant_json.contains(kFileKey) || !variant_json[kFileKey].is_string()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Variant '", variant_name, "' missing required \"file\" string");
-        }
-
-        variant.model_path = model_dir / variant_json[kFileKey].get<std::string>();
-
-        if (!std::filesystem::exists(variant.model_path)) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No model file found at ", variant.model_path.string());
-        }
-
-        if (variant_json.contains(kConstraintsKey) && variant_json[kConstraintsKey].is_object()) {
-          ORT_RETURN_IF_ERROR(ParseModelVariantConstraints(variant_json[kConstraintsKey], variant));
-        }
-
-        variants.push_back(std::move(variant));
-        return Status::OK();
-      };
-
-      ORT_RETURN_IF_ERROR(parse_variant(variant_name, *chosen_variant));
-    }
-  }
-
-  for (const auto& v : variants) {
-    LOGS(logger_, INFO) << "manifest variant: file='" << v.model_path.string()
-                        << "' ep='" << v.ep << "' device='" << v.device
-                        << "' arch='" << v.architecture << "'";
-  }
-
-  return Status::OK();
-}
-
-Status ModelPackageDescriptorParser::ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& variant) const {
-  if (!constraints.is_object()) {
-    return Status::OK();
-  }
-
-  if (constraints.contains(kEpKey) && constraints[kEpKey].is_string()) {
-    variant.ep = constraints[kEpKey].get<std::string>();
-  }
-  if (constraints.contains(kDeviceKey) && constraints[kDeviceKey].is_string()) {
-    variant.device = constraints[kDeviceKey].get<std::string>();
-  }
-  if (constraints.contains(kArchitectureKey) && constraints[kArchitectureKey].is_string()) {
-    variant.architecture = constraints[kArchitectureKey].get<std::string>();
-  }
-  if (constraints.contains(kEpCompatibilityInfoKey) && constraints[kEpCompatibilityInfoKey].is_string()) {
-    variant.compatibility_info = constraints[kEpCompatibilityInfoKey].get<std::string>();
-  }
-  if (constraints.contains(kSdkVersionKey) && constraints[kSdkVersionKey].is_string()) {
-    variant.metadata[kSdkVersionKey] = constraints[kSdkVersionKey].get<std::string>();
-  }
-
-  return Status::OK();
-}
 
 // Calculate a score for the model variant based on its constraints and metadata.
 //

@@ -401,7 +401,7 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   // Model path could be an onnx model file, or a model package directory.
   const ORTCHAR_T* model_path_to_use = model_path;
 
-  // For model package selected model path.
+  // keep storage alive if ORT selects a model variant.
   std::filesystem::path selected_model_path;
 
   if (model_path_to_use != nullptr) {

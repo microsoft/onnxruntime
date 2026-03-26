@@ -15,23 +15,6 @@ using json = nlohmann::json;
 
 namespace onnxruntime {
 
-//
-// Keys for parsing the model package manifest json and metadata json.
-//
-static constexpr const char* kModelPackageManifestFileName = "manifest.json";
-static constexpr const char* kModelNameKey = "name";
-static constexpr const char* kComponentModelsKey = "component_models";
-static constexpr const char* kComponentModelMetadataFileName = "metadata.json";
-static constexpr const char* kModelVariantsKey = "model_variants";
-static constexpr const char* kVariantNameKey = "variant_name";
-static constexpr const char* kFileKey = "file";
-static constexpr const char* kConstraintsKey = "constraints";
-static constexpr const char* kEpKey = "ep";
-static constexpr const char* kDeviceKey = "device";
-static constexpr const char* kArchitectureKey = "architecture";
-static constexpr const char* kEpCompatibilityInfoKey = "ep_compatibility_info";
-static constexpr const char* kSdkVersionKey = "sdk_version";
-
 struct ModelVariantInfo {
   std::string ep;
   std::string device;
@@ -49,19 +32,6 @@ struct SelectionEpInfo {
   std::vector<const OrtHardwareDevice*> hardware_devices;
   std::vector<const OrtKeyValuePairs*> ep_metadata;
   ProviderOptions ep_options;
-};
-
-class ModelPackageDescriptorParser {
- public:
-  explicit ModelPackageDescriptorParser(const logging::Logger& logger) : logger_(logger) {}
-
-  Status ParseManifest(const std::filesystem::path& package_root,
-                       /*out*/ std::vector<ModelVariantInfo>& components) const;
-
-  Status ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& variant) const;
-
- private:
-  const logging::Logger& logger_;
 };
 
 class ModelVariantSelector {
@@ -97,4 +67,4 @@ class ModelPackageContext {
 
 }  // namespace onnxruntime
 
-#endif  // !ORT_MINIMAL_BUILD
+#endif  // !defined(ORT_MINIMAL_BUILD)
