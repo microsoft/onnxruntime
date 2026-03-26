@@ -148,7 +148,15 @@ __device__ __inline__ T BilinearInterpolate(
   using Traits = DeformConvBilinearTraits<T>;
   using CoordT = typename Traits::ComputeT;
 
-  // [Optimization 1]: Early exit for clearly out-of-bounds (skip floor() for OOB case).
+  // [Optimization 1]: Early exit for clearly out-of-bounds (skip floor() and neighbor loads for OOB case).
+  // Semantics guardrail: if sample point is outside [-1, H) x [-1, W), ONNX bilinear contribution is exactly 0.
+  // Why keep this even with branchless masked loads below:
+  //   - The branchless path guarantees safe addressing and correct masked zero, but still pays floor/weight math
+  //     and four global loads.
+  //   - This early return avoids all of that work for clearly OOB samples.
+  // About divergence: mixed in/out-of-bound warps can diverge here, but OOB lanes terminate immediately while
+  // in-bound lanes continue useful work; in practice this often wins unless OOB distribution is highly random
+  // and branch hit-rate is very high.
   if (h <= static_cast<CoordT>(-1) || h >= height || w <= static_cast<CoordT>(-1) || w >= width) {
     return Traits::Zero();
   }
@@ -347,29 +355,26 @@ __global__ void DeformableIm2ColKernel(
       }
       T* data_col_ptr = data_col_ptr_base + row_kernel_base * col_stride;
 
+      auto step_kernel_point = [&]() {
+        process_kernel_point(offset_h_ptr, offset_w_ptr, mask_ptr, data_col_ptr, h_base, w_base);
+        offset_h_ptr += offset_pair_stride;
+        offset_w_ptr += offset_pair_stride;
+        if constexpr (UseMask) {
+          mask_ptr += out_size;
+        }
+        data_col_ptr += col_stride;
+        w_base += static_cast<CoordT>(dilation_w);
+      };
+
       // Small fixed kernels: unroll inner j so codegen matches the old fully-unrolled 1x1/3x3 path.
       if constexpr (is_fixed && kH * kW <= 9) {
 #pragma unroll
         for (IndexT j = 0; j < row_width; ++j) {
-          process_kernel_point(offset_h_ptr, offset_w_ptr, mask_ptr, data_col_ptr, h_base, w_base);
-          offset_h_ptr += offset_pair_stride;
-          offset_w_ptr += offset_pair_stride;
-          if constexpr (UseMask) {
-            mask_ptr += out_size;
-          }
-          data_col_ptr += col_stride;
-          w_base += static_cast<CoordT>(dilation_w);
+          step_kernel_point();
         }
       } else {
         for (IndexT j = 0; j < row_width; ++j) {
-          process_kernel_point(offset_h_ptr, offset_w_ptr, mask_ptr, data_col_ptr, h_base, w_base);
-          offset_h_ptr += offset_pair_stride;
-          offset_w_ptr += offset_pair_stride;
-          if constexpr (UseMask) {
-            mask_ptr += out_size;
-          }
-          data_col_ptr += col_stride;
-          w_base += static_cast<CoordT>(dilation_w);
+          step_kernel_point();
         }
       }
     };
@@ -586,22 +591,25 @@ Status DeformConvIm2ColImpl(
     }
   };
 
-  auto launch_with_mask = [&](auto kH_tag, auto kW_tag) {
+  auto launch_with_mask = [&](auto k_size_tag) {
     if (use_mask) {
-      launch(kH_tag, kW_tag, std::integral_constant<bool, true>{});
+      launch(k_size_tag, k_size_tag, std::integral_constant<bool, true>{});
     } else {
-      launch(kH_tag, kW_tag, std::integral_constant<bool, false>{});
+      launch(k_size_tag, k_size_tag, std::integral_constant<bool, false>{});
     }
   };
 
+  // Keep template specializations for the most common kernel sizes in modern models.
+  // 5x5 is intentionally not specialized: it is less common in current architectures and is often
+  // replaced by stacked 3x3 blocks (similar receptive field with better optimization flexibility).
   if (kH == 1 && kW == 1) {
-    launch_with_mask(DeformConvKSize<1>{}, DeformConvKSize<1>{});
+    launch_with_mask(DeformConvKSize<1>{});
   } else if (kH == 3 && kW == 3) {
-    launch_with_mask(DeformConvKSize<3>{}, DeformConvKSize<3>{});
+    launch_with_mask(DeformConvKSize<3>{});
   } else if (kH == 7 && kW == 7) {
-    launch_with_mask(DeformConvKSize<7>{}, DeformConvKSize<7>{});
+    launch_with_mask(DeformConvKSize<7>{});
   } else {
-    launch_with_mask(DeformConvKSize<-1>{}, DeformConvKSize<-1>{});
+    launch_with_mask(DeformConvKSize<-1>{});
   }
   return CUDA_CALL(cudaGetLastError());
 }
