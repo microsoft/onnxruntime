@@ -6,6 +6,16 @@
 namespace onnxruntime {
 namespace cuda_plugin {
 
+namespace {
+
+void RestoreDeviceIfKnown(bool restore_prev_device, int prev_device) noexcept {
+  if (restore_prev_device) {
+    static_cast<void>(cudaSetDevice(prev_device));
+  }
+}
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // CudaDeviceAllocator — uses cudaMalloc/cudaFree for GPU device memory.
 // Note: No arena or caching layer — every allocation goes directly to CUDA.
@@ -30,13 +40,13 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
   // Save and restore CUDA device context to avoid corrupting the calling
   // thread's device state in multi-GPU scenarios.
   int prev_device = -1;
-  cudaGetDevice(&prev_device);
+  const bool restore_prev_device = cudaGetDevice(&prev_device) == cudaSuccess;
   if (cudaSetDevice(alloc->device_id_) != cudaSuccess) {
-    cudaSetDevice(prev_device);
+    RestoreDeviceIfKnown(restore_prev_device, prev_device);
     return nullptr;
   }
   cudaError_t err = cudaMalloc(&p, size);
-  cudaSetDevice(prev_device);
+  RestoreDeviceIfKnown(restore_prev_device, prev_device);
   if (err != cudaSuccess) {
     return nullptr;
   }
@@ -47,10 +57,14 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
   auto* alloc = static_cast<CudaDeviceAllocator*>(this_ptr);
   if (p != nullptr) {
     int prev_device = -1;
-    cudaGetDevice(&prev_device);
-    cudaSetDevice(alloc->device_id_);
-    cudaFree(p);
-    cudaSetDevice(prev_device);
+    const bool restore_prev_device = cudaGetDevice(&prev_device) == cudaSuccess;
+    if (cudaSetDevice(alloc->device_id_) != cudaSuccess) {
+      RestoreDeviceIfKnown(restore_prev_device, prev_device);
+      return;
+    }
+
+    static_cast<void>(cudaFree(p));
+    RestoreDeviceIfKnown(restore_prev_device, prev_device);
   }
 }
 
