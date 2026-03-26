@@ -479,7 +479,7 @@ NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 
 /// <summary>
 /// This function creates an indexed subgraph from a collection of nodes
-/// using the graph instance. The IndexedSubgraph can then we used to create
+/// using the graph instance. The IndexedSubgraph can then be used to create
 /// a filtered GraphViewer instance that only contains the nodes in the collection.
 /// </summary>
 /// <param name="nodes"></param>
