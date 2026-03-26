@@ -24,7 +24,8 @@
 /// </summary>
 struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
   const OrtEpApi& ep_api;
-  int64_t ep_ort_epoch_offset_ = 0;
+  int64_t ep_profiling_start_offset_ns_ = 0;
+  std::chrono::high_resolution_clock::time_point ep_profiling_start_time_point_;
   uint64_t profiler_id = 0;
 
   explicit ExampleKernelEpProfiler(const OrtEpApi& api);
@@ -32,14 +33,14 @@ struct ExampleKernelEpProfiler : OrtEpProfilerImpl {
 
   static void ORT_API_CALL ReleaseImpl(OrtEpProfilerImpl* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
-                                                    int64_t profiling_start_time_ns,
+                                                    int64_t ep_profiling_start_offset_ns,
                                                     bool* success_out) noexcept;
 
   static OrtStatus* ORT_API_CALL StartEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id) noexcept;
   static OrtStatus* ORT_API_CALL StopEventImpl(OrtEpProfilerImpl* this_ptr, uint64_t ort_event_id,
                                                const OrtProfilingEvent* ort_event) noexcept;
   static OrtStatus* ORT_API_CALL EndProfilingImpl(OrtEpProfilerImpl* this_ptr,
-                                                  int64_t profiling_start_time_ns,
+                                                  int64_t ep_profiling_end_offset_ns,
                                                   OrtProfilingEventsContainer* events_container) noexcept;
 };
 

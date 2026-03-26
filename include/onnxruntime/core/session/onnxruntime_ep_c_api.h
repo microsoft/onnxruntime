@@ -487,14 +487,19 @@ struct OrtEpProfilerImpl {
 
   /** \brief Called when profiling starts.
    *
-   * Allows EP profiler to initialize profiling utilities and record the profiling start time.
+   * Allows the EP profiler to initialize profiling utilities and record the profiling start time.
+   *
+   * An EP profiler should record its own clock's current time when this function is called. This allows the EP to
+   * later compute ORT-relative event timestamps by combining `ep_profiling_start_offset_ns` with the EP's own
+   * elapsed time since this call. The formula is:
+   *
+   *   event_timestamp_us = (ep_profiling_start_offset_ns + (ep_event_time_ns - ep_profiling_start_time_ns)) / 1000
+   *
+   * where `ep_event_time_ns` and `ep_profiling_start_time_ns` are measured using the EP's own clock.
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
-   * \param[in] profiling_start_time_ns The profiling start time in nanoseconds since epoch. ORT uses
-   *                                    std::chrono::high_resolution_clock for its timestamps. This clock's
-   *                                    epoch and monotonicity are dependent on the platform and standard library
-   *                                    implementation. The offset between an EP's clock and ORT's clock can be
-   *                                    estimated using OrtEpApi::GetProfilingClockTimeSinceEpochInNanoseconds.
+   * \param[in] ep_profiling_start_offset_ns The elapsed time in nanoseconds (using ORT's profiling clock) between
+   *                                         ORT's profiling start and this call to StartProfiling.
    * \param[out] success_out Output parameter set to true if profiling was successfully started, or false otherwise.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -505,7 +510,7 @@ struct OrtEpProfilerImpl {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(StartProfiling, _In_ OrtEpProfilerImpl* this_ptr,
-                  _In_ int64_t profiling_start_time_ns, _Out_ bool* success_out);
+                  _In_ int64_t ep_profiling_start_offset_ns, _Out_ bool* success_out);
 
   /** \brief Called when an ORT event (e.g., session initialization, node kernel execution, etc.) begins.
    *
@@ -598,12 +603,8 @@ struct OrtEpProfilerImpl {
    * After this function returns, ORT appends the EP's events to the profiling timeline.
    *
    * \param[in] this_ptr The OrtEpProfilerImpl instance.
-   * \param[in] profiling_start_time_ns The profiling start time in nanoseconds since epoch
-   *                                    (same value passed to StartProfiling). ORT uses
-   *                                    std::chrono::high_resolution_clock for its timestamps. This clock's
-   *                                    epoch and monotonicity are dependent on the platform and standard library
-   *                                    implementation. The offset between an EP's clock and ORT's clock can be
-   *                                    estimated using OrtEpApi::GetProfilingClockTimeSinceEpochInNanoseconds.
+   * \param[in] ep_profiling_end_offset_ns The elapsed time in nanoseconds (using ORT's profiling clock) between
+   *                                       ORT's profiling start and this call to EndProfiling.
    * \param[in] events_container Event container to which the EP profiler adds its new events.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -614,7 +615,7 @@ struct OrtEpProfilerImpl {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(EndProfiling, _In_ OrtEpProfilerImpl* this_ptr,
-                  _In_ int64_t profiling_start_time_ns,
+                  _In_ int64_t ep_profiling_end_offset_ns,
                   _In_ OrtProfilingEventsContainer* events_container);
 };
 
@@ -1766,20 +1767,6 @@ struct OrtEpApi {
   ORT_API2_STATUS(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
                   _In_reads_(num_events) const OrtProfilingEvent* const* events,
                   _In_ size_t num_events);
-
-  /** \brief Get the time (in nanoseconds) since epoch with the clock used by ORT profiling sessions.
-   *
-   * This is the same clock that generates the "profiling start time" provided to OrtEpProfilerImpl::StartProfiling()
-   * and OrtEpProfilerImpl::EndProfiling().
-   *
-   * This function can be used by an EP to estimate the epoch offset between the clock used by ORT and the clock
-   * used by the EP. With such an offset, EP timestamps can be converted to ORT timestamps.
-   *
-   * \return The time (in nanoseconds) since epoch using the clock used by ORT profiling sessions.
-   *
-   * \since Version 1.25.
-   */
-  ORT_API_T(int64_t, GetProfilingClockTimeSinceEpochInNanoseconds);
 };
 
 /**

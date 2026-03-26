@@ -1040,6 +1040,7 @@ void RunKernelPluginEpProfilingTest(ProfilingMode mode) {
   ASSERT_TRUE(ep_event_entry.contains("args")) << ep_event_entry;
   ASSERT_TRUE(ep_event_entry["args"].contains("parent_name")) << ep_event_entry;
 
+  // Check the expected ORT parent event's name.
   std::string parent_event_name = ep_event_entry["args"]["parent_name"];
 
   if (mode == ProfilingMode::Session) {
@@ -1070,6 +1071,14 @@ void RunKernelPluginEpProfilingTest(ProfilingMode mode) {
       << "Did not find expected parent ORT event entry '" << parent_event_name << "'. Profile contents " << content;
   ASSERT_TRUE(parent_ort_entry.contains("ts"));
   ASSERT_TRUE(parent_ort_entry.contains("dur"));
+
+  // Check that the parent ORT event's interval completely encompasses the EP event's interval.
+  int64_t ep_start = ep_event_entry["ts"];
+  int64_t ep_end = ep_start + ep_event_entry["dur"];
+  int64_t parent_start = parent_ort_entry["ts"];
+  int64_t parent_end = parent_start + parent_ort_entry["dur"];
+  EXPECT_GE(ep_start, parent_start);
+  EXPECT_LE(ep_end, parent_end);
 }
 
 TEST(OrtEpLibrary, KernelPluginEp_SessionProfiling) {

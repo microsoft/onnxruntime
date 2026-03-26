@@ -48,11 +48,12 @@ PluginEpProfiler::~PluginEpProfiler() {
 }
 
 bool PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
-  int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                   profiling_start_time.time_since_epoch())
-                   .count();
+  // Compute the elapsed time since ORT's profiling start. This offset is epoch-independent.
+  int64_t offset_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::high_resolution_clock::now() - profiling_start_time)
+                          .count();
   bool success = false;
-  Status status = ToStatusAndRelease(profiler_impl_.StartProfiling(&profiler_impl_, ns, &success));
+  Status status = ToStatusAndRelease(profiler_impl_.StartProfiling(&profiler_impl_, offset_ns, &success));
 
   if (!status.IsOK()) {
     // Log error but don't throw as profiling failures shouldn't break execution.
@@ -65,12 +66,13 @@ bool PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
 }
 
 void PluginEpProfiler::EndProfiling(TimePoint start_time, profiling::Events& events) {
-  int64_t profiling_start_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                        start_time.time_since_epoch())
-                                        .count();
+  // Compute the elapsed time since ORT's profiling start. This offset is epoch-independent.
+  int64_t end_offset_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                              std::chrono::high_resolution_clock::now() - start_time)
+                              .count();
 
   OrtProfilingEventsContainer ep_events_container;
-  Status status = ToStatusAndRelease(profiler_impl_.EndProfiling(&profiler_impl_, profiling_start_time_ns,
+  Status status = ToStatusAndRelease(profiler_impl_.EndProfiling(&profiler_impl_, end_offset_ns,
                                                                  &ep_events_container));
 
   if (!status.IsOK()) {

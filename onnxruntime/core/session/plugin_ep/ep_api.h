@@ -151,5 +151,4 @@ ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* 
                     _Out_ int64_t* out);
 ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
                     _Outptr_result_maybenull_ const char** out);
-ORT_API(int64_t, GetProfilingClockTimeSinceEpochInNanoseconds);
 }  // namespace OrtExecutionProviderApi

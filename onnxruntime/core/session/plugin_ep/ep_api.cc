@@ -948,13 +948,6 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
   API_IMPL_END
 }
 
-ORT_API(int64_t, GetProfilingClockTimeSinceEpochInNanoseconds) {
-  // This entire expression is "noexcept(true)"
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::high_resolution_clock::now().time_since_epoch())
-      .count();
-}
-
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1027,7 +1020,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEvent_GetDurationUs,
     &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
-    &OrtExecutionProviderApi::GetProfilingClockTimeSinceEpochInNanoseconds,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1037,7 +1029,7 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
-static_assert(offsetof(OrtEpApi, GetProfilingClockTimeSinceEpochInNanoseconds) / sizeof(void*) == 58,
+static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 57,
               "Size of version 25 API cannot change");
 }  // namespace OrtExecutionProviderApi
 

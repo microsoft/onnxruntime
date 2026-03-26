@@ -113,12 +113,6 @@ void EpEventManager::ConsumeEvents(uint64_t profiler_id, std::vector<Event>& eve
 // ExampleKernelEpProfiler
 //
 
-static int64_t GetEpClockTimeSinceEpochInNanoseconds() noexcept {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::high_resolution_clock::now().time_since_epoch())
-      .count();
-}
-
 ExampleKernelEpProfiler::ExampleKernelEpProfiler(const OrtEpApi& api) : OrtEpProfilerImpl{}, ep_api(api) {
   ort_version_supported = ORT_API_VERSION;
   Release = ReleaseImpl;
@@ -129,30 +123,6 @@ ExampleKernelEpProfiler::ExampleKernelEpProfiler(const OrtEpApi& api) : OrtEpPro
 
   auto& ep_event_manager = EpEventManager::GetInstance();
   profiler_id = ep_event_manager.RegisterProfiler();
-
-  // Estimate the epoch offset between the ORT and EP profiling clocks to allow converting
-  // EP timestamps to ORT timestamps. This example EP happens to use the same clock as ORT, so the offset
-  // should ideally be close to zero (and is not really required for this example EP but we show here as an example).
-  // Note: based on the computation in GPUTracerManager() in include/onnxruntime/core/common/gpu_profiler_common.h.
-  constexpr size_t NUM_EPOCH_OFFSET_MEASUREMENTS = 3;
-  int64_t abs_epoch_offset_min = std::numeric_limits<int64_t>::max();
-
-  for (size_t i = 0; i < NUM_EPOCH_OFFSET_MEASUREMENTS; i++) {
-    // Each iteration of the loop gets approximately the same time point with both clocks and computes their offset.
-    // We take the offset with the smallest absolute value.
-    int64_t ort_ts1 = api.GetProfilingClockTimeSinceEpochInNanoseconds();
-    int64_t ep_ts = GetEpClockTimeSinceEpochInNanoseconds();
-    int64_t ort_ts2 = api.GetProfilingClockTimeSinceEpochInNanoseconds();
-
-    int64_t ort_avg_ts = ort_ts1 + (ort_ts2 - ort_ts1) / 2;
-    int64_t epoch_offset = ort_avg_ts - ep_ts;
-    int64_t abs_epoch_offset = std::abs(epoch_offset);
-
-    if (abs_epoch_offset < abs_epoch_offset_min) {
-      ep_ort_epoch_offset_ = epoch_offset;
-      abs_epoch_offset_min = abs_epoch_offset;
-    }
-  }
 }
 
 ExampleKernelEpProfiler::~ExampleKernelEpProfiler() {
@@ -166,10 +136,16 @@ void ORT_API_CALL ExampleKernelEpProfiler::ReleaseImpl(OrtEpProfilerImpl* this_p
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StartProfilingImpl(OrtEpProfilerImpl* /*this_ptr*/,
-                                                                    int64_t /*profiling_start_time_ns*/,
+OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
+                                                                    int64_t ep_profiling_start_offset_ns,
                                                                     bool* success_out) noexcept {
-  // A more complex EP profiler could do some initialization for profiling utilities (e.g., CPUTI) here.
+  auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
+
+  // Store the offset from ORT's profiling start (measured with ORT's clock) and capture the EP's own clock.
+  // This allows computing ORT-relative timestamps without depending on matching clock epochs.
+  self->ep_profiling_start_offset_ns_ = ep_profiling_start_offset_ns;
+  self->ep_profiling_start_time_point_ = std::chrono::high_resolution_clock::now();
+
   *success_out = true;
   return nullptr;
 }
@@ -206,7 +182,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StopEventImpl(OrtEpProfilerImpl
 /*static*/
 OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
     OrtEpProfilerImpl* this_ptr,
-    int64_t profiling_start_time_ns,
+    int64_t /*ep_profiling_end_offset_ns*/,
     OrtProfilingEventsContainer* c_events_container) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
@@ -223,20 +199,19 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
   events.reserve(raw_ep_events.size());
 
   for (EpEventManager::Event& raw_ep_event : raw_ep_events) {
-    // First, get the EP event's start time and duration using EP's clock:
-    int64_t ts_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        raw_ep_event.start_time.time_since_epoch())
-                        .count();
-    int64_t dur_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    // ORT requires event timestamps (in microseconds) relative to ORT's profiling start time.
+    // We compute this without depending on matching clock epochs by combining:
+    //   1. ep_profiling_start_offset_ns_: elapsed time (ORT clock) from ORT's profiling start to StartProfiling call.
+    //   2. ep_elapsed_ns: elapsed time (EP clock) from our StartProfiling capture to this event.
+    // Their sum is the event's offset from ORT's profiling start.
+    int64_t ep_elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                raw_ep_event.start_time - self->ep_profiling_start_time_point_)
+                                .count();
+    int64_t rel_ts_us = (self->ep_profiling_start_offset_ns_ + ep_elapsed_ns) / 1000;
+
+    int64_t dur_us = std::chrono::duration_cast<std::chrono::microseconds>(
                          raw_ep_event.end_time - raw_ep_event.start_time)
                          .count();
-
-    // ORT requires event start times (in microseconds) that are relative to ORT's profiling start time.
-    // Because an EP may not use a clock with the same epoch as ORT's clock, we add a computed offset to EP timestamps
-    // that transforms them to timestamps relative to ORT's profiling clock epoch. This is an approximation.
-    int64_t norm_ts_ns = ts_ns + self->ep_ort_epoch_offset_;            // absolute time from ORT's epoch
-    int64_t rel_ts_us = (norm_ts_ns - profiling_start_time_ns) / 1000;  // time relative to ORT's profiling start
-    int64_t dur_us = dur_ns / 1000;
 
     // Set parent_name an event arg. The parent_name is just the name of the correlated ORT event.
     std::unordered_map<std::string, std::string> args = {{"parent_name", raw_ep_event.ort_event_name.c_str()}};
