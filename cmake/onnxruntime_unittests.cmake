@@ -818,6 +818,11 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
 
+if (NOT (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN))
+  list(REMOVE_ITEM onnxruntime_test_framework_src
+    "${TEST_SRC_DIR}/framework/dynamic_plugin_ep_test.cc")
+endif()
+
 #This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common).
 #Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same
 #process and you won't know which one you are testing.

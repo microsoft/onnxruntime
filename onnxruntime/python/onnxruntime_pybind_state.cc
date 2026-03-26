@@ -604,7 +604,28 @@ static const OrtEpDevice* FindRegisteredPluginEpDevice(
 
     if (has_requested_device_id) {
       Ort::ConstEpDevice current_device(ep_device);
-      if (static_cast<int>(current_device.Device().DeviceId()) != requested_device_id) {
+      std::optional<int> current_device_id{};
+      if (const char* device_id = current_device.EpOptions().GetValue("device_id"); device_id != nullptr) {
+        try {
+          current_device_id = std::stoi(device_id);
+        } catch (const std::exception&) {
+        }
+      }
+
+      if (!current_device_id.has_value()) {
+        if (const char* device_id = current_device.EpMetadata().GetValue("cuda_device_id"); device_id != nullptr) {
+          try {
+            current_device_id = std::stoi(device_id);
+          } catch (const std::exception&) {
+          }
+        }
+      }
+
+      if (!current_device_id.has_value()) {
+        current_device_id = static_cast<int>(current_device.Device().DeviceId());
+      }
+
+      if (*current_device_id != requested_device_id) {
         continue;
       }
     }

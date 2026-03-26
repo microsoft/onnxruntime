@@ -4,6 +4,13 @@
 #include "cuda_ep_factory.h"
 #include "cuda_ep.h"
 #include "cuda_plugin_kernels.h"
+#include "core/session/abi_session_options_impl.h"
+
+#include <algorithm>
+#include <cctype>
+#include <optional>
+#include <string_view>
+#include <format>
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -100,6 +107,17 @@ const char* ORT_API_CALL CudaEpFactory::GetVersionImpl(const OrtEpFactory* this_
   return static_cast<const CudaEpFactory*>(this_ptr)->ep_version_.c_str();
 }
 
+namespace {
+
+std::string ToUpper(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::toupper(c));
+  });
+  return value;
+}
+
+}  // namespace
+
 /*static*/
 OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
     OrtEpFactory* this_ptr,
@@ -137,7 +155,11 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       }
 
       OrtKeyValuePairs* ep_metadata = nullptr;
+      OrtKeyValuePairs* ep_options = nullptr;
       factory->ort_api_.CreateKeyValuePairs(&ep_metadata);
+      factory->ort_api_.CreateKeyValuePairs(&ep_options);
+      factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_id", std::to_string(current_device_id).c_str());
+      factory->ort_api_.AddKeyValuePair(ep_options, "device_id", std::to_string(current_device_id).c_str());
 
       // Get CUDA device properties for metadata
       int cuda_device_count = 0;
@@ -153,9 +175,10 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       }
 
       OrtEpDevice* ep_device = nullptr;
-      auto* status = factory->ep_api_.CreateEpDevice(factory, &device, ep_metadata, nullptr,
+      auto* status = factory->ep_api_.CreateEpDevice(factory, &device, ep_metadata, ep_options,
                                                      &ep_device);
       factory->ort_api_.ReleaseKeyValuePairs(ep_metadata);
+      factory->ort_api_.ReleaseKeyValuePairs(ep_options);
 
       if (status != nullptr) {
         return status;
@@ -230,67 +253,128 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     }
   }
 
-  auto read_session_config_bool = [&](const char* key, bool& value) {
+  auto try_get_session_config = [&](std::string_view key) -> std::optional<std::string> {
+    if (session_options == nullptr) {
+      return std::nullopt;
+    }
+
     size_t size = 0;
-    OrtStatus* status = factory->ort_api_.GetSessionConfigEntry(session_options, key, nullptr, &size);
+    OrtStatus* status = factory->ort_api_.GetSessionConfigEntry(session_options, key.data(), nullptr, &size);
     if (status != nullptr) {
       Ort::Status s(status);
-      return;
+      return std::nullopt;
     }
-    if (size == 0) return;
+    if (size == 0) {
+      return std::nullopt;
+    }
     std::vector<char> buf(size);
-    status = factory->ort_api_.GetSessionConfigEntry(session_options, key, buf.data(), &size);
+    status = factory->ort_api_.GetSessionConfigEntry(session_options, key.data(), buf.data(), &size);
     if (status != nullptr) {
       Ort::Status s(status);
-      return;
+      return std::nullopt;
     }
-    const std::string val(buf.data());
-    value = (val == "1" || val == "true");
+    return std::string(buf.data());
   };
 
-  auto read_session_config_int = [&](const char* key, int& value) {
-    size_t size = 0;
-    OrtStatus* status = factory->ort_api_.GetSessionConfigEntry(session_options, key, nullptr, &size);
-    if (status != nullptr) {
-      Ort::Status s(status);
+  auto log_invalid_session_config = [&](std::string_view key, std::string_view expected) {
+    if (logger == nullptr) {
       return;
     }
-    if (size == 0) return;
-    std::vector<char> buf(size);
-    status = factory->ort_api_.GetSessionConfigEntry(session_options, key, buf.data(), &size);
-    if (status != nullptr) {
-      Ort::Status s(status);
-      return;
+
+    const std::string msg = std::format(
+        "Failed to parse session config for key '{}'. Expected {}. Using default value.",
+        key, expected);
+
+    OrtStatus* st = factory->ort_api_.Logger_LogMessage(
+        logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), "cuda_ep_factory.cc", __LINE__, "CudaEpFactory");
+    if (st != nullptr) {
+      factory->ort_api_.ReleaseStatus(st);
     }
-    try {
-      value = std::stoi(buf.data());
-    } catch (...) {
-      if (logger) {
-        std::string msg = std::string("Failed to parse session config for key: ") + key + ". Using default value.";
-        OrtStatus* st = factory->ort_api_.Logger_LogMessage(logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), "cuda_ep_factory.cc", __LINE__, "CudaEpFactory");
-        if (st) {
-          factory->ort_api_.ReleaseStatus(st);
-        }
+  };
+
+  auto read_session_config_bool = [&](std::initializer_list<std::string_view> keys, bool& value) {
+    for (const auto& key : keys) {
+      auto raw_value = try_get_session_config(key);
+      if (!raw_value.has_value()) {
+        continue;
       }
+
+      const auto normalized = ToUpper(*raw_value);
+      if (normalized == "1" || normalized == "TRUE") {
+        value = true;
+        return;
+      }
+      if (normalized == "0" || normalized == "FALSE") {
+        value = false;
+        return;
+      }
+
+      log_invalid_session_config(key, "a boolean");
+      return;
     }
   };
 
-  // Read from flat keys first, then from ep.cuda.* prefixed keys.
-  // The second pass intentionally overwrites the first so that
-  // ep.cuda.* takes precedence over unprefixed keys.
-  read_session_config_bool("prefer_nhwc", config.prefer_nhwc);
-  read_session_config_bool("use_tf32", config.use_tf32);
-  read_session_config_bool("enable_skip_layer_norm_strict_mode", config.enable_skip_layer_norm_strict_mode);
-  read_session_config_bool("cudnn_conv_use_max_workspace", config.cudnn_conv_use_max_workspace);
-  read_session_config_bool("cudnn_conv1d_pad_to_nc1d", config.cudnn_conv1d_pad_to_nc1d);
-  read_session_config_int("cudnn_conv_algo", config.cudnn_conv_algo);
+  auto read_cudnn_conv_algo = [&](std::initializer_list<std::string_view> keys, int& value) {
+    for (const auto& key : keys) {
+      auto raw_value = try_get_session_config(key);
+      if (!raw_value.has_value()) {
+        continue;
+      }
 
-  read_session_config_bool("ep.cuda.prefer_nhwc_layout", config.prefer_nhwc);
-  read_session_config_bool("ep.cuda.use_tf32", config.use_tf32);
-  read_session_config_bool("ep.cuda.enable_skip_layer_norm_strict_mode", config.enable_skip_layer_norm_strict_mode);
-  read_session_config_bool("ep.cuda.cudnn_conv_use_max_workspace", config.cudnn_conv_use_max_workspace);
-  read_session_config_bool("ep.cuda.cudnn_conv1d_pad_to_nc1d", config.cudnn_conv1d_pad_to_nc1d);
-  read_session_config_int("ep.cuda.cudnn_conv_algo", config.cudnn_conv_algo);
+      try {
+        value = std::stoi(*raw_value);
+        return;
+      } catch (const std::exception&) {
+      }
+
+      const auto normalized = ToUpper(*raw_value);
+      if (normalized == "EXHAUSTIVE") {
+        value = 0;
+        return;
+      }
+      if (normalized == "HEURISTIC") {
+        value = 1;
+        return;
+      }
+      if (normalized == "DEFAULT") {
+        value = 2;
+        return;
+      }
+
+      log_invalid_session_config(key, "an integer or one of EXHAUSTIVE/HEURISTIC/DEFAULT");
+      return;
+    }
+  };
+
+  const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(factory->GetEpName().c_str());
+  const std::string prefer_nhwc_key = ep_options_prefix + "prefer_nhwc";
+  const std::string prefer_nhwc_layout_key = ep_options_prefix + "prefer_nhwc_layout";
+  const std::string use_tf32_key = ep_options_prefix + "use_tf32";
+  const std::string skip_layer_norm_key = ep_options_prefix + "enable_skip_layer_norm_strict_mode";
+  const std::string cudnn_use_max_workspace_key = ep_options_prefix + "cudnn_conv_use_max_workspace";
+  const std::string cudnn_conv1d_pad_key = ep_options_prefix + "cudnn_conv1d_pad_to_nc1d";
+  const std::string cudnn_conv_algo_key = ep_options_prefix + "cudnn_conv_algo";
+  const std::string cudnn_conv_algo_search_key = ep_options_prefix + "cudnn_conv_algo_search";
+
+  // Prefer plugin-provider-option keys, then fall back to the legacy ep.cuda.*
+  // aliases and finally to the historical flat session config names.
+  read_session_config_bool(
+      {prefer_nhwc_key, prefer_nhwc_layout_key, "ep.cuda.prefer_nhwc_layout", "prefer_nhwc", "prefer_nhwc_layout"},
+      config.prefer_nhwc);
+  read_session_config_bool({use_tf32_key, "ep.cuda.use_tf32", "use_tf32"}, config.use_tf32);
+  read_session_config_bool(
+      {skip_layer_norm_key, "ep.cuda.enable_skip_layer_norm_strict_mode", "enable_skip_layer_norm_strict_mode"},
+      config.enable_skip_layer_norm_strict_mode);
+  read_session_config_bool(
+      {cudnn_use_max_workspace_key, "ep.cuda.cudnn_conv_use_max_workspace", "cudnn_conv_use_max_workspace"},
+      config.cudnn_conv_use_max_workspace);
+  read_session_config_bool(
+      {cudnn_conv1d_pad_key, "ep.cuda.cudnn_conv1d_pad_to_nc1d", "cudnn_conv1d_pad_to_nc1d"},
+      config.cudnn_conv1d_pad_to_nc1d);
+  read_cudnn_conv_algo(
+      {cudnn_conv_algo_search_key, cudnn_conv_algo_key, "ep.cuda.cudnn_conv_algo_search", "ep.cuda.cudnn_conv_algo",
+       "cudnn_conv_algo_search", "cudnn_conv_algo"},
+      config.cudnn_conv_algo);
 
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
