@@ -58,6 +58,7 @@ jobs:
             "--build_dir `"$buildDir`""
             '--skip_submodule_sync'
             '--parallel'
+            '--use_cache'
             '--use_vcpkg'
             '--use_vcpkg_ms_internal_asset_cache'
             '--cmake_generator "Visual Studio 17 2022"'
