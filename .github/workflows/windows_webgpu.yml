@@ -108,29 +108,31 @@ jobs:
 
       - name: Build and Test
         shell: pwsh
+        env:
+          wgsl_template: ${{ matrix.wgsl_template }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
-            --config RelWithDebInfo `
-            --build_dir ${{ github.workspace }} `
-            --skip_submodule_sync `
+          python.exe "${env:GITHUB_WORKSPACE}\tools\ci_build\build.py" `
             --build_csharp `
-            --parallel `
-            --use_binskim_compliant_compile_flags `
-            --cmake_generator "Visual Studio 17 2022" `
-            --build_shared_lib `
-            --enable_onnx_tests `
-            --build_nodejs `
+            --build_dir "${env:GITHUB_WORKSPACE}" `
             --build_java `
+            --build_nodejs `
+            --build_shared_lib `
+            --cmake_extra_defines onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --enable_onnx_tests `
+            --parallel `
+            --skip_submodule_sync `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
             --use_webgpu `
-            --wgsl_template ${{ matrix.wgsl_template }} `
-            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
-            --cmake_extra_defines `
-            onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
+            --wgsl_template "${env:wgsl_template}" `
+            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+          Remove-Item "${env:GITHUB_WORKSPACE}\RelWithDebInfo" -Include "*.obj" -Recurse
 
       - name: Run tests (onnxruntime_test_all, onnxruntime_provider_test) with verbose logging
         shell: pwsh
@@ -214,7 +216,7 @@ jobs:
             --skip_submodule_sync `
             --parallel `
             --use_binskim_compliant_compile_flags `
-            --cmake_generator "Visual Studio 17 2022" `
+            --cmake_generator "Ninja" `
             --enable_onnx_tests `
             --use_webgpu shared_lib `
             --wgsl_template static `
@@ -268,15 +270,37 @@ jobs:
         shell: cmd
         working-directory: ${{ github.workspace }}
 
-      - name: Generate onnxruntime.sln
+      - name: Generate build files
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build_dir ${env:GITHUB_WORKSPACE} `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --parallel `
+            --skip_submodule_sync `
+            --skip_tests `
+            --target onnxruntime_webgpu_external_dawn_test `
+            --update `
+            --use_cache `
+            --use_external_dawn `
+            --use_webgpu
 
       - name: Build
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build `
+            --build_dir ${env:GITHUB_WORKSPACE} `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --parallel `
+            --skip_submodule_sync `
+            --skip_tests `
+            --target onnxruntime_webgpu_external_dawn_test `
+            --use_cache `
+            --use_external_dawn `
+            --use_webgpu
 
       - name: Run tests (onnxruntime_webgpu_external_dawn_test)
         run: onnxruntime_webgpu_external_dawn_test.exe
@@ -369,11 +393,32 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --build_shared_lib --disable_exceptions --disable_rtti --enable_msvc_static_runtime --enable_reduced_operator_type_support --skip_tests --use_binskim_compliant_compile_flags --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_DISABLE_SPARSE_TENSORS=ON onnxruntime_DISABLE_OPTIONAL_TYPE=ON --minimal_build extended --use_webgpu
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build `
+            --build_csharp `
+            --build_dir ${env:GITHUB_WORKSPACE} `
+            --build_shared_lib `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF `
+            --cmake_extra_defines onnxruntime_DISABLE_OPTIONAL_TYPE=ON `
+            --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --disable_exceptions `
+            --disable_rtti `
+            --enable_msvc_static_runtime `
+            --enable_reduced_operator_type_support `
+            --minimal_build extended `
+            --parallel `
+            --skip_submodule_sync `
+            --skip_tests `
+            --update `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
+            --use_webgpu
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+          Remove-Item "${env:GITHUB_WORKSPACE}\RelWithDebInfo" -Include "*.obj" -Recurse
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
