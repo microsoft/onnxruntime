@@ -1,7 +1,5 @@
 import argparse
-import concurrent.futures
 import logging
-import os
 import pathlib
 import threading
 
@@ -143,6 +141,8 @@ def annotate_graph(graph, substring_annotations, parallel=False):
         )
 
     process_nodes(graph.node, substring_annotations)
+
+
 def annotate_model(model, substring_annotations):
     """
     Annotates an ONNX model with metadata based on a provided mapping.
