@@ -4,11 +4,13 @@
 import os
 import sys
 import tempfile
+import unittest
 
 import numpy as np
 import onnx
 import torch
 import torch.nn.functional as F
+from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, _get_default_cuda_plugin_ep_path
 from onnx import TensorProto, helper, save
 
 import onnxruntime as onnxrt
@@ -19,6 +21,41 @@ try:
     faulthandler.enable()
 except ImportError:
     pass
+
+os.environ.setdefault("ORT_TEST_GQA_USE_CUDA_PLUGIN_EP", "1")
+
+_plugin_registration_attempted = False
+_plugin_registration_succeeded = False
+
+
+def require_cuda_plugin_ep():
+    global _plugin_registration_attempted, _plugin_registration_succeeded
+
+    if _plugin_registration_attempted:
+        if not _plugin_registration_succeeded:
+            raise unittest.SkipTest("CUDA plugin EP is not built or could not be registered")
+        return
+
+    _plugin_registration_attempted = True
+
+    ep_lib_path = os.environ.get("ORT_CUDA_PLUGIN_PATH", "")
+    if not ep_lib_path:
+        detected_path = _get_default_cuda_plugin_ep_path()
+        ep_lib_path = detected_path if detected_path else ""
+
+    if not ep_lib_path or not os.path.exists(ep_lib_path):
+        raise unittest.SkipTest("CUDA plugin EP is not built or could not be registered")
+
+    try:
+        onnxrt.register_execution_provider_library(CUDA_PLUGIN_EP_NAME, ep_lib_path)
+        _plugin_registration_succeeded = True
+    except Exception:
+        providers = {device.ep_name for device in onnxrt.get_ep_devices()}
+        if CUDA_PLUGIN_EP_NAME in providers:
+            _plugin_registration_succeeded = True
+
+    if not _plugin_registration_succeeded:
+        raise unittest.SkipTest("CUDA plugin EP is not built or could not be registered")
 
 
 def create_add_model(model_path):
@@ -174,7 +211,7 @@ def create_avgpool_model(model_path):
     save(model_def, model_path)
 
 
-def test_operator(
+def run_operator_test(
     target_device, model_creator, inputs, expected_fn, ep_name="CudaPluginExecutionProvider", session_config=None
 ):
     tmp = tempfile.NamedTemporaryFile(suffix=".onnx", delete=False)
@@ -206,31 +243,51 @@ def test_operator(
             os.remove(model_path)
 
 
-def test_cuda_plugin_registration():
-    ep_lib_path = os.environ.get("ORT_CUDA_PLUGIN_PATH")
-    if not ep_lib_path:
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-        ep_lib_path = os.path.join(base_dir, "build", "cuda", "Release", "libonnxruntime_providers_cuda_plugin.so")
-
-    if not os.path.exists(ep_lib_path):
-        print(f"Error: Plugin library not found at: {ep_lib_path}")
-        sys.exit(1)
-
-    ep_name = "CudaPluginExecutionProvider"
-    print(f"Attempting to register plugin from: {ep_lib_path}", flush=True)
-
+def run_provider_options_test(provider_options, expect_plugin_provider=True):
+    require_cuda_plugin_ep()
+    tmp = tempfile.NamedTemporaryFile(suffix=".onnx", delete=False)
+    model_path = tmp.name
+    tmp.close()
     try:
-        onnxrt.register_execution_provider_library(ep_name, ep_lib_path)
-        print("Registration successful", flush=True)
+        create_add_model(model_path)
+        providers = [("CudaPluginExecutionProvider", provider_options), "CPUExecutionProvider"]
+        sess = onnxrt.InferenceSession(model_path, providers=providers)
+        active_providers = sess.get_providers()
+
+        if expect_plugin_provider and "CudaPluginExecutionProvider" not in active_providers:
+            print(f"FAILURE: CudaPluginExecutionProvider is NOT active. Providers: {active_providers}")
+            return False
+        if not expect_plugin_provider and "CudaPluginExecutionProvider" in active_providers:
+            print(f"FAILURE: CudaPluginExecutionProvider unexpectedly active. Providers: {active_providers}")
+            return False
+
+        a = np.random.rand(3, 2).astype(np.float32)
+        b = np.random.rand(3, 2).astype(np.float32)
+        res = sess.run(None, {"A": a, "B": b})
+        np.testing.assert_allclose(res[0], a + b, rtol=1e-3, atol=1e-3)
+        return True
     except Exception as e:
-        print(f"Registration failed: {e}", flush=True)
-        return
+        if expect_plugin_provider:
+            print(f"FAIL ({e})")
+            return False
+
+        print(f"Expected failure for provider options {provider_options}: {e}")
+        return True
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+
+
+def test_cuda_plugin_registration():
+    require_cuda_plugin_ep()
+
+    ep_name = CUDA_PLUGIN_EP_NAME
+    print(f"Using registered plugin: {ep_name}", flush=True)
 
     devices = onnxrt.get_ep_devices()
     plugin_devices = [d for d in devices if d.ep_name == ep_name]
     if not plugin_devices:
-        print("Error: No plugin devices found!", flush=True)
-        sys.exit(1)
+        raise unittest.SkipTest("CUDA plugin EP registered, but no plugin devices were enumerated")
 
     target_device = plugin_devices[0]
     print(f"Using device: {target_device.ep_name}", flush=True)
@@ -239,7 +296,7 @@ def test_cuda_plugin_registration():
     print("Testing Add...", end=" ", flush=True)
     a = np.random.rand(3, 2).astype(np.float32)
     b = np.random.rand(3, 2).astype(np.float32)
-    if test_operator(target_device, create_add_model, {"A": a, "B": b}, lambda x: x["A"] + x["B"]):
+    if run_operator_test(target_device, create_add_model, {"A": a, "B": b}, lambda x: x["A"] + x["B"]):
         print("PASS")
     else:
         print("FAIL")
@@ -249,7 +306,7 @@ def test_cuda_plugin_registration():
     print("Testing MatMul...", end=" ", flush=True)
     a = np.random.rand(3, 4).astype(np.float32)
     b = np.random.rand(4, 5).astype(np.float32)
-    if test_operator(target_device, create_matmul_model, {"A": a, "B": b}, lambda x: x["A"] @ x["B"]):
+    if run_operator_test(target_device, create_matmul_model, {"A": a, "B": b}, lambda x: x["A"] @ x["B"]):
         print("PASS")
     else:
         print("FAIL")
@@ -261,7 +318,7 @@ def test_cuda_plugin_registration():
     a = np.random.rand(3, 4).astype(np.float32)
     b = np.random.rand(4, 5).astype(np.float32)
     c = np.random.rand(5).astype(np.float32)
-    if test_operator(
+    if run_operator_test(
         target_device,
         lambda p: create_gemm_model(p, alpha=alpha, beta=beta),
         {"A": a, "B": b, "C": c},
@@ -281,7 +338,7 @@ def test_cuda_plugin_registration():
     def expected_conv(inputs):
         return F.conv2d(torch.from_numpy(inputs["X"]), torch.from_numpy(inputs["W"]), padding=1).numpy()
 
-    if test_operator(target_device, create_conv_model, {"X": x, "W": w}, expected_conv):
+    if run_operator_test(target_device, create_conv_model, {"X": x, "W": w}, expected_conv):
         print("PASS")
     else:
         print("FAIL")
@@ -300,7 +357,7 @@ def test_cuda_plugin_registration():
     def expected_conv_nhwc(inputs):
         return F.conv2d(torch.from_numpy(inputs["X"]), torch.from_numpy(inputs["W"]), padding=1).numpy()
 
-    if test_operator(
+    if run_operator_test(
         target_device, create_conv_model, {"X": x, "W": w}, expected_conv_nhwc, session_config=nhwc_config
     ):
         print("PASS")
@@ -317,7 +374,9 @@ def test_cuda_plugin_registration():
         # output = (input - 0) / sqrt(1 + 1e-5) * 1 + 0 ≈ input
         return inputs["X"] / np.sqrt(1.0 + 1e-5)
 
-    if test_operator(target_device, create_batch_norm_model, {"X": x}, expected_batchnorm, session_config=nhwc_config):
+    if run_operator_test(
+        target_device, create_batch_norm_model, {"X": x}, expected_batchnorm, session_config=nhwc_config
+    ):
         print("PASS")
     else:
         print("FAIL")
@@ -330,7 +389,7 @@ def test_cuda_plugin_registration():
     def expected_maxpool(inputs):
         return F.max_pool2d(torch.from_numpy(inputs["X"]), kernel_size=2, stride=2).numpy()
 
-    if test_operator(target_device, create_maxpool_model, {"X": x}, expected_maxpool, session_config=nhwc_config):
+    if run_operator_test(target_device, create_maxpool_model, {"X": x}, expected_maxpool, session_config=nhwc_config):
         print("PASS")
     else:
         print("FAIL")
@@ -343,13 +402,28 @@ def test_cuda_plugin_registration():
     def expected_avgpool(inputs):
         return F.avg_pool2d(torch.from_numpy(inputs["X"]), kernel_size=2, stride=2).numpy()
 
-    if test_operator(target_device, create_avgpool_model, {"X": x}, expected_avgpool, session_config=nhwc_config):
+    if run_operator_test(target_device, create_avgpool_model, {"X": x}, expected_avgpool, session_config=nhwc_config):
         print("PASS")
     else:
         print("FAIL")
         sys.exit(1)
 
     print("\nAll Stage 3 NHWC tests finished successfully.", flush=True)
+
+    print("\nTesting provider options path...", flush=True)
+    print("Testing provider options with valid device_id/use_tf32...", end=" ", flush=True)
+    if run_provider_options_test({"device_id": "0", "use_tf32": "0"}):
+        print("PASS")
+    else:
+        print("FAIL")
+        sys.exit(1)
+
+    print("Testing provider options with invalid device_id...", end=" ", flush=True)
+    if run_provider_options_test({"device_id": "999"}, expect_plugin_provider=False):
+        print("PASS")
+    else:
+        print("FAIL")
+        sys.exit(1)
 
 
 def _make_simple_model(op_type, inputs_info, outputs_info, attrs=None, opset=13, domain=""):
@@ -417,13 +491,14 @@ def _run_model_test(
 
 def test_cuda_plugin_stage5_ops():
     """Stage 5: Test all ops enabled during Stage 5 (5A through 5D)."""
-    ep_name = "CudaPluginExecutionProvider"
+    require_cuda_plugin_ep()
+
+    ep_name = CUDA_PLUGIN_EP_NAME
 
     devices = onnxrt.get_ep_devices()
     plugin_devices = [d for d in devices if d.ep_name == ep_name]
     if not plugin_devices:
-        print("Error: No plugin devices found! Run test_cuda_plugin_registration first.", flush=True)
-        sys.exit(1)
+        raise unittest.SkipTest("CUDA plugin EP registered, but no plugin devices were enumerated")
 
     target_device = plugin_devices[0]
     passed = 0
@@ -770,5 +845,8 @@ def test_cuda_plugin_stage5_ops():
 
 
 if __name__ == "__main__":
-    test_cuda_plugin_registration()
-    test_cuda_plugin_stage5_ops()
+    try:
+        test_cuda_plugin_registration()
+        test_cuda_plugin_stage5_ops()
+    except unittest.SkipTest as exc:
+        print(f"SKIP: {exc}", flush=True)
