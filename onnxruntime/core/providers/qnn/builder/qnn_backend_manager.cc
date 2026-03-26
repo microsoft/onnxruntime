@@ -1351,8 +1351,9 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   void* bin_buffer = nullptr;
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  bool use_file_mapping = file_mapped_weights_enabled_;
   // A nonzero buffer length implies an embedded context
-  if (file_mapped_weights_enabled_ && buffer_length == 0) {
+  if (use_file_mapping && buffer_length == 0) {
     ORT_RETURN_IF(!file_mapper_, "Attemping to use File Mapping feature but file_mapper_ is uninitialized");
 
     ORT_RETURN_IF_ERROR(GetFileSizeIfValid(context_bin_filepath, buffer_length));
@@ -1361,6 +1362,11 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappedMemoryPtr(context_bin_filepath, &bin_buffer));
 
   } else {
+    if (use_file_mapping) {
+      use_file_mapping = false;
+      LOGS(*logger_, WARNING) << "Node " << node_name << " is using an embedded cache."
+                              << "Disabling file mappping for this node.";
+    }
     ORT_RETURN_IF(buffer == nullptr, "Attempting to load QNN context from buffer but buffer is null");
     bin_buffer = static_cast<void*>(buffer);
   }
@@ -1385,27 +1391,51 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   // Binary info to graph info
   // retrieve Qnn graph info from binary info
   ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary info is nullptr.");
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  Qnn_Version_t blob_version;
+#endif
+
   uint32_t graph_count = 0;
   QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
   if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
     graph_count = binary_info->contextBinaryInfoV1.numGraphs;
     graphs_info = binary_info->contextBinaryInfoV1.graphs;
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+    blob_version = binary_info->contextBinaryInfoV1.contextBlobVersion;
+#endif
   }
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 15)  // starts from 2.22
   else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
     graph_count = binary_info->contextBinaryInfoV2.numGraphs;
     graphs_info = binary_info->contextBinaryInfoV2.graphs;
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+    blob_version = binary_info->contextBinaryInfoV2.contextBlobVersion;
+#endif
   }
 #endif
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // starts from 2.28
   else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3) {
     graph_count = binary_info->contextBinaryInfoV3.numGraphs;
     graphs_info = binary_info->contextBinaryInfoV3.graphs;
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+    blob_version = binary_info->contextBinaryInfoV3.contextBlobVersion;
+#endif
   }
 #endif
   else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context binary info version.");
   }
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  // Cannot use contextCreateFromBinaryWithCallback() unless context bin version is >= 3.3.3
+  if (use_file_mapping && (blob_version.major < 3 || blob_version.minor < 3 || blob_version.patch < 3)) {
+    std::string version_str(std::to_string(blob_version.major) + "." + std::to_string(blob_version.minor) + "." + std::to_string(blob_version.patch));
+    LOGS(*logger_, WARNING) << "Context binary of " << node_name << " is " + version_str
+                            << "File mapping is only supported for versions >= 3.3.3. Disabling file mapping for this node.";
+    use_file_mapping = false;
+  }
+#endif
 
   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
   LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
@@ -1452,7 +1482,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
     Qnn_ContextBinaryCallback_t callbacks;
-    if (file_mapped_weights_enabled_ && file_mapper_) {
+    if (use_file_mapping && file_mapper_) {
       ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinaryWithCallback,
                     "Invalid function pointer for contextCreateFromBinaryWithCallback.");
 
@@ -1479,7 +1509,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
     std::vector<char> backup_buffer;
-    if (file_mapped_weights_enabled_ && file_mapper_) {
+    if (use_file_mapping && file_mapper_) {
       rt = qnn_interface_.contextCreateFromBinaryWithCallback(backend_handle_,
                                                               device_handle_,
                                                               context_configs,
@@ -1501,9 +1531,10 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
         bin_buffer = static_cast<void*>(backup_buffer.data());
       }
     }
-#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
-    if (!file_mapped_weights_enabled_ || rt != QNN_SUCCESS) {
+    if (!use_file_mapping || rt != QNN_SUCCESS)
+#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+    {
       rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                                   device_handle_,
                                                   context_configs,
