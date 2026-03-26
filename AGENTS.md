@@ -105,7 +105,7 @@ Functions that can fail return `onnxruntime::common::Status`. Use these macros f
 - `ORT_ENFORCE(condition, ...)` — assert-like; throws `OnnxRuntimeException` on failure
 - `ORT_MAKE_STATUS(category, code, ...)` — construct a Status object
 
-Exceptions may be disabled in a build, in which case, the throwing macros will terminate instead.
+Exceptions may be disabled in a build, in which case, the throwing macros will call `abort()` instead.
 
 In the C API boundary, use `API_IMPL_BEGIN` / `API_IMPL_END` to catch exceptions—C++ exceptions must never cross the C API boundary.
 
