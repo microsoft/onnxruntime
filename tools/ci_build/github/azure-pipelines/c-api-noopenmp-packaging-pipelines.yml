@@ -50,13 +50,6 @@ parameters:
   type: string
   default: '--use_azure'
 
-# Do not update this to a version that does not exist for the qnn-runtime Maven package:
-# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
-- name: QnnSdk
-  displayName: QNN SDK Version
-  type: string
-  default: 2.42.0.251225
-
 - name: CudaVersion
   displayName: CUDA version
   type: string
@@ -155,7 +148,6 @@ extends:
         AdditionalBuildFlags: ''
         AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
         BuildVariant: 'default'
-        QnnSDKVersion: ${{ parameters.QnnSdk }}
         is1ES: true
 
     - template: stages/java-cuda-packaging-stage.yml
