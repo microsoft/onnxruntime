@@ -56,13 +56,14 @@ class TestDedupAccountant : public IResourceAccountant {
         if (committed_weights_.count(name) > 0) {
           continue;
         }
-        if (IsInPendingWeights(name)) {
+        if (pending_weights_.count(name) > 0) {
           continue;
         }
         auto it = weight_sizes_.find(name);
         if (it != weight_sizes_.end()) {
           total += it->second;
         }
+        pending_weights_.insert(name);
         pending_weights_by_node_[node.Index()].insert(name);
       }
     }
@@ -70,12 +71,16 @@ class TestDedupAccountant : public IResourceAccountant {
   }
 
   void ResetPendingWeights() override {
+    pending_weights_.clear();
     pending_weights_by_node_.clear();
   }
 
   void CommitWeightsForNode(NodeIndex node_index) override {
     auto it = pending_weights_by_node_.find(node_index);
     if (it != pending_weights_by_node_.end()) {
+      for (const auto& name : it->second) {
+        pending_weights_.erase(name);
+      }
       committed_weights_.insert(it->second.begin(), it->second.end());
       pending_weights_by_node_.erase(it);
     }
@@ -88,15 +93,9 @@ class TestDedupAccountant : public IResourceAccountant {
   size_t GetConsumedSizeT() const { return consumed_; }
 
  private:
-  bool IsInPendingWeights(const std::string& name) const {
-    for (const auto& [node_idx, weights] : pending_weights_by_node_) {
-      if (weights.count(name) > 0) return true;
-    }
-    return false;
-  }
-
   size_t consumed_ = 0;
   InlinedHashSet<std::string> committed_weights_;
+  InlinedHashSet<std::string> pending_weights_;
   InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
   InlinedHashMap<std::string, size_t> weight_sizes_;
 };

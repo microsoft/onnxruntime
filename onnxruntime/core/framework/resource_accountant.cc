@@ -82,7 +82,7 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
           }
 
           // Skip if already pending from another node in this GetCapability pass
-          if (IsInPendingWeights(name)) {
+          if (pending_weights_.count(name) > 0) {
             continue;
           }
 
@@ -91,6 +91,7 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
 
           if (status.IsOK()) {
             total_size += size;
+            pending_weights_.insert(name);
             pending_weights_by_node_[node.Index()].insert(name);
           }
         }
@@ -120,32 +121,30 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
   }
 
   void ResetPendingWeights() override {
+    pending_weights_.clear();
     pending_weights_by_node_.clear();
   }
 
   void CommitWeightsForNode(NodeIndex node_index) override {
     auto it = pending_weights_by_node_.find(node_index);
     if (it != pending_weights_by_node_.end()) {
+      for (const auto& name : it->second) {
+        pending_weights_.erase(name);
+      }
       committed_weights_.insert(it->second.begin(), it->second.end());
       pending_weights_by_node_.erase(it);
     }
   }
 
  private:
-  bool IsInPendingWeights(const std::string& name) const {
-    for (const auto& [node_idx, weights] : pending_weights_by_node_) {
-      if (weights.count(name) > 0) return true;
-    }
-    return false;
-  }
-
   size_t consumed_amount_ = 0;
   std::optional<InlinedHashMap<std::string, NodeAllocationStats>> node_stats_;
   // Weights committed from previous partitioning iterations.
   // These persist across GetCapability passes.
   InlinedHashSet<std::string> committed_weights_;
-  // Weights seen during the current GetCapability pass, keyed by node index.
-  // Discarded by ResetPendingWeights() or promoted by CommitWeightsForNode().
+  // Flat set of all pending weight names for O(1) membership checks.
+  InlinedHashSet<std::string> pending_weights_;
+  // Same pending weights keyed by node index, used by CommitWeightsForNode.
   InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
 };
 
