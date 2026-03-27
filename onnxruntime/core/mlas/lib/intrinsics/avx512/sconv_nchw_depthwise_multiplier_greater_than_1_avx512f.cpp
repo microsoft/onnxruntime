@@ -154,21 +154,8 @@ Return Value:
             }
 
             const size_t output_index = oh * OutputWidth + ow;
-            const __m256 low0 = _mm512_castps512_ps256(acc0);
-            const __m256 high0 = _mm512_extractf32x8_ps(acc0, 1);
-            const __m256 sum256_0 = _mm256_add_ps(low0, high0);
-            __m128 sum128_0 = _mm_add_ps(_mm256_castps256_ps128(sum256_0), _mm256_extractf128_ps(sum256_0, 1));
-            sum128_0 = _mm_add_ps(sum128_0, _mm_movehl_ps(sum128_0, sum128_0));
-            sum128_0 = _mm_add_ss(sum128_0, _mm_shuffle_ps(sum128_0, sum128_0, 0x55));
-            float acc0_scalar = _mm_cvtss_f32(sum128_0);
-
-            const __m256 low1 = _mm512_castps512_ps256(acc1);
-            const __m256 high1 = _mm512_extractf32x8_ps(acc1, 1);
-            const __m256 sum256_1 = _mm256_add_ps(low1, high1);
-            __m128 sum128_1 = _mm_add_ps(_mm256_castps256_ps128(sum256_1), _mm256_extractf128_ps(sum256_1, 1));
-            sum128_1 = _mm_add_ps(sum128_1, _mm_movehl_ps(sum128_1, sum128_1));
-            sum128_1 = _mm_add_ss(sum128_1, _mm_shuffle_ps(sum128_1, sum128_1, 0x55));
-            float acc1_scalar = _mm_cvtss_f32(sum128_1);
+            float acc0_scalar = _mm512_reduce_add_ps(acc0);
+            float acc1_scalar = _mm512_reduce_add_ps(acc1);
 
             if (Beta != 0.0f) {
                 acc0_scalar += Output0[output_index] * Beta;
