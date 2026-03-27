@@ -127,7 +127,7 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const
     return false;
   }
 
-  // Check that the appropriate inputs to the Conv and Mul nodels are constants.
+  // Check that the appropriate inputs to the Conv and Mul nodes are constants.
   const auto& next_inputs = next_node.InputDefs();
   const bool mul_input0_is_constant = graph_utils::NodeArgIsConstant(graph, *next_inputs[0]);
   const bool mul_input1_is_constant = graph_utils::NodeArgIsConstant(graph, *next_inputs[1]);
