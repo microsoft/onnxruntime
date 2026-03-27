@@ -142,6 +142,12 @@ class Conv2dShortExecuteTest : public MlasTestFixture<Conv2dTester> {
       test_registered += RegisterSingleTest(1, 16, 1, i, i, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
       test_registered += RegisterSingleTest(1, 16, 1, i, i, 1, 3, 3, 1, 1, 1, 1, 1, 1, 2, 2);
     }
+
+    // Exact grouped 7x7 depthwise-multiplier-2 shapes (MobileClip).
+    test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+    test_registered += RegisterSingleTest(1, 128, 1, 32, 32, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+    test_registered += RegisterSingleTest(1, 256, 1, 16, 16, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+
     return test_registered;
   }
 
