@@ -779,4 +779,69 @@ TEST(PluginExecutionProviderTest, IsConcurrentRunSupported) {
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
 
+// Tests for the Ort::ConstOpSchema C++ wrapper API and Ort::GetOpSchema free function.
+// These test the C++ layer over the OrtEpApi OpSchema functions using well-known ONNX operator schemas
+// from the global ONNX schema registry.
+
+TEST(OpSchemaCxxApiTest, GetOpSchema_KnownOp_ReturnsNonNull) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 20, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+}
+
+TEST(OpSchemaCxxApiTest, GetOpSchema_UnknownOp_ReturnsNull) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("NonExistentOpXYZ_12345", 20, "");
+  ASSERT_EQ(static_cast<const OrtOpSchema*>(schema), nullptr);
+}
+
+TEST(OpSchemaCxxApiTest, GetOpSchema_VersionTooLow_ReturnsNull) {
+  // Relu was introduced in opset 1, so max_inclusive_version=0 should not find it.
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 0, "");
+  ASSERT_EQ(static_cast<const OrtOpSchema*>(schema), nullptr);
+}
+
+TEST(OpSchemaCxxApiTest, GetOpSchema_WrongDomain_ReturnsNull) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 20, "com.nonexistent.domain");
+  ASSERT_EQ(static_cast<const OrtOpSchema*>(schema), nullptr);
+}
+
+// Test ConstOpSchema methods on the "Add" operator schema (2 inputs, 1 output).
+TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
+  int opset_version = 20;
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", opset_version, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+
+  // The "since version" will be <= to the opset version used to retrieve the schema.
+  EXPECT_LT(schema.GetSinceVersion(), opset_version + 1);
+  EXPECT_GT(schema.GetSinceVersion(), 0);
+
+  // Add has 2 inputs: A, B
+  ASSERT_EQ(schema.GetNumInputs(), 2u);
+  EXPECT_EQ(schema.GetInputName(0), "A");
+  EXPECT_EQ(schema.GetInputName(1), "B");
+  EXPECT_EQ(schema.GetInputTypeStr(0), "T");
+  EXPECT_EQ(schema.GetInputTypeStr(1), "T");
+
+  // Add has 1 output: C
+  ASSERT_EQ(schema.GetNumOutputs(), 1u);
+  EXPECT_EQ(schema.GetOutputName(0), "C");
+  EXPECT_EQ(schema.GetOutputTypeStr(0), "T");
+
+  EXPECT_TRUE(schema.HasTypeConstraint("T"));
+  EXPECT_FALSE(schema.HasTypeConstraint("U"));
+}
+
+// Test that querying the same op at different max_inclusive_version values can return different schema versions.
+TEST(OpSchemaCxxApiTest, DifferentVersionsReturnDifferentSchemas) {
+  // Relu was introduced in opset 1 and updated in opset 6, 13, and 14.
+  // Querying at version 5 should return the opset 1 schema.
+  Ort::ConstOpSchema schema_v5 = Ort::GetOpSchema("Relu", 5, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema_v5), nullptr);
+  EXPECT_EQ(schema_v5.GetSinceVersion(), 1);
+
+  // Querying at version 6 should return the opset 6 schema.
+  Ort::ConstOpSchema schema_v6 = Ort::GetOpSchema("Relu", 6, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema_v6), nullptr);
+  EXPECT_EQ(schema_v6.GetSinceVersion(), 6);
+}
+
 }  // namespace onnxruntime::test
