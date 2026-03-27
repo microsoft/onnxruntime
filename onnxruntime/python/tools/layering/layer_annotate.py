@@ -138,7 +138,8 @@ def annotate_model(model, substring_annotations):
     Annotates an ONNX model with metadata based on a provided mapping.
 
     This function serves as the entry point to annotate the model's graph.
-    It delegates the work to `annotate_graph` enabling parallel processing for the main graph.
+    It delegates the work to `annotate_graph`, which recursively processes
+    all nodes in the main graph and any nested subgraphs.
 
     Args:
         model (onnx.ModelProto): The ONNX model to annotate.

@@ -439,15 +439,15 @@ static size_t GenerateDynamicNodeStatsFile(const ORTCHAR_T* model_path,
                                            size_t cost_per_node = 1024) {
   const auto& default_logger = DefaultLoggingManager().DefaultLogger();
   std::shared_ptr<onnxruntime::Model> model;
-  EXPECT_STATUS_OK(Model::Load(model_path, model, nullptr, default_logger));
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, default_logger));
   Graph& graph = model->MainGraph();
-  EXPECT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(graph.Resolve());
 
   std::vector<std::string> node_names;
   CollectNodeNames(graph, node_names);
 
   std::ofstream ofs(output_path);
-  EXPECT_TRUE(ofs.is_open());
+  ASSERT_TRUE(ofs.is_open());
   ofs << "#name,input_sizes,initializers_sizes,total_dynamic_sizes,total_temp_allocations\n";
   for (const auto& name : node_names) {
     ofs << name << "," << cost_per_node << ",0,0,0\n";
@@ -497,7 +497,9 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   if (!layering_config.empty()) {
     ASSERT_STATUS_OK(LayeringIndex::Create(graph, layering_config, {}, execution_providers,
                                            default_logger, layering_index_storage));
-    layering_index = &layering_index_storage.value();
+    if (layering_index_storage.has_value()) {
+      layering_index = &layering_index_storage.value();
+    }
   }
 
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
