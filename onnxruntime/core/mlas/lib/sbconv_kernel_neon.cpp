@@ -21,6 +21,23 @@ Abstract:
 
 constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;
 
+bool
+MLASCALL
+MlasTryConvPointwiseBf16KernelNeonAsm(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t InputChannels,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t OutputCount,
+    const float* Bias,
+    unsigned KernelFlags
+    );
+
 //
 // BF16 Pointwise (1x1) Convolution Kernel using SBGEMM.
 //
@@ -43,6 +60,22 @@ MlasConvPointwiseBf16KernelNeon(
     const bool AccumulateOutput = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
+
+    if (MlasTryConvPointwiseBf16KernelNeonAsm(
+            Input,
+            Filter,
+            Output,
+            StrideWidth,
+            InputChannels,
+            FilterCount,
+            InputStride,
+            FilterStride,
+            OutputStride,
+            OutputCount,
+            Bias,
+            KernelFlags)) {
+        return;
+    }
 
     MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config;
 
