@@ -844,4 +844,182 @@ TEST(OpSchemaCxxApiTest, DifferentVersionsReturnDifferentSchemas) {
   EXPECT_EQ(schema_v6.GetSinceVersion(), 6);
 }
 
+// Tests for the OpSchemaTypeConstraints API (complete type constraint information).
+
+// Test type constraints for the Add operator (single constraint T on all inputs/outputs).
+TEST(OpSchemaTypeConstraintTest, Add_SingleConstraint) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+
+  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  ASSERT_EQ(tcs.GetCount(), 1u);
+
+  // Constraint "T"
+  EXPECT_EQ(tcs.GetName(0), "T");
+
+  // T should have multiple allowed types (at least float and double)
+  auto allowed_types = tcs.GetAllowedTypes(0);
+  EXPECT_GT(allowed_types.size(), 1u);
+
+  // Both inputs use T
+  auto input_indices = tcs.GetInputIndices(0);
+  ASSERT_EQ(input_indices.size(), 2u);
+  EXPECT_EQ(input_indices[0], 0u);
+  EXPECT_EQ(input_indices[1], 1u);
+
+  // Output uses T
+  auto output_indices = tcs.GetOutputIndices(0);
+  ASSERT_EQ(output_indices.size(), 1u);
+  EXPECT_EQ(output_indices[0], 0u);
+}
+
+// Test type constraints for LSTM (multiple constraints: T and T1).
+TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("LSTM", 20, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+
+  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+
+  // LSTM has at least T and T1
+  ASSERT_GE(tcs.GetCount(), 2u);
+
+  // Find the T and T1 constraints by name
+  size_t t_idx = SIZE_MAX;
+  size_t t1_idx = SIZE_MAX;
+  for (size_t i = 0; i < tcs.GetCount(); ++i) {
+    if (tcs.GetName(i) == "T") {
+      t_idx = i;
+    } else if (tcs.GetName(i) == "T1") {
+      t1_idx = i;
+    }
+  }
+
+  ASSERT_NE(t_idx, SIZE_MAX) << "Expected to find type constraint 'T'";
+  ASSERT_NE(t1_idx, SIZE_MAX) << "Expected to find type constraint 'T1'";
+
+  // T should include float types (e.g., tensor(float), tensor(double))
+  auto t_types = tcs.GetAllowedTypes(t_idx);
+  EXPECT_GT(t_types.size(), 0u);
+
+  // T1 should include integer types (e.g., tensor(int32))
+  auto t1_types = tcs.GetAllowedTypes(t1_idx);
+  EXPECT_GT(t1_types.size(), 0u);
+
+  // T and T1 should have different allowed types
+  // T1 is for sequence_lens which is int32 only
+  bool found_int32 = false;
+  for (const auto& type : t1_types) {
+    if (type == "tensor(int32)") {
+      found_int32 = true;
+    }
+  }
+  EXPECT_TRUE(found_int32) << "Expected T1 to allow tensor(int32)";
+
+  // T should have inputs (X, W, R, B, etc.)
+  auto t_inputs = tcs.GetInputIndices(t_idx);
+  EXPECT_GT(t_inputs.size(), 0u);
+
+  // T should have outputs (Y, Y_h, Y_c)
+  auto t_outputs = tcs.GetOutputIndices(t_idx);
+  EXPECT_GT(t_outputs.size(), 0u);
+
+  // T1 should map to the sequence_lens input (index 4)
+  auto t1_inputs = tcs.GetInputIndices(t1_idx);
+  ASSERT_EQ(t1_inputs.size(), 1u);
+  EXPECT_EQ(t1_inputs[0], 4u);  // sequence_lens is the 5th input (index 4)
+
+  // T1 should not map to any outputs
+  auto t1_outputs = tcs.GetOutputIndices(t1_idx);
+  EXPECT_EQ(t1_outputs.size(), 0u);
+}
+
+// Test Relu type constraints (single T on input and output).
+TEST(OpSchemaTypeConstraintTest, Relu_SingleConstraint) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 20, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+
+  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  ASSERT_EQ(tcs.GetCount(), 1u);
+
+  EXPECT_EQ(tcs.GetName(0), "T");
+
+  auto input_indices = tcs.GetInputIndices(0);
+  ASSERT_EQ(input_indices.size(), 1u);
+  EXPECT_EQ(input_indices[0], 0u);
+
+  auto output_indices = tcs.GetOutputIndices(0);
+  ASSERT_EQ(output_indices.size(), 1u);
+  EXPECT_EQ(output_indices[0], 0u);
+}
+
+// Test that allowed types are returned as proper type strings.
+TEST(OpSchemaTypeConstraintTest, AllowedTypesAreValidStrings) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+
+  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  ASSERT_GE(tcs.GetCount(), 1u);
+
+  auto allowed_types = tcs.GetAllowedTypes(0);
+  for (const auto& type : allowed_types) {
+    // All ONNX type strings should start with "tensor(" or similar
+    EXPECT_FALSE(type.empty()) << "Type string should not be empty";
+  }
+}
+
+// Test out-of-range index for type constraint accessors.
+TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+
+  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  size_t count = tcs.GetCount();
+
+  // Accessing beyond the count should throw
+  EXPECT_THROW(tcs.GetName(count), Ort::Exception);
+  EXPECT_THROW(tcs.GetAllowedTypes(count), Ort::Exception);
+  EXPECT_THROW(tcs.GetInputIndices(count), Ort::Exception);
+  EXPECT_THROW(tcs.GetOutputIndices(count), Ort::Exception);
+}
+
+// Test FindByName for looking up type constraints by name.
+TEST(OpSchemaTypeConstraintTest, FindByName) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("LSTM", 20, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+
+  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+
+  // Find "T" by name and verify it matches the result from linear search
+  size_t t_idx = tcs.FindByName("T");
+  EXPECT_EQ(tcs.GetName(t_idx), "T");
+
+  // Find "T1" by name
+  size_t t1_idx = tcs.FindByName("T1");
+  EXPECT_EQ(tcs.GetName(t1_idx), "T1");
+
+  // T and T1 should be at different indices
+  EXPECT_NE(t_idx, t1_idx);
+
+  // Looking up a nonexistent constraint should throw
+  EXPECT_THROW(tcs.FindByName("NonExistent"), Ort::Exception);
+}
+
+// Test the natural workflow: input index → type constraint name → allowed types via FindByName.
+TEST(OpSchemaTypeConstraintTest, InputToAllowedTypesWorkflow) {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+
+  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+
+  // Get the type constraint name for input 0
+  std::string type_str = schema.GetInputTypeStr(0);  // "T"
+
+  // Use FindByName to get its index in the container
+  size_t idx = tcs.FindByName(type_str.c_str());
+
+  // Now get the allowed types
+  auto allowed_types = tcs.GetAllowedTypes(idx);
+  EXPECT_GT(allowed_types.size(), 1u);
+}
+
 }  // namespace onnxruntime::test

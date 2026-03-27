@@ -661,6 +661,7 @@ ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelRegistry, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(OpSchemaTypeConstraints, GetEpApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
@@ -3516,6 +3517,41 @@ struct KernelRegistry : detail::Base<OrtKernelRegistry> {
 };
 
 namespace detail {
+/** \brief Owning wrapper around an `OrtOpSchemaTypeConstraints*` container.
+ *
+ * Holds precomputed type constraint data extracted from an OrtOpSchema, including
+ * each constraint's name, allowed data types, and associated input/output indices.
+ * Released automatically on destruction.
+ */
+template <typename T>
+struct OpSchemaTypeConstraintsImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetCount
+  size_t GetCount() const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetName
+  std::string GetName(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetAllowedTypes
+  std::vector<std::string> GetAllowedTypes(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetInputIndices
+  std::vector<size_t> GetInputIndices(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetOutputIndices
+  std::vector<size_t> GetOutputIndices(size_t index) const;
+
+  ///< C++-only convenience: finds a type constraint by name. Throws Ort::Exception if not found.
+  size_t FindByName(const char* type_str) const;
+};
+}  // namespace detail
+
+/// Owning wrapper around an `OrtOpSchemaTypeConstraints*` container.
+using OpSchemaTypeConstraints = detail::OpSchemaTypeConstraintsImpl<OrtOpSchemaTypeConstraints>;
+
+namespace detail {
 /** \brief Non-owning wrapper around a `const OrtOpSchema*` from the ONNX schema registry.
  *
  * Provides access to operator schema metadata such as version, input/output names,
@@ -3550,6 +3586,9 @@ struct ConstOpSchemaImpl : Base<T> {
 
   ///< Wraps OrtEpApi::OpSchema_HasTypeConstraint
   bool HasTypeConstraint(const char* type_str) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetTypeConstraints. Returns an owning OpSchemaTypeConstraints container.
+  OpSchemaTypeConstraints GetTypeConstraints() const;
 };
 }  // namespace detail
 

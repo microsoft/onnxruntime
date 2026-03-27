@@ -22,6 +22,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/abi_opschema_type_constraints.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
@@ -926,6 +927,137 @@ ORT_API_STATUS_IMPL(OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraints, _In_ const OrtOpSchema* schema,
+                    _Outptr_ OrtOpSchemaTypeConstraints** out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
+
+  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
+  auto tcs = std::make_unique<OrtOpSchemaTypeConstraints>();
+
+  for (const auto& param : onnx_schema->typeConstraintParams()) {
+    OrtOpSchemaTypeConstraints::Entry entry;
+    entry.type_param_str = param.type_param_str;
+    entry.allowed_type_strs = param.allowed_type_strs;
+
+    // Find input indices that use this type constraint
+    const auto& inputs = onnx_schema->inputs();
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      if (inputs[i].GetTypeStr() == param.type_param_str) {
+        entry.input_indices.push_back(i);
+      }
+    }
+
+    // Find output indices that use this type constraint
+    const auto& outputs = onnx_schema->outputs();
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      if (outputs[i].GetTypeStr() == param.type_param_str) {
+        entry.output_indices.push_back(i);
+      }
+    }
+
+    tcs->entries.push_back(std::move(entry));
+  }
+
+  // Build the C-compatible pointer arrays after all entries are in their final locations.
+  // This must be done after the loop to avoid dangling pointers from vector reallocation
+  // or small string optimization (SSO) buffer moves.
+  for (auto& entry : tcs->entries) {
+    entry.allowed_type_ptrs.reserve(entry.allowed_type_strs.size());
+    for (const auto& s : entry.allowed_type_strs) {
+      entry.allowed_type_ptrs.push_back(s.c_str());
+    }
+  }
+
+  *out = tcs.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetCount, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(type_constraints == nullptr, ORT_INVALID_ARGUMENT, "type_constraints must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
+
+  *out = type_constraints->entries.size();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetName, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
+                    _In_ size_t index, _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(type_constraints == nullptr, ORT_INVALID_ARGUMENT, "type_constraints must not be null");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
+  ORT_API_RETURN_IF(index >= type_constraints->entries.size(), ORT_INVALID_ARGUMENT,
+                    "Type constraint index ", index, " out of range. Container has ",
+                    type_constraints->entries.size(), " entries.");
+
+  *out = type_constraints->entries[index].type_param_str.c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetAllowedTypes,
+                    _In_ const OrtOpSchemaTypeConstraints* type_constraints,
+                    _In_ size_t index, _Outptr_ const char* const** out_types, _Out_ size_t* num_types) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(type_constraints == nullptr, ORT_INVALID_ARGUMENT, "type_constraints must not be null");
+  ORT_API_RETURN_IF(out_types == nullptr, ORT_INVALID_ARGUMENT, "out_types must not be null");
+  ORT_API_RETURN_IF(num_types == nullptr, ORT_INVALID_ARGUMENT, "num_types must not be null");
+  ORT_API_RETURN_IF(index >= type_constraints->entries.size(), ORT_INVALID_ARGUMENT,
+                    "Type constraint index ", index, " out of range. Container has ",
+                    type_constraints->entries.size(), " entries.");
+
+  const auto& entry = type_constraints->entries[index];
+  *out_types = entry.allowed_type_ptrs.data();
+  *num_types = entry.allowed_type_ptrs.size();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetInputIndices,
+                    _In_ const OrtOpSchemaTypeConstraints* type_constraints,
+                    _In_ size_t index, _Outptr_ const size_t** out_indices, _Out_ size_t* count) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(type_constraints == nullptr, ORT_INVALID_ARGUMENT, "type_constraints must not be null");
+  ORT_API_RETURN_IF(out_indices == nullptr, ORT_INVALID_ARGUMENT, "out_indices must not be null");
+  ORT_API_RETURN_IF(count == nullptr, ORT_INVALID_ARGUMENT, "count must not be null");
+  ORT_API_RETURN_IF(index >= type_constraints->entries.size(), ORT_INVALID_ARGUMENT,
+                    "Type constraint index ", index, " out of range. Container has ",
+                    type_constraints->entries.size(), " entries.");
+
+  const auto& entry = type_constraints->entries[index];
+  *out_indices = entry.input_indices.data();
+  *count = entry.input_indices.size();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetOutputIndices,
+                    _In_ const OrtOpSchemaTypeConstraints* type_constraints,
+                    _In_ size_t index, _Outptr_ const size_t** out_indices, _Out_ size_t* count) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(type_constraints == nullptr, ORT_INVALID_ARGUMENT, "type_constraints must not be null");
+  ORT_API_RETURN_IF(out_indices == nullptr, ORT_INVALID_ARGUMENT, "out_indices must not be null");
+  ORT_API_RETURN_IF(count == nullptr, ORT_INVALID_ARGUMENT, "count must not be null");
+  ORT_API_RETURN_IF(index >= type_constraints->entries.size(), ORT_INVALID_ARGUMENT,
+                    "Type constraint index ", index, " out of range. Container has ",
+                    type_constraints->entries.size(), " entries.");
+
+  const auto& entry = type_constraints->entries[index];
+  *out_indices = entry.output_indices.data();
+  *count = entry.output_indices.size();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseOpSchemaTypeConstraints, _Frees_ptr_opt_ OrtOpSchemaTypeConstraints* type_constraints) {
+  delete type_constraints;
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -999,6 +1131,13 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchema_GetOutputName,
     &OrtExecutionProviderApi::OpSchema_GetOutputTypeStr,
     &OrtExecutionProviderApi::OpSchema_HasTypeConstraint,
+    &OrtExecutionProviderApi::OpSchema_GetTypeConstraints,
+    &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetCount,
+    &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetName,
+    &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetAllowedTypes,
+    &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetInputIndices,
+    &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetOutputIndices,
+    &OrtExecutionProviderApi::ReleaseOpSchemaTypeConstraints,
     // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
@@ -1009,7 +1148,7 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
-static_assert(offsetof(OrtEpApi, OpSchema_HasTypeConstraint) / sizeof(void*) == 58,
+static_assert(offsetof(OrtEpApi, ReleaseOpSchemaTypeConstraints) / sizeof(void*) == 65,
               "Size of version 25 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
