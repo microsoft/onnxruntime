@@ -328,6 +328,58 @@ template Status LaunchAddBiasInPlace<float>(float*, const float*, int64_t, int64
 template Status LaunchAddBiasInPlace<__half>(__half*, const __half*, int64_t, int64_t, cudaStream_t, int);
 template Status LaunchAddBiasInPlace<__nv_bfloat16>(__nv_bfloat16*, const __nv_bfloat16*, int64_t, int64_t, cudaStream_t, int);
 
+// Zero output elements for batches where seqlens_k == 0 (fully masked).
+// CUTLASS MEA epilogue computes 1/s_prime where s_prime=0 → NaN for fully-masked
+// batches. The unfused path produces uniform softmax weights (finite mask_filter_value,
+// not -inf) so output is valid but non-zero; we still zero for Flash parity.
+// Flash handles this natively with an early-exit for empty sequences.
+template <typename T>
+__global__ void ZeroOutputForFullyMaskedBatchesKernel(
+    T* __restrict__ output,
+    const int* __restrict__ seqlens_k,
+    const int batch_size,
+    const int elements_per_batch) {
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  int64_t total = static_cast<int64_t>(batch_size) * elements_per_batch;
+  for (; idx < total; idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    int b = static_cast<int>(idx / elements_per_batch);
+    if (seqlens_k[b] == 0) {
+      output[idx] = T(0.0f);
+    }
+  }
+}
+
+template <typename T>
+Status LaunchZeroOutputForFullyMaskedBatches(
+    T* output,
+    const int* seqlens_k,
+    int batch_size,
+    int elements_per_batch,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  int64_t total = static_cast<int64_t>(batch_size) * elements_per_batch;
+  if (total == 0) {
+    return Status::OK();
+  }
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), total));
+  int64_t blocks = (total + threads - 1) / threads;
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  ZeroOutputForFullyMaskedBatchesKernel<T><<<grid_size, threads, 0, stream>>>(
+      output, seqlens_k, batch_size, elements_per_batch);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchZeroOutputForFullyMaskedBatches<float>(
+    float*, const int*, int, int, cudaStream_t, int);
+template Status LaunchZeroOutputForFullyMaskedBatches<__half>(
+    __half*, const int*, int, int, cudaStream_t, int);
+template Status LaunchZeroOutputForFullyMaskedBatches<__nv_bfloat16>(
+    __nv_bfloat16*, const int*, int, int, cudaStream_t, int);
+
 // Simple kernel to fill an int32 buffer with a constant value on device.
 // Used for CUDA-graph-capturable seqlens_k initialization (no host memory).
 __global__ void FillInt32Kernel(int* __restrict__ output, const int value, const int count) {
