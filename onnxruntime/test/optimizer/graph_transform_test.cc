@@ -5860,46 +5860,46 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
 }
 
 static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder, bool use_projection_gemm) {
-    auto* input_x = builder.MakeInput<float>({1, 512, 8, 8}, -1.0f, 1.0f);
-    auto* input_skip = builder.MakeInput<float>({1, 512, 8, 8}, -1.0f, 1.0f);
+  auto* input_x = builder.MakeInput<float>({1, 512, 8, 8}, -1.0f, 1.0f);
+  auto* input_skip = builder.MakeInput<float>({1, 512, 8, 8}, -1.0f, 1.0f);
 
-    auto* reshape0_shape = builder.Make1DInitializer<int64_t>({1, 512, 64});
-    auto* qkv_weight = builder.MakeInitializer<float>({512, 1536}, -0.05f, 0.05f);
-    auto* qkv_reshape_shape = builder.Make1DInitializer<int64_t>({1, 64, 3, 16, 32});
-    auto* split_sizes = builder.Make1DInitializer<int64_t>({1, 1, 1});
-    auto* squeeze_axis_0 = builder.Make1DInitializer<int64_t>({0});
-    auto* squeeze_axis_2 = builder.Make1DInitializer<int64_t>({2});
-    auto* scale = builder.MakeScalarInitializer<float>(1.0f / std::sqrt(32.0f));
-    auto* reshape2_shape = builder.Make1DInitializer<int64_t>({1, 64, 512});
-    auto* proj_weight = builder.MakeInitializer<float>({512, 512}, -0.05f, 0.05f);
-    auto* proj_bias = builder.MakeInitializer<float>({512}, -0.02f, 0.02f);
-    auto* reshape3_shape = builder.Make1DInitializer<int64_t>({1, 512, 8, 8});
-    auto* layer_scale = builder.MakeInitializer<float>({512, 1, 1}, 0.9f, 1.1f);
+  auto* reshape0_shape = builder.Make1DInitializer<int64_t>({1, 512, 64});
+  auto* qkv_weight = builder.MakeInitializer<float>({512, 1536}, -0.05f, 0.05f);
+  auto* qkv_reshape_shape = builder.Make1DInitializer<int64_t>({1, 64, 3, 16, 32});
+  auto* split_sizes = builder.Make1DInitializer<int64_t>({1, 1, 1});
+  auto* squeeze_axis_0 = builder.Make1DInitializer<int64_t>({0});
+  auto* squeeze_axis_2 = builder.Make1DInitializer<int64_t>({2});
+  auto* scale = builder.MakeScalarInitializer<float>(1.0f / std::sqrt(32.0f));
+  auto* reshape2_shape = builder.Make1DInitializer<int64_t>({1, 64, 512});
+  auto* proj_weight = builder.MakeInitializer<float>({512, 512}, -0.05f, 0.05f);
+  auto* proj_bias = builder.MakeInitializer<float>({512}, -0.02f, 0.02f);
+  auto* reshape3_shape = builder.Make1DInitializer<int64_t>({1, 512, 8, 8});
+  auto* layer_scale = builder.MakeInitializer<float>({512, 1, 1}, 0.9f, 1.1f);
 
-    auto* reshape0_out = builder.MakeIntermediate<float>({1, 512, 64});
-    auto* transpose0_out = builder.MakeIntermediate<float>({1, 64, 512});
-    auto* qkv_out = builder.MakeIntermediate<float>({1, 64, 1536});
-    auto* qkv_reshape_out = builder.MakeIntermediate<float>({1, 64, 3, 16, 32});
-    auto* split_q = builder.MakeIntermediate<float>({1, 64, 1, 16, 32});
-    auto* split_k = builder.MakeIntermediate<float>({1, 64, 1, 16, 32});
-    auto* split_v = builder.MakeIntermediate<float>({1, 64, 1, 16, 32});
-    auto* q_transpose_out = builder.MakeIntermediate<float>({1, 1, 16, 64, 32});
-    auto* q_squeeze_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
-    auto* k_squeeze_out = builder.MakeIntermediate<float>({1, 64, 16, 32});
-    auto* k_transpose_out = builder.MakeIntermediate<float>({1, 16, 32, 64});
-    auto* q_scaled_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
-    auto* qk_out = builder.MakeIntermediate<float>({1, 16, 64, 64});
-    auto* softmax_out = builder.MakeIntermediate<float>({1, 16, 64, 64});
-    auto* v_transpose_out = builder.MakeIntermediate<float>({1, 1, 16, 64, 32});
-    auto* v_squeeze_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
-    auto* attn_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
-    auto* transpose3_out = builder.MakeIntermediate<float>({1, 64, 16, 32});
-    auto* reshape2_out = builder.MakeIntermediate<float>({1, 64, 512});
-    auto* proj_linear_out = builder.MakeIntermediate<float>({1, 64, 512});
-    auto* transpose4_out = builder.MakeIntermediate<float>({1, 512, 64});
-    auto* reshape3_out = builder.MakeIntermediate<float>({1, 512, 8, 8});
-    auto* layer_scale_out = builder.MakeIntermediate<float>({1, 512, 8, 8});
-    auto* output = builder.MakeOutput<float>({1, 512, 8, 8});
+  auto* reshape0_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 512, 64});
+  auto* transpose0_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 512});
+  auto* qkv_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 1536});
+  auto* qkv_reshape_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 3, 16, 32});
+  auto* split_q = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 1, 16, 32});
+  auto* split_k = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 1, 16, 32});
+  auto* split_v = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 1, 16, 32});
+  auto* q_transpose_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 1, 16, 64, 32});
+  auto* q_squeeze_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 16, 64, 32});
+  auto* k_squeeze_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 16, 32});
+  auto* k_transpose_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 16, 32, 64});
+  auto* q_scaled_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 16, 64, 32});
+  auto* qk_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 16, 64, 64});
+  auto* softmax_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 16, 64, 64});
+  auto* v_transpose_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 1, 16, 64, 32});
+  auto* v_squeeze_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 16, 64, 32});
+  auto* attn_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 16, 64, 32});
+  auto* transpose3_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 16, 32});
+  auto* reshape2_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 512});
+  auto* proj_linear_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 512});
+  auto* transpose4_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 512, 64});
+  auto* reshape3_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 512, 8, 8});
+  auto* layer_scale_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 512, 8, 8});
+  auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 512, 8, 8});
 
     auto& reshape0 = builder.AddNode("Reshape", std::vector<NodeArg*>{input_x, reshape0_shape}, std::vector<NodeArg*>{reshape0_out});
     reshape0.AddAttribute("allowzero", static_cast<int64_t>(0));
@@ -5945,7 +5945,7 @@ static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder, bool use
     if (use_projection_gemm) {
       builder.AddNode("Gemm", std::vector<NodeArg*>{reshape2_out, proj_weight, proj_bias}, std::vector<NodeArg*>{proj_linear_out});
     } else {
-      auto* proj_matmul_out = builder.MakeIntermediate<float>({1, 64, 512});
+      auto* proj_matmul_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 512});
       builder.AddNode("MatMul", std::vector<NodeArg*>{reshape2_out, proj_weight}, std::vector<NodeArg*>{proj_matmul_out});
       builder.AddNode("Add", std::vector<NodeArg*>{proj_bias, proj_matmul_out}, std::vector<NodeArg*>{proj_linear_out});
     }

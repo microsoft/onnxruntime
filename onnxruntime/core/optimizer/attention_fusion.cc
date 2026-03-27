@@ -417,7 +417,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
 
   auto* mha_output = &graph.GetOrCreateNodeArg(
       graph.GenerateNodeArgName("mobileclip_mha_output"),
-      reshape_2->OutputDefs()[0]->TypeAsProto());
+      nullptr);
 
   Node& mha_node = graph.AddNode(
       graph.GenerateNodeName("MobileClipMultiHeadAttention"),
