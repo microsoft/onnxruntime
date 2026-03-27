@@ -13,6 +13,8 @@ This document describes the model package directory layout and the JSON files us
 
 - Component Model
   - A component model comprises one or more ‘model variants’
+  - All variants have the same model inputs and outputs with the same shapes.
+    - The data types may vary.
 
 - Model Variant
   - A ‘model variant’ is typically a single ONNX or ORT format model, however we allow some flexibility here
@@ -39,7 +41,7 @@ This document describes the model package directory layout and the JSON files us
             └── <checksum of weights file B>/
                 └── model.data
             └── ...
-        └── model_name.generic-gpu/   
+        └── base model /   
             ├── model.onnx 
             ├── [GenAI config and data files]  
         └── variant A / 
@@ -53,8 +55,10 @@ This document describes the model package directory layout and the JSON files us
 ````
 
 
-Notes: 
+## Notes:
 - Only one component model is allowed in the package for now, but the format allows for multiple component models in the future.
+- If it's an ORT GenAI model variant, the variant directory contains all GenAI files. ORT GenAI used as-is.
+- Shared weights is not yet supported, but the format allows for it in the future.
 
 ## `manifest.json` (required)
 
@@ -68,10 +72,11 @@ Schema:
   - `<component_model_name>` (object, required if present):
     - `model_variants` (object, optional): Map of variant names to variant descriptors.
       - `<variant_name>` (object, required if present):
+        - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT-GenAI"`). If omitted, ORT will treat it as an ONNX model by default.
         - `file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `file` is omitted, ORT will discover the ONNX model file within that directory.
         - `constraints` (object, required):
           - `ep` (string, required): Execution provider name (e.g., `"TensorrtExecutionProvider"`, `"QNNExecutionProvider"`, `"OpenVINOExecutionProvider"`).
-          - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`.
+          - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
           - `architecture` (string, optional): Hardware architecture hint; interpreted by the EP if needed.
           - `ep_compatibility_info` (string, optional): EP-specific compatibility string (as produced by `OrtEp::GetCompiledModelCompatibilityInfo()`); validated by the EP when selecting a variant. **The compatibility value returned by the EP is critical—ORT uses it to rank and choose the model variant.**
 
@@ -99,15 +104,16 @@ Notes:
         <model_name_1>: {
             "model_variants": {
                 <variant_1>: {
-                    "file": "model_ctx_.onnx",
+                    "model_type": "onnx",
+                    "file": "model_ctx.onnx",
                     "constraints": {
                         "ep": "TensorrtExecutionProvider",
-                        "device": "gpu",
                         "ep_compatibility_info": "device=gpu,npu;cuda_driver_version_support=..."
                     }
                 },
                 <variant_2>: {
-                    "file": "model_ctx_.onnx",
+                    "model_type": "onnx",
+                    "file": "model_ctx.onnx",
                     "constraints": {
                         "ep": "OpenVINOExecutionProvider",
                         "device": "cpu",
@@ -132,10 +138,11 @@ Schema:
 - `component_model_name` (string, required): Name of the component model.
 - `model_variants` (object, required): Map of variant names to variant descriptors.
   - `<variant_name>` (object, required):
-    - `file` (string, required): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `file` is omitted, ORT will discover the ONNX model file within that directory.
+    - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT-GenAI"`). If omitted, ORT will treat it as an ONNX model by default.
+    - `file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `file` is omitted, ORT will discover the ONNX model file within that directory.
     - `constraints` (object, required):
-      - `ep` (string, required: Execution provider name.
-      - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`).
+      - `ep` (string, required): Execution provider name.
+      - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
       - `architecture` (string, optional): Hardware architecture hint.
       - `ep_compatibility_info` (string, optional): EP-specific compatibility string (as produced by `OrtEp::GetCompiledModelCompatibilityInfo()`); validated by the EP when selecting a variant. **The compatibility value returned by the EP is critical—ORT uses it to rank and choose the model variant.**
 
@@ -145,15 +152,16 @@ Schema:
     "component_model_name":  <component_model_name>,
     "model_variants": {
         <variant_1>: {
-            "file": "model_ctx_.onnx",
+            "model_type": "onnx",
+            "file": "model_ctx.onnx",
             "constraints": {
                 "ep": "TensorrtExecutionProvider",
-                "device": "gpu",
                 "ep_compatibility_info": "device=gpu,npu;cuda_driver_version_support=..."
             }
         },
         <variant_2>: {
-            "file": "model_ctx_.onnx",
+            "model_type": "onnx",
+            "file": "model_ctx.onnx",
              "constraints": {
                  "ep": "OpenVINOExecutionProvider",
                  "device": "cpu",
