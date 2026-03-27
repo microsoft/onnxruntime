@@ -676,9 +676,9 @@ constexpr const char* kNodeProtoLayerAnnotation = "layer_ann";
 
 /**
  * This function examines the given node proto and looks into its metadata_props.
- * It returns the first value found for the key kNodeProtoLayerAnnotation.
- * Empty annotations are ignored.
- * If no annotation is found, std::nullopt is returned.
+ * It returns the first non-empty value found for the key kNodeProtoLayerAnnotation.
+ * A node is expected to have only one such annotation.
+ * If no non-empty annotation is found, std::nullopt is returned.
  */
 std::optional<std::string> GetNodeProtoLayeringAnnotation(const ONNX_NAMESPACE::NodeProto& node_proto);
 }  // namespace utils
