@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 import numpy
 import torch
-from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
+from cuda_plugin_ep_helper import get_cuda_provider_name, resolve_cuda_plugin_ep
 from einops import rearrange, repeat
 
 # --- ONNX and Torch/Numpy Dtype Mappings ---
@@ -35,7 +35,7 @@ from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_build_info
+from onnxruntime import InferenceSession, SessionOptions, get_build_info
 from onnxruntime import __version__ as ort_version
 
 # Set seed for reproducibility
@@ -1930,7 +1930,7 @@ def gqa_cuda_quantized_test_cases(is_past: bool):
 
 
 def has_cuda_provider():
-    return "CUDAExecutionProvider" in get_available_providers()
+    return get_cuda_provider_name() is not None
 
 
 def has_cuda_device(min_capability: int = 80):
@@ -2346,7 +2346,7 @@ class TestGQARegressions(unittest.TestCase):
         The bug caused q_out to be nullptr when unpacking separate QKV with only Q rotation (standard GQA),
         leading to unrotated Q being used in Attention.
         """
-        if "CUDAExecutionProvider" not in get_available_providers():
+        if not has_cuda_provider():
             self.skipTest("CUDA required")
 
         # Config that triggers the path: Prompt phase, Separate QKV inputs, RoPE enabled
@@ -2385,7 +2385,7 @@ class TestGQARegressions(unittest.TestCase):
         Regression test for batch_size=4 + max_seq_len=8192 + int8 KV cache crash.
         This reproduces a CUDA illegal memory access due to scratch size under-allocation.
         """
-        if "CUDAExecutionProvider" not in get_available_providers():
+        if not has_cuda_provider():
             self.skipTest("CUDA required")
 
         # Config that triggers the crash: batch=4, large max_seq_len, int8 kv

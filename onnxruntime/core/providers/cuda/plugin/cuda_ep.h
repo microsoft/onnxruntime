@@ -4,6 +4,7 @@
 #pragma once
 
 #include "cuda_plugin_utils.h"
+#include "ep/adapters.h"
 
 #include <string>
 #include <mutex>
@@ -14,7 +15,7 @@ namespace cuda_plugin {
 class CudaEpFactory;
 
 /// CUDA execution provider implementation using public OrtEp interface.
-class CudaEp : public OrtEp {
+class CudaEp : public onnxruntime::ep::adapter::Ep {
  public:
   /// Configuration parameters for the CUDA EP, parsed from session options.
   struct Config {

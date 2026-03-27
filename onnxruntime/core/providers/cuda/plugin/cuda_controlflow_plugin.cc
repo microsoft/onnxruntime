@@ -282,7 +282,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                      // The adapter EP API currently exposes tensor OrtDataType creation only.
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                   PluginIfKernel);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
@@ -292,7 +293,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                                   PluginIfKernel);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
@@ -302,7 +303,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                                   PluginIfKernel);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
@@ -312,7 +313,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   (*KernelDefBuilder::Create())
                                       .InputMemoryType(OrtMemTypeCPUInput, 0)
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                                   PluginIfKernel);
 
 ONNX_OPERATOR_KERNEL_EX(If,
@@ -322,7 +323,7 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                         PluginIfKernel);
 
 // --- Loop ---
@@ -360,7 +361,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                       .InputMemoryType(OrtMemTypeCPUInput, 1)
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                   PluginLoopKernel);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
@@ -372,7 +373,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                       .InputMemoryType(OrtMemTypeCPUInput, 1)
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                                   PluginLoopKernel);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
@@ -384,7 +385,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                       .InputMemoryType(OrtMemTypeCPUInput, 1)
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                                   PluginLoopKernel);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
@@ -396,7 +397,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                       .InputMemoryType(OrtMemTypeCPUInput, 1)
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                                   PluginLoopKernel);
 
 ONNX_OPERATOR_KERNEL_EX(Loop,
@@ -408,7 +409,7 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                             .InputMemoryType(OrtMemTypeCPUInput, 1)
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                         PluginLoopKernel);
 
 // --- Scan (opset 8) ---

@@ -17,7 +17,7 @@ from collections import OrderedDict
 import numpy
 import torch
 import torch.nn.functional as F
-from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
+from cuda_plugin_ep_helper import get_cuda_provider_name
 from onnx import TensorProto, helper
 from parameterized import parameterized
 from torch import nn
@@ -29,8 +29,10 @@ pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
 onnxruntime.preload_dlls()
 
+
 # Determine the execution provider and device based on CUDA availability.
-use_cuda = "CUDAExecutionProvider" in onnxruntime.get_available_providers() and torch.cuda.is_available()
+cuda_provider = get_cuda_provider_name()
+use_cuda = cuda_provider is not None
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
@@ -38,7 +40,7 @@ def get_ort_provider():
     if not use_cuda:
         return ["CPUExecutionProvider"]
 
-    return [resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+    return [cuda_provider]
 
 
 torch.manual_seed(42)
@@ -1412,7 +1414,7 @@ class TestSwigluMoE(unittest.TestCase):
 
 
 def has_bf16_moe():
-    if "CUDAExecutionProvider" not in onnxruntime.get_available_providers() or not torch.cuda.is_available():
+    if not use_cuda or not torch.cuda.is_available():
         return False
     major, _ = torch.cuda.get_device_capability()
     return major >= 8

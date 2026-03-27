@@ -5,6 +5,8 @@
 #include "cuda_ep_factory.h"
 #include "cuda_stream_plugin.h"
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
 
 #include <cstring>
@@ -15,8 +17,26 @@
 namespace onnxruntime {
 namespace cuda_plugin {
 
+namespace {
+
+std::unique_ptr<IExecutionProvider> CreateCudaPluginProvider(std::string_view ep_name, const OrtEp* ort_ep) {
+  return std::make_unique<::onnxruntime::CUDAExecutionProvider>(std::string{ep_name}, ort_ep);
+}
+
+AllocatorPtr CreateCudaPluginTempSpaceAllocator(int device_id) {
+  return std::make_shared<::onnxruntime::CUDAAllocator>(device_id, ::onnxruntime::CUDA);
+}
+
+AllocatorPtr CreateCudaPluginTempSpaceCpuAllocator() {
+  return ::onnxruntime::CPUAllocator::DefaultInstance();
+}
+
+}  // namespace
+
 CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger)
-    : OrtEp{},
+    : onnxruntime::ep::adapter::Ep{CreateCudaPluginProvider(factory.GetEpName(), static_cast<const OrtEp*>(this)),
+                                   CreateCudaPluginTempSpaceCpuAllocator(),
+                                   CreateCudaPluginTempSpaceAllocator(config.device_id)},
       factory_(factory),
       name_(factory.GetEpName()),
       config_(config),
@@ -42,18 +62,17 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
                                                    ORT_FILE, __LINE__, __FUNCTION__));
 
   // Store per-EP runtime configuration (TF32, device ID, tuning options, etc.)
-  // in a global map keyed by OrtEp pointer. Migrated kernels retrieve these
-  // settings at runtime via GetCudaKernelAdapterRuntimeConfig() without needing
-  // to thread the config through multiple layers of framework code.
+  // in a global map keyed by the adapter-wrapped execution provider. Migrated
+  // kernels retrieve these settings via info.GetExecutionProvider().
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
-      static_cast<const void*>(static_cast<const OrtEp*>(this)),
+      static_cast<const void*>(EpImpl()),
       config_.use_tf32, config_.device_id, config_.enable_skip_layer_norm_strict_mode,
       config_.cudnn_conv_algo, config_.cudnn_conv_use_max_workspace, config_.cudnn_conv1d_pad_to_nc1d,
       config_.fuse_conv_bias, config_.sdpa_kernel);
 }
 
 CudaEp::~CudaEp() {
-  onnxruntime::cuda::detail::RemoveCudaKernelAdapterRuntimeConfigForProvider(static_cast<const void*>(static_cast<const OrtEp*>(this)));
+  onnxruntime::cuda::detail::RemoveCudaKernelAdapterRuntimeConfigForProvider(static_cast<const void*>(EpImpl()));
 }
 
 /*static*/
@@ -84,13 +103,17 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   // Phase 3: Register remaining nodes as supported by this EP.
 
   // Phase 1: Collect tentative nodes — those for which we have a registered kernel.
+  std::vector<const OrtNode*> candidate_nodes;
+  candidate_nodes.reserve(all_nodes.size());
   std::vector<const OrtNode*> tentative_nodes;
   tentative_nodes.reserve(all_nodes.size());
 
   for (const auto& node : all_nodes) {
-    // Skip nodes already assigned to another EP.
     std::string ep_name = node.GetEpName();
     if (!ep_name.empty()) {
+      if (ep_name == ep->name_) {
+        candidate_nodes.push_back(node);
+      }
       continue;
     }
 
@@ -99,6 +122,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
         graph_support_info, node, &kernel_def));
 
     if (kernel_def != nullptr) {
+      candidate_nodes.push_back(node);
       tentative_nodes.push_back(node);
     }
   }
@@ -112,7 +136,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
       cpu_preferred_nodes));
 
   // Phase 3: Add final supported nodes (tentative minus CPU-preferred).
-  for (const OrtNode* ort_node : tentative_nodes) {
+  for (const OrtNode* ort_node : candidate_nodes) {
     if (cpu_preferred_nodes.count(ort_node) == 0) {
       Ort::ConstNode node{ort_node};
       RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
@@ -140,7 +164,12 @@ OrtStatus* ORT_API_CALL CudaEp::GetKernelRegistryImpl(
 OrtStatus* ORT_API_CALL CudaEp::GetPreferredDataLayoutImpl(
     OrtEp* this_ptr, OrtEpDataLayout* preferred_data_layout) noexcept {
   const auto* ep = static_cast<const CudaEp*>(this_ptr);
+#ifdef ENABLE_CUDA_NHWC_OPS
   *preferred_data_layout = ep->config_.prefer_nhwc ? OrtEpDataLayout_NHWC : OrtEpDataLayout_NCHW;
+#else
+  ORT_UNUSED_PARAMETER(ep);
+  *preferred_data_layout = OrtEpDataLayout_NCHW;
+#endif
   return nullptr;
 }
 
@@ -148,7 +177,15 @@ OrtStatus* ORT_API_CALL CudaEp::GetPreferredDataLayoutImpl(
 OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
     OrtEp* this_ptr, const char* domain, const char* op_type,
     OrtEpDataLayout target_data_layout, int* should_convert) noexcept {
-  (void)this_ptr;
+  ORT_UNUSED_PARAMETER(this_ptr);
+
+#ifndef ENABLE_CUDA_NHWC_OPS
+  ORT_UNUSED_PARAMETER(domain);
+  ORT_UNUSED_PARAMETER(op_type);
+  ORT_UNUSED_PARAMETER(target_data_layout);
+  *should_convert = 0;  // NHWC kernels are not compiled into this plugin build.
+  return nullptr;
+#else
 
   // Only convert to NHWC; for any other target layout, let ORT decide.
   if (target_data_layout != OrtEpDataLayout_NHWC) {
@@ -185,8 +222,9 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
     return nullptr;
   }
 
-  *should_convert = -1;  // Let ORT decide for other ops
+  *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   return nullptr;
+#endif
 }
 
 }  // namespace cuda_plugin

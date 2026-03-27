@@ -40,6 +40,7 @@
 // ===================================================================
 
 #include "core/providers/cuda/plugin/cuda_stream_plugin.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -95,6 +96,10 @@ class OrtStreamAdapter {
 #include "ep/adapters.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
+
+namespace onnxruntime {
+inline constexpr const char* kCudaPluginExecutionProvider = "CudaPluginExecutionProvider";
+}
 
 namespace onnxruntime {
 namespace cuda {
@@ -218,47 +223,49 @@ class PluginKernelCollector {
 // These macros mirror the framework's ONNX_OPERATOR_*_KERNEL_EX definitions
 // from core/framework/op_kernel.h, but additionally register each
 // BuildKernelCreateInfoFn into PluginKernelCollector at static init time.
-
 #define ORT_ADAPTER_CONCAT_IMPL(x, y) x##y
 #define ORT_ADAPTER_CONCAT(x, y) ORT_ADAPTER_CONCAT_IMPL(x, y)
 
+// The provider parameter are not used in below macros since we are hardcoding the provider to cuda plugin.
+#define CUDA_PLUGIN_EP ::onnxruntime::kCudaPluginExecutionProvider
+
 #undef ONNX_OPERATOR_KERNEL_EX
-#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                         \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                              \
-  template <>                                                                                      \
-  KernelCreateInfo                                                                                 \
-  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {          \
-    return KernelCreateInfo(                                                                       \
-        builder.SetName(#name).SetDomain(domain).SinceVersion(ver).Provider(provider).Build(),     \
-        static_cast<KernelCreatePtrFn>(                                                            \
-            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { \
-              out = std::make_unique<__VA_ARGS__>(info);                                           \
-              return Status::OK();                                                                 \
-            }));                                                                                   \
-  }                                                                                                \
-  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_, __COUNTER__) =               \
-      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                 \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>),  \
+#define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                           \
+  class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                \
+  template <>                                                                                        \
+  KernelCreateInfo                                                                                   \
+  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {            \
+    return KernelCreateInfo(                                                                         \
+        builder.SetName(#name).SetDomain(domain).SinceVersion(ver).Provider(CUDA_PLUGIN_EP).Build(), \
+        static_cast<KernelCreatePtrFn>(                                                              \
+            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {   \
+              out = std::make_unique<__VA_ARGS__>(info);                                             \
+              return Status::OK();                                                                   \
+            }));                                                                                     \
+  }                                                                                                  \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_, __COUNTER__) =                 \
+      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                   \
+           &BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>),    \
        true);
 
 #undef ONNX_OPERATOR_VERSIONED_KERNEL_EX
-#define ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, provider, builder, ...)                \
-  class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name);                     \
-  template <>                                                                                                    \
-  KernelCreateInfo                                                                                               \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() { \
-    return KernelCreateInfo(                                                                                     \
-        builder.SetName(#name).SetDomain(domain).SinceVersion(startver, endver).Provider(provider).Build(),      \
-        static_cast<KernelCreatePtrFn>(                                                                          \
-            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {               \
-              out = std::make_unique<__VA_ARGS__>(info);                                                         \
-              return Status::OK();                                                                               \
-            }));                                                                                                 \
-  }                                                                                                              \
-  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_, __COUNTER__) =                             \
-      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                               \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(                                     \
-               provider, domain, startver, endver, name)>),                                                      \
+#define ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, provider, builder, ...)                 \
+  class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name);                      \
+  template <>                                                                                                     \
+  KernelCreateInfo                                                                                                \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() {  \
+    return KernelCreateInfo(                                                                                      \
+        builder.SetName(#name).SetDomain(domain).SinceVersion(startver, endver).Provider(CUDA_PLUGIN_EP).Build(), \
+        static_cast<KernelCreatePtrFn>(                                                                           \
+            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {                \
+              out = std::make_unique<__VA_ARGS__>(info);                                                          \
+              return Status::OK();                                                                                \
+            }));                                                                                                  \
+  }                                                                                                               \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_, __COUNTER__) =                              \
+      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                \
+           &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(                                      \
+               provider, domain, startver, endver, name)>),                                                       \
        true);
 
 #undef ONNX_OPERATOR_TYPED_KERNEL_EX
@@ -268,7 +275,7 @@ class PluginKernelCollector {
   KernelCreateInfo                                                                                            \
   BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>() {         \
     return KernelCreateInfo(                                                                                  \
-        builder.SetName(#name).SetDomain(domain).SinceVersion(ver).Provider(provider).Build(),                \
+        builder.SetName(#name).SetDomain(domain).SinceVersion(ver).Provider(CUDA_PLUGIN_EP).Build(),          \
         static_cast<KernelCreatePtrFn>(                                                                       \
             [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {            \
               out = std::make_unique<__VA_ARGS__>(info);                                                      \
@@ -281,24 +288,24 @@ class PluginKernelCollector {
        true);
 
 #undef ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX
-#define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, domain, startver, endver, type, provider, builder, ...) \
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);      \
-  template <>                                                                                                 \
-  KernelCreateInfo                                                                                            \
-  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                                      \
-      provider, domain, startver, endver, type, name)>() {                                                    \
-    return KernelCreateInfo(                                                                                  \
-        builder.SetName(#name).SetDomain(domain).SinceVersion(startver, endver).Provider(provider).Build(),   \
-        static_cast<KernelCreatePtrFn>(                                                                       \
-            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {            \
-              out = std::make_unique<__VA_ARGS__>(info);                                                      \
-              return Status::OK();                                                                            \
-            }));                                                                                              \
-  }                                                                                                           \
-  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type##_, __COUNTER__) =                 \
-      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                            \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                            \
-               provider, domain, startver, endver, type, name)>),                                             \
+#define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(name, domain, startver, endver, type, provider, builder, ...)     \
+  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);          \
+  template <>                                                                                                     \
+  KernelCreateInfo                                                                                                \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                                          \
+      provider, domain, startver, endver, type, name)>() {                                                        \
+    return KernelCreateInfo(                                                                                      \
+        builder.SetName(#name).SetDomain(domain).SinceVersion(startver, endver).Provider(CUDA_PLUGIN_EP).Build(), \
+        static_cast<KernelCreatePtrFn>(                                                                           \
+            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {                \
+              out = std::make_unique<__VA_ARGS__>(info);                                                          \
+              return Status::OK();                                                                                \
+            }));                                                                                                  \
+  }                                                                                                               \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type##_, __COUNTER__) =                     \
+      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                \
+           &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                                \
+               provider, domain, startver, endver, type, name)>),                                                 \
        true);
 
 // ===================================================================
@@ -353,7 +360,7 @@ struct CudaKernelAdapterRuntimeConfig {
 };
 // Shared storage for per-provider runtime configurations.
 // Both Get and Remove must operate on the same static map instance,
-// so we centralise them in a single struct with static lifetime.
+// so we centralize them in a single struct with static lifetime.
 struct ProviderConfigStore {
   std::shared_mutex mutex;
   std::unordered_map<const void*, std::unique_ptr<CudaKernelAdapterRuntimeConfig>> configs;
@@ -475,31 +482,24 @@ inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
 // (GetCudnnConvAlgo, UseTF32, GetDeviceProp, etc.) without the full
 // CUDAExecutionProvider class from onnxruntime/core/providers/cuda/.
 //
-// DESIGN NOTE: Why does this class have no state/member variables?
-// In the plugin build, the object returned by `info.GetExecutionProvider()`
-// is an opaque C-API struct (`OrtEp*`/`CudaEp*`), NOT this class.
-// The raw kernel code performs `static_cast<const CUDAExecutionProvider*>` on it.
-// If this shim class defined any member variables (e.g., `config_`), the
-// compiler would read them at specific byte offsets relative to `this`, causing
-// memory layout UB (garbage reads/segfaults) since the underlying object in
-// memory is actually an `OrtEp`.
-// Therefore, `CUDAExecutionProvider` here must remain a pure "phantom shim."
-// To safely access state (like TF32 settings), it dynamically queries a static
-// map keyed by its own `this` pointer (which equals the `CudaEp*` memory address).
+// In the plugin build this shim is wrapped by adapter::Ep, so migrated CUDA
+// kernels can keep casting `info.GetExecutionProvider()` to
+// `CUDAExecutionProvider*` and retrieve the plugin `OrtEp` via GetOrtEp().
 // ===================================================================
 
 // Shim for CUDAExecutionProvider required by conv.cc, einsum, and others
 class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
  public:
-  explicit CUDAExecutionProvider(const std::string& name) : onnxruntime::IExecutionProvider{name} {}
+  explicit CUDAExecutionProvider(const std::string& name, const OrtEp* ort_ep = nullptr)
+      : onnxruntime::IExecutionProvider{name}, ort_ep_{ort_ep} {}
 
-  // SAFETY: This class must remain empty (no added member variables beyond
-  // IExecutionProvider). In the plugin build, an OrtEp*/CudaEp* is cast to
-  // CUDAExecutionProvider*. Adding members would cause the compiler to read
-  // them at incorrect byte offsets, silently corrupting data. All runtime
-  // state is stored in ProviderConfigStore, keyed by `this`.
-  // If the static_assert below fires, move the new state into
-  // CudaKernelAdapterRuntimeConfig instead of adding members here.
+  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override {
+    return std::make_unique<onnxruntime::GPUDataTransfer>();
+  }
+
+  const OrtEp* GetOrtEp() const override {
+    return ort_ep_;
+  }
 
   int GetCudnnConvAlgo() const {
     return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).cudnn_conv_algo;
@@ -524,11 +524,10 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
   const cudaDeviceProp& GetDeviceProp() const {
     return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).device_prop;
   }
-};
 
-// Verify CUDAExecutionProvider has no added members — see phantom cast design note.
-static_assert(sizeof(CUDAExecutionProvider) == sizeof(onnxruntime::IExecutionProvider),
-              "CUDAExecutionProvider must not add member variables.");
+ private:
+  const OrtEp* ort_ep_ = nullptr;
+};
 
 namespace cuda {
 
@@ -783,7 +782,19 @@ class CudaKernel : public OpKernel {
   static inline cudnnHandle_t GetCudnnHandle(onnxruntime::Stream* stream) {
     return stream ? GetCudnnHandle(static_cast<cudaStream_t>(stream->GetHandle())) : nullptr;
   }
-  cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const { return GetCudnnHandle(Stream(ctx)); }
+  cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const {
+    auto stream = Stream(ctx);
+    auto handle = GetCudnnHandle(stream);
+    if (handle != nullptr) {
+      return handle;
+    }
+
+    handle = DefaultCudnnHandle();
+    if (stream != nullptr) {
+      CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
+    }
+    return handle;
+  }
 
   static cublasHandle_t GetCublasHandle(cudaStream_t s) {
     auto* sync = cuda_plugin::CudaSyncStream::FromCudaStream(s);
@@ -795,7 +806,19 @@ class CudaKernel : public OpKernel {
   static inline cublasHandle_t GetCublasHandle(onnxruntime::Stream* stream) {
     return stream ? GetCublasHandle(static_cast<cudaStream_t>(stream->GetHandle())) : nullptr;
   }
-  cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const { return GetCublasHandle(Stream(ctx)); }
+  cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
+    auto stream = Stream(ctx);
+    auto handle = GetCublasHandle(stream);
+    if (handle != nullptr) {
+      return handle;
+    }
+
+    handle = DefaultCublasHandle();
+    if (stream != nullptr) {
+      CUBLAS_CALL_THROW(cublasSetStream(handle, stream));
+    }
+    return handle;
+  }
 
   static cublasLtHandle_t GetCublasLtHandle(cudaStream_t s) {
     auto* sync = cuda_plugin::CudaSyncStream::FromCudaStream(s);
@@ -809,9 +832,18 @@ class CudaKernel : public OpKernel {
   }
   cublasLtHandle_t GetCublasLtHandle(OpKernelContext* ctx) const { return GetCublasLtHandle(Stream(ctx)); }
 
-  const cudaDeviceProp& GetDeviceProp() const { return device_prop_; }
+  const cudaDeviceProp& GetDeviceProp() const {
+    // Some migrated kernels size their launches from device properties. If the
+    // per-provider cache was not populated for this kernel instance, fall back
+    // to a direct lookup instead of returning an all-zero struct.
+    if (device_prop_.maxThreadsPerMultiProcessor == 0 || device_prop_.multiProcessorCount == 0) {
+      return detail::GetDevicePropForDevice(device_id_);
+    }
+
+    return device_prop_;
+  }
   bool UseTF32() const { return use_tf32_; }
-  bool IsArchAvailable(int arch) const { return device_prop_.major >= arch; }
+  bool IsArchAvailable(int arch) const { return GetDeviceProp().major >= arch; }
   const OpKernelInfo& Info() const { return info_; }
   const onnxruntime::AttentionKernelOptions* GetAttentionKernelOptions() const {
     return static_cast<const CUDAExecutionProvider*>(info_.GetExecutionProvider())->GetAttentionKernelOptions();

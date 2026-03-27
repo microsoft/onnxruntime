@@ -40,26 +40,28 @@ Each build target uses different preprocessor defines that control how framework
 ### 2.3 Class Hierarchy
 
 ```
-OrtEpFactory                    OrtEp
-  ↑                            ↑
-CudaEpFactory                CudaEp
-  │                            │
-  ├─ creates OrtEpDevice       ├─ stores session-derived Config
-  ├─ creates CudaSyncStream    └─ seeds adapter runtime config for kernels
-  ├─ caches kernel registry
+OrtEpFactory                     OrtEp
+  ↑                                ↑
+CudaEpFactory                    adapter::Ep
+  │                                ↑
+  ├─ creates OrtEpDevice           CudaEp
+  ├─ creates CudaSyncStream        ├─ stores session-derived Config
+  ├─ caches kernel registry        └─ owns a real shim CUDAExecutionProvider via EpImpl()
   ├─ caches stable OrtMemoryInfo objects
   └─ maps OrtHardwareDevice* → CUDA ordinal
 
 Migrated CUDA kernels
   └─ use CudaKernel / cuda_kernel_adapter.h
-     ├─ read provider config through a phantom CUDAExecutionProvider shim
+     ├─ receive EpImpl() from info.GetExecutionProvider()
+     ├─ cast that pointer to the shim CUDAExecutionProvider
      └─ resolve stream-local handles via CudaSyncStream::FromCudaStream()
 ```
 
 Key ownership relationships:
 - `CudaEpFactory` implements raw `OrtEpFactory` callbacks and owns shared factory-level state such as the kernel registry, cached `OrtMemoryInfo` instances, and the hardware-device to CUDA-ordinal map.
-- `CudaEp` inherits directly from `OrtEp`; it does not derive from `ep::adapter::Ep` and does not own a separate framework `IExecutionProvider` object.
-- The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a zero-state compatibility shim used by migrated kernels. Runtime state is stored in adapter-side maps keyed by the `CudaEp` address.
+- `CudaEp` inherits from `ep::adapter::Ep`, which itself derives from `OrtEp` and owns a framework-facing `IExecutionProvider` object.
+- The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a real shim object owned by `ep::adapter::Ep`. It is not the full in-tree CUDA EP, but it does have its own object identity and may store plugin-specific members such as the wrapped `OrtEp*`.
+- Runtime state needed by migrated kernels is still stored in adapter-side maps keyed by the shim provider address (`EpImpl()`), not by the `CudaEp` object address.
 - `CudaSyncStream` owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, and `cublasLtHandle_t` for each sync stream created through the EP API.
 
 ### 2.4 Plugin DLL Entry Points
@@ -247,12 +249,128 @@ For code paths that need handles without an active stream, `cuda_kernel_adapter.
 
 ### 5.3 Provider Access
 
-Kernels access provider configuration through the pointer returned by `info.GetExecutionProvider()`, but in the plugin build that pointer is treated as a phantom `CUDAExecutionProvider` shim. The shim must remain layout-compatible with `IExecutionProvider` and carries no member state; runtime configuration is stored in the adapter-side `ProviderConfigStore`, keyed by the provider address.
+Kernels access provider configuration through the pointer returned by `info.GetExecutionProvider()`. In the plugin build, `ep::adapter::OpKernelInfo` snapshots three related pointers from the framework `OpKernelInfo` when the kernel is created:
+
+- the session-owned outer `PluginExecutionProvider`
+- the wrapped plugin `OrtEp` / `CudaEp`
+- the inner shim provider returned by `static_cast<const Ep*>(ort_ep)->EpImpl()`
+
+`OpKernelInfo::GetExecutionProvider()` then returns that cached shim pointer, so migrated kernels receive the real shim `CUDAExecutionProvider` object owned by `ep::adapter::Ep`, not the outer `PluginExecutionProvider` and not the `OrtEp`/`CudaEp` object reinterpreted at the same address.
+
+Caching the shim pointer at kernel-creation time is important for the NHWC path. Re-querying `OrtKernelInfo -> OrtEp -> EpImpl()` during execution was fragile after layout transformation; the current implementation avoids that repeated round-trip and uses the cached shim for runtime provider access.
+
+This changes the safety model from the earlier "phantom shim" design:
+- The shim no longer needs to remain layout-compatible with `IExecutionProvider`.
+- Adding plugin-local members to the shim is safe as long as normal C++ object lifetime/ownership rules are respected.
+- The shim still is not the full bundled `CUDAExecutionProvider`; it only exposes the subset of methods that migrated kernels currently need.
+
+Provider options flow through the plugin in two stages:
+- `CudaEpFactory` parses session/provider options into `CudaEp::Config`.
+- `CudaEp` mirrors the subset needed by migrated kernels into the adapter-side `ProviderConfigStore`, keyed by `EpImpl()`.
+
+Today that mirrored subset includes TF32, device ID/device properties, cuDNN convolution settings, skip-layer-norm strict mode, fused-conv-bias, and SDPA kernel selection. Other plugin behaviors, such as preferred layout, are handled directly by `CudaEp` callbacks instead of through the shim.
 
 For stream bridging, the preferred helpers are:
 - `Stream(ctx)` when the kernel only needs a raw `cudaStream_t`
 - `GetComputeStream(ctx)` when the kernel API already accepts the adapter's opaque stream pointer
 - `GetOrtStream(ctx)` when framework-style `Stream*` plumbing is still needed by shared helper code
+
+### 5.3.1 NHWC Layout-Transformation Support
+
+The bundled CUDA EP's NHWC path is not just a kernel-registration feature. It is a coordinated contract between provider configuration, ORT's layout transformer, kernel registration, adapter/provider access, and graph partitioning. On the current branch, the CUDA plugin EP now supports this path when NHWC is compiled in and the session requests `prefer_nhwc`.
+
+#### 5.3.1.1 End-to-End Flow
+
+When NHWC is enabled for an EP, the expected ORT flow is:
+
+1. The EP reports `NHWC` from `GetPreferredLayout()` (or `OrtEp::GetPreferredDataLayout()` for plugins) when `prefer_nhwc` is enabled.
+2. During layout transformation, ORT asks the EP whether each layout-sensitive op should be converted via `ShouldConvertDataLayoutForOp()`.
+3. For each accepted op, `TransformLayoutForEP()` inserts `Transpose` nodes around the operator and rewrites the operator into the internal NHWC domain (`com.ms.internal.nhwc`).
+4. Graph partitioning runs again. The EP must now claim the rewritten internal-domain nodes, not the original ONNX-domain nodes.
+5. Kernel lookup must succeed against the EP's kernel registry for the rewritten internal-domain node, with matching domain, opset range, and type constraints.
+
+This means the plugin must satisfy two distinct contracts at the same time:
+
+| Contract | Owner | Requirement |
+|----------|-------|-------------|
+| Layout preference contract | `CudaEp` + ORT plugin bridge | Only request NHWC when the plugin can handle the rewritten graph |
+| Kernel/capability contract | Kernel registry + `CudaEp::GetCapabilityImpl()` | Claim the resulting `com.ms.internal.nhwc` nodes during partitioning |
+
+#### 5.3.1.2 Current Plugin Status
+
+The current branch already has the core runtime pieces in place:
+
+| Component | Current state |
+|-----------|---------------|
+| ORT plugin bridge | `PluginExecutionProvider` already maps `OrtEp::GetPreferredDataLayout()` and `OrtEp::ShouldConvertDataLayoutForOp()` into the normal `IExecutionProvider` layout APIs |
+| Plugin callback implementations | `CudaEp` installs `GetPreferredDataLayoutImpl()` and `ShouldConvertDataLayoutForOpImpl()` and advertises NHWC when `prefer_nhwc` is enabled |
+| Provider option parsing | `CudaEpFactory` already parses `prefer_nhwc` / `prefer_nhwc_layout` into `CudaEp::Config` |
+| Build-time gating | `cmake/onnxruntime_providers_cuda_plugin.cmake` propagates `ENABLE_CUDA_NHWC_OPS` to the plugin target when `onnxruntime_USE_CUDA_NHWC_OPS=ON` |
+| NHWC kernel registration | NHWC kernels are compiled from the normal CUDA kernel sources and self-register through `PluginKernelCollector`; the centralized `cuda_nhwc_kernels.cc` table stays excluded in plugin builds |
+| Second capability pass | `CudaEp::GetCapabilityImpl()` preserves nodes already assigned to `CudaPluginExecutionProvider`, so ORT's post-layout-transformation partitioning pass does not drop rewritten NHWC nodes that were previously selected by the plugin |
+| Adapter provider access | `ep::adapter::OpKernelInfo` caches the inner shim `EpImpl()` pointer at kernel-creation time, avoiding a fragile runtime `OrtKernelInfo -> OrtEp -> EpImpl()` round-trip in NHWC kernels |
+| Focused validation | `test_cuda_plugin_ep.py` Stage 3 now runs NHWC-requested sessions for Conv, BatchNormalization, MaxPool, and AveragePool and requires plugin-backed execution to succeed numerically |
+
+The fixes that made this work were not limited to turning the callbacks back on:
+
+- The plugin now keeps both newly discovered candidate nodes and nodes already assigned to `CudaPluginExecutionProvider` during the second `GetCapability()` pass that runs after layout transformation.
+- NHWC kernels now obtain provider configuration through the cached shim pointer in `ep::adapter::OpKernelInfo`, which removed a runtime crash path in migrated kernels such as NHWC `Conv`.
+
+With those pieces in place, NHWC-requested sessions take the real plugin execution path rather than silently falling back to the stable NCHW path.
+
+#### 5.3.1.3 NHWC Design Requirements
+
+The implementation should preserve the following invariants:
+
+| Requirement | Why it matters |
+|-------------|----------------|
+| The plugin must never advertise NHWC unless it can claim every internal-domain op it requests ORT to generate | Otherwise ORT can create an invalid graph containing `com.ms.internal.nhwc` nodes that no EP selects |
+| The NHWC conversion allowlist must come from a single shared source of truth | The bundled CUDA EP and the plugin EP must not drift on which ops are safe to rewrite |
+| Kernel coverage checks must validate internal-domain registrations, not just original ONNX-domain registrations | The rewritten graph uses `com.ms.internal.nhwc`, so ONNX-domain coverage alone is insufficient |
+| Capability diagnostics must identify internal-domain kernel misses clearly | NHWC failures are difficult to debug after rewrite unless the missing domain/op/version/type information is surfaced |
+| Tests must verify plugin-backed NHWC execution explicitly | Output correctness alone is not enough because a fallback path can still pass numerically |
+
+#### 5.3.1.4 Implemented Design and Remaining Follow-Ups
+
+The current branch has already landed the minimum runtime fixes required for plugin-side NHWC execution. The remaining work is mostly cleanup, consolidation, and stronger diagnostics.
+
+**A. Keep partitioning registry-driven and preserve pre-assigned NHWC nodes**
+
+`CudaEp::GetCapabilityImpl()` should continue to rely on `EpGraphSupportInfo_LookUpKernel()` as the source of truth for whether a rewritten node is supported. The important implementation detail is that it must preserve nodes already assigned to the plugin when ORT reruns partitioning after layout transformation.
+
+That behavior is now implemented by tracking:
+- `tentative_nodes`: newly discovered nodes with matching kernel registrations
+- `candidate_nodes`: both tentative nodes and nodes already assigned to `CudaPluginExecutionProvider`
+
+The final support set is chosen from `candidate_nodes`, with the existing CPU-preferred-node filtering applied only where appropriate.
+
+**B. Cache the shim provider pointer at kernel creation**
+
+Migrated CUDA kernels expect `info.GetExecutionProvider()` to return the shim `CUDAExecutionProvider`, not the outer `PluginExecutionProvider`. The adapter now resolves that relationship once during kernel creation and caches the inner `EpImpl()` pointer.
+
+This is especially important for NHWC kernels because layout transformation introduces additional runtime paths before the actual CUDA kernel executes. Repeatedly reconstructing `OrtEp -> EpImpl()` from `OrtKernelInfo` during execution proved fragile in that path. The cached-shim approach keeps provider access deterministic and matches the actual object model:
+
+- outer session EP: `PluginExecutionProvider`
+- wrapped plugin object: `CudaEp` / `ep::adapter::Ep`
+- inner shim: `CUDAExecutionProvider` returned by `EpImpl()`
+
+**C. Remaining follow-ups**
+
+The main follow-ups are now design quality items rather than blockers:
+
+- Unify the NHWC conversion allowlist between the bundled CUDA EP and the plugin CUDA EP instead of keeping separate hard-coded tables.
+- Improve diagnostics when kernel lookup fails for a rewritten `com.ms.internal.nhwc` node.
+- Extend tests to assert internal-domain rewrite structure directly, not just plugin-backed execution and numerical correctness.
+
+#### 5.3.1.5 Rollout Status
+
+The NHWC rollout is effectively in a "runtime enabled, cleanup remaining" state:
+
+| Phase | Change | Expected outcome |
+|-------|--------|------------------|
+| 1 | Enable plugin NHWC callbacks and preserve pre-assigned nodes in the second capability pass | Completed on the current branch |
+| 2 | Cache the shim provider pointer in the adapter `OpKernelInfo` | Completed on the current branch; fixes the observed NHWC runtime crash |
+| 3 | Consolidate allowlists, improve internal-domain diagnostics, and strengthen structural NHWC assertions | Recommended follow-up work |
 
 ### 5.4 CUDA Graph Support
 
@@ -421,23 +539,23 @@ Section 7 reflects the current source exclusions in `cmake/onnxruntime_providers
 | `tensor/size.cc` | Pure CPU op, handled by `GetCpuPreferredNodes` |
 | `tensor/shape_op.cc` | Pure CPU op, inherits from `onnxruntime::OpKernel` (framework) |
 
-### 7.3 Operators Excluded Due to Missing Features
+### 7.3 Additional Current Source Exclusions
 
 | File / Pattern | Why It Is Excluded Today | What Would Unblock It |
 |----------------|--------------------------|------------------------|
-| `core/providers/cuda/controlflow/*` | Framework controlflow kernels are omitted from the source list | Plugin equivalents already exist in `cuda_controlflow_plugin.cc`; the framework sources stay excluded by design |
-| `tunable/*` | Depends on the real tuning context and framework CUDA EP infrastructure | Add a plugin-capable tuning context and remove the remaining tunable guards |
-| `math/einsum.cc` | The top-level framework einsum source is still excluded | Provide a plugin-safe top-level einsum provider path; `einsum_utils/*` are no longer excluded |
+| `core/providers/cuda/controlflow/*` | The framework controlflow kernels inherit from CPU-side controlflow bases (`If`, `Loop`, `Scan`) and are intentionally omitted from the plugin source list | No change is currently planned. The plugin uses its own `cuda_controlflow_plugin.cc` wrappers instead of these framework sources |
+| `tunable/*` | Depends on the real `CudaTuningContext` and other framework CUDA EP infrastructure that is not available in the plugin build | Add a plugin-capable tuning context and remove the remaining framework-only tunable dependencies |
+| `math/einsum.cc` | The top-level framework einsum provider path is still not plugin-safe even though supporting utility code is now included | Finish a plugin-safe top-level einsum path and then remove the CMake exclusion |
 | `tensor/identity_op.cc` | Uses `TensorSeq`, which is still not adapter-safe here | Add `TensorSeq` adapter coverage |
 | `tensor/sequence_op.cc` | Uses `TensorSeq`, which is still not adapter-safe here | Same as above |
-| `contrib_ops/cuda/llm/*` | Contrib LLM kernels still need their own plugin migration pass | Finish contrib-LLM-specific adapter work |
-| `contrib_ops/cuda/tensor/shrunken_gather.cc` | Training header path still depends on framework/provider API wiring | Low-priority training-specific adapter work |
-| `contrib_ops/cuda/math/fft_ops.cc` | Still excluded in CMake due to remaining framework/stream assumptions | Finish FFT-specific adapter cleanup |
-| `contrib_ops/cuda/tensor/crop.cc` | Still excluded in CMake even though the constructor-side helper work is mostly done | Finish and validate the remaining plugin-safe path, then remove the CMake exclusion |
+| `contrib_ops/cuda/llm/*` | Contrib LLM sources have not gone through the same adapter-migration pass as the core CUDA LLM kernels | Finish contrib-LLM-specific adapter work |
+| `contrib_ops/cuda/tensor/shrunken_gather.cc` | The training-side header path still depends on framework/provider API wiring | Low-priority training-specific adapter work |
+| `contrib_ops/cuda/math/fft_ops.cc` | Still has framework stream/type assumptions that are not yet adapter-safe | Finish FFT-specific adapter cleanup |
+| `contrib_ops/cuda/tensor/crop.cc` | Still has remaining framework assumptions, so it stays excluded even though some helper-side migration work is already done | Finish and validate the remaining plugin-safe path, then remove the CMake exclusion |
 | `contrib_ops/cuda/tensor/dynamicslice.cc` | Still excluded in CMake due to remaining framework assumptions | Finish dynamicslice-specific adapter cleanup |
-| `contrib_ops/cuda/transformers/*` | Beam search / greedy search / sampling require broader framework integration | Significant adapter and subgraph support work |
-| `onnxruntime/contrib_ops/cuda/aten_ops/*` | ATen interop is out of scope for the plugin build | Separate ATen plugin strategy |
-| `onnxruntime/contrib_ops/cuda/collective/*` | Collective/NCCL path is out of scope for the plugin build | Separate collective/NCCL plugin strategy |
+| `contrib_ops/cuda/transformers/*` | Beam search, greedy search, and sampling depend on broader framework/subgraph integration that has not been adapted for the plugin build | Significant adapter and subgraph support work |
+| `contrib_ops/cuda/aten_ops/*` | ATen interop is intentionally out of scope for the standalone CUDA plugin build | A separate ATen/plugin strategy |
+| `contrib_ops/cuda/collective/*` | Collective/NCCL support is intentionally out of scope for the standalone CUDA plugin build | A separate collective/NCCL plugin strategy |
 
 ### 7.4 Common Exclusion Themes
 
@@ -481,12 +599,6 @@ sh build.sh --config Release --build_dir build/cuda --parallel --use_cuda \
     --enable_cuda_nhwc_ops \
     --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON \
     --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="90"
-```
-
-Or using the existing `cuda.sh` convenience script:
-
-```bash
-./cuda.sh --build --test_plugin   # --test_plugin sets BUILD_CUDA_EP_AS_PLUGIN=ON
 ```
 
 ### 9.2 Impact on Other Build Targets
@@ -536,7 +648,7 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 |-------|---------------|
 | Registration | Dynamic loading via `register_execution_provider_library()` and EP device discovery |
 | Stage 2 | Basic ops: Add, MatMul, Gemm, Conv |
-| Stage 3 | NHWC layout: Conv, BatchNorm, MaxPool, AveragePool |
+| Stage 3 | NHWC-requested sessions: Conv, BatchNorm, MaxPool, AveragePool. These validate correctness under `prefer_nhwc` and require plugin-backed NHWC execution to succeed; they are the focused regression suite for the plugin NHWC path |
 | Stage 5A | Standard ops: Reshape, Split, Concat, Gather, Unsqueeze |
 | Stage 5B | More ops: Tile, CumSum, ConstantOfShape, SpaceToDepth, Pad, Slice, Resize, Sum |
 | Stage 5C | CPU base class ops: Upsample, DepthToSpace |
@@ -659,14 +771,22 @@ include/onnxruntime/ep/
 
 ## 13. Future Work
 
-1. **Contrib LLM migration pass** — The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` is still excluded as a separate follow-up.
+1. **Memory arena / allocator parity** — The plugin currently relies on direct `cudaMalloc`/`cudaFree` paths instead of the in-tree CUDA EP's BFC-style arena. Adding a plugin-side arena or a clean way to reuse ORT's allocator infrastructure would reduce allocation overhead, improve memory reuse, and let the plugin honor options such as `gpu_mem_limit` and `arena_extend_strategy`.
 
-2. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc`.
+2. **Profiling and observability** — The in-tree CUDA EP exposes an EP profiler, while the plugin shim currently does not surface equivalent profiling hooks. Future work should wire up `GetProfiler()` for the plugin path, integrate CUDA/NVTX/CUPTI-based tracing where appropriate, and make plugin execution visible in the same profiling flows users already rely on for the bundled CUDA EP.
 
-3. **TensorSeq adapter coverage** — Add enough sequence/tensor-sequence support to unblock `identity_op.cc` and `sequence_op.cc`.
+3. **Stream/adapter parity for framework-style `Stream*` consumers** — A number of excluded or recently re-included kernels still assume access to a richer framework `Stream*` object rather than only a raw `cudaStream_t` view. Extending the adapter path here would unblock additional LLM, FFT, quantization, diffusion, and other CUDA kernels.
 
-4. **Remaining contrib exclusions** — Remove the CMake exclusions for FFT, crop, and dynamicslice once their remaining framework assumptions are gone.
+4. **Contrib LLM migration pass** — The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` remains excluded as a separate follow-up.
 
-5. **CI integration** — Add plugin build + test to the CI pipeline.
+5. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc` so the plugin can recover runtime kernel selection and profiling-based tuning behavior.
 
-6. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure will be reintroduced once the API is extended.
+6. **TensorSeq and additional C API coverage** — Add enough sequence/tensor-sequence support to unblock `identity_op.cc` and `sequence_op.cc`, and extend the ORT C API where needed for remaining framework-style attribute accessors such as string-array attributes used by RNN kernels.
+
+7. **Remaining contrib exclusions** — Remove the current CMake exclusions for FFT, crop, dynamicslice, and other remaining contrib paths once their framework assumptions are gone or adapter equivalents exist.
+
+8. **CI integration and targeted benchmarking** — Add plugin build + test coverage to CI and include perf-oriented validation so allocator, profiling, and tunable-op regressions are caught early.
+
+9. **NHWC cleanup and hardening** — Complete the follow-up work described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the allowlist, improve internal-domain diagnostics, and add stronger structural NHWC assertions.
+
+10. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure will be reintroduced once the API is extended.

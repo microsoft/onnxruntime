@@ -6,6 +6,8 @@ import sys
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
+import torch
+
 import onnxruntime as onnxrt
 
 
@@ -45,7 +47,15 @@ def _get_package_root(package_name: str, directory_name: str | None = None):
 
 def _is_cuda_plugin_ep_built() -> bool:
     build_info = onnxrt.get_build_info()
-    return ", cuda-plugin-ep=" in build_info
+    if ", cuda-plugin-ep=" in build_info:
+        return True
+
+    ep_lib_path = os.environ.get("ORT_CUDA_PLUGIN_PATH", "")
+    if ep_lib_path and os.path.exists(ep_lib_path):
+        return True
+
+    detected_path = _get_default_cuda_plugin_ep_path()
+    return bool(detected_path and os.path.exists(detected_path))
 
 
 def _get_cuda_plugin_library_name() -> str:
@@ -157,6 +167,22 @@ def resolve_cuda_plugin_ep(ep: str, default_test_with_cuda_plugin_ep: bool = Tru
         if enable_debug_print:
             print(f"{CUDA_PLUGIN_EP_NAME} is not exposed in available provider types. Falling back to {ep}.")
     return ep
+
+
+def get_cuda_provider_name() -> str | None:
+    if not torch.cuda.is_available():
+        return None
+
+    resolved_provider = resolve_cuda_plugin_ep("CUDAExecutionProvider")
+    available_providers = onnxrt.get_available_providers()
+
+    if resolved_provider in available_providers:
+        return resolved_provider
+
+    if "CUDAExecutionProvider" in available_providers:
+        return "CUDAExecutionProvider"
+
+    return None
 
 
 def _is_plugin_provider_type_available() -> bool:

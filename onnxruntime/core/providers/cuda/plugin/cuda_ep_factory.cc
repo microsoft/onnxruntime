@@ -4,7 +4,7 @@
 #include "cuda_ep_factory.h"
 #include "cuda_ep.h"
 #include "cuda_plugin_kernels.h"
-#include "core/session/abi_session_options_impl.h"
+#include "core/common/string_utils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -114,6 +114,10 @@ std::string ToUpper(std::string value) {
     return static_cast<char>(std::toupper(c));
   });
   return value;
+}
+
+std::string GetProviderOptionPrefix(std::string_view provider_name) {
+  return std::format("ep.{}.", onnxruntime::utils::GetLowercaseString(std::string{provider_name}));
 }
 
 }  // namespace
@@ -364,7 +368,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     }
   };
 
-  const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(factory->GetEpName().c_str());
+  const std::string ep_options_prefix = GetProviderOptionPrefix(factory->GetEpName());
   const std::string prefer_nhwc_key = ep_options_prefix + "prefer_nhwc";
   const std::string prefer_nhwc_layout_key = ep_options_prefix + "prefer_nhwc_layout";
   const std::string use_tf32_key = ep_options_prefix + "use_tf32";

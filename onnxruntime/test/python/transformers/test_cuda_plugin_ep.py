@@ -25,6 +25,7 @@ except ImportError:
 TEST_PASS = "PASS"
 TEST_SKIP = "SKIP"
 TEST_FAIL = "FAIL"
+EP_GRAPH_ASSIGNMENT_CONFIG_KEY = "session.record_ep_graph_assignment_info"
 
 
 def require_cuda_plugin_ep():
@@ -48,6 +49,46 @@ def get_cuda_plugin_device():
         raise unittest.SkipTest("CUDA plugin EP registered, but no plugin devices were enumerated")
 
     return plugin_devices[0]
+
+
+def _create_session_options(session_config=None):
+    sess_options = onnxrt.SessionOptions()
+    if session_config:
+        for key, value in session_config.items():
+            sess_options.add_session_config_entry(key, value)
+
+    # Require graph-assignment data so the tests validate that nodes actually run on the plugin.
+    sess_options.add_session_config_entry(EP_GRAPH_ASSIGNMENT_CONFIG_KEY, "1")
+    return sess_options
+
+
+def _format_assigned_node(node):
+    domain = node.domain or "ai.onnx"
+    if node.name:
+        return f"{domain}::{node.op_type}:{node.name}"
+    return f"{domain}::{node.op_type}"
+
+
+def _get_assigned_nodes(session, ep_name):
+    assignment_info = list(session.get_provider_graph_assignment_info())
+    assigned_nodes = []
+    for subgraph in assignment_info:
+        if subgraph.ep_name == ep_name:
+            assigned_nodes.extend(subgraph.get_nodes())
+
+    return assigned_nodes, assignment_info
+
+
+def _format_assignment_summary(assignment_info):
+    if not assignment_info:
+        return "<none>"
+
+    summaries = []
+    for subgraph in assignment_info:
+        node_summary = ", ".join(_format_assigned_node(node) for node in subgraph.get_nodes()) or "<no nodes>"
+        summaries.append(f"{subgraph.ep_name}[{node_summary}]")
+
+    return "; ".join(summaries)
 
 
 def create_add_model(model_path):
@@ -238,22 +279,25 @@ def run_operator_test(
         model_path = tmp.name
     try:
         model_creator(model_path)
-        sess_options = onnxrt.SessionOptions()
-        if session_config:
-            for key, value in session_config.items():
-                sess_options.add_session_config_entry(key, value)
+        sess_options = _create_session_options(session_config)
         sess_options.add_provider_for_devices([target_device], {})
         sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
 
         active_providers = sess.get_providers()
-        if ep_name not in active_providers:
-            print(f"FAILURE: {ep_name} is NOT active for this operator. Providers: {active_providers}")
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, ep_name)
+        if not assigned_nodes:
+            print(
+                f"FAILURE: {ep_name} was assigned no nodes. Providers: {active_providers}. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}"
+            )
             return False
 
-        print(f"(Session created with {active_providers})", end=" ", flush=True)
-        print("Running...", end=" ", flush=True)
+        print(
+            f"(Session created with {active_providers}; assigned nodes: "
+            f"{', '.join(_format_assigned_node(node) for node in assigned_nodes)})",
+            flush=True,
+        )
         res = sess.run(None, inputs)
-        print("Done.", end=" ", flush=True)
         expected = expected_fn(inputs)
         np.testing.assert_allclose(res[0], expected, rtol=1e-3, atol=1e-3)
         return True
@@ -269,14 +313,21 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
     try:
         create_add_model(model_path)
         providers = [(CUDA_PLUGIN_EP_NAME, provider_options), "CPUExecutionProvider"]
-        sess = onnxrt.InferenceSession(model_path, providers=providers)
+        sess = onnxrt.InferenceSession(model_path, sess_options=_create_session_options(), providers=providers)
         active_providers = sess.get_providers()
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
 
-        if expect_plugin_provider and CUDA_PLUGIN_EP_NAME not in active_providers:
-            print(f"FAILURE: {CUDA_PLUGIN_EP_NAME} is NOT active. Providers: {active_providers}")
+        if expect_plugin_provider and not assigned_nodes:
+            print(
+                f"FAILURE: {CUDA_PLUGIN_EP_NAME} was assigned no nodes. Providers: {active_providers}. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}"
+            )
             return False
-        if not expect_plugin_provider and CUDA_PLUGIN_EP_NAME in active_providers:
-            print(f"FAILURE: {CUDA_PLUGIN_EP_NAME} unexpectedly active. Providers: {active_providers}")
+        if not expect_plugin_provider and assigned_nodes:
+            print(
+                f"FAILURE: {CUDA_PLUGIN_EP_NAME} unexpectedly owned nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}"
+            )
             return False
 
         a = np.random.rand(3, 2).astype(np.float32)
@@ -296,120 +347,15 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
             os.remove(model_path)
 
 
-def _run_registration_checks(test_case: unittest.TestCase):
-    target_device = get_cuda_plugin_device()
-    print(f"Using registered plugin: {CUDA_PLUGIN_EP_NAME}", flush=True)
-    print(f"Using device: {target_device.ep_name}", flush=True)
+def _expected_conv(inputs):
+    return F.conv2d(torch.from_numpy(inputs["X"]), torch.from_numpy(inputs["W"]), padding=1).numpy()
 
-    x = np.random.rand(1, 2, 4, 4).astype(np.float32)
-    w = np.random.rand(3, 2, 3, 3).astype(np.float32)
 
-    def expected_conv(inputs):
-        return F.conv2d(torch.from_numpy(inputs["X"]), torch.from_numpy(inputs["W"]), padding=1).numpy()
+_NHWC_CONFIG = {"ep.cuda.prefer_nhwc_layout": "1"}
 
-    stage2_cases = [
-        (
-            "Add",
-            create_add_model,
-            {"A": np.random.rand(3, 2).astype(np.float32), "B": np.random.rand(3, 2).astype(np.float32)},
-            lambda feed: feed["A"] + feed["B"],
-            None,
-        ),
-        (
-            "MatMul",
-            create_matmul_model,
-            {"A": np.random.rand(3, 4).astype(np.float32), "B": np.random.rand(4, 5).astype(np.float32)},
-            lambda feed: feed["A"] @ feed["B"],
-            None,
-        ),
-        (
-            "Gemm",
-            lambda model_path: create_gemm_model(model_path, alpha=2.0, beta=0.5),
-            {
-                "A": np.random.rand(3, 4).astype(np.float32),
-                "B": np.random.rand(4, 5).astype(np.float32),
-                "C": np.random.rand(5).astype(np.float32),
-            },
-            lambda feed: 2.0 * (feed["A"] @ feed["B"]) + 0.5 * feed["C"],
-            None,
-        ),
-        ("Conv", create_conv_model, {"X": x, "W": w}, expected_conv, None),
-    ]
 
-    for name, model_creator, inputs, expected_fn, session_config in stage2_cases:
-        print(f"Testing {name}...", end=" ", flush=True)
-        result = run_operator_test(target_device, model_creator, inputs, expected_fn, session_config=session_config)
-        with test_case.subTest(op=name):
-            test_case.assertTrue(
-                result,
-                f"{name} plugin registration test failed",
-            )
-        print(TEST_PASS if result else TEST_FAIL, flush=True)
-
-    print("\nAll Stage 2 tests finished successfully.", flush=True)
-
-    nhwc_config = {"ep.cuda.prefer_nhwc_layout": "1"}
-
-    def expected_batchnorm(inputs):
-        return inputs["X"] / np.sqrt(1.0 + 1e-5)
-
-    stage3_cases = [
-        (
-            "Conv (NHWC)",
-            create_conv_model,
-            {
-                "X": np.random.rand(1, 2, 4, 4).astype(np.float32),
-                "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
-            },
-            expected_conv,
-        ),
-        (
-            "BatchNormalization (NHWC)",
-            create_batch_norm_model,
-            {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)},
-            expected_batchnorm,
-        ),
-        (
-            "MaxPool (NHWC)",
-            create_maxpool_model,
-            {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)},
-            lambda feed: F.max_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
-        ),
-        (
-            "AveragePool (NHWC)",
-            create_avgpool_model,
-            {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)},
-            lambda feed: F.avg_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
-        ),
-    ]
-
-    for name, model_creator, inputs, expected_fn in stage3_cases:
-        print(f"Testing {name}...", end=" ", flush=True)
-        result = run_operator_test(target_device, model_creator, inputs, expected_fn, session_config=nhwc_config)
-        with test_case.subTest(op=name):
-            test_case.assertTrue(
-                result,
-                f"{name} plugin NHWC test failed",
-            )
-        print(TEST_PASS if result else TEST_FAIL, flush=True)
-
-    print("\nAll Stage 3 NHWC tests finished successfully.", flush=True)
-
-    provider_option_cases = [
-        ("provider options with valid device_id/use_tf32", {"device_id": "0", "use_tf32": "0"}, True),
-        ("provider options with invalid device_id", {"device_id": "999"}, False),
-    ]
-
-    print("\nTesting provider options path...", flush=True)
-    for name, provider_options, expect_plugin_provider in provider_option_cases:
-        print(f"Testing {name}...", end=" ", flush=True)
-        result = run_provider_options_test(provider_options, expect_plugin_provider=expect_plugin_provider)
-        with test_case.subTest(op=name):
-            test_case.assertTrue(
-                result,
-                f"{name} failed",
-            )
-        print(TEST_PASS if result else TEST_FAIL, flush=True)
+def _expected_batchnorm(inputs):
+    return inputs["X"] / np.sqrt(1.0 + 1e-5)
 
 
 def _make_simple_model(op_type, inputs_info, outputs_info, attrs=None, opset=13, domain=""):
@@ -451,13 +397,17 @@ def _run_model_test(
         model_path = tmp.name
     try:
         save(model, model_path)
-        sess_options = onnxrt.SessionOptions()
+        sess_options = _create_session_options()
         sess_options.add_provider_for_devices([target_device], {})
         sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
         active_providers = sess.get_providers()
-        if ep_name not in active_providers:
-            print(f"{TEST_SKIP} ({ep_name} not active)")
-            return TEST_SKIP
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, ep_name)
+        if not assigned_nodes:
+            print(
+                f"{TEST_FAIL} ({ep_name} was assigned no nodes; providers={active_providers}; "
+                f"assignments={_format_assignment_summary(assignment_info)})"
+            )
+            return TEST_FAIL
         res = sess.run(None, feed_dict)
         expected = expected_fn(feed_dict)
         if isinstance(expected, (list, tuple)):
@@ -477,378 +427,483 @@ def _run_model_test(
             os.remove(model_path)
 
 
-def _run_stage5_checks(test_case: unittest.TestCase):
-    """Stage 5: Test all ops enabled during Stage 5 (5A through 5D)."""
-    target_device = get_cuda_plugin_device()
-    passed = 0
-    failed = 0
-    skipped = 0
-
-    def run_test(name, model, feed, expected_fn, rtol=1e-3, atol=1e-3):
-        nonlocal passed, failed, skipped
-        print(f"  {name}...", end=" ", flush=True)
-        result = _run_model_test(target_device, name, model, feed, expected_fn, rtol=rtol, atol=atol)
-        with test_case.subTest(op=name):
-            if result == TEST_PASS:
-                passed += 1
-                print(TEST_PASS, flush=True)
-                return
-
-            if result == TEST_SKIP:
-                skipped += 1
-                print(TEST_SKIP, flush=True)
-                return
-
-            failed += 1
-            print(TEST_FAIL, flush=True)
-            test_case.fail(f"{name} Stage 5 plugin op test failed")
-
-    print("\n==================== Stage 5: Expanded Op Tests ====================", flush=True)
-    f_dtype = TensorProto.FLOAT
-
-    # ---- 5A/5B: Standard ops ----
-    print("\n--- Standard Ops (5A/5B) ---", flush=True)
-
-    # Reshape
-    model = _make_simple_model(
-        "Reshape", [("X", f_dtype, [2, 3, 4]), ("shape", TensorProto.INT64, [2])], [("Y", f_dtype, [6, 4])]
-    )
-    # Need shape as initializer; build manually
-    shape_init = helper.make_tensor("shape", TensorProto.INT64, [2], [6, 4])
-    model.graph.initializer.append(shape_init)
-    x = np.random.rand(2, 3, 4).astype(np.float32)
-    run_test("Reshape", model, {"X": x}, lambda f: f["X"].reshape(6, 4))
-
-    # Split (opset 18 supports num_outputs; use split input for opset 13)
-    node = helper.make_node("Split", ["X", "split"], ["Y1", "Y2"], axis=0)
-    graph = helper.make_graph(
-        [node],
-        "test-Split",
-        [helper.make_tensor_value_info("X", f_dtype, [6, 4])],
-        [helper.make_tensor_value_info("Y1", f_dtype, [3, 4]), helper.make_tensor_value_info("Y2", f_dtype, [3, 4])],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 13
-    model = helper.make_model(graph, opset_imports=[opset])
-    model.graph.initializer.append(helper.make_tensor("split", TensorProto.INT64, [2], [3, 3]))
-    x = np.random.rand(6, 4).astype(np.float32)
-    run_test("Split", model, {"X": x}, lambda f: [f["X"][:3], f["X"][3:]])
-
-    # Concat
-    model = _make_simple_model(
-        "Concat", [("A", f_dtype, [2, 3]), ("B", f_dtype, [2, 3])], [("Y", f_dtype, [4, 3])], attrs={"axis": 0}
-    )
-    a = np.random.rand(2, 3).astype(np.float32)
-    b = np.random.rand(2, 3).astype(np.float32)
-    run_test("Concat", model, {"A": a, "B": b}, lambda f: np.concatenate([f["A"], f["B"]], axis=0))
-
-    # Gather
-    gather_model = _make_simple_model(
-        "Gather",
-        [("X", f_dtype, [5, 4]), ("indices", TensorProto.INT64, [3])],
-        [("Y", f_dtype, [3, 4])],
-        attrs={"axis": 0},
-        opset=13,
-    )
-    x = np.random.rand(5, 4).astype(np.float32)
-    idx = np.array([0, 2, 4], dtype=np.int64)
-    run_test("Gather", gather_model, {"X": x, "indices": idx}, lambda f: f["X"][f["indices"]])
-
-    # Unsqueeze (opset 13 uses axes as input)
-    node = helper.make_node("Unsqueeze", ["X", "axes"], ["Y"])
-    graph = helper.make_graph(
-        [node],
-        "test-Unsqueeze",
-        [helper.make_tensor_value_info("X", f_dtype, [3, 4])],
-        [helper.make_tensor_value_info("Y", f_dtype, [1, 3, 4])],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 13
-    model = helper.make_model(graph, opset_imports=[opset])
-    axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [0])
-    model.graph.initializer.append(axes_init)
-    x = np.random.rand(3, 4).astype(np.float32)
-    run_test("Unsqueeze", model, {"X": x}, lambda f: np.expand_dims(f["X"], 0))
-
-    # Tile
-    node = helper.make_node("Tile", ["X", "repeats"], ["Y"])
-    graph = helper.make_graph(
-        [node],
-        "test-Tile",
-        [helper.make_tensor_value_info("X", f_dtype, [2, 3])],
-        [helper.make_tensor_value_info("Y", f_dtype, [4, 9])],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 13
-    model = helper.make_model(graph, opset_imports=[opset])
-    repeats_init = helper.make_tensor("repeats", TensorProto.INT64, [2], [2, 3])
-    model.graph.initializer.append(repeats_init)
-    x = np.random.rand(2, 3).astype(np.float32)
-    run_test("Tile", model, {"X": x}, lambda f: np.tile(f["X"], (2, 3)))
-
-    # CumSum
-    node = helper.make_node("CumSum", ["X", "axis"], ["Y"])
-    graph = helper.make_graph(
-        [node],
-        "test-CumSum",
-        [helper.make_tensor_value_info("X", f_dtype, [3, 4])],
-        [helper.make_tensor_value_info("Y", f_dtype, [3, 4])],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 14
-    model = helper.make_model(graph, opset_imports=[opset])
-    axis_init = helper.make_tensor("axis", TensorProto.INT64, [], [1])
-    model.graph.initializer.append(axis_init)
-    x = np.random.rand(3, 4).astype(np.float32)
-    run_test("CumSum", model, {"X": x}, lambda f: np.cumsum(f["X"], axis=1))
-
-    # ConstantOfShape
-    node = helper.make_node(
-        "ConstantOfShape", ["shape"], ["Y"], value=helper.make_tensor("value", TensorProto.FLOAT, [1], [3.14])
-    )
-    graph = helper.make_graph(
-        [node],
-        "test-ConstantOfShape",
-        [helper.make_tensor_value_info("shape", TensorProto.INT64, [2])],
-        [helper.make_tensor_value_info("Y", f_dtype, None)],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 9
-    model = helper.make_model(graph, opset_imports=[opset])
-    run_test(
-        "ConstantOfShape",
-        model,
-        {"shape": np.array([2, 3], dtype=np.int64)},
-        lambda f: np.full((2, 3), 3.14, dtype=np.float32),
-    )
-
-    # SpaceToDepth
-    model = _make_simple_model(
-        "SpaceToDepth", [("X", f_dtype, [1, 2, 4, 4])], [("Y", f_dtype, [1, 8, 2, 2])], attrs={"blocksize": 2}, opset=13
-    )
-    x = np.random.rand(1, 2, 4, 4).astype(np.float32)
-
-    def space_to_depth(f):
-        inp = f["X"]
-        b, c, h, w = inp.shape
-        bs = 2
-        # ONNX SpaceToDepth: rearrange blocks of spatial data into depth
-        # (b, c, h, w) -> (b, c, h/bs, bs, w/bs, bs) -> (b, c*bs*bs, h/bs, w/bs)
-        tmp = inp.reshape(b, c, h // bs, bs, w // bs, bs)
-        tmp = tmp.transpose(0, 3, 5, 1, 2, 4)
-        return tmp.reshape(b, c * bs * bs, h // bs, w // bs)
-
-    run_test("SpaceToDepth", model, {"X": x}, space_to_depth)
-
-    # Pad
-    node = helper.make_node("Pad", ["X", "pads", "constant_value"], ["Y"])
-    graph = helper.make_graph(
-        [node],
-        "test-Pad",
-        [helper.make_tensor_value_info("X", f_dtype, [2, 3])],
-        [helper.make_tensor_value_info("Y", f_dtype, [4, 5])],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 13
-    model = helper.make_model(graph, opset_imports=[opset])
-    model.graph.initializer.append(helper.make_tensor("pads", TensorProto.INT64, [4], [1, 1, 1, 1]))
-    model.graph.initializer.append(helper.make_tensor("constant_value", TensorProto.FLOAT, [], [0.0]))
-    x = np.random.rand(2, 3).astype(np.float32)
-    run_test("Pad", model, {"X": x}, lambda f: np.pad(f["X"], ((1, 1), (1, 1)), constant_values=0))
-
-    # Slice
-    node = helper.make_node("Slice", ["X", "starts", "ends", "axes"], ["Y"])
-    graph = helper.make_graph(
-        [node],
-        "test-Slice",
-        [helper.make_tensor_value_info("X", f_dtype, [4, 6])],
-        [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 13
-    model = helper.make_model(graph, opset_imports=[opset])
-    model.graph.initializer.append(helper.make_tensor("starts", TensorProto.INT64, [2], [1, 1]))
-    model.graph.initializer.append(helper.make_tensor("ends", TensorProto.INT64, [2], [3, 5]))
-    model.graph.initializer.append(helper.make_tensor("axes", TensorProto.INT64, [2], [0, 1]))
-    x = np.random.rand(4, 6).astype(np.float32)
-    run_test("Slice", model, {"X": x}, lambda f: f["X"][1:3, 1:5])
-
-    # Resize (nearest)
-    node = helper.make_node("Resize", ["X", "", "scales"], ["Y"], mode="nearest")
-    graph = helper.make_graph(
-        [node],
-        "test-Resize",
-        [helper.make_tensor_value_info("X", f_dtype, [1, 1, 2, 2])],
-        [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 4, 4])],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 13
-    model = helper.make_model(graph, opset_imports=[opset])
-    model.graph.initializer.append(helper.make_tensor("scales", TensorProto.FLOAT, [4], [1.0, 1.0, 2.0, 2.0]))
-    x = np.random.rand(1, 1, 2, 2).astype(np.float32)
-    run_test("Resize", model, {"X": x}, lambda f: np.repeat(np.repeat(f["X"], 2, axis=2), 2, axis=3))
-
-    # Sum (variadic)
-    model = _make_simple_model(
-        "Sum",
-        [("A", f_dtype, [3, 4]), ("B", f_dtype, [3, 4]), ("C", f_dtype, [3, 4])],
-        [("Y", f_dtype, [3, 4])],
-        opset=13,
-    )
-    a = np.random.rand(3, 4).astype(np.float32)
-    b = np.random.rand(3, 4).astype(np.float32)
-    c = np.random.rand(3, 4).astype(np.float32)
-    run_test("Sum_variadic", model, {"A": a, "B": b, "C": c}, lambda f: f["A"] + f["B"] + f["C"])
-
-    # ---- 5C: CPU base class ops ----
-    print("\n--- CPU Base Class Ops (5C) ---", flush=True)
-
-    # Upsample (deprecated but still present)
-    node = helper.make_node("Upsample", ["X", "scales"], ["Y"], mode="nearest")
-    graph = helper.make_graph(
-        [node],
-        "test-Upsample",
-        [helper.make_tensor_value_info("X", f_dtype, [1, 1, 2, 2])],
-        [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 4, 4])],
-    )
-    opset = OperatorSetIdProto()
-    opset.version = 9
-    model = helper.make_model(graph, opset_imports=[opset])
-    model.graph.initializer.append(helper.make_tensor("scales", TensorProto.FLOAT, [4], [1.0, 1.0, 2.0, 2.0]))
-    x = np.random.rand(1, 1, 2, 2).astype(np.float32)
-    run_test("Upsample", model, {"X": x}, lambda f: np.repeat(np.repeat(f["X"], 2, axis=2), 2, axis=3))
-
-    # DepthToSpace
-    model = _make_simple_model(
-        "DepthToSpace",
-        [("X", f_dtype, [1, 8, 2, 2])],
-        [("Y", f_dtype, [1, 2, 4, 4])],
-        attrs={"blocksize": 2, "mode": "DCR"},
-        opset=13,
-    )
-    x = np.random.rand(1, 8, 2, 2).astype(np.float32)
-
-    def depth_to_space_dcr(f):
-        inp = f["X"]
-        b, c, h, w = inp.shape
-        bs = 2
-        return (
-            inp.reshape(b, bs, bs, c // (bs * bs), h, w)
-            .transpose(0, 3, 4, 1, 5, 2)
-            .reshape(b, c // (bs * bs), h * bs, w * bs)
-        )
-
-    run_test("DepthToSpace", model, {"X": x}, depth_to_space_dcr)
-
-    # ---- 5D: Contrib Ops ----
-    print("\n--- Contrib Ops (5D) ---", flush=True)
-
-    # FastGelu (com.microsoft domain)
-    node = helper.make_node("FastGelu", ["X"], ["Y"], domain="com.microsoft")
-    graph = helper.make_graph(
-        [node],
-        "test-FastGelu",
-        [helper.make_tensor_value_info("X", f_dtype, [2, 4])],
-        [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
-    )
-    opset_onnx = OperatorSetIdProto()
-    opset_onnx.version = 13
-    opset_ms = OperatorSetIdProto()
-    opset_ms.domain = "com.microsoft"
-    opset_ms.version = 1
-    model = helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])
-    x = np.random.rand(2, 4).astype(np.float32)
-
-    def fast_gelu_ref(f):
-        x = f["X"]
-        # FastGelu approximation: x * sigmoid(1.702 * x)
-        return x * (1.0 / (1.0 + np.exp(-1.702 * x)))
-
-    run_test("FastGelu", model, {"X": x}, fast_gelu_ref, rtol=1e-2, atol=1e-2)
-
-    # BiasDropout (com.microsoft). We force inference mode so the op is deterministic.
-    model = make_bias_dropout_model()
-    x = np.random.rand(2, 4).astype(np.float32)
-    bias = np.random.rand(4).astype(np.float32)
-    residual = np.random.rand(2, 4).astype(np.float32)
-    ratio = np.array(0.5, dtype=np.float32)
-    training_mode = np.array(False, dtype=np.bool_)
-    run_test(
-        "BiasDropout",
-        model,
-        {
-            "X": x,
-            "bias": bias,
-            "residual": residual,
-            "ratio": ratio,
-            "training_mode": training_mode,
-        },
-        lambda feed: feed["X"] + feed["bias"] + feed["residual"],
-    )
-
-    # SkipLayerNormalization (com.microsoft)
-    hidden_size = 8
-    node = helper.make_node(
-        "SkipLayerNormalization",
-        ["X", "skip", "gamma", "beta"],
-        ["Y", "", "", "input_skip_bias_sum"],
-        domain="com.microsoft",
-        epsilon=1e-5,
-    )
-    graph = helper.make_graph(
-        [node],
-        "test-SkipLayerNorm",
-        [
-            helper.make_tensor_value_info("X", f_dtype, [2, hidden_size]),
-            helper.make_tensor_value_info("skip", f_dtype, [2, hidden_size]),
-            helper.make_tensor_value_info("gamma", f_dtype, [hidden_size]),
-            helper.make_tensor_value_info("beta", f_dtype, [hidden_size]),
-        ],
-        [
-            helper.make_tensor_value_info("Y", f_dtype, [2, hidden_size]),
-            helper.make_tensor_value_info("input_skip_bias_sum", f_dtype, None),
-        ],
-    )
-    opset_onnx = OperatorSetIdProto()
-    opset_onnx.version = 13
-    opset_ms = OperatorSetIdProto()
-    opset_ms.domain = "com.microsoft"
-    opset_ms.version = 1
-    model = helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])
-    x = np.random.rand(2, hidden_size).astype(np.float32)
-    skip = np.random.rand(2, hidden_size).astype(np.float32)
-    gamma = np.ones(hidden_size, dtype=np.float32)
-    beta = np.zeros(hidden_size, dtype=np.float32)
-
-    def skip_layer_norm_ref(f):
-        added = f["X"] + f["skip"]
-        mean = added.mean(axis=-1, keepdims=True)
-        var = added.var(axis=-1, keepdims=True)
-        normed = (added - mean) / np.sqrt(var + 1e-5)
-        return [normed * f["gamma"] + f["beta"], added]
-
-    run_test(
-        "SkipLayerNorm",
-        model,
-        {"X": x, "skip": skip, "gamma": gamma, "beta": beta},
-        skip_layer_norm_ref,
-        rtol=1e-2,
-        atol=1e-2,
-    )
-
-    # ---- Summary ----
-    total = passed + failed + skipped
-    print(f"\n--- Stage 5 Results: {passed} passed, {failed} failed, {skipped} skipped ({total} total) ---", flush=True)
-    test_case.assertEqual(failed, 0, f"Stage 5 had {failed} failing plugin op checks")
-    print("All Stage 5 tests finished successfully.", flush=True)
-
-
 class TestCudaPluginEP(unittest.TestCase):
-    def test_cuda_plugin_registration(self):
-        _run_registration_checks(self)
+    # ---- Registration tests (verify nodes run on the plugin EP) ----
 
-    def test_cuda_plugin_stage5_ops(self):
-        _run_stage5_checks(self)
+    def test_registration_add(self):
+        target_device = get_cuda_plugin_device()
+        inputs = {"A": np.random.rand(3, 2).astype(np.float32), "B": np.random.rand(3, 2).astype(np.float32)}
+        result = run_operator_test(target_device, create_add_model, inputs, lambda feed: feed["A"] + feed["B"])
+        self.assertTrue(result, "Add plugin registration test failed")
+
+    def test_registration_matmul(self):
+        target_device = get_cuda_plugin_device()
+        inputs = {"A": np.random.rand(3, 4).astype(np.float32), "B": np.random.rand(4, 5).astype(np.float32)}
+        result = run_operator_test(target_device, create_matmul_model, inputs, lambda feed: feed["A"] @ feed["B"])
+        self.assertTrue(result, "MatMul plugin registration test failed")
+
+    def test_registration_gemm(self):
+        target_device = get_cuda_plugin_device()
+        inputs = {
+            "A": np.random.rand(3, 4).astype(np.float32),
+            "B": np.random.rand(4, 5).astype(np.float32),
+            "C": np.random.rand(5).astype(np.float32),
+        }
+        result = run_operator_test(
+            target_device,
+            lambda model_path: create_gemm_model(model_path, alpha=2.0, beta=0.5),
+            inputs,
+            lambda feed: 2.0 * (feed["A"] @ feed["B"]) + 0.5 * feed["C"],
+        )
+        self.assertTrue(result, "Gemm plugin registration test failed")
+
+    def test_registration_conv(self):
+        target_device = get_cuda_plugin_device()
+        inputs = {
+            "X": np.random.rand(1, 2, 4, 4).astype(np.float32),
+            "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
+        }
+        result = run_operator_test(target_device, create_conv_model, inputs, _expected_conv)
+        self.assertTrue(result, "Conv plugin registration test failed")
+
+    # ---- Provider options tests ----
+
+    def test_provider_options_valid(self):
+        result = run_provider_options_test({"device_id": "0", "use_tf32": "0"}, expect_plugin_provider=True)
+        self.assertTrue(result, "Provider options with valid device_id/use_tf32 failed")
+
+    def test_provider_options_invalid_device(self):
+        result = run_provider_options_test({"device_id": "999"}, expect_plugin_provider=False)
+        self.assertTrue(result, "Provider options with invalid device_id failed")
+
+    # ---- NHWC layout tests ----
+
+    def test_nhwc_conv(self):
+        target_device = get_cuda_plugin_device()
+        inputs = {
+            "X": np.random.rand(1, 2, 4, 4).astype(np.float32),
+            "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
+        }
+        result = run_operator_test(
+            target_device, create_conv_model, inputs, _expected_conv, session_config=_NHWC_CONFIG
+        )
+        self.assertTrue(result, "Conv (NHWC) plugin test failed")
+
+    def test_nhwc_batch_normalization(self):
+        target_device = get_cuda_plugin_device()
+        inputs = {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)}
+        result = run_operator_test(
+            target_device, create_batch_norm_model, inputs, _expected_batchnorm, session_config=_NHWC_CONFIG
+        )
+        self.assertTrue(result, "BatchNormalization (NHWC) plugin test failed")
+
+    def test_nhwc_maxpool(self):
+        target_device = get_cuda_plugin_device()
+        inputs = {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)}
+        result = run_operator_test(
+            target_device,
+            create_maxpool_model,
+            inputs,
+            lambda feed: F.max_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
+            session_config=_NHWC_CONFIG,
+        )
+        self.assertTrue(result, "MaxPool (NHWC) plugin test failed")
+
+    def test_nhwc_avgpool(self):
+        target_device = get_cuda_plugin_device()
+        inputs = {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)}
+        result = run_operator_test(
+            target_device,
+            create_avgpool_model,
+            inputs,
+            lambda feed: F.avg_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
+            session_config=_NHWC_CONFIG,
+        )
+        self.assertTrue(result, "AveragePool (NHWC) plugin test failed")
+
+    # ---- Standard op tests ----
+
+    def test_op_reshape(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "Reshape", [("X", f_dtype, [2, 3, 4]), ("shape", TensorProto.INT64, [2])], [("Y", f_dtype, [6, 4])]
+        )
+        model.graph.initializer.append(helper.make_tensor("shape", TensorProto.INT64, [2], [6, 4]))
+        x = np.random.rand(2, 3, 4).astype(np.float32)
+        result = _run_model_test(target_device, "Reshape", model, {"X": x}, lambda f: f["X"].reshape(6, 4))
+        self.assertEqual(result, TEST_PASS, "Reshape plugin op test failed")
+
+    def test_op_split(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Split", ["X", "split"], ["Y1", "Y2"], axis=0)
+        graph = helper.make_graph(
+            [node],
+            "test-Split",
+            [helper.make_tensor_value_info("X", f_dtype, [6, 4])],
+            [
+                helper.make_tensor_value_info("Y1", f_dtype, [3, 4]),
+                helper.make_tensor_value_info("Y2", f_dtype, [3, 4]),
+            ],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("split", TensorProto.INT64, [2], [3, 3]))
+        x = np.random.rand(6, 4).astype(np.float32)
+        result = _run_model_test(target_device, "Split", model, {"X": x}, lambda f: [f["X"][:3], f["X"][3:]])
+        self.assertEqual(result, TEST_PASS, "Split plugin op test failed")
+
+    def test_op_concat(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "Concat", [("A", f_dtype, [2, 3]), ("B", f_dtype, [2, 3])], [("Y", f_dtype, [4, 3])], attrs={"axis": 0}
+        )
+        a = np.random.rand(2, 3).astype(np.float32)
+        b = np.random.rand(2, 3).astype(np.float32)
+        result = _run_model_test(
+            target_device, "Concat", model, {"A": a, "B": b}, lambda f: np.concatenate([f["A"], f["B"]], axis=0)
+        )
+        self.assertEqual(result, TEST_PASS, "Concat plugin op test failed")
+
+    def test_op_gather(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "Gather",
+            [("X", f_dtype, [5, 4]), ("indices", TensorProto.INT64, [3])],
+            [("Y", f_dtype, [3, 4])],
+            attrs={"axis": 0},
+            opset=13,
+        )
+        x = np.random.rand(5, 4).astype(np.float32)
+        idx = np.array([0, 2, 4], dtype=np.int64)
+        result = _run_model_test(
+            target_device, "Gather", model, {"X": x, "indices": idx}, lambda f: f["X"][f["indices"]]
+        )
+        self.assertEqual(result, TEST_PASS, "Gather plugin op test failed")
+
+    def test_op_unsqueeze(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Unsqueeze", ["X", "axes"], ["Y"])
+        graph = helper.make_graph(
+            [node],
+            "test-Unsqueeze",
+            [helper.make_tensor_value_info("X", f_dtype, [3, 4])],
+            [helper.make_tensor_value_info("Y", f_dtype, [1, 3, 4])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("axes", TensorProto.INT64, [1], [0]))
+        x = np.random.rand(3, 4).astype(np.float32)
+        result = _run_model_test(target_device, "Unsqueeze", model, {"X": x}, lambda f: np.expand_dims(f["X"], 0))
+        self.assertEqual(result, TEST_PASS, "Unsqueeze plugin op test failed")
+
+    def test_op_tile(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Tile", ["X", "repeats"], ["Y"])
+        graph = helper.make_graph(
+            [node],
+            "test-Tile",
+            [helper.make_tensor_value_info("X", f_dtype, [2, 3])],
+            [helper.make_tensor_value_info("Y", f_dtype, [4, 9])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("repeats", TensorProto.INT64, [2], [2, 3]))
+        x = np.random.rand(2, 3).astype(np.float32)
+        result = _run_model_test(target_device, "Tile", model, {"X": x}, lambda f: np.tile(f["X"], (2, 3)))
+        self.assertEqual(result, TEST_PASS, "Tile plugin op test failed")
+
+    def test_op_cumsum(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("CumSum", ["X", "axis"], ["Y"])
+        graph = helper.make_graph(
+            [node],
+            "test-CumSum",
+            [helper.make_tensor_value_info("X", f_dtype, [3, 4])],
+            [helper.make_tensor_value_info("Y", f_dtype, [3, 4])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 14
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("axis", TensorProto.INT64, [], [1]))
+        x = np.random.rand(3, 4).astype(np.float32)
+        result = _run_model_test(target_device, "CumSum", model, {"X": x}, lambda f: np.cumsum(f["X"], axis=1))
+        self.assertEqual(result, TEST_PASS, "CumSum plugin op test failed")
+
+    def test_op_constant_of_shape(self):
+        target_device = get_cuda_plugin_device()
+        node = helper.make_node(
+            "ConstantOfShape", ["shape"], ["Y"], value=helper.make_tensor("value", TensorProto.FLOAT, [1], [3.14])
+        )
+        graph = helper.make_graph(
+            [node],
+            "test-ConstantOfShape",
+            [helper.make_tensor_value_info("shape", TensorProto.INT64, [2])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, None)],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 9
+        model = helper.make_model(graph, opset_imports=[opset])
+        result = _run_model_test(
+            target_device,
+            "ConstantOfShape",
+            model,
+            {"shape": np.array([2, 3], dtype=np.int64)},
+            lambda f: np.full((2, 3), 3.14, dtype=np.float32),
+        )
+        self.assertEqual(result, TEST_PASS, "ConstantOfShape plugin op test failed")
+
+    def test_op_space_to_depth(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "SpaceToDepth",
+            [("X", f_dtype, [1, 2, 4, 4])],
+            [("Y", f_dtype, [1, 8, 2, 2])],
+            attrs={"blocksize": 2},
+            opset=13,
+        )
+        x = np.random.rand(1, 2, 4, 4).astype(np.float32)
+
+        def expected(f):
+            inp = f["X"]
+            b, c, h, w = inp.shape
+            bs = 2
+            tmp = inp.reshape(b, c, h // bs, bs, w // bs, bs)
+            tmp = tmp.transpose(0, 3, 5, 1, 2, 4)
+            return tmp.reshape(b, c * bs * bs, h // bs, w // bs)
+
+        result = _run_model_test(target_device, "SpaceToDepth", model, {"X": x}, expected)
+        self.assertEqual(result, TEST_PASS, "SpaceToDepth plugin op test failed")
+
+    def test_op_pad(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Pad", ["X", "pads", "constant_value"], ["Y"])
+        graph = helper.make_graph(
+            [node],
+            "test-Pad",
+            [helper.make_tensor_value_info("X", f_dtype, [2, 3])],
+            [helper.make_tensor_value_info("Y", f_dtype, [4, 5])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("pads", TensorProto.INT64, [4], [1, 1, 1, 1]))
+        model.graph.initializer.append(helper.make_tensor("constant_value", TensorProto.FLOAT, [], [0.0]))
+        x = np.random.rand(2, 3).astype(np.float32)
+        result = _run_model_test(
+            target_device, "Pad", model, {"X": x}, lambda f: np.pad(f["X"], ((1, 1), (1, 1)), constant_values=0)
+        )
+        self.assertEqual(result, TEST_PASS, "Pad plugin op test failed")
+
+    def test_op_slice(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Slice", ["X", "starts", "ends", "axes"], ["Y"])
+        graph = helper.make_graph(
+            [node],
+            "test-Slice",
+            [helper.make_tensor_value_info("X", f_dtype, [4, 6])],
+            [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("starts", TensorProto.INT64, [2], [1, 1]))
+        model.graph.initializer.append(helper.make_tensor("ends", TensorProto.INT64, [2], [3, 5]))
+        model.graph.initializer.append(helper.make_tensor("axes", TensorProto.INT64, [2], [0, 1]))
+        x = np.random.rand(4, 6).astype(np.float32)
+        result = _run_model_test(target_device, "Slice", model, {"X": x}, lambda f: f["X"][1:3, 1:5])
+        self.assertEqual(result, TEST_PASS, "Slice plugin op test failed")
+
+    def test_op_resize(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Resize", ["X", "", "scales"], ["Y"], mode="nearest")
+        graph = helper.make_graph(
+            [node],
+            "test-Resize",
+            [helper.make_tensor_value_info("X", f_dtype, [1, 1, 2, 2])],
+            [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 4, 4])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("scales", TensorProto.FLOAT, [4], [1.0, 1.0, 2.0, 2.0]))
+        x = np.random.rand(1, 1, 2, 2).astype(np.float32)
+        result = _run_model_test(
+            target_device, "Resize", model, {"X": x}, lambda f: np.repeat(np.repeat(f["X"], 2, axis=2), 2, axis=3)
+        )
+        self.assertEqual(result, TEST_PASS, "Resize plugin op test failed")
+
+    def test_op_sum_variadic(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "Sum",
+            [("A", f_dtype, [3, 4]), ("B", f_dtype, [3, 4]), ("C", f_dtype, [3, 4])],
+            [("Y", f_dtype, [3, 4])],
+            opset=13,
+        )
+        a = np.random.rand(3, 4).astype(np.float32)
+        b = np.random.rand(3, 4).astype(np.float32)
+        c = np.random.rand(3, 4).astype(np.float32)
+        result = _run_model_test(
+            target_device, "Sum_variadic", model, {"A": a, "B": b, "C": c}, lambda f: f["A"] + f["B"] + f["C"]
+        )
+        self.assertEqual(result, TEST_PASS, "Sum_variadic plugin op test failed")
+
+    # ---- CPU base class op tests ----
+
+    def test_op_upsample(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Upsample", ["X", "scales"], ["Y"], mode="nearest")
+        graph = helper.make_graph(
+            [node],
+            "test-Upsample",
+            [helper.make_tensor_value_info("X", f_dtype, [1, 1, 2, 2])],
+            [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 4, 4])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 9
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("scales", TensorProto.FLOAT, [4], [1.0, 1.0, 2.0, 2.0]))
+        x = np.random.rand(1, 1, 2, 2).astype(np.float32)
+        result = _run_model_test(
+            target_device, "Upsample", model, {"X": x}, lambda f: np.repeat(np.repeat(f["X"], 2, axis=2), 2, axis=3)
+        )
+        self.assertEqual(result, TEST_PASS, "Upsample plugin op test failed")
+
+    def test_op_depth_to_space(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "DepthToSpace",
+            [("X", f_dtype, [1, 8, 2, 2])],
+            [("Y", f_dtype, [1, 2, 4, 4])],
+            attrs={"blocksize": 2, "mode": "DCR"},
+            opset=13,
+        )
+        x = np.random.rand(1, 8, 2, 2).astype(np.float32)
+
+        def expected(f):
+            inp = f["X"]
+            b, c, h, w = inp.shape
+            bs = 2
+            return (
+                inp.reshape(b, bs, bs, c // (bs * bs), h, w)
+                .transpose(0, 3, 4, 1, 5, 2)
+                .reshape(b, c // (bs * bs), h * bs, w * bs)
+            )
+
+        result = _run_model_test(target_device, "DepthToSpace", model, {"X": x}, expected)
+        self.assertEqual(result, TEST_PASS, "DepthToSpace plugin op test failed")
+
+    # ---- Contrib op tests ----
+
+    def test_op_fast_gelu(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("FastGelu", ["X"], ["Y"], domain="com.microsoft")
+        graph = helper.make_graph(
+            [node],
+            "test-FastGelu",
+            [helper.make_tensor_value_info("X", f_dtype, [2, 4])],
+            [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
+        )
+        opset_onnx = OperatorSetIdProto()
+        opset_onnx.version = 13
+        opset_ms = OperatorSetIdProto()
+        opset_ms.domain = "com.microsoft"
+        opset_ms.version = 1
+        model = helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])
+        x = np.random.rand(2, 4).astype(np.float32)
+
+        def expected(f):
+            v = f["X"]
+            return v * (1.0 / (1.0 + np.exp(-1.702 * v)))
+
+        result = _run_model_test(target_device, "FastGelu", model, {"X": x}, expected, rtol=1e-2, atol=1e-2)
+        self.assertEqual(result, TEST_PASS, "FastGelu plugin op test failed")
+
+    def test_op_bias_dropout(self):
+        target_device = get_cuda_plugin_device()
+        model = make_bias_dropout_model()
+        x = np.random.rand(2, 4).astype(np.float32)
+        bias = np.random.rand(4).astype(np.float32)
+        residual = np.random.rand(2, 4).astype(np.float32)
+        ratio = np.array(0.5, dtype=np.float32)
+        training_mode = np.array(False, dtype=np.bool_)
+        feed = {"X": x, "bias": bias, "residual": residual, "ratio": ratio, "training_mode": training_mode}
+        result = _run_model_test(
+            target_device, "BiasDropout", model, feed, lambda f: f["X"] + f["bias"] + f["residual"]
+        )
+        self.assertEqual(result, TEST_PASS, "BiasDropout plugin op test failed")
+
+    def test_op_skip_layer_norm(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        hidden_size = 8
+        node = helper.make_node(
+            "SkipLayerNormalization",
+            ["X", "skip", "gamma", "beta"],
+            ["Y", "", "", "input_skip_bias_sum"],
+            domain="com.microsoft",
+            epsilon=1e-5,
+        )
+        graph = helper.make_graph(
+            [node],
+            "test-SkipLayerNorm",
+            [
+                helper.make_tensor_value_info("X", f_dtype, [2, hidden_size]),
+                helper.make_tensor_value_info("skip", f_dtype, [2, hidden_size]),
+                helper.make_tensor_value_info("gamma", f_dtype, [hidden_size]),
+                helper.make_tensor_value_info("beta", f_dtype, [hidden_size]),
+            ],
+            [
+                helper.make_tensor_value_info("Y", f_dtype, [2, hidden_size]),
+                helper.make_tensor_value_info("input_skip_bias_sum", f_dtype, None),
+            ],
+        )
+        opset_onnx = OperatorSetIdProto()
+        opset_onnx.version = 13
+        opset_ms = OperatorSetIdProto()
+        opset_ms.domain = "com.microsoft"
+        opset_ms.version = 1
+        model = helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])
+        x = np.random.rand(2, hidden_size).astype(np.float32)
+        skip = np.random.rand(2, hidden_size).astype(np.float32)
+        gamma = np.ones(hidden_size, dtype=np.float32)
+        beta = np.zeros(hidden_size, dtype=np.float32)
+
+        def expected(f):
+            added = f["X"] + f["skip"]
+            mean = added.mean(axis=-1, keepdims=True)
+            var = added.var(axis=-1, keepdims=True)
+            normed = (added - mean) / np.sqrt(var + 1e-5)
+            return [normed * f["gamma"] + f["beta"], added]
+
+        result = _run_model_test(
+            target_device,
+            "SkipLayerNorm",
+            model,
+            {"X": x, "skip": skip, "gamma": gamma, "beta": beta},
+            expected,
+            rtol=1e-2,
+            atol=1e-2,
+        )
+        self.assertEqual(result, TEST_PASS, "SkipLayerNorm plugin op test failed")
 
 
 if __name__ == "__main__":

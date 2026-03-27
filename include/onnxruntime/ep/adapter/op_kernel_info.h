@@ -12,6 +12,7 @@
 #include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
+#include "core/framework/op_kernel_info.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
@@ -42,6 +43,11 @@ struct OpKernelInfo {
   // to manage the lifetime of the cached data.
   struct KernelInfoCache {
     explicit KernelInfoCache(const OrtKernelInfo* kernel_info) : kernel_info_(kernel_info) {
+      const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(kernel_info);
+      execution_provider_ = core_kernel_info->GetExecutionProvider();
+      ort_ep_ = execution_provider_ != nullptr ? execution_provider_->GetOrtEp() : nullptr;
+      ep_impl_ = ort_ep_ != nullptr ? (static_cast<const Ep*>(ort_ep_))->EpImpl() : execution_provider_;
+
       Ort::ConstKernelInfo info{kernel_info};
       const size_t input_count = info.GetInputCount();
       constant_input_tensors.resize(input_count);
@@ -54,6 +60,9 @@ struct OpKernelInfo {
       }
     }
     const OrtKernelInfo* kernel_info_;
+    const ::onnxruntime::IExecutionProvider* execution_provider_{};
+    const OrtEp* ort_ep_{};
+    const ::onnxruntime::IExecutionProvider* ep_impl_{};
     std::vector<Tensor> constant_input_tensors;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelInfoCache);
   };
@@ -62,13 +71,13 @@ struct OpKernelInfo {
   }
 
   const DataTransferManager& GetDataTransferManager() const noexcept {
-    return (static_cast<const Ep*>(info_.GetEp()))->GetDataTransferManager();
+    return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
   Node node() const noexcept {
     return Node{cache_->kernel_info_};
   }
   const IExecutionProvider* GetExecutionProvider() const noexcept {
-    return (static_cast<const Ep*>(info_.GetEp()))->EpImpl();
+    return cache_->ep_impl_;
   }
 
   KernelDef GetKernelDef() const noexcept {
@@ -76,7 +85,7 @@ struct OpKernelInfo {
   }
 
   const Ort::ConstKernelInfo GetKernelInfo() const noexcept {
-    return info_;
+    return Ort::ConstKernelInfo{cache_->kernel_info_};
   }
 
   ConfigOptions GetConfigOptions() const noexcept {
