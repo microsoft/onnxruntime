@@ -240,7 +240,8 @@ static bool TryRewriteProjectionGemm(Graph& graph,
 }
 
 static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::Logger& logger) {
-  const auto fail = [&](const char*) {
+  const auto fail = [&](const char* message) {
+    DEBUG_LOG(message);
     return false;
   };
 
