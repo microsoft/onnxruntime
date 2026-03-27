@@ -156,15 +156,17 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
 
   // 3) Check ep_compatibility_info constraint
   //
-  // ORT doesn't directly check architecture constraint, but relies on ep_compatibility_info constraint containing the
-  // architecture information if needed.
+  // ORT does not directly evaluate the architecture constraint. Instead, it relies on
+  // the ep_compatibility_info constraint, which may encode architecture information
+  // if needed.
   //
-  // The ep_compatibility_info is expected be the same as ep compatibility string in EPContext model's metadata.
-  // (see OrtEp::GetCompiledModelCompatibilityInfo() for how to create compatibility string in model metadata)
+  // The ep_compatibility_info value is expected to match the EP compatibility string
+  // stored in the EPContext model metadata.
+  // (See OrtEp::GetCompiledModelCompatibilityInfo() for how this string is generated.)
   //
-  // EP implements EpFactory::ValidateCompiledModelCompatibilityInfo() should validate the compatibility string with given
-  // the target device and OrtHardwareDevice
-  // return the compatibility result.
+  // The EP implementation of EpFactory::ValidateCompiledModelCompatibilityInfo()
+  // is responsible for validating the compatibility string against the target device
+  // (i.e. OrtHardwareDevice), and returning the compatibility result.
   auto status = ValidateCompiledModelCompatibilityInfo(ep_info, variant.compatibility_info,
                                                        constraint_devices, &variant.compiled_model_compatibility);
   if (!status.IsOK()) {
