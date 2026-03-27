@@ -84,7 +84,10 @@ Status CreateFilteredIndexedGraph(gsl::span<const Node* const> nodes, const Grap
         // If not produced by this subgraph, it's a boundary input
         if (internal_outputs.count(input) == 0) {
           // Use insert to keep the first occurrence's order
-          subgraph_inputs.emplace(input, input_order++);
+          auto emplace_result = subgraph_inputs.emplace(input, input_order);
+          if (emplace_result.second) {
+            ++input_order;
+          }
         }
       }
     };
