@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
 #include <iostream>
 #include <absl/base/config.h>
 
@@ -12,6 +13,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/ep_context_options.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -414,6 +416,45 @@ namespace {
 
 using ParitionVerifierFn = std::function<void(const Graph&)>;
 
+// Collect unique node names from a graph and all its subgraphs
+// using the same naming scheme as the resource accountant.
+static void CollectNodeNames(const Graph& graph, std::vector<std::string>& names) {
+  for (const auto& node : graph.Nodes()) {
+    names.push_back(IResourceAccountant::MakeUniqueNodeName(node));
+    for (const auto& [_, subgraph] : node.GetAttributeNameToSubgraphMap()) {
+      CollectNodeNames(*subgraph, names);
+    }
+  }
+}
+
+// Generates a node stats file dynamically from the current graph,
+// assigning each node a fixed cost. Returns the total cost across
+// all nodes so callers can choose a threshold relative to the actual total.
+// This avoids relying on a pre-baked stats file whose node name hashes
+// become stale when graph optimizers change node input/output names.
+static size_t GenerateDynamicNodeStatsFile(const ORTCHAR_T* model_path,
+                                           const std::filesystem::path& output_path,
+                                           size_t cost_per_node = 1024) {
+  const auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<onnxruntime::Model> model;
+  EXPECT_STATUS_OK(Model::Load(model_path, model, nullptr, default_logger));
+  Graph& graph = model->MainGraph();
+  EXPECT_STATUS_OK(graph.Resolve());
+
+  std::vector<std::string> node_names;
+  CollectNodeNames(graph, node_names);
+
+  std::ofstream ofs(output_path);
+  EXPECT_TRUE(ofs.is_open());
+  ofs << "#name,input_sizes,initializers_sizes,total_dynamic_sizes,total_temp_allocations\n";
+  for (const auto& name : node_names) {
+    ofs << name << "," << cost_per_node << ",0,0,0\n";
+  }
+  ofs.close();
+
+  return node_names.size() * cost_per_node;
+}
+
 void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
                                        const SessionOptions& sess_options,
                                        const ParitionVerifierFn& verifier_fn) {
@@ -484,16 +525,27 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_NoLimit) {
 
 TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
-  constexpr const char* limit_setting = "10000,tiny_gpt2_beamsearch_node_stats.txt";
+  const std::filesystem::path stats_path =
+      std::filesystem::temp_directory_path() / "tiny_gpt2_beamsearch_dynamic_stats_large.txt";
 
-  // Large limit, all nodes are still assigned
+  // Generate node stats dynamically so names always match the current graph
+  constexpr size_t cost_per_node = 1024;
+  size_t total_cost = GenerateDynamicNodeStatsFile(model_path, stats_path, cost_per_node);
+  ASSERT_GT(total_cost, 0U);
+
+  // Use a limit much larger than total cost so all nodes are assigned CUDA.
+  // Pass the absolute path as the stats filename — LoadNodeAllocationStats resolves
+  // it relative to the model directory, but an absolute path replaces the prefix.
+  size_t large_limit_kb = (total_cost * 2) / 1024 + 1;
+  std::string limit_setting = std::to_string(large_limit_kb) + "," + stats_path.string();
+
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = false;
   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = false;
   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting.c_str()));
 
   LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
     const auto& graph_nodes = graph.Nodes();
@@ -501,20 +553,34 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
       EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
     }
   });
+
+  std::filesystem::remove(stats_path);
 }
 
 TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
-  constexpr const char* limit_setting = "5000,tiny_gpt2_beamsearch_node_stats.txt";
+  const std::filesystem::path stats_path =
+      std::filesystem::temp_directory_path() / "tiny_gpt2_beamsearch_dynamic_stats_offload.txt";
 
-  // Large limit, all nodes are still assigned
+  // Generate node stats dynamically so names always match the current graph.
+  // Use a non-trivial cost per node so the threshold math works cleanly.
+  constexpr size_t cost_per_node = 1024;
+  size_t total_cost = GenerateDynamicNodeStatsFile(model_path, stats_path, cost_per_node);
+  ASSERT_GT(total_cost, 0U);
+
+  // Set threshold to half the total cost so some nodes must be offloaded to CPU.
+  // Pass the absolute path as the stats filename.
+  size_t half_limit_kb = (total_cost / 2) / 1024;
+  ASSERT_GT(half_limit_kb, 0U);
+  std::string limit_setting = std::to_string(half_limit_kb) + "," + stats_path.string();
+
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = false;
   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = false;
   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting.c_str()));
 
   LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
     const auto& graph_nodes = graph.Nodes();
@@ -527,6 +593,8 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
     }
     EXPECT_TRUE(cpu_node_found);
   });
+
+  std::filesystem::remove(stats_path);
 }
 
 #endif  // USE_CUDA
