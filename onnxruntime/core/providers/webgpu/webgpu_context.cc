@@ -124,6 +124,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     device_queue_ = device_.GetQueue();
     // cache device limits
     ORT_ENFORCE(Device().GetLimits(&device_limits_));
+    // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
+    // buffer segment offsets are always properly aligned for WebGPU bind group creation.
+    if (device_limits_.minStorageBufferOffsetAlignment > 0) {
+      device_limits_.maxStorageBufferBindingSize -=
+          (device_limits_.maxStorageBufferBindingSize % device_limits_.minStorageBufferOffsetAlignment);
+    }
     // cache device features
     wgpu::SupportedFeatures supported_features;
     Device().GetFeatures(&supported_features);
