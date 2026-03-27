@@ -1132,6 +1132,20 @@ extern "C" {
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelAvx512F;
 #endif
 
+#if defined(MLAS_TARGET_AMD64)
+void
+MlasConvDepthwiseWithMultiplierFloatCHWKernel7x7Stride2DepthMultiplier2Avx512F(
+    const float* Input,
+    size_t InputHeight,
+    size_t InputWidth,
+    const float* Filter,
+    float* Output,
+    size_t OutputHeight,
+    size_t OutputWidth,
+    float Beta
+    );
+#endif
+
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
 #if defined(MLAS_TARGET_AMD64)

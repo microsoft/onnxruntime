@@ -206,6 +206,7 @@ function(setup_mlas_source_for_windows)
     set(mlas_platform_srcs_avx512
       ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier2_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
     )
 

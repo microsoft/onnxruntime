@@ -39,8 +39,77 @@ static const std::vector<std::string>& ArgNamesForConv(size_t rank) {
   return rank_to_args_name[rank];
 }
 
-// dummy for some strange build error when using Bench capture
-void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
+enum class SconvBenchAlgorithmMode {
+  Auto,
+  ForceExpandThenGemm,
+  ForceDepthwiseMultiplier2,
+};
+
+static const char* SconvBenchAlgorithmModeName(SconvBenchAlgorithmMode mode) {
+  switch (mode) {
+    case SconvBenchAlgorithmMode::Auto:
+      return "auto";
+    case SconvBenchAlgorithmMode::ForceExpandThenGemm:
+      return "im2col_sgemm";
+    case SconvBenchAlgorithmMode::ForceDepthwiseMultiplier2:
+      return "specialized_depthwise_multiplier2";
+    default:
+      return "unknown";
+  }
+}
+
+static bool IsDepthwiseMultiplier2BenchmarkCase(const MLAS_CONV_PARAMETERS& parameters) {
+  return parameters.Dimensions == 2 &&
+         parameters.GroupCount > 1 &&
+         parameters.FilterCount == 2 &&
+         parameters.InputChannels == 1 &&
+         parameters.KernelShape[0] == 7 && parameters.KernelShape[1] == 7 &&
+         parameters.Padding[0] == 3 && parameters.Padding[1] == 3 &&
+         parameters.Padding[2] == 3 && parameters.Padding[3] == 3 &&
+         parameters.StrideShape[0] == 2 && parameters.StrideShape[1] == 2 &&
+         parameters.DilationShape[0] == 1 && parameters.DilationShape[1] == 1;
+}
+
+static size_t GetForcedSconvWorkingBufferSize(const MLAS_CONV_PARAMETERS& parameters, SconvBenchAlgorithmMode mode) {
+  switch (mode) {
+    case SconvBenchAlgorithmMode::Auto:
+      return 0;
+
+    case SconvBenchAlgorithmMode::ForceExpandThenGemm:
+      return parameters.OutputSize * parameters.K;
+
+    case SconvBenchAlgorithmMode::ForceDepthwiseMultiplier2:
+      return 0;
+
+    default:
+      return 0;
+  }
+}
+
+static void OverrideSconvAlgorithmForBenchmark(benchmark::State& state,
+                                               MLAS_CONV_PARAMETERS& parameters,
+                                               SconvBenchAlgorithmMode mode) {
+  switch (mode) {
+    case SconvBenchAlgorithmMode::Auto:
+      return;
+
+    case SconvBenchAlgorithmMode::ForceExpandThenGemm:
+      parameters.Algorithm = MlasConvAlgorithmExpandThenGemm;
+      return;
+
+    case SconvBenchAlgorithmMode::ForceDepthwiseMultiplier2:
+      if (!IsDepthwiseMultiplier2BenchmarkCase(parameters)) {
+        state.SkipWithError("specialized depthwise-multiplier-2 benchmark requires grouped 7x7 s2 p3 d1 with Cpg=1 and Fpg=2");
+        return;
+      }
+      parameters.Algorithm = MlasConvAlgorithmDepthwiseMultiplier2;
+      return;
+  }
+}
+
+static void RunSconvNchwBenchmark(benchmark::State& state,
+                                  MLAS_THREADPOOL* thread_pool,
+                                  SconvBenchAlgorithmMode mode) {
   const int64_t rank = state.range(0);                       // Rank
   const int64_t batch_size = state.range(1);                 // N
   const int64_t groups = state.range(2);                     // G
@@ -60,7 +129,6 @@ void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
   const auto strides = BenchArgsVector(state, arg_position, rank);
   const auto dilations = BenchArgsVector(state, arg_position, rank);
 
-  // do not check the size of each vector as they are forced from args.
   if (std::any_of(input_shape.begin(), input_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
     throw std::invalid_argument("all input image dim must > 0");
   }
@@ -94,9 +162,9 @@ void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
 
   MLAS_ACTIVATION activation;
   activation.ActivationKind = MlasIdentityActivation;
-  MLAS_CONV_PARAMETERS Parameters;
-  size_t WorkingBufferSize = 0;
-  MlasConvPrepare(&Parameters,
+  MLAS_CONV_PARAMETERS parameters;
+  size_t working_buffer_size = 0;
+  MlasConvPrepare(&parameters,
                   static_cast<size_t>(rank),
                   static_cast<size_t>(batch_size),
                   static_cast<size_t>(groups),
@@ -109,34 +177,57 @@ void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
                   output_shape.data(),
                   static_cast<size_t>(output_channels_per_group),
                   &activation,
-                  &WorkingBufferSize,
+                  &working_buffer_size,
                   0.0f,
-                  nullptr);
+                  thread_pool);
+
+  OverrideSconvAlgorithmForBenchmark(state, parameters, mode);
+  if (state.skipped()) {
+    return;
+  }
+
+  if (mode != SconvBenchAlgorithmMode::Auto) {
+    working_buffer_size = GetForcedSconvWorkingBufferSize(parameters, mode);
+  }
 
   auto X = RandomVectorUniform(x_shape, -2.0, 2.0);
   auto F = RandomVectorUniform(f_shape, -1.0, 1.0);
   int64_t y_size = std::accumulate(y_shape.begin(), y_shape.end(), 1LL, std::multiplies<int64_t>());
   std::vector<float> Y(static_cast<size_t>(y_size));
-  std::vector<float> working_buffer(WorkingBufferSize);
+  std::vector<float> working_buffer(working_buffer_size);
 
-  // warm up first round.
-  MlasConv(&Parameters,
+  state.SetLabel(SconvBenchAlgorithmModeName(mode));
+
+  MlasConv(&parameters,
            X.data(),
            F.data(),
            nullptr,
            working_buffer.data(),
            Y.data(),
-           nullptr);
+           thread_pool);
 
   for (auto _ : state) {
-    MlasConv(&Parameters,
+    MlasConv(&parameters,
              X.data(),
              F.data(),
              nullptr,
              working_buffer.data(),
              Y.data(),
-             nullptr);
+             thread_pool);
   }
+}
+
+// dummy for some strange build error when using Bench capture
+void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
+  RunSconvNchwBenchmark(state, nullptr, SconvBenchAlgorithmMode::Auto);
+}
+
+void SCONV_NCHW_FORCE_IM2COL_SGEMM(benchmark::State& state, const char* /*dummy*/) {
+  RunSconvNchwBenchmark(state, nullptr, SconvBenchAlgorithmMode::ForceExpandThenGemm);
+}
+
+void SCONV_NCHW_FORCE_SPECIALIZED(benchmark::State& state, const char* /*dummy*/) {
+  RunSconvNchwBenchmark(state, nullptr, SconvBenchAlgorithmMode::ForceDepthwiseMultiplier2);
 }
 
 static MLAS_THREADPOOL* GetMlasThreadPoolForConvBenchmark(void) {
@@ -148,102 +239,53 @@ static MLAS_THREADPOOL* GetMlasThreadPoolForConvBenchmark(void) {
 void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
   MLAS_THREADPOOL* tp = GetMlasThreadPoolForConvBenchmark();
 
-  const int64_t rank = state.range(0);                       // Rank
-  const int64_t batch_size = state.range(1);                 // N
-  const int64_t groups = state.range(2);                     // G
-  const int64_t input_channels_per_group = state.range(3);   // Cpg
-  const int64_t output_channels_per_group = state.range(4);  // Fpg
+  RunSconvNchwBenchmark(state, tp, SconvBenchAlgorithmMode::Auto);
+}
 
-  if (rank <= 0) throw std::invalid_argument("Kernel rank must greater than 0!");
-  if (batch_size <= 0) throw std::invalid_argument("Batch size must greater than 0!");
-  if (groups <= 0) throw std::invalid_argument("Group count must greater than 0!");
-  if (input_channels_per_group <= 0) throw std::invalid_argument("input_channels_per_group must greater than 0!");
-  if (output_channels_per_group <= 0) throw std::invalid_argument("output_channels_per_group must greater than 0!");
+void SCONV_NCHW_THREADED_FORCE_IM2COL_SGEMM(benchmark::State& state, const char* /*dummy*/) {
+  MLAS_THREADPOOL* tp = GetMlasThreadPoolForConvBenchmark();
 
-  size_t arg_position = 5;
-  const auto input_shape = BenchArgsVector(state, arg_position, rank);
-  const auto kernel_shape = BenchArgsVector(state, arg_position, rank);
-  const auto paddings = BenchArgsVector(state, arg_position, rank * 2);
-  const auto strides = BenchArgsVector(state, arg_position, rank);
-  const auto dilations = BenchArgsVector(state, arg_position, rank);
+  RunSconvNchwBenchmark(state, tp, SconvBenchAlgorithmMode::ForceExpandThenGemm);
+}
 
-  // do not check the size of each vector as they are forced from args.
-  if (std::any_of(input_shape.begin(), input_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
-    throw std::invalid_argument("all input image dim must > 0");
-  }
+void SCONV_NCHW_THREADED_FORCE_SPECIALIZED(benchmark::State& state, const char* /*dummy*/) {
+  MLAS_THREADPOOL* tp = GetMlasThreadPoolForConvBenchmark();
 
-  if (std::any_of(kernel_shape.begin(), kernel_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
-    throw std::invalid_argument("all kernel dim must > 0");
-  }
+  RunSconvNchwBenchmark(state, tp, SconvBenchAlgorithmMode::ForceDepthwiseMultiplier2);
+}
 
-  if (std::any_of(strides.begin(), strides.end(), [](const int64_t& dim) { return dim <= 0; })) {
-    throw std::invalid_argument("all strides dim must > 0");
-  }
+static void MobileClipGroupedProjection7x7_64x64_G64_Fpg2(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
 
-  if (std::any_of(dilations.begin(), dilations.end(), [](const int64_t& dim) { return dim <= 0; })) {
-    throw std::invalid_argument("all dilations dim must > 0");
-  }
+  // Input: 1x64x64x64, Filter: 128x1x7x7, Groups: 64, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 64, 1, 2, 64, 64, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
 
-  const int64_t GC = groups * input_channels_per_group;
-  const int64_t GF = groups * output_channels_per_group;
-  std::vector<int64_t> x_shape = {batch_size, GC};
-  x_shape.insert(x_shape.end(), input_shape.begin(), input_shape.end());
-  std::vector<int64_t> f_shape = {GF, input_channels_per_group};
-  f_shape.insert(f_shape.end(), kernel_shape.begin(), kernel_shape.end());
+static void MobileClipGroupedProjection7x7_32x32_G128_Fpg2(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
 
-  std::vector<int64_t> output_shape((size_t)rank);
-  for (int64_t i = 0; i < rank; ++i) {
-    auto km = 1 + dilations[i] * (kernel_shape[i] - 1);
-    output_shape[i] = (paddings[i] + paddings[i + rank] + input_shape[i] - km) / strides[i] + 1;
-  }
-  std::vector<int64_t> y_shape = {batch_size, GF};
-  y_shape.insert(y_shape.end(), output_shape.begin(), output_shape.end());
+  // Input: 1x128x32x32, Filter: 256x1x7x7, Groups: 128, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 128, 1, 2, 32, 32, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
 
-  MLAS_ACTIVATION activation;
-  activation.ActivationKind = MlasIdentityActivation;
-  MLAS_CONV_PARAMETERS Parameters;
-  size_t WorkingBufferSize = 0;
-  MlasConvPrepare(&Parameters,
-                  static_cast<size_t>(rank),
-                  static_cast<size_t>(batch_size),
-                  static_cast<size_t>(groups),
-                  static_cast<size_t>(input_channels_per_group),
-                  input_shape.data(),
-                  kernel_shape.data(),
-                  dilations.data(),
-                  paddings.data(),
-                  strides.data(),
-                  output_shape.data(),
-                  static_cast<size_t>(output_channels_per_group),
-                  &activation,
-                  &WorkingBufferSize,
-                  0.0f,
-                  tp);
+static void MobileClipGroupedProjection7x7_16x16_G256_Fpg2(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
 
-  auto X = RandomVectorUniform(x_shape, -2.0, 2.0);
-  auto F = RandomVectorUniform(f_shape, -1.0, 1.0);
-  int64_t y_size = std::accumulate(y_shape.begin(), y_shape.end(), 1LL, std::multiplies<int64_t>());
-  std::vector<float> Y(static_cast<size_t>(y_size));
-  std::vector<float> working_buffer(WorkingBufferSize);
+  // Input: 1x256x16x16, Filter: 512x1x7x7, Groups: 256, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 256, 1, 2, 16, 16, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
 
-  // warm up first round.
-  MlasConv(&Parameters,
-           X.data(),
-           F.data(),
-           nullptr,
-           working_buffer.data(),
-           Y.data(),
-           tp);
+static void MobileClipGroupedProjection7x7(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
 
-  for (auto _ : state) {
-    MlasConv(&Parameters,
-             X.data(),
-             F.data(),
-             nullptr,
-             working_buffer.data(),
-             Y.data(),
-             tp);
-  }
+  //    Rank, N,   G, Cpg, Fpg,  I,  , K, , P, , , , S, , D, ,
+  b->Args({2, 1,  64, 1, 2, 64, 64, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+  b->Args({2, 1, 128, 1, 2, 32, 32, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+  b->Args({2, 1, 256, 1, 2, 16, 16, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
+
+static void MobileClipGroupedProjection7x7Compare(benchmark::internal::Benchmark* b) {
+  MobileClipGroupedProjection7x7(b);
 }
 
 static void ResNet50(benchmark::internal::Benchmark* b) {
@@ -334,6 +376,77 @@ static void TeamsModel(benchmark::internal::Benchmark* b) {
 
 BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
+
+static void MobileClipProjection7x7_64x64_C64_F128(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  // Input: 1x64x64x64, Filter: 128x64x7x7, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 1, 64, 128, 64, 64, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
+
+static void MobileClipProjection7x7_32x32_C128_F256(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  // Input: 1x128x32x32, Filter: 256x128x7x7, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 1, 128, 256, 32, 32, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
+
+static void MobileClipProjection7x7_16x16_C256_F512(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  // Input: 1x256x16x16, Filter: 512x256x7x7, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 1, 256, 512, 16, 16, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
+
+static void MobileClipProjection7x7(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  //    Rank, N, G, Cpg, Fpg,  I,  , K, , P, , , , S, , D, ,
+  b->Args({2, 1, 1, 64, 128, 64, 64, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+  b->Args({2, 1, 1, 128, 256, 32, 32, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+  b->Args({2, 1, 1, 256, 512, 16, 16, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
+
+static void MobileClip(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  //*********************** Projection 1 ***********************
+  //    Rank, N, G, Cpg, Fpg,  I,  , K, , P, , , , S, , D, ,
+  b->Args({2, 1, 1, 64, 128, 64, 64, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+
+  //*********************** Projection 2 ***********************
+  //    Rank, N, G, Cpg, Fpg,  I,  , K, , P, , , , S, , D, ,
+  b->Args({2, 1, 1, 128, 256, 32, 32, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+
+  //*********************** Projection 3 ***********************
+  //    Rank, N, G, Cpg, Fpg,  I,  , K, , P, , , , S, , D, ,
+  b->Args({2, 1, 1, 256, 512, 16, 16, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
+
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClipProjection7x7_64x64_C64_F128, "")->Apply(MobileClipProjection7x7_64x64_C64_F128)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClipProjection7x7_64x64_C64_F128, "")->Apply(MobileClipProjection7x7_64x64_C64_F128)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClipProjection7x7_32x32_C128_F256, "")->Apply(MobileClipProjection7x7_32x32_C128_F256)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClipProjection7x7_32x32_C128_F256, "")->Apply(MobileClipProjection7x7_32x32_C128_F256)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClipProjection7x7_16x16_C256_F512, "")->Apply(MobileClipProjection7x7_16x16_C256_F512)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClipProjection7x7_16x16_C256_F512, "")->Apply(MobileClipProjection7x7_16x16_C256_F512)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClipProjection7x7, "")->Apply(MobileClipProjection7x7)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClipProjection7x7, "")->Apply(MobileClipProjection7x7)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClip, "")->Apply(MobileClip)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClip, "")->Apply(MobileClip)->UseRealTime();
+
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClipGroupedProjection7x7_64x64_G64_Fpg2, "")->Apply(MobileClipGroupedProjection7x7_64x64_G64_Fpg2)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClipGroupedProjection7x7_64x64_G64_Fpg2, "")->Apply(MobileClipGroupedProjection7x7_64x64_G64_Fpg2)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClipGroupedProjection7x7_32x32_G128_Fpg2, "")->Apply(MobileClipGroupedProjection7x7_32x32_G128_Fpg2)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClipGroupedProjection7x7_32x32_G128_Fpg2, "")->Apply(MobileClipGroupedProjection7x7_32x32_G128_Fpg2)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClipGroupedProjection7x7_16x16_G256_Fpg2, "")->Apply(MobileClipGroupedProjection7x7_16x16_G256_Fpg2)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClipGroupedProjection7x7_16x16_G256_Fpg2, "")->Apply(MobileClipGroupedProjection7x7_16x16_G256_Fpg2)->UseRealTime();
+
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClipGroupedProjection7x7Compare, "")->Apply(MobileClipGroupedProjection7x7Compare)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_FORCE_IM2COL_SGEMM, MobileClipGroupedProjection7x7Compare, "")->Apply(MobileClipGroupedProjection7x7Compare)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_FORCE_SPECIALIZED, MobileClipGroupedProjection7x7Compare, "")->Apply(MobileClipGroupedProjection7x7Compare)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClipGroupedProjection7x7Compare, "")->Apply(MobileClipGroupedProjection7x7Compare)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED_FORCE_IM2COL_SGEMM, MobileClipGroupedProjection7x7Compare, "")->Apply(MobileClipGroupedProjection7x7Compare)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED_FORCE_SPECIALIZED, MobileClipGroupedProjection7x7Compare, "")->Apply(MobileClipGroupedProjection7x7Compare)->UseRealTime();
 
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
