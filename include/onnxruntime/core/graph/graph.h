@@ -178,6 +178,8 @@ class Node {
 
   const std::string& GetLayeringAnnotation() const noexcept { return layering_annotation_; }
 
+  const Graph* GetContainingGraph() const noexcept { return graph_; }
+
 #if !defined(ORT_MINIMAL_BUILD)
 
   /** Gets the Node's OpSchema.
@@ -579,8 +581,6 @@ class Node {
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
   Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
-
-  const Graph* GetContainingGraph() const noexcept { return graph_; }
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
