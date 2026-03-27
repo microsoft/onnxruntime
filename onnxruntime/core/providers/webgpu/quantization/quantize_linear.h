@@ -48,6 +48,7 @@ class DequantizeLinear final : public WebGpuKernel {
     axis_ = info.GetAttrOrDefault<int64_t>("axis", 1);
     block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 0);
     output_dtype_ = info.GetAttrOrDefault<int64_t>("output_dtype", 0);
+    ORT_ENFORCE(block_size_ >= 0, "'block_size' must be non-negative.");
   }
 
   Status ComputeInternal(ComputeContext& context) const override;

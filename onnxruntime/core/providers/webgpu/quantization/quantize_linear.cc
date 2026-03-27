@@ -65,13 +65,11 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let scale_value = " << scale.GetByOffset("scale_index") << ";\n";
   } else {
     // Block quantization. Scale input rank is same as input/output rank.
-    // Divide each dimension by its block size (output_shape[i] / scale_shape[i]).
+    // On the block axis, divide by block_size; on other axes, use output index directly.
     shader.MainFunctionBody() << "var scale_indices: scale_indices_t;\n";
     for (int i = 0; i < rank_; i++) {
-      std::string output_dim = GetElementAt("uniforms.output_shape", i, rank_);
-      std::string scale_dim = GetElementAt("uniforms.scale_shape", i, rank_);
-      std::string block_expr = "(" + output_dim + " / " + scale_dim + ")";
-      std::string value_expr = output.IndicesGet("output_indices", i) + " / " + block_expr;
+      std::string idx = output.IndicesGet("output_indices", i);
+      std::string value_expr = "select(" + idx + ", " + idx + " / uniforms.block_size, " + std::to_string(i) + "u == uniforms.axis)";
       shader.MainFunctionBody() << scale.IndicesSet("scale_indices", i, value_expr) << "\n";
     }
     shader.MainFunctionBody()
@@ -208,6 +206,28 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
     }
     if (block_size == 0) {
       block_size = 1;  // all dims match, default to block_size=1
+    }
+  }
+
+  // Validate shapes for blocked quantization.
+  if (!per_layer && !per_axis && block_size > 0) {
+    const auto& scale_shape = x_scale->Shape();
+    ORT_RETURN_IF(scale_shape.NumDimensions() != x_shape.NumDimensions(),
+                  "x_scale and x must have the same rank for blocked quantization");
+    for (size_t i = 0; i < x_shape.NumDimensions(); i++) {
+      if (static_cast<int64_t>(i) == axis) {
+        ORT_RETURN_IF(scale_shape[i] != (x_shape[i] + block_size - 1) / block_size,
+                      "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization");
+      } else {
+        ORT_RETURN_IF(scale_shape[i] != x_shape[i],
+                      "x_scale and x must have the same shape on non-quantize axes for blocked quantization");
+      }
+    }
+    if (x_zeropoint != nullptr) {
+      for (size_t i = 0; i < x_shape.NumDimensions(); i++) {
+        ORT_RETURN_IF(x_zeropoint->Shape()[i] != scale_shape[i],
+                      "x_zero_point and x_scale must have the same shape for blocked quantization");
+      }
     }
   }
 
