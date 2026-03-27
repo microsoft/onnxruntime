@@ -2491,6 +2491,64 @@ TEST_F(GraphTransformationTests, FuseConvMulNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+static bool IsConstantMulInputBranch(const Graph& graph, const NodeArg& node_arg) {
+  if (graph_utils::NodeArgIsConstant(graph, node_arg)) {
+    return true;
+  }
+
+  const Node* producer = graph.GetProducerNode(node_arg.Name());
+  if (producer == nullptr || producer->OpType() != "Unsqueeze" || producer->InputDefs().empty()) {
+    return false;
+  }
+
+  return graph_utils::NodeArgIsConstant(graph, *producer->InputDefs()[0]);
+}
+
+static void NormalizeMulConstantInputFirst(Graph& graph, Node& mul_node) {
+  auto& inputs = mul_node.MutableInputDefs();
+  ASSERT_EQ(inputs.size(), 2u);
+
+  if (IsConstantMulInputBranch(graph, *inputs[0])) {
+    ASSERT_FALSE(IsConstantMulInputBranch(graph, *inputs[1]));
+    return;
+  }
+
+  ASSERT_TRUE(IsConstantMulInputBranch(graph, *inputs[1]));
+
+  struct InputEdgeInfo {
+    NodeIndex src_node_index;
+    int src_arg_index;
+  };
+
+  std::optional<InputEdgeInfo> input_edges[2];
+  for (auto edge_it = mul_node.InputEdgesBegin(); edge_it != mul_node.InputEdgesEnd(); ++edge_it) {
+    const int dst_arg_index = edge_it->GetDstArgIndex();
+    if (dst_arg_index >= 0 && dst_arg_index < 2) {
+      input_edges[dst_arg_index] = InputEdgeInfo{edge_it->GetNode().Index(), edge_it->GetSrcArgIndex()};
+    }
+  }
+
+  for (int dst_arg_index = 0; dst_arg_index < 2; ++dst_arg_index) {
+    if (input_edges[dst_arg_index].has_value()) {
+      graph.RemoveEdge(input_edges[dst_arg_index]->src_node_index, mul_node.Index(),
+                       input_edges[dst_arg_index]->src_arg_index, dst_arg_index);
+    }
+  }
+
+  std::swap(inputs[0], inputs[1]);
+
+  if (input_edges[0].has_value()) {
+    graph.AddEdge(input_edges[0]->src_node_index, mul_node.Index(), input_edges[0]->src_arg_index, 1);
+  }
+
+  if (input_edges[1].has_value()) {
+    graph.AddEdge(input_edges[1]->src_node_index, mul_node.Index(), input_edges[1]->src_arg_index, 0);
+  }
+
+  ASSERT_TRUE(IsConstantMulInputBranch(graph, *inputs[0]));
+  ASSERT_FALSE(IsConstantMulInputBranch(graph, *inputs[1]));
+}
+
 TEST_F(GraphTransformationTests, FuseConvMulNoBiasConstantFirst) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-mul-no-bias.onnx";
 
@@ -2501,13 +2559,7 @@ TEST_F(GraphTransformationTests, FuseConvMulNoBiasConstantFirst) {
   bool swapped_mul_inputs = false;
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Mul") {
-      auto& inputs = node.MutableInputDefs();
-      ASSERT_EQ(inputs.size(), 2u);
-      if (!graph_utils::NodeArgIsConstant(graph, *inputs[0])) {
-        std::swap(inputs[0], inputs[1]);
-      }
-      ASSERT_TRUE(graph_utils::NodeArgIsConstant(graph, *inputs[0]));
-      ASSERT_FALSE(graph_utils::NodeArgIsConstant(graph, *inputs[1]));
+      NormalizeMulConstantInputFirst(graph, node);
       swapped_mul_inputs = true;
       break;
     }
@@ -2982,13 +3034,7 @@ static void TestFuseConvAddMul(logging::Logger& logger, const PathChar* model_ur
     bool swapped = false;
     for (auto& node : graph.Nodes()) {
       if (node.OpType() == "Mul") {
-        auto& inputs = node.MutableInputDefs();
-        ASSERT_EQ(inputs.size(), 2u);
-        if (!graph_utils::NodeArgIsConstant(graph, *inputs[0])) {
-          std::swap(inputs[0], inputs[1]);
-        }
-        ASSERT_TRUE(graph_utils::NodeArgIsConstant(graph, *inputs[0]));
-        ASSERT_FALSE(graph_utils::NodeArgIsConstant(graph, *inputs[1]));
+        NormalizeMulConstantInputFirst(graph, node);
         swapped = true;
         break;
       }
