@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+
 #include "core/framework/execution_provider.h"
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
 
@@ -15,7 +17,7 @@
 
 namespace onnxruntime::test {
 
-namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
+namespace dynamic_plugin_ep_test_infra = onnxruntime::test::dynamic_plugin_ep_infra;
 
 TEST(DynamicPluginEpInfraTest, ParseInitializationConfigParsesOptionalFields) {
   constexpr std::string_view kConfigJson = R"json(
@@ -34,8 +36,8 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigParsesOptionalFields) {
 }
 )json";
 
-  dynamic_plugin_ep_infra::InitializationConfig config{};
-  ASSERT_STATUS_OK(dynamic_plugin_ep_infra::ParseInitializationConfig(kConfigJson, config));
+  dynamic_plugin_ep_test_infra::InitializationConfig config{};
+  ASSERT_STATUS_OK(dynamic_plugin_ep_test_infra::ParseInitializationConfig(kConfigJson, config));
 
   EXPECT_EQ(config.ep_library_registration_name, "CudaPluginExecutionProvider");
   EXPECT_EQ(config.ep_library_path, "/tmp/libonnxruntime_providers_cuda_plugin.so");
@@ -58,8 +60,8 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigDefaultsUnsetOptionalFie
 }
 )json";
 
-  dynamic_plugin_ep_infra::InitializationConfig config{};
-  ASSERT_STATUS_OK(dynamic_plugin_ep_infra::ParseInitializationConfig(kConfigJson, config));
+  dynamic_plugin_ep_test_infra::InitializationConfig config{};
+  ASSERT_STATUS_OK(dynamic_plugin_ep_test_infra::ParseInitializationConfig(kConfigJson, config));
 
   EXPECT_EQ(config.ep_library_registration_name, "ExamplePluginEP");
   EXPECT_EQ(config.ep_library_path, "/tmp/libexample_plugin_ep.so");
@@ -76,24 +78,24 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigRejectsMissingRequiredFi
 }
 )json";
 
-  dynamic_plugin_ep_infra::InitializationConfig config{};
-  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(dynamic_plugin_ep_infra::ParseInitializationConfig(kConfigJson, config),
+  dynamic_plugin_ep_test_infra::InitializationConfig config{};
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(dynamic_plugin_ep_test_infra::ParseInitializationConfig(kConfigJson, config),
                                       "JSON parse error");
 }
 
 TEST(DynamicPluginEpInfraTest, UninitializedStateReturnsSafeDefaults) {
-  dynamic_plugin_ep_infra::Shutdown();
+  dynamic_plugin_ep_test_infra::Shutdown();
 
-  EXPECT_FALSE(dynamic_plugin_ep_infra::IsInitialized());
-  EXPECT_EQ(dynamic_plugin_ep_infra::MakeEp(), nullptr);
-  EXPECT_FALSE(dynamic_plugin_ep_infra::GetEpName().has_value());
-  EXPECT_TRUE(dynamic_plugin_ep_infra::GetTestsToSkip().empty());
+  EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
+  EXPECT_EQ(dynamic_plugin_ep_test_infra::MakeEp(), nullptr);
+  EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
+  EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
 
-  dynamic_plugin_ep_infra::Shutdown();
+  dynamic_plugin_ep_test_infra::Shutdown();
 
-  EXPECT_FALSE(dynamic_plugin_ep_infra::IsInitialized());
-  EXPECT_FALSE(dynamic_plugin_ep_infra::GetEpName().has_value());
-  EXPECT_TRUE(dynamic_plugin_ep_infra::GetTestsToSkip().empty());
+  EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
+  EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
+  EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
 }
 
 #if defined(USE_CUDA) && defined(ORT_USE_EP_API_ADAPTERS)
@@ -114,3 +116,5 @@ TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBias
 #endif
 
 }  // namespace onnxruntime::test
+
+#endif  // !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)

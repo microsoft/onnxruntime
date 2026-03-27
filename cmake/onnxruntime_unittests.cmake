@@ -1090,6 +1090,10 @@ target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core
 
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  target_compile_definitions(onnxruntime_test_all PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+endif()
+
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
   # If we promote the two input values first, it could be more tolerant to integer overflow.
@@ -1263,6 +1267,10 @@ block()
 
   onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
+
+  if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  endif()
 
   # Expose QNN SDK headers to unit tests via an interface target
   if(onnxruntime_USE_QNN)
