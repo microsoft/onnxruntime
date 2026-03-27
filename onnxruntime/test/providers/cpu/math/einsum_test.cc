@@ -2171,5 +2171,105 @@ TEST_P(EinsumTransposeMatMulThreeInputsTest, EinsumTransposeMatMulThreeInputsTes
 
 INSTANTIATE_TEST_SUITE_P(EinsumTransposeMatMulThreeInputsTests, EinsumTransposeMatMulThreeInputsTest, testing::ValuesIn(case1));
 
+// Theme: High-rank contractions (WebGPU shader generation regression tests)
+
+// 5D contraction (Mamba-style chunked SSM state computation)
+TEST(Einsum, ExplicitEinsumAs5DContraction) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "bcknd,bckns->bcnds");
+  test.AddInput<float>("x", {1, 1, 2, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<float>("y", {1, 1, 2, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddOutput<float>("o", {1, 1, 2, 2, 2},
+                        {26.f, 32.f, 32.f, 40.f, 58.f, 68.f, 68.f, 80.f});
+  test.Run();
+}
+
+// 5D x 5D contraction (contract middle dims, keep outer + inner)
+TEST(Einsum, ExplicitEinsumAs5DContraction_abcde_abcdf) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abcde,abcdf->abef");
+  test.AddInput<float>("x", {1, 1, 2, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<float>("y", {1, 1, 2, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddOutput<float>("o", {1, 1, 2, 2},
+                        {84.f, 100.f, 100.f, 120.f});
+  test.Run();
+}
+
+// 5D x 5D contraction (contract 3 trailing dims)
+TEST(Einsum, ExplicitEinsumAs5DContraction_abcde_afcde) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abcde,afcde->abf");
+  test.AddInput<float>("x", {1, 2, 2, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
+                        9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f});
+  test.AddInput<float>("y", {1, 2, 2, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
+                        9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f});
+  test.AddOutput<float>("o", {1, 2, 2},
+                        {204.f, 492.f, 492.f, 1292.f});
+  test.Run();
+}
+
+// 5D reduction (reduce 2 of 5 axes)
+TEST(Einsum, ExplicitEinsumAs5DReduction) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abcde->ace");
+  test.AddInput<float>("x", {2, 2, 2, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
+                        9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f,
+                        17.f, 18.f, 19.f, 20.f, 21.f, 22.f, 23.f, 24.f,
+                        25.f, 26.f, 27.f, 28.f, 29.f, 30.f, 31.f, 32.f});
+  test.AddOutput<float>("o", {2, 2, 2},
+                        {24.f, 28.f, 40.f, 44.f, 88.f, 92.f, 104.f, 108.f});
+  test.Run();
+}
+
+// 6D x 6D contraction
+TEST(Einsum, ExplicitEinsumAs6DContraction) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abcdef,abcdeg->abcfg");
+  test.AddInput<float>("x", {1, 1, 1, 1, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("y", {1, 1, 1, 1, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f});
+  test.AddOutput<float>("o", {1, 1, 1, 2, 2},
+                        {10.f, 14.f, 14.f, 20.f});
+  test.Run();
+}
+
+// 6D reduction (reduce 3 of 6 axes)
+TEST(Einsum, ExplicitEinsumAs6DReduction) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abcdef->adf");
+  test.AddInput<float>("x", {2, 2, 2, 2, 2, 2},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
+                        9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f,
+                        17.f, 18.f, 19.f, 20.f, 21.f, 22.f, 23.f, 24.f,
+                        25.f, 26.f, 27.f, 28.f, 29.f, 30.f, 31.f, 32.f,
+                        33.f, 34.f, 35.f, 36.f, 37.f, 38.f, 39.f, 40.f,
+                        41.f, 42.f, 43.f, 44.f, 45.f, 46.f, 47.f, 48.f,
+                        49.f, 50.f, 51.f, 52.f, 53.f, 54.f, 55.f, 56.f,
+                        57.f, 58.f, 59.f, 60.f, 61.f, 62.f, 63.f, 64.f});
+  test.AddOutput<float>("o", {2, 2, 2},
+                        {112.f, 120.f, 144.f, 152.f, 368.f, 376.f, 400.f, 408.f});
+  test.Run();
+}
+
+// 3-input bilinear form (x^T A y reduced to scalar)
+TEST(Einsum, ExplicitEinsumAsBilinearFormToScalar) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,ij,j->");
+  test.AddInput<float>("x", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("y", {3, 4},
+                       {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f});
+  test.AddInput<float>("z", {4}, {1.f, 2.f, 3.f, 4.f});
+  test.AddOutput<float>("o", {}, {500.f});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
