@@ -172,15 +172,12 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 }
 
 Status ComputeMatMul(ComputeContext* context,
-                     const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor,
-                     std::optional<bool> is_channels_last,
+                     const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor, bool is_channels_last,
                      const TensorShape& input_a_reshape,
                      const TensorShape& input_b_reshape) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
-  ORT_ENFORCE(is_channels_last.has_value() == has_bias, "is_channels_last must be set when bias is used, and won't be set when bias is not used");
-
   TensorShape a_shape = input_a_reshape.NumDimensions() > 0 ? input_a_reshape : a->Shape();
   TensorShape b_shape = input_b_reshape.NumDimensions() > 0 ? input_b_reshape : b->Shape();
 
@@ -251,12 +248,12 @@ Status ComputeMatMul(ComputeContext* context,
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
   if (!context->KernelContext().GetUseDeterministicCompute()) {
     const SplitKConfig& split_k_config = context->GetSplitKConfig();
-    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
+    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, has_bias, /*is_gemm*/ false, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
     if (need_split_k) {
       ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
       ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
 
-      if (is_channels_last.has_value()) {
+      if (has_bias) {
         ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
       }
 
@@ -279,16 +276,9 @@ Status ComputeMatMul(ComputeContext* context,
     }
   }
 
-  bool is_channels_last_in_cache_hint = true;
-  std::optional<bool> is_channels_last_in_matmul_program;
-  if (use_bias_in_matmul) {
-    // `is_channels_last_in_matmul_program` has valid value only when `bias` is used in MatMul.
-    is_channels_last_in_matmul_program = is_channels_last;
-    is_channels_last_in_cache_hint = is_channels_last.value();
-  }
-  MatMulProgram matmul_program{activation, is_vec4, elements_per_thread, is_channels_last_in_matmul_program, split_dim_inner};
+  MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
   matmul_program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last_in_cache_hint, split_dim_inner)
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}})

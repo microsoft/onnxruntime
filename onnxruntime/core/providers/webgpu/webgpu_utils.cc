@@ -74,7 +74,9 @@ bool SplitKConfig::UseSplitK(
     bool is_vec4,
     ActivationKind activation_kind,
     uint64_t batch_size,
-    std::optional<bool> is_channels_last,
+    bool has_bias,
+    bool is_gemm,
+    bool is_channels_last,
     uint32_t dim_a_outer,
     uint32_t dim_b_outer,
     uint32_t dim_inner) const {
@@ -91,10 +93,10 @@ bool SplitKConfig::UseSplitK(
 
   // Now we only need `is_channels_last` in `Conv|MatMul` with `bias`. We don't need to care about
   // it in other places (`GEMM`, `MatMul` and `Conv|MatMul` without `bias`).
-  // When `is_channels_last` has valid value we only accept `is_channels_last` to be true because
+  // When `is_channels_last` has valid value `is_channels_last` is required to be true because
   // we only generate `vec4` shaders in  `MatMulFillBiasOrZeroBeforeSplitKProgram`.
-  if (is_channels_last.has_value()) {
-    use_split_k &= is_channels_last.value();
+  if (has_bias && !is_gemm) {
+    use_split_k &= is_channels_last;
   }
 
   // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and

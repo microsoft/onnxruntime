@@ -15,10 +15,12 @@ namespace intel {
 class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
  public:
   MatMulSubgroupProgram(const Activation& activation,
+                        bool bias,
                         bool is_vec4,
                         const gsl::span<int64_t>& elements_per_thread)
       : Program{"MatMulSubgroup"},
         activation_(activation),
+        has_bias_{bias},
         is_vec4_{is_vec4},
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
@@ -29,6 +31,7 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
 
  private:
   const Activation activation_;
+  const bool has_bias_;
   const bool is_vec4_;
   const InlinedVector<int64_t> elements_per_thread_;
 };

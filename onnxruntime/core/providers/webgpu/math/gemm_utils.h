@@ -18,8 +18,8 @@ void MatMulReadFnSource(ShaderHelper& shader,
 void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
                                   const ShaderVariableHelper& output,
                                   const ShaderVariableHelper* bias,
-                                  std::string_view activation_snippet,
-                                  std::optional<bool> is_channels_last);
+                                  std::string activation_snippet,
+                                  bool is_channels_last);
 
 void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
