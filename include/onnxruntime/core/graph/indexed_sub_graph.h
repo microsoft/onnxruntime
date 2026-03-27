@@ -118,10 +118,6 @@ struct IndexedSubGraph {
     resource_accountant = res_accountant;
   }
 
-  IResourceAccountant* GetAccountant() const noexcept {
-    return resource_accountant;
-  }
-
   // Append resource count to the list of costs for the nodes.
   void AppendNodeCost(const ResourceCount& cost) {
     assert(resource_accountant != nullptr);

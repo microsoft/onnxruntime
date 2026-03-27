@@ -499,14 +499,13 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
 
       fused_node->SetExecutionProviderType(provider_type);
       if (acc_enabled) {
-        // We account for the fused node. We operate under assumption
-        // that the fused node would use no more memory when the nodes we are fusing.
-        // and potentially less than that, and therefore, no threshold check is needed here.
-        // All threshold checks are done within the EP.
-        auto resource_count = capability.GetAccountant()->ComputeResourceCount(*fused_node);
-        capability.AccountForNode(fused_node->Index(), resource_count);
+        // Account for all constituent nodes using the per-node costs computed
+        // during GetCapability() (which already includes within-pass weight dedup).
+        // Computing the cost for the newly created fused node would undercount
+        // because the fused node often doesn't expose all original initializers,
+        // and would commit weights for the wrong node index.
+        capability.AccountForAllNodes();
       }
-
       result = fused_node;
     } else {
       // assign the nodes in the indexed subgraph to the current EP so that level 2+ optimizers will not change them.
