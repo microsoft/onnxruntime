@@ -2503,7 +2503,9 @@ TEST_F(GraphTransformationTests, FuseConvMulNoBiasConstantFirst) {
     if (node.OpType() == "Mul") {
       auto& inputs = node.MutableInputDefs();
       ASSERT_EQ(inputs.size(), 2u);
-      std::swap(inputs[0], inputs[1]);
+      if (!graph_utils::NodeArgIsConstant(graph, *inputs[0])) {
+        std::swap(inputs[0], inputs[1]);
+      }
       ASSERT_TRUE(graph_utils::NodeArgIsConstant(graph, *inputs[0]));
       ASSERT_FALSE(graph_utils::NodeArgIsConstant(graph, *inputs[1]));
       swapped_mul_inputs = true;
@@ -2982,7 +2984,9 @@ static void TestFuseConvAddMul(logging::Logger& logger, const PathChar* model_ur
       if (node.OpType() == "Mul") {
         auto& inputs = node.MutableInputDefs();
         ASSERT_EQ(inputs.size(), 2u);
-        std::swap(inputs[0], inputs[1]);
+        if (!graph_utils::NodeArgIsConstant(graph, *inputs[0])) {
+          std::swap(inputs[0], inputs[1]);
+        }
         ASSERT_TRUE(graph_utils::NodeArgIsConstant(graph, *inputs[0]));
         ASSERT_FALSE(graph_utils::NodeArgIsConstant(graph, *inputs[1]));
         swapped = true;
