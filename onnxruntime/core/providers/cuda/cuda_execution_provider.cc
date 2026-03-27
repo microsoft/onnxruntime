@@ -3115,7 +3115,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             << "CUDA_EP failed to get available GPU memory info. Using info_.gpu_mem_limit instead: " << info_.gpu_mem_limit;
       } else {
         memory_threshold = std::min(free_memory, info_.gpu_mem_limit);
-        LOGS(logger, WARNING)
+        LOGS(logger, VERBOSE)
             << "CUDA_EP Using threshold: " << memory_threshold << " Free memory reported: " << free_memory;
       }
     } else {
