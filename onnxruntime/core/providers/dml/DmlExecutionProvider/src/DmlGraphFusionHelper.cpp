@@ -3,6 +3,8 @@
 #include "DmlGraphFusionHelper.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 
+#include "core/framework/endian_utils.h"
+
 using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
@@ -121,7 +123,31 @@ namespace DmlGraphFusionHelper
             onnxruntime::FileOffsetType fileOffset;
             SafeInt<size_t> safeTensorByteSize;
             THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*initializer,  graph.ModelPath(), /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
-            if (externalFilePath == onnxruntime::utils::kTensorProtoMemoryAddressTag)
+            if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
+            {
+                if constexpr (endian::native != endian::little)
+                {
+                    unpackedTensor.reset(new std::byte[safeTensorByteSize]);
+
+                    auto src = gsl::make_span<const unsigned char>(reinterpret_cast<const unsigned char*>(fileOffset), safeTensorByteSize);
+                    auto dst = gsl::make_span<unsigned char>(reinterpret_cast<unsigned char*>(unpackedTensor.get()), safeTensorByteSize);
+                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(initializer->data_type());
+
+                    // If element size is unknown, set it to 1 to disable byteswapping
+                    if (element_size < 1) element_size = 1;
+
+                    THROW_IF_NOT_OK(onnxruntime::utils::ReadLittleEndian(element_size, src, dst));
+
+                    tensorPtr = unpackedTensor.get();
+                    tensorByteSize = safeTensorByteSize;
+                }
+                else
+                {
+                    tensorPtr = reinterpret_cast<std::byte*>(fileOffset);
+                    tensorByteSize = safeTensorByteSize;
+                }
+            }
+            else if (externalFilePath == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag)
             {
                 tensorPtr = reinterpret_cast<std::byte*>(fileOffset);
                 tensorByteSize = safeTensorByteSize;
