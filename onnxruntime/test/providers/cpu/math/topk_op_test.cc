@@ -622,7 +622,7 @@ TEST(TopKOperator, Top1ExplicitAxisMultiDInputSmallestElements) {
   top_1_explicit_axis_MultiD_input_smallest<int64_t>(11);
   top_1_explicit_axis_MultiD_input_smallest<int64_t>(11, 0);  // unsorted
   top_1_explicit_axis_MultiD_input_smallest<int8_t>(11);
-  top_1_explicit_axis_MultiD_input_smallest<int8_t>(11, 0);   // unsorted
+  top_1_explicit_axis_MultiD_input_smallest<int8_t>(11, 0);  // unsorted
   top_1_explicit_axis_MultiD_input_smallest<int16_t>(11);
   top_1_explicit_axis_MultiD_input_smallest<int16_t>(11, 0);  // unsorted
   top_1_explicit_axis_MultiD_input_smallest<uint8_t>(11);
