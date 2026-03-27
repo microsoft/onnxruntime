@@ -864,6 +864,23 @@ TEST(PluginExecutionProviderTest, ProfilingEvent_CxxWrapper) {
   EXPECT_EQ(event.GetArgValue("missing"), nullptr);
 }
 
+TEST(PluginExecutionProviderTest, ProfilingEvent_CxxWrapper_ArgsCArrays) {
+  std::array<const char*, 2> arg_keys = {"op_name", "parent_name"};
+  std::array<const char*, 2> arg_values = {"Conv", "Conv_node_event"};
+
+  Ort::ProfilingEvent event(OrtProfilingEventCategory_NODE, /*process_id=*/1, /*thread_id=*/2,
+                            "node_exec", /*timestamp_us=*/5000, /*duration_us=*/300,
+                            arg_keys.data(), arg_values.data(), arg_keys.size());
+
+  EXPECT_EQ(event.GetCategory(), OrtProfilingEventCategory_NODE);
+  EXPECT_STREQ(event.GetName(), "node_exec");
+  EXPECT_EQ(event.GetTimestampUs(), 5000);
+  EXPECT_EQ(event.GetDurationUs(), 300);
+  EXPECT_STREQ(event.GetArgValue("op_name"), arg_values[0]);
+  EXPECT_STREQ(event.GetArgValue("parent_name"), arg_values[1]);
+  EXPECT_EQ(event.GetArgValue("missing"), nullptr);
+}
+
 TEST(PluginExecutionProviderTest, ProfilingEvent_CxxWrapper_NoArgs) {
   Ort::ProfilingEvent event(OrtProfilingEventCategory_API, -1, -1,
                             "api_call", 0, 100);

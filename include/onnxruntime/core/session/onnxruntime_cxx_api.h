@@ -1286,6 +1286,17 @@ struct ProfilingEvent : detail::ConstProfilingEventImpl<OrtProfilingEvent> {
                  int64_t duration_us,
                  const std::unordered_map<std::string, std::string>& args = {});
 
+  /// \brief Wraps OrtEpApi::CreateProfilingEvent
+  ProfilingEvent(OrtProfilingEventCategory category,
+                 int32_t process_id,
+                 int32_t thread_id,
+                 const char* event_name,
+                 int64_t timestamp_us,
+                 int64_t duration_us,
+                 const char* const* arg_keys,
+                 const char* const* arg_values,
+                 size_t num_args);
+
   ConstProfilingEvent GetConst() const { return ConstProfilingEvent{this->p_}; }
 };
 

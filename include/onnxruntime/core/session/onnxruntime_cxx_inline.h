@@ -863,6 +863,20 @@ inline ProfilingEvent::ProfilingEvent(OrtProfilingEventCategory category,
                                                arg_keys.data(), arg_vals.data(), num_args, &p_));
 }
 
+inline ProfilingEvent::ProfilingEvent(OrtProfilingEventCategory category,
+                                      int32_t process_id,
+                                      int32_t thread_id,
+                                      const char* event_name,
+                                      int64_t timestamp_us,
+                                      int64_t duration_us,
+                                      const char* const* arg_keys,
+                                      const char* const* arg_values,
+                                      size_t num_args) {
+  ThrowOnError(GetEpApi().CreateProfilingEvent(category, process_id, thread_id, event_name,
+                                               timestamp_us, duration_us,
+                                               arg_keys, arg_values, num_args, &p_));
+}
+
 // ProfilingEventsContainer implementations
 namespace detail {
 template <typename T>
