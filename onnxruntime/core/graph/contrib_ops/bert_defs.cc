@@ -2217,5 +2217,151 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* LinearAttention_ver1_doc = R"DOC(
+Unified linear attention operator for recurrent state-based attention variants.
+
+This operator handles both autoregressive decoding (T=1) and prefill (T>1) through a single interface.
+All inputs use 3D packed format [B, T, H*D]; q_num_heads and kv_num_heads are always required.
+The op internally unpacks to 4D for computation.
+
+Supported update rules:
+- "linear": S_t = S_{t-1} + k_t outer v_t
+- "gated": S_t = exp(g_t) * S_{t-1} + k_t outer v_t (requires decay)
+- "delta": S_t = S_{t-1} + beta_t * k_t outer (v_t - S_{t-1}^T k_t) (requires beta)
+- "gated_delta": S_t = exp(g_t) * S_{t-1} + beta_t * k_t outer (v_t - exp(g_t) * S_{t-1}^T k_t) (requires decay and beta)
+
+Output: o_t = scale * q_t^T S_t
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    LinearAttention, 1,
+    OpSchema()
+        .SetDoc(LinearAttention_ver1_doc)
+        .Attr("q_num_heads", "Number of query heads. Always required.", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of key/value heads. Always required.", AttributeProto::INT)
+        .Attr("update_rule",
+              "One of: linear, gated, delta, gated_delta. Default is gated_delta.",
+              AttributeProto::STRING,
+              std::string("gated_delta"))
+        .Attr("scale",
+              "Output scaling factor. When 0.0, derives 1/sqrt(d_k) from query shape and q_num_heads.",
+              AttributeProto::FLOAT,
+              0.0f)
+        .Attr("chunk_size",
+              "Chunk size for chunk-parallel WY decomposition during prefill. Tuning hint only.",
+              AttributeProto::INT,
+              static_cast<int64_t>(64))
+        .Input(0,
+               "query",
+               "Packed query vectors (B, T, H_q*d_k). When key/value are absent, contains packed QKV: "
+               "(B, T, (H_q + 2*H_kv)*d_k).",
+               "T")
+        .Input(1,
+               "key",
+               "Packed key vectors (B, T, H_kv*d_k). If absent, query must contain packed QKV.",
+               "T",
+               OpSchema::Optional)
+        .Input(2,
+               "value",
+               "Packed value vectors (B, T, H_kv*d_v). If absent, query must contain packed QKV.",
+               "T",
+               OpSchema::Optional)
+        .Input(3,
+               "past_state",
+               "Recurrent state from previous step (B, H_kv, d_k, d_v). If omitted, treated as zeros.",
+               "S",
+               OpSchema::Optional)
+        .Input(4,
+               "decay",
+               "Packed decay gates in log-space (B, T, H_kv*d_k) or (B, T, H_kv). Required for gated/gated_delta.",
+               "T",
+               OpSchema::Optional)
+        .Input(5,
+               "beta",
+               "Packed update rates (B, T, H_kv) or (B, T, 1). Required for delta/gated_delta.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Attention output (B, T, H_q*d_v).",
+                "T")
+        .Output(1,
+                "present_state",
+                "Updated recurrent state (B, H_kv, d_k, d_v).",
+                "S")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain activation tensors.")
+        .TypeConstraint("S", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain state tensors. float32 recommended for long sequences.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumInputs() > 3 && hasInputShape(ctx, 3)) {
+            propagateElemTypeFromInputToOutput(ctx, 3, 1);
+          }
+          if (hasInputShape(ctx, 0)) {
+            auto& query_shape = getInputShape(ctx, 0);
+            if (query_shape.dim().size() == 3) {
+              propagateShapeFromInputToOutput(ctx, 0, 0);
+            }
+          }
+        }));
+
+constexpr const char* CausalConvWithState_ver1_doc = R"DOC(
+Stateful causal depthwise convolution.
+
+Used as the preprocessing step in Gated DeltaNet and Mamba architectures.
+Causality is enforced on the last spatial dimension. For ndim=1, input is (B, C, L),
+weight is (C, 1, K). The operator maintains a carry state of size (B, C, K-1).
+
+The operator concatenates past_state with the current input along the causal axis,
+applies the depthwise convolution, and returns the output along with the updated
+carry state for the next call.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    CausalConvWithState, 1,
+    OpSchema()
+        .SetDoc(CausalConvWithState_ver1_doc)
+        .Attr("ndim",
+              "Spatial dimensionality: 1, 2, or 3. Default is 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("activation",
+              "Optional fused activation: silu, swish, or none. silu and swish are aliases.",
+              AttributeProto::STRING,
+              std::string("none"))
+        .Input(0,
+               "input",
+               "Input tensor (B, C, ...). Spatial dims depend on ndim.",
+               "T")
+        .Input(1,
+               "weight",
+               "Depthwise convolution kernel (C, 1, k1, ...). Spatial kernel sizes.",
+               "T")
+        .Input(2,
+               "bias",
+               "Per-channel bias (C,).",
+               "T",
+               OpSchema::Optional)
+        .Input(3,
+               "past_state",
+               "Carry-over state (last k-1 positions along the causal axis). If omitted, treated as zeros.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "Convolution output after optional activation. Same shape as input.",
+                "T")
+        .Output(1,
+                "present_state",
+                "Updated carry state for next call.",
+                "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          if (hasInputShape(ctx, 0)) {
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+          }
+        }));
+
 }  // namespace contrib
 }  // namespace onnxruntime
