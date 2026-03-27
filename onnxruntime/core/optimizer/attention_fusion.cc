@@ -109,7 +109,7 @@ static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_r
 }
 
 static std::optional<ONNX_NAMESPACE::TypeProto> TryCreateMobileClipMhaOutputType(const NodeArg& qkv_output,
-                                                                                  int64_t hidden_size) {
+                                                                                 int64_t hidden_size) {
   const auto* qkv_output_type = qkv_output.TypeAsProto();
   if (qkv_output_type == nullptr || !qkv_output_type->has_tensor_type()) {
     return std::nullopt;
