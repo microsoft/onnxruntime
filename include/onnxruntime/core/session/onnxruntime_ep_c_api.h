@@ -2074,9 +2074,8 @@ struct OrtEp {
    * it is no longer needed.
    *
    * ORT may call this function multiple times over the lifetime of a single OrtEp instance, for example
-   * during EP registration and again when run-level profiling is enabled. Each call is independent and
-   * the EP must treat it as a request for a new profiler instance (or NULL if profiling is not supported
-   * or disabled). ORT does not require that the same profiler instance be returned on each call.
+   * during EP registration and again per run if run-level profiling is enabled. Each call is independent and
+   * the EP must return a new profiler instance (or NULL if profiling is not supported).
    *
    * \param[in] this_ptr The OrtEp instance.
    * \param[out] profiler Output parameter set to a new OrtEpProfilerImpl instance created by the EP.
