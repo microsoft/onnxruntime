@@ -493,10 +493,10 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
       kOnnxDomain);
   split_for_mha.AddAttribute("axis", static_cast<int64_t>(2));
 
-      auto mha_output_type = TryCreateMobileClipMhaOutputType(*qkv_matmul.OutputDefs()[0], hidden_size);
-    auto* mha_output = &graph.GetOrCreateNodeArg(
+  auto mha_output_type = TryCreateMobileClipMhaOutputType(*qkv_matmul.OutputDefs()[0], hidden_size);
+  auto* mha_output = &graph.GetOrCreateNodeArg(
       graph.GenerateNodeArgName("mobileclip_mha_output"),
-        mha_output_type ? &*mha_output_type : nullptr);
+      mha_output_type ? &*mha_output_type : nullptr);
 
   Node& mha_node = graph.AddNode(
       graph.GenerateNodeName("MobileClipMultiHeadAttention"),
