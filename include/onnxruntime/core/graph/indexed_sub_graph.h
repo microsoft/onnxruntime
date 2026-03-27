@@ -86,11 +86,12 @@ struct IndexedSubGraph {
 
   // Should call IsAccountingEnabled() first
   // Takes the previously computed ResourceCount for the node
-  // (usually during GetCapabiilty())
+  // (usually during GetCapability())
   // if present and adds it to the consumed amount
   void AccountForNode(size_t cost_index) const {
     assert(cost_index < nodes_costs.size());
     resource_accountant->AddConsumedAmount(nodes_costs[cost_index]);
+    resource_accountant->CommitWeightsForNode(nodes[cost_index]);
   }
 
   // Accounts for all constituent nodes by summing their pre-stored costs.
@@ -99,20 +100,26 @@ struct IndexedSubGraph {
   // cross-node weight deduplication already applied).
   void AccountForAllNodes() const {
     assert(resource_accountant != nullptr);
-    for (const auto& cost : nodes_costs) {
-      resource_accountant->AddConsumedAmount(cost);
+    for (size_t i = 0; i < nodes_costs.size(); ++i) {
+      resource_accountant->AddConsumedAmount(nodes_costs[i]);
+      resource_accountant->CommitWeightsForNode(nodes[i]);
     }
   }
 
-  // This computes and accounts for the resource cost for the node that just
-  // been fused from other nodes, and the EP did not had a chance to compute the costs.
-  void ComputeAndAccountForNode(const Node& node) const {
+  // Accounts for a node given its index and a pre-computed resource cost.
+  // Use this when the cost was computed externally (e.g. for a fused node).
+  void AccountForNode(NodeIndex node_index, const ResourceCount& resource_count) const {
     assert(resource_accountant != nullptr);
-    resource_accountant->AddConsumedAmount(resource_accountant->ComputeResourceCount(node));
+    resource_accountant->AddConsumedAmount(resource_count);
+    resource_accountant->CommitWeightsForNode(node_index);
   }
 
   void SetAccountant(IResourceAccountant* res_accountant) {
     resource_accountant = res_accountant;
+  }
+
+  IResourceAccountant* GetAccountant() const noexcept {
+    return resource_accountant;
   }
 
   // Append resource count to the list of costs for the nodes.

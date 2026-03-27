@@ -276,6 +276,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     std::unique_ptr<GraphViewer> graph_viewer;
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
+    if (params.resource_accountant) {
+      params.resource_accountant->ResetPendingWeights();
+    }
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
 
@@ -342,6 +345,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     std::unique_ptr<GraphViewer> graph_viewer;
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
+    if (params.resource_accountant) {
+      params.resource_accountant->ResetPendingWeights();
+    }
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
 
@@ -495,7 +501,8 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // that the fused node would use no more memory when the nodes we are fusing.
         // and potentially less than that, and therefore, no threshold check is needed here.
         // All threshold checks are done within the EP.
-        capability.ComputeAndAccountForNode(*fused_node);
+        auto resource_count = capability.GetAccountant()->ComputeResourceCount(*fused_node);
+        capability.AccountForNode(fused_node->Index(), resource_count);
       }
 
       result = fused_node;

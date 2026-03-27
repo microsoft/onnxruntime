@@ -15,9 +15,9 @@ namespace onnxruntime {
 namespace test {
 
 // Test accountant mimicking SizeBasedStatsAccountant ad-hoc path:
-// ComputeResourceCount inserts weight names into a dedup set so
-// calling it again on a node whose weights were already seen
-// returns 0 for those weights.
+// Uses pending/committed weight sets so that:
+// - Within a GetCapability pass, shared weights are deduped
+// - Across passes, only committed weights persist and pending are discarded
 class TestDedupAccountant : public IResourceAccountant {
  public:
   TestDedupAccountant() = default;
@@ -53,17 +53,32 @@ class TestDedupAccountant : public IResourceAccountant {
       constexpr bool check_outer_scope = true;
       const auto* init = graph->GetInitializer(name, check_outer_scope);
       if (init != nullptr) {
-        if (seen_weights_.count(name) > 0) {
+        if (committed_weights_.count(name) > 0) {
+          continue;
+        }
+        if (IsInPendingWeights(name)) {
           continue;
         }
         auto it = weight_sizes_.find(name);
         if (it != weight_sizes_.end()) {
           total += it->second;
         }
-        seen_weights_.insert(name);
+        pending_weights_by_node_[node.Index()].insert(name);
       }
     }
     return total;
+  }
+
+  void ResetPendingWeights() override {
+    pending_weights_by_node_.clear();
+  }
+
+  void CommitWeightsForNode(NodeIndex node_index) override {
+    auto it = pending_weights_by_node_.find(node_index);
+    if (it != pending_weights_by_node_.end()) {
+      committed_weights_.insert(it->second.begin(), it->second.end());
+      pending_weights_by_node_.erase(it);
+    }
   }
 
   void RegisterWeight(const std::string& name, size_t size) {
@@ -73,8 +88,16 @@ class TestDedupAccountant : public IResourceAccountant {
   size_t GetConsumedSizeT() const { return consumed_; }
 
  private:
+  bool IsInPendingWeights(const std::string& name) const {
+    for (const auto& [node_idx, weights] : pending_weights_by_node_) {
+      if (weights.count(name) > 0) return true;
+    }
+    return false;
+  }
+
   size_t consumed_ = 0;
-  InlinedHashSet<std::string> seen_weights_;
+  InlinedHashSet<std::string> committed_weights_;
+  InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
   InlinedHashMap<std::string, size_t> weight_sizes_;
 };
 
@@ -152,28 +175,32 @@ TEST(ResourceAccountantTest, AccountForAllNodes_CorrectlyUsesPreStoredCosts) {
       << "AccountForAllNodes should sum pre-stored costs (1000 + 0)";
 }
 
-// Demonstrates the bug: after probing populates the dedup set,
-// ComputeAndAccountForNode on a fused node returns 0.
-TEST(ResourceAccountantTest, ComputeAndAccountForNode_UnderCountsAfterProbing) {
+// Verifies that ResetPendingWeights + re-probe produces correct results.
+// After probing (which only writes to pending), resetting pending and
+// re-probing should see the full weight cost again since nothing was committed.
+TEST(ResourceAccountantTest, ComputeAndAccountForNode_CorrectAfterReset) {
   auto h = SharedWeightGraph::Create();
   TestDedupAccountant accountant;
   accountant.RegisterWeight("weight_W", 1000);
 
-  // Probing pass populates the dedup set
+  // Probing pass populates pending weights
   auto cost_a = accountant.ComputeResourceCount(*h.node_a);
   EXPECT_EQ(std::get<size_t>(cost_a), size_t{1000});
   auto cost_b = accountant.ComputeResourceCount(*h.node_b);
   EXPECT_EQ(std::get<size_t>(cost_b), size_t{0});
 
-  // Old buggy path: re-compute on fused node after probing
+  // Discard the pass (simulating capabilities.clear() before second GetCapability)
+  accountant.ResetPendingWeights();
+
+  // Re-probe: weight_W was never committed, so it should be counted again
   IndexedSubGraph sub_graph;
   sub_graph.nodes.push_back(h.node_a->Index());
   sub_graph.SetAccountant(&accountant);
-  sub_graph.ComputeAndAccountForNode(*h.node_a);
+  auto recomputed_cost = accountant.ComputeResourceCount(*h.node_a);
+  sub_graph.AccountForNode(h.node_a->Index(), recomputed_cost);
 
-  // Bug: consumed is 0 instead of 1000
-  EXPECT_EQ(accountant.GetConsumedSizeT(), size_t{0})
-      << "ComputeAndAccountForNode after probing under-counts";
+  EXPECT_EQ(accountant.GetConsumedSizeT(), size_t{1000})
+      << "After ResetPendingWeights, re-probe should see full weight cost";
 }
 
 // Each node has a unique initializer. AccountForAllNodes sums both.

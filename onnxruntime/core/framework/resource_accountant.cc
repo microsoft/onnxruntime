@@ -67,8 +67,6 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
       const auto* graph = node.GetContainingGraph();
       if (!graph) return static_cast<size_t>(0);
 
-      /// XXX: Consider accounting for intermediate tensors as well
-      /// if they have shape.
       SafeInt<size_t> total_size = 0;
       for (const auto* input_def : node.InputDefs()) {
         if (!input_def->Exists()) continue;
@@ -78,8 +76,13 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
         const auto* tensor_proto = graph->GetInitializer(name, check_outer_scope);
 
         if (tensor_proto) {
-          // Already accounted for this initializer in another node, skip to avoid double counting.
-          if (accounted_weights_.find(name) != accounted_weights_.end()) {
+          // Skip if already committed from a previous partitioning iteration
+          if (committed_weights_.count(name) > 0) {
+            continue;
+          }
+
+          // Skip if already pending from another node in this GetCapability pass
+          if (IsInPendingWeights(name)) {
             continue;
           }
 
@@ -88,7 +91,7 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
 
           if (status.IsOK()) {
             total_size += size;
-            accounted_weights_.insert(name);
+            pending_weights_by_node_[node.Index()].insert(name);
           }
         }
       }
@@ -116,10 +119,34 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
     }
   }
 
+  void ResetPendingWeights() override {
+    pending_weights_by_node_.clear();
+  }
+
+  void CommitWeightsForNode(NodeIndex node_index) override {
+    auto it = pending_weights_by_node_.find(node_index);
+    if (it != pending_weights_by_node_.end()) {
+      committed_weights_.insert(it->second.begin(), it->second.end());
+      pending_weights_by_node_.erase(it);
+    }
+  }
+
  private:
+  bool IsInPendingWeights(const std::string& name) const {
+    for (const auto& [node_idx, weights] : pending_weights_by_node_) {
+      if (weights.count(name) > 0) return true;
+    }
+    return false;
+  }
+
   size_t consumed_amount_ = 0;
   std::optional<InlinedHashMap<std::string, NodeAllocationStats>> node_stats_;
-  InlinedHashSet<std::string> accounted_weights_;
+  // Weights committed from previous partitioning iterations.
+  // These persist across GetCapability passes.
+  InlinedHashSet<std::string> committed_weights_;
+  // Weights seen during the current GetCapability pass, keyed by node index.
+  // Discarded by ResetPendingWeights() or promoted by CommitWeightsForNode().
+  InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
 };
 
 struct NodeStatsRecorder::Impl {

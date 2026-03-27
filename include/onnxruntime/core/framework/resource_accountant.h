@@ -61,6 +61,15 @@ class IResourceAccountant {
 
   bool IsStopIssued() const noexcept { return stop_assignment_; }
 
+  // Called before each GetCapability pass to discard pending weight tracking
+  // from a previous (discarded) pass. Default no-op for stats-based accountants.
+  virtual void ResetPendingWeights() {}
+
+  // Called when a node's cost is committed (AccountForNode/AccountForAllNodes).
+  // Moves the node's pending weights into the committed set so they persist
+  // across GetCapability passes. Default no-op for stats-based accountants.
+  virtual void CommitWeightsForNode(size_t /*node_index*/) {}
+
   static std::string MakeUniqueNodeName(const Node& node);
 
  private:
