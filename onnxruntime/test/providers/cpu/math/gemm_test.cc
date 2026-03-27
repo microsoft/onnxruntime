@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
+#include "core/framework/allocator.h"
+#include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/run_options.h"
+#include "core/providers/cpu/math/gemm_matmul_common.h"
+#include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -1510,6 +1513,20 @@ std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
 
   std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {{1, 1, 1}, {1, 64, 448}, {2, 3, 4}, {8, 8, 8}, {31, 31, 31}, {32, 32, 32}, {33, 67, 99}, {37, 64, 256}, {48, 48, 120}, {60, 16, 92}, {63, 64, 65}, {64, 64, 64}, {64, 64, 65}, {72, 80, 84}, {96, 24, 48}, {128, 32, 64}, {128, 128, 128}, {129, 129, 129}, {256, 64, 1024}, {16, 768, 192}, {15, 768, 192}, {16, 768, 191}};
 
+  // Invalid/edge-case B matrix dimensions: regression test for out-of-bounds
+  // read in MlasSgemmTransposePackB when GemmPackBFp32 received invalid
+  // dimensions. B is always 2D with shape {K,N} or {N,K} (transposed).
+  //
+  // Note: Only zero-dimension cases can be tested via OpTester. Negative and
+  // overflow dimensions are rejected by OpTester::AddInput before the model
+  // runs, so those are covered by the fuzzer (edge_ort_format_fuzzer) which
+  // feeds raw malformed protobuf bytes directly to ORT.
+  std::vector<std::tuple<int64_t, int64_t, int64_t>> invalid_dim_sizes = {
+      {2, 0, 4},  // K=0
+      {2, 4, 0},  // N=0
+      {0, 4, 4},  // M=0 (A is empty)
+  };
+
   std::vector<BiasType>
       bias_types = {BiasType::noBias, BiasType::MBias, BiasType::ScalarBias, BiasType::MNBias, BiasType::NBias};
 
@@ -1528,6 +1545,12 @@ std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
         params.push_back({std::get<0>(size), std::get<1>(size), std::get<2>(size),
                           bias_type, transA, transB});
       }
+    }
+    // Invalid dimension tests only with noBias to avoid initialize_bias
+    // trying to allocate based on negative/huge dimension values.
+    for (const auto& size : invalid_dim_sizes) {
+      params.push_back({std::get<0>(size), std::get<1>(size), std::get<2>(size),
+                        BiasType::noBias, transA, transB});
     }
   }
   return params;
@@ -1669,6 +1692,59 @@ TEST(GemmOpTest, GemmTransB_f16_32x32x128) {
   test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
       .Config(run_with_tunable_op)
       .RunWithConfig();
+}
+
+// Regression test: GemmPackBFp32 must validate that tensor dimensions are
+// consistent with the actual data before passing to MLAS. A malformed model
+// can declare a large shape but provide insufficient backing data, causing
+// MlasSgemmTransposePackB to read out of bounds. (Found by fuzzing.)
+//
+// We construct a Tensor with a valid positive shape but a tiny backing buffer,
+// simulating the shape/data mismatch from a malformed ONNX protobuf. The
+// Tensor constructor with external memory does not validate buffer size.
+TEST(GemmPackBValidationTest, ShapeDataMismatchReturnsFalse) {
+  float tiny_buffer[1] = {0.0f};
+  OrtMemoryInfo cpu_info("Cpu", OrtAllocatorType::OrtDeviceAllocator);
+
+  // Shape says {1000, 1000} but buffer has only 1 float.
+  // Without the fix, MLAS would use ldb=1000 as a stride and crash.
+  Tensor tensor_b(DataTypeImpl::GetType<float>(),
+                  TensorShape({1000, 1000}),
+                  tiny_buffer, cpu_info);
+
+  AllocatorPtr alloc = std::make_shared<CPUAllocator>();
+  IAllocatorUniquePtr<void> packed_b;
+  size_t packed_b_size = 0;
+  TensorShape b_shape;
+
+  bool result = GemmPackBFp32(alloc, tensor_b,
+                              /*trans_a=*/false, /*trans_b=*/false,
+                              packed_b, packed_b_size, b_shape, nullptr);
+
+  // GemmPackBFp32 should detect the mismatch and return false
+  // rather than passing the invalid dimensions to MLAS.
+  EXPECT_FALSE(result);
+}
+
+// Same test with transB=true to cover the transpose prepacking path.
+TEST(GemmPackBValidationTest, ShapeDataMismatchTransBReturnsFalse) {
+  float tiny_buffer[1] = {0.0f};
+  OrtMemoryInfo cpu_info("Cpu", OrtAllocatorType::OrtDeviceAllocator);
+
+  Tensor tensor_b(DataTypeImpl::GetType<float>(),
+                  TensorShape({1000, 1000}),
+                  tiny_buffer, cpu_info);
+
+  AllocatorPtr alloc = std::make_shared<CPUAllocator>();
+  IAllocatorUniquePtr<void> packed_b;
+  size_t packed_b_size = 0;
+  TensorShape b_shape;
+
+  bool result = GemmPackBFp32(alloc, tensor_b,
+                              /*trans_a=*/false, /*trans_b=*/true,
+                              packed_b, packed_b_size, b_shape, nullptr);
+
+  EXPECT_FALSE(result);
 }
 
 }  // namespace test
