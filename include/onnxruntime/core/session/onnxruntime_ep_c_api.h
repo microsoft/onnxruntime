@@ -500,7 +500,6 @@ struct OrtEpProfilerImpl {
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
    * \param[in] ep_profiling_start_offset_ns The elapsed time in nanoseconds (using ORT's profiling clock) between
    *                                         ORT's profiling start and this call to StartProfiling.
-   * \param[out] success_out Output parameter set to true if profiling was successfully started, or false otherwise.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -509,8 +508,7 @@ struct OrtEpProfilerImpl {
    *
    * \since Version 1.25.
    */
-  ORT_API2_STATUS(StartProfiling, _In_ OrtEpProfilerImpl* this_ptr,
-                  _In_ int64_t ep_profiling_start_offset_ns, _Out_ bool* success_out);
+  ORT_API2_STATUS(StartProfiling, _In_ OrtEpProfilerImpl* this_ptr, _In_ int64_t ep_profiling_start_offset_ns);
 
   /** \brief Called when an ORT event (e.g., session initialization, node kernel execution, etc.) begins.
    *

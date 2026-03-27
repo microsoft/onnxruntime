@@ -56,8 +56,8 @@ bool PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
   int64_t offset_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::high_resolution_clock::now() - profiling_start_time)
                           .count();
-  bool success = false;
-  Status status = ToStatusAndRelease(profiler_impl_.StartProfiling(&profiler_impl_, offset_ns, &success));
+  bool success = true;
+  Status status = ToStatusAndRelease(profiler_impl_.StartProfiling(&profiler_impl_, offset_ns));
 
   if (!status.IsOK()) {
     // Log error but don't throw as profiling failures shouldn't break execution.

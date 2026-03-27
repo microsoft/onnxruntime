@@ -137,16 +137,13 @@ void ORT_API_CALL ExampleKernelEpProfiler::ReleaseImpl(OrtEpProfilerImpl* this_p
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StartProfilingImpl(OrtEpProfilerImpl* this_ptr,
-                                                                    int64_t ep_profiling_start_offset_ns,
-                                                                    bool* success_out) noexcept {
+                                                                    int64_t ep_profiling_start_offset_ns) noexcept {
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);
 
   // Store the offset from ORT's profiling start (measured with ORT's clock) and capture the EP's own clock.
   // This allows computing ORT-relative timestamps without depending on matching clock epochs.
   self->ep_profiling_start_offset_ns_ = ep_profiling_start_offset_ns;
   self->ep_profiling_start_time_point_ = std::chrono::high_resolution_clock::now();
-
-  *success_out = true;
   return nullptr;
 }
 
