@@ -592,7 +592,8 @@ static const OrtEpDevice* FindRegisteredPluginEpDevice(
         requested_device_id = std::stoi(device_id_it->second);
         has_requested_device_id = requested_device_id >= 0;
       } catch (const std::exception&) {
-        // Invalid device_id values are logged by callers when appropriate.
+        LOGS_DEFAULT(WARNING) << "Invalid device_id value '" << device_id_it->second
+                              << "' in provider options for EP '" << ep_name << "'; ignoring.";
       }
     }
   }

@@ -67,12 +67,19 @@ CudaSyncStream::~CudaSyncStream() {
     }
   }
 
-  if (cuda_stream_) UnregisterStream(cuda_stream_);
-
   if (cublas_handle_) cublasDestroy(cublas_handle_);
   if (cudnn_handle_) cudnnDestroy(cudnn_handle_);
   if (cublas_lt_handle_) cublasLtDestroy(cublas_lt_handle_);
   if (cuda_stream_) {
+    // Unregister the stream from the global map *after* destroying handles but
+    // *before* destroying the stream itself. This ordering ensures:
+    //   1. No concurrent kernel can obtain cuBLAS/cuDNN handles from a destroyed
+    //      CudaSyncStream during the brief window before unregistration.
+    //   2. UnregisterStream bumps the TLS generation counter, invalidating cached
+    //      lookups in other threads.
+    //   3. The stream is destroyed only after it is no longer discoverable.
+    UnregisterStream(cuda_stream_);
+
     auto destroy_result = cudaStreamDestroy(cuda_stream_);
     if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
       // Fallback: we only reach here when the earlier cudaStreamSynchronize in

@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <cctype>
 #include <optional>
+#include <string>
 #include <string_view>
-#include <format>
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -117,7 +117,7 @@ std::string ToUpper(std::string value) {
 }
 
 std::string GetProviderOptionPrefix(std::string_view provider_name) {
-  return std::format("ep.{}.", onnxruntime::utils::GetLowercaseString(std::string{provider_name}));
+  return "ep." + onnxruntime::utils::GetLowercaseString(std::string{provider_name}) + ".";
 }
 
 }  // namespace
@@ -133,6 +133,17 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
   size_t& num_ep_devices = *p_num_ep_devices;
   num_ep_devices = 0;
+
+  // Clear stale entries from previous enumerations. The OrtHardwareDevice*
+  // keys point to ORT-owned memory that may be freed between calls.
+  {
+    std::lock_guard<std::mutex> lock(factory->device_map_mutex_);
+    factory->hw_device_to_cuda_index_.clear();
+  }
+  {
+    std::lock_guard<std::mutex> lock(factory->cached_memory_info_mutex_);
+    factory->cached_memory_infos_.clear();
+  }
 
   int cuda_device_index = 0;
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
@@ -285,9 +296,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       return;
     }
 
-    const std::string msg = std::format(
-        "Failed to parse session config for key '{}'. Expected {}. Using default value.",
-        key, expected);
+    const std::string msg = std::string("Failed to parse session config for key '") +
+                             std::string(key) + "'. Expected " + std::string(expected) +
+                             ". Using default value.";
 
     OrtStatus* st = factory->ort_api_.Logger_LogMessage(
         logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), "cuda_ep_factory.cc", __LINE__, "CudaEpFactory");

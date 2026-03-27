@@ -198,9 +198,9 @@ namespace cuda {
 /// Each compiled kernel .cc file's macro expansion auto-registers here.
 ///
 /// Thread-safety: Instance() uses a function-local static (C++11 §6.7/4:
-/// constructed exactly once, even under concurrent first-access). All Add()
-/// calls happen during static initialisation of each translation unit
-/// (before main()), which is single-threaded per the C++ standard.
+/// constructed exactly once, even under concurrent first-access). Add()
+/// is guarded by a mutex for formal correctness across translation units,
+/// though in practice all calls occur during static initialization.
 class PluginKernelCollector {
  public:
   static PluginKernelCollector& Instance() {
@@ -208,11 +208,15 @@ class PluginKernelCollector {
     return instance;
   }
 
-  void Add(BuildKernelCreateInfoFn fn) { entries_.push_back(fn); }
+  void Add(BuildKernelCreateInfoFn fn) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    entries_.push_back(fn);
+  }
   const std::vector<BuildKernelCreateInfoFn>& Entries() const { return entries_; }
 
  private:
   std::vector<BuildKernelCreateInfoFn> entries_;
+  std::mutex mutex_;
 };
 
 }  // namespace cuda

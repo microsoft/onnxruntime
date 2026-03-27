@@ -135,6 +135,11 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
     # receive the ORT-framework force-include (it conflicts with cute::Tensor etc.).
     # cuda_plugin_kernels.cu already #include "cuda_kernel_adapter.h" directly.
     # Op-registration .cc files do not include it directly, so they need it here.
+    #
+    # IMPORTANT: The CXX force-include order matters — adapters.h MUST precede
+    # cuda_kernel_adapter.h because the adapter establishes type aliases that the
+    # kernel adapter header depends on.
+    #
     # Force NVCC onto C++20 explicitly. With the VS generator the CUDA standard
     # property alone still leaves `-std=c++17` in AdditionalOptions.
     # Suppress NVCC cudafe warnings:

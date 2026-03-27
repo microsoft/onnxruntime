@@ -41,7 +41,7 @@ class Allocator : public OrtAllocator {
 
  private:
   explicit Allocator(const OrtMemoryInfo* memory_info)
-      : OrtAllocator{}, memory_info_(memory_info) {
+      : OrtAllocator{}, memory_info_(memory_info), get_allocator_impl_(nullptr) {
     version = ORT_API_VERSION;
     Alloc = AllocImpl;
     Free = FreeImpl;
