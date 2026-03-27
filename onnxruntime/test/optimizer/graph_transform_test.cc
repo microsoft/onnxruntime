@@ -2504,6 +2504,8 @@ TEST_F(GraphTransformationTests, FuseConvMulNoBiasConstantFirst) {
       auto& inputs = node.MutableInputDefs();
       ASSERT_EQ(inputs.size(), 2u);
       std::swap(inputs[0], inputs[1]);
+      ASSERT_TRUE(graph_utils::NodeArgIsConstant(graph, *inputs[0]));
+      ASSERT_FALSE(graph_utils::NodeArgIsConstant(graph, *inputs[1]));
       swapped_mul_inputs = true;
       break;
     }
@@ -2969,10 +2971,28 @@ TEST_F(GraphTransformationTests, UnsqueezeElimination_ManyAxes) {
 // ONNX schema validation during graph.Resolve() rejects such invalid models before the
 // optimizer runs.
 
-static void TestFuseConvAddMul(logging::Logger& logger, const PathChar* model_uri) {
+static void TestFuseConvAddMul(logging::Logger& logger, const PathChar* model_uri, bool swap_mul_inputs = false) {
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logger));
   Graph& graph = p_model->MainGraph();
+
+  if (swap_mul_inputs) {
+    bool swapped = false;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Mul") {
+        auto& inputs = node.MutableInputDefs();
+        ASSERT_EQ(inputs.size(), 2u);
+        std::swap(inputs[0], inputs[1]);
+        ASSERT_TRUE(graph_utils::NodeArgIsConstant(graph, *inputs[0]));
+        ASSERT_FALSE(graph_utils::NodeArgIsConstant(graph, *inputs[1]));
+        swapped = true;
+        break;
+      }
+    }
+
+    ASSERT_TRUE(swapped);
+    ASSERT_STATUS_OK(graph.Resolve());
+  }
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
@@ -2990,6 +3010,11 @@ static void TestFuseConvAddMul(logging::Logger& logger, const PathChar* model_ur
 TEST_F(GraphTransformationTests, FuseConvAddMul3D) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-3d.onnx";
   TestFuseConvAddMul(*logger_, model_uri);
+}
+
+TEST_F(GraphTransformationTests, FuseConvAddMul3DConstantFirst) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-add-mul-3d.onnx";
+  TestFuseConvAddMul(*logger_, model_uri, true);
 }
 
 TEST_F(GraphTransformationTests, FuseConvAddMul1D) {
