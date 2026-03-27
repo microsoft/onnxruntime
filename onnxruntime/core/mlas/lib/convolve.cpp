@@ -1532,7 +1532,7 @@ Return Value:
 
     } else {
 
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64)
 
     if (Dimensions == 2
         && GroupCount > 1
