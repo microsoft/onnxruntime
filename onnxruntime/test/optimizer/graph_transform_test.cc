@@ -2491,6 +2491,39 @@ TEST_F(GraphTransformationTests, FuseConvMulNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+TEST_F(GraphTransformationTests, FuseConvMulNoBiasConstantFirst) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-mul-no-bias.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  bool swapped_mul_inputs = false;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Mul") {
+      auto& inputs = node.MutableInputDefs();
+      ASSERT_EQ(inputs.size(), 2u);
+      std::swap(inputs[0], inputs[1]);
+      swapped_mul_inputs = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(swapped_mul_inputs);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvMulFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
 TEST_F(GraphTransformationTests, FuseConvAddNoBias) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-add-no-bias.onnx";
 
