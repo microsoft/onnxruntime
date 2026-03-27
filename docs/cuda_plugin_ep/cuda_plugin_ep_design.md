@@ -771,7 +771,54 @@ include/onnxruntime/ep/
 
 ## 13. Future Work
 
-1. **Memory arena / allocator parity** — The plugin currently relies on direct `cudaMalloc`/`cudaFree` paths instead of the in-tree CUDA EP's BFC-style arena. Adding a plugin-side arena or a clean way to reuse ORT's allocator infrastructure would reduce allocation overhead, improve memory reuse, and let the plugin honor options such as `gpu_mem_limit` and `arena_extend_strategy`.
+1. **Memory arena / allocator parity** — The plugin currently relies on direct `cudaMalloc`/`cudaFree` in `CudaDeviceAllocator` instead of an arena-backed allocator. Two complementary improvements are planned:
+
+   **A. `CudaMempoolArena` (commit e6023b0c)**
+
+   The in-tree CUDA EP gained a native-CUDA-mempool allocator (`cuda_mempool_arena.h/.cc`) that uses `cudaMallocFromPoolAsync` / `cudaFreeAsync` on stream-ordered allocation paths, with a configurable `cudaMemPoolAttrReleaseThreshold` to return memory to the device as it becomes idle. Enabling this in the plugin requires:
+
+   1. **Make `CudaMempoolArena` compilable in the plugin build.** `cuda_mempool_arena.h` currently includes `cuda_stream_handle.h` and `provider_api.h` (both `SHARED_PROVIDER`-only). The only real dependency is resolving the stream framework pointer. When migrating for plugin use, this class can be refactored to accept a raw `cudaStream_t` directly (or an `OrtSyncStream*`), bypassing the internal `stream->GetHandle()` logic.
+
+   2. **Implement a thin `OrtAllocator` wrapper around `CudaMempoolArena`.** The plugin factory's `CreateAllocatorImpl` returns an `OrtAllocator*`, while `CudaMempoolArena` is an `IArena` / `IAllocator`. A new class (e.g., `CudaMempoolOrtAllocator`) should own a `CudaMempoolArena` instance and forward the `OrtAllocator` callbacks to it:
+
+      | `OrtAllocator` callback | Implementation |
+      |-------------------------|----------------|
+      | `Alloc(size)` | `arena_->Alloc(size)` (allocates on the legacy default stream) |
+      | `Free(ptr)` | `arena_->Free(ptr)` |
+      | `Reserve(size)` | `arena_->Reserve(size)` |
+      | `AllocOnStream(size, stream)` | `cudaStream_t cu_stream = (cudaStream_t)api->SyncStream_GetHandle(stream);` <br> `arena_->AllocWithCudaStream(size, cu_stream);` |
+      | `GetStats(kvps)` | Populate from `arena_->GetStats()` |
+      | `Info()` | Return the `OrtMemoryInfo*` used at construction |
+
+      The `OrtAllocator` C API already supports stream-aware allocation via the optional `AllocOnStream` callback (set on `OrtAllocator` when `version >= kOrtAllocatorAllocOnStreamMinVersion`). ORT core wraps every plugin `OrtAllocator` into `IAllocatorImplWrappingOrtAllocator` (`allocator_adapters.cc`), which dispatches to `AllocOnStream` when the wrapper reports `IsStreamAware() == true`. So there is **no additional plumbing needed in the adapter or framework** — the plugin allocator just needs to set `AllocOnStream` to a non-null function pointer to get full stream-ordered semantics.
+
+      **Important:** The `OrtMemoryInfo::alloc_type` returned by the wrapper must be `OrtDeviceAllocator`, **not** `OrtArenaAllocator`. Both `PluginExecutionProvider::CreatePreferredAllocators()` and `Environment::CreateSharedAllocatorImpl()` explicitly reject `OrtArenaAllocator` from plugin factories — the arena is expected to be opaque to ORT.
+
+   3. **Parse mempool options.** ORT can pass allocator configuration to the plugin factory through the `allocator_options` (`OrtKeyValuePairs*`) argument of `OrtEpFactory::CreateAllocator`. The relevant keys are defined in `OrtArenaCfg::Keys` (in `allocator.h`):
+      - `arena.use_cuda_mempool` — set to `"1"` to enable
+      - `arena.cuda_mempool_release_threshold` — bytes; `0` disables the threshold
+      - `arena.cuda_mempool_bytes_to_keep_on_shrink` — bytes retained after `Shrink()`
+
+      **How options reach the plugin factory — two paths:**
+
+      | Path | How it calls `CreateAllocator` | `allocator_options` |
+      |------|-------------------------------|---------------------|
+      | **Shared allocator** (`OrtApi::CreateSharedAllocator`) | `Environment::CreateSharedAllocatorImpl` → `ep_factory->CreateAllocator(factory, &mem_info, allocator_options, &alloc)` | Caller-provided `OrtKeyValuePairs*` — can carry arena keys |
+      | **Per-EP allocator** (`PluginExecutionProvider::CreatePreferredAllocators`) | `ep_factory.CreateAllocator(&ep_factory, memory_info, /*options*/ nullptr, &alloc)` | Always `nullptr` today |
+
+      The per-EP path currently passes `nullptr` for options. To support mempool configuration on this path, either:
+      - **(a)** Parse the arena keys from session options inside `CudaEp` / `CudaEpFactory` (similar to how `CudaEp::Config` already parses other provider options) and store them so `CreateAllocatorImpl` can read them without needing `allocator_options`.
+      - **(b)** Extend the ORT core per-EP allocator path to forward the config entries to `CreateAllocator` (requires an ORT core change).
+
+      Option (a) is self-contained within the plugin and does not require ORT core changes.
+
+   4. **Thread the factory logger.** `CudaMempoolArena` takes a `const logging::Logger*`. The plugin factory already owns a logger (`factory.default_logger_` / the `OrtLogger` passed at EP creation). Convert or wrap it and pass it to the arena constructor.
+
+   5. **Handle `ReleaseAllocatorImpl`.** The factory's `ReleaseAllocatorImpl` switch currently only knows about `CudaDeviceAllocator` and `CudaPinnedAllocator`. Add a third case (`kMempool` or similar) to correctly destroy the new wrapper and its owned `CudaMempoolArena`.
+
+   **B. BFC arena (longer term)**
+
+   If BFC-style arena behavior (`gpu_mem_limit`, `arena_extend_strategy`) is also needed, a similar `OrtAllocator`-wrapping approach would work for `BFCArena`, once its `SHARED_PROVIDER`-only dependencies are removed. The same `AllocOnStream` / `OrtDeviceAllocator` / option-parsing patterns apply.
 
 2. **Profiling and observability** — The in-tree CUDA EP exposes an EP profiler, while the plugin shim currently does not surface equivalent profiling hooks. Future work should wire up `GetProfiler()` for the plugin path, integrate CUDA/NVTX/CUPTI-based tracing where appropriate, and make plugin execution visible in the same profiling flows users already rely on for the bundled CUDA EP.
 
@@ -790,3 +837,21 @@ include/onnxruntime/ep/
 9. **NHWC cleanup and hardening** — Complete the follow-up work described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the allowlist, improve internal-domain diagnostics, and add stronger structural NHWC assertions.
 
 10. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure will be reintroduced once the API is extended.
+
+11. **Resource accounting and annotation-based partitioning (PR #27595)** — ORT is acquiring two related features that affect how graph nodes are partitioned to EPs:
+
+    **A. Resource accounting**
+
+    `IResourceAccountant` lets an EP declare a resource budget (e.g., available VRAM) and have the partitioner stop assigning nodes once that budget is exhausted. The framework passes an `IResourceAccountant*` to `IExecutionProvider::GetCapability()`; the in-tree CUDA EP uses it to compute per-node estimated VRAM cost from initializer sizes.
+
+    For plugin EPs, the `OrtEp::GetCapability` callback currently has no mechanism to receive or report resource usage — the `OrtEp` C API does not expose `IResourceAccountant`. Two design options:
+
+    - **Option A (preferred — ORT core change):** Add an `OrtEp` analogue of the current `IResourceAccountant` flow instead of inventing a separate plugin-only protocol. In the core path, the partitioner passes an `IResourceAccountant*` into `IExecutionProvider::GetCapability(...)`. The plugin equivalent should preserve that model as closely as possible: either expose an accountant-like object through the `OrtEp` API, or add a small `OrtEp` callback surface that the partitioner can use to compute and accumulate per-node resource cost while still keeping the partitioner's threshold/stop-assignment logic in one place.
+
+    - **Option B (plugin-side workaround):** Expose the VRAM threshold through a plugin-specific session option key. During `GetCapabilityImpl`, the plugin reads the threshold from the parsed config and performs its own initializer-size accounting using `OrtEp_GetNodeAttributes` / node-graph-view APIs already present in the `OrtEp` API surface. This avoids an ORT core change but duplicates budget-tracking logic.
+
+    **B. Annotation-based layering**
+
+    PR #27595 also introduces `layering_annotations` — node-level `"layer_ann"` metadata that routes nodes to specific EPs or CPU during partitioning. The expected model is that plugin EPs participate through the same `GetCapability` flow and therefore observe whatever node set ORT presents after applying layering rules. In practice that should mean no plugin-specific changes are needed to respect annotations that exclude nodes from the plugin. However, the plugin design should avoid depending on undocumented filtering details in the `OrtGraph*` contract. If the plugin EP itself needs to *read* layering annotations for internal decisions, or if the API needs to make filtered-vs-unfiltered graph semantics explicit, that would require new `OrtEp` API surface.
+
+    **Recommended action:** Extend the `OrtEp` C API with a plugin equivalent of the existing resource-accounting flow (Option A), and document the graph-view contract for plugin `GetCapability` under layering annotations as part of the same effort that exposes `kOrtSessionOptionsLayerAssignmentSettings` to plugin EP sessions.
