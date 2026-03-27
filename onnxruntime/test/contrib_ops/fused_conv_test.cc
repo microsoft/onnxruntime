@@ -120,6 +120,58 @@ void RunConvOp(const ConvOpAndTestAttributes& attributes,
              disable_cpu, disable_cuda, disable_webgpu, use_float16, weight_is_initializer);
 }
 
+#ifdef USE_KLEIDIAI
+void TestNhwcFusedConvFloatOp(const ConvOpAndTestAttributes& attributes,
+                              const vector<vector<float>>& inputs,
+                              const vector<vector<int64_t>>& input_shapes,
+                              const std::initializer_list<float>& expected_output,
+                              const vector<int64_t>& expected_output_shape,
+                              bool weight_is_initializer = false) {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (cpu_ep == nullptr) {
+    return;
+  }
+
+  OpTester test("NhwcFusedConv", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("group", attributes.group);
+  test.AddAttribute("kernel_shape", attributes.kernel_shape);
+  test.AddAttribute("activation", attributes.activation);
+
+  if (!attributes.dilations.empty()) {
+    test.AddAttribute("dilations", attributes.dilations);
+  }
+
+  if (!attributes.pads.empty()) {
+    test.AddAttribute("pads", attributes.pads);
+  } else {
+    test.AddAttribute("auto_pad", attributes.auto_pad);
+  }
+
+  if (!attributes.strides.empty()) {
+    test.AddAttribute("strides", attributes.strides);
+  }
+
+  if (!attributes.activation_parameters.empty()) {
+    test.AddAttribute("activation_params", attributes.activation_parameters);
+  }
+
+  const char* szNames[] = {"X", "W", "B", "Z"};
+  test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
+  test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
+  if (inputs.size() >= 3) {
+    test.AddInput<float>(szNames[2], input_shapes[2], inputs[2]);
+  }
+  if (inputs.size() >= 4) {
+    test.AddInput<float>(szNames[3], input_shapes[3], inputs[3]);
+  }
+  test.AddOutput<float>("Y", expected_output_shape, expected_output);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(FusedConvTest, Conv2D_HardSigmoid) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
@@ -234,6 +286,93 @@ TEST(FusedConvTest, Cpu_Conv2D_Bias_Z_Relu) {
   auto expected_vals = {12.0f, 17.0f, 25.0f, 29.0f, 11.0f, 15.0f, 23.0f, 28.0f};
   RunConvOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, false, true, true);
 }
+
+#ifdef USE_KLEIDIAI
+TEST(FusedConvTest, Cpu_NhwcConv2D_Bias_Z_Relu) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      "Relu"                        // activation
+  };
+
+  vector<float> X = {1.0f, 2.0f, 3.0f,
+                     4.0f, 5.0f, 6.0f,
+                     7.0f, 8.0f, 9.0f};
+  vector<int64_t> X_shape = {1, 3, 3, 1};
+  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 2, 2};
+  vector<float> B = {1.0f, -1.0f};
+  vector<int64_t> B_shape = {2};
+  vector<float> Z = {-1.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 1.0f};
+  vector<int64_t> Z_shape = {1, 2, 2, 2};
+  auto expected_vals = {12.0f, 11.0f, 17.0f, 15.0f, 25.0f, 23.0f, 29.0f, 28.0f};
+  TestNhwcFusedConvFloatOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(FusedConvTest, Cpu_NhwcConv2D_Z_Relu_Batch2) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      "Relu"                        // activation
+  };
+
+  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
+                     1.0f, 1.0f, 1.0f, 1.0f};
+  vector<int64_t> X_shape = {2, 2, 2, 1};
+  vector<float> W = {1.0f};
+  vector<int64_t> W_shape = {1, 1, 1, 1};
+  vector<float> B = {0.0f};
+  vector<int64_t> B_shape = {1};
+  vector<float> Z = {0.0f, 0.0f, 0.0f, 0.0f,
+                     -2.0f, -3.0f, -4.0f, -5.0f};
+  vector<int64_t> Z_shape = {2, 2, 2, 1};
+  vector<int64_t> Y_shape = {2, 2, 2, 1};
+  auto expected_vals = {1.0f, 2.0f, 3.0f, 4.0f,
+                        0.0f, 0.0f, 0.0f, 0.0f};
+
+  TestNhwcFusedConvFloatOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(FusedConvTest, Cpu_NhwcConv2D_AutoPadSameUpper) {
+  ConvOpAndTestAttributes attrs = {
+      "SAME_UPPER",           // auto_pad
+      vector<int64_t>{1, 1},  // dilations
+      1,                      // group
+      vector<int64_t>{3, 3},  // kernel_shape
+      {},                     // pads
+      vector<int64_t>{1, 1},  // strides
+      "Relu"                  // activation
+  };
+
+  vector<float> X(25, 1.0f);
+  vector<int64_t> X_shape = {1, 5, 5, 1};
+  vector<float> W = {0.0f, 1.0f, 2.0f,
+                     3.0f, 4.0f, 5.0f,
+                     6.0f, 7.0f, 8.0f};
+  vector<int64_t> W_shape = {1, 1, 3, 3};
+  vector<int64_t> Y_shape = {1, 5, 5, 1};
+  auto expected_vals = {24.0f, 33.0f, 33.0f, 33.0f, 20.0f,
+                        27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
+                        27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
+                        27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
+                        12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
+  TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+}
+#endif
 
 #endif
 
