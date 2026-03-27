@@ -310,8 +310,10 @@ class PluginKernelCollector {
 
 // ===================================================================
 // Section 4: Logging shim (adapter path only)
-// Replaces LOGS_DEFAULT with a no-op stream to avoid pulling in the
-// full ORT logging framework inside the plugin shared library.
+// LOGS_DEFAULT is re-routed through ep::adapter::LoggingManager, which
+// holds the ORT default logger set up in CudaEpFactory::CudaEpFactory.
+// All severity levels (including ERROR/WARNING) are forwarded to the
+// ORT logger; no log output is suppressed.
 // ===================================================================
 
 // Explicit function instantiation — called once per unique class in each .cc file
@@ -320,7 +322,6 @@ class PluginKernelCollector {
 // The plugin utilizes ep::adapter::LoggingManager for LOGS_DEFAULT,
 // which is initialized in CudaEpFactory::CudaEpFactory.
 
-#include <atomic>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -338,14 +339,12 @@ namespace cuda {
 
 // ===================================================================
 // Section 5: Runtime configuration for migrated kernels
-// Stored as atomics so SetCudaKernelAdapterRuntimeConfig() can be
-// called from CudaEp's constructor on any thread.
+// Fields are written once during CudaEp construction (under unique_lock)
+// and only read afterwards; a shared_mutex in ProviderConfigStore guards
+// concurrent access.
 // ===================================================================
 
 namespace detail {
-// All fields are written once during CudaEp construction (under unique_lock)
-// and only read afterwards, so std::atomic is not needed — the shared_mutex
-// in ProviderConfigStore provides the necessary happens-before guarantee.
 struct CudaKernelAdapterRuntimeConfig {
   bool use_tf32 = true;
   bool skip_layer_norm_strict_mode = false;
@@ -531,22 +530,24 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
 
 namespace cuda {
 
-inline void SetCudaKernelAdapterRuntimeConfigForProvider(const void* provider, bool use_tf32, int device_id,
-                                                         bool skip_layer_norm_strict_mode = false,
-                                                         int cudnn_conv_algo = 0, bool cudnn_conv_use_max_workspace = true,
-                                                         bool cudnn_conv1d_pad_to_nc1d = false,
-                                                         bool fuse_conv_bias = false,
-                                                         int sdpa_kernel = 0) {
+// Populate the per-provider adapter config from a pre-filled initializer struct.
+// Callers (e.g. CudaEp constructor) construct a detail::CudaKernelAdapterRuntimeConfig,
+// fill every field they care about, then call this function. Adding a new config
+// field only requires updating the struct and the call site — no signature change.
+inline void SetCudaKernelAdapterRuntimeConfigForProvider(
+    const void* provider, const detail::CudaKernelAdapterRuntimeConfig& init_config) {
   auto& config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
-  config.use_tf32 = use_tf32;
-  config.skip_layer_norm_strict_mode = skip_layer_norm_strict_mode;
-  config.cudnn_conv_algo = cudnn_conv_algo;
-  config.cudnn_conv_use_max_workspace = cudnn_conv_use_max_workspace;
-  config.cudnn_conv1d_pad_to_nc1d = cudnn_conv1d_pad_to_nc1d;
-  config.fuse_conv_bias = fuse_conv_bias;
-  config.sdpa_kernel = sdpa_kernel;
-  config.device_id = device_id;
-  PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config.device_prop, device_id));
+  // AttentionKernelOptions contains std::once_flag (not copyable), so assign
+  // the plain-data fields individually rather than relying on operator=.
+  config.use_tf32 = init_config.use_tf32;
+  config.skip_layer_norm_strict_mode = init_config.skip_layer_norm_strict_mode;
+  config.cudnn_conv_algo = init_config.cudnn_conv_algo;
+  config.cudnn_conv_use_max_workspace = init_config.cudnn_conv_use_max_workspace;
+  config.cudnn_conv1d_pad_to_nc1d = init_config.cudnn_conv1d_pad_to_nc1d;
+  config.fuse_conv_bias = init_config.fuse_conv_bias;
+  config.sdpa_kernel = init_config.sdpa_kernel;
+  config.device_id = init_config.device_id;
+  PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config.device_prop, config.device_id));
 }
 
 inline bool GetCudaKernelAdapterSkipLayerNormStrictMode(const void* provider) {

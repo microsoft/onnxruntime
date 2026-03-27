@@ -61,14 +61,22 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
                                                    "CUDA Plugin EP created",
                                                    ORT_FILE, __LINE__, __FUNCTION__));
 
-  // Store per-EP runtime configuration (TF32, device ID, tuning options, etc.)
-  // in a global map keyed by the adapter-wrapped execution provider. Migrated
-  // kernels retrieve these settings via info.GetExecutionProvider().
+  // Store per-EP runtime configuration in a global map keyed by the
+  // adapter-wrapped execution provider pointer. Migrated kernels retrieve these
+  // settings at compute time via GetCudaKernelAdapterRuntimeConfigForProvider().
+  // Adding a new config field only requires updating CudaKernelAdapterRuntimeConfig,
+  // CudaEp::Config, and the struct-initializer below — no function-signature change.
+  onnxruntime::cuda::detail::CudaKernelAdapterRuntimeConfig adapter_config;
+  adapter_config.use_tf32 = config_.use_tf32;
+  adapter_config.skip_layer_norm_strict_mode = config_.enable_skip_layer_norm_strict_mode;
+  adapter_config.cudnn_conv_algo = config_.cudnn_conv_algo;
+  adapter_config.cudnn_conv_use_max_workspace = config_.cudnn_conv_use_max_workspace;
+  adapter_config.cudnn_conv1d_pad_to_nc1d = config_.cudnn_conv1d_pad_to_nc1d;
+  adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
+  adapter_config.sdpa_kernel = config_.sdpa_kernel;
+  adapter_config.device_id = config_.device_id;
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
-      static_cast<const void*>(EpImpl()),
-      config_.use_tf32, config_.device_id, config_.enable_skip_layer_norm_strict_mode,
-      config_.cudnn_conv_algo, config_.cudnn_conv_use_max_workspace, config_.cudnn_conv1d_pad_to_nc1d,
-      config_.fuse_conv_bias, config_.sdpa_kernel);
+      static_cast<const void*>(EpImpl()), adapter_config);
 }
 
 CudaEp::~CudaEp() {
