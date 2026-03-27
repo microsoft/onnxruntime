@@ -65,6 +65,9 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<T>* PostProcessor = nullptr;
+
+    const float* BZpCorr = nullptr;       ///< optional: BZpCorrection for KleidiAI asymmetric path (N * BlockCountK floats)
+    const float* AFloatBlkSum = nullptr;  ///< optional: float-domain A block sums for KleidiAI asymmetric path (M * BlockCountK floats)
 };
 
 /**

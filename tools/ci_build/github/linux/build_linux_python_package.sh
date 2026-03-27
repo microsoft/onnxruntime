@@ -18,7 +18,7 @@ PYTHON_EXES=(
   "/opt/python/cp312-cp312/bin/python3.12"
   )
 
-while getopts "d:p:x:c:e" parameter_Option
+while getopts "d:p:x:c:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU|WEBGPU|CPU|NPU.
@@ -34,7 +34,6 @@ p)
   ;;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-e) ENABLE_CACHE=true;;
 *) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
    exit 1;;
 esac
@@ -45,9 +44,10 @@ BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--buil
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
 fi
-if [ "$ENABLE_CACHE" = true ] ; then
+
+if command -v ccache &> /dev/null; then
+    ccache --zero-stats
     BUILD_ARGS+=("--use_cache")
-    ccache -s;
 fi
 
 ARCH=$(uname -m)
@@ -116,6 +116,7 @@ do
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
 
-if [ "$ENABLE_CACHE" = true ] ; then
-  which ccache && ccache -sv && ccache -z
+if command -v ccache &> /dev/null; then
+  # FIXME: can't use `-vv` for extra details b/c we're shipping with a decrepit version of ccache (3.something) that doesn't support it.
+  ccache --show-stats # -vv
 fi

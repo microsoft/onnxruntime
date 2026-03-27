@@ -72,20 +72,22 @@ count_ort_react_native_tgz = 0
 ort_react_native_common_ver = ""
 ort_react_native_ver = ""
 
-for file in os.listdir(ort_react_native_pkg_dir):
-    if file.startswith("onnxruntime-common-") and file.endswith(".tgz"):
-        ort_react_native_common_ver = file[19:-4]
-        count_ort_react_native_common_tgz += 1
-    if file.startswith("onnxruntime-react-native-") and file.endswith(".tgz"):
-        ort_react_native_ver = file[25:-4]
-        count_ort_react_native_tgz += 1
+if RELEASE_REACT_NATIVE:
+    for file in os.listdir(ort_react_native_pkg_dir):
+        if file.startswith("onnxruntime-common-") and file.endswith(".tgz"):
+            ort_react_native_common_ver = file[19:-4]
+            count_ort_react_native_common_tgz += 1
+        if file.startswith("onnxruntime-react-native-") and file.endswith(".tgz"):
+            ort_react_native_ver = file[25:-4]
+            count_ort_react_native_tgz += 1
+
+    if count_ort_react_native_common_tgz >= 2:
+        raise Exception("expect at most 1 package file for onnxruntime-common in onnxruntime-react-native folder")
 
 if count_ort_node_common_tgz >= 2:
     raise Exception("expect at most 1 package file for onnxruntime-common in onnxruntime-node folder")
 if count_ort_web_common_tgz >= 2:
     raise Exception("expect at most 1 package file for onnxruntime-common in onnxruntime-web folder")
-if count_ort_react_native_common_tgz >= 2:
-    raise Exception("expect at most 1 package file for onnxruntime-common in onnxruntime-react-native folder")
 
 if RELEASE_NODE and RELEASE_WEB and count_ort_node_common_tgz != count_ort_web_common_tgz:
     raise Exception("inconsistent package number for onnxruntime-common (onnxruntime-node/onnxruntime-web)")
@@ -120,7 +122,7 @@ if count_ort_node_tgz != 1:
     raise Exception("expect one package file for onnxruntime-node")
 if count_ort_web_tgz != 1:
     raise Exception("expect one package file for onnxruntime-web")
-if count_ort_react_native_tgz != 1:
+if RELEASE_REACT_NATIVE and count_ort_react_native_common_tgz != 1:
     raise Exception("expect one package file for onnxruntime-react-native")
 if RELEASE_NODE and RELEASE_WEB and ort_node_ver != ort_web_ver:
     raise Exception("version number is different for onnxruntime-node and onnxruntime-web")

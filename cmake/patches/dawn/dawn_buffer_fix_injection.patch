@@ -1,0 +1,35 @@
+diff --git a/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp b/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
+--- a/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
++++ b/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
+@@ -749,7 +749,7 @@ struct WGPUBufferImpl final : public EventSource,
+  public:
+   WGPUBufferImpl(const EventSource* source, bool mappedAtCreation);
+   // Injection constructor used when we already have a backing Buffer.
+-  WGPUBufferImpl(const EventSource* source, WGPUBufferMapState mapState);
++  WGPUBufferImpl(const EventSource* source);
+   ~WGPUBufferImpl();
+
+   void Destroy();
+@@ -1301,7 +1301,7 @@ WGPUAdapter emwgpuCreateAdapter(const EventSource* source) {
+ }
+
+ WGPUBuffer emwgpuCreateBuffer(const EventSource* source) {
+-  return ReturnToAPI(AcquireRef(new WGPUBufferImpl(source, false)));
++  return ReturnToAPI(AcquireRef(new WGPUBufferImpl(source)));
+ }
+
+ WGPUDevice emwgpuCreateDevice(const EventSource* source, WGPUQueue queue) {
+@@ -1441,11 +1441,10 @@ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, bool mappedAtCreation)
+   }
+ }
+
+-WGPUBufferImpl::WGPUBufferImpl(const EventSource* source,
+-                               WGPUBufferMapState mapState)
++WGPUBufferImpl::WGPUBufferImpl(const EventSource* source)
+     : EventSource(source),
+       RefCountedWithExternalCount(kImportedFromJS),
+-      mMapState(mapState) {}
++      mMapState(WGPUBufferMapState_Unmapped) {}
+
+ WGPUBufferImpl::~WGPUBufferImpl() {
+   if (!IsImported()) {

@@ -752,6 +752,16 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch &&
 
+          # The dawn_device_lost_keepalive.patch contains the following changes:
+          #
+          # - (private) Fix premature ABORT when device.lost fires in callUserCallback
+          #   The device.lost handler was wrapped in callUserCallback without runtimeKeepalivePush/Pop,
+          #   causing maybeExit() to trigger _exit(0) and set ABORT=true when runtimeKeepaliveCounter
+          #   was 0. This silently dropped all subsequent WebGPU callbacks (e.g. requestAdapter),
+          #   breaking session re-creation after device destruction.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_device_lost_keepalive.patch &&
+
           # The dawn_dxc_output_dir.patch contains the following changes:
           #
           # - (private) Fix DXC output directory for RelWithDebInfo and MinSizeRel configs
@@ -761,6 +771,18 @@ if (onnxruntime_USE_WEBGPU)
           #   and the copy_dxil_dll target copies dxil.dll to a different location.
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
+
+          # The dawn_buffer_fix_injection.patch contains the following changes:
+          #
+          # - (private) Fix importJsBuffer calling wrong WGPUBufferImpl constructor
+          #   Without this patch, importJsBuffer calls emwgpuCreateBuffer which invokes the
+          #   (source, mappedAtCreation=false) constructor instead of the injection constructor
+          #   tagged with kImportedFromJS. This patch adjusts the injection constructor signature
+          #   to disambiguate it from the (source, mappedAtCreation) overload so emwgpuCreateBuffer
+          #   reliably selects the injection constructor and imported buffers are properly tagged
+          #   as kImportedFromJS.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_buffer_fix_injection.patch &&
 
           # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
           # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.

@@ -4,6 +4,9 @@ description: "This is a reusable workflow for Linux WASM CI pipelines to build a
 on:
   workflow_call:
     inputs:
+      job_name: # workflow-scope unique key
+        required: true
+        type: string
       build_config:
         required: true
         type: string
@@ -43,6 +46,7 @@ jobs:
       buildArch: x64
       common_build_args: >-
         --parallel
+        --use_cache
         ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
         --config ${{ inputs.build_config }}
         --skip_submodule_sync
@@ -77,8 +81,23 @@ jobs:
       - name: Install python dependencies
         run: python -m pip install flatbuffers
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - name: Setup CCache
+        uses: actions/cache@v4
         with:
+          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          key: ccache | web.yml | ${{ inputs.job_name }}
+          path: ~/.cache/ccache
+
+      - name: Setup VCPKG Cache
+        uses: actions/cache@v4
+        with:
+          key: vcpkg-cache | web.yml | ${{ inputs.job_name }}
+          path: ~/.cache/vcpkg
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        with:
+          ccache-version: 4.13.1
+          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
           vcpkg-version: '2025.08.27'
           vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
