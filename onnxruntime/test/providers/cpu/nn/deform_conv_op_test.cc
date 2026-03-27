@@ -860,7 +860,7 @@ TEST(DeformConvTest, Group1OffsetGroup2) {
   RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
 }
 
-// Mask with zeros: exercises CUDA early-exit when mask_val == 0.
+// Mask with zeros: verifies zero mask suppresses sampled values (val * mask == 0).
 TEST(DeformConvTest, MaskWithZeros) {
   DeformConvTestParams p = {};
   p.batch_sz = 1;
