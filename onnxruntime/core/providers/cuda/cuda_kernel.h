@@ -109,6 +109,10 @@ class CudaKernel : public OpKernel {
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
+  int GetCudnnConvAlgo() const { return provider_->GetCudnnConvAlgo(); }
+  bool GetCudnnConvUseMaxWorkspace() const { return provider_->GetCudnnConvUseMaxWorkspace(); }
+  bool GetCudnnConv1dPadToNc1d() const { return provider_->GetCudnnConv1dPadToNc1d(); }
+  bool IsFuseConvBias() const { return provider_->IsFuseConvBias(); }
 
   // Compatibility helper used by kernels that need the underlying ORT stream object.
   inline onnxruntime::Stream* GetComputeStream(OpKernelContext* ctx) const {

@@ -79,8 +79,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       static_cast<const void*>(EpImpl()), adapter_config);
 }
 
-CudaEp::~CudaEp() {
-}
+CudaEp::~CudaEp() = default;
 
 /*static*/
 const char* ORT_API_CALL CudaEp::GetNameImpl(const OrtEp* this_ptr) noexcept {

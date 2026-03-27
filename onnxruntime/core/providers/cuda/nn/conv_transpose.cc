@@ -361,8 +361,6 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     s_.Y = context->Output(0, s_.y_dims);
 
     s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
-    const CUDAExecutionProvider* cuda_ep =
-        static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
 
     TensorShapeVector x_dims_cudnn{x_dims.begin(), x_dims.end()};
     TensorShapeVector y_dims_cudnn{y_dims.begin(), y_dims.end()};
@@ -389,7 +387,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
       // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
       // See PR #7348 and #7702 for more context.
-      if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+      if (this->GetCudnnConv1dPadToNc1d()) {
         x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
         y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
         w_dims_cudnn.insert(w_dims_cudnn.begin() + 2, 1);
@@ -417,7 +415,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
     auto handle = GetCudnnHandle(context);
 
-    int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+    int cudnn_conv_algo = this->GetCudnnConvAlgo();
 #if !defined(__CUDACC__)
     cudnn_frontend::HeurMode_t heur_mode;
     switch (cudnn_conv_algo) {
@@ -435,8 +433,8 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
         break;
     }
 
-    auto use_tf32 = cuda_ep->UseTF32();
-    const auto fuse_bias = cuda_ep->IsFuseConvBias() || is_fused_node_;
+    auto use_tf32 = this->UseTF32();
+    const auto fuse_bias = this->IsFuseConvBias() || is_fused_node_;
     const auto fuse_act = is_fused_node_;
 
     ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(x_dims_cudnn, w_dims_cudnn, B, y_dims_cudnn, handle, heur_mode,

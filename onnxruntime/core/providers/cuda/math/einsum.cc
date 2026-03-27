@@ -48,7 +48,7 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
       GetCublasHandle(context),
       GetCudnnHandle(context),
       allocator,
-      cuda_ep_->UseTF32());
+      UseTF32());
 
   EinsumComputePreprocessor einsum_compute_preprocessor(einsum_equation_preprocessor, inputs, allocator,
                                                         &einsum_cuda_assets);

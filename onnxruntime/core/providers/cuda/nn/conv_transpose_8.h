@@ -55,14 +55,12 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
   CudaT* y_data = nullptr;
 
-  const auto* cuda_ep = static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider());
-
   // convert 1D to 2D
   if (x_dimensions == 3) {
     // we can either add a fake H or W dimension with a value of 1. to be consistent with the Conv behavior we use
     // GetCudnnConv1dPadToNc1d to determine which is added.
     // see Conv<T, NHWC>::UpdateState in /onnxruntime/core/providers/cuda/nn/conv.cc for more details.
-    if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+    if (this->GetCudnnConv1dPadToNc1d()) {
       // add fake H dimension
       const auto insert_at = NHWC ? 1 : 2;
 
@@ -114,7 +112,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
       auto y_dims = p.Y->Shape().AsShapeVector();
       if (x_dimensions == 3) {
-        if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+        if (this->GetCudnnConv1dPadToNc1d()) {
           // add fake H dimension of 1
           // NCHW: N, M, d1 -> N, M, 1, d1 or
           // NHWC: N, d1, M -> N, 1, d1, M
@@ -222,7 +220,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     if (!y_data) {
       auto y_dims = s_.y_dims.AsShapeVector();
       if (x_dimensions == 3) {
-        if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+        if (this->GetCudnnConv1dPadToNc1d()) {
           // erase the fake H dimension
           y_dims.erase(y_dims.begin() + (NHWC ? 1 : 2));
         } else {

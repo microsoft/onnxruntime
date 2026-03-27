@@ -52,16 +52,16 @@ CudaEpFactory                    adapter::Ep
 
 Migrated CUDA kernels
   └─ use CudaKernel / cuda_kernel_adapter.h
-     ├─ receive EpImpl() from info.GetExecutionProvider()
-     ├─ cast that pointer to the shim CUDAExecutionProvider
+     ├─ cache a shared runtime-config handle during construction
+     ├─ use CudaKernel accessors for provider settings during Compute()
      └─ resolve stream-local handles via CudaSyncStream::FromCudaStream()
 ```
 
 Key ownership relationships:
 - `CudaEpFactory` implements raw `OrtEpFactory` callbacks and owns shared factory-level state such as the kernel registry, cached `OrtMemoryInfo` instances, and the hardware-device to CUDA-ordinal map.
 - `CudaEp` inherits from `ep::adapter::Ep`, which itself derives from `OrtEp` and owns a framework-facing `IExecutionProvider` object.
-- The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a real shim object owned by `ep::adapter::Ep`. It is not the full in-tree CUDA EP, but it has its own object identity and stores plugin-specific members — including the wrapped `OrtEp*` and the `CudaKernelAdapterRuntimeConfig` that migrated kernels read at compute time.
-- Runtime configuration needed by migrated kernels is stored directly as a member (`config_`) of the shim `CUDAExecutionProvider` object, rather than in a separate map keyed by the provider address.
+- The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a real shim object owned by `ep::adapter::Ep`. It is not the full in-tree CUDA EP, but it has its own object identity and stores plugin-specific members — including the wrapped `OrtEp*` and a provider-owned shared runtime-config object.
+- Runtime configuration needed by migrated kernels is stored on that shim provider and exposed to kernels as a cached `shared_ptr<CudaKernelAdapterRuntimeConfig>`, rather than through a separate global map keyed by the provider address.
 - `CudaSyncStream` owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, and `cublasLtHandle_t` for each sync stream created through the EP API.
 
 ### 2.4 Plugin DLL Entry Points
@@ -278,7 +278,7 @@ For code paths that need handles without an active stream, `cuda_kernel_adapter.
 
 ### 5.3 Provider Access
 
-Kernels access provider configuration through the pointer returned by `info.GetExecutionProvider()`. In the plugin build, `ep::adapter::OpKernelInfo` snapshots three related pointers from the framework `OpKernelInfo` when the kernel is created:
+Kernels still discover the shim provider through the pointer returned by `info.GetExecutionProvider()` at construction time. In the plugin build, `ep::adapter::OpKernelInfo` snapshots three related pointers from the framework `OpKernelInfo` when the kernel is created:
 
 - the session-owned outer `PluginExecutionProvider`
 - the wrapped plugin `OrtEp` / `CudaEp`
@@ -286,7 +286,7 @@ Kernels access provider configuration through the pointer returned by `info.GetE
 
 `OpKernelInfo::GetExecutionProvider()` then returns that cached shim pointer, so migrated kernels receive the real shim `CUDAExecutionProvider` object owned by `ep::adapter::Ep`, not the outer `PluginExecutionProvider` and not the `OrtEp`/`CudaEp` object reinterpreted at the same address.
 
-Caching the shim pointer at kernel-creation time is important for the NHWC path. Re-querying `OrtKernelInfo -> OrtEp -> EpImpl()` during execution was fragile after layout transformation; the current implementation avoids that repeated round-trip and uses the cached shim for runtime provider access.
+Caching the shim pointer at kernel-creation time is important for the NHWC path. Re-querying `OrtKernelInfo -> OrtEp -> EpImpl()` during execution was fragile after layout transformation. The current implementation resolves the shim once in the `CudaKernel` constructor, caches a `shared_ptr<CudaKernelAdapterRuntimeConfig>`, and routes later provider-setting reads through `CudaKernel` accessors instead of repeated provider-pointer casts during `Compute()`.
 
 This changes the safety model from the earlier "phantom shim" design:
 - The shim no longer needs to remain layout-compatible with `IExecutionProvider`.
@@ -295,9 +295,9 @@ This changes the safety model from the earlier "phantom shim" design:
 
 Provider options flow through the plugin in two stages:
 - `CudaEpFactory` parses session/provider options into `CudaEp::Config`.
-- `CudaEp` copies the subset needed by migrated kernels into `CUDAExecutionProvider::config_` via `SetCudaKernelAdapterRuntimeConfigForProvider(EpImpl(), ...)` during EP construction.
+- `CudaEp` copies the subset needed by migrated kernels into the shim provider's runtime config via `SetCudaKernelAdapterRuntimeConfigForProvider(EpImpl(), ...)` during EP construction.
 
-Because `config_` is a direct member of the shim object, there is no heap-allocated map and no mutex — reads at kernel compute time are simple field accesses. Today that stored subset includes TF32, device ID/device properties, cuDNN convolution settings, skip-layer-norm strict mode, fused-conv-bias, and SDPA kernel selection. Other plugin behaviors, such as preferred layout, are handled directly by `CudaEp` callbacks instead of through the shim.
+Because the runtime config is provider-owned and cached by kernels as a shared pointer, there is no global map and no mutex. Today that stored subset includes TF32, device ID/device properties, cuDNN convolution settings, skip-layer-norm strict mode, fused-conv-bias, and SDPA kernel selection. Other plugin behaviors, such as preferred layout, are handled directly by `CudaEp` callbacks instead of through the shim.
 
 For stream bridging, the preferred helpers are:
 - `Stream(ctx)` when the kernel only needs a raw `cudaStream_t`
@@ -375,9 +375,9 @@ The final support set is chosen from `candidate_nodes`, with the existing CPU-pr
 
 **B. Cache the shim provider pointer at kernel creation**
 
-Migrated CUDA kernels expect `info.GetExecutionProvider()` to return the shim `CUDAExecutionProvider`, not the outer `PluginExecutionProvider`. The adapter now resolves that relationship once during kernel creation and caches the inner `EpImpl()` pointer.
+Migrated CUDA kernels expect `info.GetExecutionProvider()` to return the shim `CUDAExecutionProvider`, not the outer `PluginExecutionProvider`. The adapter now resolves that relationship once during kernel creation, captures the shim provider's runtime-config object, and uses `CudaKernel` accessors for later provider-setting reads.
 
-This is especially important for NHWC kernels because layout transformation introduces additional runtime paths before the actual CUDA kernel executes. Repeatedly reconstructing `OrtEp -> EpImpl()` from `OrtKernelInfo` during execution proved fragile in that path. The cached-shim approach keeps provider access deterministic and matches the actual object model:
+This is especially important for NHWC kernels because layout transformation introduces additional runtime paths before the actual CUDA kernel executes. Repeatedly reconstructing provider access from `OrtKernelInfo` during execution proved fragile in that path. The cached-config approach keeps provider access deterministic and matches the actual object model:
 
 - outer session EP: `PluginExecutionProvider`
 - wrapped plugin object: `CudaEp` / `ep::adapter::Ep`
