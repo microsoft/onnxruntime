@@ -1446,11 +1446,11 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   if (use_file_mapping && (blob_version.major < 3 ||
                            (blob_version.major == 3 && blob_version.minor < 3) ||
                            (blob_version.major == 3 && blob_version.minor == 3 && blob_version.patch < 3))) {
-      LOGS(*logger_, WARNING) << "Context binary of " << node_name << " is " << std::to_string(blob_version.major) << "."
-                              << std::to_string(blob_version.minor) << "." << std::to_string(blob_version.patch)
-                              << ". File mapping is only supported for versions >= 3.3.3. Disabling file mapping for this node.";
-      use_file_mapping = false;
-    }
+    LOGS(*logger_, WARNING) << "Context binary of " << node_name << " is " << std::to_string(blob_version.major) << "."
+                            << std::to_string(blob_version.minor) << "." << std::to_string(blob_version.patch)
+                            << ". File mapping is only supported for versions >= 3.3.3. Disabling file mapping for this node.";
+    use_file_mapping = false;
+  }
 #endif
 
   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
