@@ -130,7 +130,7 @@ namespace DmlGraphFusionHelper
                     unpackedTensor.reset(new std::byte[safeTensorByteSize]);
 
                     auto src = gsl::make_span<const unsigned char>(reinterpret_cast<const unsigned char*>(fileOffset), safeTensorByteSize);
-                    auto dst = gsl::make_span<unsigned char>(unpackedTensor.get(), safeTensorByteSize);
+                    auto dst = gsl::make_span<unsigned char>(reinterpret_cast<unsigned char*>(unpackedTensor.get()), safeTensorByteSize);
                     size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(initializer->data_type());
 
                     // If element size is unknown, set it to 1 to disable byteswapping
