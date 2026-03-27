@@ -53,6 +53,9 @@ This document describes the model package directory layout and the JSON files us
 ````
 
 
+Notes: 
+- Only one component model is allowed in the package for now, but the format allows for multiple component models in the future.
+
 ## `manifest.json` (required)
 
 Location: `<package_root>/manifest.json`
@@ -60,7 +63,7 @@ Location: `<package_root>/manifest.json`
 Purpose: Provides the overall package identity and (optionally) lists component models available in the package.
 
 Schema:
-- `name` (string, required): Logical package name.
+- `model_name` (string, required): Logical package name.
 - `component_models` (object, optional): Map of component model names to their descriptors.
   - `<component_model_name>` (object, required if present):
     - `model_variants` (object, optional): Map of variant names to variant descriptors.
@@ -76,18 +79,14 @@ Notes:
 - `component_models` may be omitted. In that case, ORT will discover component models and rely on each component model’s `metadata.json` to enumerate variants.
 - If `component_models` is present but a given component omits `model_variants`, its variants must be defined in that component’s `metadata.json`.
 - All file paths are relative to the component model’s directory unless stated otherwise.
+- Only one component model is allowed in the package for now.
 
 ### `manifest.json` examples
 
 **Minimal with no component list (metadata.json drives discovery):**
 ```json
 {
-    "name":  <logical_model_name>,
-    "component_models": { // optional, if missing, ORT will discover component models by looking for folders with metadata.json under model_package_root/models
-        <model_name_1>: {
-           …  // could be empty.
-        },
-    }
+    "model_name":  <logical_model_name>
 }
 ```
 
@@ -95,11 +94,11 @@ Notes:
 **Multiple variants with differing constraints:**
 ```json
 {
-    "name":  <logical_model_name>,
+    "model_name":  <logical_model_name>,
     "component_models": {
         <model_name_1>: {
             "model_variants": {
-                "variant_1": {
+                <variant_1>: {
                     "file": "model_ctx_.onnx",
                     "constraints": {
                         "ep": "TensorrtExecutionProvider",
@@ -107,7 +106,7 @@ Notes:
                         "ep_compatibility_info": "device=gpu,npu;cuda_driver_version_support=..."
                     }
                 },
-                "variant_2": {
+                <variant_2>: {
                     "file": "model_ctx_.onnx",
                     "constraints": {
                         "ep": "OpenVINOExecutionProvider",
@@ -125,12 +124,12 @@ Notes:
 
 ## `metadata.json` (required per component model)
 
-Location: `<package_root>/<component_model>/metadata.json`
+Location: `<package_root>/models/<component_model>/metadata.json`
 
 Purpose: Describes the variants available for a specific component model.
 
 Schema:
-- `model_name` (string, required): Name of the component model.
+- `component_model_name` (string, required): Name of the component model.
 - `model_variants` (object, required): Map of variant names to variant descriptors.
   - `<variant_name>` (object, required):
     - `file` (string, required): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `file` is omitted, ORT will discover the ONNX model file within that directory.
@@ -143,9 +142,9 @@ Schema:
 ### `metadata.json` example
 ```json
 {
-    "name":  <logical_model_name>,
+    "component_model_name":  <component_model_name>,
     "model_variants": {
-        "variant_1": {
+        <variant_1>: {
             "file": "model_ctx_.onnx",
             "constraints": {
                 "ep": "TensorrtExecutionProvider",
@@ -153,7 +152,7 @@ Schema:
                 "ep_compatibility_info": "device=gpu,npu;cuda_driver_version_support=..."
             }
         },
-        "variant_2": {
+        <variant_2>: {
             "file": "model_ctx_.onnx",
              "constraints": {
                  "ep": "OpenVINOExecutionProvider",

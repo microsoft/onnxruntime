@@ -99,7 +99,7 @@ TEST(OpenVINOModelPackageTest, LoadModelPackage_CPU_DeviceConstraint) {
   const auto package_root = std::filesystem::temp_directory_path() / "ov_model_package_test_cpu";
 
   constexpr std::string_view manifest_json = R"({
-    "name": "openvino_test_model",
+    "model_name": "openvino_test_model",
     "component_models": {
       "model_1": {
       }
@@ -115,6 +115,7 @@ TEST(OpenVINOModelPackageTest, LoadModelPackage_CPU_DeviceConstraint) {
 
   // Create metadata.json with device constraints
   constexpr std::string_view metadata_json = R"({
+    "model_component_name": "model_1",
     "model_variants": {
       "variant_cpu": {
         "file": "mul_1.onnx",

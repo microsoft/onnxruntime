@@ -13,7 +13,7 @@ namespace onnxruntime {
 // Keys for parsing the model package manifest json and component model metadata json.
 //
 static constexpr const char* kModelPackageManifestFileName = "manifest.json";
-static constexpr const char* kModelNameKey = "name";
+static constexpr const char* kModelNameKey = "model_name";
 static constexpr const char* kComponentModelsKey = "component_models";
 static constexpr const char* kComponentModelMetadataFileName = "metadata.json";
 static constexpr const char* kModelVariantsKey = "model_variants";

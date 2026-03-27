@@ -29,7 +29,7 @@ namespace onnxruntime {
 // A manifest.json may look like this:
 //
 // {
-//     "name" : <logical_model_name>,
+//     "model_name" : <logical_model_name>,
 //     "component_models" : { // optional, if missing, ORT will discover component models by looking for folders with
 //                            // metadata.json under model_package_root/models
 //         <model_name_1> : {
@@ -41,7 +41,7 @@ namespace onnxruntime {
 // or
 //
 // {
-//     "name" : <logical_model_name>,
+//     "model_name" : <logical_model_name>,
 //     "component_models" : {
 //         <model_name_1> : {
 //             "model_variants" : {
@@ -61,7 +61,7 @@ namespace onnxruntime {
 // A metadata.json for the component model may look like this:
 //
 // {
-//    "model_name" : <model_name>,
+//    "component_model_name" : <component_model_name>,
 //    "model_variants" : {
 //        <variant_name_1> : {
 //            "file" : <ep_context_model_1 onnx file>,

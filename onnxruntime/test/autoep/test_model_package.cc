@@ -93,7 +93,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
     // Build model package on disk
     const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
     constexpr std::string_view manifest_json = R"({
-    "name": "test_model",
+    "model_name": "test_model",
     "component_models": {
       "model_1": {
         "model_variants": {
@@ -166,7 +166,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
     // Build model package on disk
     const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
     constexpr std::string_view manifest_json = R"({
-    "name": "test_model",
+    "model_name": "test_model",
     "component_models": {
       "model_1": {
       }
@@ -178,6 +178,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
                        std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
     constexpr std::string_view metadata_json = R"({
+      "model_component_name": "model_1",
       "model_variants": {
         "variant_1": {
           "file": "mul_1.onnx",
@@ -245,7 +246,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
   // Build model package on disk
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
   constexpr std::string_view manifest_json = R"({
-    "name": "test_model",
+    "model_name": "test_model",
     "component_models": {
       "model_1": {
       }
@@ -257,6 +258,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
                      std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
   constexpr std::string_view metadata_json = R"({
+      "model_component_name": "model_1",
       "model_variants": {
         "variant_1": {
           "file": "mul_1.onnx",
@@ -345,7 +347,7 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
   // Build model package on disk
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
   constexpr std::string_view manifest_json = R"({
-    "name": "test_model",
+    "model_name": "test_model",
     "component_models": {
       "model_1": {
       }
@@ -357,6 +359,7 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
                      std::filesystem::path{"testdata/mul_16.onnx"}, std::filesystem::path{"plugin_ep_compat_test.onnx"});
 
   constexpr std::string_view metadata_json = R"({
+      "model_component_name": "model_1",
       "model_variants": {
         "variant_2": {
           "file": "mul_16.onnx",
@@ -403,7 +406,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
   // manifest.json without "component_models"; discovery should scan models/* with metadata.json.
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_discover_test";
   constexpr std::string_view manifest_json = R"({
-    "name": "test_model"
+    "model_name": "test_model"
   })";
 
   CreateModelPackage(package_root, manifest_json,
@@ -413,6 +416,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
   // Prepare component model with metadata and variants
   const std::string component_model_name = "model_1";
   constexpr std::string_view metadata_json = R"({
+      "model_component_name": "model_1",
       "model_variants": {
         "variant_1": {
           "file": "mul_1.onnx",
@@ -493,7 +497,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
   {
     std::filesystem::remove_all(package_root, ec);
     constexpr std::string_view manifest_json = R"({
-      "name": "test_model",
+      "model_name": "test_model",
       "component_models": {
         "model_1": {
           "model_variants": {
@@ -525,7 +529,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
   {
     std::filesystem::remove_all(package_root, ec);
     constexpr std::string_view manifest_json = R"({
-      "name": "test_model",
+      "model_name": "test_model",
       "component_models": {
         "model_1": {
           "model_variants": {
@@ -555,7 +559,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
   {
     std::filesystem::remove_all(package_root, ec);
     constexpr std::string_view manifest_json = R"({
-      "name": "test_model",
+      "model_name": "test_model",
       "component_models": {
         "model_1": {
           "model_variants": {
