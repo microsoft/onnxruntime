@@ -69,14 +69,9 @@ bool PluginEpProfiler::StartProfiling(TimePoint profiling_start_time) {
   return success;
 }
 
-void PluginEpProfiler::EndProfiling(TimePoint start_time, profiling::Events& events) {
-  // Compute the elapsed time since ORT's profiling start. This offset is epoch-independent.
-  int64_t end_offset_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                              std::chrono::high_resolution_clock::now() - start_time)
-                              .count();
-
+void PluginEpProfiler::EndProfiling(TimePoint /*profiling_start_time*/, profiling::Events& events) {
   OrtProfilingEventsContainer ep_events_container;
-  Status status = ToStatusAndRelease(profiler_impl_.EndProfiling(&profiler_impl_, end_offset_ns,
+  Status status = ToStatusAndRelease(profiler_impl_.EndProfiling(&profiler_impl_,
                                                                  &ep_events_container));
 
   if (!status.IsOK()) {

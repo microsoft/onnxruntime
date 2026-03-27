@@ -179,7 +179,6 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StopEventImpl(OrtEpProfilerImpl
 /*static*/
 OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
     OrtEpProfilerImpl* this_ptr,
-    int64_t /*ep_profiling_end_offset_ns*/,
     OrtProfilingEventsContainer* c_events_container) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* self = static_cast<ExampleKernelEpProfiler*>(this_ptr);

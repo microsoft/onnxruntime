@@ -599,8 +599,6 @@ struct OrtEpProfilerImpl {
    * After this function returns, ORT appends the EP's events to the profiling timeline.
    *
    * \param[in] this_ptr The OrtEpProfilerImpl instance.
-   * \param[in] ep_profiling_end_offset_ns The elapsed time in nanoseconds (using ORT's profiling clock) between
-   *                                       ORT's profiling start and this call to EndProfiling.
    * \param[in] events_container Event container to which the EP profiler adds its new events.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -611,7 +609,6 @@ struct OrtEpProfilerImpl {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(EndProfiling, _In_ OrtEpProfilerImpl* this_ptr,
-                  _In_ int64_t ep_profiling_end_offset_ns,
                   _In_ OrtProfilingEventsContainer* events_container);
 };
 
