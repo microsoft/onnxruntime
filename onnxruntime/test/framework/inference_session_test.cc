@@ -708,6 +708,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSubgraph_If) {
       << "Profile contents: " << profile_json;
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
 // Test that run-level profiling captures operators inside beam search decoder subgraphs.
 TEST(BeamSearchTest, CheckRunProfilerWithSubgraph_BeamSearch) {
   // Same inputs as RunGptBeamSearchFp32
@@ -809,7 +810,7 @@ TEST(BeamSearchTest, CheckRunProfilerWithSubgraph_BeamSearch) {
       << "(e.g., MatMul, Add), not just the top-level BeamSearch op. Profile contents: "
       << profile_json;
 }
-
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(__wasm__)
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
