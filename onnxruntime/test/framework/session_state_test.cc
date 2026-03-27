@@ -540,8 +540,10 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_NoLimit) {
 
 TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+  std::error_code ec;
   const std::filesystem::path stats_path =
-      std::filesystem::temp_directory_path() / "tiny_gpt2_beamsearch_dynamic_stats_large.txt";
+      std::filesystem::temp_directory_path(ec) / "tiny_gpt2_beamsearch_dynamic_stats_large.txt";
+  ASSERT_FALSE(ec) << "temp_directory_path failed: " << ec.message();
 
   // Generate node stats dynamically so names always match the current graph
   constexpr size_t cost_per_node = 1024;
@@ -572,8 +574,10 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
 
 TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+  std::error_code ec;
   const std::filesystem::path stats_path =
-      std::filesystem::temp_directory_path() / "tiny_gpt2_beamsearch_dynamic_stats_offload.txt";
+      std::filesystem::temp_directory_path(ec) / "tiny_gpt2_beamsearch_dynamic_stats_offload.txt";
+  ASSERT_FALSE(ec) << "temp_directory_path failed: " << ec.message();
 
   // Generate node stats dynamically so names always match the current graph.
   constexpr size_t cost_per_node = 1024;

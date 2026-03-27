@@ -3099,7 +3099,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
         // If not produced by this subgraph, it's a boundary input
         if (internal_outputs.count(input) == 0) {
           // Use insert to keep the first occurrence's order
-          subgraph_inputs.emplace(input, input_order++);
+          auto p = subgraph_inputs.emplace(input, input_order);
+          if (p.second) {
+            input_order++;
+          }
         }
       }
     };
