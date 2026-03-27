@@ -1286,9 +1286,15 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
 
+  auto sys_ctx_handle_deleter = [&qnn_sys_interface = qnn_sys_interface_](void* handle) {
+    qnn_sys_interface.systemContextFree(reinterpret_cast<QnnSystemContext_Handle_t>(handle));
+  };
+
+  std::unique_ptr<void, decltype(sys_ctx_handle_deleter)> sys_ctx_handle_uptr(sys_ctx_handle, sys_ctx_handle_deleter);
+
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
-  rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
+  rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle_uptr.get(),
                                                      static_cast<void*>(buffer),
                                                      buffer_length,
                                                      &binary_info,
@@ -1378,9 +1384,15 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
 
+  auto sys_ctx_handle_deleter = [&qnn_sys_interface = qnn_sys_interface_](void* handle) {
+    qnn_sys_interface.systemContextFree(reinterpret_cast<QnnSystemContext_Handle_t>(handle));
+  };
+
+  std::unique_ptr<void, decltype(sys_ctx_handle_deleter)> sys_ctx_handle_uptr(sys_ctx_handle, sys_ctx_handle_deleter);
+
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
-  rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
+  rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle_uptr.get(),
                                                      bin_buffer,
                                                      buffer_length,
                                                      &binary_info,
@@ -1577,10 +1589,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     }
   }
 
-  qnn_sys_interface_.systemContextFree(sys_ctx_handle);
-  sys_ctx_handle = nullptr;
   context_created_ = true;
-
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
   return Status::OK();
 }
