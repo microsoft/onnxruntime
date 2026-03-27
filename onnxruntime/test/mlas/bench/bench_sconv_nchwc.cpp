@@ -250,6 +250,29 @@ static void DirectNchwcCases(benchmark::internal::Benchmark* b) {
   b->Args({64, 256, 48, 48, 3, 3, 1, 1, 1, 1, 1, 1});
 }
 
+static void DirectNchwcPointwiseCases(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForDirectNchwc());
+
+  // IC, OC, IH, IW, KH, KW, PT, PL, PB, PR, S, D
+  // MobileCLIP-like ConvFFN pointwise layers across stages.
+  b->Args({64, 192, 64, 64, 1, 1, 0, 0, 0, 0, 1, 1});
+  b->Args({128, 384, 32, 32, 1, 1, 0, 0, 0, 0, 1, 1});
+  b->Args({256, 768, 16, 16, 1, 1, 0, 0, 0, 0, 1, 1});
+  b->Args({512, 1536, 8, 8, 1, 1, 0, 0, 0, 0, 1, 1});
+
+  // Reverse projection in the FFN block.
+  b->Args({192, 64, 64, 64, 1, 1, 0, 0, 0, 0, 1, 1});
+  b->Args({384, 128, 32, 32, 1, 1, 0, 0, 0, 0, 1, 1});
+  b->Args({768, 256, 16, 16, 1, 1, 0, 0, 0, 0, 1, 1});
+  b->Args({1536, 512, 8, 8, 1, 1, 0, 0, 0, 0, 1, 1});
+
+  // A few generic square pointwise cases to show scaling with wider output channels.
+  b->Args({128, 128, 32, 32, 1, 1, 0, 0, 0, 0, 1, 1});
+  b->Args({256, 256, 16, 16, 1, 1, 0, 0, 0, 0, 1, 1});
+  b->Args({512, 512, 8, 8, 1, 1, 0, 0, 0, 0, 1, 1});
+}
+
 BENCHMARK_CAPTURE(SCONV_NCHWC_DIRECT, DirectNchwcCases, "")->Apply(DirectNchwcCases)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHWC_DIRECT, DirectNchwcPointwiseCases, "")->Apply(DirectNchwcPointwiseCases)->UseRealTime();
 
 #endif  // defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)

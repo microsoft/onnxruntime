@@ -11,6 +11,323 @@
 
 namespace onnxruntime {
 
+static bool ValidateMatMulInitializer(const Graph& graph, const Node& matmul, int64_t hidden_size);
+
+namespace {
+
+static bool ValidateAddBiasInitializerEitherInput(const Graph& graph, const Node& add, int64_t hidden_size) {
+  if (add.InputDefs().size() < 2) {
+    return false;
+  }
+
+  const NodeArg& input_0 = *(add.InputDefs()[0]);
+  const NodeArg& input_1 = *(add.InputDefs()[1]);
+  const bool input_0_is_bias = graph_utils::IsInitializer(graph, input_0.Name(), true) &&
+                               optimizer_utils::ValidateShape(input_0, {hidden_size});
+  const bool input_1_is_bias = graph_utils::IsInitializer(graph, input_1.Name(), true) &&
+                               optimizer_utils::ValidateShape(input_1, {hidden_size});
+  return input_0_is_bias || input_1_is_bias;
+}
+
+static bool ValidateProjectionGemmInitializer(const Graph& graph, const Node& gemm, int64_t hidden_size) {
+  if (gemm.InputDefs().size() < 3) {
+    return false;
+  }
+
+  const NodeArg& input_b = *(gemm.InputDefs()[1]);
+  const NodeArg& input_c = *(gemm.InputDefs()[2]);
+  if (!graph_utils::IsInitializer(graph, input_b.Name(), true) ||
+      !graph_utils::IsInitializer(graph, input_c.Name(), true)) {
+    return false;
+  }
+
+  return optimizer_utils::ValidateShape(input_b, {hidden_size, hidden_size}) &&
+         optimizer_utils::ValidateShape(input_c, {hidden_size});
+}
+
+static bool IsCpuOrUnassignedNode(const Node& node) {
+  const auto& provider = node.GetExecutionProviderType();
+  return provider.empty() || provider == kCpuExecutionProvider;
+}
+
+static bool HasExpectedPerm(const Node& node, const std::initializer_list<int64_t>& expected_perm) {
+  return optimizer_utils::IsAttributeWithExpectedValues(node, "perm", std::vector<int64_t>(expected_perm));
+}
+
+static bool HasExpectedAxesInput(const Graph& graph, const Node& node, const std::initializer_list<int64_t>& expected_axes) {
+  if (node.InputDefs().size() < 2) {
+    return false;
+  }
+
+  InlinedVector<int64_t> axes;
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *node.InputDefs()[1], axes, true)) {
+    return false;
+  }
+
+  return axes == InlinedVector<int64_t>(expected_axes.begin(), expected_axes.end());
+}
+
+static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_reshape,
+                                           int64_t& num_heads, int64_t& head_size, int64_t& hidden_size) {
+  if (qkv_reshape.InputDefs().size() < 2) {
+    return false;
+  }
+
+  InlinedVector<int64_t> reshape_dims;
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *qkv_reshape.InputDefs()[1], reshape_dims, true)) {
+    return false;
+  }
+
+  if (reshape_dims.size() != 5 || reshape_dims[2] != 3 || reshape_dims[3] <= 0 || reshape_dims[4] <= 0) {
+    return false;
+  }
+
+  num_heads = reshape_dims[3];
+  head_size = reshape_dims[4];
+  hidden_size = num_heads * head_size;
+  return hidden_size > 0;
+}
+
+static const Node* GetOnlyChildByOutputIndex(const Graph& graph, const Node& node, size_t output_index, const char* child_op_type) {
+  const auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node, output_index);
+  if (output_edges.size() != 1) {
+    return nullptr;
+  }
+
+  const Node* child = graph.GetNode(output_edges[0].dst_node);
+  if (child == nullptr || child->OpType() != child_op_type) {
+    return nullptr;
+  }
+
+  return child;
+}
+
+static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::Logger& logger) {
+  const auto fail = [&](const char* reason) {
+    DEBUG_LOG("MobileClipMHA[" << qkv_matmul.Name() << "]: " << reason);
+    return false;
+  };
+
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(qkv_matmul, "MatMul", {1, 9, 13}, kOnnxDomain)) {
+    return false;
+  }
+
+  if (!IsCpuOrUnassignedNode(qkv_matmul)) {
+    return false;
+  }
+
+  if (!optimizer_utils::CheckOutputEdges(graph, qkv_matmul, 1) || qkv_matmul.InputDefs().size() < 2 ||
+      !graph_utils::IsInitializer(graph, qkv_matmul.InputDefs()[1]->Name(), true)) {
+    return fail("qkv MatMul output count or weight initializer check failed");
+  }
+
+  const Node* sequence_transpose = graph_utils::GetInputNode(qkv_matmul, 0);
+  if (sequence_transpose == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*sequence_transpose, "Transpose", {1, 13}, kOnnxDomain) ||
+      !HasExpectedPerm(*sequence_transpose, {0, 2, 1})) {
+    return false;
+  }
+
+  const Node* input_reshape = graph_utils::GetInputNode(*sequence_transpose, 0);
+  if (input_reshape == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*input_reshape, "Reshape", {5, 13, 14}, kOnnxDomain)) {
+    return fail("missing input Reshape before sequence transpose");
+  }
+
+  const Node* qkv_reshape = GetOnlyChildByOutputIndex(graph, qkv_matmul, 0, "Reshape");
+  if (qkv_reshape == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*qkv_reshape, "Reshape", {5, 13, 14}, kOnnxDomain) ||
+      !optimizer_utils::CheckOutputEdges(graph, *qkv_reshape, 1)) {
+    return fail("qkv Reshape after MatMul not matched");
+  }
+
+  const Node* split = GetOnlyChildByOutputIndex(graph, *qkv_reshape, 0, "Split");
+  if (split == nullptr || !graph_utils::IsSupportedOptypeVersionAndDomain(*split, "Split", {13, 18}, kOnnxDomain) ||
+      split->OutputDefs().size() != 3 || !optimizer_utils::IsAttributeWithExpectedValue(*split, "axis", static_cast<int64_t>(2))) {
+    return fail("qkv Split(axis=2, outputs=3) not matched");
+  }
+
+  const Node* q_transpose = GetOnlyChildByOutputIndex(graph, *split, 0, "Transpose");
+  const Node* k_squeeze = GetOnlyChildByOutputIndex(graph, *split, 1, "Squeeze");
+  const Node* v_transpose = GetOnlyChildByOutputIndex(graph, *split, 2, "Transpose");
+  if (q_transpose == nullptr || k_squeeze == nullptr || v_transpose == nullptr ||
+      !HasExpectedPerm(*q_transpose, {2, 0, 3, 1, 4}) ||
+      !HasExpectedPerm(*v_transpose, {2, 0, 3, 1, 4}) ||
+      !HasExpectedAxesInput(graph, *k_squeeze, {2})) {
+    return fail("q/k/v branch entry pattern after Split not matched");
+  }
+
+  const Node* q_squeeze = GetOnlyChildByOutputIndex(graph, *q_transpose, 0, "Squeeze");
+  const Node* v_squeeze = GetOnlyChildByOutputIndex(graph, *v_transpose, 0, "Squeeze");
+  if (q_squeeze == nullptr || v_squeeze == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*q_squeeze, "Squeeze", {13}, kOnnxDomain) ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*v_squeeze, "Squeeze", {13}, kOnnxDomain) ||
+      !HasExpectedAxesInput(graph, *q_squeeze, {0}) ||
+      !HasExpectedAxesInput(graph, *v_squeeze, {0})) {
+    return fail("q/v squeeze pattern not matched");
+  }
+
+  const Node* q_scale_mul = GetOnlyChildByOutputIndex(graph, *q_squeeze, 0, "Mul");
+  const Node* k_transpose = GetOnlyChildByOutputIndex(graph, *k_squeeze, 0, "Transpose");
+  if (q_scale_mul == nullptr || k_transpose == nullptr ||
+      !HasExpectedPerm(*k_transpose, {0, 2, 3, 1})) {
+    return fail("q scale Mul or k Transpose(0,2,3,1) not matched");
+  }
+
+  float scale = 0.0f;
+  if (q_scale_mul->InputDefs().size() < 2 ||
+      !optimizer_utils::GetScalarInitializerValue<float>(graph, *q_scale_mul->InputDefs()[1], scale, true)) {
+    return fail("q scale constant not found");
+  }
+
+  const Node* qk_matmul = GetOnlyChildByOutputIndex(graph, *q_scale_mul, 0, "MatMul");
+  if (qk_matmul == nullptr || graph_utils::GetInputNode(*qk_matmul, 1) == nullptr ||
+      graph_utils::GetInputNode(*qk_matmul, 1)->Index() != k_transpose->Index() ||
+      !optimizer_utils::CheckOutputEdges(graph, *qk_matmul, 1)) {
+    return fail("qk MatMul not matched");
+  }
+
+  const Node* softmax = GetOnlyChildByOutputIndex(graph, *qk_matmul, 0, "Softmax");
+  if (softmax == nullptr || !optimizer_utils::IsAttributeWithExpectedValue(*softmax, "axis", static_cast<int64_t>(-1)) ||
+      !optimizer_utils::CheckOutputEdges(graph, *softmax, 1)) {
+    return fail("Softmax(axis=-1) not matched");
+  }
+
+  const Node* qkv_matmul_1 = GetOnlyChildByOutputIndex(graph, *softmax, 0, "MatMul");
+  if (qkv_matmul_1 == nullptr || graph_utils::GetInputNode(*qkv_matmul_1, 1) == nullptr ||
+      graph_utils::GetInputNode(*qkv_matmul_1, 1)->Index() != v_squeeze->Index() ||
+      !optimizer_utils::CheckOutputEdges(graph, *qkv_matmul_1, 1)) {
+    return fail("attention-value MatMul not matched");
+  }
+
+  const Node* transpose_3 = GetOnlyChildByOutputIndex(graph, *qkv_matmul_1, 0, "Transpose");
+  if (transpose_3 == nullptr || !HasExpectedPerm(*transpose_3, {0, 2, 1, 3}) ||
+      !optimizer_utils::CheckOutputEdges(graph, *transpose_3, 1)) {
+    return fail("output Transpose(0,2,1,3) not matched");
+  }
+
+  const Node* reshape_2 = GetOnlyChildByOutputIndex(graph, *transpose_3, 0, "Reshape");
+  if (reshape_2 == nullptr || !optimizer_utils::CheckOutputEdges(graph, *reshape_2, 1)) {
+    return fail("output Reshape not matched");
+  }
+
+  const Node* proj_matmul = GetOnlyChildByOutputIndex(graph, *reshape_2, 0, "MatMul");
+  const Node* proj_gemm = proj_matmul == nullptr ? GetOnlyChildByOutputIndex(graph, *reshape_2, 0, "Gemm") : nullptr;
+  const Node* proj_add = nullptr;
+
+  if (proj_matmul != nullptr) {
+    if (proj_matmul->InputDefs().size() < 2 ||
+        !graph_utils::IsInitializer(graph, proj_matmul->InputDefs()[1]->Name(), true) ||
+        !optimizer_utils::CheckOutputEdges(graph, *proj_matmul, 1)) {
+      return fail("projection MatMul not matched");
+    }
+
+    proj_add = GetOnlyChildByOutputIndex(graph, *proj_matmul, 0, "Add");
+    if (proj_add == nullptr || !optimizer_utils::CheckOutputEdges(graph, *proj_add, 1)) {
+      return fail("projection Add not matched");
+    }
+  } else {
+    if (proj_gemm == nullptr ||
+        !graph_utils::IsSupportedOptypeVersionAndDomain(*proj_gemm, "Gemm", {7, 9, 11, 13}, kOnnxDomain) ||
+        !optimizer_utils::CheckOutputEdges(graph, *proj_gemm, 1)) {
+      return fail("projection MatMul/Gemm not matched");
+    }
+  }
+
+  int64_t num_heads = 0;
+  int64_t head_size = 0;
+  int64_t hidden_size = 0;
+  if (!TryGetMobileClipQkvReshapeInfo(graph, *qkv_reshape, num_heads, head_size, hidden_size)) {
+    return fail("unable to derive num_heads/head_size from qkv reshape initializer");
+  }
+
+  if (proj_matmul != nullptr) {
+    if (!ValidateMatMulInitializer(graph, *proj_matmul, hidden_size) ||
+        !ValidateAddBiasInitializerEitherInput(graph, *proj_add, hidden_size)) {
+      return fail("projection weight/bias shape validation failed");
+    }
+  } else {
+    if (!ValidateProjectionGemmInitializer(graph, *proj_gemm, hidden_size)) {
+      return fail("projection Gemm weight/bias shape validation failed");
+    }
+  }
+
+  const NodeArg& qkv_weight = *qkv_matmul.InputDefs()[1];
+  if (!optimizer_utils::ValidateShape(qkv_weight, {hidden_size, 3 * hidden_size})) {
+    return fail("qkv weight shape is not [hidden, 3*hidden]");
+  }
+
+  ONNX_NAMESPACE::TensorProto split_sizes_tensor;
+  split_sizes_tensor.set_name(graph.GenerateNodeArgName("mobileclip_mha_split_sizes"));
+  split_sizes_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  split_sizes_tensor.add_dims(3);
+  const std::array<int64_t, 3> split_sizes{hidden_size, hidden_size, hidden_size};
+  utils::SetRawDataInTensorProto(split_sizes_tensor, split_sizes.data(), split_sizes.size() * sizeof(int64_t));
+  NodeArg& split_sizes_arg = graph_utils::AddInitializerWithOrtValue(graph, split_sizes_tensor);
+
+  auto* mha_q = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("mobileclip_mha_q"), nullptr);
+  auto* mha_k = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("mobileclip_mha_k"), nullptr);
+  auto* mha_v = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("mobileclip_mha_v"), nullptr);
+
+  Node& split_for_mha = graph.AddNode(
+      graph.GenerateNodeName("MobileClipSplitForMHA"),
+      "Split",
+      "Split packed MobileCLIP QKV for MultiHeadAttention",
+      {qkv_matmul.MutableOutputDefs()[0], &split_sizes_arg},
+      {mha_q, mha_k, mha_v},
+      nullptr,
+      kOnnxDomain);
+  split_for_mha.AddAttribute("axis", static_cast<int64_t>(2));
+
+  Node& mha_node = graph.AddNode(
+      graph.GenerateNodeName("MobileClipMultiHeadAttention"),
+      "MultiHeadAttention",
+      "Fused MobileCLIP attention subgraph",
+      {mha_q, mha_k, mha_v},
+      {graph.GetNode(reshape_2->Index())->MutableOutputDefs()[0]},
+      nullptr,
+      kMSDomain);
+  mha_node.AddAttribute("num_heads", num_heads);
+  mha_node.AddAttribute("scale", scale);
+
+  const auto& provider = qkv_matmul.GetExecutionProviderType();
+  const auto fused_provider = provider.empty() ? kCpuExecutionProvider : provider;
+  split_for_mha.SetExecutionProviderType(fused_provider);
+  mha_node.SetExecutionProviderType(fused_provider);
+
+  std::vector<NodeIndex> nodes_to_remove{
+      qkv_reshape->Index(),
+      split->Index(),
+      q_transpose->Index(),
+      q_squeeze->Index(),
+      q_scale_mul->Index(),
+      k_squeeze->Index(),
+      k_transpose->Index(),
+      qk_matmul->Index(),
+      softmax->Index(),
+      v_transpose->Index(),
+      v_squeeze->Index(),
+      qkv_matmul_1->Index(),
+      transpose_3->Index(),
+      reshape_2->Index(),
+  };
+
+  for (const auto& node_index : nodes_to_remove) {
+    Node* node = graph.GetNode(node_index);
+    if (node == nullptr) {
+      continue;
+    }
+
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node_index);
+  }
+
+  DEBUG_LOG("MobileClipMHA[" << qkv_matmul.Name() << "]: fused MobileCLIP attention subgraph to MultiHeadAttention");
+  return true;
+}
+
+}  // namespace
+
 static bool ValidateMatMulInitializer(const Graph& graph, const Node& matmul, int64_t hidden_size) {
   const NodeArg& input_b = *(matmul.InputDefs()[1]);
   if (!graph_utils::IsInitializer(graph, input_b.Name(), true)) {
@@ -178,6 +495,12 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+    if (TryFuseMobileClipMHA(node, graph, logger)) {
+      fused_count++;
+      modified = true;
+      continue;
+    }
 
     // Add node.GetOutputEdgesCount() == 5/6 for distilbert
     if ((node.GetOutputEdgesCount() >= 2 && node.GetOutputEdgesCount() <= 6) &&

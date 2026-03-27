@@ -1542,6 +1542,8 @@ Return Value:
         && Parameters->Padding[2] == 3 && Parameters->Padding[3] == 3
         && Parameters->StrideShape[0] == 2 && Parameters->StrideShape[1] == 2
         && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1
+        && (Parameters->BackendKernelSelectorConfig == nullptr ||
+            Parameters->BackendKernelSelectorConfig->enable_depthwise_with_multiplier_kernel)
         && GetMlasPlatform().ConvNchwFloatKernel == MlasConvNchwFloatKernelAvx512F) {
 
         Parameters->Algorithm = MlasConvAlgorithmDepthwiseMultiplierGreaterThan1;

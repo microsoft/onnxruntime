@@ -204,6 +204,8 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    bool enable_depthwise_with_multiplier_kernel = true; /**< Flag to allow the specialized depthwise-with-multiplier kernel when available. */
+    size_t nchwc_conv_max_input_channel_batch = 0; /**< Optional override for the NCHWc pointwise input-channel batch size. Zero uses the default heuristic. */
 };
 
 //

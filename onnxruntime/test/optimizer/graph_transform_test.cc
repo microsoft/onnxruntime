@@ -2491,6 +2491,39 @@ TEST_F(GraphTransformationTests, FuseConvMulNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+TEST_F(GraphTransformationTests, FuseConvMulNoBiasConstantFirst) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-mul-no-bias.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  bool swapped_mul_inputs = false;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Mul") {
+      auto& inputs = node.MutableInputDefs();
+      ASSERT_EQ(inputs.size(), 2u);
+      std::swap(inputs[0], inputs[1]);
+      swapped_mul_inputs = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(swapped_mul_inputs);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvMulFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
 TEST_F(GraphTransformationTests, FuseConvAddNoBias) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-add-no-bias.onnx";
 
@@ -5825,6 +5858,134 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
   EXPECT_EQ(op_to_count["Softmax"], 0);
   EXPECT_EQ(op_to_count["Shape"], 0);
 }
+
+#if 0
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_x = builder.MakeInput<float>({1, 512, 8, 8}, -1.0f, 1.0f);
+    auto* input_skip = builder.MakeInput<float>({1, 512, 8, 8}, -1.0f, 1.0f);
+
+    auto* reshape0_shape = builder.Make1DInitializer<int64_t>({1, 512, 64});
+    auto* qkv_weight = builder.MakeInitializer<float>({512, 1536}, -0.05f, 0.05f);
+    auto* qkv_reshape_shape = builder.Make1DInitializer<int64_t>({1, 64, 3, 16, 32});
+    auto* split_sizes = builder.Make1DInitializer<int64_t>({1, 1, 1});
+    auto* squeeze_axis_0 = builder.Make1DInitializer<int64_t>({0});
+    auto* squeeze_axis_2 = builder.Make1DInitializer<int64_t>({2});
+    auto* scale = builder.MakeScalarInitializer<float>(1.0f / std::sqrt(32.0f));
+    auto* reshape2_shape = builder.Make1DInitializer<int64_t>({1, 64, 512});
+    auto* proj_weight = builder.MakeInitializer<float>({512, 512}, -0.05f, 0.05f);
+    auto* proj_bias = builder.MakeInitializer<float>({512}, -0.02f, 0.02f);
+    auto* reshape3_shape = builder.Make1DInitializer<int64_t>({1, 512, 8, 8});
+    auto* layer_scale = builder.MakeInitializer<float>({512, 1, 1}, 0.9f, 1.1f);
+
+    auto* reshape0_out = builder.MakeIntermediate<float>({1, 512, 64});
+    auto* transpose0_out = builder.MakeIntermediate<float>({1, 64, 512});
+    auto* qkv_out = builder.MakeIntermediate<float>({1, 64, 1536});
+    auto* qkv_reshape_out = builder.MakeIntermediate<float>({1, 64, 3, 16, 32});
+    auto* split_q = builder.MakeIntermediate<float>({1, 64, 1, 16, 32});
+    auto* split_k = builder.MakeIntermediate<float>({1, 64, 1, 16, 32});
+    auto* split_v = builder.MakeIntermediate<float>({1, 64, 1, 16, 32});
+    auto* q_transpose_out = builder.MakeIntermediate<float>({1, 1, 16, 64, 32});
+    auto* q_squeeze_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
+    auto* k_squeeze_out = builder.MakeIntermediate<float>({1, 64, 16, 32});
+    auto* k_transpose_out = builder.MakeIntermediate<float>({1, 16, 32, 64});
+    auto* q_scaled_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
+    auto* qk_out = builder.MakeIntermediate<float>({1, 16, 64, 64});
+    auto* softmax_out = builder.MakeIntermediate<float>({1, 16, 64, 64});
+    auto* v_transpose_out = builder.MakeIntermediate<float>({1, 1, 16, 64, 32});
+    auto* v_squeeze_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
+    auto* attn_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
+    auto* transpose3_out = builder.MakeIntermediate<float>({1, 64, 16, 32});
+    auto* reshape2_out = builder.MakeIntermediate<float>({1, 64, 512});
+    auto* proj_matmul_out = builder.MakeIntermediate<float>({1, 64, 512});
+    auto* proj_add_out = builder.MakeIntermediate<float>({1, 64, 512});
+    auto* transpose4_out = builder.MakeIntermediate<float>({1, 512, 64});
+    auto* reshape3_out = builder.MakeIntermediate<float>({1, 512, 8, 8});
+    auto* layer_scale_out = builder.MakeIntermediate<float>({1, 512, 8, 8});
+    auto* output = builder.MakeOutput<float>({1, 512, 8, 8});
+
+    auto& reshape0 = builder.AddNode("Reshape", std::vector<NodeArg*>{input_x, reshape0_shape}, std::vector<NodeArg*>{reshape0_out});
+    reshape0.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+    auto& transpose0 = builder.AddNode("Transpose", std::vector<NodeArg*>{reshape0_out}, std::vector<NodeArg*>{transpose0_out});
+    transpose0.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+
+    builder.AddNode("MatMul", std::vector<NodeArg*>{transpose0_out, qkv_weight}, std::vector<NodeArg*>{qkv_out});
+
+    auto& qkv_reshape = builder.AddNode("Reshape", std::vector<NodeArg*>{qkv_out, qkv_reshape_shape}, std::vector<NodeArg*>{qkv_reshape_out});
+    qkv_reshape.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+    auto& split = builder.AddNode("Split", std::vector<NodeArg*>{qkv_reshape_out, split_sizes}, std::vector<NodeArg*>{split_q, split_k, split_v});
+    split.AddAttribute("axis", static_cast<int64_t>(2));
+
+    auto& q_transpose = builder.AddNode("Transpose", std::vector<NodeArg*>{split_q}, std::vector<NodeArg*>{q_transpose_out});
+    q_transpose.AddAttribute("perm", std::vector<int64_t>{2, 0, 3, 1, 4});
+
+    builder.AddNode("Squeeze", std::vector<NodeArg*>{q_transpose_out, squeeze_axis_0}, std::vector<NodeArg*>{q_squeeze_out});
+    builder.AddNode("Squeeze", std::vector<NodeArg*>{split_k, squeeze_axis_2}, std::vector<NodeArg*>{k_squeeze_out});
+
+    auto& k_transpose = builder.AddNode("Transpose", std::vector<NodeArg*>{k_squeeze_out}, std::vector<NodeArg*>{k_transpose_out});
+    k_transpose.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+
+    builder.AddNode("Mul", std::vector<NodeArg*>{q_squeeze_out, scale}, std::vector<NodeArg*>{q_scaled_out});
+    builder.AddNode("MatMul", std::vector<NodeArg*>{q_scaled_out, k_transpose_out}, std::vector<NodeArg*>{qk_out});
+
+    auto& softmax = builder.AddNode("Softmax", std::vector<NodeArg*>{qk_out}, std::vector<NodeArg*>{softmax_out});
+    softmax.AddAttribute("axis", static_cast<int64_t>(-1));
+
+    auto& v_transpose = builder.AddNode("Transpose", std::vector<NodeArg*>{split_v}, std::vector<NodeArg*>{v_transpose_out});
+    v_transpose.AddAttribute("perm", std::vector<int64_t>{2, 0, 3, 1, 4});
+
+    builder.AddNode("Squeeze", std::vector<NodeArg*>{v_transpose_out, squeeze_axis_0}, std::vector<NodeArg*>{v_squeeze_out});
+    builder.AddNode("MatMul", std::vector<NodeArg*>{softmax_out, v_squeeze_out}, std::vector<NodeArg*>{attn_out});
+
+    auto& transpose3 = builder.AddNode("Transpose", std::vector<NodeArg*>{attn_out}, std::vector<NodeArg*>{transpose3_out});
+    transpose3.AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+
+    auto& reshape2 = builder.AddNode("Reshape", std::vector<NodeArg*>{transpose3_out, reshape2_shape}, std::vector<NodeArg*>{reshape2_out});
+    reshape2.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+    builder.AddNode("MatMul", std::vector<NodeArg*>{reshape2_out, proj_weight}, std::vector<NodeArg*>{proj_matmul_out});
+    builder.AddNode("Add", std::vector<NodeArg*>{proj_bias, proj_matmul_out}, std::vector<NodeArg*>{proj_add_out});
+
+    auto& transpose4 = builder.AddNode("Transpose", std::vector<NodeArg*>{proj_add_out}, std::vector<NodeArg*>{transpose4_out});
+    transpose4.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+
+    auto& reshape3 = builder.AddNode("Reshape", std::vector<NodeArg*>{transpose4_out, reshape3_shape}, std::vector<NodeArg*>{reshape3_out});
+    reshape3.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+    builder.AddNode("Mul", std::vector<NodeArg*>{layer_scale, reshape3_out}, std::vector<NodeArg*>{layer_scale_out});
+    builder.AddNode("Add", std::vector<NodeArg*>{input_skip, layer_scale_out}, std::vector<NodeArg*>{output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Softmax"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Squeeze"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Split"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 2);
+    TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 2);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 2);
+    TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
+
+    int mha_nodes = 0;
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "MultiHeadAttention" && node.Domain() == kMSDomain) {
+        ++mha_nodes;
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("num_heads").i() == 16);
+        TEST_RETURN_IF_NOT(std::abs(node.GetAttributes().at("scale").f() - (1.0f / std::sqrt(32.0f))) < 1e-6f);
+      }
+    }
+
+    TEST_RETURN_IF_NOT(mha_nodes == 1);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<AttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+#endif
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gelu.onnx";

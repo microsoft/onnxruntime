@@ -936,11 +936,17 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             const float* filter = Filter;
             float* output = Output + BlockSize * ph * OutputWidth;
 
+            constexpr size_t DefaultMaximumInputChannelBatch = 128;
+            size_t MaximumInputChannelBatch = DefaultMaximumInputChannelBatch;
+            if (WorkBlock->BackendKernelSelectorConfig != nullptr &&
+                WorkBlock->BackendKernelSelectorConfig->nchwc_conv_max_input_channel_batch != 0) {
+                MaximumInputChannelBatch = WorkBlock->BackendKernelSelectorConfig->nchwc_conv_max_input_channel_batch;
+                MaximumInputChannelBatch = std::max(MaximumInputChannelBatch, BlockSize);
+                MaximumInputChannelBatch -= MaximumInputChannelBatch % BlockSize;
+            }
+
             size_t InputChannelBatch = 0;
             for (size_t ic = 0; ic < InputChannels; ) {
-
-                constexpr size_t MaximumInputChannelBatch = 128;
-
                 InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
 
                 unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);

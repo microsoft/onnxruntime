@@ -19,6 +19,51 @@ namespace onnxruntime {
 
 namespace {
 
+bool IsAttentionLikeOp(const Node* node) {
+  if (node == nullptr) {
+    return false;
+  }
+
+  const auto& op_type = node->OpType();
+  return op_type == "Attention" || op_type == "MultiHeadAttention";
+}
+
+bool IsMobileClipProjectionMatMul(const Node& node) {
+  return node.Name().find("/token_mixer/proj/MatMul") != std::string::npos;
+}
+
+bool IsAttentionProjectionInput(const Graph& graph, const Node& matmul_node) {
+  if (matmul_node.InputDefs().empty()) {
+    return false;
+  }
+
+  const Node* producer = graph.GetProducerNode(matmul_node.InputDefs()[0]->Name());
+  if (IsAttentionLikeOp(producer)) {
+    return true;
+  }
+
+  if (producer == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*producer, "Reshape", {5, 13, 14}, kOnnxDomain)) {
+    return false;
+  }
+
+  const Node* transpose = graph_utils::GetInputNode(*producer, 0);
+  if (transpose == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*transpose, "Transpose", {1, 13}, kOnnxDomain)) {
+    return false;
+  }
+
+  const Node* av_matmul = graph_utils::GetInputNode(*transpose, 0);
+  if (av_matmul == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*av_matmul, "MatMul", {1, 9, 13}, kOnnxDomain)) {
+    return false;
+  }
+
+  const Node* softmax = graph_utils::GetInputNode(*av_matmul, 0);
+  return softmax != nullptr &&
+         graph_utils::IsSupportedOptypeVersionAndDomain(*softmax, "Softmax", {1, 11, 13}, kOnnxDomain);
+}
+
 // Attention subgraph has 4 MatMul-Add pairs, that we want to skip here because AttentionFusion will handle it.
 // In such case, 3 of MatMul-Add pairs are following LN, the other one produces output which is added with LN's output.
 // Use two sets to remember such patterns we already met during the graph iteration so that we can skip them directly
@@ -89,18 +134,29 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    const bool is_mobileclip_projection = IsMobileClipProjectionMatMul(node);
+
     if (graph.NodeProducesGraphOutput(node)) {
+      if (is_mobileclip_projection) {
+        LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because node produces graph output";
+      }
       continue;
     }
 
     auto next_node_itr = node.OutputNodesBegin();
     if (next_node_itr == node.OutputNodesEnd()) {
+      if (is_mobileclip_projection) {
+        LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because no output node";
+      }
       continue;
     }
 
     const Node& next_node = (*next_node_itr);
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7, 13, 14}) ||
         next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+      if (is_mobileclip_projection) {
+        LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because downstream node is not compatible Add";
+      }
       continue;
     }
 
@@ -115,9 +171,15 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     auto matmul_type = matmul_input_defs[0]->Type();
     auto add_type = add_input_defs[0]->Type();
     if ((*matmul_type) != (*add_type)) {
+      if (is_mobileclip_projection) {
+        LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because input and add dtypes differ";
+      }
       continue;
     }
     if ((*matmul_type) != "tensor(float)" && (*matmul_type) != "tensor(float16)" && (*matmul_type) != "tensor(bfloat16)") {
+      if (is_mobileclip_projection) {
+        LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because dtype is not supported for Gemm";
+      }
       continue;
     }
 
@@ -125,6 +187,9 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     auto matmul_a_shape = matmul_input_defs[0]->Shape();
     auto matmul_b_shape = matmul_input_defs[1]->Shape();
     if (nullptr == matmul_a_shape || nullptr == matmul_b_shape || matmul_b_shape->dim_size() != 2) {
+      if (is_mobileclip_projection) {
+        LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because shape metadata is incomplete or weight rank != 2";
+      }
       continue;
     }
 
@@ -133,8 +198,18 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     InlinedVector<int64_t> shape_values;
     int64_t m = 0, k = 0, n = 0;
     if (need_reshape) {
+      if (IsAttentionProjectionInput(graph, matmul_node)) {
+        if (is_mobileclip_projection) {
+          LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because input is recognized as attention projection";
+        }
+        continue;
+      }
+
       // Only check and skip Attention pattern here because normally input to Attention is 4D.
       if (preserve_attention_pattern_ && attn_pattern_cache.IsAttentionPattern(graph, matmul_node, add_node)) {
+        if (is_mobileclip_projection) {
+          LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because preserve_attention_pattern matched";
+        }
         continue;
       }
 
@@ -142,11 +217,17 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // both inputs have concrete shape for now, we can add dynamic shape support in future.
       auto a_shape = utils::GetTensorShapeFromTensorShapeProto(*matmul_a_shape);
       if (a_shape.Size() == -1) {
+        if (is_mobileclip_projection) {
+          LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because input shape is dynamic";
+        }
         continue;
       }
 
       const auto& dim_k = matmul_b_shape->dim(0);
       if (!utils::HasDimValue(dim_k) || !utils::HasDimValue(dim_n)) {
+        if (is_mobileclip_projection) {
+          LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because weight dims are not concrete";
+        }
         continue;
       }
 
@@ -180,7 +261,14 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                   (!need_reshape && bias_shape.dim_size() == 2 && bias_shape.dim(0) == matmul_a_shape->dim(0) &&
                    (dim_has_value_1(bias_shape.dim(1)) || bias_shape.dim(1) == dim_n)));
     if (!valid) {
+      if (is_mobileclip_projection) {
+        LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: skipped because bias shape is not Gemm-compatible";
+      }
       continue;
+    }
+
+    if (is_mobileclip_projection) {
+      LOGS(logger, VERBOSE) << "MatMulAddFusion[" << node.Name() << "]: creating Gemm node";
     }
 
     auto gemm_output_defs = add_node.MutableOutputDefs();

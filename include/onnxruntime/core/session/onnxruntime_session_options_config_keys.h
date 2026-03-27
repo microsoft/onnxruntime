@@ -386,6 +386,21 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
 
+// Use the specialized depthwise-with-multiplier convolution kernel in MLAS if available.
+// This currently applies to the exact MobileCLIP-style grouped 7x7/stride-2 depth-multiplier-2 float32 case on AMD64 AVX512F.
+// Option values:
+// - "0": Disable the specialized kernel and fall back to the generic path.
+// - "1": Enable the specialized kernel when available. [DEFAULT]
+static const char* const kOrtSessionOptionsMlasEnableDepthwiseWithMultiplierKernel = "mlas.enable_depthwise_with_multiplier_kernel";
+
+// Override the maximum input-channel batch size used by the MLAS NCHWc pointwise convolution path.
+// This is primarily useful for benchmarking and tuning small 1x1 convolutions.
+// Option values:
+// - "0" or not provided: use the default heuristic. [DEFAULT]
+// - positive integer: requested batch size in channels. The value is clamped to at least the platform NCHWc block size
+//   and rounded down to a multiple of that block size.
+static const char* const kOrtSessionOptionsMlasNchwcConvMaxInputChannelBatch = "mlas.nchwc_conv_max_input_channel_batch";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
