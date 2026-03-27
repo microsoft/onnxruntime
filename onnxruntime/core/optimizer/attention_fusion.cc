@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/graph/graph_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/attention_fusion_helper.h"
-#include "core/graph/graph_utils.h"
 #include <cmath>
 
 namespace onnxruntime {
@@ -102,9 +102,145 @@ static const Node* GetOnlyChildByOutputIndex(const Graph& graph, const Node& nod
   return child;
 }
 
+static bool TryCreateNormalizedProjectionGemm(Graph& graph,
+                                              NodeArg& projection_input,
+                                              const NodeArg& original_projection_input,
+                                              const NodeArg& proj_weight,
+                                              const NodeArg& proj_bias,
+                                              NodeArg& projection_output,
+                                              const std::string& base_name,
+                                              const std::string& provider_type) {
+  const auto* proj_input_shape = original_projection_input.Shape();
+  const auto* proj_weight_shape = proj_weight.Shape();
+  if (proj_input_shape == nullptr || proj_weight_shape == nullptr || proj_weight_shape->dim_size() != 2) {
+    return false;
+  }
+
+  auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*proj_input_shape);
+  if (input_shape.Size() == -1 || input_shape.NumDimensions() < 2) {
+    return false;
+  }
+
+  const auto& dim_k = proj_weight_shape->dim(0);
+  const auto& dim_n = proj_weight_shape->dim(1);
+  if (!utils::HasDimValue(dim_k) || !utils::HasDimValue(dim_n)) {
+    return false;
+  }
+
+  const int64_t m = input_shape.SizeToDimension(input_shape.NumDimensions() - 1);
+  const int64_t k = dim_k.dim_value();
+  const int64_t n = dim_n.dim_value();
+  if (input_shape[input_shape.NumDimensions() - 1] != k) {
+    return false;
+  }
+
+  const auto* bias_shape = proj_bias.Shape();
+  if (bias_shape == nullptr || bias_shape->dim_size() != 1 || !utils::HasDimValue(bias_shape->dim(0)) ||
+      bias_shape->dim(0).dim_value() != n) {
+    return false;
+  }
+
+  const auto* input_type = original_projection_input.TypeAsProto();
+  if (input_type == nullptr || !input_type->has_tensor_type()) {
+    return false;
+  }
+
+  const auto element_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(input_type->tensor_type().elem_type());
+
+  auto add_shape_initializer = [&](const std::string& name, const InlinedVector<int64_t>& shape) -> NodeArg& {
+    ONNX_NAMESPACE::TensorProto shape_initializer_proto;
+    shape_initializer_proto.set_name(graph.GenerateNodeArgName(name));
+    shape_initializer_proto.add_dims(static_cast<int64_t>(shape.size()));
+    shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    utils::SetRawDataInTensorProto(shape_initializer_proto, shape.data(), shape.size() * sizeof(int64_t));
+    return graph_utils::AddInitializerWithOrtValue(graph, shape_initializer_proto);
+  };
+
+  auto make_tensor_arg = [&](const std::string& name, const InlinedVector<int64_t>& shape) -> NodeArg* {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(element_type);
+    for (int64_t dim_value : shape) {
+      type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim_value);
+    }
+
+    return &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(name), &type_proto);
+  };
+
+  InlinedVector<int64_t> gemm_input_shape{m, k};
+  InlinedVector<int64_t> gemm_output_shape{m, n};
+  InlinedVector<int64_t> output_shape_values = input_shape.AsShapeVector();
+  output_shape_values.back() = n;
+
+  NodeArg* gemm_input_arg = make_tensor_arg("mobileclip_proj_gemm_input", gemm_input_shape);
+  NodeArg* gemm_output_arg = make_tensor_arg("mobileclip_proj_gemm_output", gemm_output_shape);
+  NodeArg& gemm_input_shape_arg = add_shape_initializer("mobileclip_proj_gemm_input_shape", gemm_input_shape);
+  NodeArg& gemm_output_shape_arg = add_shape_initializer("mobileclip_proj_gemm_output_shape", output_shape_values);
+
+  Node& input_reshape = graph.AddNode(
+      graph.GenerateNodeName("MobileClipProjGemmInputReshape"),
+      "Reshape",
+      "Reshape MobileCLIP projection input for Gemm",
+      {&projection_input, &gemm_input_shape_arg},
+      {gemm_input_arg});
+  input_reshape.SetExecutionProviderType(provider_type);
+
+  Node& gemm_node = graph.AddNode(
+      graph.GenerateNodeName(base_name + "/MobileClipProjectionGemm"),
+      "Gemm",
+      "Normalized MobileCLIP projection Gemm",
+      {gemm_input_arg, const_cast<NodeArg*>(&proj_weight), const_cast<NodeArg*>(&proj_bias)},
+      {gemm_output_arg});
+  gemm_node.SetExecutionProviderType(provider_type);
+
+  Node& output_reshape = graph.AddNode(
+      graph.GenerateNodeName("MobileClipProjGemmOutputReshape"),
+      "Reshape",
+      "Restore MobileCLIP projection output shape after Gemm",
+      {gemm_output_arg, &gemm_output_shape_arg},
+      {&projection_output});
+  output_reshape.SetExecutionProviderType(provider_type);
+
+  return true;
+}
+
+static bool TryRewriteProjectionMatMulAddToGemm(Graph& graph,
+                                                NodeArg& projection_input,
+                                                Node& proj_matmul,
+                                                Node& proj_add) {
+  if (proj_matmul.InputDefs().size() < 2 || proj_add.InputDefs().size() < 2) {
+    return false;
+  }
+
+  const int bias_idx = proj_matmul.OutputDefs()[0]->Name() == proj_add.InputDefs()[0]->Name() ? 1 : 0;
+  return TryCreateNormalizedProjectionGemm(graph,
+                                           projection_input,
+                                           *proj_matmul.InputDefs()[0],
+                                           *proj_matmul.InputDefs()[1],
+                                           *proj_add.InputDefs()[bias_idx],
+                                           *proj_add.MutableOutputDefs()[0],
+                                           proj_matmul.Name(),
+                                           proj_matmul.GetExecutionProviderType());
+}
+
+static bool TryRewriteProjectionGemm(Graph& graph,
+                                     NodeArg& projection_input,
+                                     Node& proj_gemm) {
+  if (proj_gemm.InputDefs().size() < 3 || proj_gemm.OutputDefs().empty()) {
+    return false;
+  }
+
+  return TryCreateNormalizedProjectionGemm(graph,
+                                           projection_input,
+                                           *proj_gemm.InputDefs()[0],
+                                           *proj_gemm.InputDefs()[1],
+                                           *proj_gemm.InputDefs()[2],
+                                           *proj_gemm.MutableOutputDefs()[0],
+                                           proj_gemm.Name(),
+                                           proj_gemm.GetExecutionProviderType());
+}
+
 static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::Logger& logger) {
-  const auto fail = [&](const char* reason) {
-    DEBUG_LOG("MobileClipMHA[" << qkv_matmul.Name() << "]: " << reason);
+  const auto fail = [&](const char*) {
     return false;
   };
 
@@ -279,12 +415,16 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
       kOnnxDomain);
   split_for_mha.AddAttribute("axis", static_cast<int64_t>(2));
 
+  auto* mha_output = &graph.GetOrCreateNodeArg(
+      graph.GenerateNodeArgName("mobileclip_mha_output"),
+      reshape_2->OutputDefs()[0]->TypeAsProto());
+
   Node& mha_node = graph.AddNode(
       graph.GenerateNodeName("MobileClipMultiHeadAttention"),
       "MultiHeadAttention",
       "Fused MobileCLIP attention subgraph",
       {mha_q, mha_k, mha_v},
-      {graph.GetNode(reshape_2->Index())->MutableOutputDefs()[0]},
+      {mha_output},
       nullptr,
       kMSDomain);
   mha_node.AddAttribute("num_heads", num_heads);
@@ -294,6 +434,16 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
   const auto fused_provider = provider.empty() ? kCpuExecutionProvider : provider;
   split_for_mha.SetExecutionProviderType(fused_provider);
   mha_node.SetExecutionProviderType(fused_provider);
+
+  if (proj_matmul != nullptr) {
+    if (!TryRewriteProjectionMatMulAddToGemm(graph, *mha_output, const_cast<Node&>(*proj_matmul), const_cast<Node&>(*proj_add))) {
+      return fail("projection MatMul/Add could not be rewritten to Gemm");
+    }
+  } else {
+    if (!TryRewriteProjectionGemm(graph, *mha_output, const_cast<Node&>(*proj_gemm))) {
+      return fail("projection Gemm could not be normalized");
+    }
+  }
 
   std::vector<NodeIndex> nodes_to_remove{
       qkv_reshape->Index(),
@@ -312,6 +462,13 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
       reshape_2->Index(),
   };
 
+  if (proj_matmul != nullptr) {
+    nodes_to_remove.push_back(proj_matmul->Index());
+    nodes_to_remove.push_back(proj_add->Index());
+  } else {
+    nodes_to_remove.push_back(proj_gemm->Index());
+  }
+
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
     if (node == nullptr) {
@@ -322,7 +479,9 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     graph.RemoveNode(node_index);
   }
 
-  DEBUG_LOG("MobileClipMHA[" << qkv_matmul.Name() << "]: fused MobileCLIP attention subgraph to MultiHeadAttention");
+  LOGS(logger, VERBOSE) << "MobileClipMHA[" << qkv_matmul.Name()
+                        << "]: fused MobileCLIP attention subgraph to MultiHeadAttention";
+
   return true;
 }
 

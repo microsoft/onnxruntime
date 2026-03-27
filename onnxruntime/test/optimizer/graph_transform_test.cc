@@ -5859,9 +5859,7 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
   EXPECT_EQ(op_to_count["Shape"], 0);
 }
 
-#if 0
-TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
-  auto build_test_case = [](ModelTestBuilder& builder) {
+static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder, bool use_projection_gemm) {
     auto* input_x = builder.MakeInput<float>({1, 512, 8, 8}, -1.0f, 1.0f);
     auto* input_skip = builder.MakeInput<float>({1, 512, 8, 8}, -1.0f, 1.0f);
 
@@ -5897,8 +5895,7 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
     auto* attn_out = builder.MakeIntermediate<float>({1, 16, 64, 32});
     auto* transpose3_out = builder.MakeIntermediate<float>({1, 64, 16, 32});
     auto* reshape2_out = builder.MakeIntermediate<float>({1, 64, 512});
-    auto* proj_matmul_out = builder.MakeIntermediate<float>({1, 64, 512});
-    auto* proj_add_out = builder.MakeIntermediate<float>({1, 64, 512});
+    auto* proj_linear_out = builder.MakeIntermediate<float>({1, 64, 512});
     auto* transpose4_out = builder.MakeIntermediate<float>({1, 512, 64});
     auto* reshape3_out = builder.MakeIntermediate<float>({1, 512, 8, 8});
     auto* layer_scale_out = builder.MakeIntermediate<float>({1, 512, 8, 8});
@@ -5945,10 +5942,15 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
     auto& reshape2 = builder.AddNode("Reshape", std::vector<NodeArg*>{transpose3_out, reshape2_shape}, std::vector<NodeArg*>{reshape2_out});
     reshape2.AddAttribute("allowzero", static_cast<int64_t>(0));
 
-    builder.AddNode("MatMul", std::vector<NodeArg*>{reshape2_out, proj_weight}, std::vector<NodeArg*>{proj_matmul_out});
-    builder.AddNode("Add", std::vector<NodeArg*>{proj_bias, proj_matmul_out}, std::vector<NodeArg*>{proj_add_out});
+    if (use_projection_gemm) {
+      builder.AddNode("Gemm", std::vector<NodeArg*>{reshape2_out, proj_weight, proj_bias}, std::vector<NodeArg*>{proj_linear_out});
+    } else {
+      auto* proj_matmul_out = builder.MakeIntermediate<float>({1, 64, 512});
+      builder.AddNode("MatMul", std::vector<NodeArg*>{reshape2_out, proj_weight}, std::vector<NodeArg*>{proj_matmul_out});
+      builder.AddNode("Add", std::vector<NodeArg*>{proj_bias, proj_matmul_out}, std::vector<NodeArg*>{proj_linear_out});
+    }
 
-    auto& transpose4 = builder.AddNode("Transpose", std::vector<NodeArg*>{proj_add_out}, std::vector<NodeArg*>{transpose4_out});
+    auto& transpose4 = builder.AddNode("Transpose", std::vector<NodeArg*>{proj_linear_out}, std::vector<NodeArg*>{transpose4_out});
     transpose4.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
 
     auto& reshape3 = builder.AddNode("Reshape", std::vector<NodeArg*>{transpose4_out, reshape3_shape}, std::vector<NodeArg*>{reshape3_out});
@@ -5956,36 +5958,84 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
 
     builder.AddNode("Mul", std::vector<NodeArg*>{layer_scale, reshape3_out}, std::vector<NodeArg*>{layer_scale_out});
     builder.AddNode("Add", std::vector<NodeArg*>{input_skip, layer_scale_out}, std::vector<NodeArg*>{output});
-  };
+}
 
-  auto post_graph_checker = [](Graph& graph) {
-    auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 1);
-    TEST_RETURN_IF_NOT(op_to_count["Softmax"] == 0);
-    TEST_RETURN_IF_NOT(op_to_count["Squeeze"] == 0);
-    TEST_RETURN_IF_NOT(op_to_count["Split"] == 1);
-    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 2);
-    TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 2);
-    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 2);
-    TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
+static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
+  auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Softmax"] == 0);
+  TEST_RETURN_IF_NOT(op_to_count["Squeeze"] == 0);
+  TEST_RETURN_IF_NOT(op_to_count["Split"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 2);
+  TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 4);
+  TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
 
-    int mha_nodes = 0;
-    for (Node& node : graph.Nodes()) {
-      if (node.OpType() == "MultiHeadAttention" && node.Domain() == kMSDomain) {
-        ++mha_nodes;
-        TEST_RETURN_IF_NOT(node.GetAttributes().at("num_heads").i() == 16);
-        TEST_RETURN_IF_NOT(std::abs(node.GetAttributes().at("scale").f() - (1.0f / std::sqrt(32.0f))) < 1e-6f);
+  int mha_nodes = 0;
+  int gemm_nodes = 0;
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "MultiHeadAttention" && node.Domain() == kMSDomain) {
+      ++mha_nodes;
+      TEST_RETURN_IF_NOT(node.GetAttributes().at("num_heads").i() == 16);
+      TEST_RETURN_IF_NOT(std::abs(node.GetAttributes().at("scale").f() - (1.0f / std::sqrt(32.0f))) < 1e-6f);
+      TEST_RETURN_IF_NOT(node.OutputDefs().size() == 1);
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape() != nullptr);
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape()->dim_size() == 3);
+    } else if (node.OpType() == "Gemm") {
+      ++gemm_nodes;
+      TEST_RETURN_IF_NOT(node.InputDefs().size() == 3);
+      TEST_RETURN_IF_NOT(node.OutputDefs().size() == 1);
+      TEST_RETURN_IF_NOT(node.InputDefs()[0]->Shape() != nullptr);
+      TEST_RETURN_IF_NOT(node.InputDefs()[0]->Shape()->dim_size() == 2);
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape() != nullptr);
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape()->dim_size() == 2);
+
+      const Node* gemm_input_node = graph_utils::GetInputNode(node, 0);
+      TEST_RETURN_IF_NOT(gemm_input_node != nullptr);
+      TEST_RETURN_IF_NOT(gemm_input_node->OpType() == "Reshape");
+
+      bool has_output_reshape = false;
+      for (const Node& consumer : graph.Nodes()) {
+        for (const NodeArg* input_def : consumer.InputDefs()) {
+          if (input_def != nullptr && input_def->Name() == node.OutputDefs()[0]->Name()) {
+            has_output_reshape = consumer.OpType() == "Reshape";
+            break;
+          }
+        }
+
+        if (has_output_reshape) {
+          break;
+        }
       }
-    }
 
-    TEST_RETURN_IF_NOT(mha_nodes == 1);
-    return Status::OK();
+      TEST_RETURN_IF_NOT(has_output_reshape);
+    }
+  }
+
+  TEST_RETURN_IF_NOT(mha_nodes == 1);
+  TEST_RETURN_IF_NOT(gemm_nodes == 1);
+  return Status::OK();
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, false);
   };
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<AttentionFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
 }
-#endif
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, true);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<AttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
+}
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gelu.onnx";
