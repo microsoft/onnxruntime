@@ -60,8 +60,8 @@ Migrated CUDA kernels
 Key ownership relationships:
 - `CudaEpFactory` implements raw `OrtEpFactory` callbacks and owns shared factory-level state such as the kernel registry, cached `OrtMemoryInfo` instances, and the hardware-device to CUDA-ordinal map.
 - `CudaEp` inherits from `ep::adapter::Ep`, which itself derives from `OrtEp` and owns a framework-facing `IExecutionProvider` object.
-- The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a real shim object owned by `ep::adapter::Ep`. It is not the full in-tree CUDA EP, but it does have its own object identity and may store plugin-specific members such as the wrapped `OrtEp*`.
-- Runtime state needed by migrated kernels is still stored in adapter-side maps keyed by the shim provider address (`EpImpl()`), not by the `CudaEp` object address.
+- The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a real shim object owned by `ep::adapter::Ep`. It is not the full in-tree CUDA EP, but it has its own object identity and stores plugin-specific members — including the wrapped `OrtEp*` and the `CudaKernelAdapterRuntimeConfig` that migrated kernels read at compute time.
+- Runtime configuration needed by migrated kernels is stored directly as a member (`config_`) of the shim `CUDAExecutionProvider` object, rather than in a separate map keyed by the provider address.
 - `CudaSyncStream` owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, and `cublasLtHandle_t` for each sync stream created through the EP API.
 
 ### 2.4 Plugin DLL Entry Points
@@ -266,9 +266,9 @@ This changes the safety model from the earlier "phantom shim" design:
 
 Provider options flow through the plugin in two stages:
 - `CudaEpFactory` parses session/provider options into `CudaEp::Config`.
-- `CudaEp` mirrors the subset needed by migrated kernels into the adapter-side `ProviderConfigStore`, keyed by `EpImpl()`.
+- `CudaEp` copies the subset needed by migrated kernels into `CUDAExecutionProvider::config_` via `SetCudaKernelAdapterRuntimeConfigForProvider(EpImpl(), ...)` during EP construction.
 
-Today that mirrored subset includes TF32, device ID/device properties, cuDNN convolution settings, skip-layer-norm strict mode, fused-conv-bias, and SDPA kernel selection. Other plugin behaviors, such as preferred layout, are handled directly by `CudaEp` callbacks instead of through the shim.
+Because `config_` is a direct member of the shim object, there is no heap-allocated map and no mutex — reads at kernel compute time are simple field accesses. Today that stored subset includes TF32, device ID/device properties, cuDNN convolution settings, skip-layer-norm strict mode, fused-conv-bias, and SDPA kernel selection. Other plugin behaviors, such as preferred layout, are handled directly by `CudaEp` callbacks instead of through the shim.
 
 For stream bridging, the preferred helpers are:
 - `Stream(ctx)` when the kernel only needs a raw `cudaStream_t`

@@ -80,7 +80,6 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
 }
 
 CudaEp::~CudaEp() {
-  onnxruntime::cuda::detail::RemoveCudaKernelAdapterRuntimeConfigForProvider(static_cast<const void*>(EpImpl()));
 }
 
 /*static*/

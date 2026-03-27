@@ -98,7 +98,7 @@ TEST(DynamicPluginEpInfraTest, UninitializedStateReturnsSafeDefaults) {
 
 #if defined(USE_CUDA) && defined(ORT_USE_EP_API_ADAPTERS)
 TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBiasAndSdpaKernel) {
-  onnxruntime::cuda::CUDAExecutionProvider provider{"CudaPluginExecutionProvider"};
+  onnxruntime::CUDAExecutionProvider provider{"CudaPluginExecutionProvider"};
   auto& config = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(&provider);
   config.fuse_conv_bias = true;
   config.sdpa_kernel = static_cast<int>(onnxruntime::contrib::attention::AttentionBackend::MATH);
@@ -110,8 +110,6 @@ TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBias
   EXPECT_FALSE(attention_kernel_options->UseFlashAttention());
   EXPECT_FALSE(attention_kernel_options->UseEfficientAttention());
   EXPECT_FALSE(attention_kernel_options->UseCudnnFlashAttention());
-
-  onnxruntime::cuda::detail::RemoveCudaKernelAdapterRuntimeConfigForProvider(&provider);
 }
 #endif
 

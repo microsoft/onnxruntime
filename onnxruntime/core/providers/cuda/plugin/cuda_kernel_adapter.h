@@ -332,7 +332,6 @@ class PluginKernelCollector {
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <shared_mutex>
 
 namespace onnxruntime {
 namespace cuda {
@@ -357,40 +356,6 @@ struct CudaKernelAdapterRuntimeConfig {
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
 };
-// Shared storage for per-provider runtime configurations.
-// Both Get and Remove must operate on the same static map instance,
-// so we centralize them in a single struct with static lifetime.
-struct ProviderConfigStore {
-  std::shared_mutex mutex;
-  std::unordered_map<const void*, std::unique_ptr<CudaKernelAdapterRuntimeConfig>> configs;
-
-  static ProviderConfigStore& Instance() {
-    static ProviderConfigStore store;
-    return store;
-  }
-};
-
-inline CudaKernelAdapterRuntimeConfig& GetCudaKernelAdapterRuntimeConfigForProvider(const void* provider) {
-  auto& store = ProviderConfigStore::Instance();
-  std::shared_lock<std::shared_mutex> lock(store.mutex);
-  auto it = store.configs.find(provider);
-  if (it != store.configs.end()) {
-    return *it->second;
-  }
-  lock.unlock();
-  std::unique_lock<std::shared_mutex> unique_lock(store.mutex);
-  auto& ptr = store.configs[provider];
-  if (!ptr) {
-    ptr = std::make_unique<CudaKernelAdapterRuntimeConfig>();
-  }
-  return *ptr;
-}
-
-inline void RemoveCudaKernelAdapterRuntimeConfigForProvider(const void* provider) {
-  auto& store = ProviderConfigStore::Instance();
-  std::unique_lock<std::shared_mutex> lock(store.mutex);
-  store.configs.erase(provider);
-}
 template <typename T>
 struct SizeOf {
   static constexpr size_t value = sizeof(T);
@@ -501,34 +466,45 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
   }
 
   int GetCudnnConvAlgo() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).cudnn_conv_algo;
+    return config_.cudnn_conv_algo;
   }
   bool GetCudnnConvUseMaxWorkspace() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).cudnn_conv_use_max_workspace;
+    return config_.cudnn_conv_use_max_workspace;
   }
   bool GetCudnnConv1dPadToNc1d() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).cudnn_conv1d_pad_to_nc1d;
+    return config_.cudnn_conv1d_pad_to_nc1d;
   }
   bool UseTF32() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).use_tf32;
+    return config_.use_tf32;
   }
   bool IsFuseConvBias() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).fuse_conv_bias;
+    return config_.fuse_conv_bias;
   }
   const onnxruntime::AttentionKernelOptions* GetAttentionKernelOptions() const {
-    auto& config = cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this);
-    config.attention_kernel_options.InitializeOnce(config.sdpa_kernel, true, true);
-    return &config.attention_kernel_options;
+    config_.attention_kernel_options.InitializeOnce(config_.sdpa_kernel, true, true);
+    return &config_.attention_kernel_options;
   }
   const cudaDeviceProp& GetDeviceProp() const {
-    return cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(this).device_prop;
+    return config_.device_prop;
   }
+
+  // Config is public so that detail::GetCudaKernelAdapterRuntimeConfigForProvider
+  // (a free function defined after this class) can access it via pointer cast.
+  mutable cuda::detail::CudaKernelAdapterRuntimeConfig config_;
 
  private:
   const OrtEp* ort_ep_ = nullptr;
 };
 
 namespace cuda {
+namespace detail {
+
+// Accessor: config is stored directly on CUDAExecutionProvider; no map or mutex needed.
+inline CudaKernelAdapterRuntimeConfig& GetCudaKernelAdapterRuntimeConfigForProvider(const void* provider) {
+  return const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(provider))->config_;
+}
+
+}  // namespace detail
 
 // Populate the per-provider adapter config from a pre-filled initializer struct.
 // Callers (e.g. CudaEp constructor) construct a detail::CudaKernelAdapterRuntimeConfig,
