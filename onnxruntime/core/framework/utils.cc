@@ -31,7 +31,25 @@
 #endif
 
 namespace onnxruntime {
+
+namespace {
+// Thread-local run-level profiler. Set during graph execution so that
+// subgraph executions (e.g., inside If/Loop branches) can propagate
+// run-level profiling without requiring callers to thread the profiler
+// pointer through the entire call stack.
+thread_local profiling::Profiler* tls_current_run_profiler = nullptr;
+}  // namespace
+
 namespace utils {
+
+void SetRunLevelProfiler(profiling::Profiler* profiler) {
+  tls_current_run_profiler = profiler;
+}
+
+profiling::Profiler* GetRunLevelProfiler() {
+  return tls_current_run_profiler;
+}
+
 void ConstructStrings(void* p_data, int64_t elements) {
   auto* ptr = static_cast<std::string*>(p_data);
   for (int64_t i = 0; i < elements; ++i) {
@@ -884,17 +902,22 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream,
                                bool sync_subgraph_fetches) {
+  // Propagate the run-level profiler (set via TLS by ExecuteThePlan) so that operators
+  // inside this subgraph are captured during run-level profiling.
+  profiling::Profiler* run_profiler = tls_current_run_profiler;
 #ifdef ORT_ENABLE_STREAM
   DeviceStreamCollectionHolder device_stream_collection_holder(&session_state);
   DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
 
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream);
+                                 execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream,
+                                 run_profiler);
   if (device_stream_collection)
     ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
 #else
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, false, parent_stream);
+                                 execution_mode, terminate_flag, logger, false, parent_stream,
+                                 run_profiler);
 #endif
   if (retval.IsOK() && sync_subgraph_fetches && parent_stream) {
     parent_stream->Flush();

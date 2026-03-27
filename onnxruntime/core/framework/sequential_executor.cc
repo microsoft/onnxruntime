@@ -682,8 +682,15 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
       // so don't need to invoke CompleteTask here
       // ctx.CompleteTask();
     } else {
-      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag, &session_scope]() {
+      // Capture run_profiler so each worker thread (or the current thread in
+      // single-thread mode) sets the TLS profiler before executing its stream.
+      // This ensures that subgraph executions (If/Loop/Scan) triggered from
+      // within a kernel Compute() call can read the profiler via GetRunLevelProfiler().
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag, &session_scope, run_profiler]() {
+        auto* prev_run_profiler = utils::GetRunLevelProfiler();
+        utils::SetRunLevelProfiler(run_profiler);
         RunSince(i, ctx, session_scope, terminate_flag, 0);
+        utils::SetRunLevelProfiler(prev_run_profiler);
       });
     }
   }

@@ -117,6 +117,12 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                subgraph fetches, i.e. the loop condition*/
                                bool sync_subgraph_fetches = false);
 
+// Thread-local run-level profiler helpers.
+// Set the run-level profiler for the current thread so that operators inside subgraphs
+// (e.g., nodes inside an If or Loop branch) are also captured during run-level profiling.
+void SetRunLevelProfiler(profiling::Profiler* profiler);
+profiling::Profiler* GetRunLevelProfiler();
+
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 
