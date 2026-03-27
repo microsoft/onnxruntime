@@ -39,6 +39,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_cuda.yml | build
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
@@ -190,6 +191,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_cuda.yml | build # reuse build's caches. we do not expect this stage to modify them.
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
@@ -223,6 +225,7 @@ jobs:
           whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\dist
 
       - name: Run Tests
+        shell: pwsh
         working-directory: ${{ runner.temp }}
         run: |
           npm install -g typescript
@@ -230,16 +233,36 @@ jobs:
             exit $lastExitCode
           }
 
-          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py   "${{ runner.temp }}\build\RelWithDebInfo\CTestTestfile.cmake" "${{ runner.temp }}\build\RelWithDebInfo"
+          python.exe ${env:GITHUB_WORKSPACE}\tools\python\update_ctest_path.py "${env:RUNNER_TEMP}\build\RelWithDebInfo\CTestTestfile.cmake" "${env:RUNNER_TEMP}\build\RelWithDebInfo"
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
 
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 1 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build_csharp `
+            --build_dir build `
+            --build_java `
+            --build_shared_lib `
+            --build_wheel `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  `
+            --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON `
+            --cmake_generator "Visual Studio 17 2022" `
+            --config RelWithDebInfo `
+            --cuda_home "${env:RUNNER_TEMP}\v12.8" `
+            --enable_cuda_profiling `
+            --enable_transformers_tool_test `
+            --nvcc_threads 1 `
+            --parallel `
+            --skip_submodule_sync `
+            --test `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
+            --use_cuda `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-        shell: pwsh
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py

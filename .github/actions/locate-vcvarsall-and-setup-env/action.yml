@@ -5,6 +5,9 @@ inputs:
     description: 'Target architecture (x64 or x86)'
     required: true
     default: 'x64'
+  cache_key:
+    description: 'a workflow & job qualified unique key to distinguish a cache. used as a suffix for subcaches.'
+    required: true
 outputs:
   vcvarsall_path:
     description: "Path to vcvarsall.bat"
@@ -13,68 +16,102 @@ runs:
   using: "composite"
   steps:
 
-    - name: Setup VCPKG
-      uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
-      with:
-        vcpkg-version: '2025.08.27'
-        vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
-        cmake-version: '3.31.6'
-        cmake-hash: '0f1584e8666cf4a65ec514bd02afe281caabf1d45d2c963f3151c41484f457386aa03273ab25776a670be02725354ce0b46f3a5121857416da37366342a833a0'
-        add-cmake-to-path: 'true'
-        disable-terrapin: 'false'
+  - name: Setup VCPKG
+    uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+    with:
+      vcpkg-version: '2025.08.27'
+      vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
+      cmake-version: '3.31.6'
+      cmake-hash: '0f1584e8666cf4a65ec514bd02afe281caabf1d45d2c963f3151c41484f457386aa03273ab25776a670be02725354ce0b46f3a5121857416da37366342a833a0'
+      add-cmake-to-path: 'true'
+      disable-terrapin: 'false'
 
-    - name: Verify vcpkg setup
-      shell: pwsh # Use powershell to easily access env var
-      run: |
-          Write-Host "VCPKG_INSTALLATION_ROOT is set to: $env:VCPKG_INSTALLATION_ROOT"
-          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg" version
+  - name: Verify vcpkg setup
+    shell: pwsh # Use powershell to easily access env var
+    run: |
+      Write-Host "VCPKG_INSTALLATION_ROOT is set to: $env:VCPKG_INSTALLATION_ROOT"
+      & "$env:VCPKG_INSTALLATION_ROOT/vcpkg" version
 
-    - name: Find vcvarsall.bat
-      id: find-vcvarsall
-      shell: python  # Use Python shell
-      run: |
-        import os
-        import subprocess
+  - name: Find vcvarsall.bat
+    id: find-vcvarsall
+    shell: python # Use Python shell
+    run: |
+      import os
+      import subprocess
 
-        vswhere_path = os.path.join(os.environ["ProgramFiles(x86)"], "Microsoft Visual Studio", "Installer", "vswhere.exe")
+      vswhere_path = os.path.join(os.environ["ProgramFiles(x86)"], "Microsoft Visual Studio", "Installer", "vswhere.exe")
 
-        try:
-            process = subprocess.run([vswhere_path, "-latest", "-property", "installationPath"], capture_output=True, text=True, check=True)
-            vs_install_path = process.stdout.strip()
-            vcvarsall_path = os.path.join(vs_install_path, "VC", "Auxiliary", "Build", "vcvarsall.bat")
+      try:
+          process = subprocess.run([vswhere_path, "-latest", "-property", "installationPath"], capture_output=True, text=True, check=True)
+          vs_install_path = process.stdout.strip()
+          vcvarsall_path = os.path.join(vs_install_path, "VC", "Auxiliary", "Build", "vcvarsall.bat")
 
-            if os.path.exists(vcvarsall_path):
-                print(f"vcvarsall found at: {vcvarsall_path}")
-                # Use GITHUB_OUTPUT environment variable
-                with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                    f.write(f"vcvarsall_path={vcvarsall_path}\n")
-            else:
-                print(f"vcvarsall.bat not found at expected path: {vcvarsall_path}")
-                # Use 'exit(1)' for Python to properly signal failure to GitHub Actions
-                exit(1)
-
-
-        except subprocess.CalledProcessError as e:
-            print(f"Error running vswhere.exe: {e}")
-            print(f"vswhere output: {e.stdout}")
-            print(f"vswhere stderr: {e.stderr}")
-            exit(1) # Exit with a non-zero code on error
-        except FileNotFoundError:
-            print(f"vswhere.exe not found at: {vswhere_path}")
-            exit(1)
+          if os.path.exists(vcvarsall_path):
+              print(f"vcvarsall found at: {vcvarsall_path}")
+              # Use GITHUB_OUTPUT environment variable
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write(f"vcvarsall_path={vcvarsall_path}\n")
+          else:
+              print(f"vcvarsall.bat not found at expected path: {vcvarsall_path}")
+              # Use 'exit(1)' for Python to properly signal failure to GitHub Actions
+              exit(1)
 
 
-    - name: Setup Environment
-      shell: cmd
-      run: |
-        REM Get initial environment variables
-        set > initial_env.txt
+      except subprocess.CalledProcessError as e:
+          print(f"Error running vswhere.exe: {e}")
+          print(f"vswhere output: {e.stdout}")
+          print(f"vswhere stderr: {e.stderr}")
+          exit(1) # Exit with a non-zero code on error
+      except FileNotFoundError:
+          print(f"vswhere.exe not found at: {vswhere_path}")
+          exit(1)
 
-        REM Call vcvarsall.bat using the output from the previous step
-        call "${{ steps.find-vcvarsall.outputs.vcvarsall_path }}" ${{ inputs.architecture }}
+  - name: Setup Environment
+    shell: cmd
+    run: |
+      REM Get initial environment variables
+      set > initial_env.txt
 
-        REM Get environment variables after calling vcvarsall.bat
-        set > final_env.txt
+      REM Call vcvarsall.bat using the output from the previous step
+      call "${{ steps.find-vcvarsall.outputs.vcvarsall_path }}" ${{ inputs.architecture }}
 
-        REM Call the Python script to update the GitHub Actions environment
-        python ${{ github.action_path }}\update_environment.py
+      REM Get environment variables after calling vcvarsall.bat
+      set > final_env.txt
+
+      REM Call the Python script to update the GitHub Actions environment
+      python ${{ github.action_path }}\update_environment.py
+
+  - name: Set cache dir env vars
+    env:
+      github_runner_temp: ${{ runner.temp }}
+    shell: pwsh
+    run: |
+      echo "CCACHE_DIR=${env:github_runner_temp}/.ccache" >> "${env:GITHUB_ENV}"
+      echo "VCPKG_DEFAULT_BINARY_CACHE=${env:github_runner_temp}/.vcpkg-cache" >> "${env:GITHUB_ENV}"
+
+      # vcpkg will error/exit if `VCPKG_DEFAULT_BINARY_CACHE` does not exist as a directory.
+      # c.f.  ccache happily creates the cache dir if it does not exist.
+      #       Don't create ccache's dir so that `action/cache` skips if ccache isn't populated.
+      New-Item -ItemType Directory -Path "${env:github_runner_temp}/.vcpkg-cache" -Force
+
+      # HACK: `actions/cache` will somehow pick up `tar` from the git installation. This bin dir is not on the PATH.
+      #       `tar` tries to find `gzip` (which is right next to it), and fails b/c the git bin dir isn't on the PATH.
+      #       This breaks attempts to download/upload caches.
+      #       Add git's bin dir to the PATH so that `actions/cache`'s invoke of `tar` can find `gzip`.
+      echo "PATH=${env:PATH};C:\\Program Files\\Git\\usr\\bin" >> "${env:GITHUB_ENV}"
+
+  # n.b. Caller is responsible for building w/ ccache enabled via `--use_cache`
+  #      We could set the env var `ORT_BUILD_WITH_CACHE` to indirectly enable it, but this hack seems deprecated.
+  #      Ideally ccache should be auto-enabled by the build system if ccache/sccache is detected on the PATH.
+  - name: Setup CCache
+    uses: actions/cache@v5
+    with:
+      # Fully qualify by `cache_key`. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+      key: ccache | ${{ inputs.cache_key }}
+      path: ${{ runner.temp }}/.ccache # ensure this is coordinated/matches w/ env-vars step above
+
+  - name: Setup VCPKG Cache
+    uses: actions/cache@v5
+    with:
+      key: vcpkg-cache | ${{ inputs.cache_key }}
+      path: ${{ runner.temp }}/.vcpkg-cache

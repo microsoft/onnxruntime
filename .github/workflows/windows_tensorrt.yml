@@ -39,6 +39,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_tensorrt.yml | build
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
@@ -115,19 +116,38 @@ jobs:
 
       - name: Build and Clean Binaries
         working-directory: ${{ runner.temp }}
+        shell: pwsh
         run: |
           npm install -g typescript
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
           # Execute the build process
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --nvcc_threads 1 --use_binskim_compliant_compile_flags --build_dir build --skip_submodule_sync --build_shared_lib --build --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.14.1.48.Windows.win10.cuda-12.9" --cuda_home="${{ runner.temp }}\v12.8" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build `
+            --build_dir "${env:RUNNER_TEMP}\build" `
+            --build_shared_lib `
+            --build_wheel `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
+            --cmake_generator "Visual Studio 17 2022" `
+            --config RelWithDebInfo `
+            --cuda_home "${env:RUNNER_TEMP}\v12.8" `
+            --enable_onnx_tests `
+            --nvcc_threads 1 `
+            --parallel `
+            --skip_submodule_sync `
+            --tensorrt_home "${env:RUNNER_TEMP}\TensorRT-10.14.1.48.Windows.win10.cuda-12.9" `
+            --update `
+            --use_binskim_compliant_compile_flags `
+            --use_tensorrt `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
 
           # Clean up the output directory before uploading artifacts
-          $outputDir = "${{ runner.temp }}\build\RelWithDebInfo"
+          $outputDir = "${env:RUNNER_TEMP}\build\RelWithDebInfo"
           Write-Host "Cleaning up files from $outputDir..."
 
           Remove-Item -Path "$outputDir\onnxruntime" -Recurse -Force -ErrorAction SilentlyContinue
@@ -139,7 +159,6 @@ jobs:
           Remove-Item -Path "$outputDir\CMakeFiles" -Recurse -Force -ErrorAction SilentlyContinue
           # Remove intermediate object files as in the original script
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
-        shell: pwsh
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -196,6 +215,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_tensorrt.yml | build # re-use build's caches, we do not expect to modify/extend them.
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
