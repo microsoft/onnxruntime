@@ -978,8 +978,12 @@ class InferenceSession {
     TimePoint time_sent_last_;  // the TimePoint of the last report
     // RuntimePerf backoff interval: starts at 2s between emissions, doubles each emission, caps at 10 min
     constexpr static int64_t kRuntimePerfInitialInterval = 2 * 1000 * 1000;    // 2 seconds in (us)
-    constexpr static int64_t kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;  // 10 minutes in (us)
+    constexpr static int64_t kTelemetryMaxInterval = 1000 * 1000 * 60 * 10;    // 10 minutes in (us)
     int64_t runtime_perf_interval_ = kRuntimePerfInitialInterval;
+
+    // Memory telemetry: emit every kTelemetryMaxInterval.
+    // Default-constructed TimePoint is epoch (time 0), so the first check always exceeds the interval.
+    TimePoint memory_telemetry_time_sent_last_;
   } telemetry_;
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
