@@ -99,8 +99,7 @@ TEST(DequantizeLinearOpTest, Int8_NonAlignedSize_Initializer) {
   test.AddInput<int8_t>("x_zero_point", {1}, {zero_point}, /*is_initializer=*/true);
   test.AddOutput<float>("y", {kNumElements}, y_expected);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // scalar zero & scale with int4
