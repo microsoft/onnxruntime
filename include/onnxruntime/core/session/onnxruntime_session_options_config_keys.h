@@ -264,6 +264,31 @@ static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "sess
 // The model will be saved to filename post_layout_transform_step_<step_number>.onnx.
 static const char* const kDebugLayoutTransformation = "session.debug_layout_transformation";
 
+// Uses NCHW layout for large convolution operations when a large convolution operation is detected
+// in the model as the NCHWc layout implementation performance is worse on some platforms than the NCHW implementation.
+// This is only relevant when operating on an NCHWc supported platform.
+// When this option is used, large convolution operations in a model that would originally use the NCHWc format
+// will instead use NCHW for better performance.
+// The rest of the model will continue to use the NCHWc format and benefit from its performance advantages where applicable.
+// So, this option might introduce some overhead of re-ordering data between NCHW and NCHWc formats, but it can improve the
+// overall performance of models with large convolution operations on certain hardware platforms.
+// The default value is "0", which means the NCHWc layout transformation is not disabled and will be used even
+// when large convolution operations are detected.
+// Set to "1" to disable the NCHWc layout transformation for large convolution operations and use NCHW layout instead.
+
+// Option values:
+// - "0": Use of NCHWc layout for the large convolution is not disallowed. [DEFAULT]
+// - "1": Use of NCHWc layout for the large convolution is disallowed.
+static const char* const kOrtSessionOptionsUseNchwLayoutForLargeConv = "session.use_nchw_layout_for_large_conv";
+
+// Disables NCHWc layout transformation throughout the graph
+// If contrib ops are disabled, NCHWc layout transformation is disabled by default
+//
+// Option values:
+// - "0": NCHWc layout transformation is not disabled. [DEFAULT]
+// - "1": NCHWc layout transformation is disabled.
+static const char* const kOrtSessionOptionsDisableNchwcLayoutTransformation = "session.disable_nchwc_layout_transformation";
+
 // Graph nodes that are not supported by the execution providers (EPs) explicitly added to the session are
 // assigned (i.e., "fallback") to the CPU EP by default.
 //
