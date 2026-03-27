@@ -5,7 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-#include "core/session/model_package_context.h"
+#include "core/session/model_package/model_package_context.h"
 
 namespace onnxruntime {
 

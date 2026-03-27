@@ -24,7 +24,7 @@
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
-#include "core/session/model_package_context.h"
+#include "core/session/model_package/model_package_context.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/model_editor_api_types.h"

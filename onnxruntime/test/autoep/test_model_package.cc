@@ -9,8 +9,8 @@
 
 #include "gtest/gtest.h"
 
-#include "core/session/model_package_context.h"
-#include "core/session/model_package_descriptor_parser.h"
+#include "core/session/model_package/model_package_context.h"
+#include "core/session/model_package/model_package_descriptor_parser.h"
 #include "core/session/abi_devices.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"

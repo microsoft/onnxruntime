@@ -12,8 +12,8 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
-#include "core/session/model_package_context.h"
-#include "core/session/model_package_descriptor_parser.h"
+#include "core/session/model_package/model_package_context.h"
+#include "core/session/model_package/model_package_descriptor_parser.h"
 
 namespace onnxruntime {
 namespace {

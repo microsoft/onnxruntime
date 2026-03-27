@@ -12,7 +12,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
-#include "core/session/model_package_descriptor_parser.h"
+#include "core/session/model_package/model_package_descriptor_parser.h"
 
 namespace onnxruntime {
 
@@ -30,7 +30,7 @@ namespace onnxruntime {
 //
 // {
 //     "name" : <logical_model_name>,
-//     "component_models" : { // optional, if missing, ORT will discover component models by looking for folders with 
+//     "component_models" : { // optional, if missing, ORT will discover component models by looking for folders with
 //                            // metadata.json under model_package_root/models
 //         <model_name_1> : {
 //            ...             // Could be empty.
@@ -268,7 +268,7 @@ Status ModelPackageDescriptorParser::ParseManifest(const std::filesystem::path& 
             package_root / "models" / component_model_name / variant_name;
 
         auto find_single_onnx = [&](const std::filesystem::path& search_dir,
-                                   std::filesystem::path& resolved_path) -> Status {
+                                    std::filesystem::path& resolved_path) -> Status {
           std::vector<std::filesystem::path> onnx_files;
           for (const auto& entry : std::filesystem::directory_iterator(search_dir)) {
             if (!entry.is_regular_file()) {
