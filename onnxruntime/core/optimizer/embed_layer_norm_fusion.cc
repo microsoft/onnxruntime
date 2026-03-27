@@ -36,13 +36,12 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, const Node& source_nod
                              "Cast Input from int64 to int32",
                              std::array{input},
                              std::array{&cast32},
+                             source_node,
                              nullptr,
                              kOnnxDomain);
 
   // Add attribute: "to" = 6
   node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
-
-  optimizer_utils::DuplicateNodeAnnotation(source_node, node);
   node.SetExecutionProviderType(source_node.GetExecutionProviderType());
   return &cast32;
 }
@@ -515,7 +514,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
                                               "fused EmbedLayerNorm subgraphs ",
                                               embed_layer_norm_input_defs,
                                               std::array{layer_norm_node.MutableOutputDefs()[0], &mask_index},
-                                              {}, kMSDomain);
+                                              layer_norm_node, nullptr, kMSDomain);
 
   // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
   // will be used.
@@ -528,7 +527,6 @@ static void CreateEmbedLayernormNode(Graph& graph,
   }
 
   // Assign provider to this new node. Provider should be same as the provider for old node.
-  optimizer_utils::DuplicateNodeAnnotation(layer_norm_node, embed_layer_norm_node);
   embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
 }
 

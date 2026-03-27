@@ -134,10 +134,9 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
           "DeQuantizeLinear from WhereDummyDq GraphTransformer",
           {&dummy_data_arg, &dummy_scale_arg, &dummy_zp_arg},
           {&dummy_dq_arg},
+          node,
           nullptr,
           dq_node->Domain());
-
-  optimizer_utils::DuplicateNodeAnnotation(node, dummy_dq_node);
 
   node.MutableInputDefs()[const_idx] = &dummy_dq_arg;
   if (graph.GetConsumerNodes(where_inputs[const_idx]->Name()).size() == 0) {

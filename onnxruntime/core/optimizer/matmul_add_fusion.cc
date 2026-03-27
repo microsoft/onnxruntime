@@ -205,9 +205,8 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         NodeArg* new_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(name + "_reshape_arg"), &new_arg_type);
         Node& reshape_node = graph.AddNode(graph.GenerateNodeName(name + "_reshape"), "Reshape", "Reshape for " + name,
                                            {is_input ? gemm_input_defs[0] : new_arg, shape_arg},
-                                           {is_input ? new_arg : gemm_output_defs[0]});
-        // Runs before partitioning
-        optimizer_utils::DuplicateNodeAnnotation(matmul_node, reshape_node);
+                                           {is_input ? new_arg : gemm_output_defs[0]},
+                                           matmul_node);
         reshape_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
         return &reshape_node;
       };
@@ -220,9 +219,8 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     Node& gemm_node = graph.AddNode(graph.GenerateNodeName(matmul_node.Name() + "/MatMulAddFusion"), "Gemm",
-                                    "fused Matmul and Add", gemm_input_defs, gemm_output_defs);
-    // Runs before partitioning
-    optimizer_utils::DuplicateNodeAnnotation(matmul_node, gemm_node);
+                                    "fused Matmul and Add", gemm_input_defs, gemm_output_defs,
+                                    matmul_node);
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
     if (need_reshape) {

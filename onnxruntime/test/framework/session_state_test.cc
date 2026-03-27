@@ -434,9 +434,10 @@ static void CollectNodeNames(const Graph& graph, std::vector<std::string>& names
 // all nodes so callers can choose a threshold relative to the actual total.
 // This avoids relying on a pre-baked stats file whose node name hashes
 // become stale when graph optimizers change node input/output names.
-static size_t GenerateDynamicNodeStatsFile(const ORTCHAR_T* model_path,
-                                           const std::filesystem::path& output_path,
-                                           size_t cost_per_node = 1024) {
+static void GenerateDynamicNodeStatsFile(const ORTCHAR_T* model_path,
+                                         const std::filesystem::path& output_path,
+                                         size_t& total_cost,
+                                         size_t cost_per_node = 1024) {
   const auto& default_logger = DefaultLoggingManager().DefaultLogger();
   std::shared_ptr<onnxruntime::Model> model;
   ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, default_logger));
@@ -454,7 +455,7 @@ static size_t GenerateDynamicNodeStatsFile(const ORTCHAR_T* model_path,
   }
   ofs.close();
 
-  return node_names.size() * cost_per_node;
+  total_cost = node_names.size() * cost_per_node;
 }
 
 void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
@@ -549,7 +550,8 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
 
   // Generate node stats dynamically so names always match the current graph
   constexpr size_t cost_per_node = 1024;
-  size_t total_cost = GenerateDynamicNodeStatsFile(model_path, stats_path, cost_per_node);
+  size_t total_cost = 0;
+  GenerateDynamicNodeStatsFile(model_path, stats_path, total_cost, cost_per_node);
   ASSERT_GT(total_cost, 0U);
 
   // Use a limit much larger than total cost so all nodes are assigned CUDA.
@@ -571,7 +573,8 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
     }
   });
 
-  std::filesystem::remove(stats_path);
+  std::error_code remove_ec;
+  std::filesystem::remove(stats_path, remove_ec);
 }
 
 TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
@@ -583,7 +586,8 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
 
   // Generate node stats dynamically so names always match the current graph.
   constexpr size_t cost_per_node = 1024;
-  size_t total_cost = GenerateDynamicNodeStatsFile(model_path, stats_path, cost_per_node);
+  size_t total_cost = 0;
+  GenerateDynamicNodeStatsFile(model_path, stats_path, total_cost, cost_per_node);
   ASSERT_GT(total_cost, 0U);
 
   // Set threshold to half the total cost so some nodes must be offloaded to CPU.
@@ -611,7 +615,8 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
     EXPECT_TRUE(cpu_node_found);
   });
 
-  std::filesystem::remove(stats_path);
+  std::error_code remove_ec;
+  std::filesystem::remove(stats_path, remove_ec);
 }
 
 TEST(SessionStateTest, TestLayeringPartitioning) {

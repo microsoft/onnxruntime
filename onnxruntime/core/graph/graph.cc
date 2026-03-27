@@ -4658,6 +4658,38 @@ Node& Graph::AddNode(const std::string& name,
   return *node;
 }
 
+Node& Graph::AddNode(const std::string& name,
+                     const std::string& op_type,
+                     const std::string& description,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
+                     const Node& annotation_source,
+                     const NodeAttributes* attributes,
+                     const std::string& domain) {
+  auto& new_node = AddNode(name, op_type, description, input_args, output_args, attributes, domain);
+  const auto& annotation = annotation_source.GetLayeringAnnotation();
+  if (!annotation.empty()) {
+    new_node.SetLayeringAnnotation(annotation);
+  }
+  return new_node;
+}
+
+Node& Graph::AddNode(const std::string& name,
+                     const std::string& op_type,
+                     const std::string& description,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
+                     const Node& annotation_source,
+                     NodeAttributes&& attributes,
+                     const std::string& domain) {
+  auto& new_node = AddNode(name, op_type, description, input_args, output_args, std::move(attributes), domain);
+  const auto& annotation = annotation_source.GetLayeringAnnotation();
+  if (!annotation.empty()) {
+    new_node.SetLayeringAnnotation(annotation);
+  }
+  return new_node;
+}
+
 bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
   if (nullptr == node) {
