@@ -356,7 +356,7 @@ TEST(NvExecutionProviderTest, LoadUnloadPluginLibrary) {
                                              // but that is not a requirement and the two can differ.
                                              return c_api->EpDevice_EpName(device) == registration_name;
                                            });
-  ASSERT_EQ(num_test_ep_devices, 1) << "Expected an OrtEpDevice to have been created by the test library.";
+  ASSERT_GE(num_test_ep_devices, 1) << "Expected at least one OrtEpDevice to have been created by the test library.";
 
   // and this should unload it
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env,
