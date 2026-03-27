@@ -335,7 +335,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       // with inherited annotations
       InlinedVector<NodeIndex> new_node_indices;
       for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
-        new_node_indices.push_back(idx);
+        if (graph.GetNode(idx) != nullptr) {
+          new_node_indices.push_back(idx);
+        }
       }
       params.layering_index->Update(graph, new_node_indices);
     }
