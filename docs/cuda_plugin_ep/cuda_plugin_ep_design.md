@@ -142,6 +142,35 @@ In the in-tree build, kernels register through centralized tables (`cuda_nhwc_ke
 // and registers each kernel into an adapter::KernelRegistry.
 ```
 
+#### 3.5.1 Type Constraint Names and OpSchema Access
+
+Every kernel registration includes type constraint names — string literals such as `"T"`, `"T1"`, `"U"` — that must exactly match the formal parameter type-constraint strings defined in the ONNX operator schema. In the current plugin build, these names are **hard-coded** at compile time with no runtime validation against the actual schema. If a constraint name is wrong, kernel matching silently fails during `GetCapability`.
+
+PR #27713 adds `OrtEpApi` functions that let plugin EPs query ONNX operator schemas from ORT's global schema registry at runtime (available from ORT 1.25):
+
+| `OrtEpApi` Function | C++ Wrapper | Purpose |
+|---------------------|-------------|----------|
+| `GetOpSchema(name, max_ver, domain)` | `Ort::GetOpSchema()` | Look up a schema by op name, max opset version, and domain |
+| `OpSchema_GetSinceVersion` | `ConstOpSchema::GetSinceVersion()` | Opset version that introduced this schema entry |
+| `OpSchema_GetNumInputs` / `_GetNumOutputs` | `GetNumInputs()` / `GetNumOutputs()` | Formal input/output count |
+| `OpSchema_GetInputName` / `_GetOutputName` | `GetInputName(i)` / `GetOutputName(i)` | Formal parameter name |
+| `OpSchema_GetInputTypeStr` / `_GetOutputTypeStr` | `GetInputTypeStr(i)` / `GetOutputTypeStr(i)` | Type constraint string (e.g., `"T"`) |
+| `OpSchema_HasTypeConstraint` | `HasTypeConstraint(str)` | Whether a string is a valid type constraint name in the schema |
+
+The returned `OrtOpSchema*` is non-owning — it points into the global `ONNX_NAMESPACE::OpSchemaRegistry` singleton and is valid for the lifetime of the ORT process.
+
+**Why the plugin cannot link its own ONNX library:** The `OpSchemaRegistry` is a Meyers singleton (`static` local in `Instance()`). Each shared library gets its own copy of that static variable — on Windows each DLL is isolated by default, on macOS two-level namespaces have the same effect, and on Linux behavior depends on `dlopen` flags. Even when isolation doesn't occur, the EP's registry would lack ORT's contrib and internal schemas, and version mismatches between the EP's ONNX library and ORT's vendored copy could cause silent divergence. The `OrtEpApi` route is the only reliable, portable way to query the schemas ORT actually uses.
+
+**Impact on the CUDA plugin EP:**
+
+1. **Registration-time validation.** `CreateCudaKernelRegistry()` can optionally validate each registered kernel's type constraint names against the schema after collecting all entries from `PluginKernelCollector`. A mismatch can be logged as a warning (debug builds) or an error, catching drift when ONNX spec updates rename constraint strings.
+
+2. **NHWC / internal-domain diagnostics.** For rewritten `com.ms.internal.nhwc` nodes, the schema API can confirm that the kernel's registered domain, version range, and constraint names actually match the internal-domain schema entry, improving the diagnostics called for in [Section 5.3.1.3](#5313-nhwc-design-requirements).
+
+3. **Parity tooling.** `cuda_plugin_parity_report.py` can use the C++ wrapper to compare the plugin's registered constraint names against the schema, flagging incorrect or missing constraints in the parity report.
+
+4. **Future: schema-driven registration helpers.** A `KernelDefBuilder` helper could derive constraint names automatically from the schema rather than relying on hard-coded strings, reducing the manual maintenance burden when new opset versions change constraint names. See [Section 11.6](#116-if-opschema-access-is-available-schema-validated-type-constraints).
+
 ---
 
 ## 4. CPU Base Class Helpers — The SHARED_PROVIDER Pattern
@@ -510,6 +539,7 @@ The adapter layer provides thin wrappers around the ORT C API that present a C++
 | `Ep` | `OrtEp` | `EpImpl()`, allocators, data transfer |
 | `Logger` | Plugin logger | Logging interface |
 | `DataTransferManager` | `IDataTransfer` | `CopyTensor()` |
+| `ConstOpSchema` | `const OrtOpSchema*` | `GetSinceVersion()`, `GetNumInputs()`, `GetInputName()`, `GetInputTypeStr()`, `HasTypeConstraint()` (ORT ≥ 1.25, PR #27713) |
 
 ---
 
@@ -731,6 +761,66 @@ Use the plugin-compatible overloads already in `CudaKernel`:
 // Use:          GetCublasHandle(ctx)  // or GetCublasHandle(Stream(ctx))
 ```
 
+### 11.6 If OpSchema access is available — schema-validated type constraints
+
+With the `OrtEpApi` OpSchema APIs (ORT ≥ 1.25, PR #27713), the plugin can validate or derive type constraint names at kernel registration time rather than relying solely on hard-coded strings.
+
+#### 11.6.1 Validation mode (recommended first step)
+
+Add a debug-mode validation pass in `CreateCudaKernelRegistry()` that runs after all kernels are collected from `PluginKernelCollector`. For each registered kernel, look up its `OrtOpSchema` and verify that every type constraint name used in the `KernelDef` actually appears in the schema's type constraint map:
+
+```cpp
+// In CreateCudaKernelRegistry(), after building the registry:
+#ifndef NDEBUG
+for (auto build_fn : entries) {
+  auto info = build_fn();
+  if (info.kernel_def == nullptr) continue;
+
+  // Retrieve the op name, domain, and since_version from the KernelDef.
+  const char* op_name = info.kernel_def->GetOpName();
+  const char* domain = info.kernel_def->GetDomain();
+  int since_version = info.kernel_def->GetSinceVersion();
+
+  // Look up the ONNX schema from ORT's global registry.
+  Ort::ConstOpSchema schema = Ort::GetOpSchema(op_name, since_version, domain);
+  if (!schema) continue;  // contrib/internal ops may not have an ONNX schema
+
+  // Validate each type constraint name against the schema.
+  for (const auto& [constraint_name, types] : info.kernel_def->GetTypeConstraints()) {
+    if (!schema.HasTypeConstraint(constraint_name.c_str())) {
+      LOGS_DEFAULT(WARNING) << "Plugin kernel " << op_name
+                            << ": type constraint '" << constraint_name
+                            << "' not found in OpSchema (domain=" << domain
+                            << ", version=" << since_version << ")";
+    }
+  }
+}
+#endif
+```
+
+This catches hard-to-debug kernel-matching failures caused by constraint name typos or opset version drift.
+
+#### 11.6.2 Schema-driven constraint helper (future)
+
+A `KernelDefBuilder` extension could derive constraint names from the schema automatically:
+
+```cpp
+/// Look up the type constraint string for a given input index from the OpSchema.
+/// Falls back to the provided default if the schema is not found (e.g., contrib ops).
+inline const char* GetInputTypeConstraintName(
+    const char* op_name, int opset_version, const char* domain, size_t input_index,
+    const char* fallback = "T") {
+  Ort::ConstOpSchema schema = Ort::GetOpSchema(op_name, opset_version, domain);
+  if (!schema || input_index >= schema.GetNumInputs()) return fallback;
+  // Cache the result to avoid repeated lookups for typed kernel variants.
+  static thread_local std::string cached_name;
+  cached_name = schema.GetInputTypeStr(input_index);
+  return cached_name.c_str();
+}
+```
+
+This is a quality-of-life improvement rather than a required change — the existing hard-coded constraint names are correct for all currently registered kernels.
+
 ---
 
 ## 12. File Layout
@@ -838,7 +928,35 @@ include/onnxruntime/ep/
 
 10. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure will be reintroduced once the API is extended.
 
-11. **Resource accounting and annotation-based partitioning (PR #27595)** — ORT is acquiring two related features that affect how graph nodes are partitioned to EPs:
+11. **OpSchema-validated kernel registration (PR #27713)** — PR #27713 adds `OrtEpApi` functions that let plugin EPs query ONNX operator schemas from ORT's global registry (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). Concrete follow-up work for the CUDA plugin EP:
+
+    **A. Registration-time validation pass**
+
+    Add a debug/diagnostic pass in `CreateCudaKernelRegistry()` that validates every registered kernel's type constraint names against the schema. This is the highest-value, lowest-risk change — it catches silent kernel-matching failures caused by constraint name drift without altering the registration flow. See [Section 11.6.1](#1161-validation-mode-recommended-first-step) for the implementation pattern.
+
+    **B. NHWC internal-domain schema diagnostics**
+
+    Extend the validation pass to cover `com.ms.internal.nhwc`-domain registrations. When kernel lookup fails for a rewritten NHWC node, the diagnostic can now report exactly which constraint name was expected vs. what the kernel registered, directly addressing the diagnostic requirement in [Section 5.3.1.3](#5313-nhwc-design-requirements).
+
+    **C. Parity report enhancement**
+
+    Update `cuda_plugin_parity_report.py` to use the schema API (via a small C++ test harness or Python ONNX bindings) to flag type-constraint mismatches between the plugin's registered kernels and the ONNX schema, in addition to the existing op-coverage comparison.
+
+    **D. Schema-driven `KernelDefBuilder` helpers (longer term)**
+
+    Create a `KernelDefBuilder` helper that auto-derives constraint names from the schema instead of requiring hard-coded strings. This reduces maintenance burden when new opset versions introduce constraint name changes, but is lower priority than the validation pass since all current constraint names are correct.
+
+    **E. Potential code locations for changes**
+
+    | File | Change |
+    |------|--------|
+    | `cuda_plugin_kernels.cu` / `CreateCudaKernelRegistry()` | Add schema validation loop after kernel collection |
+    | `cuda_kernel_adapter.h` | (Optional) Add schema-aware macro variant or post-registration hook |
+    | `include/onnxruntime/ep/adapter/kernel_def_builder.h` | (Optional) Add schema-lookup helper for constraint names |
+    | `cuda_ep.cc` / `GetCapabilityImpl()` | (Optional) Add schema-based diagnostic when `EpGraphSupportInfo_LookUpKernel` returns nullptr |
+    | `test_cuda_plugin_ep.py` | Add a validation stage that exercises schema-validated registration |
+
+12. **Resource accounting and annotation-based partitioning (PR #27595)** — ORT is acquiring two related features that affect how graph nodes are partitioned to EPs:
 
     **A. Resource accounting**
 
