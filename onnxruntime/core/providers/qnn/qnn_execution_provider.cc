@@ -710,7 +710,7 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 
     std::lock_guard<std::mutex> lock(config_id_mutex_);
     if (htp_power_config_id_.has_value()) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(*htp_power_config_id_));
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DeInitializePowerCfgId(*htp_power_config_id_));
     }
   }
 
@@ -1283,7 +1283,21 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
                                                 all_graph_configs_ptr, json_graph_filepath));
-    ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
+
+    uint32_t htp_power_config_id = 0;
+
+    if (GetHtpPowerConfigId(htp_power_config_id)) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::INIT_START, htp_power_config_id, default_htp_performance_mode_, default_rpc_polling_time_, default_rpc_control_latency_));
+    }
+
+    auto rtVal = qnn_model->FinalizeGraphs(logger);
+
+    if (GetHtpPowerConfigId(htp_power_config_id)) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::INIT_DONE, htp_power_config_id, default_htp_performance_mode_, default_rpc_polling_time_, default_rpc_control_latency_));
+    }
+
+    ORT_RETURN_IF_ERROR(rtVal);
+
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
     LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
@@ -1350,12 +1364,24 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     for (auto main_context_pos : main_context_pos_list) {
       const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
       // Create QNN context from the cached binary, deserialize the QNN graph from the binary
-      ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
-                                                       context_model_path,
-                                                       qnn_backend_manager_.get(),
-                                                       qnn_models,
-                                                       logger,
-                                                       max_spill_fill_size));
+      uint32_t htp_power_config_id = 0;
+
+      if (GetHtpPowerConfigId(htp_power_config_id)) {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::INIT_START, htp_power_config_id, default_htp_performance_mode_, default_rpc_polling_time_, default_rpc_control_latency_));
+      }
+
+      Status rtVal = qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
+                                                  context_model_path,
+                                                  qnn_backend_manager_.get(),
+                                                  qnn_models,
+                                                  logger,
+                                                  max_spill_fill_size);
+
+      if (GetHtpPowerConfigId(htp_power_config_id)) {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::INIT_DONE, htp_power_config_id, default_htp_performance_mode_, default_rpc_polling_time_, default_rpc_control_latency_));
+      }
+
+      ORT_RETURN_IF_ERROR(rtVal);
     }
 
     for (auto fused_node_and_graph : fused_nodes_and_graphs) {
@@ -1473,17 +1499,31 @@ bool QNNExecutionProvider::GetPerThreadHtpPowerConfigs(qnn::PerThreadHtpPowerCon
     configs_set = true;
 
     LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+  } else {
+    per_thread_htp_power_configs.rpc_control_latency = default_rpc_control_latency_;
+    configs_set = true;
   }
 
-  uint32_t rpc_polling_time = 0;
   if (qnn::HtpPerformanceMode::kHtpBurst == pre_run_htp_performance_mode) {
-    rpc_polling_time = 9999;
+    per_thread_htp_power_configs.rpc_polling_time = 9999;
+    configs_set = true;
+  } else {
+    per_thread_htp_power_configs.rpc_polling_time = default_rpc_polling_time_;
+    configs_set = true;
+  }
+
+  if (qnn::HtpPerformanceMode::kHtpDefault != dynamic_htp_performance_mode_) {
+    // reset perf mode, rpc control latency and rpc polling time to dynamic perf mode values
+    per_thread_htp_power_configs.default_perf_mode = dynamic_htp_performance_mode_;
+    configs_set = true;
+  } else if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode_) {
+    per_thread_htp_power_configs.default_perf_mode = default_htp_performance_mode_;
+    configs_set = true;
   }
 
   if (qnn::HtpPerformanceMode::kHtpDefault != pre_run_htp_performance_mode) {
     per_thread_htp_power_configs.pre_run_perf_mode = pre_run_htp_performance_mode;
     // rpc polling time will only be updated with perf mode changes
-    per_thread_htp_power_configs.rpc_polling_time = rpc_polling_time;
     configs_set = true;
   }
 
@@ -1600,17 +1640,11 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
       ParseHtpPerformanceMode(value, htp_performance_mode);
 
-      uint32_t rpc_polling_time = 0;
-      if (htp_performance_mode == qnn::HtpPerformanceMode::kHtpBurst) {
-        rpc_polling_time = 9999;
-      }
-
-      uint32_t htp_power_config_id = 0;
-      if (GetHtpPowerConfigId(htp_power_config_id)) {
-        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfigs(htp_power_config_id,
-                                                                     htp_performance_mode,
-                                                                     rpc_polling_time,
-                                                                     default_rpc_control_latency_));
+      if (htp_performance_mode != qnn::HtpPerformanceMode::kHtpDefault) {
+        dynamic_htp_performance_mode_ = htp_performance_mode;
+        if (htp_performance_mode == qnn::HtpPerformanceMode::kHtpBurst) {
+          default_rpc_polling_time_ = 9999;
+        }
       }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
@@ -1643,19 +1677,10 @@ void QNNExecutionProvider::CreateHtpPowerConfigId() const {
   constexpr uint32_t core_id = 0;
   uint32_t htp_power_config_id;
 
-  Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id_, core_id, htp_power_config_id);
+  Status rt = qnn_backend_manager_->InitializePowerCfgId(device_id_, core_id, htp_power_config_id);
 
   if (rt.IsOK()) {
     htp_power_config_id_ = htp_power_config_id;
-
-    rt = qnn_backend_manager_->SetHtpPowerConfigs(htp_power_config_id,
-                                                  default_htp_performance_mode_,
-                                                  default_rpc_polling_time_,
-                                                  default_rpc_control_latency_);
-
-    if (!rt.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Unable to set HTP power configurations.";
-    }
   } else {
     LOGS_DEFAULT(ERROR) << "Failed to create HTP power config id.";
   }
