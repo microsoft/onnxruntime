@@ -826,8 +826,10 @@ TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
   EXPECT_EQ(schema.GetOutputName(0), "C");
   EXPECT_EQ(schema.GetOutputTypeStr(0), "T");
 
-  EXPECT_TRUE(schema.HasTypeConstraint("T"));
-  EXPECT_FALSE(schema.HasTypeConstraint("U"));
+  // Verify type constraint lookup via GetTypeConstraints + FindByName
+  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  EXPECT_TRUE(tcs.FindByName("T").has_value());
+  EXPECT_FALSE(tcs.FindByName("U").has_value());
 }
 
 // Test that querying the same op at different max_inclusive_version values can return different schema versions.
@@ -989,19 +991,22 @@ TEST(OpSchemaTypeConstraintTest, FindByName) {
 
   Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
 
-  // Find "T" by name and verify it matches the result from linear search
-  size_t t_idx = tcs.FindByName("T");
-  EXPECT_EQ(tcs.GetName(t_idx), "T");
+  // Find "T" by name
+  auto t_result = tcs.FindByName("T");
+  ASSERT_TRUE(t_result.has_value());
+  EXPECT_EQ(tcs.GetName(*t_result), "T");
 
   // Find "T1" by name
-  size_t t1_idx = tcs.FindByName("T1");
-  EXPECT_EQ(tcs.GetName(t1_idx), "T1");
+  auto t1_result = tcs.FindByName("T1");
+  ASSERT_TRUE(t1_result.has_value());
+  EXPECT_EQ(tcs.GetName(*t1_result), "T1");
 
   // T and T1 should be at different indices
-  EXPECT_NE(t_idx, t1_idx);
+  EXPECT_NE(*t_result, *t1_result);
 
-  // Looking up a nonexistent constraint should throw
-  EXPECT_THROW(tcs.FindByName("NonExistent"), Ort::Exception);
+  // Looking up a nonexistent constraint returns nullopt (not an error)
+  auto missing = tcs.FindByName("NonExistent");
+  EXPECT_FALSE(missing.has_value());
 }
 
 // Test the natural workflow: input index → type constraint name → allowed types via FindByName.
@@ -1015,10 +1020,11 @@ TEST(OpSchemaTypeConstraintTest, InputToAllowedTypesWorkflow) {
   std::string type_str = schema.GetInputTypeStr(0);  // "T"
 
   // Use FindByName to get its index in the container
-  size_t idx = tcs.FindByName(type_str.c_str());
+  auto idx = tcs.FindByName(type_str.c_str());
+  ASSERT_TRUE(idx.has_value());
 
   // Now get the allowed types
-  auto allowed_types = tcs.GetAllowedTypes(idx);
+  auto allowed_types = tcs.GetAllowedTypes(*idx);
   EXPECT_GT(allowed_types.size(), 1u);
 }
 

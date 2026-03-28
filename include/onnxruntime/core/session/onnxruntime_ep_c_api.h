@@ -1559,20 +1559,6 @@ struct OrtEpApi {
   ORT_API2_STATUS(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
                   _Outptr_ const char** out);
 
-  /** \brief Check if a type constraint name exists in the schema's type constraint map.
-   *
-   * This is used to determine whether a formal parameter name or its type string should be used
-   * as the type constraint identifier when building kernel definitions.
-   *
-   * \param[in] schema The OrtOpSchema instance.
-   * \param[in] type_str A null-terminated string for the type constraint name to look up.
-   * \param[out] out Set to true if the type constraint exists in the schema's type constraint map, false otherwise.
-   *
-   * \since Version 1.25.
-   */
-  ORT_API2_STATUS(OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str,
-                  _Out_ bool* out);
-
   /** \brief Build type constraint information from an operator schema.
    *
    * Allocates and populates an OrtOpSchemaTypeConstraints container that holds all type constraints
@@ -1668,6 +1654,23 @@ struct OrtEpApi {
                   _In_ size_t index, _Outptr_ const size_t** out_indices, _Out_ size_t* count);
 
   ORT_CLASS_RELEASE(OpSchemaTypeConstraints);
+
+  /** \brief Find a type constraint by name and return its index.
+   *
+   * Searches the type constraints container for an entry whose name matches the given string.
+   * If found, sets out_index to the zero-based index. If not found, sets out_index to SIZE_MAX.
+   * This is not an error condition — not-found is a normal query result.
+   *
+   * \param[in] type_constraints The OrtOpSchemaTypeConstraints instance.
+   * \param[in] type_str A null-terminated string for the type constraint name to find (e.g., "T").
+   * \param[out] out_index The zero-based index of the matching type constraint, or SIZE_MAX if not found.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchemaTypeConstraints_FindByName, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
+                  _In_ const char* type_str, _Out_ size_t* out_index);
 };
 
 /**

@@ -914,19 +914,6 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OpSchema_HasTypeConstraint, _In_ const OrtOpSchema* schema, _In_ const char* type_str,
-                    _Out_ bool* out) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
-  ORT_API_RETURN_IF(type_str == nullptr, ORT_INVALID_ARGUMENT, "type_str must not be null");
-  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
-
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  *out = onnx_schema->typeConstraintMap().count(type_str) > 0;
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraints, _In_ const OrtOpSchema* schema,
                     _Outptr_ OrtOpSchemaTypeConstraints** out) {
   API_IMPL_BEGIN
@@ -1058,6 +1045,25 @@ ORT_API(void, ReleaseOpSchemaTypeConstraints, _Frees_ptr_opt_ OrtOpSchemaTypeCon
   delete type_constraints;
 }
 
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_FindByName, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
+                    _In_ const char* type_str, _Out_ size_t* out_index) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(type_constraints == nullptr, ORT_INVALID_ARGUMENT, "type_constraints must not be null");
+  ORT_API_RETURN_IF(type_str == nullptr, ORT_INVALID_ARGUMENT, "type_str must not be null");
+  ORT_API_RETURN_IF(out_index == nullptr, ORT_INVALID_ARGUMENT, "out_index must not be null");
+
+  *out_index = SIZE_MAX;
+  for (size_t i = 0; i < type_constraints->entries.size(); ++i) {
+    if (type_constraints->entries[i].type_param_str == type_str) {
+      *out_index = i;
+      break;
+    }
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1130,7 +1136,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchema_GetNumOutputs,
     &OrtExecutionProviderApi::OpSchema_GetOutputName,
     &OrtExecutionProviderApi::OpSchema_GetOutputTypeStr,
-    &OrtExecutionProviderApi::OpSchema_HasTypeConstraint,
     &OrtExecutionProviderApi::OpSchema_GetTypeConstraints,
     &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetCount,
     &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetName,
@@ -1138,6 +1143,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetInputIndices,
     &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetOutputIndices,
     &OrtExecutionProviderApi::ReleaseOpSchemaTypeConstraints,
+    &OrtExecutionProviderApi::OpSchemaTypeConstraints_FindByName,
     // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
@@ -1148,7 +1154,7 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
-static_assert(offsetof(OrtEpApi, ReleaseOpSchemaTypeConstraints) / sizeof(void*) == 65,
+static_assert(offsetof(OrtEpApi, OpSchemaTypeConstraints_FindByName) / sizeof(void*) == 65,
               "Size of version 25 API cannot change");
 
 }  // namespace OrtExecutionProviderApi

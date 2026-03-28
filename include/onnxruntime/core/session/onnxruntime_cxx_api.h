@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -3543,8 +3544,9 @@ struct OpSchemaTypeConstraintsImpl : Base<T> {
   ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetOutputIndices
   std::vector<size_t> GetOutputIndices(size_t index) const;
 
-  ///< C++-only convenience: finds a type constraint by name. Throws Ort::Exception if not found.
-  size_t FindByName(const char* type_str) const;
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_FindByName.
+  ///< Returns the index of the named constraint, or std::nullopt if not found.
+  std::optional<size_t> FindByName(const char* type_str) const;
 };
 }  // namespace detail
 
@@ -3583,9 +3585,6 @@ struct ConstOpSchemaImpl : Base<T> {
 
   ///< Wraps OrtEpApi::OpSchema_GetOutputTypeStr
   std::string GetOutputTypeStr(size_t index) const;
-
-  ///< Wraps OrtEpApi::OpSchema_HasTypeConstraint
-  bool HasTypeConstraint(const char* type_str) const;
 
   ///< Wraps OrtEpApi::OpSchema_GetTypeConstraints. Returns an owning OpSchemaTypeConstraints container.
   OpSchemaTypeConstraints GetTypeConstraints() const;

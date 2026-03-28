@@ -13,11 +13,11 @@
 /// the allowed data types and which input/output formal parameters use it.
 struct OrtOpSchemaTypeConstraints {
   struct Entry {
-    std::string type_param_str;                   // e.g., "T"
-    std::vector<std::string> allowed_type_strs;   // e.g., {"tensor(float)", "tensor(double)"}
-    std::vector<const char*> allowed_type_ptrs;   // C API view into allowed_type_strs
-    std::vector<size_t> input_indices;            // input indices using this constraint
-    std::vector<size_t> output_indices;           // output indices using this constraint
+    std::string type_param_str;                  // e.g., "T"
+    std::vector<std::string> allowed_type_strs;  // e.g., {"tensor(float)", "tensor(double)"}
+    std::vector<const char*> allowed_type_ptrs;  // C API view into allowed_type_strs
+    std::vector<size_t> input_indices;           // input indices using this constraint
+    std::vector<size_t> output_indices;          // output indices using this constraint
   };
 
   std::vector<Entry> entries;

@@ -3993,13 +3993,6 @@ inline std::string ConstOpSchemaImpl<T>::GetOutputTypeStr(size_t index) const {
 }
 
 template <typename T>
-inline bool ConstOpSchemaImpl<T>::HasTypeConstraint(const char* type_str) const {
-  bool result = false;
-  ThrowOnError(GetEpApi().OpSchema_HasTypeConstraint(this->p_, type_str, &result));
-  return result;
-}
-
-template <typename T>
 inline Ort::OpSchemaTypeConstraints ConstOpSchemaImpl<T>::GetTypeConstraints() const {
   OrtOpSchemaTypeConstraints* tcs = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetTypeConstraints(this->p_, &tcs));
@@ -4050,15 +4043,13 @@ inline std::vector<size_t> OpSchemaTypeConstraintsImpl<T>::GetOutputIndices(size
 }
 
 template <typename T>
-inline size_t OpSchemaTypeConstraintsImpl<T>::FindByName(const char* type_str) const {
-  size_t count = GetCount();
-  for (size_t i = 0; i < count; ++i) {
-    if (GetName(i) == type_str) {
-      return i;
-    }
+inline std::optional<size_t> OpSchemaTypeConstraintsImpl<T>::FindByName(const char* type_str) const {
+  size_t index = SIZE_MAX;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraints_FindByName(this->p_, type_str, &index));
+  if (index == SIZE_MAX) {
+    return std::nullopt;
   }
-  ThrowOnError(Status((std::string("Type constraint '") + type_str + "' not found.").c_str(), ORT_FAIL));
-  return 0;  // unreachable
+  return index;
 }
 }  // namespace detail
 
