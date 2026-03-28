@@ -1,8 +1,4 @@
 parameters:
-- name: api_version
-  type: number
-  default: 24
-
 - name: package_version
   type: string
   default: dev
@@ -55,7 +51,6 @@ stages:
 
     - template: ../templates/set-plugin-build-variables-step.yml
       parameters:
-        api_version: ${{ parameters.api_version }}
         package_version: ${{ parameters.package_version }}
 
     - script: |
@@ -101,6 +96,6 @@ stages:
         command: publish
         publishDirectory: '$(Build.BinariesDirectory)/universal_package'
         vstsFeedPublish: 'PublicPackages/ORT-Nightly'
-        vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-macos-arm64-api${{ parameters.api_version }}'
+        vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-macos-arm64'
         versionOption: custom
         versionPublish: '$(PluginUniversalPackageVersion)'

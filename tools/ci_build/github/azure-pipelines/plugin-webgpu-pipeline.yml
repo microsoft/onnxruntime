@@ -28,14 +28,6 @@ parameters:
   type: boolean
   default: false
 
-- name: api_version
-  displayName: 'API Version'
-  type: number
-  values:
-  - 24
-  - 25
-  default: 24
-
 - name: package_version
   displayName: 'Package Version'
   type: string
@@ -121,6 +113,5 @@ extends:
             build_windows_arm64: ${{ parameters.build_windows_arm64 }}
             build_linux_x64: ${{ parameters.build_linux_x64 }}
             build_macos_arm64: ${{ parameters.build_macos_arm64 }}
-            api_version: ${{ parameters.api_version }}
             package_version: ${{ parameters.package_version }}
             cmake_build_type: ${{ parameters.cmake_build_type }}

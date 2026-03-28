@@ -3,10 +3,6 @@ parameters:
   type: string
   default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
-- name: api_version
-  type: number
-  default: 24
-
 - name: package_version
   type: string
   default: dev
@@ -51,7 +47,6 @@ stages:
 
       - template: ../templates/set-plugin-build-variables-step.yml
         parameters:
-          api_version: ${{ parameters.api_version }}
           package_version: ${{ parameters.package_version }}
 
       - template: ../templates/get-docker-image-steps.yml
@@ -91,6 +86,6 @@ stages:
           command: publish
           publishDirectory: '$(Build.BinariesDirectory)/universal_package'
           vstsFeedPublish: 'PublicPackages/ORT-Nightly'
-          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-linux-x64-api${{ parameters.api_version }}'
+          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-linux-x64'
           versionOption: custom
           versionPublish: '$(PluginUniversalPackageVersion)'

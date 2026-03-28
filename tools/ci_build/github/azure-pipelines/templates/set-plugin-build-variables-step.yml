@@ -1,75 +1,12 @@
-# This file is used to set variables for plugin build stages. It does the following:
-#
-# 1. Verify and override the target ORT_API_VERSION if necessary.
-#
-# 2. Set the package version variable based on the build type (nightly, official, or dev).
+# This file is used to set variables for plugin build stages. It sets the package version
+# variable based on the build type (nightly, official, or dev).
 
 parameters:
-- name: api_version
-  type: number
-
 - name: package_version
   type: string
 
 steps:
-# Step 1: Verify and override ORT_API_VERSION
-- task: PythonScript@0
-  displayName: 'Verify and override ORT_API_VERSION'
-  inputs:
-    scriptSource: inline
-    script: |
-      import os
-      import re
-      import sys
-
-      raw_value = "${{ parameters.api_version }}"
-      if not raw_value.strip():
-          print("##vso[task.logissue type=error]api_version parameter is empty.")
-          sys.exit(1)
-      try:
-          api_version = int(raw_value)
-      except ValueError:
-          print("##vso[task.logissue type=error]api_version must be an integer, got '{}'".format(raw_value))
-          sys.exit(1)
-
-      if api_version < 24:
-          print("##vso[task.logissue type=error]api_version must be >= 24, got {}".format(api_version))
-          sys.exit(1)
-
-      src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
-      header_path = os.path.join(src_root, "include", "onnxruntime", "core", "session", "onnxruntime_c_api.h")
-
-      if not os.path.isfile(header_path):
-          print("##vso[task.logissue type=error]Cannot find onnxruntime_c_api.h at: {}".format(header_path))
-          sys.exit(1)
-
-      with open(header_path, "r", encoding="utf-8") as f:
-          content = f.read()
-
-      pattern = r"(#define\s+ORT_API_VERSION\s+)(\d+)"
-      matches = list(re.finditer(pattern, content))
-      if len(matches) == 0:
-          print("##vso[task.logissue type=error]Cannot find '#define ORT_API_VERSION' in {}".format(header_path))
-          sys.exit(1)
-      if len(matches) > 1:
-          print("##vso[task.logissue type=error]Found multiple '#define ORT_API_VERSION' in {}. Expected exactly one.".format(header_path))
-          sys.exit(1)
-
-      current_version = int(matches[0].group(2))
-      print("Current ORT_API_VERSION: {}".format(current_version))
-      print("Requested api_version: {}".format(api_version))
-
-      if current_version != api_version:
-          new_content = re.sub(pattern, r"\g<1>{}".format(api_version), content, count=1)
-          with open(header_path, "w", encoding="utf-8") as f:
-              f.write(new_content)
-          print("ORT_API_VERSION overridden from {} to {}".format(current_version, api_version))
-          print("##vso[task.setvariable variable=OrtApiVersionOverridden]true")
-      else:
-          print("ORT_API_VERSION already matches. No change needed.")
-          print("##vso[task.setvariable variable=OrtApiVersionOverridden]false")
-
-# Step 2: Set package version string
+# Set package version string
 - task: PythonScript@0
   displayName: 'Set plugin package version string'
   inputs:
@@ -81,8 +18,6 @@ steps:
       import sys
 
       package_version = "${{ parameters.package_version }}"
-      api_version = "${{ parameters.api_version }}"
-      api_overridden = os.environ.get("ORTAPIVERSIONOVERRIDDEN", "false").lower() == "true"
 
       src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
       version_file = os.path.join(src_root, "VERSION_NUMBER")
@@ -99,14 +34,9 @@ steps:
 
       print("Original version: {}".format(original_ver))
       print("Package version type: {}".format(package_version))
-      print("API version: {}".format(api_version))
-      print("API overridden: {}".format(api_overridden))
 
       if package_version == "release":
-          if api_overridden:
-              version_string = "{}+api{}".format(original_ver, api_version)
-          else:
-              version_string = original_ver
+          version_string = original_ver
           universal_version = original_ver
 
       elif package_version == "RC":
@@ -129,8 +59,6 @@ steps:
               print("##vso[task.logissue type=error]Failed to get git info: {}".format(e))
               sys.exit(1)
           version_string = "{}-dev.{}+{}".format(original_ver, date_str, commit_sha)
-          if api_overridden:
-              version_string += "-api{}".format(api_version)
           universal_version = "{}-dev.{}.{}".format(original_ver, date_str, commit_sha)
 
       else:

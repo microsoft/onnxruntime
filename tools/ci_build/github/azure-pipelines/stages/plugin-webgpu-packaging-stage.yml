@@ -19,11 +19,6 @@ parameters:
   type: boolean
   default: false
 
-- name: api_version
-  displayName: 'API Version'
-  type: number
-  default: 24
-
 - name: package_version
   displayName: 'Package Version'
   type: string
@@ -45,7 +40,6 @@ stages:
       - template: plugin-win-webgpu-stage.yml
         parameters:
           arch: 'x64'
-          api_version: ${{ parameters.api_version }}
           package_version: ${{ parameters.package_version }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
@@ -54,7 +48,6 @@ stages:
       - template: plugin-win-webgpu-stage.yml
         parameters:
           arch: 'arm64'
-          api_version: ${{ parameters.api_version }}
           package_version: ${{ parameters.package_version }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
@@ -62,7 +55,6 @@ stages:
     - ${{ if eq(parameters.build_linux_x64, true) }}:
       - template: plugin-linux-webgpu-stage.yml
         parameters:
-          api_version: ${{ parameters.api_version }}
           package_version: ${{ parameters.package_version }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
@@ -70,6 +62,5 @@ stages:
     - ${{ if eq(parameters.build_macos_arm64, true) }}:
       - template: plugin-mac-webgpu-stage.yml
         parameters:
-          api_version: ${{ parameters.api_version }}
           package_version: ${{ parameters.package_version }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
