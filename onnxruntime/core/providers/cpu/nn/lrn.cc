@@ -62,9 +62,6 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   const ptrdiff_t H = narrow<ptrdiff_t>(X_shape[2]);
   const ptrdiff_t W = narrow<ptrdiff_t>(X_shape[3]);
 
-  ORT_ENFORCE(size_ <= C,
-              "The number of channels to sum over (", size_, ") is greater than the number of channels (", C, ").");
-
   const ptrdiff_t X_size = narrow<ptrdiff_t>(X_shape.Size());
 
   // Note: `ptrdiff_t X_size` being set successfully implies that N*C*H*W will not overflow ptrdiff_t.
