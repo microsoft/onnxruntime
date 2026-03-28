@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/constants.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/random_generator.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/default_providers.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -82,55 +80,6 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   test.Run(expect_result, err_str, excluded_providers);
 }
 
-void TestConvOpCpuOnly(const ConvOpAndTestAttributes& attributes,
-                      const vector<vector<float>>& inputs,
-                      const vector<vector<int64_t>>& input_shapes,
-                      const vector<float>& expected_output,
-                      const vector<int64_t>& expected_output_shape,
-                      bool weight_is_initializer = false,
-                      optional<float> epsilon = optional<float>()) {
-  OpTester test("Conv", 12);
-  test.AddAttribute("group", attributes.group);
-  test.AddAttribute("kernel_shape", attributes.kernel_shape);
-
-  if (!attributes.dilations.empty()) {
-    test.AddAttribute("dilations", attributes.dilations);
-  }
-
-  if (!attributes.pads.empty()) {
-    test.AddAttribute("pads", attributes.pads);
-  } else {
-    test.AddAttribute("auto_pad", attributes.auto_pad);
-  }
-
-  if (!attributes.strides.empty()) {
-    test.AddAttribute("strides", attributes.strides);
-  }
-
-  ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
-  const char* szNames[] = {"X", "W", "B"};
-  test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
-  test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
-  if (inputs.size() == 3) {
-    test.AddInput<float>(szNames[2], input_shapes[2], inputs[2]);
-  }
-
-  test.AddOutput<float>("Y", expected_output_shape, expected_output);
-
-  if (epsilon.has_value()) {
-    test.SetOutputTolerance(*epsilon);
-  }
-
-  SessionOptions session_options;
-  auto status = session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsDisableSpecifiedOptimizers, "NchwcTransformer");
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-
-  test.Config(session_options);
-  test.ConfigEp(DefaultCpuExecutionProvider());
-  test.RunWithConfig();
-}
-
 vector<float> ComputeDepthwiseMultiplier2Reference(const vector<float>& input,
                                                    const vector<int64_t>& input_shape,
                                                    const vector<float>& weights,
@@ -190,7 +139,7 @@ vector<float> ComputeDepthwiseMultiplier2Reference(const vector<float>& input,
   return output;
 }
 
-void TestMobileClipDepthwiseMultiplier2CpuOnly(int64_t channels, int64_t input_hw) {
+void TestMobileClipDepthwiseMultiplier2(int64_t channels, int64_t input_hw) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
@@ -214,8 +163,8 @@ void TestMobileClipDepthwiseMultiplier2CpuOnly(int64_t channels, int64_t input_h
   vector<float> expected_output = ComputeDepthwiseMultiplier2Reference(input, input_shape, weights, weight_shape, bias,
                                                                        output_shape, 2, 2, 3, 3);
 
-  TestConvOpCpuOnly(attrs, {input, weights, bias}, {input_shape, weight_shape, bias_shape},
-                    expected_output, output_shape, true, 1e-4f);
+  TestConvOp(attrs, {input, weights, bias}, {input_shape, weight_shape, bias_shape},
+             expected_output, output_shape, true, 1e-4f, OpTester::ExpectResult::kExpectSuccess, "", 12);
 }
 
 }  // namespace
@@ -1336,16 +1285,16 @@ TEST(ConvTest, Depthwise2D_Bias_Group15) {
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
-TEST(ConvTest, MobileClipDepthwiseMultiplier2_64x64_CPU) {
-  TestMobileClipDepthwiseMultiplier2CpuOnly(64, 64);
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_64x64) {
+  TestMobileClipDepthwiseMultiplier2(64, 64);
 }
 
-TEST(ConvTest, MobileClipDepthwiseMultiplier2_128x32_CPU) {
-  TestMobileClipDepthwiseMultiplier2CpuOnly(128, 32);
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_128x32) {
+  TestMobileClipDepthwiseMultiplier2(128, 32);
 }
 
-TEST(ConvTest, MobileClipDepthwiseMultiplier2_256x16_CPU) {
-  TestMobileClipDepthwiseMultiplier2CpuOnly(256, 16);
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_256x16) {
+  TestMobileClipDepthwiseMultiplier2(256, 16);
 }
 
 TEST(ConvTest, ConvDimWithZero) {
