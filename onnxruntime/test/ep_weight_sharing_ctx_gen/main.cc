@@ -217,6 +217,12 @@ int real_main(int argc, char* argv[]) {
 #else
         ORT_THROW("QNN is not supported in this build\n");
 #endif
+      } else if (provider_name_ == onnxruntime::kVitisAIExecutionProvider) {
+#ifdef USE_VITISAI
+        so.AppendExecutionProvider_VitisAI(provider_options);
+#else
+        ORT_THROW("VITISAI is not supported in this build\n");
+#endif
       } else if (!provider_name_.empty()) {
         ORT_THROW("This execution provider is not included in this tool.\n");
       }
