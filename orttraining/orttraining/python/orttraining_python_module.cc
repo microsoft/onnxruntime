@@ -4,6 +4,7 @@
 #include "orttraining/python/orttraining_pybind_common.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
+#include <cstdlib>
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/common/path_string.h"
@@ -171,7 +172,21 @@ onnxruntime::Environment& GetEnv() {
 
 static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
+
+  // Allow the default logging severity to be configured via ORT_LOGGING_LEVEL before the first import.
+  // Valid integer values: 0 (Verbose), 1 (Info), 2 (Warning), 3 (Error), 4 (Fatal).
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
+  const std::string logging_env = Env::Default().GetEnvironmentVar("ORT_LOGGING_LEVEL");
+  if (!logging_env.empty()) {
+    char* end = nullptr;
+    long level = std::strtol(logging_env.c_str(), &end, 10);
+    if (end != logging_env.c_str() && *end == '\0' &&
+        level >= ORT_LOGGING_LEVEL_VERBOSE && level <= ORT_LOGGING_LEVEL_FATAL) {
+      logging_level = static_cast<OrtLoggingLevel>(level);
+    }
+  }
+
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, "Default"};
   Status status;
   OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr);
   if (!status.IsOK()) return status;
