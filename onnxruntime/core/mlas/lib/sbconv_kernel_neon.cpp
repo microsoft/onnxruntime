@@ -25,6 +25,11 @@ Abstract:
 
 constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;
 
+#if defined(__aarch64__) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+#define MLAS_CONV_BF16_HELPERS_AVAILABLE
+#define MLAS_CONV_BF16_POINTWISE_INTRINSICS_AVAILABLE
+#endif
+
 #if defined(__aarch64__) && !defined(_WIN32)
 
 struct MLAS_NCHW_BF16_MMLA_PARAMS {
@@ -72,7 +77,7 @@ MlasConvNchwBf16PackFilterNeonAsm(
 
 #endif
 
-#if defined(__aarch64__)
+#if defined(MLAS_CONV_BF16_HELPERS_AVAILABLE)
 
 extern "C" void
 MLASCALL
@@ -150,6 +155,8 @@ MlasConvPointwiseBf16PackedInputKernelNeon2xAsm(
     );
 
 #endif
+
+#if defined(MLAS_CONV_BF16_HELPERS_AVAILABLE)
 
 static inline unsigned
 MlasConvBf16SemanticKernelFlags(
@@ -237,7 +244,9 @@ MlasConvBf16PostProcessOutputs(
     }
 }
 
-#if defined(__aarch64__) && defined(__ARM_FEATURE_BF16_VECTOR_ARITHMETIC)
+#endif
+
+#if defined(MLAS_CONV_BF16_POINTWISE_INTRINSICS_AVAILABLE)
 
 static inline void
 MlasPackPointwiseBf16InputPairNeon(
@@ -386,7 +395,7 @@ MlasMergePointwiseBf16OutputsNeon(
 
 namespace {
 
-#if defined(__aarch64__) && defined(__ARM_FEATURE_BF16)
+#if defined(MLAS_CONV_BF16_POINTWISE_INTRINSICS_AVAILABLE)
 
 static void
 MlasConvPointwiseFloatKernelNeonBf16Mmla(
@@ -788,7 +797,7 @@ MlasTryConvPointwiseBf16KernelNeonAsm(
     unsigned KernelFlags
     )
 {
-#if defined(__aarch64__) && defined(__ARM_FEATURE_BF16)
+#if defined(MLAS_CONV_BF16_POINTWISE_INTRINSICS_AVAILABLE)
     constexpr size_t PointwiseFilterCountMax = 4;
     constexpr size_t PointwiseInputChannelsMax = 8;
 
@@ -988,5 +997,8 @@ MlasConvPointwiseBf16KernelNeon(
         }
     }
 }
+
+#undef MLAS_CONV_BF16_POINTWISE_INTRINSICS_AVAILABLE
+#undef MLAS_CONV_BF16_HELPERS_AVAILABLE
 
 #endif
