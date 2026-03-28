@@ -866,6 +866,29 @@ class TestONNXAttentionMHAPastFP32(unittest.TestCase):
         )
 
 
+@unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionMHAPastMEA(unittest.TestCase):
+    """Test ONNX Attention op MHA path — decoding with KV cache via Memory Efficient Attention.
+
+    Explicitly forces MEA by disabling Flash Attention. This verifies that the
+    MEA decode path works correctly for MHA (kv_num_heads == q_num_heads).
+    """
+
+    @parameterized.expand(mha_past_test_cases())
+    def test_mha_past_mea(self, name, config):
+        parity_check_mha_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping MHA tests.")
 class TestONNXAttentionMHAAttnBias(unittest.TestCase):
     """
@@ -1251,8 +1274,96 @@ class TestONNXAttentionMHAUnfused(unittest.TestCase):
 
 
 # #################################################################################################
-#  Broadcast Mask (1,1,q,kv) Tests
+#  Asymmetric Head Size Regression Test (MEA → unfused fallback)
 # #################################################################################################
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping asymmetric head size tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionMHAAsymmetricHeadSize(unittest.TestCase):
+    """
+    Regression test: MEA gracefully falls back to unfused when head_size != v_head_size
+    with past_key present (decode phase).
+
+    Without the eligibility guard in ComputeInternal, this configuration would select
+    MEA which then crashes with ORT_ENFORCE because LaunchConcatNewToPastKV requires
+    head_size == v_head_size. The guard skips MEA and falls back to unfused attention.
+
+    Uses MHA path (kv_num_heads == q_num_heads) because the GQA path has no unfused
+    fallback (returns NOT_IMPLEMENTED).
+    """
+
+    def test_mha_past_asymmetric_v_head_size(self):
+        """Verify decode with head_size=128, v_head_size=96 doesn't crash (falls to unfused)."""
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=32,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=128,
+            v_head_size=96,
+            is_causal=1,
+            attn_mask_type="additive",
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        torch_type = torch.float16
+        # std=0.2 keeps values in a numerically stable range for fp16 attention
+        std = 0.2
+
+        q = torch.randn(2, 1, 4, 128, device=device, dtype=torch_type) * std
+
+        # Past KV in BNSH: K uses head_size=128, V uses v_head_size=96
+        past_k = torch.randn(2, 4, 32, 128, device=device, dtype=torch_type) * std
+        past_v = torch.randn(2, 4, 32, 96, device=device, dtype=torch_type) * std
+
+        new_k = torch.randn(2, 1, 4, 128, device=device, dtype=torch_type) * std
+        new_v = torch.randn(2, 1, 4, 96, device=device, dtype=torch_type) * std
+
+        # PyTorch reference: concat past + new, compute attention
+        new_k_bnsh = new_k.transpose(1, 2)
+        new_v_bnsh = new_v.transpose(1, 2)
+        full_k_bnsh = torch.cat([past_k, new_k_bnsh], dim=2)
+        full_v_bnsh = torch.cat([past_v, new_v_bnsh], dim=2)
+        full_k_bsnh = full_k_bnsh.transpose(1, 2)
+        full_v_bsnh = full_v_bnsh.transpose(1, 2)
+
+        out_ref, _ = attention_ref(q=q, k=full_k_bsnh, v=full_v_bsnh, causal=True)
+
+        # ORT path — should fall back to unfused (not crash in MEA)
+        out_ort, present_k, present_v = attention_past_func(
+            q=q,
+            past_k=past_k,
+            past_v=past_v,
+            new_k=new_k,
+            new_v=new_v,
+            config=config,
+            attn_mask=None,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
+
+        # Reshape output: [B, q_seq, q_num_heads * v_head_size] → [B, q_seq, q_num_heads, v_head_size]
+        out_ort = out_ort.reshape(2, 1, 4, 96)
+
+        # Verify present_k and present_v
+        full_k_ref_np = full_k_bnsh.float().detach().cpu().numpy()
+        full_v_ref_np = full_v_bnsh.float().detach().cpu().numpy()
+        present_k_np = present_k.float().detach().cpu().numpy()
+        present_v_np = present_v.float().detach().cpu().numpy()
+
+        numpy.testing.assert_allclose(present_k_np, full_k_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v_np, full_v_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+        # Verify output
+        out_np = out_ort.float().detach().cpu().numpy()
+        out_ref_np = out_ref.float().detach().cpu().numpy()
+        print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping broadcast mask tests.")
