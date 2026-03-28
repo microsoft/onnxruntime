@@ -4875,7 +4875,37 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   return nullptr;  // Unsupported version
 }
 
+namespace {
+consteval bool IsOrtVersionValid() {
+  // This is a consteval function to validate the format of ORT_VERSION at compile time.
+  // It should be in the format "X.Y.Z" where X == 1, Y and Z are non-negative integers.
+  std::string_view version(ORT_VERSION);
+  size_t first_dot = version.find('.');
+  if (first_dot == std::string_view::npos || first_dot == 0 || first_dot == version.size() - 1) {
+    return false;  // Must have two dots and cannot start or end with a dot
+  }
+  size_t second_dot = version.find('.', first_dot + 1);
+  if (second_dot == std::string_view::npos || second_dot == first_dot + 1 || second_dot == version.size() - 1) {
+    return false;  // Must have two dots and cannot be adjacent or end with a dot
+  }
+  std::string_view major = version.substr(0, first_dot);
+  std::string_view minor = version.substr(first_dot + 1, second_dot - first_dot - 1);
+  std::string_view patch = version.substr(second_dot + 1);
+  if (major != "1") {
+    return false;  // Major version must be 1
+  }
+  auto is_non_negative_integer = [](std::string_view str) {
+    return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
+  };
+  if (!is_non_negative_integer(minor) || !is_non_negative_integer(patch)) {
+    return false;  // Minor and patch versions must be non-negative integers
+  }
+  return true;
+}
+}  // namespace
+
 ORT_API(const char*, OrtApis::GetVersionString) {
+  static_assert(IsOrtVersionValid(), "ORT_VERSION must be in the format '1.Y.Z' where Y and Z are non-negative integers");
   return ORT_VERSION;
 }
 
