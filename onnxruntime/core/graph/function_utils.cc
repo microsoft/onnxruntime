@@ -479,6 +479,12 @@ class Inliner {
       make_unique(*y.mutable_name());
     for (auto& n : *graph.mutable_node())
       transform(n);
+    // Rename value_info entries to match renamed node outputs.
+    // Without this, shape annotations become orphaned after inlining,
+    // causing execution providers (e.g. CUDA EP) to fall back to
+    // dim_value=0 for Scan body carry state buffers.
+    for (auto& vi : *graph.mutable_value_info())
+      rename(*vi.mutable_name(), false);
     rename_scopes_.pop_back();
   }
 
