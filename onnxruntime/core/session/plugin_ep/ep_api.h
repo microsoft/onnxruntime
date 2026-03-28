@@ -119,4 +119,36 @@ ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl);
 
 // Env config entries
 ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
+
+// EP profiling events container
+ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
+                    _In_reads_(num_events) const OrtProfilingEvent* const* events,
+                    _In_ size_t num_events);
+
+// EP profiling event creation/release
+ORT_API_STATUS_IMPL(CreateProfilingEvent,
+                    _In_ OrtProfilingEventCategory category,
+                    _In_ int32_t process_id,
+                    _In_ int32_t thread_id,
+                    _In_ const char* event_name,
+                    _In_ int64_t timestamp_us,
+                    _In_ int64_t duration_us,
+                    _In_reads_(num_args) const char* const* arg_keys,
+                    _In_reads_(num_args) const char* const* arg_values,
+                    _In_ size_t num_args,
+                    _Outptr_ OrtProfilingEvent** out);
+
+ORT_API(void, ReleaseProfilingEvent, _Frees_ptr_opt_ OrtProfilingEvent* event);
+
+// Profiling event accessors
+ORT_API_STATUS_IMPL(ProfilingEvent_GetCategory, _In_ const OrtProfilingEvent* event,
+                    _Out_ OrtProfilingEventCategory* out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetName, _In_ const OrtProfilingEvent* event,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetTimestampUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
+                    _Outptr_result_maybenull_ const char** out);
 }  // namespace OrtExecutionProviderApi
