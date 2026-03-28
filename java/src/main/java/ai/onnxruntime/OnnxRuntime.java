@@ -5,6 +5,7 @@
 package ai.onnxruntime;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
@@ -123,12 +124,10 @@ final class OnnxRuntime {
       stager = new OnnxStager();
       stager.stage(ONNXRUNTIME_NATIVE_PREFIX, ONNXRUNTIME_LIBRARY_NAME, CLASSPATH_BASE);
       stager.stage(ONNXRUNTIME_NATIVE_PREFIX, ONNXRUNTIME_LIBRARY_SHARED_NAME, CLASSPATH_BASE);
-      String jniLibraryPath =
-          stager
-              .stage(ONNXRUNTIME_NATIVE_PREFIX, ONNXRUNTIME_JNI_LIBRARY_NAME, CLASSPATH_BASE)
-              .toString();
+      Path jniLibraryPath =
+          stager.stage(ONNXRUNTIME_NATIVE_PREFIX, ONNXRUNTIME_JNI_LIBRARY_NAME, CLASSPATH_BASE);
       if (jniLibraryPath != null) {
-        System.load(jniLibraryPath);
+        System.load(jniLibraryPath.toString());
       }
     }
     ortApiHandle = initialiseAPIBase(ORT_API_VERSION_23);
