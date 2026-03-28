@@ -1517,8 +1517,6 @@ MlasGemmBatch(
     // Override
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
-        // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans &&
         GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
         return;
     }
@@ -1616,25 +1614,19 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
-    // KleidiAI or other override
-    #if defined(USE_KLEIDIAI)
+#if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
-        GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
-        // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans) {
-        size_t bytes_required;
-        //TODO pass status by reference to indicate success/fail
-        bytes_required = GetMlasPlatform().MlasSGemmPackBSizeOverride(TransA, TransB, N, K);
-        if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
+        GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr) {
+        const size_t bytes_required = GetMlasPlatform().MlasSGemmPackBSizeOverride(TransA, TransB, N, K);
+        if (bytes_required != 0) { // If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;
         }
     }
-    #endif
+#endif
+
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
-
-
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -1691,15 +1683,13 @@ Return Value:
 #if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
-        // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
         GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }
 #endif
+
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
-
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
