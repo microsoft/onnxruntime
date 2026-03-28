@@ -40,7 +40,7 @@ from .quant_utils import (
     quantize_onnx_initializer,
     tensor_proto_to_array,
 )
-from .registry import CreateQDQQuantizer
+from .registry import create_node_tensor_reg2quant
 
 
 class QDQQuantTensorType(Enum):
@@ -274,7 +274,7 @@ class QDQQuantizer(BaseQuantizer):
 
         return False
 
-    def __quantize_tensor(self, tensor_name, quant_sharing_provider=None, tensor_type=QDQQuantTensorType.ACTIVATION):
+    def __reg2quant_tensor(self, tensor_name, quant_sharing_provider=None, tensor_type=QDQQuantTensorType.ACTIVATION):
         """
         Adds a tensor to the list (actually a dict) of tensors to quantize. Called indirectly by op quantizers that
         want to quantize a tensor (i.e., "mark" a tensor for quantization).
@@ -303,7 +303,7 @@ class QDQQuantizer(BaseQuantizer):
                 data_type = self._get_tensor_type(tensor_name)
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(tensor_type=tensor_type, data_type=data_type)
 
-    def quantize_activation_tensor(self, tensor_name: str):
+    def reg2quant_activation_tensor(self, tensor_name: str):
         """
         Adds a tensor to the list of tensors to quantize. Called by op quantizers that
         want to quantize a tensor (i.e., "mark" a tensor for quantization).
@@ -311,9 +311,9 @@ class QDQQuantizer(BaseQuantizer):
         Args:
             tensor_name: name of the tensor to quantize
         """
-        return self.__quantize_tensor(tensor_name, None, QDQQuantTensorType.ACTIVATION)
+        return self.__reg2quant_tensor(tensor_name, None, QDQQuantTensorType.ACTIVATION)
 
-    def quantize_output_same_as_input(self, output_name: str, input_name: str, node_name: str):
+    def reg2quant_output_same_as_input(self, output_name: str, input_name: str, node_name: str):
         """
         Adds a tensor to the list of tensors to quantize. Called by op quantizers that
         want to quantize an output tensor using the same quantization parameters as one of the node's inputs.
@@ -326,11 +326,11 @@ class QDQQuantizer(BaseQuantizer):
             input_name: name of the node input from which the output tensor will get its quantization params.
             node_name: name of the node that consumes `input_name`.
         """
-        return self.__quantize_tensor(
+        return self.__reg2quant_tensor(
             output_name, QDQQuantParamProvider(input_name, node_name), QDQQuantTensorType.ACTIVATION
         )
 
-    def quantize_weight_tensor(self, tensor_name: str):
+    def reg2quant_weight_tensor(self, tensor_name: str):
         """
         Adds a tensor to the list of weight tensors to quantize. Called by op quantizers that
         want to quantize a weight (i.e., "mark" a weight for quantization).
@@ -338,9 +338,9 @@ class QDQQuantizer(BaseQuantizer):
         Args:
             tensor_name: name of the weight to quantize
         """
-        return self.__quantize_tensor(tensor_name, None, QDQQuantTensorType.WEIGHT)
+        return self.__reg2quant_tensor(tensor_name, None, QDQQuantTensorType.WEIGHT)
 
-    def quantize_weight_tensor_per_channel(self, tensor_name, axis):
+    def reg2quant_weight_tensor_per_channel(self, tensor_name, axis):
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight:
             if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
@@ -362,7 +362,7 @@ class QDQQuantizer(BaseQuantizer):
         self.model.add_initializer(new_initializer)
         return new_initializer
 
-    def quantize_bias_tensor(self, node_name, bias_name, input_name, weight_name, beta=1.0):
+    def reg2quant_bias_tensor(self, node_name, bias_name, input_name, weight_name, beta=1.0):
         """
         Adds a bias tensor to the list of bias tensors to quantize. Called by op quantizers that
         want to quantize a bias with bias_zero_point = 0 and bias_scale = input_scale * weight_scale * beta.
@@ -382,9 +382,9 @@ class QDQQuantizer(BaseQuantizer):
             )
             is_per_channel, axis = self.is_tensor_per_channel(bias_name, default_axis=0)
             if is_per_channel:
-                self.quantize_weight_tensor_per_channel(bias_name, axis)
+                self.reg2quant_weight_tensor_per_channel(bias_name, axis)
             else:
-                self.quantize_weight_tensor(bias_name)
+                self.reg2quant_weight_tensor(bias_name)
             return
 
         bias_initializer = find_by_name(bias_name, self.model.initializer())
@@ -551,8 +551,8 @@ class QDQQuantizer(BaseQuantizer):
     def quantize_model(self):
         for node in self.model.nodes():
             if self.should_quantize_node(node):
-                op_quantizer = CreateQDQQuantizer(self, node)
-                op_quantizer.quantize()
+                op_reg2quanter = create_node_tensor_reg2quant(self, node)
+                op_reg2quanter.reg2quant()
 
                 for tensor_name in node.input:
                     if tensor_name not in self.tensor_to_its_receiving_nodes:
@@ -1115,7 +1115,7 @@ class QDQQuantizer(BaseQuantizer):
                 raise RuntimeError(f"Unexpected operator type {quant_value.node_type!r}.")
             self.model.add_node(dequant_node)
 
-    def is_tensor_quantized(self, tensor_name: str):
+    def is_tensor_reg2quant(self, tensor_name: str):
         return tensor_name in self.tensors_to_quantize or tensor_name in self.bias_to_quantize
 
     def is_tensor_per_channel(
