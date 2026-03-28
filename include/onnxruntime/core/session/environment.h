@@ -197,10 +197,6 @@ class Environment {
 
   Status RegisterAllocatorImpl(AllocatorPtr allocator);
   Status UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool error_if_not_found = true);
-  Status CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
-                                   const OrtMemoryInfo& memory_info, OrtAllocatorType allocator_type,
-                                   const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator,
-                                   bool replace_existing);
 
   // Inserts (or assigns) a config entry into `config_entries_`. Locks `config_entries_mutex_`.
   void InsertOrAssignConfigEntry(std::string key, std::string value);
@@ -246,7 +242,7 @@ class Environment {
     // calls EpLibrary::Load
     // for each factory gets the OrtEpDevice instances and adds to execution_devices
     // internal_factory is set if this is an internal EP
-    static Status Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
+    static Status Create(std::unique_ptr<EpLibrary> library_in, std::shared_ptr<EpInfo>& out,
                          const std::vector<EpFactoryInternal*>& internal_factories = {});
 
     // removes entries for this library from execution_devices
@@ -263,8 +259,18 @@ class Environment {
     EpInfo() = default;
   };
 
-  // registration name to EpInfo for library
-  std::unordered_map<std::string, std::unique_ptr<EpInfo>> ep_libraries_;
+  // Captures shared_ptr<EpInfo> in the allocator's deleter lambda to prevent the
+  // EP library from being unloaded while allocator wrappers still exist.
+  Status CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
+                                   const OrtMemoryInfo& memory_info, OrtAllocatorType allocator_type,
+                                   const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator,
+                                   bool replace_existing,
+                                   std::shared_ptr<EpInfo> ep_info);
+
+  // Registration name to EpInfo for library.
+  // shared_ptr so that allocator deleters can prevent EpInfo (and its factory/library) from being
+  // destroyed while allocator wrappers still exist.
+  std::unordered_map<std::string, std::shared_ptr<EpInfo>> ep_libraries_;
 
   // combined set of OrtEpDevices for all registered OrtEpFactory instances
   // std::vector so we can use directly in GetEpDevices.
