@@ -4757,7 +4757,7 @@ TEST_F(GraphTransformationTests, ReshapeFusion_Contiguous_Reshape) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({{8, 16, 32}});
     auto* shape_initializer_1 = builder.MakeInitializer<int64_t>({4}, {2, 4, 16, 32});
-    auto* shape_initializer_2 = builder.MakeInitializer<int64_t>({4}, {2, 64, 32});
+    auto* shape_initializer_2 = builder.MakeInitializer<int64_t>({3}, {2, 64, 32});
     auto* axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
     auto* reshape_out_1 = builder.MakeIntermediate();
     auto* reshape_out_2 = builder.MakeIntermediate();
