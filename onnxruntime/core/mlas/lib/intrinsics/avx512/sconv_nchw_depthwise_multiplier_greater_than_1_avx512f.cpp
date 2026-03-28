@@ -4,7 +4,7 @@ Licensed under the MIT License.
 Module Name:
     sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
 Abstract:
-        This module implements the AVX512F kernel for the exact MobileCLIP grouped
+        This module implements the AVX512F kernel for the exact MobileClip grouped
         projection case:
 
             - CHW input/output layout per group slice
@@ -26,7 +26,7 @@ namespace {
 
 MLAS_FORCEINLINE
 void
-MlasConv2dSingleChannelCHWKernel7x7PadAnyStride2Dilation1DepthMultiplier2Scalar(
+MlasConv2dSingleChannelCHWKernel7x7Pad3Stride2Dilation1DepthMultiplier2Scalar(
     const float* Input,
     size_t InputHeight,
     size_t InputWidth,
@@ -43,11 +43,12 @@ MlasConv2dSingleChannelCHWKernel7x7PadAnyStride2Dilation1DepthMultiplier2Scalar(
 
 Routine Description:
 
-    Computes one border output point for the exact 7x7/stride-2/pad-3,
-    multiplier-2 case.
+    Computes one border output point for the exact MobileClip
+    7x7/pad-3/stride-2/dilation-1, multiplier-2 case.
 
     This helper is only used by the AVX512 implementation for border handling;
-    it is not a generic fallback dispatch path.
+    it is not a generic fallback dispatch path despite the scalar
+    implementation.
 
 --*/
 {
@@ -101,7 +102,7 @@ MlasConvDepthwiseMultiplier2CHWKernel7x7S2Avx512F(
 
 Routine Description:
 
-    Computes one group slice of the exact MobileCLIP grouped projection case.
+    Computes one group slice of the exact MobileClip grouped projection case.
 
 Assumptions:
 
@@ -135,7 +136,7 @@ Return Value:
                                     (input_origin_x + static_cast<ptrdiff_t>(KernelSize)) <= static_cast<ptrdiff_t>(InputWidth);
 
             if (!(interior_y && interior_x)) {
-                MlasConv2dSingleChannelCHWKernel7x7PadAnyStride2Dilation1DepthMultiplier2Scalar(
+                MlasConv2dSingleChannelCHWKernel7x7Pad3Stride2Dilation1DepthMultiplier2Scalar(
                     Input, InputHeight, InputWidth, Filter0, Filter1, Output0, Output1, OutputWidth, oh, ow, Beta);
                 continue;
             }
