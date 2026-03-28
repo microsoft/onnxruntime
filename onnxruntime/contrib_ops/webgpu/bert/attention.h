@@ -46,8 +46,8 @@ class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
  public:
   AttentionProbsProgram(const std::string& kernel_name, bool feed_past_key, bool has_present_key,
-                        bool has_attention_bias, int tile_size, int components, bool is_first_prompt, bool has_seqlen_k = false, bool past_present_share_buffer = false, bool is_unidirectional = false)
-      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), has_seqlen_k_(has_seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_first_prompt_(is_first_prompt), is_unidirectional_(is_unidirectional) {
+                        bool has_attention_bias, int tile_size, int components, bool has_seqlen_k = false, bool past_present_share_buffer = false, bool is_unidirectional = false)
+      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), has_seqlen_k_(has_seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_unidirectional_(is_unidirectional) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -78,7 +78,6 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
   int components_;
   bool has_seqlen_k_;
   bool past_present_share_buffer_;
-  bool is_first_prompt_;
   bool is_unidirectional_;
 };
 
@@ -110,8 +109,8 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
 
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
  public:
-  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, bool is_first_prompt, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false)
-      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), seqlen_k_(seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_first_prompt_(is_first_prompt) {
+  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false)
+      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), seqlen_k_(seqlen_k), past_present_share_buffer_(past_present_share_buffer) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -138,7 +137,6 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
   int tile_size_;
   const Tensor* seqlen_k_;
   bool past_present_share_buffer_;
-  bool is_first_prompt_;
 };
 
 class Attention final : public WebGpuKernel, public onnxruntime::contrib::AttentionBase {
