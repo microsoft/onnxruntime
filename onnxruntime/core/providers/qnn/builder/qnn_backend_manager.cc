@@ -469,8 +469,6 @@ void QnnLogging(const char* format,
 }
 
 Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
-  logger_ = &logger;
-
   // Set Qnn log level align with Ort log level
   auto ort_log_level = logger_->GetSeverity();
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
@@ -1564,6 +1562,8 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map,
                                        bool enable_htp_extended_udma_mode) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
+  if (logger_ != &logger)
+    logger_ = &logger;
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
 
