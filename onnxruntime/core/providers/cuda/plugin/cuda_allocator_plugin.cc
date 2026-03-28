@@ -18,7 +18,14 @@ void RestoreDeviceIfKnown(bool restore_prev_device, int prev_device) noexcept {
 
 // ---------------------------------------------------------------------------
 // CudaDeviceAllocator — uses cudaMalloc/cudaFree for GPU device memory.
-// Note: No arena or caching layer — every allocation goes directly to CUDA.
+//
+// PERFORMANCE NOTE (Direct cudaMalloc Penalty):
+// No arena or caching layer is provided within this plugin. Every allocation
+// goes directly to CUDA (cudaMalloc). For models with dynamic shape resizing
+// or many intermediate buffers, this can cause substantial overhead.
+// Compared to the built-in CUDA Execution Provider, which has an integrated
+// memory arena, this is a notable performance gap unless an external
+// memory pool/arena is injected or configured by the application.
 // ---------------------------------------------------------------------------
 
 CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int device_id)

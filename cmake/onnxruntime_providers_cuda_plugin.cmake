@@ -79,8 +79,9 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda_common\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda_nhwc_kernels\\.cc$")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda_contrib_kernels\\.cc$")
 
-# Exclude files that use TensorSeq (incomplete type in plugin build).
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/identity_op\\.cc$")
+# Exclude sequence_op.cc — uses TensorSeq (incomplete type in plugin build).
+# identity_op.cc is now included: TensorSeq code path is guarded by
+# BUILD_CUDA_EP_AS_PLUGIN and opset 14+ registrations use Tensor-only types.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/sequence_op\\.cc$")
 
 # Permanently excluded — pure CPU ops, handled by GetCpuPreferredNodes.
@@ -100,11 +101,6 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/llm/.*")
 
 # Exclude contrib training ops (shrunken_gather depends on provider_api.h in header).
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shrunken_gather\\.cc$")
-
-# Exclude contrib ops using GetComputeStream() or framework type deps.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/math/fft_ops\\.cc$")
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/crop\\.cc$")
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/dynamicslice\\.cc$")
 
 
 # Exclude contrib transformers/ (beam search, greedy search, sampling). Those need subgraph inference.
@@ -237,6 +233,7 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cudart
     CUDA::cublas
     CUDA::cublasLt
+    CUDA::cufft
     CUDNN::cudnn_all
     cudnn_frontend
     Boost::mp11

@@ -35,6 +35,17 @@ struct DropoutComputeImpl {
 
 }  // namespace
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 7, 9, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  Dropout<false>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 10, 11, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+                                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+                                  Dropout<false>);
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 12, 12, kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())

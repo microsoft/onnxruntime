@@ -121,10 +121,10 @@ This 700+ line header provides everything CUDA kernels need that would normally 
 
 | Section | What It Provides |
 |---------|-----------------|
-| Error macros | `CUDA_RETURN_IF_ERROR`, `CUBLAS_RETURN_IF_ERROR`, `CUDNN_RETURN_IF_ERROR` |
+| Error macros | `CUDA_RETURN_IF_ERROR`, `CUBLAS_RETURN_IF_ERROR`, `CUDNN_RETURN_IF_ERROR`, `CUFFT_RETURN_IF_ERROR` |
 | Type mappings | `ToCudaType<MLFloat16>::MappedType = half`, etc. |
 | CudaKernel base | Scratch buffers, handle access, `Stream()`, `GetComputeStream()` |
-| Kernel registration | Self-registering `ONNX_OPERATOR_*_KERNEL_EX` macro overrides via `PluginKernelCollector` |
+| Kernel registration | Self-registering `ONNX_OPERATOR_*_KERNEL_EX` macro overrides via `PluginKernelCollector`, including `ONNX_OPERATOR_TWO_TYPED_KERNEL_EX`, `ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX`, and `ONNX_OPERATOR_THREE_TYPED_KERNEL_EX` variants |
 | CPU shims | Lightweight reimplementations of CPU helpers not linked into plugin |
 | Math helpers | `HalfGemmOptions`, `CublasMathModeSetter` |
 | Stream shim | `OrtStreamAdapter`/`PluginStreamShim` to present a framework-compatible `Stream*` view over a raw `cudaStream_t` where needed |
@@ -576,13 +576,10 @@ Section 7 reflects the current source exclusions in `cmake/onnxruntime_providers
 | `core/providers/cuda/controlflow/*` | The framework controlflow kernels inherit from CPU-side controlflow bases (`If`, `Loop`, `Scan`) and are intentionally omitted from the plugin source list | No change is currently planned. The plugin uses its own `cuda_controlflow_plugin.cc` wrappers instead of these framework sources |
 | `tunable/*` | Depends on the real `CudaTuningContext` and other framework CUDA EP infrastructure that is not available in the plugin build | Add a plugin-capable tuning context and remove the remaining framework-only tunable dependencies |
 | `math/einsum.cc` | The top-level framework einsum provider path is still not plugin-safe even though supporting utility code is now included | Finish a plugin-safe top-level einsum path and then remove the CMake exclusion |
-| `tensor/identity_op.cc` | Uses `TensorSeq`, which is still not adapter-safe here | Add `TensorSeq` adapter coverage |
-| `tensor/sequence_op.cc` | Uses `TensorSeq`, which is still not adapter-safe here | Same as above |
+| `tensor/sequence_op.cc` | Uses `TensorSeq`, which is still not adapter-safe here | Add `TensorSeq` adapter coverage |
 | `contrib_ops/cuda/llm/*` | Contrib LLM sources have not gone through the same adapter-migration pass as the core CUDA LLM kernels | Finish contrib-LLM-specific adapter work |
 | `contrib_ops/cuda/tensor/shrunken_gather.cc` | The training-side header path still depends on framework/provider API wiring | Low-priority training-specific adapter work |
-| `contrib_ops/cuda/math/fft_ops.cc` | Still has framework stream/type assumptions that are not yet adapter-safe | Finish FFT-specific adapter cleanup |
-| `contrib_ops/cuda/tensor/crop.cc` | Still has remaining framework assumptions, so it stays excluded even though some helper-side migration work is already done | Finish and validate the remaining plugin-safe path, then remove the CMake exclusion |
-| `contrib_ops/cuda/tensor/dynamicslice.cc` | Still excluded in CMake due to remaining framework assumptions | Finish dynamicslice-specific adapter cleanup |
+
 | `contrib_ops/cuda/transformers/*` | Beam search, greedy search, and sampling depend on broader framework/subgraph integration that has not been adapted for the plugin build | Significant adapter and subgraph support work |
 | `contrib_ops/cuda/aten_ops/*` | ATen interop is intentionally out of scope for the standalone CUDA plugin build | A separate ATen/plugin strategy |
 | `contrib_ops/cuda/collective/*` | Collective/NCCL support is intentionally out of scope for the standalone CUDA plugin build | A separate collective/NCCL plugin strategy |
@@ -593,7 +590,7 @@ The current exclusions fall into a few categories:
 
 1. **Tunable/framework-dependent infrastructure** — `tunable/*`, contrib transformers, and some contrib LLM paths still rely on framework-only execution-provider services.
 
-2. **Remaining adapter gaps** — `TensorSeq`, some contrib FFT/crop/dynamicslice paths, and contrib-LLM-specific plumbing still need dedicated adapter work.
+2. **Remaining adapter gaps** — `TensorSeq` (needed for `sequence_op.cc`) and contrib-LLM-specific plumbing still need dedicated adapter work.
 
 3. **Deliberate scope cuts** — ATen and collective/NCCL sources remain intentionally out of scope for the standalone CUDA plugin.
 
@@ -608,6 +605,7 @@ The branch still contains a small set of plugin guards in both infrastructure an
 - Infrastructure files such as `cuda_kernel.h`, `cuda_common.h`, and `cudnn_common.h` still need build-mode gates.
 - `generator/constant_of_shape.h` still needs a plugin-specific path because `ConstantOfShapeBase` depends on framework-only tensor-attribute helpers.
 - Tunable kernels such as `math/matmul.cc` still gate framework-only registration paths.
+- `tensor/identity_op.h` guards the `TensorSeq` code path and `context->InputType()` call with `#ifndef BUILD_CUDA_EP_AS_PLUGIN` — the plugin build handles only the `Tensor` path. `identity_op.cc` uses conditional macros (`IDENTITY_V_TYPES` / `IDENTITY_V_TYPES_IRv9`) so opset 14+ registrations use `AllFixedSizeTensorTypes()` in the plugin build. Additionally, old Dropout opset 7–9 and 10–11 kernel registrations were moved from `identity_op.cc` to `nn/dropout.cc` so that each op's registrations live in that op's own source file.
 - A few tensor kernels (`pad.cc`, `tile.cc`, `unsqueeze.cc`, `upsample.*`, `space_depth_ops.h`, `scatter_nd.*`) still contain localized plugin guards where adapter and framework paths have not fully converged.
 
 The broad trend remains positive: most operator-level plugin conditionals were removed by moving reusable CPU/helper logic into shared headers and by centralizing stream bridging in `CudaKernel` helpers.
@@ -642,7 +640,7 @@ The in-tree CUDA EP and shared provider bridge are compiled identically regardle
 
 ### 9.3 Plugin Independence
 
-`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA/cuDNN/protobuf. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
+`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`), cuDNN, and protobuf. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
 
 ### 9.4 Build Outputs
 
@@ -682,7 +680,13 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 | Stage 5A | Standard ops: Reshape, Split, Concat, Gather, Unsqueeze |
 | Stage 5B | More ops: Tile, CumSum, ConstantOfShape, SpaceToDepth, Pad, Slice, Resize, Sum |
 | Stage 5C | CPU base class ops: Upsample, DepthToSpace |
-| Stage 5D | Contrib ops: FastGelu, SkipLayerNorm (BiasDropout is currently skipped as a known issue in the script) |
+| Stage 5D | Contrib ops: FastGelu, SkipLayerNorm, BiasDropout |
+| Dropout | Dropout opset 7 and opset 10 — verifies registrations moved to `dropout.cc` |
+| Quantization | DequantizeLinear / QuantizeLinear opset 21 — exercises `TWO_TYPED_KERNEL_EX` adapter macro |
+| GatherBlockQuantized | Contrib `GatherBlockQuantized` — exercises `THREE_TYPED_KERNEL_EX` adapter macro |
+| Identity | Identity opset 13 and opset 25 — re-enabled op with `TensorSeq` path guarded |
+| Crop | Crop (opset 1) — previously excluded contrib op, now re-enabled |
+| Key-ops probe | Session-based probing of representative ops: Sub, Relu, Softmax, Transpose, Cast, Sigmoid, ConvTranspose, LRN |
 
 ### 10.2 Running Tests
 
@@ -698,7 +702,18 @@ The current branch has been validated with `./cuda_plugin.sh --build --test_plug
 
 ### 10.3 Parity Report
 
-`tools/ci_build/cuda_plugin_parity_report.py` generates a report comparing registered kernels between the in-tree CUDA EP and the plugin EP, identifying gaps.
+`tools/ci_build/cuda_plugin_parity_report.py` generates both static and runtime parity reports:
+
+- **Static mode** (default): Parses CMake exclusion patterns and kernel registration macros from source to compare what the plugin build includes vs. the bundled CUDA EP.
+  ```bash
+  python tools/ci_build/cuda_plugin_parity_report.py
+  ```
+- **Runtime mode** (`--runtime`): Uses the pybind `get_registered_ep_kernel_defs()` API (added in `onnxruntime_pybind_schema.cc`) to query actual kernel registries from both the bundled and plugin EPs, providing an accurate comparison of registered op/domain/version/type-constraint coverage.
+  ```bash
+  python tools/ci_build/cuda_plugin_parity_report.py --runtime [--plugin-ep-lib /path/to/plugin.so]
+  ```
+
+The runtime API (`get_registered_ep_kernel_defs(ep_name)`) creates a temporary EP factory and EP instance for the named EP, iterates its kernel registry, and returns `KernelDef` objects with `op_name`, `domain`, `version_range`, `provider`, and `type_constraints` fields.
 
 ---
 
@@ -918,9 +933,9 @@ include/onnxruntime/ep/
 
 5. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc` so the plugin can recover runtime kernel selection and profiling-based tuning behavior.
 
-6. **TensorSeq and additional C API coverage** — Add enough sequence/tensor-sequence support to unblock `identity_op.cc` and `sequence_op.cc`, and extend the ORT C API where needed for remaining framework-style attribute accessors such as string-array attributes used by RNN kernels.
+6. **TensorSeq and additional C API coverage** — Add enough sequence/tensor-sequence support to unblock `sequence_op.cc` (the last remaining TensorSeq-dependent file), and extend the ORT C API where needed for remaining framework-style attribute accessors such as string-array attributes used by RNN kernels. Note: `identity_op.cc` is now included in the plugin build — its TensorSeq code path is guarded by `#ifndef BUILD_CUDA_EP_AS_PLUGIN` and opset 14+ registrations use `AllFixedSizeTensorTypes()` (Tensor-only) instead of `AllFixedSizeTensorAndSequenceTensorTypes()`.
 
-7. **Remaining contrib exclusions** — Remove the current CMake exclusions for FFT, crop, dynamicslice, and other remaining contrib paths once their framework assumptions are gone or adapter equivalents exist.
+7. **Remaining contrib exclusions** — The FFT (`fft_ops.cc`), crop (`crop.cc`), and dynamicslice (`dynamicslice.cc`) exclusions have been removed. These files now compile in the plugin build: FFT ops use `Stream(context)` (which works in both builds) and the `CUFFT_RETURN_IF_ERROR` macro was added to the adapter; crop and dynamicslice had no real framework blockers once tested. The plugin CMake now links `CUDA::cufft` for cuFFT symbol resolution. Remaining contrib exclusions are: `shrunken_gather.cc` (training), `transformers/*` (subgraph), `aten_ops/*` (ATen), `collective/*` (NCCL), and `llm/*` (contrib LLM pass).
 
 8. **CI integration and targeted benchmarking** — Add plugin build + test coverage to CI and include perf-oriented validation so allocator, profiling, and tunable-op regressions are caught early.
 

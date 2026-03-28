@@ -175,6 +175,15 @@ using ::onnxruntime::HandleNegativeAxis;
     }                                                                                                                                                               \
   }
 
+#undef CUFFT_RETURN_IF_ERROR
+#define CUFFT_RETURN_IF_ERROR(expr)                                                                                                                                 \
+  {                                                                                                                                                                 \
+    cufftResult _status = (expr);                                                                                                                                   \
+    if (_status != CUFFT_SUCCESS) {                                                                                                                                 \
+      return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, std::string("cuFFT error: ") + std::to_string((int)_status)); \
+    }                                                                                                                                                               \
+  }
+
 // ===================================================================
 // Section 3: Self-registering kernel collector using BuildKernelCreateInfo<>
 //
@@ -310,6 +319,67 @@ class PluginKernelCollector {
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                \
            &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                                \
                provider, domain, startver, endver, type, name)>),                                                 \
+       true);
+
+#undef ONNX_OPERATOR_TWO_TYPED_KERNEL_EX
+#define ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(name, domain, ver, type1, type2, provider, builder, ...)                        \
+  class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name);                             \
+  template <>                                                                                                             \
+  KernelCreateInfo                                                                                                        \
+  BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name)>() {         \
+    return KernelCreateInfo(                                                                                              \
+        builder.SetName(#name).SetDomain(domain).SinceVersion(ver).Provider(CUDA_PLUGIN_EP).Build(),                      \
+        static_cast<KernelCreatePtrFn>(                                                                                   \
+            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {                        \
+              out = std::make_unique<__VA_ARGS__>(info);                                                                  \
+              return Status::OK();                                                                                        \
+            }));                                                                                                          \
+  }                                                                                                                       \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type1##_##type2##_, __COUNTER__) =                  \
+      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                        \
+           &BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name)>), \
+       true);
+
+#undef ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX
+#define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(name, domain, startver, endver, type1, type2,                    \
+                                                    provider, builder, ...)                                          \
+  class ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name); \
+  template <>                                                                                                        \
+  KernelCreateInfo                                                                                                   \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(                                         \
+      provider, domain, startver, endver, type1, type2, name)>() {                                                   \
+    return KernelCreateInfo(                                                                                         \
+        builder.SetName(#name).SetDomain(domain).SinceVersion(startver, endver).Provider(CUDA_PLUGIN_EP).Build(),    \
+        static_cast<KernelCreatePtrFn>(                                                                              \
+            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {                   \
+              out = std::make_unique<__VA_ARGS__>(info);                                                             \
+              return Status::OK();                                                                                   \
+            }));                                                                                                     \
+  }                                                                                                                  \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type1##_##type2##_, __COUNTER__) =             \
+      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                   \
+           &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(                               \
+               provider, domain, startver, endver, type1, type2, name)>),                                            \
+       true);
+
+#undef ONNX_OPERATOR_THREE_TYPED_KERNEL_EX
+#define ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(name, domain, ver, type1, type2, type3, provider, builder, ...)                \
+  class ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, type3, name);                     \
+  template <>                                                                                                              \
+  KernelCreateInfo                                                                                                         \
+  BuildKernelCreateInfo<ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, type3, name)>() { \
+    return KernelCreateInfo(                                                                                               \
+        builder.SetName(#name).SetDomain(domain).SinceVersion(ver).Provider(CUDA_PLUGIN_EP).Build(),                       \
+        static_cast<KernelCreatePtrFn>(                                                                                    \
+            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {                         \
+              out = std::make_unique<__VA_ARGS__>(info);                                                                   \
+              return Status::OK();                                                                                         \
+            }));                                                                                                           \
+  }                                                                                                                        \
+  static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type1##_##type2##_##type3##_, __COUNTER__) =         \
+      (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                         \
+           &BuildKernelCreateInfo<ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(                                             \
+               provider, domain, ver, type1, type2, type3, name)>),                                                        \
        true);
 
 // ===================================================================

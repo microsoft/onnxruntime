@@ -297,8 +297,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     }
 
     const std::string msg = std::string("Failed to parse session config for key '") +
-                             std::string(key) + "'. Expected " + std::string(expected) +
-                             ". Using default value.";
+                            std::string(key) + "'. Expected " + std::string(expected) +
+                            ". Using default value.";
 
     OrtStatus* st = factory->ort_api_.Logger_LogMessage(
         logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), "cuda_ep_factory.cc", __LINE__, "CudaEpFactory");

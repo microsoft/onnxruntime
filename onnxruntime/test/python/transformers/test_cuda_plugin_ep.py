@@ -851,6 +851,162 @@ class TestCudaPluginEP(unittest.TestCase):
         )
         self.assertEqual(result, TEST_PASS, "BiasDropout plugin op test failed")
 
+    def test_op_dropout_opset7(self):
+        """Dropout opset 7-9: simple in/out, no mask. Verifies old-version registration in dropout.cc."""
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Dropout", ["X"], ["Y"], ratio=0.0)
+        graph = helper.make_graph(
+            [node],
+            "test-Dropout-opset7",
+            [helper.make_tensor_value_info("X", f_dtype, [2, 4])],
+            [helper.make_tensor_value_info("Y", f_dtype, [2, 4])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 7
+        model = helper.make_model(graph, opset_imports=[opset])
+        x = np.random.rand(2, 4).astype(np.float32)
+        result = _run_model_test(target_device, "Dropout_opset7", model, {"X": x}, lambda f: f["X"])
+        self.assertEqual(result, TEST_PASS, "Dropout opset 7 plugin op test failed")
+
+    def test_op_dropout_opset10(self):
+        """Dropout opset 10-11: data + optional mask output. Verifies old-version registration in dropout.cc."""
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Dropout", ["X"], ["Y", "mask"])
+        graph = helper.make_graph(
+            [node],
+            "test-Dropout-opset10",
+            [helper.make_tensor_value_info("X", f_dtype, [2, 4])],
+            [
+                helper.make_tensor_value_info("Y", f_dtype, [2, 4]),
+                helper.make_tensor_value_info("mask", TensorProto.BOOL, [2, 4]),
+            ],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 10
+        model = helper.make_model(graph, opset_imports=[opset])
+        x = np.random.rand(2, 4).astype(np.float32)
+        result = _run_model_test(
+            target_device,
+            "Dropout_opset10",
+            model,
+            {"X": x},
+            lambda f: [f["X"], np.ones((2, 4), dtype=bool)],
+        )
+        self.assertEqual(result, TEST_PASS, "Dropout opset 10 plugin op test failed")
+
+    def test_op_dequantize_linear_opset21(self):
+        """DequantizeLinear opset 21 uses TWO_TYPED_KERNEL_EX — verifies the new adapter macro."""
+        target_device = get_cuda_plugin_device()
+        node = helper.make_node("DequantizeLinear", ["x", "x_scale", "x_zero_point"], ["y"])
+        x_data = np.array([0, 1, 2, 3, 4, 5], dtype=np.uint8)
+        scale_data = np.array(0.5, dtype=np.float32)
+        zp_data = np.array(2, dtype=np.uint8)
+        graph = helper.make_graph(
+            [node],
+            "test-DequantizeLinear-opset21",
+            [
+                helper.make_tensor_value_info("x", TensorProto.UINT8, [6]),
+                helper.make_tensor_value_info("x_scale", TensorProto.FLOAT, []),
+                helper.make_tensor_value_info("x_zero_point", TensorProto.UINT8, []),
+            ],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [6])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 21
+        model = helper.make_model(graph, opset_imports=[opset])
+        feed = {"x": x_data, "x_scale": scale_data, "x_zero_point": zp_data}
+        result = _run_model_test(
+            target_device,
+            "DequantizeLinear_opset21",
+            model,
+            feed,
+            lambda f: (f["x"].astype(np.float32) - f["x_zero_point"].astype(np.float32)) * f["x_scale"],
+        )
+        self.assertEqual(result, TEST_PASS, "DequantizeLinear opset 21 plugin op test failed")
+
+    def test_op_quantize_linear_opset21(self):
+        """QuantizeLinear opset 21 uses TWO_TYPED_KERNEL_EX — verifies the new adapter macro."""
+        target_device = get_cuda_plugin_device()
+        node = helper.make_node("QuantizeLinear", ["x", "y_scale", "y_zero_point"], ["y"])
+        x_data = np.array([0.0, 0.5, 1.0, 1.5, 2.0, 2.5], dtype=np.float32)
+        scale_data = np.array(0.5, dtype=np.float32)
+        zp_data = np.array(0, dtype=np.uint8)
+        graph = helper.make_graph(
+            [node],
+            "test-QuantizeLinear-opset21",
+            [
+                helper.make_tensor_value_info("x", TensorProto.FLOAT, [6]),
+                helper.make_tensor_value_info("y_scale", TensorProto.FLOAT, []),
+                helper.make_tensor_value_info("y_zero_point", TensorProto.UINT8, []),
+            ],
+            [helper.make_tensor_value_info("y", TensorProto.UINT8, [6])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 21
+        model = helper.make_model(graph, opset_imports=[opset])
+        feed = {"x": x_data, "y_scale": scale_data, "y_zero_point": zp_data}
+        result = _run_model_test(
+            target_device,
+            "QuantizeLinear_opset21",
+            model,
+            feed,
+            lambda f: np.clip(
+                np.round(f["x"] / f["y_scale"]).astype(np.float32) + f["y_zero_point"].astype(np.float32),
+                0,
+                255,
+            ).astype(np.uint8),
+            atol=1,
+        )
+        self.assertEqual(result, TEST_PASS, "QuantizeLinear opset 21 plugin op test failed")
+
+    def test_op_gather_block_quantized(self):
+        """GatherBlockQuantized uses THREE_TYPED_KERNEL_EX — verifies the new adapter macro."""
+        target_device = get_cuda_plugin_device()
+        # GatherBlockQuantized: gathers rows from a block-quantized weight matrix.
+        # data shape [4, 16] (uint8), scales shape [4, 1] (float), indices [2] (int64)
+        # bits=8, block_size=16 (must be >= 16 and power of 2), quantize_axis=last
+        node = helper.make_node(
+            "GatherBlockQuantized",
+            ["data", "indices", "scales"],
+            ["output"],
+            domain="com.microsoft",
+            gather_axis=0,
+            quantize_axis=1,
+            block_size=16,
+            bits=8,
+        )
+        data = np.random.randint(0, 255, size=(4, 16), dtype=np.uint8)
+        scales = np.random.rand(4, 1).astype(np.float32) * 0.1 + 0.01
+        indices = np.array([0, 2], dtype=np.int64)
+        graph = helper.make_graph(
+            [node],
+            "test-GatherBlockQuantized",
+            [
+                helper.make_tensor_value_info("data", TensorProto.UINT8, [4, 16]),
+                helper.make_tensor_value_info("indices", TensorProto.INT64, [2]),
+                helper.make_tensor_value_info("scales", TensorProto.FLOAT, [4, 1]),
+            ],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 16])],
+        )
+        opset_onnx = OperatorSetIdProto()
+        opset_onnx.version = 21
+        opset_ms = OperatorSetIdProto()
+        opset_ms.domain = "com.microsoft"
+        opset_ms.version = 1
+        model = helper.make_model(graph, opset_imports=[opset_onnx, opset_ms])
+        feed = {"data": data, "indices": indices, "scales": scales}
+
+        def expected(f):
+            # Gather rows [0, 2], then dequantize: float_val = uint8_val * scale
+            gathered_data = f["data"][f["indices"]]  # [2, 16]
+            gathered_scales = f["scales"][f["indices"]]  # [2, 1]
+            return gathered_data.astype(np.float32) * gathered_scales
+
+        result = _run_model_test(target_device, "GatherBlockQuantized", model, feed, expected, rtol=1e-2, atol=1e-2)
+        self.assertEqual(result, TEST_PASS, "GatherBlockQuantized plugin op test failed")
+
     def test_op_skip_layer_norm(self):
         target_device = get_cuda_plugin_device()
         f_dtype = TensorProto.FLOAT
@@ -904,6 +1060,147 @@ class TestCudaPluginEP(unittest.TestCase):
             atol=1e-2,
         )
         self.assertEqual(result, TEST_PASS, "SkipLayerNorm plugin op test failed")
+
+    # ---- Tests for previously-excluded ops (identity, crop, dynamicslice) ----
+
+    def test_op_identity(self):
+        """Identity op: previously excluded from plugin due to TensorSeq; now Tensor-only."""
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model("Identity", [("X", f_dtype, [3, 4])], [("Y", f_dtype, [3, 4])])
+        x = np.random.rand(3, 4).astype(np.float32)
+        result = _run_model_test(target_device, "Identity", model, {"X": x}, lambda f: f["X"])
+        self.assertEqual(result, TEST_PASS, "Identity plugin op test failed")
+
+    def test_op_identity_opset25(self):
+        """Identity opset 25: highest opset, uses V type constraint (Tensor subset in plugin)."""
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model("Identity", [("X", f_dtype, [2, 5])], [("Y", f_dtype, [2, 5])], opset=25)
+        x = np.random.rand(2, 5).astype(np.float32)
+        result = _run_model_test(target_device, "Identity_opset25", model, {"X": x}, lambda f: f["X"])
+        self.assertEqual(result, TEST_PASS, "Identity opset 25 plugin op test failed")
+
+    def test_op_crop(self):
+        """Crop (opset 1, contrib): previously excluded from plugin."""
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node("Crop", ["input"], ["output"], border=[1, 1, 1, 1])
+        graph = helper.make_graph(
+            [node],
+            "test-Crop",
+            [helper.make_tensor_value_info("input", f_dtype, [1, 1, 4, 4])],
+            [helper.make_tensor_value_info("output", f_dtype, [1, 1, 2, 2])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 1
+        model = helper.make_model(graph, opset_imports=[opset])
+        x = np.arange(16, dtype=np.float32).reshape(1, 1, 4, 4)
+        result = _run_model_test(
+            target_device,
+            "Crop",
+            model,
+            {"input": x},
+            lambda f: f["input"][:, :, 1:3, 1:3],
+        )
+        self.assertEqual(result, TEST_PASS, "Crop plugin op test failed")
+
+    def test_plugin_ep_claims_key_ops(self):
+        """Session-based probing: verify the plugin EP claims key ops via graph assignment."""
+        target_device = get_cuda_plugin_device()
+
+        # Representative ops the plugin EP must claim (op_type, domain, opset, inputs, outputs, attrs).
+        # One representative per major op family; ops already covered by dedicated test_registration_*
+        # or test_op_* tests (Add, MatMul, Gemm, Conv, …) are intentionally excluded here.
+        probe_specs = [
+            # binary elementwise (Sub — Add is tested by test_registration_add)
+            (
+                "Sub",
+                "",
+                13,
+                [("A", TensorProto.FLOAT, [2, 4]), ("B", TensorProto.FLOAT, [2, 4])],
+                [("Y", TensorProto.FLOAT, [2, 4])],
+                None,
+            ),
+            # unary activation
+            ("Relu", "", 13, [("X", TensorProto.FLOAT, [2, 4])], [("Y", TensorProto.FLOAT, [2, 4])], None),
+            # reduction-style
+            ("Softmax", "", 13, [("X", TensorProto.FLOAT, [2, 4])], [("Y", TensorProto.FLOAT, [2, 4])], {"axis": -1}),
+            # data-movement
+            (
+                "Transpose",
+                "",
+                13,
+                [("X", TensorProto.FLOAT, [2, 4])],
+                [("Y", TensorProto.FLOAT, [4, 2])],
+                {"perm": [1, 0]},
+            ),
+            # type-dispatch
+            (
+                "Cast",
+                "",
+                13,
+                [("X", TensorProto.FLOAT, [2, 4])],
+                [("Y", TensorProto.FLOAT16, [2, 4])],
+                {"to": int(TensorProto.FLOAT16)},
+            ),
+            # second unary
+            ("Sigmoid", "", 13, [("X", TensorProto.FLOAT, [2, 4])], [("Y", TensorProto.FLOAT, [2, 4])], None),
+            # cuDNN: ConvTranspose (Conv already tested by test_registration_conv)
+            (
+                "ConvTranspose",
+                "",
+                13,
+                [("X", TensorProto.FLOAT, [1, 2, 3, 3]), ("W", TensorProto.FLOAT, [2, 3, 3, 3])],
+                [("Y", TensorProto.FLOAT, [1, 3, 5, 5])],
+                None,
+            ),
+            # cuDNN: LRN (local response normalization)
+            (
+                "LRN",
+                "",
+                13,
+                [("X", TensorProto.FLOAT, [1, 2, 4, 4])],
+                [("Y", TensorProto.FLOAT, [1, 2, 4, 4])],
+                {"size": 3},
+            ),
+        ]
+
+        claimed = []
+        not_claimed = []
+        errors = []
+
+        for op_type, domain, opset, inputs_info, outputs_info, attrs in probe_specs:
+            model = _make_simple_model(op_type, inputs_info, outputs_info, attrs=attrs, opset=opset, domain=domain)
+            with tempfile.NamedTemporaryFile(suffix=f"_probe_{op_type}.onnx", delete=False) as tmp:
+                model_path = tmp.name
+            try:
+                save(model, model_path)
+                sess_options = _create_session_options()
+                sess_options.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL
+                sess_options.add_provider_for_devices([target_device], {})
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+                assigned_nodes, _ = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+                if assigned_nodes:
+                    claimed.append(op_type)
+                else:
+                    not_claimed.append(op_type)
+            except Exception as e:
+                errors.append((op_type, str(e)[:120]))
+            finally:
+                if os.path.exists(model_path):
+                    os.remove(model_path)
+
+        # All probed ops should be claimed by the plugin EP
+        self.assertFalse(
+            not_claimed,
+            f"Plugin EP did not claim these key ops: {not_claimed}",
+        )
+        self.assertFalse(
+            errors,
+            f"Errors probing ops: {errors}",
+        )
+        self.assertGreater(len(claimed), 0, "No ops were claimed at all")
 
 
 if __name__ == "__main__":
