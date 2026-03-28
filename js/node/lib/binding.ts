@@ -28,7 +28,7 @@ export declare namespace Binding {
     shape: number[];
     type: number;
   }
-  export interface InferenceSession {
+  export interface InferenceSession extends AsyncDisposable {
     loadModel(modelPath: string, options: SessionOptions): void;
     loadModel(buffer: ArrayBuffer, byteOffset: number, byteLength: number, options: SessionOptions): void;
 
