@@ -15,7 +15,7 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-// Activation mode for CausalConv1DWithState
+// Activation mode for CausalConvWithState
 enum class CausalConv1DActivation {
   None,
   Silu,
@@ -23,12 +23,12 @@ enum class CausalConv1DActivation {
 
 CausalConv1DActivation ParseCausalConv1DActivation(const std::string& activation_str);
 
-// Program for CausalConv1DWithState
-class CausalConv1DWithStateProgram final : public Program<CausalConv1DWithStateProgram> {
+// Program for CausalConvWithState
+class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgram> {
  public:
-  CausalConv1DWithStateProgram(CausalConv1DActivation activation, bool has_bias, bool has_conv_state,
-                               int kernel_size)
-      : Program{"CausalConv1DWithState"},
+  CausalConvWithStateProgram(CausalConv1DActivation activation, bool has_bias, bool has_conv_state,
+                             int kernel_size)
+      : Program{"CausalConvWithState"},
         activation_(activation),
         has_bias_(has_bias),
         has_conv_state_(has_conv_state),
@@ -51,10 +51,10 @@ class CausalConv1DWithStateProgram final : public Program<CausalConv1DWithStateP
   [[maybe_unused]] int kernel_size_;
 };
 
-// Kernel for CausalConv1DWithState
-class CausalConv1DWithState final : public WebGpuKernel {
+// Kernel for CausalConvWithState
+class CausalConvWithState final : public WebGpuKernel {
  public:
-  CausalConv1DWithState(const OpKernelInfo& info);
+  CausalConvWithState(const OpKernelInfo& info);
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:

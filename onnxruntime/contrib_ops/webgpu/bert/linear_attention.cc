@@ -55,7 +55,7 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Add outputs
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("final_state", ShaderUsage::UseUniform);
+  shader.AddOutput("present_state", ShaderUsage::UseUniform);
 
   // Shared memory for parallel reduction across dk threads
   // and for broadcasting delta values
@@ -75,6 +75,10 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "let head_idx = bh % uniforms.num_heads;\n"
       << "let dk_idx = local_idx;  // thread index = row in state matrix\n"
       << "let dv_start = dv_tile_idx * TILE_V;\n"
+      << "\n"
+      // Precompute packed strides for 3D packed inputs (B, T, H*D)
+      << "let packed_dk = uniforms.num_heads * uniforms.head_dim_k;\n"
+      << "let packed_dv = uniforms.num_heads * uniforms.head_dim_v;\n"
       << "\n"
       // Initialize state tile in private memory
       << "var state: array<f32, TILE_V>;\n"
@@ -100,14 +104,14 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody()
       << "\n// Process each token sequentially\n"
       << "for (var t = 0u; t < uniforms.seq_length; t++) {\n"
-      // Load k and q for this thread's dk row
-      << "  let qkv_bh_offset = (batch_idx * uniforms.num_heads + head_idx) * uniforms.seq_length;\n"
+      // 3D packed indexing: (B, T, H*D) — bt_offset indexes (batch, token) pair
+      << "  let bt_offset = batch_idx * uniforms.seq_length + t;\n"
       << "  var k_val: f32 = 0.0;\n"
       << "  var q_val: f32 = 0.0;\n"
       << "  if (dk_idx < uniforms.head_dim_k) {\n"
-      << "    let k_base = (qkv_bh_offset + t) * uniforms.head_dim_k + dk_idx;\n"
-      << "    k_val = f32(key[k_base]);\n"
-      << "    q_val = f32(query[k_base]);\n"
+      << "    let qk_idx = bt_offset * packed_dk + head_idx * uniforms.head_dim_k + dk_idx;\n"
+      << "    k_val = f32(key[qk_idx]);\n"
+      << "    q_val = f32(query[qk_idx]);\n"
       << "  }\n";
 
   // Step 1: Apply decay (for gated and gated_delta modes)
@@ -115,16 +119,16 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody()
         << "\n  // Apply exponential decay: S *= exp(decay)\n";
     if (decay_broadcast_dk_) {
-      // Decay shape is (B, H, T) — same decay for all dk rows
+      // Decay shape is (B, T, H_kv) — same decay for all dk rows
       shader.MainFunctionBody()
-          << "  let exp_g = exp(f32(decay[qkv_bh_offset + t]));\n";
+          << "  let exp_g = exp(f32(decay[bt_offset * uniforms.num_heads + head_idx]));\n";
     } else {
-      // Decay shape is (B, H, T, dk) — per-dk decay
+      // Decay shape is (B, T, H_kv * dk) — per-dk decay
       // For padding threads (dk_idx >= head_dim_k), use 0.0 (exp(0)=1, no decay)
       shader.MainFunctionBody()
           << "  var exp_g: f32 = 1.0;\n"
           << "  if (dk_idx < uniforms.head_dim_k) {\n"
-          << "    exp_g = exp(f32(decay[(qkv_bh_offset + t) * uniforms.head_dim_k + dk_idx]));\n"
+          << "    exp_g = exp(f32(decay[bt_offset * packed_dk + head_idx * uniforms.head_dim_k + dk_idx]));\n"
           << "  }\n";
     }
     shader.MainFunctionBody()
@@ -152,8 +156,8 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  }\n"
         // Thread 0 computes delta and broadcasts via shared memory
         << "  // Compute delta = beta * (v - retrieved) and broadcast\n"
-        << "  let v_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.seq_length + t) * uniforms.head_dim_v + dv_start;\n"
-        << "  let beta_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.seq_length + t);\n"
+        << "  let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;\n"
+        << "  let beta_base = bt_offset * uniforms.num_heads + head_idx;\n"
         << "  if (dk_idx == 0u) {\n"
         << "    let beta_val = f32(beta[beta_base]);\n"
         << "    for (var j = 0u; j < TILE_V; j++) {\n"
@@ -175,7 +179,7 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     // For linear and gated modes: S += k ⊗ v (no delta rule)
     shader.MainFunctionBody()
         << "\n  // Update state: S += k ⊗ v\n"
-        << "  let v_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.seq_length + t) * uniforms.head_dim_v + dv_start;\n"
+        << "  let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;\n"
         << "  for (var j = 0u; j < TILE_V; j++) {\n"
         << "    if (dv_start + j < uniforms.head_dim_v) {\n"
         << "      let v_val = f32(value[v_base + j]);\n"
@@ -201,7 +205,7 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  }\n"
       // Thread 0 writes the output for this token and dv_tile
       << "  if (dk_idx == 0u) {\n"
-      << "    let out_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.seq_length + t) * uniforms.head_dim_v + dv_start;\n"
+      << "    let out_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;\n"
       << "    for (var j = 0u; j < TILE_V; j++) {\n"
       << "      if (dv_start + j < uniforms.head_dim_v) {\n"
       << "        output[out_base + j] = output_element_t(reduction_buf[j * workgroup_size_x] * uniforms.scale);\n"
@@ -211,14 +215,14 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  workgroupBarrier();\n"
       << "}\n";  // end token loop
 
-  // Write final state
+  // Write final state (4D: B, H_kv, dk, dv)
   shader.MainFunctionBody()
-      << "\n// Write final state\n"
+      << "\n// Write present_state\n"
       << "if (dk_idx < uniforms.head_dim_k) {\n"
-      << "  let final_state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;\n"
+      << "  let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;\n"
       << "  for (var j = 0u; j < TILE_V; j++) {\n"
       << "    if (dv_start + j < uniforms.head_dim_v) {\n"
-      << "      final_state[final_state_base + j] = output_element_t(state[j]);\n"
+      << "      present_state[state_base + j] = output_element_t(state[j]);\n"
       << "    }\n"
       << "  }\n"
       << "}\n";
@@ -244,39 +248,52 @@ LinearAttention::LinearAttention(const OpKernelInfo& info)
   std::string update_rule_str = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
   update_rule_ = ParseUpdateRule(update_rule_str);
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  q_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("q_num_heads"));
+  kv_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("kv_num_heads"));
 }
 
 
 /*
-  Inputs:
-      query:         (B, H_kv, T, d_k) — query (may have fewer heads than value for GQA; pre-scaled by 1/sqrt(d_k))
-      key:           (B, H_kv, T, d_k) — key (L2-normalized)
-      value:         (B, H, T, d_v) — value (H >= H_kv)
-      initial_state: (B, H, d_k, d_v) — recurrent state
-      decay:         (B, H, T) — exponential decay gate (log-space)
-      beta:          (B, H, T) — update rate (sigmoid output)
+  3D packed inputs:
+      query:         (B, T, H_q * d_k)   — packed query
+      key:           (B, T, H_kv * d_k)  — packed key
+      value:         (B, T, H_kv * d_v)  — packed value
+      past_state:    (B, H_kv, d_k, d_v) — recurrent state (4D)
+      decay:         (B, T, H_kv * d_k) or (B, T, H_kv) — decay gate (3D)
+      beta:          (B, T, H_kv) or (B, T, 1)           — update rate (3D)
 
   Outputs:
-      output:        (B, H, T, d_v) — attention output
-      present_state: (B, H, d_k, d_v) — updated recurrent state
+      output:        (B, T, H_q * d_v)   — packed attention output
+      present_state: (B, H_kv, d_k, d_v) — updated recurrent state (4D)
 */
 Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   const Tensor* query = context.Input(0);
   const Tensor* key = context.Input(1);
   const Tensor* value = context.Input(2);
-  const Tensor* initial_state = context.Input(3);  // optional
-  const Tensor* decay = context.Input(4);           // optional
-  const Tensor* beta = context.Input(5);            // optional
+  const Tensor* past_state = context.Input(3);   // optional
+  const Tensor* decay = context.Input(4);         // optional
+  const Tensor* beta = context.Input(5);          // optional
 
-  // Validate inputs
+  // Validate 3D packed inputs
   const auto& q_shape = query->Shape();
-  ORT_RETURN_IF(q_shape.NumDimensions() != 4, "query must be 4D (B, H, T, dk)");
+  ORT_RETURN_IF(q_shape.NumDimensions() != 3, "query must be 3D (B, T, H_q*d_k)");
 
   const int batch_size = static_cast<int>(q_shape[0]);
-  const int num_heads = static_cast<int>(q_shape[1]);
-  const int seq_length = static_cast<int>(q_shape[2]);
-  const int head_dim_k = static_cast<int>(q_shape[3]);
-  const int head_dim_v = static_cast<int>(value->Shape()[3]);
+  const int seq_length = static_cast<int>(q_shape[1]);
+  const int q_packed_dim = static_cast<int>(q_shape[2]);
+  const int num_heads = kv_num_heads_;
+
+  ORT_RETURN_IF(q_num_heads_ != kv_num_heads_,
+                "GQA (q_num_heads != kv_num_heads) is not yet supported");
+
+  const int head_dim_k = q_packed_dim / q_num_heads_;
+  ORT_RETURN_IF(q_packed_dim != head_dim_k * q_num_heads_,
+                "query packed dim must be divisible by q_num_heads");
+
+  const int v_packed_dim = static_cast<int>(value->Shape()[2]);
+  const int head_dim_v = v_packed_dim / kv_num_heads_;
+  ORT_RETURN_IF(v_packed_dim != head_dim_v * kv_num_heads_,
+                "value packed dim must be divisible by kv_num_heads");
 
   // Validate update rule has required inputs
   bool needs_decay = (update_rule_ == LinearAttentionUpdateRule::Gated ||
@@ -286,18 +303,18 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF(needs_decay && decay == nullptr, "decay input required for gated/gated_delta update rules");
   ORT_RETURN_IF(needs_beta && beta == nullptr, "beta input required for delta/gated_delta update rules");
 
-  // Compute scale
+  // Compute scale: 0.0 means derive from d_k
   float scale = scale_;
   if (scale == 0.0f) {
-    scale = 1.0f; // TODO: should this come / std::sqrt(static_cast<float>(head_dim_k));
+    scale = 1.0f / std::sqrt(static_cast<float>(head_dim_k));
   }
 
-  // Allocate outputs
-  TensorShapeVector output_shape({batch_size, num_heads, seq_length, head_dim_v});
+  // Allocate outputs — output is 3D packed, state is 4D
+  TensorShapeVector output_shape({batch_size, seq_length, q_num_heads_ * head_dim_v});
   Tensor* output = context.Output(0, output_shape);
 
   TensorShapeVector state_shape({batch_size, num_heads, head_dim_k, head_dim_v});
-  Tensor* final_state = context.Output(1, state_shape);
+  Tensor* present_state = context.Output(1, state_shape);
 
   // Choose tile size: balance parallelism vs shared memory
   // TILE_V * WORKGROUP_SIZE * 4 bytes must fit in shared memory (typically 16KB limit)
@@ -319,15 +336,17 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
 
   const uint32_t num_workgroups = batch_size * num_heads * num_dv_tiles;
 
-  bool has_initial_state = initial_state != nullptr;
+  bool has_initial_state = past_state != nullptr;
   bool has_decay = decay != nullptr;
   bool has_beta = beta != nullptr;
 
-  // Detect whether decay is (B,H,T) or (B,H,T,dk)
+  // Detect whether decay is (B,T,H_kv) or (B,T,H_kv*dk)
   bool decay_broadcast_dk = false;
   if (has_decay) {
     const auto& decay_shape = decay->Shape();
-    if (decay_shape.NumDimensions() == 3) {
+    // (B, T, H_kv) = 3D with last dim == num_heads
+    int decay_last_dim = static_cast<int>(decay_shape[decay_shape.NumDimensions() - 1]);
+    if (decay_last_dim == num_heads) {
       decay_broadcast_dk = true;
     }
   }
@@ -338,7 +357,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
                      {key, ProgramTensorMetadataDependency::TypeAndRank},
                      {value, ProgramTensorMetadataDependency::TypeAndRank}});
   if (has_initial_state) {
-    program.AddInput({initial_state, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({past_state, ProgramTensorMetadataDependency::TypeAndRank});
   }
   if (has_decay) {
     program.AddInput({decay, ProgramTensorMetadataDependency::TypeAndRank});
@@ -348,7 +367,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   }
 
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank},
-                      {final_state, ProgramTensorMetadataDependency::TypeAndRank}});
+                      {present_state, ProgramTensorMetadataDependency::TypeAndRank}});
 
   program.SetDispatchGroupSize(num_workgroups)
       .SetWorkgroupSize(workgroup_size)

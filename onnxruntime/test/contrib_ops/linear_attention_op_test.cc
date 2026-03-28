@@ -10,237 +10,6 @@
 
 using namespace onnxruntime::test;
 
-namespace linear_attention {
-
-enum class UpdateRule {
-  kLinear,       // S = S + k^T v
-  kGated,        // S = exp(g) * S + k^T v
-  kDelta,        // S = S + k^T ((v - S^T k) * beta)
-  kGatedDelta,   // S = exp(g) * S + k^T ((v - exp(g) * S^T k) * beta)
-};
-
-/// 4D tensor accessor with (d0, d1, d2, d3) layout (row-major).
-template <typename T>
-struct Tensor4D {
-  T* data;
-  int d0, d1, d2, d3;
-
-  Tensor4D(T* data, int d0, int d1, int d2, int d3)
-      : data(data), d0(d0), d1(d1), d2(d2), d3(d3) {}
-
-  T& operator()(int i0, int i1, int i2, int i3) {
-    return data[((i0 * d1 + i1) * d2 + i2) * d3 + i3];
-  }
-  const T& operator()(int i0, int i1, int i2, int i3) const {
-    return data[((i0 * d1 + i1) * d2 + i2) * d3 + i3];
-  }
-
-  int size() const { return d0 * d1 * d2 * d3; }
-};
-
-/// 3D tensor accessor with (d0, d1, d2) layout (row-major).
-template <typename T>
-struct Tensor3D {
-  T* data;
-  int d0, d1, d2;
-
-  Tensor3D(T* data, int d0, int d1, int d2)
-      : data(data), d0(d0), d1(d1), d2(d2) {}
-
-  T& operator()(int i0, int i1, int i2) {
-    return data[(i0 * d1 + i1) * d2 + i2];
-  }
-  const T& operator()(int i0, int i1, int i2) const {
-    return data[(i0 * d1 + i1) * d2 + i2];
-  }
-
-  int size() const { return d0 * d1 * d2; }
-};
-
-/// Compute one recurrence step for a single (batch, head) pair.
-///
-/// state:     (d_k, d_v)  — carried across time steps (modified in place)
-/// q_t:       (d_k,)      — query for this step
-/// k_t:       (d_k,)      — key for this step
-/// v_t:       (d_v,)      — value for this step
-/// decay_t:   scalar      — log-space decay gate
-/// beta_t:    scalar      — update rate
-/// output_t:  (d_v,)      — output for this step (written)
-template <typename T>
-inline void recurrence_step(
-    T* state,          // (d_k, d_v), modified in place
-    const T* q_t,      // (d_k,)
-    const T* k_t,      // (d_k,)
-    const T* v_t,      // (d_v,)
-    T decay_t,         // scalar (log-space)
-    T beta_t,          // scalar
-    T* output_t,       // (d_v,), written
-    int d_k,
-    int d_v,
-    UpdateRule rule) {
-  const bool uses_decay = (rule == UpdateRule::kGated || rule == UpdateRule::kGatedDelta);
-  const bool uses_beta = (rule == UpdateRule::kDelta || rule == UpdateRule::kGatedDelta);
-
-  // 1. State decay: state *= exp(decay)
-  T g_exp = T(1);
-  if (uses_decay) {
-    g_exp = std::exp(decay_t);
-    for (int i = 0; i < d_k * d_v; ++i) {
-      state[i] *= g_exp;
-    }
-  }
-
-  // 2. Retrieval: retrieval[j] = sum_i k[i] * state[i, j]  (k @ state)
-  //    This computes k_row (1, d_k) @ state (d_k, d_v) -> (1, d_v)
-  std::vector<T> retrieval(d_v, T(0));
-  for (int i = 0; i < d_k; ++i) {
-    for (int j = 0; j < d_v; ++j) {
-      retrieval[j] += k_t[i] * state[i * d_v + j];
-    }
-  }
-
-  // 3. Compute delta
-  std::vector<T> delta(d_v);
-  if (uses_beta) {
-    // delta = (v - retrieval) * beta
-    for (int j = 0; j < d_v; ++j) {
-      delta[j] = (v_t[j] - retrieval[j]) * beta_t;
-    }
-  } else {
-    // delta = v
-    std::copy(v_t, v_t + d_v, delta.data());
-  }
-
-  // 4. State update: state += k^T @ delta  (outer product)
-  //    state[i, j] += k[i] * delta[j]
-  for (int i = 0; i < d_k; ++i) {
-    for (int j = 0; j < d_v; ++j) {
-      state[i * d_v + j] += k_t[i] * delta[j];
-    }
-  }
-
-  // 5. Output: output[j] = sum_i q[i] * new_state[i, j]  (q @ new_state)
-  std::fill(output_t, output_t + d_v, T(0));
-  for (int i = 0; i < d_k; ++i) {
-    for (int j = 0; j < d_v; ++j) {
-      output_t[j] += q_t[i] * state[i * d_v + j];
-    }
-  }
-}
-
-/// Expand Q/K heads for GQA: repeat each head `ratio` times.
-///
-/// src:  (B, H_kv, T, d)
-/// dst:  (B, H, T, d)       where H = H_kv * ratio
-template <typename T>
-inline void expand_kv_heads(
-    const T* src, T* dst,
-    int B, int H_kv, int T_len, int d, int ratio) {
-  if (ratio == 1) {
-    std::memcpy(dst, src, B * H_kv * T_len * d * sizeof(T));
-    return;
-  }
-  for (int b = 0; b < B; ++b) {
-    for (int h_kv = 0; h_kv < H_kv; ++h_kv) {
-      const T* src_head = src + ((b * H_kv + h_kv) * T_len) * d;
-      for (int r = 0; r < ratio; ++r) {
-        int h = h_kv * ratio + r;
-        T* dst_head = dst + ((b * (H_kv * ratio) + h) * T_len) * d;
-        std::memcpy(dst_head, src_head, T_len * d * sizeof(T));
-      }
-    }
-  }
-}
-
-/// Run the full LinearAttention operator.
-///
-/// query:         (B, H_kv, T, d_k)  — pre-scaled by 1/sqrt(d_k)
-/// key:           (B, H_kv, T, d_k)  — L2-normalized
-/// value:         (B, H, T, d_v)
-/// past_state:    (B, H, d_k, d_v)   — recurrent state from previous chunk
-/// decay:         (B, H, T)           — log-space decay gate
-/// beta:          (B, H, T)           — sigmoid update rate
-/// output:        (B, H, T, d_v)     — attention output     [written]
-/// present_state: (B, H, d_k, d_v)   — updated state        [written]
-///
-/// H must be divisible by H_kv (GQA ratio = H / H_kv).
-template <typename T>
-void linear_attention_forward(
-    const T* query,         // (B, H_kv, T, d_k)
-    const T* key,           // (B, H_kv, T, d_k)
-    const T* value,         // (B, H, T, d_v)
-    const T* past_state,    // (B, H, d_k, d_v)
-    const T* decay,         // (B, H, T)
-    const T* beta,          // (B, H, T)
-    T* output,              // (B, H, T, d_v)
-    T* present_state,       // (B, H, d_k, d_v)
-    int B,
-    int H_kv,
-    int H,
-    int T_len,
-    int d_k,
-    int d_v,
-    float scale,
-    UpdateRule rule = UpdateRule::kGatedDelta) {
-  assert(H % H_kv == 0 && "H must be divisible by H_kv for GQA");
-  const int ratio = H / H_kv;
-
-  // --- GQA: expand Q/K heads to match V head count ---
-  std::vector<T> q_expanded(B * H * T_len * d_k);
-  std::vector<T> k_expanded(B * H * T_len * d_k);
-  expand_kv_heads(query, q_expanded.data(), B, H_kv, T_len, d_k, ratio);
-  expand_kv_heads(key, k_expanded.data(), B, H_kv, T_len, d_k, ratio);
-
-  // Accessors for expanded Q/K
-  Tensor4D<const T> Q(q_expanded.data(), B, H, T_len, d_k);
-  Tensor4D<const T> K(k_expanded.data(), B, H, T_len, d_k);
-  Tensor4D<const T> V(value, B, H, T_len, d_v);
-  Tensor3D<const T> D(decay, B, H, T_len);
-  Tensor4D<T> O(output, B, H, T_len, d_v);
-
-  // Copy past_state into present_state (we'll modify it in place)
-  const int state_size = B * H * d_k * d_v;
-  std::memcpy(present_state, past_state, state_size * sizeof(T));
-  Tensor4D<T> S(present_state, B, H, d_k, d_v);
-
-  // --- Sequential recurrence over time ---
-  for (int b = 0; b < B; ++b) {
-    for (int h = 0; h < H; ++h) {
-      T* state_bh = &S(b, h, 0, 0);  // (d_k, d_v) slice
-
-      for (int t = 0; t < T_len; ++t) {
-        recurrence_step(
-            state_bh,
-            &Q(b, h, t, 0),
-            &K(b, h, t, 0),
-            &V(b, h, t, 0),
-            D(b, h, t),
-            beta ? beta[((b * H + h) * T_len) + t] : T(0),
-            &O(b, h, t, 0),
-            d_k, d_v,
-            rule);
-      }
-    }
-  }
-    // linear_attention_forward doesn't apply scale; apply it here.
-  int output_size = B * H * T_len * d_v;
-  for (int i = 0; i < output_size; ++i) {
-    output[i] *= scale;
-  }
-
-}
-
-/// Parse a string into an UpdateRule enum.
-inline UpdateRule parse_update_rule(const std::string& s) {
-  if (s == "linear") return UpdateRule::kLinear;
-  if (s == "gated") return UpdateRule::kGated;
-  if (s == "delta") return UpdateRule::kDelta;
-  if (s == "gated_delta") return UpdateRule::kGatedDelta;
-  assert(false && "Unknown update_rule");
-  return UpdateRule::kGatedDelta;
-}
-
-}  // namespace linear_attention
 
 namespace onnxruntime {
 namespace test {
@@ -264,32 +33,6 @@ void LinearAttentionReference(
 
     int bht = batch_size * num_heads * seq_length;
     bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht);
-
-    if (false && decay_broadcast_dk) {
-      output.resize(batch_size * num_heads * seq_length * head_dim_v, 0.0f);
-      final_state.resize(batch_size * num_heads * head_dim_k * head_dim_v, 0.0f);
-      if (initial_state != nullptr) {
-        final_state = *initial_state;
-      }
-      linear_attention::linear_attention_forward<float>(
-        query.data(),             // (B, H_kv, T, d_k)
-        key.data(),               // (B, H_kv, T, d_k)
-        value.data(),             // (B, H, T, d_v)
-        final_state.data(),       // (B, H, d_k, d_v)
-        decay->data(),            // (B, H, T)
-        beta ? beta->data() : nullptr,  // (B, H, T)
-        output.data(),            // (B, H, T, d_v)
-        final_state.data(),       // (B, H, d_k, d_v)
-        batch_size,
-        num_heads,
-        num_heads,
-        seq_length,
-        head_dim_k,
-        head_dim_v,
-        scale,
-        linear_attention::parse_update_rule(update_rule));
-      return;
-  }
 
       // State: (B, H, dk, dv)
   final_state.resize(batch_size * num_heads * head_dim_k * head_dim_v, 0.0f);
@@ -386,6 +129,40 @@ void LinearAttentionReference(
   }
 }
 
+// Convert data from 4D (B,H,T,D) layout to 3D packed (B,T,H*D) layout
+std::vector<float> PackBHTD_to_BTHD(const std::vector<float>& data_4d,
+                                     int B, int H, int T, int D) {
+  std::vector<float> packed(B * T * H * D);
+  for (int b = 0; b < B; b++) {
+    for (int h = 0; h < H; h++) {
+      for (int t = 0; t < T; t++) {
+        for (int d = 0; d < D; d++) {
+          int src_idx = ((b * H + h) * T + t) * D + d;
+          int dst_idx = (b * T + t) * (H * D) + h * D + d;
+          packed[dst_idx] = data_4d[src_idx];
+        }
+      }
+    }
+  }
+  return packed;
+}
+
+// Convert decay/beta from (B,H,T) layout to (B,T,H) layout
+std::vector<float> TransposeBHT_to_BTH(const std::vector<float>& data,
+                                        int B, int H, int T) {
+  std::vector<float> transposed(B * T * H);
+  for (int b = 0; b < B; b++) {
+    for (int h = 0; h < H; h++) {
+      for (int t = 0; t < T; t++) {
+        int src_idx = (b * H + h) * T + t;
+        int dst_idx = (b * T + t) * H + h;
+        transposed[dst_idx] = data[src_idx];
+      }
+    }
+  }
+  return transposed;
+}
+
 void RunLinearAttentionTest(
     const std::string& update_rule,
     int batch_size, int num_heads, int seq_length, int head_dim_k, int head_dim_v,
@@ -396,12 +173,12 @@ void RunLinearAttentionTest(
     const std::vector<float>* initial_state,
     const std::vector<float>* decay,
     const std::vector<float>* beta_data) {
-  // Compute reference output
-  std::vector<float> expected_output, expected_state;
+  // Compute reference output (reference works in 4D layout)
+  std::vector<float> expected_output_4d, expected_state;
   LinearAttentionReference(update_rule, batch_size, num_heads, seq_length,
                            head_dim_k, head_dim_v, scale,
                            query, key, value, initial_state, decay, beta_data,
-                           expected_output, expected_state);
+                           expected_output_4d, expected_state);
 
   bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get());
   if (!enable_webgpu) {
@@ -410,51 +187,65 @@ void RunLinearAttentionTest(
 
   int bht = batch_size * num_heads * seq_length;
   bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht);
+
+  // Convert from 4D (B,H,T,D) to 3D packed (B,T,H*D) for OpTester
+  auto query_3d = PackBHTD_to_BTHD(query, batch_size, num_heads, seq_length, head_dim_k);
+  auto key_3d = PackBHTD_to_BTHD(key, batch_size, num_heads, seq_length, head_dim_k);
+  auto value_3d = PackBHTD_to_BTHD(value, batch_size, num_heads, seq_length, head_dim_v);
+  auto output_3d = PackBHTD_to_BTHD(expected_output_4d, batch_size, num_heads, seq_length, head_dim_v);
+
   OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<std::string>("update_rule", update_rule);
   tester.AddAttribute<float>("scale", scale);
+  tester.AddAttribute<int64_t>("q_num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(num_heads));
 
-  // Add required inputs
-  std::vector<int64_t> qk_dims = {batch_size, num_heads, seq_length, head_dim_k};
-  std::vector<int64_t> v_dims = {batch_size, num_heads, seq_length, head_dim_v};
-  tester.AddInput<float>("query", qk_dims, query);
-  tester.AddInput<float>("key", qk_dims, key);
-  tester.AddInput<float>("value", v_dims, value);
+  // Add required inputs — 3D packed (B, T, H*D)
+  std::vector<int64_t> qk_dims = {batch_size, seq_length, num_heads * head_dim_k};
+  std::vector<int64_t> v_dims = {batch_size, seq_length, num_heads * head_dim_v};
+  tester.AddInput<float>("query", qk_dims, query_3d);
+  tester.AddInput<float>("key", qk_dims, key_3d);
+  tester.AddInput<float>("value", v_dims, value_3d);
 
-  // Optional: initial_state
+  // Optional: past_state (4D, same format as before)
   if (initial_state != nullptr) {
     std::vector<int64_t> state_dims = {batch_size, num_heads, head_dim_k, head_dim_v};
-    tester.AddInput<float>("initial_state", state_dims, *initial_state);
+    tester.AddInput<float>("past_state", state_dims, *initial_state);
   } else {
     tester.AddOptionalInputEdge<float>();
   }
 
-  // Optional: decay
+  // Optional: decay — convert from (B,H,T[,dk]) to (B,T,H[*dk])
   if (decay != nullptr) {
     if (decay_broadcast_dk) {
-      std::vector<int64_t> decay_dims = {batch_size, num_heads, seq_length};
-      tester.AddInput<float>("decay", decay_dims, *decay);
+      // (B,H,T) → (B,T,H)
+      auto decay_3d = TransposeBHT_to_BTH(*decay, batch_size, num_heads, seq_length);
+      std::vector<int64_t> decay_dims = {batch_size, seq_length, num_heads};
+      tester.AddInput<float>("decay", decay_dims, decay_3d);
     } else {
-      std::vector<int64_t> decay_dims = {batch_size, num_heads, seq_length, head_dim_k};
-      tester.AddInput<float>("decay", decay_dims, *decay);
+      // (B,H,T,dk) → (B,T,H*dk)
+      auto decay_3d = PackBHTD_to_BTHD(*decay, batch_size, num_heads, seq_length, head_dim_k);
+      std::vector<int64_t> decay_dims = {batch_size, seq_length, num_heads * head_dim_k};
+      tester.AddInput<float>("decay", decay_dims, decay_3d);
     }
   } else {
     tester.AddOptionalInputEdge<float>();
   }
 
-  // Optional: beta
+  // Optional: beta — convert from (B*H*T) flat to (B,T,H)
   if (beta_data != nullptr) {
-    std::vector<int64_t> beta_dims = {batch_size, num_heads, seq_length, 1};
-    tester.AddInput<float>("beta", beta_dims, *beta_data);
+    auto beta_3d = TransposeBHT_to_BTH(*beta_data, batch_size, num_heads, seq_length);
+    std::vector<int64_t> beta_dims = {batch_size, seq_length, num_heads};
+    tester.AddInput<float>("beta", beta_dims, beta_3d);
   } else {
     tester.AddOptionalInputEdge<float>();
   }
 
-  // Add outputs
-  std::vector<int64_t> out_dims = {batch_size, num_heads, seq_length, head_dim_v};
+  // Add outputs — output is 3D packed, state is 4D
+  std::vector<int64_t> out_dims = {batch_size, seq_length, num_heads * head_dim_v};
   std::vector<int64_t> state_dims = {batch_size, num_heads, head_dim_k, head_dim_v};
-  tester.AddOutput<float>("output", out_dims, expected_output, false, 0.005f, 0.005f);
-  tester.AddOutput<float>("final_state", state_dims, expected_state, false, 0.005f, 0.005f);
+  tester.AddOutput<float>("output", out_dims, output_3d, false, 0.005f, 0.005f);
+  tester.AddOutput<float>("present_state", state_dims, expected_state, false, 0.005f, 0.005f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultWebGpuExecutionProvider());
@@ -799,21 +590,24 @@ TEST(ContribOpLinearAttentionTest, LinearRule_DefaultScale) {
 
   OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<std::string>("update_rule", std::string("linear"));
+  tester.AddAttribute<int64_t>("q_num_heads", static_cast<int64_t>(H));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(H));
   // Don't set scale — use default (0.0 triggers 1/sqrt(dk))
 
-  std::vector<int64_t> qk_dims = {B, H, T, dk};
-  std::vector<int64_t> v_dims = {B, H, T, dv};
+  // Convert to 3D packed for B=1, H=1 (flat data is identical)
+  std::vector<int64_t> qk_dims = {B, T, H * dk};
+  std::vector<int64_t> v_dims = {B, T, H * dv};
   tester.AddInput<float>("query", qk_dims, query);
   tester.AddInput<float>("key", qk_dims, key);
   tester.AddInput<float>("value", v_dims, value);
-  tester.AddOptionalInputEdge<float>();  // initial_state
+  tester.AddOptionalInputEdge<float>();  // past_state
   tester.AddOptionalInputEdge<float>();  // decay
   tester.AddOptionalInputEdge<float>();  // beta
 
-  std::vector<int64_t> out_dims = {B, H, T, dv};
+  std::vector<int64_t> out_dims = {B, T, H * dv};
   std::vector<int64_t> state_dims = {B, H, dk, dv};
   tester.AddOutput<float>("output", out_dims, expected_output, false, 0.005f, 0.005f);
-  tester.AddOutput<float>("final_state", state_dims, expected_state, false, 0.005f, 0.005f);
+  tester.AddOutput<float>("present_state", state_dims, expected_state, false, 0.005f, 0.005f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultWebGpuExecutionProvider());

@@ -19,29 +19,29 @@ CausalConv1DActivation ParseCausalConv1DActivation(const std::string& activation
   } else if (activation_str == "none" || activation_str.empty()) {
     return CausalConv1DActivation::None;
   }
-  ORT_THROW("Unknown activation for CausalConv1DWithState: ", activation_str);
+  ORT_THROW("Unknown activation for CausalConvWithState: ", activation_str);
 }
 
 // =============================================================================
-// CausalConv1DWithState Implementation
+// CausalConvWithState Implementation
 // =============================================================================
 
 ONNX_OPERATOR_KERNEL_EX(
-    CausalConv1DWithState,
+    CausalConvWithState,
     kMSDomain,
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
-    CausalConv1DWithState);
+    CausalConvWithState);
 
-CausalConv1DWithState::CausalConv1DWithState(const OpKernelInfo& info)
+CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
     : WebGpuKernel(info) {
-  std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "silu");
+  std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "none");
   activation_ = ParseCausalConv1DActivation(activation_str);
 }
 
-Status CausalConv1DWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Input tensors
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& weight = shader.AddInput("weight", ShaderUsage::UseUniform);
@@ -208,11 +208,11 @@ fn silu(x: input_element_t) -> input_element_t {
   return Status::OK();
 }
 
-Status CausalConv1DWithState::ComputeInternal(ComputeContext& context) const {
+Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   const Tensor* input = context.Input(0);       // (B, D, L)
   const Tensor* weight = context.Input(1);      // (D, 1, K)
   const Tensor* bias = context.Input(2);        // optional (D,)
-  const Tensor* conv_state = context.Input(3);  // optional (B, D, K-1)
+  const Tensor* conv_state = context.Input(3);  // optional (B, D, K-1) — past_state
 
   ORT_RETURN_IF(input == nullptr, "Input tensor must not be null");
   ORT_RETURN_IF(weight == nullptr, "Weight tensor must not be null");
@@ -270,7 +270,7 @@ Status CausalConv1DWithState::ComputeInternal(ComputeContext& context) const {
   }
 
   // Create and run the shader program
-  CausalConv1DWithStateProgram program{activation_, has_bias, has_conv_state, kernel_size};
+  CausalConvWithStateProgram program{activation_, has_bias, has_conv_state, kernel_size};
 
   uint32_t output_size = static_cast<uint32_t>(batch_size * channels * input_length);
 

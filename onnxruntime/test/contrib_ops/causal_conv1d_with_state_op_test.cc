@@ -19,17 +19,17 @@ enum class TensorType {
   kFloat16
 };
 
-// Reference implementation for CausalConv1DWithState
+// Reference implementation for CausalConvWithState
 // Performs depthwise causal 1D convolution with optional state, bias, and activation.
 //
 // Input: (B, D, L) channels-first
 // Weight: (D, 1, K) depthwise
 // Bias: (D,) optional
-// conv_state: (B, D, K-1) optional carry state
+// past_state: (B, D, K-1) optional carry state
 //
 // Output: (B, D, L) convolution output (with optional activation)
 // present_state: (B, D, K-1) updated carry state
-void CausalConv1DWithStateReference(
+void CausalConvWithStateReference(
     const std::vector<float>& input,
     const std::vector<float>& weight,
     const std::vector<float>* bias,
@@ -92,7 +92,7 @@ void CausalConv1DWithStateReference(
 
 }  // anonymous namespace
 
-static void RunCausalConv1DWithStateTest(
+static void RunCausalConvWithStateTest(
     const std::vector<float>& input_data,
     const std::vector<float>& weight_data,
     const std::vector<float>* bias_data,
@@ -126,7 +126,7 @@ static void RunCausalConv1DWithStateTest(
   }
 
   for (auto& ep : execution_providers) {
-    OpTester test("CausalConv1DWithState", 1, onnxruntime::kMSDomain);
+    OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
     test.AddAttribute<std::string>("activation", activation);
 
     if (tensor_type == TensorType::kFloat) {
@@ -140,7 +140,7 @@ static void RunCausalConv1DWithStateTest(
       }
 
       if (conv_state_data != nullptr) {
-        test.AddInput<float>("conv_state", state_shape, *conv_state_data);
+        test.AddInput<float>("past_state", state_shape, *conv_state_data);
       } else {
         test.AddOptionalInputEdge<float>();
       }
@@ -158,7 +158,7 @@ static void RunCausalConv1DWithStateTest(
       }
 
       if (conv_state_data != nullptr) {
-        test.AddInput<MLFloat16>("conv_state", state_shape, ToFloat16(*conv_state_data));
+        test.AddInput<MLFloat16>("past_state", state_shape, ToFloat16(*conv_state_data));
       } else {
         test.AddOptionalInputEdge<MLFloat16>();
       }
@@ -176,7 +176,7 @@ static void RunCausalConv1DWithStateTest(
   }
 }
 
-static void RunCausalConv1DWithStateTests(
+static void RunCausalConvWithStateTests(
     const std::vector<float>& input_data,
     const std::vector<float>& weight_data,
     const std::vector<float>* bias_data,
@@ -189,20 +189,20 @@ static void RunCausalConv1DWithStateTests(
   // Compute expected output using reference implementation
   std::vector<float> expected_output;
   std::vector<float> expected_state;
-  CausalConv1DWithStateReference(
+  CausalConvWithStateReference(
       input_data, weight_data, bias_data, conv_state_data,
       expected_output, expected_state,
       batch_size, channels, input_length, kernel_size, activation);
 
   // FP32 test
-  RunCausalConv1DWithStateTest(
+  RunCausalConvWithStateTest(
       input_data, weight_data, bias_data, conv_state_data,
       expected_output, expected_state,
       batch_size, channels, input_length, kernel_size, activation,
       TensorType::kFloat);
 
   // FP16 test
-  RunCausalConv1DWithStateTest(
+  RunCausalConvWithStateTest(
       input_data, weight_data, bias_data, conv_state_data,
       expected_output, expected_state,
       batch_size, channels, input_length, kernel_size, activation,
@@ -213,7 +213,7 @@ static void RunCausalConv1DWithStateTests(
 // Basic tests - simple cases
 // =============================================================================
 
-TEST(CausalConv1DWithStateTest, BasicNoStateNoBias) {
+TEST(CausalConvWithStateTest, BasicNoStateNoBias) {
   // B=1, D=2, L=4, K=3, activation=none
   int batch_size = 1, channels = 2, input_length = 4, kernel_size = 3;
 
@@ -227,12 +227,12 @@ TEST(CausalConv1DWithStateTest, BasicNoStateNoBias) {
       0.1f, 0.2f, 0.3f,   // channel 0 kernel
       0.4f, 0.5f, 0.6f};  // channel 1 kernel
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, nullptr, nullptr,
       batch_size, channels, input_length, kernel_size, "none");
 }
 
-TEST(CausalConv1DWithStateTest, BasicWithBias) {
+TEST(CausalConvWithStateTest, BasicWithBias) {
   // B=1, D=2, L=4, K=3, activation=none
   int batch_size = 1, channels = 2, input_length = 4, kernel_size = 3;
 
@@ -244,12 +244,12 @@ TEST(CausalConv1DWithStateTest, BasicWithBias) {
       0.4f, 0.5f, 0.6f};
   std::vector<float> bias_data = {0.1f, -0.2f};
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, &bias_data, nullptr,
       batch_size, channels, input_length, kernel_size, "none");
 }
 
-TEST(CausalConv1DWithStateTest, BasicWithState) {
+TEST(CausalConvWithStateTest, BasicWithState) {
   // B=1, D=2, L=3, K=3, activation=none
   int batch_size = 1, channels = 2, input_length = 3, kernel_size = 3;
 
@@ -264,12 +264,12 @@ TEST(CausalConv1DWithStateTest, BasicWithState) {
       -1.0f, 0.5f,   // channel 0 state
       0.3f, -0.7f};  // channel 1 state
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, nullptr, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "none");
 }
 
-TEST(CausalConv1DWithStateTest, WithStateAndBias) {
+TEST(CausalConvWithStateTest, WithStateAndBias) {
   // B=1, D=2, L=3, K=3, activation=none
   int batch_size = 1, channels = 2, input_length = 3, kernel_size = 3;
 
@@ -284,7 +284,7 @@ TEST(CausalConv1DWithStateTest, WithStateAndBias) {
       -1.0f, 0.5f,
       0.3f, -0.7f};
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, &bias_data, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "none");
 }
@@ -293,7 +293,7 @@ TEST(CausalConv1DWithStateTest, WithStateAndBias) {
 // SiLU activation tests
 // =============================================================================
 
-TEST(CausalConv1DWithStateTest, SiluActivationNoState) {
+TEST(CausalConvWithStateTest, SiluActivationNoState) {
   int batch_size = 1, channels = 2, input_length = 4, kernel_size = 3;
 
   std::vector<float> input_data = {
@@ -303,12 +303,12 @@ TEST(CausalConv1DWithStateTest, SiluActivationNoState) {
       0.1f, 0.2f, 0.3f,
       0.4f, 0.5f, 0.6f};
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, nullptr, nullptr,
       batch_size, channels, input_length, kernel_size, "silu");
 }
 
-TEST(CausalConv1DWithStateTest, SiluActivationWithState) {
+TEST(CausalConvWithStateTest, SiluActivationWithState) {
   int batch_size = 1, channels = 2, input_length = 3, kernel_size = 3;
 
   std::vector<float> input_data = {
@@ -321,12 +321,12 @@ TEST(CausalConv1DWithStateTest, SiluActivationWithState) {
       -1.0f, 0.5f,
       0.3f, -0.7f};
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, nullptr, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "silu");
 }
 
-TEST(CausalConv1DWithStateTest, SiluActivationWithBiasAndState) {
+TEST(CausalConvWithStateTest, SiluActivationWithBiasAndState) {
   int batch_size = 1, channels = 2, input_length = 4, kernel_size = 3;
 
   std::vector<float> input_data = {
@@ -340,7 +340,7 @@ TEST(CausalConv1DWithStateTest, SiluActivationWithBiasAndState) {
       -1.0f, 0.5f,
       0.3f, -0.7f};
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, &bias_data, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "silu");
 }
@@ -349,7 +349,7 @@ TEST(CausalConv1DWithStateTest, SiluActivationWithBiasAndState) {
 // Kernel size variations
 // =============================================================================
 
-TEST(CausalConv1DWithStateTest, KernelSize2) {
+TEST(CausalConvWithStateTest, KernelSize2) {
   int batch_size = 1, channels = 2, input_length = 4, kernel_size = 2;
 
   std::vector<float> input_data = {
@@ -361,12 +361,12 @@ TEST(CausalConv1DWithStateTest, KernelSize2) {
   // State: (1, 2, 1) - kernel_size - 1 = 1
   std::vector<float> conv_state_data = {0.5f, -0.3f};
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, nullptr, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "silu");
 }
 
-TEST(CausalConv1DWithStateTest, KernelSize4) {
+TEST(CausalConvWithStateTest, KernelSize4) {
   int batch_size = 1, channels = 1, input_length = 5, kernel_size = 4;
 
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
@@ -374,7 +374,7 @@ TEST(CausalConv1DWithStateTest, KernelSize4) {
   // State: (1, 1, 3)
   std::vector<float> conv_state_data = {-1.0f, 0.0f, 0.5f};
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, nullptr, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "none");
 }
@@ -383,7 +383,7 @@ TEST(CausalConv1DWithStateTest, KernelSize4) {
 // Batch size > 1
 // =============================================================================
 
-TEST(CausalConv1DWithStateTest, MultiBatch) {
+TEST(CausalConvWithStateTest, MultiBatch) {
   int batch_size = 2, channels = 2, input_length = 3, kernel_size = 3;
 
   // Input: (2, 2, 3)
@@ -410,7 +410,7 @@ TEST(CausalConv1DWithStateTest, MultiBatch) {
       0.1f, -0.1f,  // ch 0
       0.7f, 0.8f};  // ch 1
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, &bias_data, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "silu");
 }
@@ -419,7 +419,7 @@ TEST(CausalConv1DWithStateTest, MultiBatch) {
 // Single token decode (L=1) - the primary use case for incremental decoding
 // =============================================================================
 
-TEST(CausalConv1DWithStateTest, SingleTokenDecode) {
+TEST(CausalConvWithStateTest, SingleTokenDecode) {
   int batch_size = 1, channels = 4, input_length = 1, kernel_size = 4;
 
   // Input: (1, 4, 1)
@@ -441,12 +441,12 @@ TEST(CausalConv1DWithStateTest, SingleTokenDecode) {
       0.5f, 0.5f, 0.5f,     // ch 2
       -0.2f, 0.4f, -0.6f};  // ch 3
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, &bias_data, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "silu");
 }
 
-TEST(CausalConv1DWithStateTest, SingleTokenDecodeMultiBatch) {
+TEST(CausalConvWithStateTest, SingleTokenDecodeMultiBatch) {
   int batch_size = 2, channels = 2, input_length = 1, kernel_size = 3;
 
   // Input: (2, 2, 1)
@@ -467,7 +467,7 @@ TEST(CausalConv1DWithStateTest, SingleTokenDecodeMultiBatch) {
       0.5f, 0.5f,    // B1, ch 0
       -0.2f, 0.4f};  // B1, ch 1
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, nullptr, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "silu");
 }
@@ -477,7 +477,7 @@ TEST(CausalConv1DWithStateTest, SingleTokenDecodeMultiBatch) {
 // as conv_state for the next call (simulating autoregressive decode)
 // =============================================================================
 
-TEST(CausalConv1DWithStateTest, StateContinuity) {
+TEST(CausalConvWithStateTest, StateContinuity) {
   // Process a sequence of single tokens and verify state propagation
   int batch_size = 1, channels = 1, kernel_size = 3;
   int input_length = 1;
@@ -492,11 +492,11 @@ TEST(CausalConv1DWithStateTest, StateContinuity) {
   std::vector<float> input1 = {1.0f};
   std::vector<float> expected_output1;
   std::vector<float> expected_state1;
-  CausalConv1DWithStateReference(input1, weight_data, &bias_data, &conv_state,
+  CausalConvWithStateReference(input1, weight_data, &bias_data, &conv_state,
                                  expected_output1, expected_state1,
                                  batch_size, channels, input_length, kernel_size, "none");
 
-  RunCausalConv1DWithStateTest(input1, weight_data, &bias_data, &conv_state,
+  RunCausalConvWithStateTest(input1, weight_data, &bias_data, &conv_state,
                                expected_output1, expected_state1,
                                batch_size, channels, input_length, kernel_size, "none",
                                TensorType::kFloat);
@@ -505,11 +505,11 @@ TEST(CausalConv1DWithStateTest, StateContinuity) {
   std::vector<float> input2 = {2.0f};
   std::vector<float> expected_output2;
   std::vector<float> expected_state2;
-  CausalConv1DWithStateReference(input2, weight_data, &bias_data, &expected_state1,
+  CausalConvWithStateReference(input2, weight_data, &bias_data, &expected_state1,
                                  expected_output2, expected_state2,
                                  batch_size, channels, input_length, kernel_size, "none");
 
-  RunCausalConv1DWithStateTest(input2, weight_data, &bias_data, &expected_state1,
+  RunCausalConvWithStateTest(input2, weight_data, &bias_data, &expected_state1,
                                expected_output2, expected_state2,
                                batch_size, channels, input_length, kernel_size, "none",
                                TensorType::kFloat);
@@ -518,11 +518,11 @@ TEST(CausalConv1DWithStateTest, StateContinuity) {
   std::vector<float> input3 = {3.0f};
   std::vector<float> expected_output3;
   std::vector<float> expected_state3;
-  CausalConv1DWithStateReference(input3, weight_data, &bias_data, &expected_state2,
+  CausalConvWithStateReference(input3, weight_data, &bias_data, &expected_state2,
                                  expected_output3, expected_state3,
                                  batch_size, channels, input_length, kernel_size, "none");
 
-  RunCausalConv1DWithStateTest(input3, weight_data, &bias_data, &expected_state2,
+  RunCausalConvWithStateTest(input3, weight_data, &bias_data, &expected_state2,
                                expected_output3, expected_state3,
                                batch_size, channels, input_length, kernel_size, "none",
                                TensorType::kFloat);
@@ -536,7 +536,7 @@ TEST(CausalConv1DWithStateTest, StateContinuity) {
 // Equivalence test: sequence processing should match token-by-token with state
 // =============================================================================
 
-TEST(CausalConv1DWithStateTest, SequenceVsTokenByToken) {
+TEST(CausalConvWithStateTest, SequenceVsTokenByToken) {
   int batch_size = 1, channels = 2, kernel_size = 3;
 
   std::vector<float> weight_data = {
@@ -555,7 +555,7 @@ TEST(CausalConv1DWithStateTest, SequenceVsTokenByToken) {
   // Process full sequence at once
   std::vector<float> full_output;
   std::vector<float> full_final_state;
-  CausalConv1DWithStateReference(full_input, weight_data, &bias_data, &conv_state,
+  CausalConvWithStateReference(full_input, weight_data, &bias_data, &conv_state,
                                  full_output, full_final_state,
                                  batch_size, channels, 4, kernel_size, "none");
 
@@ -571,7 +571,7 @@ TEST(CausalConv1DWithStateTest, SequenceVsTokenByToken) {
 
     std::vector<float> token_output;
     std::vector<float> next_state;
-    CausalConv1DWithStateReference(token_input, weight_data, &bias_data, &current_state,
+    CausalConvWithStateReference(token_input, weight_data, &bias_data, &current_state,
                                    token_output, next_state,
                                    batch_size, channels, 1, kernel_size, "none");
 
@@ -607,7 +607,7 @@ TEST(CausalConv1DWithStateTest, SequenceVsTokenByToken) {
 // Larger dimension test with realistic sizes
 // =============================================================================
 
-TEST(CausalConv1DWithStateTest, LargerDimensions) {
+TEST(CausalConvWithStateTest, LargerDimensions) {
   int batch_size = 2, channels = 8, input_length = 16, kernel_size = 4;
 
   // Generate test data with a simple pattern
@@ -632,7 +632,7 @@ TEST(CausalConv1DWithStateTest, LargerDimensions) {
     conv_state_data[i] = std::sin(static_cast<float>(i) * 0.3f) * 0.5f;
   }
 
-  RunCausalConv1DWithStateTests(
+  RunCausalConvWithStateTests(
       input_data, weight_data, &bias_data, &conv_state_data,
       batch_size, channels, input_length, kernel_size, "silu");
 }
