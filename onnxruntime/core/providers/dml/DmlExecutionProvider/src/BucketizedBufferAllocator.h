@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <atomic>
+#include <mutex>
 #include "core/framework/allocator.h"
 #include "ExecutionContext.h"
 #include "DmlResourceWrapper.h"
@@ -80,6 +82,8 @@ namespace Dml
         D3D12_RESOURCE_FLAGS m_resourceFlags;
         D3D12_RESOURCE_STATES m_initialState;
 
+        mutable std::mutex m_mutex;
+
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
@@ -87,7 +91,7 @@ namespace Dml
         // Unless specifically requested, allocation sizes are not rounded to enable pooling
         // until SetDefaultRoundingMode is called.  This should be done at completion of session
         // initialization.
-        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
+        std::atomic<AllocatorRoundingMode> m_defaultRoundingMode{AllocatorRoundingMode::Disabled};
 
         ComPtr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
