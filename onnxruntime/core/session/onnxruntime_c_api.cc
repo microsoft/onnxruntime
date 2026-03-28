@@ -4895,7 +4895,7 @@ consteval bool IsOrtVersionValid() {
     return false;  // Major version must be 1
   }
   auto is_non_negative_integer = [](std::string_view str) {
-    return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
+    return !str.empty() && std::all_of(str.begin(), str.end(), [](char c) { return c >= '0' && c <= '9'; });
   };
   if (!is_non_negative_integer(minor) || !is_non_negative_integer(patch)) {
     return false;  // Minor and patch versions must be non-negative integers
