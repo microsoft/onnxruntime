@@ -5,7 +5,6 @@
 #include "core/providers/cpu/llm/attention_helper.h"
 
 #include "core/common/common.h"
-#include "core/common/float16.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
@@ -35,7 +34,6 @@ namespace onnxruntime {
 
 REGISTER_ONNX_KERNEL_TYPED(float)
 REGISTER_ONNX_KERNEL_TYPED(MLFloat16)
-REGISTER_ONNX_KERNEL_TYPED(BFloat16)
 
 #define REGISTER_ONNX_KERNEL_VERSIONED_TYPED(T)                       \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
@@ -51,7 +49,6 @@ REGISTER_ONNX_KERNEL_TYPED(BFloat16)
 
 REGISTER_ONNX_KERNEL_VERSIONED_TYPED(float)
 REGISTER_ONNX_KERNEL_VERSIONED_TYPED(MLFloat16)
-REGISTER_ONNX_KERNEL_VERSIONED_TYPED(BFloat16)
 
 template <typename T, typename U>
 void make_copy(T* mask_data, const U* mask_index, size_t size);
@@ -67,11 +64,6 @@ void make_copy<MLFloat16, MLFloat16>(MLFloat16* mask_data, const MLFloat16* mask
 }
 
 template <>
-void make_copy<BFloat16, BFloat16>(BFloat16* mask_data, const BFloat16* mask_index, size_t size) {
-  memcpy(mask_data, mask_index, size * sizeof(BFloat16));
-}
-
-template <>
 void make_copy<float, bool>(float* mask_data, const bool* mask_index, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     mask_data[i] = mask_index[i] ? 0.0f : mask_filter_value<float>();
@@ -82,13 +74,6 @@ template <>
 void make_copy<MLFloat16, bool>(MLFloat16* mask_data, const bool* mask_index, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     mask_data[i] = mask_index[i] ? MLFloat16(0.f) : mask_filter_value<MLFloat16>();
-  }
-}
-
-template <>
-void make_copy<BFloat16, bool>(BFloat16* mask_data, const bool* mask_index, size_t size) {
-  for (size_t i = 0; i < size; ++i) {
-    mask_data[i] = mask_index[i] ? BFloat16(0.f) : mask_filter_value<BFloat16>();
   }
 }
 
@@ -109,18 +94,6 @@ inline void ComputeAttentionSoftmaxInplace<MLFloat16>(MLFloat16* score, int N, i
   MlasConvertFloatToHalfBuffer(ptr, score, N * D);
 }
 
-template <>
-inline void ComputeAttentionSoftmaxInplace<BFloat16>(BFloat16* score, int N, int D, ThreadPool* tp, AllocatorPtr allocator) {
-  ORT_ENFORCE(tp == nullptr, "No parallelized version of softmax for bfloat16.");
-  // MLAS lacks kernels for bfloat16 softmax — upcast to float32, compute, then downcast.
-  void* allocated_ptr = allocator->Alloc(static_cast<size_t>(N * D * sizeof(float)));
-  BufferUniquePtr float_buffer(allocated_ptr, BufferDeleter(allocator));
-  float* ptr = reinterpret_cast<float*>(allocated_ptr);
-  BFloat16ToFloat(score, ptr, static_cast<size_t>(N * D));
-  MlasComputeSoftmax(ptr, ptr, N, D, false, false, 0.0f, tp);
-  FloatToBFloat16(ptr, score, static_cast<size_t>(N * D));
-}
-
 template <typename T>
 inline void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T softcap) {
   MlasComputeSoftcap(scores, scores, sequence_length, softcap);
@@ -134,16 +107,6 @@ inline void ComputeAttentionSoftcapInplace(MLFloat16* scores, int sequence_lengt
   for (size_t i = 0; i < static_cast<size_t>(sequence_length); i++) {
     x = std::tanh(scores[i].ToFloat() / cap) * cap;
     scores[i] = MLFloat16(x);
-  }
-}
-
-template <>
-inline void ComputeAttentionSoftcapInplace(BFloat16* scores, int sequence_length, BFloat16 softcap) {
-  // MLAS lacks kernels for bfloat16 softcap — compute element-wise in float32.
-  float cap = softcap.ToFloat();
-  for (size_t i = 0; i < static_cast<size_t>(sequence_length); i++) {
-    float x = std::tanh(scores[i].ToFloat() / cap) * cap;
-    scores[i] = BFloat16(x);
   }
 }
 
@@ -231,45 +194,6 @@ inline void AttentionGemm(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
         for (int row = 0; row < M; ++row) {
           MlasConvertFloatToHalfBuffer(c_fp32.data() + row * ldc, C + row * ldc, static_cast<size_t>(N));
         }
-      }
-    }
-  } else if constexpr (std::is_same<T, BFloat16>::value) {
-    // bfloat16 fallback: upcast to fp32, run optimized SGEMM, downcast result.
-    size_t a_rows = (transA == CblasNoTrans) ? static_cast<size_t>(M) : static_cast<size_t>(K);
-    size_t a_cols = (transA == CblasNoTrans) ? static_cast<size_t>(K) : static_cast<size_t>(M);
-    size_t b_rows = (transB == CblasNoTrans) ? static_cast<size_t>(K) : static_cast<size_t>(N);
-    size_t b_cols = (transB == CblasNoTrans) ? static_cast<size_t>(N) : static_cast<size_t>(K);
-    size_t a_count = (a_rows > 0) ? (a_rows - 1) * static_cast<size_t>(lda) + a_cols : 0;
-    size_t b_count = (b_rows > 0) ? (b_rows - 1) * static_cast<size_t>(ldb) + b_cols : 0;
-    size_t c_count = (M > 0) ? static_cast<size_t>(M - 1) * static_cast<size_t>(ldc) + static_cast<size_t>(N) : 0;
-
-    std::vector<float> a_fp32(a_count);
-    std::vector<float> b_fp32(b_count);
-    std::vector<float> c_fp32(c_count);
-
-    BFloat16ToFloat(A, a_fp32.data(), a_count);
-    BFloat16ToFloat(B, b_fp32.data(), b_count);
-    if (beta != 0.0f) {
-      if (ldc == N) {
-        BFloat16ToFloat(C, c_fp32.data(), c_count);
-      } else {
-        for (int row = 0; row < M; ++row) {
-          BFloat16ToFloat(C + row * ldc, c_fp32.data() + row * ldc, static_cast<size_t>(N));
-        }
-      }
-    }
-
-    math::GemmEx<float, ThreadPool>(transA, transB, M, N, K,
-                                    alpha, a_fp32.data(), lda,
-                                    b_fp32.data(), ldb,
-                                    beta, c_fp32.data(), ldc, nullptr,
-                                    mlas_backend_kernel_selector_config);
-
-    if (ldc == N) {
-      FloatToBFloat16(c_fp32.data(), C, c_count);
-    } else {
-      for (int row = 0; row < M; ++row) {
-        FloatToBFloat16(c_fp32.data() + row * ldc, C + row * ldc, static_cast<size_t>(N));
       }
     }
   } else {
@@ -551,14 +475,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
         if (mask_data != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK) {
           // We need to add the bias we could not add because out_qk was requested without the mask.
           // This can be optimized with vectorized add using MlasAddFloat32x4.
-          if constexpr (std::is_same<T, BFloat16>::value) {
-            // MlasEltwiseAdd has no BFloat16 kernel; perform element-wise add via float32.
-            for (ptrdiff_t k = 0; k < probs_matrix_size; ++k) {
-              output[k] = BFloat16(output[k].ToFloat() + (mask_data + mask_data_offset)[k].ToFloat());
-            }
-          } else {
-            MlasEltwiseAdd(output, mask_data + mask_data_offset, output, probs_matrix_size);
-          }
+          MlasEltwiseAdd(output, mask_data + mask_data_offset, output, probs_matrix_size);
         }
       }
       // Apply nonpad_kv_seqlen masking (Opset 24+): mask out KV positions >= valid length per batch.
@@ -575,8 +492,6 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
           ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), parameters.softcap);
         } else if constexpr (std::is_same<T, MLFloat16>::value) {
           ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), MLFloat16(parameters.softcap));
-        } else if constexpr (std::is_same<T, BFloat16>::value) {
-          ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), BFloat16(parameters.softcap));
         } else {
           ORT_THROW("Unsupported data type for ComputeAttentionSoftcapInplace: ",
                     DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));

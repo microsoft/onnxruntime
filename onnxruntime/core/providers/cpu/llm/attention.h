@@ -3,7 +3,6 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/common/float16.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/llm/attention_parameters.h"
@@ -24,11 +23,6 @@ inline T mask_filter_value() {
 template <>
 inline MLFloat16 mask_filter_value() {
   return MLFloat16::MinValue;
-}
-
-template <>
-inline BFloat16 mask_filter_value() {
-  return BFloat16::MinValue;
 }
 
 template <typename T>
