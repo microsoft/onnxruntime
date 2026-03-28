@@ -640,16 +640,23 @@ def generate_files(line_list, args):
         else:
             # Code path for local dev build
             # for local dev build, gpu linux package is also generated for compatibility though it is not used
+            # Derive the API version from the package version for versioned DLL name
+            ort_api_version = args.package_version.split(".")[1]
+            ort_dll_base = f"onnxruntime_{ort_api_version}"
             if not is_cuda_gpu_linux_sub_package:
                 files_list.append(
-                    "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.lib") + runtimes + " />"
+                    "<file src=" + '"' + os.path.join(args.native_build_path, ort_dll_base + ".lib") + runtimes + " />"
                 )
                 files_list.append(
-                    "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.dll") + runtimes + " />"
+                    "<file src=" + '"' + os.path.join(args.native_build_path, ort_dll_base + ".dll") + runtimes + " />"
                 )
-                if include_pdbs and os.path.exists(os.path.join(args.native_build_path, "onnxruntime.pdb")):
+                if include_pdbs and os.path.exists(os.path.join(args.native_build_path, ort_dll_base + ".pdb")):
                     files_list.append(
-                        "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
+                        "<file src="
+                        + '"'
+                        + os.path.join(args.native_build_path, ort_dll_base + ".pdb")
+                        + runtimes
+                        + " />"
                     )
     else:
         ort_so = os.path.join(args.native_build_path, "libonnxruntime.so")

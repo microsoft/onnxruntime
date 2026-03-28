@@ -28,7 +28,7 @@
     <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)microsoft.ai.machinelearning.dll</WindowsAIBinary>
     <WindowsAIBinary>$([System.IO.Path]::GetFullPath($(WindowsAIBinary)))</WindowsAIBinary>
 
-    <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_25.dll</OnnxRuntimeBinary>
     <OnnxRuntimeBinary>$([System.IO.Path]::GetFullPath($(OnnxRuntimeBinary)))</OnnxRuntimeBinary>
 
     <WindowsAIWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.winmd</WindowsAIWinMD>

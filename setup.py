@@ -422,6 +422,10 @@ elif platform.system() == "Darwin":
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
 else:
+    # Derive the API version (minor component of the version number) for the versioned DLL name.
+    # VERSION_NUMBER is e.g. "1.25.0", api_version is "25".
+    with open("VERSION_NUMBER") as _vf:
+        _ort_api_version = _vf.readline().strip().split(".")[1]
     libs = [
         "onnxruntime_pybind11_state.pyd",
         "dnnl.dll",
@@ -431,7 +435,7 @@ else:
         providers_tensorrt_or_migraphx,
         providers_nv_tensorrt_rtx,
         providers_cann,
-        "onnxruntime.dll",
+        f"onnxruntime_{_ort_api_version}.dll",
     ]
     # DNNL, TensorRT, OpenVINO, and QNN EPs are built as shared libs
     libs.extend(["onnxruntime_providers_shared.dll"])

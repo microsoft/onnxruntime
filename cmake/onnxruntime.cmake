@@ -144,7 +144,11 @@ if(onnxruntime_BUILD_SHARED_LIB)
   target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
 
-  target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
+  if(WIN32)
+    target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime_${VERSION_MINOR_PART}.dll\")
+  else()
+    target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
+  endif()
 
   if(UNIX)
     if (APPLE)
@@ -291,18 +295,28 @@ if(NOT APPLE AND NOT WIN32)
     set_target_properties(onnxruntime PROPERTIES
       PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
       VERSION ${ORT_VERSION}
-      SOVERSION 1
+      SOVERSION ${VERSION_MINOR_PART}
       FOLDER "ONNXRuntime")
   else()
     set_target_properties(onnxruntime PROPERTIES
       PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
       LINK_DEPENDS ${SYMBOL_FILE}
       VERSION ${ORT_VERSION}
-      SOVERSION 1
+      SOVERSION ${VERSION_MINOR_PART}
       FOLDER "ONNXRuntime")
   endif()
+elseif(WIN32)
+  # Version-suffix the DLL on Windows (e.g. onnxruntime_25.dll) to prevent
+  # applications from accidentally loading an incompatible DLL from system
+  # directories such as C:\Windows\System32.
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    OUTPUT_NAME "onnxruntime_${VERSION_MINOR_PART}"
+    FOLDER "ONNXRuntime")
 else()
-  # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
+  # Omit the SOVERSION setting in macOS/iOS/.. build
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}
