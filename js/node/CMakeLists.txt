@@ -12,6 +12,9 @@ execute_process(COMMAND node -e "console.log(process.platform)"
                 OUTPUT_VARIABLE node_platform OUTPUT_STRIP_TRAILING_WHITESPACE)
 file(READ ${CMAKE_SOURCE_DIR}/../../VERSION_NUMBER ort_version)
 string(STRIP "${ort_version}" ort_version)
+# Derive the API version (minor component) for the versioned DLL name on Windows
+string(REPLACE "." ";" ort_version_list ${ort_version})
+list(GET ort_version_list 1 ort_api_version)
 set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v6/${node_platform}/${NODE_ARCH}/")
 
 # onnxruntime.dll dir
@@ -112,7 +115,7 @@ else()
 endif()
 
 if (WIN32)
-  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime)
+  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime_${ort_api_version})
 elseif (APPLE)
   target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.${ort_version}.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
@@ -123,7 +126,7 @@ endif()
 
 
 if (WIN32)
-  file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/onnxruntime.dll
+  file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/onnxruntime_${ort_api_version}.dll
       DESTINATION ${dist_folder})
 elseif (APPLE)
   file(COPY ${ONNXRUNTIME_MAC_BIN_DIR}/libonnxruntime.dylib

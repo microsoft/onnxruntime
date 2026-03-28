@@ -97,7 +97,8 @@ test project only targets net8 and netstandard2.0.
             </PropertyGroup>
 
             <ItemGroup Condition="'$(IsWindowsBuild)' == 'true' OR '$(IsWindowsTarget)'=='true'">
-                <None Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')"
+                <!-- The onnxruntime DLL is versioned (e.g. onnxruntime_25.dll). Include all DLLs from the build output. -->
+                <None Condition="Exists('$(NativeBuildOutputDir)')"
                         Include="$(NativeBuildOutputDir)\*.dll;$(NativeBuildOutputDir)\*.pdb">
                     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
                     <Visible>true</Visible>
@@ -153,7 +154,7 @@ test project only targets net8 and netstandard2.0.
     <PropertyGroup>
         <!-- local builds-->
         <HaveOrtDll>false</HaveOrtDll>
-        <HaveOrtDll Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')">true</HaveOrtDll>
+        <HaveOrtDll Condition="Exists('$(NativeBuildOutputDir)')">true</HaveOrtDll>
         <HaveOrtSo>false</HaveOrtSo>
         <HaveOrtSo Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.so')">true</HaveOrtSo>
         <HaveOrtDylib>false</HaveOrtDylib>
@@ -163,7 +164,7 @@ test project only targets net8 and netstandard2.0.
     <Target Name="DumpLocalBuild" BeforeTargets="PreBuildEvent">
         <Message Text="Prebuilt runtime=$(UsePrebuiltNativePackage)" />
         <Message Text="NativeBuildOutputDir=$(NativeBuildOutputDir)" />
-        <Message Text="onnxruntime.dll from local build=$(HaveOrtDll)" />
+        <Message Text="onnxruntime DLL from local build=$(HaveOrtDll)" />
         <Message Text="libonnxruntime.so from local build=$(HaveOrtSo)" />
         <Message Text="libonnxruntime.dylib from local build=$(HaveOrtDylib)" />
     </Target>
