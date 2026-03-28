@@ -65,23 +65,20 @@ __device__ __forceinline__ float silu_fn(float x) {
 // =============================================================================
 template <typename T>
 __global__ void CausalConvDecodeKernel(
-    const T* __restrict__ input,        // [B, C, 1]
-    const T* __restrict__ weight,       // [C, 1, K]
-    const T* __restrict__ bias,         // [C] or nullptr
+    const T* __restrict__ input,           // [B, C, 1]
+    const T* __restrict__ weight,          // [C, 1, K]
+    const T* __restrict__ bias,            // [C] or nullptr
     const float* __restrict__ past_state,  // [B, C, K-1] or nullptr
-    T* __restrict__ output,             // [B, C, 1]
-    float* __restrict__ present_state,  // [B, C, K-1]
+    T* __restrict__ output,                // [B, C, 1]
+    float* __restrict__ present_state,     // [B, C, K-1]
+    int batch_channels,                    // = batch_size * channels (actual element count)
     int channels,
     int kernel_size,
     bool apply_silu) {
   const int bc = blockIdx.x * blockDim.x + threadIdx.x;
-  const int B_times_C = gridDim.x * blockDim.x;  // total (batch, channel) count
-  // Guard check computed from actual dims passed
+  if (bc >= batch_channels) return;
   const int b = bc / channels;
   const int c = bc % channels;
-
-  // Bounds check
-  if (bc >= B_times_C) return;
 
   const int pad = kernel_size - 1;
   const float* w = nullptr;
@@ -121,6 +118,53 @@ __global__ void CausalConvDecodeKernel(
   }
 }
 
+template <typename T, int K>
+__global__ void CausalConvDecodeKernelFixedK(
+    const T* __restrict__ input,
+    const T* __restrict__ weight,
+    const T* __restrict__ bias,
+    const float* __restrict__ past_state,
+    T* __restrict__ output,
+    float* __restrict__ present_state,
+    int batch_channels,
+    int channels,
+    bool apply_silu) {
+  const int bc = blockIdx.x * blockDim.x + threadIdx.x;
+  if (bc >= batch_channels) return;
+
+  const int b = bc / channels;
+  const int c = bc % channels;
+  constexpr int pad = K - 1;
+
+  float sum = (bias != nullptr) ? to_float(bias[c]) : 0.0f;
+  const T* w = weight + static_cast<int64_t>(c) * K;
+  const float* ps_in = (past_state != nullptr)
+                           ? past_state + static_cast<int64_t>(b) * channels * pad + static_cast<int64_t>(c) * pad
+                           : nullptr;
+
+  if (ps_in != nullptr) {
+#pragma unroll
+    for (int k = 0; k < pad; ++k) {
+      sum += to_float(w[k]) * ps_in[k];
+    }
+  }
+  sum += to_float(w[pad]) * to_float(input[static_cast<int64_t>(b) * channels + c]);
+
+  if (apply_silu) {
+    sum = silu_fn(sum);
+  }
+  output[static_cast<int64_t>(b) * channels + c] = from_float<T>(sum);
+
+  float* ps_out = present_state + static_cast<int64_t>(b) * channels * pad + static_cast<int64_t>(c) * pad;
+  if constexpr (pad > 0) {
+#pragma unroll
+    for (int k = 0; k < pad - 1; ++k) {
+      ps_out[k] = (ps_in != nullptr) ? ps_in[k + 1] : 0.0f;
+    }
+    ps_out[pad - 1] = to_float(input[static_cast<int64_t>(b) * channels + c]);
+  }
+}
+
 // =============================================================================
 // Prefill kernel: L>1, one thread per output position within a (batch, channel)
 // Grid:  (batch_size, channels, 1)
@@ -129,12 +173,12 @@ __global__ void CausalConvDecodeKernel(
 // =============================================================================
 template <typename T>
 __global__ void CausalConvPrefillKernel(
-    const T* __restrict__ input,        // [B, C, L]
-    const T* __restrict__ weight,       // [C, 1, K]
-    const T* __restrict__ bias,         // [C] or nullptr
+    const T* __restrict__ input,           // [B, C, L]
+    const T* __restrict__ weight,          // [C, 1, K]
+    const T* __restrict__ bias,            // [C] or nullptr
     const float* __restrict__ past_state,  // [B, C, K-1] or nullptr
-    T* __restrict__ output,             // [B, C, L]
-    float* __restrict__ present_state,  // [B, C, K-1]
+    T* __restrict__ output,                // [B, C, L]
+    float* __restrict__ present_state,     // [B, C, K-1]
     int seq_len,
     int channels,
     int kernel_size,
@@ -213,9 +257,33 @@ Status LaunchCausalConvWithStateKernel(
     int total = batch_size * channels;
     int threads = 256;
     int blocks = (total + threads - 1) / threads;
-    CausalConvDecodeKernel<T><<<blocks, threads, 0, stream>>>(
-        input, weight, bias, past_state, output, present_state,
-        channels, kernel_size, apply_silu);
+    switch (kernel_size) {
+      case 2:
+        CausalConvDecodeKernelFixedK<T, 2><<<blocks, threads, 0, stream>>>(
+            input, weight, bias, past_state, output, present_state,
+            total, channels, apply_silu);
+        break;
+      case 3:
+        CausalConvDecodeKernelFixedK<T, 3><<<blocks, threads, 0, stream>>>(
+            input, weight, bias, past_state, output, present_state,
+            total, channels, apply_silu);
+        break;
+      case 4:
+        CausalConvDecodeKernelFixedK<T, 4><<<blocks, threads, 0, stream>>>(
+            input, weight, bias, past_state, output, present_state,
+            total, channels, apply_silu);
+        break;
+      case 5:
+        CausalConvDecodeKernelFixedK<T, 5><<<blocks, threads, 0, stream>>>(
+            input, weight, bias, past_state, output, present_state,
+            total, channels, apply_silu);
+        break;
+      default:
+        CausalConvDecodeKernel<T><<<blocks, threads, 0, stream>>>(
+            input, weight, bias, past_state, output, present_state,
+            total, channels, kernel_size, apply_silu);
+        break;
+    }
   } else {
     // Prefill: one block per (batch, channel), threads handle output positions
     const dim3 grid(batch_size, channels, 1);

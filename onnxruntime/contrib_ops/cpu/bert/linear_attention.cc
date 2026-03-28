@@ -5,8 +5,8 @@
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/common/safeint.h"
-#include "core/platform/threadpool.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 
 #include <cmath>
 #include <vector>
@@ -17,16 +17,16 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      LinearAttention,                                            \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("S", {DataTypeImpl::GetTensorType<T>(), \
+#define REGISTER_KERNEL_TYPED(T)                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      LinearAttention,                                                  \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kCpuExecutionProvider,                                            \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("S", {DataTypeImpl::GetTensorType<T>(),       \
                                 DataTypeImpl::GetTensorType<float>()}), \
       LinearAttention<T>);
 
@@ -61,13 +61,13 @@ namespace {
 // This is the hot inner loop — called once per (b, h_kv) combination,
 // potentially from different threads.
 void ProcessHead(
-    float* S,                     // State matrix [d_k, d_v], in-place updated
-    const float* q_data,          // Packed Q: (B, T, H_q*d_k)
-    const float* k_data,          // Packed K: (B, T, H_kv*d_k)
-    const float* v_data,          // Packed V: (B, T, H_kv*d_v)
-    const float* decay_data,      // Decay gates (may be nullptr)
-    const float* beta_data,       // Beta rates (may be nullptr)
-    float* output_data,           // Output: (B, T, H_q*d_v)
+    float* S,                 // State matrix [d_k, d_v], in-place updated
+    const float* q_data,      // Packed Q: (B, T, H_q*d_k)
+    const float* k_data,      // Packed K: (B, T, H_kv*d_k)
+    const float* v_data,      // Packed V: (B, T, H_kv*d_v)
+    const float* decay_data,  // Decay gates (may be nullptr)
+    const float* beta_data,   // Beta rates (may be nullptr)
+    float* output_data,       // Output: (B, T, H_q*d_v)
     int64_t batch_idx,
     int h_kv,
     int64_t seq_len,
@@ -85,12 +85,10 @@ void ProcessHead(
     bool needs_retrieval) {
   const size_t dk = static_cast<size_t>(d_k);
   const size_t dv = static_cast<size_t>(d_v);
+  const bool use_mlas = (d_k * d_v >= 4096);
 
-  // Per-head scratch buffers (stack-allocated for small d_v, heap for large)
-  // retrieved = S^T @ k_t -> (d_v,)
-  // delta = beta*(v - retrieved) -> (d_v,)
+  // Per-head scratch buffer reused across timesteps.
   std::vector<float> retrieved_buf(dv);
-  std::vector<float> readout_buf(dv);
 
   for (int64_t t = 0; t < seq_len; ++t) {
     // Pointers into packed 3D tensors at position [batch_idx, t, h_kv*d]
@@ -117,32 +115,34 @@ void ProcessHead(
       }
     }
 
-    // ---- Step 2: Retrieval = S^T @ k_t using MlasGemm ----
-    // S is [d_k, d_v], k_t is [d_k, 1].  We want S^T @ k_t = [d_v, 1].
-    // MlasGemm: C = alpha * op(A) * op(B) + beta * C
-    //   TransA=Trans, TransB=NoTrans: C[d_v,1] = S^T[d_v,d_k] @ k_t[d_k,1]
-    //   M=d_v, N=1, K=d_k, A=S, lda=d_v, B=kt, ldb=1, C=retrieved, ldc=1
-    // But MlasGemm with CblasTrans transposes A conceptually:
-    //   S is stored row-major [d_k][d_v]. CblasTrans treats it as [d_v][d_k].
-    //   So: C[M=1, N=d_v] = k_t^T[1,d_k] @ S[d_k, d_v]
-    //   M=1, N=d_v, K=d_k, A=kt, lda=d_k, B=S, ldb=d_v
+    // ---- Step 2: Retrieval = S^T @ k_t ----
     if (needs_retrieval) {
-      MlasGemm(
-          CblasNoTrans,         // TransA
-          CblasNoTrans,         // TransB
-          1,                    // M (rows of output)
-          dv,                   // N (cols of output)
-          dk,                   // K (reduction dim)
-          1.0f,                 // alpha
-          kt,                   // A: [1, d_k]
-          dk,                   // lda
-          S,                    // B: [d_k, d_v]
-          dv,                   // ldb
-          0.0f,                 // beta (overwrite C)
-          retrieved_buf.data(), // C: [1, d_v]
-          dv,                   // ldc
-          nullptr,              // ThreadPool (single-threaded within head)
-          nullptr);             // BackendKernelSelectorConfig
+      if (use_mlas) {
+        MlasGemm(
+            CblasNoTrans,
+            CblasNoTrans,
+            1,
+            dv,
+            dk,
+            1.0f,
+            kt,
+            dk,
+            S,
+            dv,
+            0.0f,
+            retrieved_buf.data(),
+            dv,
+            nullptr,
+            nullptr);
+      } else {
+        for (int64_t j = 0; j < d_v; ++j) {
+          float acc = 0.0f;
+          for (int64_t i = 0; i < d_k; ++i) {
+            acc += S[i * d_v + j] * kt[i];
+          }
+          retrieved_buf[static_cast<size_t>(j)] = acc;
+        }
+      }
     }
 
     // ---- Step 3: State update ----
@@ -157,44 +157,61 @@ void ProcessHead(
       for (size_t j = 0; j < dv; ++j) {
         retrieved_buf[j] = bt * (vt[j] - retrieved_buf[j]);
       }
-      // S += k_t outer delta  (rank-1 update)
-      // MlasGemm: C = alpha * A * B + beta * C
-      //   A = k_t [d_k, 1], B = delta [1, d_v], C = S [d_k, d_v]
-      //   M=d_k, N=d_v, K=1, alpha=1, beta=1 (accumulate)
-      MlasGemm(
-          CblasNoTrans,         // TransA
-          CblasNoTrans,         // TransB
-          dk,                   // M
-          dv,                   // N
-          1,                    // K
-          1.0f,                 // alpha
-          kt,                   // A: [d_k, 1]
-          1,                    // lda (K=1)
-          retrieved_buf.data(), // B: [1, d_v] (delta)
-          dv,                   // ldb
-          1.0f,                 // beta = 1.0 to accumulate into S
-          S,                    // C: [d_k, d_v]
-          dv,                   // ldc
-          nullptr,
-          nullptr);
+      // S += k_t outer delta
+      if (use_mlas) {
+        MlasGemm(
+            CblasNoTrans,
+            CblasNoTrans,
+            dk,
+            dv,
+            1,
+            1.0f,
+            kt,
+            1,
+            retrieved_buf.data(),
+            dv,
+            1.0f,
+            S,
+            dv,
+            nullptr,
+            nullptr);
+      } else {
+        for (int64_t i = 0; i < d_k; ++i) {
+          float* s_row = S + i * d_v;
+          const float ki = kt[i];
+          for (int64_t j = 0; j < d_v; ++j) {
+            s_row[j] += ki * retrieved_buf[static_cast<size_t>(j)];
+          }
+        }
+      }
     } else {
-      // linear/gated: S += k_t outer v_t  (rank-1 update)
-      MlasGemm(
-          CblasNoTrans,
-          CblasNoTrans,
-          dk,               // M
-          dv,               // N
-          1,                // K
-          1.0f,             // alpha
-          kt,               // A: [d_k, 1]
-          1,                // lda
-          vt,               // B: [1, d_v]
-          dv,               // ldb
-          1.0f,             // beta = 1.0 to accumulate
-          S,                // C: [d_k, d_v]
-          dv,               // ldc
-          nullptr,
-          nullptr);
+      // linear/gated: S += k_t outer v_t
+      if (use_mlas) {
+        MlasGemm(
+            CblasNoTrans,
+            CblasNoTrans,
+            dk,
+            dv,
+            1,
+            1.0f,
+            kt,
+            1,
+            vt,
+            dv,
+            1.0f,
+            S,
+            dv,
+            nullptr,
+            nullptr);
+      } else {
+        for (int64_t i = 0; i < d_k; ++i) {
+          float* s_row = S + i * d_v;
+          const float ki = kt[i];
+          for (int64_t j = 0; j < d_v; ++j) {
+            s_row[j] += ki * vt[j];
+          }
+        }
+      }
     }
 
     // ---- Step 4: Query readout for each q head in this kv group ----
@@ -204,23 +221,32 @@ void ProcessHead(
       const float* qt = q_data + (batch_idx * seq_len + t) * (q_num_heads * d_k) + h_q * d_k;
       float* ot = output_data + (batch_idx * seq_len + t) * output_hidden + h_q * d_v;
 
-      // readout = q_t^T[1,d_k] @ S[d_k, d_v] -> [1, d_v]
-      MlasGemm(
-          CblasNoTrans,
-          CblasNoTrans,
-          1,              // M
-          dv,             // N
-          dk,             // K
-          scale,          // alpha = scale factor fused into GEMV
-          qt,             // A: [1, d_k]
-          dk,             // lda
-          S,              // B: [d_k, d_v]
-          dv,             // ldb
-          0.0f,           // beta (overwrite)
-          ot,             // C: [1, d_v] written directly to output
-          dv,             // ldc
-          nullptr,
-          nullptr);
+      if (use_mlas) {
+        MlasGemm(
+            CblasNoTrans,
+            CblasNoTrans,
+            1,
+            dv,
+            dk,
+            scale,
+            qt,
+            dk,
+            S,
+            dv,
+            0.0f,
+            ot,
+            dv,
+            nullptr,
+            nullptr);
+      } else {
+        for (int64_t j = 0; j < d_v; ++j) {
+          float acc = 0.0f;
+          for (int64_t i = 0; i < d_k; ++i) {
+            acc += qt[i] * S[i * d_v + j];
+          }
+          ot[j] = scale * acc;
+        }
+      }
     }
   }
 }
@@ -231,11 +257,11 @@ template <typename T>
 Status LinearAttention<T>::Compute(OpKernelContext* context) const {
   // ==== Input Retrieval ====
   const Tensor* query_tensor = context->Input<Tensor>(0);
-  const Tensor* key_tensor = context->Input<Tensor>(1);    // optional
-  const Tensor* value_tensor = context->Input<Tensor>(2);  // optional
+  const Tensor* key_tensor = context->Input<Tensor>(1);         // optional
+  const Tensor* value_tensor = context->Input<Tensor>(2);       // optional
   const Tensor* past_state_tensor = context->Input<Tensor>(3);  // optional
-  const Tensor* decay_tensor = context->Input<Tensor>(4);  // optional
-  const Tensor* beta_tensor = context->Input<Tensor>(5);   // optional
+  const Tensor* decay_tensor = context->Input<Tensor>(4);       // optional
+  const Tensor* beta_tensor = context->Input<Tensor>(5);        // optional
 
   ORT_RETURN_IF_NOT(query_tensor != nullptr, "query input is required");
 

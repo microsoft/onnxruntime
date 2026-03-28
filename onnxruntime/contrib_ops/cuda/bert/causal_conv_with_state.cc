@@ -4,20 +4,24 @@
 #include "contrib_ops/cuda/bert/causal_conv_with_state.h"
 #include "contrib_ops/cuda/bert/causal_conv_with_state_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      CausalConvWithState,                                              \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),       \
+using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCudaType
+
+#define REGISTER_KERNEL_TYPED(T)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      CausalConvWithState,                                            \
+      kMSDomain,                                                      \
+      1,                                                              \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>()), \
       CausalConvWithState<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -39,7 +43,7 @@ template <typename T>
 Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const Tensor* weight_tensor = context->Input<Tensor>(1);
-  const Tensor* bias_tensor = context->Input<Tensor>(2);       // optional
+  const Tensor* bias_tensor = context->Input<Tensor>(2);        // optional
   const Tensor* past_state_tensor = context->Input<Tensor>(3);  // optional
 
   ORT_RETURN_IF_NOT(input_tensor != nullptr, "input is required");
@@ -70,7 +74,7 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool apply_silu = (activation_ == "silu" || activation_ == "swish");
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename OrtToCudaType<T>::type CudaT;
 
   return LaunchCausalConvWithStateKernel<CudaT>(
       Stream(context),

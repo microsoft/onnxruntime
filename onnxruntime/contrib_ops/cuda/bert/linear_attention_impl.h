@@ -16,14 +16,13 @@ namespace cuda {
 template <typename T>
 Status LaunchLinearAttentionKernel(
     cudaStream_t stream,
-    const T* query,         // [B, T, H_q * d_k]
-    const T* key,           // [B, T, H_kv * d_k]
-    const T* value,         // [B, T, H_kv * d_v]
-    const float* past_state,  // [B, H_kv, d_k, d_v] or nullptr
-    const T* decay,         // [B, T, H_kv] or [B, T, H_kv * d_k] or nullptr
-    const T* beta,          // [B, T, H_kv] or [B, T, 1] or nullptr
-    T* output,              // [B, T, H_q * d_v]
-    float* present_state,   // [B, H_kv, d_k, d_v]
+    const T* query,        // [B, T, H_q * d_k]
+    const T* key,          // [B, T, H_kv * d_k]
+    const T* value,        // [B, T, H_kv * d_v]
+    const T* decay,        // [B, T, H_kv] or [B, T, H_kv * d_k] or nullptr
+    const T* beta,         // [B, T, H_kv] or [B, T, 1] or nullptr
+    T* output,             // [B, T, H_q * d_v]
+    float* present_state,  // [B, H_kv, d_k, d_v] -- in-place (caller pre-fills from past)
     int batch_size,
     int seq_len,
     int q_num_heads,

@@ -13,7 +13,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class CausalConvWithState final : public CudaKernel {
+class CausalConvWithState final : public onnxruntime::cuda::CudaKernel {
  public:
   CausalConvWithState(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;

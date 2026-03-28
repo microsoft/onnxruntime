@@ -2298,8 +2298,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
           if (hasInputShape(ctx, 0)) {
             auto& query_shape = getInputShape(ctx, 0);
+            // Output shape is [B, T, H_q*d_v]. B and T come from query; H_q*d_v
+            // requires value shape. Propagate only the known batch/seq dims.
             if (query_shape.dim().size() == 3) {
-              propagateShapeFromInputToOutput(ctx, 0, 0);
+              ONNX_NAMESPACE::TensorShapeProto output_shape;
+              *output_shape.add_dim() = query_shape.dim(0);  // B
+              *output_shape.add_dim() = query_shape.dim(1);  // T
+              // H_q*d_v: infer from value if available
+              if (ctx.getNumInputs() > 2 && hasInputShape(ctx, 2)) {
+                const auto& value_shape = getInputShape(ctx, 2);
+                if (value_shape.dim().size() == 3) {
+                  *output_shape.add_dim() = value_shape.dim(2);  // H_kv*d_v (same as output when q==kv heads, otherwise unknown)
+                } else {
+                  output_shape.add_dim();  // unknown
+                }
+              } else {
+                output_shape.add_dim();  // unknown
+              }
+              updateOutputShape(ctx, 0, output_shape);
             }
           }
         }));
@@ -2344,7 +2360,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(3,
                "past_state",
                "Carry-over state (last k-1 positions along the causal axis). If omitted, treated as zeros.",
-               "T",
+               "S",
                OpSchema::Optional)
         .Output(0,
                 "output",
@@ -2353,13 +2369,33 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "present_state",
                 "Updated carry state for next call.",
-                "T")
+                "S")
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("S", {"tensor(float)"}, "Constrain state tensors to float32 for numerical stability.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          // present_state is always float32
+          ctx.getOutputType(1)->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto::FLOAT);
           if (hasInputShape(ctx, 0)) {
             propagateShapeFromInputToOutput(ctx, 0, 0);
+          }
+          // Infer present_state shape [B, C, K-1] from input [B, C, L] and weight [C, 1, K]
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+            auto& input_shape = getInputShape(ctx, 0);   // [B, C, L]
+            auto& weight_shape = getInputShape(ctx, 1);  // [C, 1, K]
+            if (input_shape.dim().size() >= 2 && weight_shape.dim().size() >= 3) {
+              ONNX_NAMESPACE::TensorShapeProto state_shape;
+              *state_shape.add_dim() = input_shape.dim(0);  // B
+              *state_shape.add_dim() = input_shape.dim(1);  // C
+              const auto& k_dim = weight_shape.dim(2);
+              if (k_dim.has_dim_value() && k_dim.dim_value() > 0) {
+                state_shape.add_dim()->set_dim_value(k_dim.dim_value() - 1);
+              } else {
+                state_shape.add_dim();
+              }
+              updateOutputShape(ctx, 1, state_shape);
+            }
           }
         }));
 

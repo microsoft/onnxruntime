@@ -13,7 +13,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class LinearAttention final : public CudaKernel {
+class LinearAttention final : public onnxruntime::cuda::CudaKernel {
  public:
   LinearAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;

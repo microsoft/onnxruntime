@@ -17,15 +17,16 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T)                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
-      CausalConvWithState,                                       \
-      kMSDomain,                                                 \
-      1,                                                         \
-      T,                                                         \
-      kCpuExecutionProvider,                                     \
-      KernelDefBuilder()                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      CausalConvWithState,                                            \
+      kMSDomain,                                                      \
+      1,                                                              \
+      T,                                                              \
+      kCpuExecutionProvider,                                          \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>()), \
       CausalConvWithState<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -47,17 +48,54 @@ inline float ApplySilu(float x) {
   return x / (1.0f + std::exp(-x));
 }
 
+template <int K>
+inline void ProcessChannelDecodeFixedK(
+    const float* past_row,
+    const float* input_val,
+    const float* w,
+    float bias_val,
+    bool apply_silu,
+    float* out_val,
+    float* present_row) {
+  constexpr int pad = K - 1;
+  float sum = bias_val;
+  if (past_row != nullptr) {
+    for (int k = 0; k < pad; ++k) {
+      sum += w[k] * past_row[k];
+    }
+  }
+  sum += w[pad] * input_val[0];
+
+  if (apply_silu) {
+    sum = ApplySilu(sum);
+  }
+  out_val[0] = sum;
+
+  if constexpr (pad > 0) {
+    if (past_row != nullptr) {
+      if constexpr (pad > 1) {
+        std::memcpy(present_row, past_row + 1, static_cast<size_t>(pad - 1) * sizeof(float));
+      }
+    } else {
+      if constexpr (pad > 1) {
+        std::memset(present_row, 0, static_cast<size_t>(pad - 1) * sizeof(float));
+      }
+    }
+    present_row[pad - 1] = input_val[0];
+  }
+}
+
 // Decode fast-path: L=1, no padded buffer needed.
 // The "visible window" for position 0 is [past_state(K-1 values), input(1 value)] = K values.
 // Compute dot(weight, window), shift state left by 1, append new input.
 void ProcessChannelDecode(
-    const float* past_row,    // past_state for this (b,c): [K-1] or nullptr
-    const float* input_val,   // &input[b,c,0] — single value
-    const float* w,           // weight for this channel: [K]
+    const float* past_row,   // past_state for this (b,c): [K-1] or nullptr
+    const float* input_val,  // &input[b,c,0] — single value
+    const float* w,          // weight for this channel: [K]
     float bias_val,
     bool apply_silu,
-    float* out_val,           // &output[b,c,0] — single value
-    float* present_row,       // present_state for this (b,c): [K-1]
+    float* out_val,      // &output[b,c,0] — single value
+    float* present_row,  // present_state for this (b,c): [K-1]
     int64_t K) {
   int64_t pad = K - 1;
 
@@ -90,14 +128,14 @@ void ProcessChannelDecode(
 
 // Prefill path: L>1, uses padded buffer for the convolution window.
 void ProcessChannelPrefill(
-    const float* past_row,    // past_state for this (b,c): [K-1] or nullptr
-    const float* in_row,      // input for this (b,c): [L]
-    const float* w,           // weight for this channel: [K]
+    const float* past_row,  // past_state for this (b,c): [K-1] or nullptr
+    const float* in_row,    // input for this (b,c): [L]
+    const float* w,         // weight for this channel: [K]
     float bias_val,
     bool apply_silu,
-    float* out_row,           // output for this (b,c): [L]
-    float* present_row,       // present_state for this (b,c): [K-1]
-    float* padded_row,        // scratch buffer: [K-1 + L]
+    float* out_row,      // output for this (b,c): [L]
+    float* present_row,  // present_state for this (b,c): [K-1]
+    float* padded_row,   // scratch buffer: [K-1 + L]
     int64_t L,
     int64_t K) {
   int64_t pad = K - 1;
@@ -133,7 +171,7 @@ template <typename T>
 Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const Tensor* weight_tensor = context->Input<Tensor>(1);
-  const Tensor* bias_tensor = context->Input<Tensor>(2);       // optional
+  const Tensor* bias_tensor = context->Input<Tensor>(2);        // optional
   const Tensor* past_state_tensor = context->Input<Tensor>(3);  // optional
 
   ORT_RETURN_IF_NOT(input_tensor != nullptr, "input is required");
@@ -214,9 +252,28 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
               float bias_val = bias_data ? bias_data[c] : 0.0f;
               float* out_val = output_data + (b * channels + c) * L;
               float* present_row = present_data + (b * channels + c) * pad;
-
-              ProcessChannelDecode(past_row, input_val, w, bias_val, apply_silu,
-                                   out_val, present_row, K);
+              switch (K) {
+                case 2:
+                  ProcessChannelDecodeFixedK<2>(past_row, input_val, w, bias_val, apply_silu,
+                                                out_val, present_row);
+                  break;
+                case 3:
+                  ProcessChannelDecodeFixedK<3>(past_row, input_val, w, bias_val, apply_silu,
+                                                out_val, present_row);
+                  break;
+                case 4:
+                  ProcessChannelDecodeFixedK<4>(past_row, input_val, w, bias_val, apply_silu,
+                                                out_val, present_row);
+                  break;
+                case 5:
+                  ProcessChannelDecodeFixedK<5>(past_row, input_val, w, bias_val, apply_silu,
+                                                out_val, present_row);
+                  break;
+                default:
+                  ProcessChannelDecode(past_row, input_val, w, bias_val, apply_silu,
+                                       out_val, present_row, K);
+                  break;
+              }
             }
           });
     } else {
@@ -253,7 +310,8 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
 
   // ==== ndim=2 or ndim=3: not yet implemented ====
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "CausalConvWithState with ndim=", ndim_, " is not yet implemented. "
+                         "CausalConvWithState with ndim=", ndim_,
+                         " is not yet implemented. "
                          "Currently only ndim=1 is supported.");
 }
 

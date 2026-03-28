@@ -4,22 +4,25 @@
 #include "contrib_ops/cuda/bert/linear_attention.h"
 #include "contrib_ops/cuda/bert/linear_attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      LinearAttention,                                                  \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("S", {DataTypeImpl::GetTensorType<float>(),   \
-                                DataTypeImpl::GetTensorType<T>()}),     \
+using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCudaType
+
+#define REGISTER_KERNEL_TYPED(T)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      LinearAttention,                                                \
+      kMSDomain,                                                      \
+      1,                                                              \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+          .TypeConstraint("S", {DataTypeImpl::GetTensorType<float>(), \
+                                DataTypeImpl::GetTensorType<T>()}),   \
       LinearAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -46,11 +49,11 @@ LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info)
 template <typename T>
 Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query_tensor = context->Input<Tensor>(0);
-  const Tensor* key_tensor = context->Input<Tensor>(1);    // optional
-  const Tensor* value_tensor = context->Input<Tensor>(2);  // optional
+  const Tensor* key_tensor = context->Input<Tensor>(1);         // optional
+  const Tensor* value_tensor = context->Input<Tensor>(2);       // optional
   const Tensor* past_state_tensor = context->Input<Tensor>(3);  // optional
-  const Tensor* decay_tensor = context->Input<Tensor>(4);  // optional
-  const Tensor* beta_tensor = context->Input<Tensor>(5);   // optional
+  const Tensor* decay_tensor = context->Input<Tensor>(4);       // optional
+  const Tensor* beta_tensor = context->Input<Tensor>(5);        // optional
 
   ORT_RETURN_IF_NOT(query_tensor != nullptr, "query input is required");
 
@@ -117,14 +120,13 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
         Stream(context)));
   }
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename OrtToCudaType<T>::type CudaT;
 
   return LaunchLinearAttentionKernel<CudaT>(
       Stream(context),
       reinterpret_cast<const CudaT*>(query_tensor->Data<T>()),
       reinterpret_cast<const CudaT*>(key_tensor->Data<T>()),
       reinterpret_cast<const CudaT*>(value_tensor->Data<T>()),
-      present_state_tensor->MutableData<float>(),  // state is always fp32, updated in-place
       decay_tensor ? reinterpret_cast<const CudaT*>(decay_tensor->Data<T>()) : nullptr,
       beta_tensor ? reinterpret_cast<const CudaT*>(beta_tensor->Data<T>()) : nullptr,
       reinterpret_cast<CudaT*>(output_tensor->MutableData<T>()),
