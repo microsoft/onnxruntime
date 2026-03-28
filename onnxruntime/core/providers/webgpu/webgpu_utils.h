@@ -106,8 +106,8 @@ class SplitKConfig {
   explicit SplitKConfig(const wgpu::AdapterInfo& adapter_info);
 
   bool UseSplitK(
-      bool is_vec4, ActivationKind activation_kind, uint64_t batch_size, bool is_gemm,
-      bool is_channels_last, uint32_t dim_a_outer,
+      bool is_vec4, ActivationKind activation_kind, uint64_t batch_size, bool has_bias,
+      bool is_gemm, bool is_channels_last, uint32_t dim_a_outer,
       uint32_t dim_b_outer, uint32_t dim_inner) const;
 
   uint32_t GetSplitDimInner() const;
