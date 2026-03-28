@@ -135,41 +135,48 @@ TEST(LRNTest, LRN_2) {
 
 // Test that size > C is handled correctly (window is clamped to valid channel range).
 TEST(LRNTest, SizeGreaterThanChannels) {
+  constexpr float alpha = 0.001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 5;
+
   OpTester test("LRN");
-  test.AddAttribute("alpha", .001f);
-  test.AddAttribute("beta", .75f);
-  test.AddAttribute("bias", 1.0f);
-  // size=5 but C=3, should fail the size_ <= C check
-  test.AddAttribute("size", int64_t(5));
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
 
   // N=1, C=3, H=2, W=2 with size=5 > C=3
   vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
                      5.0f, 6.0f, 7.0f, 8.0f,
                      9.0f, 10.0f, 11.0f, 12.0f};
   vector<int64_t> shape = {1, 3, 2, 2};
+
+  vector<float> expected = ComputeLRNReference(X, 1, 3, 2, 2, alpha, beta, bias, size);
+
   test.AddInput<float>("X", shape, X);
-
-  vector<float> expected = ComputeLRNReference(X, 1, 3, 2, 2,
-                                               0.001f, 0.75f, 1.0f, 5);
-
   test.AddOutput<float>("Y", shape, expected);
   test.Run();
 }
 
 // Test with minimum valid size (size=3) and a single channel where size == C.
 TEST(LRNTest, SizeEqualsChannels) {
+  constexpr float alpha = 0.0001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
   OpTester test("LRN");
-  test.AddAttribute("alpha", 0.0001f);
-  test.AddAttribute("beta", 0.75f);
-  test.AddAttribute("bias", 1.0f);
-  test.AddAttribute("size", int64_t(3));
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
 
   // N=1, C=3, H=1, W=1
   vector<float> X = {1.0f, 2.0f, 3.0f};
   vector<int64_t> shape = {1, 3, 1, 1};
 
-  vector<float> expected = ComputeLRNReference(X, 1, 3, 1, 1,
-                                               0.0001f, 0.75f, 1.0f, 3);
+  vector<float> expected = ComputeLRNReference(X, 1, 3, 1, 1, alpha, beta, bias, size);
 
   test.AddInput<float>("X", shape, X);
   test.AddOutput<float>("Y", shape, expected);
@@ -178,11 +185,16 @@ TEST(LRNTest, SizeEqualsChannels) {
 
 // Test with larger spatial dimensions to verify correctness with non-trivial H and W.
 TEST(LRNTest, LargerSpatialDims) {
+  constexpr float alpha = 0.001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
   OpTester test("LRN");
-  test.AddAttribute("alpha", 0.001f);
-  test.AddAttribute("beta", 0.75f);
-  test.AddAttribute("bias", 1.0f);
-  test.AddAttribute("size", int64_t(3));
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
 
   constexpr int64_t N = 1, C = 3, H = 128, W = 128;
   constexpr int64_t total = N * C * H * W;
@@ -193,8 +205,7 @@ TEST(LRNTest, LargerSpatialDims) {
   }
   vector<int64_t> shape = {N, C, H, W};
 
-  vector<float> expected = ComputeLRNReference(X, N, C, H, W,
-                                               0.001f, 0.75f, 1.0f, 3);
+  vector<float> expected = ComputeLRNReference(X, N, C, H, W, alpha, beta, bias, size);
 
   test.AddInput<float>("X", shape, X);
   test.AddOutput<float>("Y", shape, expected);
@@ -203,11 +214,16 @@ TEST(LRNTest, LargerSpatialDims) {
 
 // Test with multiple batch items (N > 1) to cover the outer loop with n * image_size arithmetic.
 TEST(LRNTest, MultipleBatches) {
+  constexpr float alpha = 0.01f;
+  constexpr float beta = 0.5f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
   OpTester test("LRN");
-  test.AddAttribute("alpha", 0.01f);
-  test.AddAttribute("beta", 0.5f);
-  test.AddAttribute("bias", 1.0f);
-  test.AddAttribute("size", int64_t(3));
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
 
   constexpr int64_t N = 2, C = 3, H = 2, W = 2;
   constexpr int64_t total = N * C * H * W;
@@ -217,8 +233,7 @@ TEST(LRNTest, MultipleBatches) {
   }
   vector<int64_t> shape = {N, C, H, W};
 
-  vector<float> expected = ComputeLRNReference(X, N, C, H, W,
-                                               0.01f, 0.5f, 1.0f, 3);
+  vector<float> expected = ComputeLRNReference(X, N, C, H, W, alpha, beta, bias, size);
 
   test.AddInput<float>("X", shape, X);
   test.AddOutput<float>("Y", shape, expected);
@@ -227,11 +242,16 @@ TEST(LRNTest, MultipleBatches) {
 
 // Test with more channels than size to exercise the sliding window (add head / subtract tail) path.
 TEST(LRNTest, ManyChannels) {
+  constexpr float alpha = 0.0001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
   OpTester test("LRN");
-  test.AddAttribute("alpha", 0.0001f);
-  test.AddAttribute("beta", 0.75f);
-  test.AddAttribute("bias", 1.0f);
-  test.AddAttribute("size", int64_t(3));
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
 
   // C > size to exercise the c=1..C-1 loop with head/tail updates
   constexpr int64_t N = 1, C = 8, H = 2, W = 2;
@@ -242,8 +262,7 @@ TEST(LRNTest, ManyChannels) {
   }
   vector<int64_t> shape = {N, C, H, W};
 
-  vector<float> expected = ComputeLRNReference(X, N, C, H, W,
-                                               0.0001f, 0.75f, 1.0f, 3);
+  vector<float> expected = ComputeLRNReference(X, N, C, H, W, alpha, beta, bias, size);
 
   test.AddInput<float>("X", shape, X);
   test.AddOutput<float>("Y", shape, expected);
@@ -252,11 +271,16 @@ TEST(LRNTest, ManyChannels) {
 
 // Test with all-zero input -- edge case where squared values are all zero.
 TEST(LRNTest, ZeroInput) {
+  constexpr float alpha = 0.001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
   OpTester test("LRN");
-  test.AddAttribute("alpha", 0.001f);
-  test.AddAttribute("beta", 0.75f);
-  test.AddAttribute("bias", 1.0f);
-  test.AddAttribute("size", int64_t(3));
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
 
   constexpr int64_t N = 1, C = 3, H = 2, W = 2;
   constexpr int64_t total = N * C * H * W;
