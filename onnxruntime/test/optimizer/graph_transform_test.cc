@@ -844,6 +844,60 @@ TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs)
   ASSERT_TRUE(op_to_count["Reshape"] == 1);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalOutputs) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInitializer<int64_t>({6}, {2, 1, 2, 3, 3, 3});
+    auto* unique_values = builder.MakeOutput<int64_t>(std::nullopt);
+    auto* missing_indices = builder.MakeEmptyInput();
+    auto* missing_inverse_indices = builder.MakeEmptyInput();
+    auto* unique_counts = builder.MakeOutput<int64_t>(std::nullopt);
+
+    builder.AddNode("Unique",
+                    {input},
+                    {unique_values, missing_indices, missing_inverse_indices, unique_counts});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unique"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.find("Unique") != op_to_count.end());
+
+    const auto& graph_outputs = graph.GetOutputs();
+    TEST_RETURN_IF_NOT(graph_outputs.size() == 2U);
+
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    for (const NodeArg* output : graph_outputs) {
+      const auto initialized_tensor = initialized_tensor_set.find(output->Name());
+      TEST_RETURN_IF(initialized_tensor == initialized_tensor_set.end());
+
+      onnxruntime::Initializer initializer{graph, *initialized_tensor->second, graph.ModelPath()};
+      TEST_RETURN_IF_NOT(initializer.size() == 3U);
+
+      const int64_t* values = initializer.data<int64_t>();
+      TEST_RETURN_IF(values[0] != 1 || values[1] != 2 || values[2] != 3);
+    }
+
+    return Status::OK();
+  };
+
+  const ConfigOptions empty_config_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case,
+      13,
+      *logger_,
+      std::make_unique<ConstantFolding>(*cpu_ep, false /*skip_dequantize_linear*/, empty_config_options),
+      TransformerLevel::Level1,
+      1,
+      pre_graph_checker,
+      post_graph_checker));
+}
+
 static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<std::string, int>& expected_op_count,
                                                       Graph& graph,
                                                       SessionOptions& session_options,
