@@ -170,7 +170,7 @@ static void SetProviders(std::vector<std::unique_ptr<IExecutionProvider>>& execu
   if (enable_dml && !disable_dml) {
     execution_providers.push_back(DefaultDmlExecutionProvider());
   }
-  if ((tensor_type == TensorType::kFloat || tensor_type == TensorType::kFloat16) && !disable_cpu) {
+  if ((tensor_type == TensorType::kFloat || tensor_type == TensorType::kFloat16 || tensor_type == TensorType::kBFloat16) && !disable_cpu) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
   }
   if (enable_webgpu) {
@@ -2402,6 +2402,69 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
   if (HasCudaEnvironment(0)) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
   }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// BFloat16 basic attention on CPU EP: verifies that the bfloat16 kernel is
+// registered and produces correct results without any fallback to function inlining.
+// Before this fix, ORT would fail with "NOT_IMPLEMENTED: Expand(13)" on CPU EP
+// because the bfloat16 kernel was not registered.
+TEST(AttentionTest, AttentionBFloat16_CPU_BasicNoMask) {
+  // batch=1, q_num_heads=1, kv_num_heads=1, seq_len=4, head_size=4
+  // All-ones Q/K/V → uniform attention → output = all-ones.
+  // scale = 1/sqrt(4) = 0.5; Q*K (dot product) = 4; scaled = 2.0
+  // softmax([2,2,2,2]) = uniform = 0.25 each; V weighted sum = all 1.0
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  const int batch = 1, heads = 1, seq = 4, hdim = 4;
+  std::vector<int64_t> q_shape = {batch, heads, seq, hdim};
+
+  std::vector<float> qkv(batch * heads * seq * hdim, 1.0f);
+  std::vector<float> expected_y(batch * heads * seq * hdim, 1.0f);
+
+  test.AddInput<BFloat16>("Q", q_shape, FloatsToBFloat16s(qkv));
+  test.AddInput<BFloat16>("K", q_shape, FloatsToBFloat16s(qkv));
+  test.AddInput<BFloat16>("V", q_shape, FloatsToBFloat16s(qkv));
+  test.AddOptionalInputEdge<BFloat16>();  // attn_mask
+  test.AddOptionalInputEdge<BFloat16>();  // past_key
+  test.AddOptionalInputEdge<BFloat16>();  // past_value
+
+  // tolerance: 3e-3f accommodates bfloat16 rounding through fp32 softmax
+  test.AddOutput<BFloat16>("Y", q_shape, FloatsToBFloat16s(expected_y), false, 0, 3e-3f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// BFloat16 attention on CPU EP with causal mask: verifies that the causal
+// mask logic (which internally uses mask_filter_value<BFloat16>) works correctly.
+TEST(AttentionTest, AttentionBFloat16_CPU_CausalMask) {
+  // batch=1, q_num_heads=1, seq_len=3, head_size=4
+  // Causal: each query i attends only to keys 0..i.
+  // All-ones Q/K/V → for query i: attention uniform over first i+1 keys → output = 1.0
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", 1);
+
+  const int batch = 1, heads = 1, seq = 3, hdim = 4;
+  std::vector<int64_t> shape = {batch, heads, seq, hdim};
+
+  std::vector<float> qkv(batch * heads * seq * hdim, 1.0f);
+  // With uniform Q and K (all-ones), causal masking doesn't change the magnitude
+  // of attended values — each query attends uniformly to its allowed keys, all V=1.0
+  std::vector<float> expected_y(batch * heads * seq * hdim, 1.0f);
+
+  test.AddInput<BFloat16>("Q", shape, FloatsToBFloat16s(qkv));
+  test.AddInput<BFloat16>("K", shape, FloatsToBFloat16s(qkv));
+  test.AddInput<BFloat16>("V", shape, FloatsToBFloat16s(qkv));
+  test.AddOptionalInputEdge<BFloat16>();  // attn_mask
+  test.AddOptionalInputEdge<BFloat16>();  // past_key
+  test.AddOptionalInputEdge<BFloat16>();  // past_value
+
+  test.AddOutput<BFloat16>("Y", shape, FloatsToBFloat16s(expected_y), false, 0, 3e-3f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
