@@ -641,7 +641,12 @@ def generate_files(line_list, args):
             # Code path for local dev build
             # for local dev build, gpu linux package is also generated for compatibility though it is not used
             # Derive the API version from the package version for versioned DLL name
-            ort_api_version = args.package_version.split(".")[1]
+            version_parts = args.package_version.split(".")
+            if len(version_parts) < 2:
+                raise ValueError(
+                    f"--package_version must have at least major.minor components, got: {args.package_version}"
+                )
+            ort_api_version = version_parts[1]
             ort_dll_base = f"onnxruntime_{ort_api_version}"
             if not is_cuda_gpu_linux_sub_package:
                 files_list.append(

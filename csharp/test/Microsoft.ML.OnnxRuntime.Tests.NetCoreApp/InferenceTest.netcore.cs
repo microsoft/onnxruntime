@@ -35,8 +35,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
     public partial class InferenceTest
     {
-        // Versioned DLL name matching ORT_API_VERSION. Must be updated each release.
-        private const string module = "onnxruntime_25.dll";
+        // Versioned DLL name derived from NativeMethods.NativeLib.OrtApiVersionSuffix.
+        private const string module = "onnxruntime_" + NativeMethods.NativeLib.OrtApiVersionSuffix + ".dll";
         private const string propertiesFile = "Properties.txt";
 
         [Fact(DisplayName = "CanCreateAndDisposeSessionWithModelPath")]

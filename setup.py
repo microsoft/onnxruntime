@@ -425,7 +425,10 @@ else:
     # Derive the API version (minor component of the version number) for the versioned DLL name.
     # VERSION_NUMBER is e.g. "1.25.0", api_version is "25".
     with open("VERSION_NUMBER") as _vf:
-        _ort_api_version = _vf.readline().strip().split(".")[1]
+        _version_parts = _vf.readline().strip().split(".")
+        if len(_version_parts) < 2:
+            raise ValueError(f"VERSION_NUMBER must have at least major.minor components, got: {'.'.join(_version_parts)}")
+        _ort_api_version = _version_parts[1]
     libs = [
         "onnxruntime_pybind11_state.pyd",
         "dnnl.dll",
