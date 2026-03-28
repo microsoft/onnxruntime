@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/constants.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/random_generator.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -78,6 +80,142 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   excluded_providers.insert(kQnnExecutionProvider);
 
   test.Run(expect_result, err_str, excluded_providers);
+}
+
+void TestConvOpCpuOnly(const ConvOpAndTestAttributes& attributes,
+                      const vector<vector<float>>& inputs,
+                      const vector<vector<int64_t>>& input_shapes,
+                      const vector<float>& expected_output,
+                      const vector<int64_t>& expected_output_shape,
+                      bool weight_is_initializer = false,
+                      optional<float> epsilon = optional<float>()) {
+  OpTester test("Conv", 12);
+  test.AddAttribute("group", attributes.group);
+  test.AddAttribute("kernel_shape", attributes.kernel_shape);
+
+  if (!attributes.dilations.empty()) {
+    test.AddAttribute("dilations", attributes.dilations);
+  }
+
+  if (!attributes.pads.empty()) {
+    test.AddAttribute("pads", attributes.pads);
+  } else {
+    test.AddAttribute("auto_pad", attributes.auto_pad);
+  }
+
+  if (!attributes.strides.empty()) {
+    test.AddAttribute("strides", attributes.strides);
+  }
+
+  ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
+  const char* szNames[] = {"X", "W", "B"};
+  test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
+  test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
+  if (inputs.size() == 3) {
+    test.AddInput<float>(szNames[2], input_shapes[2], inputs[2]);
+  }
+
+  test.AddOutput<float>("Y", expected_output_shape, expected_output);
+
+  if (epsilon.has_value()) {
+    test.SetOutputTolerance(*epsilon);
+  }
+
+  SessionOptions session_options;
+  auto status = session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableSpecifiedOptimizers, "NchwcTransformer");
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+
+  test.Config(session_options);
+  test.ConfigEp(DefaultCpuExecutionProvider());
+  test.RunWithConfig();
+}
+
+vector<float> ComputeDepthwiseMultiplier2Reference(const vector<float>& input,
+                                                   const vector<int64_t>& input_shape,
+                                                   const vector<float>& weights,
+                                                   const vector<int64_t>& weight_shape,
+                                                   const vector<float>& bias,
+                                                   const vector<int64_t>& output_shape,
+                                                   int64_t stride_h,
+                                                   int64_t stride_w,
+                                                   int64_t pad_h,
+                                                   int64_t pad_w) {
+  const int64_t batch = input_shape[0];
+  const int64_t channels = input_shape[1];
+  const int64_t input_h = input_shape[2];
+  const int64_t input_w = input_shape[3];
+  const int64_t output_channels = weight_shape[0];
+  const int64_t kernel_h = weight_shape[2];
+  const int64_t kernel_w = weight_shape[3];
+  const int64_t output_h = output_shape[2];
+  const int64_t output_w = output_shape[3];
+  const int64_t multiplier = output_channels / channels;
+
+  vector<float> output(static_cast<size_t>(batch * output_channels * output_h * output_w), 0.0f);
+
+  for (int64_t n = 0; n < batch; ++n) {
+    for (int64_t c = 0; c < channels; ++c) {
+      for (int64_t m = 0; m < multiplier; ++m) {
+        const int64_t out_c = c * multiplier + m;
+        for (int64_t oh = 0; oh < output_h; ++oh) {
+          for (int64_t ow = 0; ow < output_w; ++ow) {
+            float sum = bias[out_c];
+            for (int64_t kh = 0; kh < kernel_h; ++kh) {
+              const int64_t ih = oh * stride_h + kh - pad_h;
+              if (ih < 0 || ih >= input_h) {
+                continue;
+              }
+
+              for (int64_t kw = 0; kw < kernel_w; ++kw) {
+                const int64_t iw = ow * stride_w + kw - pad_w;
+                if (iw < 0 || iw >= input_w) {
+                  continue;
+                }
+
+                const size_t input_index = static_cast<size_t>(((n * channels + c) * input_h + ih) * input_w + iw);
+                const size_t weight_index = static_cast<size_t>(((out_c * kernel_h + kh) * kernel_w) + kw);
+                sum += input[input_index] * weights[weight_index];
+              }
+            }
+
+            const size_t output_index = static_cast<size_t>(((n * output_channels + out_c) * output_h + oh) * output_w + ow);
+            output[output_index] = sum;
+          }
+        }
+      }
+    }
+  }
+
+  return output;
+}
+
+void TestMobileClipDepthwiseMultiplier2CpuOnly(int64_t channels, int64_t input_hw) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      channels,                     // group
+      vector<int64_t>{7, 7},        // kernel_shape
+      vector<int64_t>{3, 3, 3, 3},  // pads
+      vector<int64_t>{2, 2},        // strides
+      {}                            // excluded EPs
+  };
+
+  RandomValueGenerator random{static_cast<int>(channels + input_hw)};
+
+  vector<int64_t> input_shape = {1, channels, input_hw, input_hw};
+  vector<int64_t> weight_shape = {channels * 2, 1, 7, 7};
+  vector<int64_t> bias_shape = {channels * 2};
+  vector<int64_t> output_shape = {1, channels * 2, input_hw / 2, input_hw / 2};
+
+  vector<float> input = random.Uniform<float>(input_shape, -1.0f, 1.0f);
+  vector<float> weights = random.Uniform<float>(weight_shape, -0.5f, 0.5f);
+  vector<float> bias = random.Uniform<float>(bias_shape, -0.25f, 0.25f);
+  vector<float> expected_output = ComputeDepthwiseMultiplier2Reference(input, input_shape, weights, weight_shape, bias,
+                                                                       output_shape, 2, 2, 3, 3);
+
+  TestConvOpCpuOnly(attrs, {input, weights, bias}, {input_shape, weight_shape, bias_shape},
+                    expected_output, output_shape, true, 1e-4f);
 }
 
 }  // namespace
@@ -1196,6 +1334,18 @@ TEST(ConvTest, Depthwise2D_Bias_Group15) {
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_64x64_CPU) {
+  TestMobileClipDepthwiseMultiplier2CpuOnly(64, 64);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_128x32_CPU) {
+  TestMobileClipDepthwiseMultiplier2CpuOnly(128, 32);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_256x16_CPU) {
+  TestMobileClipDepthwiseMultiplier2CpuOnly(256, 16);
 }
 
 TEST(ConvTest, ConvDimWithZero) {
