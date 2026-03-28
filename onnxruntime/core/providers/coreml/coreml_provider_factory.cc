@@ -3,6 +3,7 @@
 
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ep_cache_versioning.h"
 #include "coreml_execution_provider.h"
 #include "coreml_provider_factory_creator.h"
 
@@ -22,6 +23,17 @@ struct CoreMLProviderFactory : IExecutionProviderFactory {
 std::unique_ptr<IExecutionProvider> CoreMLProviderFactory::CreateProvider() {
   return std::make_unique<CoreMLExecutionProvider>(options_);
 }
+
+namespace {
+
+// Register CoreML cache path option keys with the generic EP cache versioning logic.
+// CoreML uses "ModelCacheDirectory" as the provider option name for its cache directory.
+const bool kRegisterCoreMLCachePathOptions = []() {
+  onnxruntime::RegisterEpCachePathOptions("CoreML", {"ModelCacheDirectory"});
+  return true;
+}();
+
+}  // namespace
 
 std::shared_ptr<IExecutionProviderFactory> CoreMLProviderFactoryCreator::Create(uint32_t coreml_flags) {
   CoreMLOptions coreml_options(coreml_flags);

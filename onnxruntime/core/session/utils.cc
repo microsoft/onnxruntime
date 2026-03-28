@@ -16,6 +16,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/ep_cache_versioning.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
@@ -503,6 +504,10 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
   const logging::Logger* session_logger = sess.GetLogger();
   ORT_ENFORCE(session_logger != nullptr,
               "Session logger is invalid, but should have been initialized during session construction.");
+
+  // Apply EP cache versioning so that when session.ep_cache_use_ort_version is "1", cache paths
+  // in config_options are suffixed with ORT version (avoids using outdated caches after ORT update).
+  onnxruntime::ApplyEpCacheVersionToConfigOptions(sess.GetMutableSessionOptions().config_options);
 
   const bool has_provider_factories = options != nullptr && !options->provider_factories.empty();
 
