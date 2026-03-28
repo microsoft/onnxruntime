@@ -7,6 +7,8 @@
 #error "This header should not be included directly. Include ep/adapters.h instead."
 #endif
 
+#include <mutex>
+
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
