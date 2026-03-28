@@ -14,6 +14,9 @@
 #include <fstream>
 #include <random>
 
+#include "nlohmann/json.hpp"
+#include "onnxruntime_cxx_api.h"
+
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
@@ -62,6 +65,8 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::concurrency;
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
 struct KernelRegistryAndStatus {
@@ -620,7 +625,193 @@ TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
   // Clean up the profile file
   std::remove(profile_file.c_str());
 }
-#endif  // __wasm__
+#endif  // !defined(__wasm__) && !defined(_WIN32)
+
+#ifndef __wasm__
+// Test that run-level profiling captures operators inside subgraphs (e.g., If branches).
+TEST(InferenceSessionTests, CheckRunProfilerWithSubgraph_If) {
+  Ort::SessionOptions session_options;
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/if_mul.onnx"), session_options);
+
+  // Prepare inputs for if_mul.onnx:
+  //   A (bool, [1])    - condition (true -> then branch: C = B * 2)
+  //   B (float, [3,2]) - data
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 1> a_shape = {1};
+  std::array<int64_t, 2> b_shape = {3, 2};
+
+  std::array<bool, 1> a_data = {true};
+  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, 6.f, 7.f};
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<bool>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), b_shape.data(), b_shape.size()));
+
+  std::array ort_input_names{"A", "B"};
+  std::array output_names{"C"};
+
+  // Enable run-level profiling via RunOptions
+  Ort::RunOptions run_options;
+  run_options.EnableProfiling(ORT_TSTR("ort_run_profile_subgraph_test"));
+
+  std::vector<Ort::Value> ort_outputs = session.Run(run_options, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Verify output: condition=true -> then branch -> B * 2
+  const float* output_data = ort_outputs[0].GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(4.f, 6.f, 8.f, -10.f, 12.f, 14.f));
+
+  // Find the generated profile JSON file
+  std::string profile_file;
+  for (const auto& entry : std::filesystem::directory_iterator(".")) {
+    std::string filename = entry.path().filename().string();
+    if (filename.find("ort_run_profile_subgraph_test") == 0 && filename.find(".json") != std::string::npos) {
+      profile_file = entry.path().string();
+      break;
+    }
+  }
+
+  ASSERT_FALSE(profile_file.empty()) << "Profile file with prefix 'ort_run_profile_subgraph_test' not found";
+
+  // Ensure the profile file is cleaned up even if an assertion fails.
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  // Parse the profile JSON
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good()) << "Failed to open profile file: " << profile_file;
+
+  nlohmann::json profile_json;
+  profile_stream >> profile_json;
+  profile_stream.close();
+
+  ASSERT_TRUE(profile_json.is_array()) << "Profile JSON should be an array";
+  ASSERT_FALSE(profile_json.empty()) << "Profile JSON should not be empty";
+
+  // Check that the profile contains an entry for the Mul op inside the If's then-branch (mul_0).
+  bool found_subgraph_mul = false;
+  for (const auto& entry : profile_json) {
+    if (entry.contains("name")) {
+      const std::string name = entry["name"].get<std::string>();
+      if (name.find("mul_0") != std::string::npos) {
+        found_subgraph_mul = true;
+        break;
+      }
+    }
+  }
+
+  EXPECT_TRUE(found_subgraph_mul)
+      << "Profile should contain an entry for 'mul_0' (Mul op inside If's then-branch). "
+      << "Profile contents: " << profile_json;
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// Test that run-level profiling captures operators inside beam search decoder subgraphs.
+TEST(BeamSearchTest, CheckRunProfilerWithSubgraph_BeamSearch) {
+  // Same inputs as RunGptBeamSearchFp32
+  std::vector<int64_t> input_ids_shape{3, 12};
+  std::vector<int32_t> input_ids{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+
+  std::vector<int64_t> parameter_shape{1};
+  std::vector<int32_t> max_length{20};
+  std::vector<int32_t> min_length{1};
+  std::vector<int32_t> num_beams{4};
+  std::vector<int32_t> num_return_sequences{1};
+  std::vector<float> length_penalty{1.0f};
+  std::vector<float> repetition_penalty{1.0f};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto input_ids_tensor = Ort::Value::CreateTensor(
+      info, input_ids.data(), input_ids.size(), input_ids_shape.data(), input_ids_shape.size());
+  auto max_length_tensor = Ort::Value::CreateTensor(
+      info, max_length.data(), max_length.size(), parameter_shape.data(), parameter_shape.size());
+  auto min_length_tensor = Ort::Value::CreateTensor(
+      info, min_length.data(), min_length.size(), parameter_shape.data(), parameter_shape.size());
+  auto num_beams_tensor = Ort::Value::CreateTensor(
+      info, num_beams.data(), num_beams.size(), parameter_shape.data(), parameter_shape.size());
+  auto num_return_sequences_tensor = Ort::Value::CreateTensor(
+      info, num_return_sequences.data(), num_return_sequences.size(), parameter_shape.data(), parameter_shape.size());
+  auto length_penalty_tensor = Ort::Value::CreateTensor(
+      info, length_penalty.data(), length_penalty.size(), parameter_shape.data(), parameter_shape.size());
+  auto repetition_penalty_tensor = Ort::Value::CreateTensor(
+      info, repetition_penalty.data(), repetition_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(input_ids_tensor));
+  ort_inputs.push_back(std::move(max_length_tensor));
+  ort_inputs.push_back(std::move(min_length_tensor));
+  ort_inputs.push_back(std::move(num_beams_tensor));
+  ort_inputs.push_back(std::move(num_return_sequences_tensor));
+  ort_inputs.push_back(std::move(length_penalty_tensor));
+  ort_inputs.push_back(std::move(repetition_penalty_tensor));
+
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
+                               "length_penalty", "repetition_penalty"};
+  const char* const output_names[] = {"sequences"};
+
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx"), session_options);
+
+  // Enable run-level profiling
+  Ort::RunOptions run_options;
+  run_options.EnableProfiling(ORT_TSTR("ort_run_profile_beam_search_test"));
+
+  auto ort_outputs = session.Run(run_options, input_names, ort_inputs.data(), ort_inputs.size(),
+                                 output_names, 1);
+  ASSERT_EQ(ort_outputs.size(), 1U);
+
+  // Find the generated profile JSON file
+  std::string profile_file;
+  for (const auto& entry : std::filesystem::directory_iterator(".")) {
+    std::string filename = entry.path().filename().string();
+    if (filename.find("ort_run_profile_beam_search_test") == 0 && filename.find(".json") != std::string::npos) {
+      profile_file = entry.path().string();
+      break;
+    }
+  }
+
+  ASSERT_FALSE(profile_file.empty()) << "Profile file with prefix 'ort_run_profile_beam_search_test' not found";
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  // Parse the profile JSON
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good()) << "Failed to open profile file: " << profile_file;
+
+  nlohmann::json profile_json;
+  profile_stream >> profile_json;
+  profile_stream.close();
+
+  ASSERT_TRUE(profile_json.is_array()) << "Profile JSON should be an array";
+  ASSERT_FALSE(profile_json.empty()) << "Profile JSON should not be empty";
+
+  // Check that the profile contains Node entries beyond just the top-level BeamSearch op.
+  // The decoder subgraph contains ops like MatMul, Add, etc. If run profiling propagates
+  // correctly, we should see Node entries with names that are NOT "BeamSearch".
+  bool found_subgraph_node = false;
+  for (const auto& entry : profile_json) {
+    if (entry.contains("cat") && entry["cat"].get<std::string>() == "Node" &&
+        entry.contains("name")) {
+      const std::string name = entry["name"].get<std::string>();
+      if (name.find("BeamSearch") == std::string::npos) {
+        found_subgraph_node = true;
+        break;
+      }
+    }
+  }
+
+  EXPECT_TRUE(found_subgraph_node)
+      << "Profile should contain Node entries from the beam search decoder subgraph "
+      << "(e.g., MatMul, Add), not just the top-level BeamSearch op. Profile contents: "
+      << profile_json;
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+#endif  // !defined(__wasm__)
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   // Test whether the InferenceSession can access the profiler's start time
