@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param has_attention_bias
+#param has_softcap
 #param tile_size
 #param tile_size_k_vec
 #param sub_tile_count
@@ -97,6 +98,10 @@ $MAIN {
     }
 
     sum = sum + loadAttentionBias(batch_idx, head_idx, 0u, total_seq_offset + local_idx, total_sequence_length);
+#if has_softcap
+    // Apply softcap: score = softcap * tanh(score / softcap)
+    sum = q_element_t(uniforms.softcap * tanh(f32(sum) / uniforms.softcap));
+#endif
     tile_qk[local_idx] = sum;
     output[batch_head_idx * uniforms.present_sequence_length + total_seq_offset + local_idx] = sum;
   }

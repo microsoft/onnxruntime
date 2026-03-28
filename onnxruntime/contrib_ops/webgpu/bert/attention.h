@@ -46,8 +46,8 @@ class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
  public:
   AttentionProbsProgram(const std::string& kernel_name, bool feed_past_key, bool has_present_key,
-                        bool has_attention_bias, int tile_size, int components, bool is_first_prompt, bool has_seqlen_k = false, bool past_present_share_buffer = false, bool is_unidirectional = false)
-      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), has_seqlen_k_(has_seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_first_prompt_(is_first_prompt), is_unidirectional_(is_unidirectional) {
+                        bool has_attention_bias, int tile_size, int components, bool is_first_prompt, bool has_seqlen_k = false, bool past_present_share_buffer = false, bool is_unidirectional = false, bool has_softcap = false)
+      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), has_seqlen_k_(has_seqlen_k), past_present_share_buffer_(past_present_share_buffer), is_first_prompt_(is_first_prompt), is_unidirectional_(is_unidirectional), has_softcap_(has_softcap) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -66,7 +66,8 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
+                                          {"softcap", ProgramUniformVariableDataType::Float32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
@@ -80,6 +81,7 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
   bool past_present_share_buffer_;
   bool is_first_prompt_;
   bool is_unidirectional_;
+  bool has_softcap_;
 };
 
 class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
