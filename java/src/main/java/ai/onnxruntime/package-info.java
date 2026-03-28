@@ -10,38 +10,43 @@
  * Java (such as fp16) are converted into the nearest Java primitive type when accessed through this
  * API.
  *
- * <p>There are two shared libraries required: <code>onnxruntime</code> and <code>onnxruntime4j_jni
- * </code>. The loader is in {@link ai.onnxruntime.OnnxRuntime} and the logic is in this order:
+ * <p>There are several shared libraries required for operation, primarily <code>onnxruntime</code>
+ * and <code>onnxruntime4j_jni</code>, as well as <code>onnxruntime_providers_shared</code>. The
+ * loader is in {@link ai.onnxruntime.OnnxRuntime} and the logic follows this order:
  *
  * <ol>
  *   <li>The user may signal to skip loading of a shared library using a property in the form <code>
- *       onnxruntime.native.LIB_NAME.skip</code> with a value of <code>true</code>. This means the
- *       user has decided to load the library by some other means.
- *   <li>The user may specify an explicit location of all native library files using a property in
- *       the form <code>onnxruntime.native.path</code>. This uses {@link java.lang.System#load}.
- *   <li>The user may specify an explicit location of the shared library file using a property in
- *       the form <code>onnxruntime.native.LIB_NAME.path</code>. This uses {@link
+ * onnxruntime.native.LIB_NAME.skip</code> with a value of <code>true</code>. This means the user
+ *       has decided to load the library by some other means.
+ *   <li>The user may specify an explicit directory containing all native library files using the
+ *       property <code>onnxruntime.native.path</code>. This uses {@link java.lang.System#load}.
+ *   <li>The user may specify an explicit location of a specific shared library file using a
+ *       property in the form <code>onnxruntime.native.LIB_NAME.path</code>. This uses {@link
  *       java.lang.System#load}.
  *   <li>The shared library is autodiscovered:
  *       <ol>
- *         <li>If the shared library is present in the classpath resources, load using {@link
- *             java.lang.System#load} via a temporary file. Ideally, this should be the default use
- *             case when adding JAR's/dependencies containing the shared libraries to your
- *             classpath.
+ *         <li>If the shared library is present in the classpath resources, it is extracted and
+ *             loaded using {@link java.lang.System#load}.
+ *             <ul>
+ *               <li>The extraction location can be controlled via <code>
+ * onnxruntime.native.extract.path</code>. If unset, a temporary directory is created.
+ *               <li>By default, extracted libraries are deleted on JVM termination. This can be
+ *                   disabled by setting <code>onnxruntime.native.extract.cleanup</code> to <code>
+ * false</code>.
+ *             </ul>
  *         <li>If the shared library is not present in the classpath resources, then load using
- *             {@link java.lang.System#loadLibrary}, which usually looks elsewhere on the filesystem
- *             for the library. The semantics and behavior of that method are system/JVM dependent.
- *             Typically, the <code>java.library.path</code> property is used to specify the
- *             location of native libraries.
+ *             {@link java.lang.System#loadLibrary}, which looks on the standard library paths
+ *             (e.g., <code>java.library.path</code>).
  *       </ol>
  * </ol>
  *
  * For troubleshooting, all shared library loading events are reported to Java logging at the level
  * FINE.
  *
- * <p>Note that CUDA, ROCM, DNNL, OpenVINO and TensorRT are all "shared library execution providers"
- * and must be stored either in the directory containing the ONNX Runtime core native library, or as
- * a classpath resource. This is because these providers are loaded by the ONNX Runtime native
- * library itself and the Java API cannot control the loading location.
+ * <p>Note that CUDA, ROCM, DNNL, OpenVINO, TensorRT, and QNN are all "shared library execution
+ * providers." These, along with WebGPU dependencies like Dawn or DXC, must be stored either in the
+ * directory containing the ONNX Runtime core native library or as a classpath resource. This is
+ * because these providers are loaded by the ONNX Runtime native library itself, and the Java API
+ * handles their extraction/preparation to ensure they are available to the native loader.
  */
 package ai.onnxruntime;
