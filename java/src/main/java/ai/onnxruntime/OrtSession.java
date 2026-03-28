@@ -1061,7 +1061,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void addCUDA(int deviceNum) throws OrtException {
       checkClosed();
-      if (OnnxRuntime.extractCUDA()) {
+      if (OnnxRuntime.stageCUDA()) {
         addCUDA(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
       } else {
         throw new OrtException(
@@ -1077,7 +1077,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void addCUDA(OrtCUDAProviderOptions cudaOpts) throws OrtException {
       checkClosed();
-      if (OnnxRuntime.extractCUDA()) {
+      if (OnnxRuntime.stageCUDA()) {
         // Cast is to make the compiler pick the right overload.
         ((OrtProviderOptions) cudaOpts).applyToNative();
         addCUDAV2(OnnxRuntime.ortApiHandle, nativeHandle, cudaOpts.nativeHandle);
@@ -1104,7 +1104,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void addROCM(int deviceNum) throws OrtException {
       checkClosed();
-      if (OnnxRuntime.extractROCM()) {
+      if (OnnxRuntime.stageROCM()) {
         addROCM(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
       } else {
         throw new OrtException(
@@ -1134,7 +1134,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void addDnnl(boolean useArena) throws OrtException {
       checkClosed();
-      if (OnnxRuntime.extractDNNL()) {
+      if (OnnxRuntime.stageDNNL()) {
         addDnnl(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
       } else {
         throw new OrtException(
@@ -1150,7 +1150,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void addOpenVINO(String deviceId) throws OrtException {
       checkClosed();
-      if (OnnxRuntime.extractOpenVINO()) {
+      if (OnnxRuntime.stageOpenVINO()) {
         addOpenVINO(OnnxRuntime.ortApiHandle, nativeHandle, deviceId);
       } else {
         throw new OrtException(
@@ -1166,7 +1166,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void addTensorrt(int deviceNum) throws OrtException {
       checkClosed();
-      if (OnnxRuntime.extractTensorRT()) {
+      if (OnnxRuntime.stageTensorRT()) {
         addTensorrt(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
       } else {
         throw new OrtException(
@@ -1182,7 +1182,7 @@ public class OrtSession implements AutoCloseable {
      */
     public void addTensorrt(OrtTensorRTProviderOptions tensorRTOpts) throws OrtException {
       checkClosed();
-      if (OnnxRuntime.extractTensorRT()) {
+      if (OnnxRuntime.stageTensorRT()) {
         // Cast is to make the compiler pick the right overload.
         ((OrtProviderOptions) tensorRTOpts).applyToNative();
         addTensorrtV2(OnnxRuntime.ortApiHandle, nativeHandle, tensorRTOpts.nativeHandle);
@@ -1343,7 +1343,7 @@ public class OrtSession implements AutoCloseable {
 
       // QNN can either be built as a shared or static library. extractQNN() will extract the
       // (lib)onnxruntime_providers_qnn(.so/.dll) from classpath resources if present.
-      OnnxRuntime.extractQNN();
+      OnnxRuntime.stageQNN();
       addExecutionProvider(qnnProviderName, providerOptions);
     }
 
