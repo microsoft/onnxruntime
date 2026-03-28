@@ -102,12 +102,19 @@ final class OnnxStager {
    */
   public synchronized Path stage(String prefix, String library, String classpathDirectory)
       throws IOException {
+    // 1) The user may skip staging of all libraries with this prefix:
+    String skipAll = System.getProperty(prefix + ".skip");
+    if (Boolean.TRUE.toString().equalsIgnoreCase(skipAll)) {
+      logger.log(Level.FINE, "Skipping staging of native library '" + library + "'");
+      return null;
+    }
+
     String prefixedName = prefix + "." + library;
     if (staged.containsKey(prefixedName)) {
       return staged.get(prefixedName);
     }
 
-    // 1) The user may skip staging of this library:
+    // 2) The user may skip staging of this library:
     String skip = System.getProperty(prefixedName + ".skip");
     if (Boolean.TRUE.toString().equalsIgnoreCase(skip)) {
       logger.log(Level.FINE, "Skipping staging of native library '" + library + "'");
@@ -117,7 +124,7 @@ final class OnnxStager {
     // Resolve the platform dependent library name.
     String libraryFileName = mapLibraryName(library);
 
-    // 2) The user may explicitly specify the path to their shared library:
+    // 3) The user may explicitly specify the path to their shared library:
     String libraryPathProperty = System.getProperty(prefixedName + ".path");
     if (libraryPathProperty != null) {
       logger.log(
@@ -141,7 +148,7 @@ final class OnnxStager {
 
     Path target = stagingDirectory.resolve(libraryFileName);
 
-    // 3) The user may explicitly specify the path to a directory containing all
+    // 4) The user may explicitly specify the path to a directory containing all
     // shared libraries:
     String libraryDirPathProperty = System.getProperty(prefix + ".path");
     if (libraryDirPathProperty != null) {
@@ -164,7 +171,7 @@ final class OnnxStager {
       }
     }
 
-    // 4) try loading from resources or library path:
+    // 5) try loading from resources or library path:
     extractFromResources(classpathDirectory, target);
     logger.log(Level.FINE, "Using native library '" + library + "' from resource path");
     staged.put(prefixedName, target);
