@@ -363,9 +363,15 @@ class Inliner {
   std::string prefix_;
   const onnxruntime::NodeAttributes& attr_map_;
   std::vector<InlinedHashMap<std::string, std::string>> rename_scopes_;
+  // Maps actual argument names to their concrete TypeProtos, populated when
+  // Specialize is called with a Node& that has shaped InputDefs().  Used to
+  // resolve symbolic dim_params in Scan body value_info entries at inline time,
+  // so that CUDA EP buffer allocation sees concrete sizes rather than dim_param="S".
+  InlinedHashMap<std::string, const ONNX_NAMESPACE::TypeProto*> outer_var_types_;
 
-  Inliner(const std::string& prefix, const onnxruntime::NodeAttributes& attr_map) : prefix_(prefix),
-                                                                                    attr_map_(attr_map) {
+  Inliner(const std::string& prefix, const onnxruntime::NodeAttributes& attr_map,
+          InlinedHashMap<std::string, const ONNX_NAMESPACE::TypeProto*> outer_var_types = {})
+      : prefix_(prefix), attr_map_(attr_map), outer_var_types_(std::move(outer_var_types)) {
     // Create an empty mapping for the top-level scope.
     rename_scopes_.emplace_back();
   }
@@ -429,6 +435,60 @@ class Inliner {
     }
   }
 
+  // Build dim_param → dim_value bindings for a Scan node body by comparing the
+  // renamed carry-init input types (looked up from outer_var_types_) against the
+  // Scan body's typed carry-state inputs.  Only dimensions where the outer input
+  // provides a concrete dim_value AND the body input provides a matching dim_param
+  // contribute to the map.
+  void build_scan_dim_bindings(const NodeProto& scan_node, const GraphProto& body,
+                               InlinedHashMap<std::string, int64_t>& bindings) const {
+    // The num_scan_inputs attribute tells us how many of the Scan inputs are
+    // scan-sequence inputs (the rest are carry-state init inputs).
+    int num_scan_inputs = -1;
+    for (const auto& attr : scan_node.attribute()) {
+      if (attr.name() == "num_scan_inputs" && attr.type() == AttributeProto::INT) {
+        num_scan_inputs = static_cast<int>(attr.i());
+        break;
+      }
+    }
+    if (num_scan_inputs < 0) return;
+
+    // N carry states = total Scan inputs − num_scan_inputs
+    const int num_carry = static_cast<int>(scan_node.input_size()) - num_scan_inputs;
+    if (num_carry <= 0) return;
+
+    for (int i = 0; i < num_carry && i < body.input_size(); ++i) {
+      // scan_node.input(i) has already been renamed to the actual argument name.
+      const auto& outer_name = scan_node.input(i);
+      auto type_it = outer_var_types_.find(outer_name);
+      if (type_it == outer_var_types_.end() || type_it->second == nullptr) continue;
+
+      const auto& concrete_type = *type_it->second;
+      if (!concrete_type.has_tensor_type() || !concrete_type.tensor_type().has_shape()) continue;
+      const auto& concrete_shape = concrete_type.tensor_type().shape();
+
+      // The i-th body input is the carry-state variable.  If it carries type
+      // annotations (dim_params), use them to build the binding.
+      const auto& body_input = body.input(i);
+      if (!body_input.has_type() || !body_input.type().has_tensor_type()) continue;
+      const auto& body_tensor = body_input.type().tensor_type();
+      if (!body_tensor.has_shape()) continue;
+      const auto& body_shape = body_tensor.shape();
+
+      const int num_dims = std::min(concrete_shape.dim_size(), body_shape.dim_size());
+      for (int d = 0; d < num_dims; ++d) {
+        const auto& body_dim = body_shape.dim(d);
+        const auto& concrete_dim = concrete_shape.dim(d);
+        // Only bind when the body uses a named symbolic dim and the outer input
+        // has a positive concrete value for the same position.
+        if (!body_dim.dim_param().empty() &&
+            concrete_dim.has_dim_value() && concrete_dim.dim_value() > 0) {
+          bindings.emplace(body_dim.dim_param(), concrete_dim.dim_value());
+        }
+      }
+    }
+  }
+
   // Process a node:
   void transform(NodeProto& n) {
     if (!n.name().empty())
@@ -460,7 +520,17 @@ class Inliner {
       }
       // Subgraphs must be recursively processed.
       if (attr.has_g()) {
-        transform(*attr.mutable_g());
+        // For Scan nodes with concrete outer-input types, build a binding from
+        // symbolic dim_params (in the Scan body carry-state input types) to
+        // concrete dim_values (from the renamed carry-init inputs).  This lets
+        // us materialise concrete shapes in the Scan body's value_info entries
+        // so that CUDA EP buffer allocation can determine sizes without
+        // relying on later shape inference.
+        InlinedHashMap<std::string, int64_t> dim_bindings;
+        if (n.op_type() == "Scan" && !outer_var_types_.empty()) {
+          build_scan_dim_bindings(n, attr.g(), dim_bindings);
+        }
+        transform(*attr.mutable_g(), dim_bindings);
       }
       for (auto& graph : *attr.mutable_graphs())
         transform(graph);
@@ -469,7 +539,10 @@ class Inliner {
   }
 
   // Process a sub-graph, contained as an attribute in a control-flow op node.
-  void transform(GraphProto& graph) {
+  // dim_bindings: optional map from symbolic dim_param names to concrete int64
+  // values, used to materialise concrete shapes in value_info entries.
+  void transform(GraphProto& graph,
+                 const InlinedHashMap<std::string, int64_t>& dim_bindings = {}) {
     rename_scopes_.emplace_back();
     for (auto& x : *graph.mutable_input())
       make_unique(*x.mutable_name());
@@ -485,14 +558,33 @@ class Inliner {
     // dim_value=0 for Scan body carry state buffers.
     for (auto& vi : *graph.mutable_value_info())
       rename(*vi.mutable_name(), false);
+    // Replace symbolic dim_params with concrete dim_values where the caller
+    // has provided a concrete binding (e.g. S=4 from the Scan carry-init type).
+    if (!dim_bindings.empty()) {
+      for (auto& vi : *graph.mutable_value_info()) {
+        if (!vi.has_type()) continue;
+        auto* tensor_type = vi.mutable_type()->mutable_tensor_type();
+        if (!tensor_type->has_shape()) continue;
+        for (auto& dim : *tensor_type->mutable_shape()->mutable_dim()) {
+          if (!dim.dim_param().empty()) {
+            auto it = dim_bindings.find(dim.dim_param());
+            if (it != dim_bindings.end()) {
+              dim.clear_dim_param();
+              dim.set_dim_value(it->second);
+            }
+          }
+        }
+      }
+    }
     rename_scopes_.pop_back();
   }
 
  public:
   // The main specialization method: specialize a FunctionProto for a particular call-site.
   static void specialize(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map,
-                         const std::string& unique_prefix) {
-    Inliner inliner(unique_prefix, attr_map);
+                         const std::string& unique_prefix,
+                         InlinedHashMap<std::string, const ONNX_NAMESPACE::TypeProto*> outer_var_types = {}) {
+    Inliner inliner(unique_prefix, attr_map, std::move(outer_var_types));
 
     inliner.bind<false>(*callee.mutable_input(), callnode.input());
     inliner.bind<true>(*callee.mutable_output(), callnode.output());
@@ -515,7 +607,24 @@ void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const Node& call
   for (auto& attribute_proto : called_function.attribute_proto()) {
     ORT_IGNORE_RETURN_VALUE(attr_map.emplace(attribute_proto.name(), attribute_proto));
   }
-  Specialize(called_function, calling_node_proto, attr_map, unique_prefix);
+
+  // Build a map from actual argument name → concrete TypeProto for all shaped
+  // input defs.  This is used by the Inliner to propagate concrete shapes from
+  // the call site into Scan body value_info entries (replacing symbolic dim_params
+  // with concrete dim_values), so that CUDA EP buffer allocation can determine
+  // carry-state buffer sizes without a separate shape-inference pass.
+  InlinedHashMap<std::string, const ONNX_NAMESPACE::TypeProto*> outer_var_types;
+  const auto& input_defs = calling_node.InputDefs();
+  const int num_inputs = static_cast<int>(calling_node_proto.input_size());
+  for (int i = 0; i < num_inputs && i < static_cast<int>(input_defs.size()); ++i) {
+    const auto* type_proto = input_defs[i]->TypeAsProto();
+    if (type_proto != nullptr && !calling_node_proto.input(i).empty()) {
+      outer_var_types.emplace(calling_node_proto.input(i), type_proto);
+    }
+  }
+
+  Inliner::specialize(calling_node_proto, called_function, attr_map, unique_prefix,
+                      std::move(outer_var_types));
 }
 
 }  // namespace function_utils
