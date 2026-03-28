@@ -2047,6 +2047,16 @@ class TestInferenceSession(unittest.TestCase):
             "Session configuration entry 'session.record_ep_graph_assignment_info' must be set to \"1\"",
             str(context.exception),
         )
+    def test_update_inplace_non_contiguous(self):
+        """
+        Regression test for OrtValue.update_inplace with non-contiguous NumPy view.
+        """
+        base = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+        ort_val = onnxrt.OrtValue.ortvalue_from_numpy(base, "cpu", 0)
+        non_contiguous_view = base.transpose(2, 0, 1)[::2]
+        ort_val.update_inplace(non_contiguous_view)
+        result = ort_val.numpy()
+        np.testing.assert_allclose(result, np.asarray(non_contiguous_view))
 
 
 if __name__ == "__main__":
