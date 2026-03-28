@@ -19,7 +19,7 @@ enum class MoEActivationType {
   Silu,
   Identity,
   SwiGLU,
-
+  Relu2,
 };
 
 enum class MoEQuantType {
