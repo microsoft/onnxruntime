@@ -301,7 +301,21 @@ WEBGPU_BINARY_VERSIONED_KERNEL(Add, 7, 12, Add, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Add, 13, 13, Add, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Add, 14, Add, WebGpuSupportedNumberTypes())
 
-WEBGPU_BINARY_IMPL(Div, "a / b")
+// For float types, GPU f32 division can introduce small ULP errors that cause exact integer
+// quotients to be slightly off (e.g., 165.0/15.0 = 11.000001). When followed by Ceil, this
+// produces wrong results. Fix by rounding the result when the operands are exactly divisible.
+std::string GetDivImpl(int lhs_element_type, int /* rhs_element_type */) {
+  if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+    return "fn precise_div(a: output_value_t, b: output_value_t) -> output_value_t {\n"
+           "  return select(a / b, round(a / b), (a % b) == output_value_t(0.0));\n"
+           "}\n";
+  }
+  return "fn precise_div(a: output_value_t, b: output_value_t) -> output_value_t {\n"
+         "  return a / b;\n"
+         "}\n";
+}
+
+WEBGPU_BINARY_IMPL(Div, "precise_div(a, b)", GetDivImpl)
 WEBGPU_BINARY_VERSIONED_KERNEL(Div, 7, 12, Div, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_VERSIONED_KERNEL(Div, 13, 13, Div, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Div, 14, Div, WebGpuSupportedNumberTypes())
