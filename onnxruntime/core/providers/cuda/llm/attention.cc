@@ -120,7 +120,7 @@ static Status TransposeBSNHtoBNSH(int batch_size, int sequence_length,
 
 // ============================================================================
 // ConvertAttnMaskToBias: shared helper for mask→additive bias conversion.
-// Used by both Flash (nonpad+mask) and MEA paths to avoid code duplication.
+// Used by the MEA path to convert masks before the CUTLASS kernel call.
 // Converts bool masks to additive bias (true→0, false→mask_filter_value),
 // passes float masks through directly, and sets broadcast flags from mask shape.
 // ============================================================================
@@ -716,6 +716,21 @@ Status Attention<T>::RunMemoryEfficientAttention(
       p.workspace = nullptr;
     }
     onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
+
+    // On the MEA (CUTLASS) path (used for both MHA and GQA when nonpad_kv_seqlen is provided),
+    // zero out output for fully-masked batches to produce zeros (matching Flash behavior).
+    // CUTLASS epilogue computes 1/s_prime where s_prime=0 for seqlens_k=0, producing NaN.
+    {
+      using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+      int elements_per_batch = parameters.q_sequence_length * parameters.q_num_heads * parameters.v_head_size;
+      ORT_RETURN_IF_ERROR(LaunchZeroOutputForFullyMaskedBatches<CudaT>(
+          reinterpret_cast<CudaT*>(out_data),
+          seqlens_k_buffer.get(),
+          parameters.batch_size,
+          elements_per_batch,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    }
   }
   // Standard MEA path: float attention bias, bool mask (converted to bias), or no mask.
   // Bool masks are converted to additive attention bias (true→0, false→mask_filter_value)
@@ -844,6 +859,8 @@ Status Attention<T>::RunUnfusedAttention(
     Tensor* output_qk,
     const attention_helper::AttentionParameters& parameters) const {
   using CudaT = typename ToCudaType<T>::MappedType;
+  // OrtToCudaType maps BFloat16 → __nv_bfloat16 (native HW type), matching kernel instantiations.
+  using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
   auto& device_prop = GetDeviceProp();
   auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
 
@@ -923,7 +940,6 @@ Status Attention<T>::RunUnfusedAttention(
   IAllocatorUniquePtr<void> mask_bias_buffer;  // temp buffer for mask→bias when composing
   if (nonpad_kv_seqlen != nullptr) {
     // Convert nonpad_kv_seqlen to additive attention bias: [B, q_seq, total_seq]
-    using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
     int64_t bias_elements = static_cast<int64_t>(parameters.batch_size) *
                             parameters.q_sequence_length *
                             parameters.total_sequence_length;
@@ -989,7 +1005,6 @@ Status Attention<T>::RunUnfusedAttention(
     contribop_parameters.broadcast_attn_bias_dim_1 = true;
   } else if (attn_mask != nullptr) {
     if (attn_mask->IsDataType<bool>()) {
-      using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
       int64_t num_elements = attn_mask->Shape().Size();
       converted_mask_buffer = GetScratchBuffer<void>(num_elements * sizeof(NativeCudaT), context->GetComputeStream());
       ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
@@ -1034,8 +1049,41 @@ Status Attention<T>::RunUnfusedAttention(
   cublasHandle_t cublas = GetCublasHandle(context);
   cudnnHandle_t cudnn = GetCudnnHandle(context);
 
-  return onnxruntime::contrib::cuda::QkvToContext<CudaT, CudaT>(
-      device_prop, cublas, cudnn, context->GetComputeStream(), contribop_parameters, data);
+  {
+    auto qkv_status = onnxruntime::contrib::cuda::QkvToContext<CudaT, CudaT>(
+        device_prop, cublas, cudnn, context->GetComputeStream(), contribop_parameters, data);
+    ORT_RETURN_IF_ERROR(qkv_status);
+  }
+
+  // Post-QkvToContext: zero output for fully-masked batches (nonpad_kv_seqlen path only).
+  // When nonpad_kv_seqlen=0, all positions receive mask_filter_value bias (finite).
+  // Unfused softmax (with max-subtraction) produces uniform weights, not NaN.
+  // Zero out to match Flash behavior (which returns zeros for fully-masked batches).
+  // Note: the bool mask + past_key decode path does NOT need this — its additive bias
+  // produces uniform (non-zero but valid) softmax weights, not NaN.
+
+  // Zero out output for batches where nonpad_kv_seqlen == 0 (all KV positions masked).
+  if (nonpad_kv_seqlen != nullptr) {
+    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
+        nonpad_kv_seqlen->Data<int64_t>(),
+        seqlens_k_buffer.get(),
+        parameters.batch_size,
+        parameters.total_sequence_length,
+        cuda_stream,
+        device_prop.maxThreadsPerBlock));
+
+    int elements_per_batch = parameters.q_sequence_length * parameters.q_num_heads * parameters.v_head_size;
+    ORT_RETURN_IF_ERROR(LaunchZeroOutputForFullyMaskedBatches<NativeCudaT>(
+        reinterpret_cast<NativeCudaT*>(Y->MutableData<T>()),
+        seqlens_k_buffer.get(),
+        parameters.batch_size,
+        elements_per_batch,
+        cuda_stream,
+        device_prop.maxThreadsPerBlock));
+  }
+
+  return Status::OK();
 }
 
 // ============================================================================
@@ -1131,6 +1179,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // in mha_fwd/mha_fwd_kvcache when seqlens_k is used). Route to MEA instead.
         !(nonpad_kv_seqlen != nullptr && attn_mask != nullptr);
 
+    // TODO(titaiwang): Flash interprets bool attn_mask as a padding mask (via seqlens_k),
+    // which produces different results from the ONNX spec's element-wise mask interpretation
+    // when used with past_key. Need to either reject attn_mask+past_key in Flash,
+    // or reconcile the semantic difference.
     if (flash_eligible) {
       return RunFlashAttention(context, Q, K, V, attn_mask, past_key, past_value,
                                nonpad_kv_seqlen, Y, present_key, present_value, parameters);
@@ -1156,13 +1208,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // total_sequence_length. Skip MEA if this stride can't satisfy the kernel's
     // minimum alignment requirement.
     if (mea_eligible && attn_mask != nullptr) {
-      int min_bias_align = 1;
-      if ((std::is_same<T, float>::value && sm >= 80) ||
-          (!std::is_same<T, float>::value && sm >= 75)) {
-        min_bias_align = 4;  // TensorOp on Sm80+ (float) or Sm75+ (fp16/bf16)
-      } else if (!std::is_same<T, float>::value && sm >= 70) {
-        min_bias_align = 2;  // TensorOp on Volta (fp16)
-      }
+      // NOTE: We use a fixed alignment of 4*sizeof(T) bytes, matching the contrib_ops
+      // MHA/GQA convention, instead of the per-SM kMinimumAlignment values from CUTLASS.
+      // The original ONNX Attention op applied the per-SM check incorrectly, which on
+      // some architectures rejected valid MEA candidates and fell back to the unfused
+      // path. A fixed conservative alignment avoids that class of bug entirely.
+      constexpr int min_bias_align = 4 * sizeof(T);
       if (parameters.total_sequence_length % min_bias_align != 0) {
         mea_eligible = false;
       }

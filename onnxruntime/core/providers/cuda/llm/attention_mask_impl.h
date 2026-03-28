@@ -98,6 +98,21 @@ Status LaunchAddBiasInPlace(
     cudaStream_t stream,
     int max_threads_per_block);
 
+// Zero output elements for batches where seqlens_k == 0 (fully masked).
+// CUTLASS MEA epilogue computes 1/s_prime where s_prime=0 → NaN for fully-masked
+// batches. The unfused path produces uniform softmax weights (finite mask_filter_value,
+// not -inf) so output is valid but non-zero; we still zero for Flash parity.
+// Flash handles this natively with an early-exit.
+// Used in both MEA and unfused nonpad_kv_seqlen paths.
+template <typename T>
+Status LaunchZeroOutputForFullyMaskedBatches(
+    T* output,
+    const int* seqlens_k,
+    int batch_size,
+    int elements_per_batch,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 // Fill an int32 buffer with a constant value entirely on device.
 // CUDA-graph-capturable alternative to host vector + cudaMemcpyAsync.
 Status LaunchFillInt32(int* output, int value, int count, cudaStream_t stream, int max_threads_per_block);
