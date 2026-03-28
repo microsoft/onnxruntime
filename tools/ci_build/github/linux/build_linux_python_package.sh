@@ -80,8 +80,12 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     fi
 
     SHORT_CUDA_VERSION=$(echo "$CUDA_VERSION" | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
-    #Enable CUDA and TRT EPs.
-    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    #Enable CUDA EP.
+    BUILD_ARGS+=("--use_cuda" "--cuda_version=$SHORT_CUDA_VERSION" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    # Enable TRT EP only if TensorRT is installed.
+    if [ -f /usr/include/NvInfer.h ]; then
+        BUILD_ARGS+=("--use_tensorrt" "--tensorrt_home=/usr")
+    fi
 fi
 if [ "$BUILD_DEVICE" == "WEBGPU" ]; then
     BUILD_ARGS+=("--use_webgpu")

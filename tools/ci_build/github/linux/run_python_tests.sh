@@ -9,7 +9,7 @@ BUILD_CONFIG="Release"
 while getopts "d:c:" parameter_Option
 do case "${parameter_Option}"
 in
-#GPU or CPU. 
+#GPU or CPU.
 d) BUILD_DEVICE=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 esac
@@ -39,7 +39,11 @@ fi
 if [ $BUILD_DEVICE == "GPU" ]; then
     SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
 
-    BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=$SHORT_CUDA_VERSION --tensorrt_home=/usr --cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION --cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
+    BUILD_ARGS="$BUILD_ARGS --use_cuda --cuda_version=$SHORT_CUDA_VERSION --cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION --cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
+    # Enable TRT EP only if TensorRT is installed.
+    if [ -f /usr/include/NvInfer.h ]; then
+        BUILD_ARGS="$BUILD_ARGS --use_tensorrt --tensorrt_home=/usr"
+    fi
 fi
 
 python3 -m pip install --upgrade pip
@@ -47,7 +51,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r /build/$BUILD_CONFIG/requirements.txt
 # Install the packages that are needed for running test scripts
 python3 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
-# The "--no-index" flag is crucial. The local whl folder is just an additional source. Pypi's doc says "there is no 
+# The "--no-index" flag is crucial. The local whl folder is just an additional source. Pypi's doc says "there is no
 # ordering in the locations that are searched" if we don't disable the default one with "--no-index"
 python3 -m pip install --no-index --find-links /build/whl $PYTHON_PACKAGE_NAME
 cd /build/$BUILD_CONFIG

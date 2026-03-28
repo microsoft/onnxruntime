@@ -45,9 +45,11 @@ jobs:
   - name: skipComponentGovernanceDetection
     value: true
   - name: trt_version
-    ${{ if eq(parameters.cuda_version, '13.0') }}:
+    ${{ if eq(parameters.arch, 'aarch64') }}:
+      value: ''
+    ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
       value: ${{ variables.linux_trt_version_cuda13 }}
-    ${{ if eq(parameters.cuda_version, '12.8') }}:
+    ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
       value: ${{ variables.linux_trt_version_cuda12 }}
   workspace:
     clean: all

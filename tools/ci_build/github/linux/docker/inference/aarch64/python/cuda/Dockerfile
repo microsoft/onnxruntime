@@ -5,12 +5,7 @@
 ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubi8
 
 FROM $BASEIMAGE
-ARG TRT_VERSION=10.14.1.48-1.cuda12.9
-
-# Ensure NVIDIA repo is available for TensorRT packages (aarch64/sbsa)
-RUN if ! dnf repolist 2>/dev/null | grep -qi cuda; then \
-    dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/sbsa/cuda-rhel8.repo; \
-fi
+ARG TRT_VERSION
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "${TRT_VERSION}" ]; then  \
