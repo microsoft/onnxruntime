@@ -50,8 +50,9 @@ void
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
     const float32x4_t AccumulateMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT)));
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
+    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
     const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(BiasAddition ? -1 : 0));
-    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION)));
+    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(ReluActivation ? -1 : 0));
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
@@ -339,8 +340,10 @@ MlasConvDepthwiseFloatKernelNeonImpl(
 {
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
     const float32x4_t AccumulateMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT)));
-    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION)));
-    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION)));
+    const bool BiasAdditionEnabled = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
+    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
+    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(BiasAdditionEnabled ? -1 : 0));
+    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(ReluActivation ? -1 : 0));
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);

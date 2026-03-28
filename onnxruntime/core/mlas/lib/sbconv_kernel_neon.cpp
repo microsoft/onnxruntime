@@ -334,15 +334,17 @@ MlasMergePointwiseBf16OutputsNeon(
     )
 {
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
-    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION)));
-    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION)));
+    const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
+    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
+    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(BiasAddition ? -1 : 0));
+    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(ReluActivation ? -1 : 0));
 
     float32x4_t BiasVector0 = ZeroVector;
     float32x4_t BiasVector1 = ZeroVector;
     float32x4_t BiasVector2 = ZeroVector;
     float32x4_t BiasVector3 = ZeroVector;
 
-    if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0 && Bias != nullptr) {
+    if (BiasAddition && Bias != nullptr) {
         BiasVector0 = MlasLoadFloat32x4(Bias);
         BiasVector1 = MlasLoadFloat32x4(Bias + 4);
         BiasVector2 = MlasLoadFloat32x4(Bias + 8);
