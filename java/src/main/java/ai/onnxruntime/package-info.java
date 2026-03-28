@@ -22,6 +22,10 @@
  * chooses the libraries to add to the staging direcgory in this order:
  *
  * <ol>
+ *   <li>The user may signal to skip staging of all libraries with the name-prefix <code>
+ *       onnxruntime.native</code> using the property <code>onnxruntime.native.skip</code> with a
+ *       value of <code>true</code>. This means the user has decided to load the library by some
+ *       other means.
  *   <li>The user may signal to skip staging of a shared library using a property in the form <code>
  *       onnxruntime.native.LIB_NAME.skip</code> with a value of <code>true</code>. This means the
  *       user has decided to load the library by some other means.
