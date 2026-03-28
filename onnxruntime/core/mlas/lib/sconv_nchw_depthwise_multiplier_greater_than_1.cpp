@@ -13,7 +13,7 @@ Abstract:
     This module implements the single precision NCHW grouped convolution entry
     point for the currently supported depth multiplier > 1 case.
 
-    At present, this entry point is only valid for the exact MobileCLIP
+    At present, this entry point is only valid for the exact MobileClip
     grouped projection shape family:
 
       - 2D convolution
@@ -47,7 +47,7 @@ Routine Description:
     implementation.
 
     This routine is intentionally narrow for now and assumes that the caller
-    has already matched the exact MobileCLIP grouped projection constraints in
+    has already matched the exact MobileClip grouped projection constraints in
     MlasConvPrepare().
 
 Arguments:
