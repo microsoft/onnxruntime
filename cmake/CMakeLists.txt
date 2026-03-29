@@ -564,6 +564,14 @@ if(onnxruntime_USE_KLEIDIAI)
       set(${is_supported_var} FALSE PARENT_SCOPE)
       return()
     endif()
+
+    if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION VERSION_LESS 1940)
+      message(WARNING "KleidiAI requires MSVC compiler version 19.40 or newer, KleidiAI will be disabled in this build.")
+
+      set(${is_supported_var} FALSE PARENT_SCOPE)
+      return()
+    endif()
+
     set(${is_supported_var} TRUE PARENT_SCOPE)
   endfunction()
 
