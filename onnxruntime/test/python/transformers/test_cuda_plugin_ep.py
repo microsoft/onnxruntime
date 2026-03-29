@@ -1419,30 +1419,30 @@ class TestCudaPluginEP(unittest.TestCase):
 
     def test_op_instance_normalization(self):
         target_device = get_cuda_plugin_device()
-        C = 3
+        n_channels = 3
         model = _make_simple_model(
             "InstanceNormalization",
             [
-                ("X", TensorProto.FLOAT, [1, C, 4, 4]),
-                ("scale", TensorProto.FLOAT, [C]),
-                ("B", TensorProto.FLOAT, [C]),
+                ("X", TensorProto.FLOAT, [1, n_channels, 4, 4]),
+                ("scale", TensorProto.FLOAT, [n_channels]),
+                ("B", TensorProto.FLOAT, [n_channels]),
             ],
-            [("Y", TensorProto.FLOAT, [1, C, 4, 4])],
+            [("Y", TensorProto.FLOAT, [1, n_channels, 4, 4])],
             attrs={"epsilon": 1e-5},
             opset=6,
         )
-        scale = np.ones(C, dtype=np.float32)
-        bias = np.zeros(C, dtype=np.float32)
-        model.graph.initializer.append(helper.make_tensor("scale", TensorProto.FLOAT, [C], scale.tolist()))
-        model.graph.initializer.append(helper.make_tensor("B", TensorProto.FLOAT, [C], bias.tolist()))
+        scale = np.ones(n_channels, dtype=np.float32)
+        bias = np.zeros(n_channels, dtype=np.float32)
+        model.graph.initializer.append(helper.make_tensor("scale", TensorProto.FLOAT, [n_channels], scale.tolist()))
+        model.graph.initializer.append(helper.make_tensor("B", TensorProto.FLOAT, [n_channels], bias.tolist()))
 
-        x = np.random.rand(1, C, 4, 4).astype(np.float32)
+        x = np.random.rand(1, n_channels, 4, 4).astype(np.float32)
         feed = {"X": x}
 
         def expected(f):
             x = f["X"]
             result = np.empty_like(x)
-            for c in range(C):
+            for c in range(n_channels):
                 ch = x[0, c]
                 mean = ch.mean()
                 var = ch.var()
@@ -1600,19 +1600,19 @@ class TestCudaPluginEP(unittest.TestCase):
 
     def test_op_grid_sample(self):
         target_device = get_cuda_plugin_device()
-        N, C, H, W = 1, 1, 4, 4
+        n, c, h, w = 1, 1, 4, 4
         model = _make_simple_model(
             "GridSample",
             [
-                ("X", TensorProto.FLOAT, [N, C, H, W]),
-                ("grid", TensorProto.FLOAT, [N, 2, 2, 2]),
+                ("X", TensorProto.FLOAT, [n, c, h, w]),
+                ("grid", TensorProto.FLOAT, [n, 2, 2, 2]),
             ],
-            [("Y", TensorProto.FLOAT, [N, C, 2, 2])],
+            [("Y", TensorProto.FLOAT, [n, c, 2, 2])],
             attrs={"mode": "bilinear", "padding_mode": "zeros", "align_corners": 0},
             opset=16,
         )
-        x = np.random.rand(N, C, H, W).astype(np.float32)
-        grid = np.random.rand(N, 2, 2, 2).astype(np.float32) * 2 - 1  # in [-1, 1]
+        x = np.random.rand(n, c, h, w).astype(np.float32)
+        grid = np.random.rand(n, 2, 2, 2).astype(np.float32) * 2 - 1  # in [-1, 1]
         feed = {"X": x, "grid": grid}
 
         def expected(f):
