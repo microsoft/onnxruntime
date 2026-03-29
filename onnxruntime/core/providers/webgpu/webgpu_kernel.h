@@ -6,7 +6,6 @@
 #include "core/providers/webgpu/compute_context.h"
 
 #include "core/framework/op_kernel.h"
-#include "core/providers/webgpu/numpy_io.h"
 
 namespace onnxruntime {
 
@@ -23,27 +22,6 @@ class WebGpuKernel : public OpKernel {
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
   virtual Status ComputeInternal(ComputeContext& context) const = 0;
-
-  // call with
-  // NpyTensor<MLFloat16>(hidden_state, "/tmp/hidden_state.npy", context);
-
-  template <typename T>
-  void NpyTensor(const Tensor* t, std::string file, ComputeContext& context) const {
-    auto t_cpu = context.CreateCPUTensor(t->DataType(), t->Shape());
-    ORT_THROW_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*t, t_cpu));
-
-    std::vector<size_t> dims;
-    auto dims1 = t_cpu.Shape().GetDims();
-    for (uint64_t i=0; i<dims1.size(); i++) {
-      dims.push_back(dims1[i]);
-    }
-    auto a = numpy_io::NumpyArray<T>(dims);
-    for (int64_t i = 0; i < t_cpu.Shape().Size(); i++) {
-      a.data[i] = static_cast<T>(t_cpu.Data<T>()[i]);
-    }
-    numpy_io::write_numpy_array(file, a);
-  }
-
 
   // Overrides OpKernel::PrePack to handle constant tensor pre-processing for WebGPU kernels.
   // This method creates a ComputeContextBase and delegates to PrePackInternal.

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
-#include "contrib_ops/webgpu/bert/causal_conv1d_with_state.h"
+#include "contrib_ops/webgpu/bert/causal_conv_with_state.h"
 #include "contrib_ops/webgpu/bert/group_query_attention.h"
 #include "contrib_ops/webgpu/bert/linear_attention.h"
 

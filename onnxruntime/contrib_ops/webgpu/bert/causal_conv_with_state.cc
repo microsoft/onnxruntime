@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/webgpu/bert/causal_conv1d_with_state.h"
+#include "contrib_ops/webgpu/bert/causal_conv_with_state.h"
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -13,11 +13,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-CausalConv1DActivation ParseCausalConv1DActivation(const std::string& activation_str) {
+CausalConvActivation ParseCausalConvActivation(const std::string& activation_str) {
   if (activation_str == "silu" || activation_str == "swish") {
-    return CausalConv1DActivation::Silu;
+    return CausalConvActivation::Silu;
   } else if (activation_str == "none" || activation_str.empty()) {
-    return CausalConv1DActivation::None;
+    return CausalConvActivation::None;
   }
   ORT_THROW("Unknown activation for CausalConvWithState: ", activation_str);
 }
@@ -38,7 +38,7 @@ ONNX_OPERATOR_KERNEL_EX(
 CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
     : WebGpuKernel(info) {
   std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "none");
-  activation_ = ParseCausalConv1DActivation(activation_str);
+  activation_ = ParseCausalConvActivation(activation_str);
 }
 
 Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -61,7 +61,7 @@ Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) cons
   const auto& present_state = shader.AddOutput("present_state", ShaderUsage::UseUniform);
 
   // Activation function implementation
-  if (activation_ == CausalConv1DActivation::Silu) {
+  if (activation_ == CausalConvActivation::Silu) {
     shader.AdditionalImplementation() << R"SHADER(
 fn silu(x: input_element_t) -> input_element_t {
   return x / (1.0 + exp(-x));
@@ -145,7 +145,7 @@ fn silu(x: input_element_t) -> input_element_t {
   }
 
   // Apply activation
-  if (activation_ == CausalConv1DActivation::Silu) {
+  if (activation_ == CausalConvActivation::Silu) {
     shader.MainFunctionBody() << "  acc = silu(acc);\n";
   }
 
