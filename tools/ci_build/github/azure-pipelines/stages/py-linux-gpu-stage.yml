@@ -82,10 +82,8 @@ stages:
           value: ''
       - template: ../templates/common-variables.yml
       - name: trt_version
-        ${{ if and(eq(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
+        ${{ if eq(parameters.arch, 'aarch64') }}:
           value: ${{ variables.cuda13_trt_version }}
-        ${{ if and(eq(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
-          value: ''
         ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
           value: ${{ variables.linux_trt_version_cuda13 }}
         ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
