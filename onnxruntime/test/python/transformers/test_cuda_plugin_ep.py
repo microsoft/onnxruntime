@@ -37,6 +37,10 @@ def require_cuda_plugin_ep():
 
 
 def get_cuda_plugin_device():
+    return get_cuda_plugin_devices()[0]
+
+
+def get_cuda_plugin_devices():
     require_cuda_plugin_ep()
 
     try:
@@ -48,7 +52,18 @@ def get_cuda_plugin_device():
     if not plugin_devices:
         raise unittest.SkipTest("CUDA plugin EP registered, but no plugin devices were enumerated")
 
-    return plugin_devices[0]
+    return plugin_devices
+
+
+def get_cuda_plugin_device_by_id(device_id: int):
+    expected_device_id = str(device_id)
+    for device in get_cuda_plugin_devices():
+        if device.ep_options.get("device_id") == expected_device_id:
+            return device
+        if device.ep_metadata.get("cuda_device_id") == expected_device_id:
+            return device
+
+    raise unittest.SkipTest(f"CUDA plugin EP device_id={device_id} is not available in this environment")
 
 
 def _create_session_options(session_config=None):
@@ -475,6 +490,44 @@ class TestCudaPluginEP(unittest.TestCase):
     def test_provider_options_invalid_device(self):
         result = run_provider_options_test({"device_id": "999"}, expect_plugin_provider=False)
         self.assertTrue(result, "Provider options with invalid device_id failed")
+
+    def test_provider_options_second_device(self):
+        plugin_devices = get_cuda_plugin_devices()
+        if len(plugin_devices) < 2:
+            self.skipTest("Multi-GPU CUDA plugin EP test requires at least two plugin devices")
+
+        target_device = get_cuda_plugin_device_by_id(1)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_add_model(model_path)
+            providers = [(CUDA_PLUGIN_EP_NAME, {"device_id": "1"}), "CPUExecutionProvider"]
+            sess = onnxrt.InferenceSession(model_path, sess_options=_create_session_options(), providers=providers)
+
+            active_providers = sess.get_providers()
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. Providers: {active_providers}. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            provider_options = sess.get_provider_options()
+            self.assertEqual(
+                provider_options[CUDA_PLUGIN_EP_NAME].get("device_id"),
+                "1",
+                f"Expected provider option device_id=1, got {provider_options[CUDA_PLUGIN_EP_NAME]}",
+            )
+            self.assertEqual(target_device.ep_options.get("device_id"), "1")
+
+            a = np.random.rand(3, 2).astype(np.float32)
+            b = np.random.rand(3, 2).astype(np.float32)
+            res = sess.run(None, {"A": a, "B": b})
+            np.testing.assert_allclose(res[0], a + b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
 
     # ---- NHWC layout tests ----
 

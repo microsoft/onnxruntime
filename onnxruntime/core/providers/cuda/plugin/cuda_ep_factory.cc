@@ -20,9 +20,7 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
     : OrtEpFactory{},
       ort_api_(ort_api),
       ep_api_(ep_api),
-      default_logger_(default_logger),
-      default_memory_info_{nullptr},
-      pinned_memory_info_{nullptr} {
+      default_logger_(default_logger) {
   ort_version_supported = ORT_API_VERSION;
 
   if (!::onnxruntime::ep::adapter::LoggingManager::HasDefaultLogger()) {
@@ -42,22 +40,6 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
   CreateDataTransfer = CreateDataTransferImpl;
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
-
-  // Initialize default memory info for CUDA device memory.
-  // The NVIDIA PCI vendor ID (0x10DE) is used to identify the device type.
-  default_memory_info_ = Ort::MemoryInfo{"Cuda",
-                                         OrtMemoryInfoDeviceType_GPU,
-                                         vendor_id_,
-                                         static_cast<uint32_t>(device_id_),
-                                         OrtDeviceMemoryType_DEFAULT,
-                                         /*alignment*/ 0,
-                                         OrtAllocatorType::OrtDeviceAllocator};
-
-  // Initialize pinned (host accessible) memory info
-  pinned_memory_info_ = Ort::MemoryInfo{"CudaPinned",
-                                        OrtAllocatorType::OrtDeviceAllocator,
-                                        0,
-                                        OrtMemType::OrtMemTypeCPU};
 }
 
 CudaEpFactory::~CudaEpFactory() {
@@ -122,6 +104,15 @@ std::string GetProviderOptionPrefix(std::string_view provider_name) {
 
 }  // namespace
 
+CudaEpFactory::HardwareDeviceKey CudaEpFactory::MakeDeviceKey(const OrtApi& ort_api,
+                                                              const OrtHardwareDevice& device) {
+  return {
+      ort_api.HardwareDevice_Type(&device),
+      ort_api.HardwareDevice_VendorId(&device),
+      ort_api.HardwareDevice_DeviceId(&device),
+  };
+}
+
 /*static*/
 OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
     OrtEpFactory* this_ptr,
@@ -133,17 +124,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
   size_t& num_ep_devices = *p_num_ep_devices;
   num_ep_devices = 0;
-
-  // Clear stale entries from previous enumerations. The OrtHardwareDevice*
-  // keys point to ORT-owned memory that may be freed between calls.
-  {
-    std::lock_guard<std::mutex> lock(factory->device_map_mutex_);
-    factory->hw_device_to_cuda_index_.clear();
-  }
-  {
-    std::lock_guard<std::mutex> lock(factory->cached_memory_info_mutex_);
-    factory->cached_memory_infos_.clear();
-  }
 
   int cuda_device_index = 0;
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
@@ -162,11 +142,29 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       // CUDA uses contiguous ordinals for CUDA-visible NVIDIA devices. Build that
       // mapping from the filtered hardware-device list instead of relying on the
       // ORT hardware device id, which is not guaranteed to be a CUDA ordinal.
-      const int32_t current_device_id = cuda_device_index++;
-
+      int current_device_id = cuda_device_index++;
+      const auto device_key = CudaEpFactory::MakeDeviceKey(factory->ort_api_, device);
+      DeviceCacheEntry* cache_entry = nullptr;
       {
-        std::lock_guard<std::mutex> lock(factory->device_map_mutex_);
-        factory->hw_device_to_cuda_index_[&device] = current_device_id;
+        std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
+        auto [it, inserted] = factory->device_cache_.try_emplace(device_key);
+        if (inserted) {
+          it->second.cuda_device_id = current_device_id;
+          it->second.device_memory_info = Ort::MemoryInfo{"Cuda",
+                                                          OrtMemoryInfoDeviceType_GPU,
+                                                          factory->vendor_id_,
+                                                          static_cast<uint32_t>(current_device_id),
+                                                          OrtDeviceMemoryType_DEFAULT,
+                                                          /*alignment is default*/ 0,
+                                                          OrtAllocatorType::OrtDeviceAllocator};
+          it->second.pinned_memory_info = Ort::MemoryInfo{"CudaPinned",
+                                                          OrtAllocatorType::OrtDeviceAllocator,
+                                                          current_device_id,
+                                                          OrtMemType::OrtMemTypeCPU};
+        }
+
+        cache_entry = &it->second;
+        current_device_id = cache_entry->cuda_device_id;
       }
 
       OrtKeyValuePairs* ep_metadata = nullptr;
@@ -199,27 +197,14 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
         return status;
       }
 
-      Ort::MemoryInfo device_memory_info{"Cuda",
-                                         OrtMemoryInfoDeviceType_GPU,
-                                         factory->vendor_id_,
-                                         static_cast<uint32_t>(current_device_id),
-                                         OrtDeviceMemoryType_DEFAULT,
-                                         /*alignment is default*/ 0,
-                                         OrtAllocatorType::OrtDeviceAllocator};
-
-      OrtMemoryInfo* raw_memory_info = device_memory_info;
-      {
-        std::lock_guard<std::mutex> lock(factory->cached_memory_info_mutex_);
-        factory->cached_memory_infos_.push_back(std::move(device_memory_info));
-      }
-
       // Register allocator info for GPU device memory
       RETURN_IF_ERROR(factory->ep_api_.EpDevice_AddAllocatorInfo(
-          ep_device, raw_memory_info));
+          ep_device, cache_entry->device_memory_info));
 
-      // Register allocator info for CPU pinned memory (host accessible)
+      // Register allocator info for pinned host memory associated with the
+      // same CUDA ordinal as the device allocator above.
       RETURN_IF_ERROR(factory->ep_api_.EpDevice_AddAllocatorInfo(
-          ep_device, factory->pinned_memory_info_));
+          ep_device, cache_entry->pinned_memory_info));
 
       ep_devices[num_ep_devices++] = ep_device;
     }
@@ -259,13 +244,16 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   // absent or malformed the default value in Config is kept.
   CudaEp::Config config{};
 
-  config.device_id = 0;  // Default
   {
-    std::lock_guard<std::mutex> lock(factory->device_map_mutex_);
-    auto it = factory->hw_device_to_cuda_index_.find(devices[0]);
-    if (it != factory->hw_device_to_cuda_index_.end()) {
-      config.device_id = it->second;
+    std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
+    auto it = factory->device_cache_.find(CudaEpFactory::MakeDeviceKey(factory->ort_api_, *devices[0]));
+    if (it == factory->device_cache_.end()) {
+      return factory->ort_api_.CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          "CUDA EP factory could not resolve the requested device. "
+          "Enumerate EP devices again and retry session creation.");
     }
+    config.device_id = it->second.cuda_device_id;
   }
 
   auto try_get_session_config = [&](std::string_view key) -> std::optional<std::string> {
@@ -491,18 +479,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateDataTransferImpl(
     OrtEpFactory* this_ptr,
     OrtDataTransferImpl** data_transfer) noexcept {
   auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
-
-  // Use the device ID this factory was created for
-  Ort::MemoryInfo device_memory_info{"Cuda",
-                                     OrtMemoryInfoDeviceType_GPU,
-                                     factory.vendor_id_,
-                                     static_cast<uint32_t>(factory.device_id_),
-                                     OrtDeviceMemoryType_DEFAULT,
-                                     0,
-                                     OrtAllocatorType::OrtDeviceAllocator};
-
-  const OrtMemoryDevice* gpu_device = factory.ep_api_.MemoryInfo_GetMemoryDevice(device_memory_info);
-  auto data_transfer_impl = std::make_unique<CudaDataTransfer>(factory.ort_api_, factory.ep_api_, gpu_device);
+  auto data_transfer_impl = std::make_unique<CudaDataTransfer>(factory.ort_api_, factory.ep_api_);
   *data_transfer = data_transfer_impl.release();
   return nullptr;
 }

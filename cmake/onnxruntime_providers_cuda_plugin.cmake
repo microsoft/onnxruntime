@@ -164,7 +164,11 @@ endif()
 
 # Mirror the core CUDA provider's CUDA 12.8+ NVCC workarounds so the plugin
 # target handles stricter cudafe diagnostics consistently.
-set(onnxruntime_plugin_nvcc_threads "1")
+if (DEFINED onnxruntime_NVCC_THREADS)
+    set(onnxruntime_plugin_nvcc_threads "${onnxruntime_NVCC_THREADS}")
+else()
+    set(onnxruntime_plugin_nvcc_threads "1")
+endif()
 target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
         "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>"

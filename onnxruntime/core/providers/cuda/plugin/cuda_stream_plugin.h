@@ -65,6 +65,7 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   // CPU buffers whose deallocation is deferred to OnSessionRunEnd.
   // Pinned memory must remain valid until all async device operations that
   // reference it have completed, so we synchronize the stream first.
+  mutable std::mutex deferred_cpu_buffers_mutex_;
   std::vector<void*> deferred_cpu_buffers_;
 };
 

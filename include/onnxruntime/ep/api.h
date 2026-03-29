@@ -5,6 +5,7 @@
 
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 
 #pragma push_macro("ORT_API_MANUAL_INIT")
 #undef ORT_API_MANUAL_INIT
@@ -31,6 +32,9 @@ inline std::optional<ApiPtrs> g_api_ptrs;
 /// Get the global instance of ApiPtrs.
 /// </summary>
 inline const ApiPtrs& Api() {
+  if (!detail::g_api_ptrs.has_value()) {
+    throw std::logic_error("onnxruntime::ep::Api() called before ApiInit().");
+  }
   return *detail::g_api_ptrs;
 }
 

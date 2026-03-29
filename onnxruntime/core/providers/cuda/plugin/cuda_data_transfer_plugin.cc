@@ -6,12 +6,10 @@
 namespace onnxruntime {
 namespace cuda_plugin {
 
-CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api,
-                                   const OrtMemoryDevice* gpu_device)
+CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api)
     : OrtDataTransferImpl{},
       ort_api_(ort_api),
-      ep_api_(ep_api),
-      gpu_device_(gpu_device) {
+      ep_api_(ep_api) {
   ort_version_supported = ORT_API_VERSION;
   Release = ReleaseImpl;
   CanCopy = CanCopyImpl;

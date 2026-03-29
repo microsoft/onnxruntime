@@ -727,6 +727,7 @@ def _auto_detect_plugin_lib(repo_root):
         if candidate.exists():
             return str(candidate)
     except ImportError:
+        # onnxruntime is not installed in the current environment. Return None here and the script will fail later.
         pass
 
     return None

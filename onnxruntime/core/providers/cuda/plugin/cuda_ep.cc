@@ -185,9 +185,16 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
     OrtEpDataLayout target_data_layout, int* should_convert) noexcept {
   ORT_UNUSED_PARAMETER(this_ptr);
 
+  if (should_convert == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "should_convert must not be null.");
+  }
+
+  const char* safe_domain = domain != nullptr ? domain : "";
+  const char* safe_op_type = op_type != nullptr ? op_type : "";
+
 #ifndef ENABLE_CUDA_NHWC_OPS
-  ORT_UNUSED_PARAMETER(domain);
-  ORT_UNUSED_PARAMETER(op_type);
+  ORT_UNUSED_PARAMETER(safe_domain);
+  ORT_UNUSED_PARAMETER(safe_op_type);
   ORT_UNUSED_PARAMETER(target_data_layout);
   *should_convert = 0;  // NHWC kernels are not compiled into this plugin build.
   return nullptr;
@@ -215,15 +222,15 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
   };
 
   // Check ONNX domain (empty string) or MS domain (com.microsoft)
-  bool is_onnx_domain = (domain[0] == '\0');
-  bool is_ms_domain = (std::strcmp(domain, "com.microsoft") == 0);
+  bool is_onnx_domain = (safe_domain[0] == '\0');
+  bool is_ms_domain = (std::strcmp(safe_domain, "com.microsoft") == 0);
 
-  if (is_onnx_domain && cuda_nhwc_onnx_ops.count(op_type) > 0) {
+  if (is_onnx_domain && cuda_nhwc_onnx_ops.count(safe_op_type) > 0) {
     *should_convert = 1;  // Convert
     return nullptr;
   }
 
-  if (is_ms_domain && std::strcmp(op_type, "GridSample") == 0) {
+  if (is_ms_domain && std::strcmp(safe_op_type, "GridSample") == 0) {
     *should_convert = 1;  // Convert
     return nullptr;
   }

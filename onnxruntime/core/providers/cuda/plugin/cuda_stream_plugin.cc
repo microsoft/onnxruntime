@@ -53,7 +53,13 @@ CudaSyncStream::CudaSyncStream(CudaEpFactory& factory, int device_id,
 }
 
 CudaSyncStream::~CudaSyncStream() {
-  if (!deferred_cpu_buffers_.empty()) {
+  bool has_deferred_cpu_buffers = false;
+  {
+    std::lock_guard<std::mutex> lock(deferred_cpu_buffers_mutex_);
+    has_deferred_cpu_buffers = !deferred_cpu_buffers_.empty();
+  }
+
+  if (has_deferred_cpu_buffers) {
     if (cuda_stream_ != nullptr) {
       OrtStatus* status = OnSessionRunEndImpl(this);
       if (status != nullptr) {
@@ -114,12 +120,19 @@ OrtStatus* CudaSyncStream::InitHandles() {
 }
 
 void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {
+  std::lock_guard<std::mutex> lock(deferred_cpu_buffers_mutex_);
   deferred_cpu_buffers_.push_back(cpu_buffer);
 }
 
 OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
+  std::vector<void*> buffers_to_free;
+  {
+    std::lock_guard<std::mutex> lock(deferred_cpu_buffers_mutex_);
+    buffers_to_free.swap(deferred_cpu_buffers_);
+  }
+
   OrtStatus* first_error = nullptr;
-  for (void* buf : deferred_cpu_buffers_) {
+  for (void* buf : buffers_to_free) {
     cudaError_t err = cudaFreeHost(buf);
     if (err != cudaSuccess && first_error == nullptr) {
       first_error = Ort::GetApi().CreateStatus(
@@ -127,7 +140,6 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
           (std::string("CUDA error: ") + cudaGetErrorName(err) + ": " + cudaGetErrorString(err)).c_str());
     }
   }
-  deferred_cpu_buffers_.clear();
   return first_error;
 }
 

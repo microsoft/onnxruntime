@@ -15,8 +15,7 @@ namespace cuda_plugin {
 /// CUDA data transfer implementation for CPU↔GPU and GPU↔GPU copies.
 class CudaDataTransfer : public OrtDataTransferImpl {
  public:
-  CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api,
-                   const OrtMemoryDevice* gpu_device);
+  CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api);
   ~CudaDataTransfer() = default;
 
  private:
@@ -36,7 +35,6 @@ class CudaDataTransfer : public OrtDataTransferImpl {
 
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
-  const OrtMemoryDevice* gpu_device_;
 };
 
 }  // namespace cuda_plugin

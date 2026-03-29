@@ -10,6 +10,7 @@
 
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace onnxruntime {
@@ -89,18 +90,36 @@ class CudaEpFactory : public OrtEpFactory {
   const uint32_t vendor_id_ = 0x10DE;  // NVIDIA PCI vendor ID
   const std::string ep_version_{"1.0.0"};
 
-  // Memory info for GPU device and CPU pinned memory
-  Ort::MemoryInfo default_memory_info_{nullptr};
-  Ort::MemoryInfo pinned_memory_info_{nullptr};
+  struct DeviceCacheEntry {
+    int cuda_device_id{-1};
+    Ort::MemoryInfo device_memory_info{nullptr};
+    Ort::MemoryInfo pinned_memory_info{nullptr};
+  };
 
-  std::mutex cached_memory_info_mutex_;
-  std::vector<Ort::MemoryInfo> cached_memory_infos_;
-  int device_id_ = 0;
+  struct HardwareDeviceKey {
+    OrtHardwareDeviceType type{OrtHardwareDeviceType::OrtHardwareDeviceType_CPU};
+    uint32_t vendor_id{0};
+    uint32_t device_id{0};
 
-  // Map ORT hardware device pointers to CUDA ordinals for the NVIDIA devices
-  // visible to the CUDA runtime.
-  std::mutex device_map_mutex_;
-  std::unordered_map<const OrtHardwareDevice*, int> hw_device_to_cuda_index_;
+    bool operator==(const HardwareDeviceKey&) const = default;
+  };
+
+  struct HardwareDeviceKeyHasher {
+    size_t operator()(const HardwareDeviceKey& key) const noexcept {
+      size_t hash = static_cast<size_t>(key.type);
+      hash = (hash * 1315423911u) ^ static_cast<size_t>(key.vendor_id);
+      hash = (hash * 1315423911u) ^ static_cast<size_t>(key.device_id);
+      return hash;
+    }
+  };
+
+  static HardwareDeviceKey MakeDeviceKey(const OrtApi& ort_api,
+                                         const OrtHardwareDevice& device);
+
+  // Stable per-device cache keyed by public hardware-device properties instead
+  // of the transient OrtHardwareDevice* pointer received during enumeration.
+  std::mutex device_cache_mutex_;
+  std::unordered_map<HardwareDeviceKey, DeviceCacheEntry, HardwareDeviceKeyHasher> device_cache_;
 
   // Kernel registry (cached, shared across EP instances)
   OrtKernelRegistry* kernel_registry_ = nullptr;
