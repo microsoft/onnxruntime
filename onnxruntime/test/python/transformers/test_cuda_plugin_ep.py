@@ -1718,6 +1718,91 @@ class TestCudaPluginEP(unittest.TestCase):
         )
         self.assertEqual(result, TEST_PASS, "MatMulInteger test failed")
 
+    # ---- MemcpyFromHost / MemcpyToHost tests ----
+    # These tests explicitly place MemcpyFromHost/MemcpyToHost nodes in the graph
+    # to directly exercise the plugin-side copy kernels.
+
+    def test_memcpy_from_host_explicit(self):
+        """Explicit MemcpyFromHost node: CPU input → GPU copy → Relu on GPU."""
+        target_device = get_cuda_plugin_device()
+        # X (CPU) → MemcpyFromHost → X_gpu → Relu → Y
+        copy_node = helper.make_node("MemcpyFromHost", ["X"], ["X_gpu"])
+        relu_node = helper.make_node("Relu", ["X_gpu"], ["Y"])
+        graph = helper.make_graph(
+            [copy_node, relu_node],
+            "test-explicit-memcpy-from-host",
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 4])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 4])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        feed = {"X": np.random.randn(3, 4).astype(np.float32)}
+        result = _run_model_test(
+            target_device,
+            "MemcpyFromHost_explicit",
+            model,
+            feed,
+            lambda f: np.maximum(f["X"], 0),
+        )
+        self.assertEqual(result, TEST_PASS, "Explicit MemcpyFromHost test failed")
+
+    def test_memcpy_to_host_explicit(self):
+        """Explicit MemcpyToHost node: GPU Add → GPU-to-CPU copy → output."""
+        target_device = get_cuda_plugin_device()
+        # A, B → Add (GPU) → sum_gpu → MemcpyToHost → Y (CPU)
+        add_node = helper.make_node("Add", ["A", "B"], ["sum_gpu"])
+        copy_node = helper.make_node("MemcpyToHost", ["sum_gpu"], ["Y"])
+        graph = helper.make_graph(
+            [add_node, copy_node],
+            "test-explicit-memcpy-to-host",
+            [
+                helper.make_tensor_value_info("A", TensorProto.FLOAT, [2, 3]),
+                helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        feed = {
+            "A": np.random.rand(2, 3).astype(np.float32),
+            "B": np.random.rand(2, 3).astype(np.float32),
+        }
+        result = _run_model_test(
+            target_device,
+            "MemcpyToHost_explicit",
+            model,
+            feed,
+            lambda f: f["A"] + f["B"],
+        )
+        self.assertEqual(result, TEST_PASS, "Explicit MemcpyToHost test failed")
+
+    def test_memcpy_roundtrip_explicit(self):
+        """Explicit both directions: CPU → MemcpyFromHost → Relu (GPU) → MemcpyToHost → CPU."""
+        target_device = get_cuda_plugin_device()
+        copy_in = helper.make_node("MemcpyFromHost", ["X"], ["X_gpu"])
+        relu_node = helper.make_node("Relu", ["X_gpu"], ["relu_out"])
+        copy_out = helper.make_node("MemcpyToHost", ["relu_out"], ["Y"])
+        graph = helper.make_graph(
+            [copy_in, relu_node, copy_out],
+            "test-explicit-memcpy-roundtrip",
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [4, 5])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [4, 5])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 13
+        model = helper.make_model(graph, opset_imports=[opset])
+        feed = {"X": np.random.randn(4, 5).astype(np.float32)}
+        result = _run_model_test(
+            target_device,
+            "MemcpyRoundtrip_explicit",
+            model,
+            feed,
+            lambda f: np.maximum(f["X"], 0),
+        )
+        self.assertEqual(result, TEST_PASS, "Explicit MemcpyFromHost→Relu→MemcpyToHost roundtrip test failed")
+
 
 if __name__ == "__main__":
     unittest.main()
