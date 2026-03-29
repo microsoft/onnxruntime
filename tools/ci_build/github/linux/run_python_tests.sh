@@ -43,6 +43,8 @@ if [ $BUILD_DEVICE == "GPU" ]; then
     # Enable TRT EP only if TensorRT is installed.
     if [ -f /usr/include/NvInfer.h ]; then
         BUILD_ARGS="$BUILD_ARGS --use_tensorrt --tensorrt_home=/usr"
+    elif [ -f /opt/tensorrt/include/NvInfer.h ]; then
+        BUILD_ARGS="$BUILD_ARGS --use_tensorrt --tensorrt_home=/opt/tensorrt"
     fi
 fi
 
