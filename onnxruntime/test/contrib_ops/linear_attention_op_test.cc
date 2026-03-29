@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/common/logging/logging.h"
+#include "core/framework/kernel_registry.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -163,6 +165,26 @@ std::vector<float> TransposeBHT_to_BTH(const std::vector<float>& data,
   return transposed;
 }
 
+// Returns a WebGPU EP if it is available and has the LinearAttention kernel registered,
+// or nullptr otherwise.
+std::unique_ptr<IExecutionProvider> TryGetEpWithLinearAttention() {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    ep = DefaultCpuExecutionProvider();
+  }
+
+  auto kernel_registry = ep->GetKernelRegistry();
+  if (kernel_registry) {
+    const KernelCreateInfo* info = nullptr;
+    KernelRegistry::TypeConstraintMap type_constraints;
+    auto status = kernel_registry->TryFindKernel(
+        ep->Type(), "LinearAttention", kMSDomain, 1,
+        type_constraints, DefaultLoggingManager().DefaultLogger(), &info);
+    if (!status.IsOK()) return nullptr;
+  }
+  return ep;
+}
+
 void RunLinearAttentionTest(
     const std::string& update_rule,
     int batch_size, int num_heads, int seq_length, int head_dim_k, int head_dim_v,
@@ -173,17 +195,18 @@ void RunLinearAttentionTest(
     const std::vector<float>* initial_state,
     const std::vector<float>* decay,
     const std::vector<float>* beta_data) {
+  auto ep = TryGetEpWithLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "LinearAttention kernel not registered";
+    return;
+  }
+
   // Compute reference output (reference works in 4D layout)
   std::vector<float> expected_output_4d, expected_state;
   LinearAttentionReference(update_rule, batch_size, num_heads, seq_length,
                            head_dim_k, head_dim_v, scale,
                            query, key, value, initial_state, decay, beta_data,
                            expected_output_4d, expected_state);
-
-  bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get());
-  if (!enable_webgpu) {
-    return;
-  }
 
   int bht = batch_size * num_heads * seq_length;
   bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht);
@@ -248,7 +271,7 @@ void RunLinearAttentionTest(
   tester.AddOutput<float>("present_state", state_dims, expected_state, false, 0.005f, 0.005f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(std::move(ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -570,6 +593,12 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_MultiBatchMultiHead) {
 // Test: Default scale (should use 1/sqrt(dk))
 // ===========================================================================
 TEST(ContribOpLinearAttentionTest, LinearRule_DefaultScale) {
+  auto ep = TryGetEpWithLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "LinearAttention kernel not registered on WebGPU EP (or EP not available)";
+    return;
+  }
+
   const int B = 1, H = 1, T = 1, dk = 4, dv = 4;
 
   std::vector<float> query = {1.0f, 0.0f, 0.5f, -0.5f};
@@ -582,11 +611,6 @@ TEST(ContribOpLinearAttentionTest, LinearRule_DefaultScale) {
   LinearAttentionReference("linear", B, H, T, dk, dv, actual_scale,
                            query, key, value, nullptr, nullptr, nullptr,
                            expected_output, expected_state);
-
-  bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get());
-  if (!enable_webgpu) {
-    return;
-  }
 
   OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<std::string>("update_rule", std::string("linear"));
@@ -610,7 +634,7 @@ TEST(ContribOpLinearAttentionTest, LinearRule_DefaultScale) {
   tester.AddOutput<float>("present_state", state_dims, expected_state, false, 0.005f, 0.005f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(std::move(ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 

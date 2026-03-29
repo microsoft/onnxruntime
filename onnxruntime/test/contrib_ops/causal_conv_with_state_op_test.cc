@@ -5,10 +5,13 @@
 #include <cmath>
 #include <vector>
 #include "gtest/gtest.h"
+#include "core/common/logging/logging.h"
+#include "core/framework/kernel_registry.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -90,6 +93,26 @@ void CausalConvWithStateReference(
   }
 }
 
+// Returns a WebGPU EP if it is available and has the CausalConvWithState kernel registered,
+// or nullptr otherwise.
+std::unique_ptr<IExecutionProvider> TryGetEpWithCausalConvWithState() {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    ep = DefaultCpuExecutionProvider();
+  }
+
+  auto kernel_registry = ep->GetKernelRegistry();
+  if (kernel_registry) {
+    const KernelCreateInfo* info = nullptr;
+    KernelRegistry::TypeConstraintMap type_constraints;
+    auto status = kernel_registry->TryFindKernel(
+        ep->Type(), "CausalConvWithState", kMSDomain, 1,
+        type_constraints, DefaultLoggingManager().DefaultLogger(), &info);
+    if (!status.IsOK()) return nullptr;
+  }
+  return ep;
+}
+
 }  // anonymous namespace
 
 static void RunCausalConvWithStateTest(
@@ -105,6 +128,12 @@ static void RunCausalConvWithStateTest(
     int kernel_size,
     const std::string& activation,
     TensorType tensor_type) {
+  auto ep = TryGetEpWithCausalConvWithState();
+  if (!ep) {
+    GTEST_SKIP() << "CausalConvWithState kernel not registered";
+    return;
+  }
+
   int state_length = kernel_size - 1;
 
   std::vector<int64_t> input_shape = {batch_size, channels, input_length};
@@ -113,19 +142,7 @@ static void RunCausalConvWithStateTest(
   std::vector<int64_t> state_shape = {batch_size, channels, state_length};
   std::vector<int64_t> output_shape = {batch_size, channels, input_length};
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-
-  bool enable_webgpu = nullptr != DefaultWebGpuExecutionProvider().get();
-  if (enable_webgpu) {
-    execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  }
-
-  if (execution_providers.empty()) {
-    // Skip if no providers available
-    return;
-  }
-
-  for (auto& ep : execution_providers) {
+  {
     OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
     test.AddAttribute<std::string>("activation", activation);
 
@@ -170,9 +187,9 @@ static void RunCausalConvWithStateTest(
     test.SetOutputAbsErr("output", 0.01f);
     test.SetOutputAbsErr("present_state", 0.01f);
 
-    std::vector<std::unique_ptr<IExecutionProvider>> test_execution_providers;
-    test_execution_providers.push_back(std::move(ep));
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(ep));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 
