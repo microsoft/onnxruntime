@@ -42,8 +42,9 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
 
   EinsumEquationPreprocessor einsum_equation_preprocessor(*einsum_equation_preprocessor_);
 
+  auto ort_stream = GetOrtStream(context);
   EinsumOp::EinsumCudaAssets einsum_cuda_assets(
-      GetComputeStream(context),
+      ort_stream,
       GetDeviceProp(),
       GetCublasHandle(context),
       GetCudnnHandle(context),

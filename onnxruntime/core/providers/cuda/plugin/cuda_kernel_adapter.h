@@ -780,7 +780,7 @@ namespace cuda {  // re-open onnxruntime::cuda
 
 class CudaKernel : public OpKernel {
  public:
-  explicit CudaKernel(const OpKernelInfo& info) : OpKernel(info), info_(info) {
+  explicit CudaKernel(const OpKernelInfo& info) : OpKernel(info) {
     const auto* provider = info.GetExecutionProvider();
     runtime_config_ = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
     use_tf32_ = runtime_config_->use_tf32;
@@ -901,7 +901,9 @@ class CudaKernel : public OpKernel {
   bool UseTF32() const { return use_tf32_; }
   bool IsFuseConvBias() const { return runtime_config_->fuse_conv_bias; }
   bool IsArchAvailable(int arch) const { return GetDeviceProp().major >= arch; }
-  const OpKernelInfo& Info() const { return info_; }
+  // Delegate to the base OpKernel::Info() which holds a safe copy of OpKernelInfo.
+  // Do NOT store a reference to the constructor parameter — it becomes dangling.
+  const OpKernelInfo& Info() const { return OpKernel::Info(); }
   const onnxruntime::AttentionKernelOptions* GetAttentionKernelOptions() const {
     runtime_config_->attention_kernel_options.InitializeOnce(runtime_config_->sdpa_kernel, true, true);
     return &runtime_config_->attention_kernel_options;
@@ -1022,7 +1024,6 @@ class CudaKernel : public OpKernel {
   };
 
  private:
-  const OpKernelInfo& info_;
   std::shared_ptr<detail::CudaKernelAdapterRuntimeConfig> runtime_config_;
   cudaDeviceProp device_prop_{};
   bool use_tf32_ = true;

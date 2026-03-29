@@ -1202,6 +1202,522 @@ class TestCudaPluginEP(unittest.TestCase):
         )
         self.assertGreater(len(claimed), 0, "No ops were claimed at all")
 
+    # ---- Newly-included ops that previously lacked tests ----
+
+    def test_op_einsum(self):
+        """Test Einsum op (recently un-excluded from plugin build)."""
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Einsum",
+            [("A", TensorProto.FLOAT, [2, 3]), ("B", TensorProto.FLOAT, [3, 4])],
+            [("Y", TensorProto.FLOAT, [2, 4])],
+            attrs={"equation": "ij,jk->ik"},
+            opset=12,
+        )
+        feed = {"A": np.random.rand(2, 3).astype(np.float32), "B": np.random.rand(3, 4).astype(np.float32)}
+        result = _run_model_test(target_device, "Einsum", model, feed, lambda f: f["A"] @ f["B"])
+        self.assertEqual(result, TEST_PASS, "Einsum test failed")
+
+    def test_op_einsum_batch(self):
+        """Test Einsum op with batch matrix multiply."""
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Einsum",
+            [("A", TensorProto.FLOAT, [2, 3, 4]), ("B", TensorProto.FLOAT, [2, 4, 5])],
+            [("Y", TensorProto.FLOAT, [2, 3, 5])],
+            attrs={"equation": "bij,bjk->bik"},
+            opset=12,
+        )
+        feed = {"A": np.random.rand(2, 3, 4).astype(np.float32), "B": np.random.rand(2, 4, 5).astype(np.float32)}
+        result = _run_model_test(target_device, "Einsum_batch", model, feed, lambda f: np.matmul(f["A"], f["B"]))
+        self.assertEqual(result, TEST_PASS, "Einsum batch test failed")
+
+    def test_op_softmax(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Softmax",
+            [("X", TensorProto.FLOAT, [2, 5])],
+            [("Y", TensorProto.FLOAT, [2, 5])],
+            attrs={"axis": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(2, 5).astype(np.float32)}
+
+        def expected(f):
+            x = f["X"]
+            e = np.exp(x - np.max(x, axis=1, keepdims=True))
+            return e / np.sum(e, axis=1, keepdims=True)
+
+        result = _run_model_test(target_device, "Softmax", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "Softmax test failed")
+
+    def test_op_relu(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Relu",
+            [("X", TensorProto.FLOAT, [3, 4])],
+            [("Y", TensorProto.FLOAT, [3, 4])],
+            opset=14,
+        )
+        feed = {"X": np.random.randn(3, 4).astype(np.float32)}
+        result = _run_model_test(target_device, "Relu", model, feed, lambda f: np.maximum(f["X"], 0))
+        self.assertEqual(result, TEST_PASS, "Relu test failed")
+
+    def test_op_sigmoid(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Sigmoid",
+            [("X", TensorProto.FLOAT, [3, 4])],
+            [("Y", TensorProto.FLOAT, [3, 4])],
+            opset=13,
+        )
+        feed = {"X": np.random.randn(3, 4).astype(np.float32)}
+        result = _run_model_test(target_device, "Sigmoid", model, feed, lambda f: 1.0 / (1.0 + np.exp(-f["X"])))
+        self.assertEqual(result, TEST_PASS, "Sigmoid test failed")
+
+    def test_op_tanh(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Tanh",
+            [("X", TensorProto.FLOAT, [3, 4])],
+            [("Y", TensorProto.FLOAT, [3, 4])],
+            opset=13,
+        )
+        feed = {"X": np.random.randn(3, 4).astype(np.float32)}
+        result = _run_model_test(target_device, "Tanh", model, feed, lambda f: np.tanh(f["X"]))
+        self.assertEqual(result, TEST_PASS, "Tanh test failed")
+
+    def test_op_transpose(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Transpose",
+            [("X", TensorProto.FLOAT, [2, 3, 4])],
+            [("Y", TensorProto.FLOAT, [4, 2, 3])],
+            attrs={"perm": [2, 0, 1]},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(2, 3, 4).astype(np.float32)}
+        result = _run_model_test(target_device, "Transpose", model, feed, lambda f: np.transpose(f["X"], (2, 0, 1)))
+        self.assertEqual(result, TEST_PASS, "Transpose test failed")
+
+    def test_op_cast(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Cast",
+            [("X", TensorProto.FLOAT, [3, 4])],
+            [("Y", TensorProto.FLOAT16, [3, 4])],
+            attrs={"to": int(TensorProto.FLOAT16)},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(3, 4).astype(np.float32)}
+        result = _run_model_test(
+            target_device, "Cast", model, feed, lambda f: f["X"].astype(np.float16), rtol=1e-2, atol=1e-2
+        )
+        self.assertEqual(result, TEST_PASS, "Cast test failed")
+
+    def test_op_where(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Where",
+            [
+                ("cond", TensorProto.BOOL, [3, 4]),
+                ("X", TensorProto.FLOAT, [3, 4]),
+                ("Y", TensorProto.FLOAT, [3, 4]),
+            ],
+            [("out", TensorProto.FLOAT, [3, 4])],
+            opset=16,
+        )
+        cond = np.random.randint(0, 2, size=(3, 4)).astype(bool)
+        x = np.random.rand(3, 4).astype(np.float32)
+        y = np.random.rand(3, 4).astype(np.float32)
+        feed = {"cond": cond, "X": x, "Y": y}
+        result = _run_model_test(target_device, "Where", model, feed, lambda f: np.where(f["cond"], f["X"], f["Y"]))
+        self.assertEqual(result, TEST_PASS, "Where test failed")
+
+    def test_op_flatten(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Flatten",
+            [("X", TensorProto.FLOAT, [2, 3, 4])],
+            [("Y", TensorProto.FLOAT, [2, 12])],
+            attrs={"axis": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(2, 3, 4).astype(np.float32)}
+        result = _run_model_test(target_device, "Flatten", model, feed, lambda f: f["X"].reshape(2, 12))
+        self.assertEqual(result, TEST_PASS, "Flatten test failed")
+
+    def test_op_argmax(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ArgMax",
+            [("X", TensorProto.FLOAT, [3, 5])],
+            [("Y", TensorProto.INT64, [3, 1])],
+            attrs={"axis": 1, "keepdims": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(3, 5).astype(np.float32)}
+        result = _run_model_test(
+            target_device, "ArgMax", model, feed, lambda f: np.argmax(f["X"], axis=1).reshape(3, 1)
+        )
+        self.assertEqual(result, TEST_PASS, "ArgMax test failed")
+
+    def test_op_topk(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "TopK",
+            [("X", TensorProto.FLOAT, [3, 6]), ("K", TensorProto.INT64, [1])],
+            [("values", TensorProto.FLOAT, [3, 3]), ("indices", TensorProto.INT64, [3, 3])],
+            attrs={"axis": 1},
+            opset=11,
+        )
+        x = np.random.rand(3, 6).astype(np.float32)
+        k = np.array([3], dtype=np.int64)
+        feed = {"X": x, "K": k}
+
+        def expected(f):
+            idx = np.argsort(-f["X"], axis=1)[:, :3]
+            vals = np.take_along_axis(f["X"], idx, axis=1)
+            return [vals, idx]
+
+        result = _run_model_test(target_device, "TopK", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "TopK test failed")
+
+    def test_op_layer_normalization(self):
+        """Test LayerNormalization — critical for transformer models."""
+        target_device = get_cuda_plugin_device()
+        normalized_shape = 8
+        model = _make_simple_model(
+            "LayerNormalization",
+            [
+                ("X", TensorProto.FLOAT, [2, 3, normalized_shape]),
+                ("scale", TensorProto.FLOAT, [normalized_shape]),
+                ("bias", TensorProto.FLOAT, [normalized_shape]),
+            ],
+            [("Y", TensorProto.FLOAT, [2, 3, normalized_shape])],
+            attrs={"axis": -1, "epsilon": 1e-5},
+            opset=17,
+        )
+        scale = np.ones(normalized_shape, dtype=np.float32)
+        bias = np.zeros(normalized_shape, dtype=np.float32)
+        scale_init = helper.make_tensor("scale", TensorProto.FLOAT, [normalized_shape], scale.tolist())
+        bias_init = helper.make_tensor("bias", TensorProto.FLOAT, [normalized_shape], bias.tolist())
+        model.graph.initializer.append(scale_init)
+        model.graph.initializer.append(bias_init)
+
+        x = np.random.rand(2, 3, normalized_shape).astype(np.float32)
+        feed = {"X": x}
+
+        def expected(f):
+            x = f["X"]
+            mean = np.mean(x, axis=-1, keepdims=True)
+            var = np.var(x, axis=-1, keepdims=True)
+            return (x - mean) / np.sqrt(var + 1e-5) * scale + bias
+
+        result = _run_model_test(target_device, "LayerNormalization", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "LayerNormalization test failed")
+
+    def test_op_instance_normalization(self):
+        target_device = get_cuda_plugin_device()
+        C = 3
+        model = _make_simple_model(
+            "InstanceNormalization",
+            [
+                ("X", TensorProto.FLOAT, [1, C, 4, 4]),
+                ("scale", TensorProto.FLOAT, [C]),
+                ("B", TensorProto.FLOAT, [C]),
+            ],
+            [("Y", TensorProto.FLOAT, [1, C, 4, 4])],
+            attrs={"epsilon": 1e-5},
+            opset=6,
+        )
+        scale = np.ones(C, dtype=np.float32)
+        bias = np.zeros(C, dtype=np.float32)
+        model.graph.initializer.append(helper.make_tensor("scale", TensorProto.FLOAT, [C], scale.tolist()))
+        model.graph.initializer.append(helper.make_tensor("B", TensorProto.FLOAT, [C], bias.tolist()))
+
+        x = np.random.rand(1, C, 4, 4).astype(np.float32)
+        feed = {"X": x}
+
+        def expected(f):
+            x = f["X"]
+            result = np.empty_like(x)
+            for c in range(C):
+                ch = x[0, c]
+                mean = ch.mean()
+                var = ch.var()
+                result[0, c] = (ch - mean) / np.sqrt(var + 1e-5) * scale[c] + bias[c]
+            return result
+
+        result = _run_model_test(target_device, "InstanceNormalization", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "InstanceNormalization test failed")
+
+    def test_op_conv_transpose(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ConvTranspose",
+            [
+                ("X", TensorProto.FLOAT, [1, 3, 4, 4]),
+                ("W", TensorProto.FLOAT, [3, 2, 3, 3]),
+            ],
+            [("Y", TensorProto.FLOAT, [1, 2, 6, 6])],
+            attrs={"kernel_shape": [3, 3], "strides": [1, 1], "pads": [0, 0, 0, 0]},
+            opset=11,
+        )
+        x = np.random.rand(1, 3, 4, 4).astype(np.float32)
+        w = np.random.rand(3, 2, 3, 3).astype(np.float32)
+        feed = {"X": x, "W": w}
+
+        def expected(f):
+            return F.conv_transpose2d(torch.from_numpy(f["X"]), torch.from_numpy(f["W"])).numpy()
+
+        result = _run_model_test(target_device, "ConvTranspose", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "ConvTranspose test failed")
+
+    def test_op_reduce_mean(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ReduceMean",
+            [("X", TensorProto.FLOAT, [3, 4, 5])],
+            [("Y", TensorProto.FLOAT, [3, 1, 5])],
+            attrs={"axes": [1], "keepdims": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(3, 4, 5).astype(np.float32)}
+        result = _run_model_test(
+            target_device, "ReduceMean", model, feed, lambda f: np.mean(f["X"], axis=1, keepdims=True)
+        )
+        self.assertEqual(result, TEST_PASS, "ReduceMean test failed")
+
+    def test_op_reduce_sum(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ReduceSum",
+            [("X", TensorProto.FLOAT, [3, 4, 5]), ("axes", TensorProto.INT64, [1])],
+            [("Y", TensorProto.FLOAT, [3, 1, 5])],
+            attrs={"keepdims": 1},
+            opset=13,
+        )
+        axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [1])
+        model.graph.initializer.append(axes_init)
+        feed = {"X": np.random.rand(3, 4, 5).astype(np.float32)}
+        result = _run_model_test(
+            target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=1, keepdims=True)
+        )
+        self.assertEqual(result, TEST_PASS, "ReduceSum test failed")
+
+    def test_op_gather_nd(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "GatherND",
+            [
+                ("data", TensorProto.FLOAT, [2, 3, 4]),
+                ("indices", TensorProto.INT64, [2, 1]),
+            ],
+            [("Y", TensorProto.FLOAT, [2, 4])],
+            attrs={"batch_dims": 1},
+            opset=12,
+        )
+        data = np.random.rand(2, 3, 4).astype(np.float32)
+        indices = np.array([[1], [2]], dtype=np.int64)
+        feed = {"data": data, "indices": indices}
+
+        def expected(f):
+            return np.array([f["data"][0, 1], f["data"][1, 2]])
+
+        result = _run_model_test(target_device, "GatherND", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "GatherND test failed")
+
+    def test_op_scatter_elements(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ScatterElements",
+            [
+                ("data", TensorProto.FLOAT, [3, 3]),
+                ("indices", TensorProto.INT64, [2, 3]),
+                ("updates", TensorProto.FLOAT, [2, 3]),
+            ],
+            [("Y", TensorProto.FLOAT, [3, 3])],
+            attrs={"axis": 0},
+            opset=16,
+        )
+        data = np.zeros((3, 3), dtype=np.float32)
+        indices = np.array([[1, 0, 2], [0, 2, 1]], dtype=np.int64)
+        updates = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+        feed = {"data": data, "indices": indices, "updates": updates}
+
+        def expected(f):
+            result = f["data"].copy()
+            for i in range(2):
+                for j in range(3):
+                    result[f["indices"][i, j], j] = f["updates"][i, j]
+            return result
+
+        result = _run_model_test(target_device, "ScatterElements", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "ScatterElements test failed")
+
+    def test_op_onehot(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "OneHot",
+            [
+                ("indices", TensorProto.INT64, [4]),
+                ("depth", TensorProto.INT64, [1]),
+                ("values", TensorProto.FLOAT, [2]),
+            ],
+            [("Y", TensorProto.FLOAT, [4, 6])],
+            attrs={"axis": 1},
+            opset=11,
+        )
+        indices = np.array([0, 2, 4, 5], dtype=np.int64)
+        depth = np.array([6], dtype=np.int64)
+        values = np.array([0.0, 1.0], dtype=np.float32)
+        feed = {"indices": indices, "depth": depth, "values": values}
+
+        def expected(f):
+            result = np.zeros((4, 6), dtype=np.float32)
+            for i, idx in enumerate(f["indices"]):
+                result[i, idx] = 1.0
+            return result
+
+        result = _run_model_test(target_device, "OneHot", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "OneHot test failed")
+
+    # NOTE: Range is excluded — it runs on CPU (shape computation op, not claimed by CUDA EP).
+
+    def test_op_non_zero(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "NonZero",
+            [("X", TensorProto.FLOAT, [3, 4])],
+            [("Y", TensorProto.INT64, None)],
+            opset=13,
+        )
+        x = np.array([[1, 0, 3, 0], [0, 5, 0, 7], [0, 0, 0, 10]], dtype=np.float32)
+        feed = {"X": x}
+        result = _run_model_test(target_device, "NonZero", model, feed, lambda f: np.array(np.nonzero(f["X"])))
+        self.assertEqual(result, TEST_PASS, "NonZero test failed")
+
+    def test_op_grid_sample(self):
+        target_device = get_cuda_plugin_device()
+        N, C, H, W = 1, 1, 4, 4
+        model = _make_simple_model(
+            "GridSample",
+            [
+                ("X", TensorProto.FLOAT, [N, C, H, W]),
+                ("grid", TensorProto.FLOAT, [N, 2, 2, 2]),
+            ],
+            [("Y", TensorProto.FLOAT, [N, C, 2, 2])],
+            attrs={"mode": "bilinear", "padding_mode": "zeros", "align_corners": 0},
+            opset=16,
+        )
+        x = np.random.rand(N, C, H, W).astype(np.float32)
+        grid = np.random.rand(N, 2, 2, 2).astype(np.float32) * 2 - 1  # in [-1, 1]
+        feed = {"X": x, "grid": grid}
+
+        def expected(f):
+            return F.grid_sample(
+                torch.from_numpy(f["X"]),
+                torch.from_numpy(f["grid"]),
+                mode="bilinear",
+                padding_mode="zeros",
+                align_corners=False,
+            ).numpy()
+
+        result = _run_model_test(target_device, "GridSample", model, feed, expected, rtol=1e-3, atol=1e-3)
+        self.assertEqual(result, TEST_PASS, "GridSample test failed")
+
+    def test_op_gelu(self):
+        """Test Gelu contrib op — important for transformer models."""
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Gelu",
+            [("X", TensorProto.FLOAT, [2, 8])],
+            [("Y", TensorProto.FLOAT, [2, 8])],
+            domain="com.microsoft",
+            opset=13,
+        )
+        feed = {"X": np.random.randn(2, 8).astype(np.float32)}
+
+        def expected(f):
+            return torch.nn.functional.gelu(torch.from_numpy(f["X"])).numpy()
+
+        result = _run_model_test(target_device, "Gelu", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "Gelu test failed")
+
+    def test_op_bias_gelu(self):
+        """Test BiasGelu contrib op."""
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "BiasGelu",
+            [("X", TensorProto.FLOAT, [2, 8]), ("bias", TensorProto.FLOAT, [8])],
+            [("Y", TensorProto.FLOAT, [2, 8])],
+            domain="com.microsoft",
+            opset=13,
+        )
+        bias = np.random.randn(8).astype(np.float32)
+        model.graph.initializer.append(helper.make_tensor("bias", TensorProto.FLOAT, [8], bias.tolist()))
+        feed = {"X": np.random.randn(2, 8).astype(np.float32)}
+
+        def expected(f):
+            x = torch.from_numpy(f["X"]) + torch.from_numpy(bias)
+            return torch.nn.functional.gelu(x).numpy()
+
+        result = _run_model_test(target_device, "BiasGelu", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "BiasGelu test failed")
+
+    def test_op_fused_matmul(self):
+        """Test FusedMatMul contrib op (MatMul with alpha)."""
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "FusedMatMul",
+            [("A", TensorProto.FLOAT, [3, 4]), ("B", TensorProto.FLOAT, [4, 5])],
+            [("Y", TensorProto.FLOAT, [3, 5])],
+            attrs={"alpha": 2.0},
+            domain="com.microsoft",
+            opset=13,
+        )
+        feed = {"A": np.random.rand(3, 4).astype(np.float32), "B": np.random.rand(4, 5).astype(np.float32)}
+        result = _run_model_test(target_device, "FusedMatMul", model, feed, lambda f: 2.0 * (f["A"] @ f["B"]))
+        self.assertEqual(result, TEST_PASS, "FusedMatMul test failed")
+
+    def test_op_trilu(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "Trilu",
+            [("X", TensorProto.FLOAT, [4, 4])],
+            [("Y", TensorProto.FLOAT, [4, 4])],
+            attrs={"upper": 1},
+            opset=14,
+        )
+        feed = {"X": np.random.rand(4, 4).astype(np.float32)}
+        result = _run_model_test(target_device, "Trilu", model, feed, lambda f: np.triu(f["X"]))
+        self.assertEqual(result, TEST_PASS, "Trilu test failed")
+
+    def test_op_matmul_integer(self):
+        """Test MatMulInteger — used in INT8 quantization pipelines."""
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "MatMulInteger",
+            [
+                ("A", TensorProto.INT8, [3, 4]),
+                ("B", TensorProto.INT8, [4, 5]),
+            ],
+            [("Y", TensorProto.INT32, [3, 5])],
+            opset=10,
+        )
+        a = np.random.randint(-128, 127, size=(3, 4)).astype(np.int8)
+        b = np.random.randint(-128, 127, size=(4, 5)).astype(np.int8)
+        feed = {"A": a, "B": b}
+        result = _run_model_test(
+            target_device,
+            "MatMulInteger",
+            model,
+            feed,
+            lambda f: f["A"].astype(np.int32) @ f["B"].astype(np.int32),
+        )
+        self.assertEqual(result, TEST_PASS, "MatMulInteger test failed")
+
 
 if __name__ == "__main__":
     unittest.main()
