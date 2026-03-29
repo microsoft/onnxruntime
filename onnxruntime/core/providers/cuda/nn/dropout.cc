@@ -35,6 +35,17 @@ struct DropoutComputeImpl {
 
 }  // namespace
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 7, 9, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  Dropout<false>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 10, 11, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+                                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+                                  Dropout<false>);
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 12, 12, kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
@@ -111,7 +122,7 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer, context]() {
     if (mask) return mask->MutableDataRaw();
     temp_mask_buffer =
-        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), context->GetComputeStream());
+        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), GetComputeStream(context));
     return temp_mask_buffer.get();
   }();
 

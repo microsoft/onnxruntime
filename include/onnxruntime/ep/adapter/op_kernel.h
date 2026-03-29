@@ -35,7 +35,7 @@ struct OpKernel {
   explicit OpKernel(const OpKernelInfo& info) : op_kernel_info_{info} {}
   virtual ~OpKernel() {}
 
-  Node Node() const {
+  adapter::Node Node() const {
     return op_kernel_info_.node();
   }
   const OpKernelInfo& Info() const {
@@ -93,6 +93,15 @@ struct OpKernelContext {
     input_tensors_[index] = CreateTensorFromApiValue(const_cast<OrtValue*>(static_cast<const OrtValue*>(input)));
     return &input_tensors_[index];
   }
+  /// Get a required (non-optional) input tensor. Throws if the input is null.
+  /// Use Input<T>() for optional inputs that may legitimately be absent.
+  template <typename T,
+            typename = std::enable_if_t<std::is_same_v<T, Tensor>>>
+  const T& RequiredInput(int index) const {
+    auto* input = Input<T>(index);
+    ORT_ENFORCE(input != nullptr, "Required input ", index, " is null");
+    return *input;
+  }
   Tensor* Output(int index, const TensorShape& shape) {
     if (index < 0 || static_cast<size_t>(index) >= output_tensors_.size()) {
       return nullptr;
@@ -109,6 +118,12 @@ struct OpKernelContext {
     output_tensors_[index] = CreateTensorFromApiValue(output);
     return &output_tensors_[index];
   }
+  /// Get a required (non-optional) output tensor. Throws if the output is null.
+  Tensor& RequiredOutput(int index, const TensorShape& shape) {
+    auto* output = Output(index, shape);
+    ORT_ENFORCE(output != nullptr, "Required output ", index, " is null");
+    return *output;
+  }
   Tensor* Output(int index, const std::vector<int64_t>& shape) {
     return Output(index, TensorShape{shape});
   }
@@ -116,10 +131,18 @@ struct OpKernelContext {
     return Output(index, TensorShape{shape});
   }
   [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
-    return static_cast<const Ep*>(op_kernel_.Info().GetKernelInfo().GetEp())->GetTempSpaceCPUAllocator(output);
+    const auto* execution_provider = op_kernel_.Info().GetExecutionProvider();
+    ORT_ENFORCE(execution_provider != nullptr, "Kernel does not have an execution provider.");
+    const auto* ort_ep = execution_provider->GetOrtEp();
+    ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
+    return static_cast<const Ep*>(ort_ep)->GetTempSpaceCPUAllocator(output);
   }
   [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
-    return static_cast<const Ep*>(op_kernel_.Info().GetKernelInfo().GetEp())->GetTempSpaceAllocator(output);
+    const auto* execution_provider = op_kernel_.Info().GetExecutionProvider();
+    ORT_ENFORCE(execution_provider != nullptr, "Kernel does not have an execution provider.");
+    const auto* ort_ep = execution_provider->GetOrtEp();
+    ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
+    return static_cast<const Ep*>(ort_ep)->GetTempSpaceAllocator(output);
   }
   int InputCount() const {
     return static_cast<int>(input_tensors_.size());
@@ -131,7 +154,6 @@ struct OpKernelContext {
     // TODO(fs-eire): Implement GetUseDeterministicCompute().
     return false;
   }
-
   void* GetGPUComputeStream() const {
     return context_.GetGPUComputeStream();
   }
@@ -146,7 +168,7 @@ struct OpKernelContext {
 };
 
 /// <summary>
-/// A bridge class between `onnxruntime::ep::adapter::OpKernel` and `::OrtKernelImpl`.
+/// A bridge class between `onnxruntime::ep::adapter::OpKernel` and `onnxruntime::OrtKernelImpl`.
 /// </summary>
 struct KernelImpl : OrtKernelImpl {
   explicit KernelImpl(std::unique_ptr<OpKernel> impl)
