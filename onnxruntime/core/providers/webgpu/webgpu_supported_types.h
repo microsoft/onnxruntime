@@ -28,6 +28,15 @@ using SupportedNumberAndBoolTypes =
         uint32_t,
         bool>;
 
+using SupportedNumberAndInt64Types =
+    TypeList<
+        float,
+        MLFloat16,
+        int32_t,
+        uint32_t,
+        int64_t,
+        uint64_t>;
+
 inline const std::vector<MLDataType>& WebGpuSupportedNumberTypes() {
   static const std::vector<MLDataType> supportedDataTypes = BuildKernelDefConstraintsFromTypeList<SupportedNumberTypes>();
   return supportedDataTypes;
@@ -40,6 +49,11 @@ inline const std::vector<MLDataType>& WebGpuSupportedFloatTypes() {
 
 inline const std::vector<MLDataType>& WebGpuSupportedNumberAndBoolTypes() {
   static const std::vector<MLDataType> supportedDataTypes = BuildKernelDefConstraintsFromTypeList<SupportedNumberAndBoolTypes>();
+  return supportedDataTypes;
+}
+
+inline const std::vector<MLDataType>& WebGpuSupportedNumberAndInt64Types() {
+  static const std::vector<MLDataType> supportedDataTypes = BuildKernelDefConstraintsFromTypeList<SupportedNumberAndInt64Types>();
   return supportedDataTypes;
 }
 
