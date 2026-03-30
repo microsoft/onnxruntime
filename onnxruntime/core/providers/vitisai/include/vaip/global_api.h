@@ -12,6 +12,9 @@
 #include "vaip/custom_op.h"
 #include <optional>
 #include <memory>
+#include <vector>
+#include <utility>
+#include <unordered_map>
 void initialize_vitisai_ep();
 void deinitialize_vitisai_ep();
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options);
@@ -38,9 +41,8 @@ void profiler_start(uint64_t profiling_start_time_ns);
 void profiler_stop();
 
 /**
- * Replace EventRecord with std::tuple<std::string, int ,int, long long, long long>,
- * because EventRecord is defined in profiler_common.h which is used inside onnxruntime.
- * However, profiler_collect function will call vitis ep which can't include profiler_common.h.
+ * EventInfo: Original 5-element tuple (v1 API)
+ * Kept for backward compatibility with older vaip versions.
  */
 using EventInfo = std::tuple<
     std::string,  // name
@@ -49,9 +51,25 @@ using EventInfo = std::tuple<
     long long,    // timestamp
     long long     // duration
     >;
-void profiler_collect(
-    std::vector<EventInfo>& api_events,
-    std::vector<EventInfo>& kernel_events);
+
+/**
+ * EventInfoV2: Extended 6-element tuple with args map (v2 API)
+ * 6th element: args map for extended metadata (subgraph_name, flow_type, kernel_idx)
+ */
+using EventInfoV2 = std::tuple<
+    std::string,  // name
+    int,          // pid
+    int,          // tid
+    long long,    // timestamp
+    long long,    // duration
+    std::unordered_map<std::string, std::string>  // args
+    >;
+
+// v2 API: Use this - automatically falls back to v1 if vaip doesn't have v2
+void profiler_collect_v2(
+    std::vector<EventInfoV2>& api_events,
+    std::vector<EventInfoV2>& kernel_events);
+
 std::unique_ptr<onnxruntime::IExecutionProvider>
 CreateExecutionProviderFromAnotherEp(const std::string& lib, const OrtSessionOptions& session_options,
                                      std::unordered_map<std::string, std::string>& provider_options);

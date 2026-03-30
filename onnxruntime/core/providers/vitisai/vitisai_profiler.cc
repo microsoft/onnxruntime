@@ -5,6 +5,11 @@
 
 #include "core/common/inlined_containers.h"
 
+// Build marker for verifying component alignment
+static const char* BUILD_MARKER_ORT_PROFILER = "[BUILD:ort_profiler:" __DATE__ " " __TIME__ "]";
+static volatile const char* keep_ort_marker = BUILD_MARKER_ORT_PROFILER;
+
+
 namespace onnxruntime {
 namespace profiling {
 
@@ -25,20 +30,20 @@ void VitisaiProfiler::EndProfiling(TimePoint tp, Events& events) {
   auto time_point =
       std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch()).count();
 
-  std::vector<EventInfo> api_events;
-  std::vector<EventInfo> kernel_events;
-  profiler_collect(api_events, kernel_events);
-
-  InlinedHashMap<std::string, std::string> event_args;
+  // Use v2 API - automatically falls back to v1 if vaip doesn't support v2
+  std::vector<EventInfoV2> api_events;
+  std::vector<EventInfoV2> kernel_events;
+  profiler_collect_v2(api_events, kernel_events);
 
   for (auto& a : api_events) {
+    // Use args from EventInfoV2 (6th element)
     events.emplace_back(EventCategory::API_EVENT,
-                        std::get<1>(a),               // pid
-                        std::get<2>(a),               // tid
-                        std::get<0>(a),               // name
-                        std::get<3>(a) - time_point,  // timestamp
-                        std::get<4>(a),               // duration
-                        event_args);
+                        std::get<1>(a),
+                        std::get<2>(a),
+                        std::get<0>(a),
+                        std::get<3>(a) - time_point,
+                        std::get<4>(a),
+                        std::get<5>(a));
   }
 
   for (auto& k : kernel_events) {
@@ -48,7 +53,7 @@ void VitisaiProfiler::EndProfiling(TimePoint tp, Events& events) {
                         std::get<0>(k),
                         std::get<3>(k) - time_point,
                         std::get<4>(k),
-                        event_args);
+                        std::get<5>(k));
   }
 }
 
