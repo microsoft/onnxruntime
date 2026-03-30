@@ -4192,6 +4192,27 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSessi
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
+                    _In_ const OrtThreadPoolCallbacksConfig* config) {
+  API_IMPL_BEGIN
+  if (config == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config must not be null");
+  }
+  if (config->version == 0 || config->version > ORT_API_VERSION) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtThreadPoolCallbacksConfig requires version set to ORT_API_VERSION");
+  }
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  return onnxruntime::ToOrtStatus(
+      ort_env->GetEnvironment().SetPerSessionWorkCallbacks(*config));
+#else
+  ORT_UNUSED_PARAMETER(ort_env);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "SetPerSessionThreadPoolCallbacks requires ORT built with --enable_session_threadpool_callbacks");
+#endif
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -4740,6 +4761,7 @@ static constexpr OrtApi ort_api_1_to_25 = {
     &OrtApis::RunOptionsEnableProfiling,
     &OrtApis::RunOptionsDisableProfiling,
     &OrtApis::KernelInfoGetAttributeArray_string,
+    &OrtApis::SetPerSessionThreadPoolCallbacks,
     // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
