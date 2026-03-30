@@ -1392,6 +1392,11 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
+
   eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -1437,6 +1442,12 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  if (!ep) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep) {
+      eps.push_back(std::move(webgpu_ep));
+    }
+  }
   eps.push_back(ep ? std::move(ep) : DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -1482,6 +1493,10 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Float8(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -1670,7 +1685,14 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  if (!ep) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep) {
+      eps.push_back(std::move(webgpu_ep));
+    }
+  }
   eps.push_back(ep ? std::move(ep) : DefaultCpuExecutionProvider());
+
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
   bool use_zero_point = !x_zero_point_.empty();
 
@@ -1714,6 +1736,10 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
@@ -1750,6 +1776,10 @@ void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
