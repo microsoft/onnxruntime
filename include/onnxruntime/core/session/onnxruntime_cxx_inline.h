@@ -4007,9 +4007,9 @@ inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetTypeConstraint(size_
 }
 
 template <typename T>
-inline std::string OpSchemaTypeConstraintImpl<T>::GetName() const {
+inline std::string OpSchemaTypeConstraintImpl<T>::GetTypeParamName() const {
   const char* name = nullptr;
-  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetName(this->p_, &name));
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetTypeParamName(this->p_, &name));
   return std::string(name);
 }
 

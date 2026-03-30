@@ -1600,16 +1600,16 @@ struct OrtEpApi {
   ORT_API2_STATUS(OpSchema_GetTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
                   _Outptr_ const OrtOpSchemaTypeConstraint** out);
 
-  /** \brief Get the name of a type constraint (e.g., "T", "T1").
+  /** \brief Get the type parameter name of a type constraint (e.g., "T", "T1").
    *
    * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
-   * \param[out] out The type constraint name. Valid as long as the parent OrtOpSchema exists.
+   * \param[out] out The type parameter name. Valid as long as the parent OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.25.
    */
-  ORT_API2_STATUS(OpSchemaTypeConstraint_GetName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+  ORT_API2_STATUS(OpSchemaTypeConstraint_GetTypeParamName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
                   _Outptr_ const char** out);
 
   /** \brief Get the allowed type strings for a type constraint.

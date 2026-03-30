@@ -137,7 +137,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeConstraint, _In_ const OrtOpSchema* sc
 ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraintCount, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const OrtOpSchemaTypeConstraint** out);
-ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetTypeParamName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
                     _Outptr_ const char** out);
 ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetAllowedTypes, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
                     _Outptr_ const char* const** out_types, _Out_ size_t* num_types);

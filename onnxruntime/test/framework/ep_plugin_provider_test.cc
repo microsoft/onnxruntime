@@ -824,8 +824,8 @@ TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
   Ort::ConstOpSchemaTypeConstraint tc_input1 = schema.GetInputTypeConstraint(1);
   ASSERT_NE(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input0), nullptr);
   ASSERT_NE(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input1), nullptr);
-  EXPECT_EQ(tc_input0.GetName(), "T");
-  EXPECT_EQ(tc_input1.GetName(), "T");
+  EXPECT_EQ(tc_input0.GetTypeParamName(), "T");
+  EXPECT_EQ(tc_input1.GetTypeParamName(), "T");
 
   // Add has 1 output: C
   ASSERT_EQ(schema.GetNumOutputs(), 1u);
@@ -833,7 +833,7 @@ TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
 
   Ort::ConstOpSchemaTypeConstraint tc_output0 = schema.GetOutputTypeConstraint(0);
   ASSERT_NE(static_cast<const OrtOpSchemaTypeConstraint*>(tc_output0), nullptr);
-  EXPECT_EQ(tc_output0.GetName(), "T");
+  EXPECT_EQ(tc_output0.GetTypeParamName(), "T");
 }
 
 // Test that querying the same op at different max_inclusive_version values can return different schema versions.
@@ -861,7 +861,7 @@ TEST(OpSchemaTypeConstraintTest, Add_SingleConstraint) {
 
   // Constraint "T"
   Ort::ConstOpSchemaTypeConstraint tc = schema.GetTypeConstraint(0);
-  EXPECT_EQ(tc.GetName(), "T");
+  EXPECT_EQ(tc.GetTypeParamName(), "T");
 
   // T should have multiple allowed types (at least float and double)
   auto allowed_types = tc.GetAllowedTypes();
@@ -894,10 +894,10 @@ TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
   Ort::ConstOpSchemaTypeConstraint t1_tc{nullptr};
   for (size_t i = 0; i < schema.GetTypeConstraintCount(); ++i) {
     auto tc = schema.GetTypeConstraint(i);
-    if (tc.GetName() == "T") {
+    if (tc.GetTypeParamName() == "T") {
       t_ptr = static_cast<const OrtOpSchemaTypeConstraint*>(tc);
       t_tc = tc;
-    } else if (tc.GetName() == "T1") {
+    } else if (tc.GetTypeParamName() == "T1") {
       t1_ptr = static_cast<const OrtOpSchemaTypeConstraint*>(tc);
       t1_tc = tc;
     }
@@ -950,7 +950,7 @@ TEST(OpSchemaTypeConstraintTest, Relu_SingleConstraint) {
   ASSERT_EQ(schema.GetTypeConstraintCount(), 1u);
 
   Ort::ConstOpSchemaTypeConstraint tc = schema.GetTypeConstraint(0);
-  EXPECT_EQ(tc.GetName(), "T");
+  EXPECT_EQ(tc.GetTypeParamName(), "T");
 
   auto input_indices = tc.GetInputIndices();
   ASSERT_EQ(input_indices.size(), 1u);

@@ -3529,8 +3529,8 @@ struct OpSchemaTypeConstraintImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
-  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetName
-  std::string GetName() const;
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetTypeParamName
+  std::string GetTypeParamName() const;
 
   ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetAllowedTypes
   std::vector<std::string> GetAllowedTypes() const;

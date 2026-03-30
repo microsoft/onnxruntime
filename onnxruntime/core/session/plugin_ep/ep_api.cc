@@ -989,7 +989,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraint, _In_ const OrtOpSchema* schema, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetTypeParamName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
                     _Outptr_ const char** out) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(type_constraint == nullptr, ORT_INVALID_ARGUMENT, "type_constraint must not be null");
@@ -1120,7 +1120,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchema_GetOutputTypeConstraint,
     &OrtExecutionProviderApi::OpSchema_GetTypeConstraintCount,
     &OrtExecutionProviderApi::OpSchema_GetTypeConstraint,
-    &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetName,
+    &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetTypeParamName,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetAllowedTypes,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetInputIndices,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetOutputIndices,
