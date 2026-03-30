@@ -8,6 +8,10 @@
 
 #include "core/session/onnxruntime_c_api.h"
 
+namespace ONNX_NAMESPACE {
+class OpSchema;
+}  // namespace ONNX_NAMESPACE
+
 /// Container holding precomputed type constraint information from an OrtOpSchema.
 /// Each entry represents one type constraint (e.g., "T", "T1") and includes
 /// the allowed data types and which input/output formal parameters use it.
@@ -21,4 +25,11 @@ struct OrtOpSchemaTypeConstraints {
   };
 
   std::vector<Entry> entries;
+};
+
+/// Opaque struct wrapping an ONNX operator schema pointer and its precomputed type constraints.
+/// Allocated by GetOpSchema and released by ReleaseOpSchema.
+struct OrtOpSchema {
+  const ONNX_NAMESPACE::OpSchema* onnx_schema;
+  OrtOpSchemaTypeConstraints type_constraints;
 };

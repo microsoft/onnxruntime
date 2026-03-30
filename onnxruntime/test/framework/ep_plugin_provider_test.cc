@@ -779,36 +779,36 @@ TEST(PluginExecutionProviderTest, IsConcurrentRunSupported) {
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
 
-// Tests for the Ort::ConstOpSchema C++ wrapper API and Ort::GetOpSchema free function.
+// Tests for the Ort::OpSchema C++ wrapper API and Ort::GetOpSchema free function.
 // These test the C++ layer over the OrtEpApi OpSchema functions using well-known ONNX operator schemas
 // from the global ONNX schema registry.
 
 TEST(OpSchemaCxxApiTest, GetOpSchema_KnownOp_ReturnsNonNull) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Relu", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 }
 
 TEST(OpSchemaCxxApiTest, GetOpSchema_UnknownOp_ReturnsNull) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("NonExistentOpXYZ_12345", 20, "");
-  ASSERT_EQ(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("NonExistentOpXYZ_12345", 20, "");
+  ASSERT_EQ(static_cast<OrtOpSchema*>(schema), nullptr);
 }
 
 TEST(OpSchemaCxxApiTest, GetOpSchema_VersionTooLow_ReturnsNull) {
   // Relu was introduced in opset 1, so max_inclusive_version=0 should not find it.
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 0, "");
-  ASSERT_EQ(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Relu", 0, "");
+  ASSERT_EQ(static_cast<OrtOpSchema*>(schema), nullptr);
 }
 
 TEST(OpSchemaCxxApiTest, GetOpSchema_WrongDomain_ReturnsNull) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 20, "com.nonexistent.domain");
-  ASSERT_EQ(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Relu", 20, "com.nonexistent.domain");
+  ASSERT_EQ(static_cast<OrtOpSchema*>(schema), nullptr);
 }
 
-// Test ConstOpSchema methods on the "Add" operator schema (2 inputs, 1 output).
+// Test OpSchema methods on the "Add" operator schema (2 inputs, 1 output).
 TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
   int opset_version = 20;
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", opset_version, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Add", opset_version, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 
   // The "since version" will be <= to the opset version used to retrieve the schema.
   EXPECT_LT(schema.GetSinceVersion(), opset_version + 1);
@@ -827,7 +827,7 @@ TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
   EXPECT_EQ(schema.GetOutputTypeStr(0), "T");
 
   // Verify type constraint lookup via GetTypeConstraints + FindByName
-  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  Ort::ConstOpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
   EXPECT_TRUE(tcs.FindByName("T").has_value());
   EXPECT_FALSE(tcs.FindByName("U").has_value());
 }
@@ -836,13 +836,13 @@ TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
 TEST(OpSchemaCxxApiTest, DifferentVersionsReturnDifferentSchemas) {
   // Relu was introduced in opset 1 and updated in opset 6, 13, and 14.
   // Querying at version 5 should return the opset 1 schema.
-  Ort::ConstOpSchema schema_v5 = Ort::GetOpSchema("Relu", 5, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema_v5), nullptr);
+  Ort::OpSchema schema_v5 = Ort::GetOpSchema("Relu", 5, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_v5), nullptr);
   EXPECT_EQ(schema_v5.GetSinceVersion(), 1);
 
   // Querying at version 6 should return the opset 6 schema.
-  Ort::ConstOpSchema schema_v6 = Ort::GetOpSchema("Relu", 6, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema_v6), nullptr);
+  Ort::OpSchema schema_v6 = Ort::GetOpSchema("Relu", 6, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_v6), nullptr);
   EXPECT_EQ(schema_v6.GetSinceVersion(), 6);
 }
 
@@ -850,10 +850,10 @@ TEST(OpSchemaCxxApiTest, DifferentVersionsReturnDifferentSchemas) {
 
 // Test type constraints for the Add operator (single constraint T on all inputs/outputs).
 TEST(OpSchemaTypeConstraintTest, Add_SingleConstraint) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 
-  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  Ort::ConstOpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
   ASSERT_EQ(tcs.GetCount(), 1u);
 
   // Constraint "T"
@@ -877,10 +877,10 @@ TEST(OpSchemaTypeConstraintTest, Add_SingleConstraint) {
 
 // Test type constraints for LSTM (multiple constraints: T and T1).
 TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("LSTM", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("LSTM", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 
-  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  Ort::ConstOpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
 
   // LSTM has at least T and T1
   ASSERT_GE(tcs.GetCount(), 2u);
@@ -937,10 +937,10 @@ TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
 
 // Test Relu type constraints (single T on input and output).
 TEST(OpSchemaTypeConstraintTest, Relu_SingleConstraint) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Relu", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Relu", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 
-  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  Ort::ConstOpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
   ASSERT_EQ(tcs.GetCount(), 1u);
 
   EXPECT_EQ(tcs.GetName(0), "T");
@@ -956,10 +956,10 @@ TEST(OpSchemaTypeConstraintTest, Relu_SingleConstraint) {
 
 // Test that allowed types are returned as proper type strings.
 TEST(OpSchemaTypeConstraintTest, AllowedTypesAreValidStrings) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 
-  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  Ort::ConstOpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
   ASSERT_GE(tcs.GetCount(), 1u);
 
   auto allowed_types = tcs.GetAllowedTypes(0);
@@ -971,10 +971,10 @@ TEST(OpSchemaTypeConstraintTest, AllowedTypesAreValidStrings) {
 
 // Test out-of-range index for type constraint accessors.
 TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 
-  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  Ort::ConstOpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
   size_t count = tcs.GetCount();
 
   // Accessing beyond the count should throw
@@ -986,10 +986,10 @@ TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
 
 // Test FindByName for looking up type constraints by name.
 TEST(OpSchemaTypeConstraintTest, FindByName) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("LSTM", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("LSTM", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 
-  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  Ort::ConstOpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
 
   // Find "T" by name
   auto t_result = tcs.FindByName("T");
@@ -1011,10 +1011,10 @@ TEST(OpSchemaTypeConstraintTest, FindByName) {
 
 // Test the natural workflow: input index → type constraint name → allowed types via FindByName.
 TEST(OpSchemaTypeConstraintTest, InputToAllowedTypesWorkflow) {
-  Ort::ConstOpSchema schema = Ort::GetOpSchema("Add", 20, "");
-  ASSERT_NE(static_cast<const OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
 
-  Ort::OpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
+  Ort::ConstOpSchemaTypeConstraints tcs = schema.GetTypeConstraints();
 
   // Get the type constraint name for input 0
   std::string type_str = schema.GetInputTypeStr(0);  // "T"

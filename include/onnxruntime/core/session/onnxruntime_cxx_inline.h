@@ -3944,59 +3944,59 @@ inline Ort::KeyValuePairs GetEnvConfigEntries() {
 
 namespace detail {
 template <typename T>
-inline int ConstOpSchemaImpl<T>::GetSinceVersion() const {
+inline int OpSchemaImpl<T>::GetSinceVersion() const {
   int version = 0;
   ThrowOnError(GetEpApi().OpSchema_GetSinceVersion(this->p_, &version));
   return version;
 }
 
 template <typename T>
-inline size_t ConstOpSchemaImpl<T>::GetNumInputs() const {
+inline size_t OpSchemaImpl<T>::GetNumInputs() const {
   size_t num = 0;
   ThrowOnError(GetEpApi().OpSchema_GetNumInputs(this->p_, &num));
   return num;
 }
 
 template <typename T>
-inline std::string ConstOpSchemaImpl<T>::GetInputName(size_t index) const {
+inline std::string OpSchemaImpl<T>::GetInputName(size_t index) const {
   const char* name = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetInputName(this->p_, index, &name));
   return std::string(name);
 }
 
 template <typename T>
-inline std::string ConstOpSchemaImpl<T>::GetInputTypeStr(size_t index) const {
+inline std::string OpSchemaImpl<T>::GetInputTypeStr(size_t index) const {
   const char* type_str = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetInputTypeStr(this->p_, index, &type_str));
   return std::string(type_str);
 }
 
 template <typename T>
-inline size_t ConstOpSchemaImpl<T>::GetNumOutputs() const {
+inline size_t OpSchemaImpl<T>::GetNumOutputs() const {
   size_t num = 0;
   ThrowOnError(GetEpApi().OpSchema_GetNumOutputs(this->p_, &num));
   return num;
 }
 
 template <typename T>
-inline std::string ConstOpSchemaImpl<T>::GetOutputName(size_t index) const {
+inline std::string OpSchemaImpl<T>::GetOutputName(size_t index) const {
   const char* name = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetOutputName(this->p_, index, &name));
   return std::string(name);
 }
 
 template <typename T>
-inline std::string ConstOpSchemaImpl<T>::GetOutputTypeStr(size_t index) const {
+inline std::string OpSchemaImpl<T>::GetOutputTypeStr(size_t index) const {
   const char* type_str = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetOutputTypeStr(this->p_, index, &type_str));
   return std::string(type_str);
 }
 
 template <typename T>
-inline Ort::OpSchemaTypeConstraints ConstOpSchemaImpl<T>::GetTypeConstraints() const {
-  OrtOpSchemaTypeConstraints* tcs = nullptr;
+inline Ort::ConstOpSchemaTypeConstraints OpSchemaImpl<T>::GetTypeConstraints() const {
+  const OrtOpSchemaTypeConstraints* tcs = nullptr;
   ThrowOnError(GetEpApi().OpSchema_GetTypeConstraints(this->p_, &tcs));
-  return Ort::OpSchemaTypeConstraints{tcs};
+  return Ort::ConstOpSchemaTypeConstraints{tcs};
 }
 
 template <typename T>
@@ -4053,9 +4053,9 @@ inline std::optional<size_t> OpSchemaTypeConstraintsImpl<T>::FindByName(const ch
 }
 }  // namespace detail
 
-inline ConstOpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain) {
-  const OrtOpSchema* schema = nullptr;
+inline OpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain) {
+  OrtOpSchema* schema = nullptr;
   ThrowOnError(GetEpApi().GetOpSchema(name, max_inclusive_version, domain, &schema));
-  return ConstOpSchema{schema};
+  return OpSchema{schema};
 }
 }  // namespace Ort

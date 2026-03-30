@@ -22,7 +22,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
-#include "core/session/abi_opschema_type_constraints.h"
+#include "core/session/abi_opschema.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
@@ -809,15 +809,55 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
 }
 
 ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
-                    _In_ const char* domain, _Outptr_result_maybenull_ const OrtOpSchema** out_schema) {
+                    _In_ const char* domain, _Outptr_result_maybenull_ OrtOpSchema** out_schema) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(name == nullptr, ORT_INVALID_ARGUMENT, "name must not be null");
   ORT_API_RETURN_IF(domain == nullptr, ORT_INVALID_ARGUMENT, "domain must not be null");
   ORT_API_RETURN_IF(out_schema == nullptr, ORT_INVALID_ARGUMENT, "out_schema must not be null");
 
-  const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(
+  const auto* onnx_schema = ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(
       name, max_inclusive_version, domain);
-  *out_schema = reinterpret_cast<const OrtOpSchema*>(schema);
+
+  if (onnx_schema == nullptr) {
+    *out_schema = nullptr;
+    return nullptr;
+  }
+
+  auto result = std::make_unique<OrtOpSchema>();
+  result->onnx_schema = onnx_schema;
+
+  // Eagerly build type constraint data.
+  for (const auto& param : onnx_schema->typeConstraintParams()) {
+    OrtOpSchemaTypeConstraints::Entry entry;
+    entry.type_param_str = param.type_param_str;
+    entry.allowed_type_strs = param.allowed_type_strs;
+
+    const auto& inputs = onnx_schema->inputs();
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      if (inputs[i].GetTypeStr() == param.type_param_str) {
+        entry.input_indices.push_back(i);
+      }
+    }
+
+    const auto& outputs = onnx_schema->outputs();
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      if (outputs[i].GetTypeStr() == param.type_param_str) {
+        entry.output_indices.push_back(i);
+      }
+    }
+
+    result->type_constraints.entries.push_back(std::move(entry));
+  }
+
+  // Build the C-compatible pointer arrays after all entries are in their final locations.
+  for (auto& entry : result->type_constraints.entries) {
+    entry.allowed_type_ptrs.reserve(entry.allowed_type_strs.size());
+    for (const auto& s : entry.allowed_type_strs) {
+      entry.allowed_type_ptrs.push_back(s.c_str());
+    }
+  }
+
+  *out_schema = result.release();
   return nullptr;
   API_IMPL_END
 }
@@ -827,8 +867,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _O
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
   ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  *out = onnx_schema->since_version();
+  *out = schema->onnx_schema->since_version();
   return nullptr;
   API_IMPL_END
 }
@@ -838,8 +877,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
   ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  *out = onnx_schema->inputs().size();
+  *out = schema->onnx_schema->inputs().size();
   return nullptr;
   API_IMPL_END
 }
@@ -850,8 +888,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ 
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
   ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  const auto& inputs = onnx_schema->inputs();
+  const auto& inputs = schema->onnx_schema->inputs();
   ORT_API_RETURN_IF(index >= inputs.size(), ORT_INVALID_ARGUMENT, "Input index ", index, " out of range. Schema has ",
                     inputs.size(), " inputs.");
   *out = inputs[index].GetName().c_str();
@@ -865,8 +902,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetInputTypeStr, _In_ const OrtOpSchema* schema, _I
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
   ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  const auto& inputs = onnx_schema->inputs();
+  const auto& inputs = schema->onnx_schema->inputs();
   ORT_API_RETURN_IF(index >= inputs.size(), ORT_INVALID_ARGUMENT, "Input index ", index, " out of range. Schema has ", inputs.size(), " inputs.");
   *out = inputs[index].GetTypeStr().c_str();
   return nullptr;
@@ -878,8 +914,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
   ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  *out = onnx_schema->outputs().size();
+  *out = schema->onnx_schema->outputs().size();
   return nullptr;
   API_IMPL_END
 }
@@ -890,8 +925,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
   ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  const auto& outputs = onnx_schema->outputs();
+  const auto& outputs = schema->onnx_schema->outputs();
   ORT_API_RETURN_IF(index >= outputs.size(), ORT_INVALID_ARGUMENT, "Output index ", index, " out of range. Schema has ",
                     outputs.size(), " outputs.");
   *out = outputs[index].GetName().c_str();
@@ -905,8 +939,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
   ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  const auto& outputs = onnx_schema->outputs();
+  const auto& outputs = schema->onnx_schema->outputs();
   ORT_API_RETURN_IF(index >= outputs.size(), ORT_INVALID_ARGUMENT, "Output index ", index, " out of range. Schema has ",
                     outputs.size(), " outputs.");
   *out = outputs[index].GetTypeStr().c_str();
@@ -915,49 +948,12 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _
 }
 
 ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraints, _In_ const OrtOpSchema* schema,
-                    _Outptr_ OrtOpSchemaTypeConstraints** out) {
+                    _Outptr_ const OrtOpSchemaTypeConstraints** out) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
   ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "out must not be null");
 
-  const auto* onnx_schema = reinterpret_cast<const ONNX_NAMESPACE::OpSchema*>(schema);
-  auto tcs = std::make_unique<OrtOpSchemaTypeConstraints>();
-
-  for (const auto& param : onnx_schema->typeConstraintParams()) {
-    OrtOpSchemaTypeConstraints::Entry entry;
-    entry.type_param_str = param.type_param_str;
-    entry.allowed_type_strs = param.allowed_type_strs;
-
-    // Find input indices that use this type constraint
-    const auto& inputs = onnx_schema->inputs();
-    for (size_t i = 0; i < inputs.size(); ++i) {
-      if (inputs[i].GetTypeStr() == param.type_param_str) {
-        entry.input_indices.push_back(i);
-      }
-    }
-
-    // Find output indices that use this type constraint
-    const auto& outputs = onnx_schema->outputs();
-    for (size_t i = 0; i < outputs.size(); ++i) {
-      if (outputs[i].GetTypeStr() == param.type_param_str) {
-        entry.output_indices.push_back(i);
-      }
-    }
-
-    tcs->entries.push_back(std::move(entry));
-  }
-
-  // Build the C-compatible pointer arrays after all entries are in their final locations.
-  // This must be done after the loop to avoid dangling pointers from vector reallocation
-  // or small string optimization (SSO) buffer moves.
-  for (auto& entry : tcs->entries) {
-    entry.allowed_type_ptrs.reserve(entry.allowed_type_strs.size());
-    for (const auto& s : entry.allowed_type_strs) {
-      entry.allowed_type_ptrs.push_back(s.c_str());
-    }
-  }
-
-  *out = tcs.release();
+  *out = &schema->type_constraints;
   return nullptr;
   API_IMPL_END
 }
@@ -1041,8 +1037,8 @@ ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetOutputIndices,
   API_IMPL_END
 }
 
-ORT_API(void, ReleaseOpSchemaTypeConstraints, _Frees_ptr_opt_ OrtOpSchemaTypeConstraints* type_constraints) {
-  delete type_constraints;
+ORT_API(void, ReleaseOpSchema, _Frees_ptr_opt_ OrtOpSchema* schema) {
+  delete schema;
 }
 
 ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_FindByName, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
@@ -1142,7 +1138,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetAllowedTypes,
     &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetInputIndices,
     &OrtExecutionProviderApi::OpSchemaTypeConstraints_GetOutputIndices,
-    &OrtExecutionProviderApi::ReleaseOpSchemaTypeConstraints,
+    &OrtExecutionProviderApi::ReleaseOpSchema,
     &OrtExecutionProviderApi::OpSchemaTypeConstraints_FindByName,
     // End of Version 25 - DO NOT MODIFY ABOVE
 };

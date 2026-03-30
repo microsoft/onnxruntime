@@ -122,7 +122,7 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
 
 // OpSchema APIs
 ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
-                    _In_ const char* domain, _Outptr_result_maybenull_ const OrtOpSchema** out_schema);
+                    _In_ const char* domain, _Outptr_result_maybenull_ OrtOpSchema** out_schema);
 ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out);
 ORT_API_STATUS_IMPL(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
@@ -135,7 +135,7 @@ ORT_API_STATUS_IMPL(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_
 ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const char** out);
 ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraints, _In_ const OrtOpSchema* schema,
-                    _Outptr_ OrtOpSchemaTypeConstraints** out);
+                    _Outptr_ const OrtOpSchemaTypeConstraints** out);
 ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetCount, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
                     _Out_ size_t* out);
 ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetName, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
@@ -146,7 +146,7 @@ ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetInputIndices, _In_ const OrtOpSch
                     _In_ size_t index, _Outptr_ const size_t** out_indices, _Out_ size_t* count);
 ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetOutputIndices, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
                     _In_ size_t index, _Outptr_ const size_t** out_indices, _Out_ size_t* count);
-ORT_API(void, ReleaseOpSchemaTypeConstraints, _Frees_ptr_opt_ OrtOpSchemaTypeConstraints* type_constraints);
+ORT_API(void, ReleaseOpSchema, _Frees_ptr_opt_ OrtOpSchema* schema);
 ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_FindByName, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
                     _In_ const char* type_str, _Out_ size_t* out_index);
 }  // namespace OrtExecutionProviderApi

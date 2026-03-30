@@ -1451,8 +1451,8 @@ struct OrtEpApi {
   /** \brief Get an ONNX operator schema from the global registry.
    *
    * Looks up a schema by name, maximum inclusive version, and domain.
-   * The returned pointer is non-owning and must not be freed by the caller.
-   * It is valid as long as the schema remains registered.
+   * The returned pointer is owned by the caller and must be released via ReleaseOpSchema.
+   * If the schema is not found, *out_schema is set to nullptr (no allocation occurs).
    *
    * \param[in] name A null-terminated string for the operator name.
    * \param[in] max_inclusive_version The maximum inclusive opset version.
@@ -1464,7 +1464,7 @@ struct OrtEpApi {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
-                  _In_ const char* domain, _Outptr_result_maybenull_ const OrtOpSchema** out_schema);
+                  _In_ const char* domain, _Outptr_result_maybenull_ OrtOpSchema** out_schema);
 
   /** \brief Get the first ONNX opset version that introduced this operator schema.
    *
@@ -1500,7 +1500,7 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the input parameter.
-   * \param[out] out The name of the input parameter. Valid as long as the schema is registered.
+   * \param[out] out The name of the input parameter. Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1513,7 +1513,7 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the input parameter.
-   * \param[out] out The type constraint string (e.g., "T"). Valid as long as the schema is registered.
+   * \param[out] out The type constraint string (e.g., "T"). Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1537,7 +1537,7 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the output parameter.
-   * \param[out] out The name of the output parameter. Valid as long as the schema is registered.
+   * \param[out] out The name of the output parameter. Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1550,7 +1550,7 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the output parameter.
-   * \param[out] out The type constraint string (e.g., "T"). Valid as long as the schema is registered.
+   * \param[out] out The type constraint string (e.g., "T"). Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1559,12 +1559,11 @@ struct OrtEpApi {
   ORT_API2_STATUS(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
                   _Outptr_ const char** out);
 
-  /** \brief Build type constraint information from an operator schema.
+  /** \brief Get the type constraint information from an operator schema.
    *
-   * Allocates and populates an OrtOpSchemaTypeConstraints container that holds all type constraints
-   * defined by the schema, including each constraint's name, allowed data types, and
-   * which input/output indices it applies to. The caller must release the returned object
-   * via ReleaseOpSchemaTypeConstraints.
+   * Returns a non-owning pointer to the OrtOpSchemaTypeConstraints embedded in the schema.
+   * The returned pointer is valid as long as the parent OrtOpSchema is alive.
+   * The caller must not release the returned pointer.
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[out] out Output parameter set to the type constraints container.
@@ -1574,7 +1573,7 @@ struct OrtEpApi {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(OpSchema_GetTypeConstraints, _In_ const OrtOpSchema* schema,
-                  _Outptr_ OrtOpSchemaTypeConstraints** out);
+                  _Outptr_ const OrtOpSchemaTypeConstraints** out);
 
   /** \brief Get the number of type constraints in the container.
    *
@@ -1592,7 +1591,7 @@ struct OrtEpApi {
    *
    * \param[in] type_constraints The OrtOpSchemaTypeConstraints instance.
    * \param[in] index Zero-based index of the type constraint.
-   * \param[out] out The type constraint name. Valid as long as the container exists.
+   * \param[out] out The type constraint name. Valid as long as the parent OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1605,7 +1604,7 @@ struct OrtEpApi {
    *
    * Returns an array of null-terminated strings representing the allowed data types
    * (e.g., "tensor(float)", "tensor(double)"). The array and its contents are valid
-   * as long as the container exists.
+   * as long as the parent OrtOpSchema exists.
    *
    * \param[in] type_constraints The OrtOpSchemaTypeConstraints instance.
    * \param[in] index Zero-based index of the type constraint.
@@ -1622,7 +1621,7 @@ struct OrtEpApi {
   /** \brief Get the input indices that use the i-th type constraint.
    *
    * Returns an array of zero-based input indices whose formal parameter type string
-   * matches this type constraint. The array is valid as long as the container exists.
+   * matches this type constraint. The array is valid as long as the parent OrtOpSchema exists.
    *
    * \param[in] type_constraints The OrtOpSchemaTypeConstraints instance.
    * \param[in] index Zero-based index of the type constraint.
@@ -1639,7 +1638,7 @@ struct OrtEpApi {
   /** \brief Get the output indices that use the i-th type constraint.
    *
    * Returns an array of zero-based output indices whose formal parameter type string
-   * matches this type constraint. The array is valid as long as the container exists.
+   * matches this type constraint. The array is valid as long as the parent OrtOpSchema exists.
    *
    * \param[in] type_constraints The OrtOpSchemaTypeConstraints instance.
    * \param[in] index Zero-based index of the type constraint.
@@ -1653,7 +1652,7 @@ struct OrtEpApi {
   ORT_API2_STATUS(OpSchemaTypeConstraints_GetOutputIndices, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
                   _In_ size_t index, _Outptr_ const size_t** out_indices, _Out_ size_t* count);
 
-  ORT_CLASS_RELEASE(OpSchemaTypeConstraints);
+  ORT_CLASS_RELEASE(OpSchema);
 
   /** \brief Find a type constraint by name and return its index.
    *
