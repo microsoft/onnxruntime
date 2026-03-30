@@ -75,7 +75,6 @@ bool SplitKConfig::UseSplitK(
     ActivationKind activation_kind,
     uint64_t batch_size,
     bool has_bias,
-    bool is_gemm,
     bool is_channels_last,
     uint32_t dim_a_outer,
     uint32_t dim_b_outer,
