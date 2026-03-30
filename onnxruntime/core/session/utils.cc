@@ -105,23 +105,40 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
   return Status::OK();
 }
 
+// Gets EP info needed for model package workflow to select suitable model.
+//
+// For simplicity, there are some constraints in this initial implementation:
+// - Only one EP is supported, skip ORT CPU EP.
+// - All devices should be supported by the same EP
+//
 Status GetSelectionEpInfo(const OrtSessionOptions* session_options,
                           std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
                           std::vector<SelectionEpInfo>& ep_infos) {
-  // For simplicity, there are some constraints in this initial implementation:
-  // - Only one EP/IExecutionProvider is supported
-  // - All devices should be supported by the same EP
+  if (provider_list.empty()) {
+    return Status::OK();
+  }
+
+  // Pick the first non-CPU provider if available; otherwise fall back to the first provider.
+  size_t selected_idx = 0;
+  for (size_t i = 0; i < provider_list.size(); ++i) {
+    const auto& provider = provider_list[i];
+    if (provider && provider->Type() != onnxruntime::kCpuExecutionProvider) {
+      selected_idx = i;
+      break;
+    }
+  }
+
+  auto& provider = provider_list[selected_idx];
+
+  if (provider && provider->Type() == onnxruntime::kCpuExecutionProvider) {
+    return Status::OK();
+  }
+
   ep_infos.push_back(SelectionEpInfo{});
   auto& ep_info = ep_infos.back();
 
-  ORT_ENFORCE(!provider_list.empty(), "IExecutionProvider instances not available.");
-
-  auto& provider = provider_list.front();
-
   // Add ep name to ep_info
-  if (!provider_list.empty()) {
-    ep_info.ep_name = provider_list.front()->Type();
-  }
+  ep_info.ep_name = provider->Type();
   ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
 
   // Add ep devices to ep_info
@@ -129,7 +146,7 @@ Status GetSelectionEpInfo(const OrtSessionOptions* session_options,
   ep_info.ep_devices = ep_devices;
 
   // Add ep factory to ep_info
-  ep_info.ep_factory = (ep_devices.empty()) ? nullptr : ep_devices.front()->ep_factory;
+  ep_info.ep_factory = ep_devices.empty() ? nullptr : ep_devices.front()->ep_factory;
 
   // Add hardware devices to ep_info
   ep_info.hardware_devices.reserve(ep_devices.size());
@@ -444,6 +461,13 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(options_to_use, provider_list, ep_infos));
 
+      if (ep_infos.empty()) {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "No execution providers were provided or selected for model variant selection. "
+                                     "Try specifying the model file path instead of a model package, or check the "
+                                     "EP selection policy and provider factories.");
+      }
+
       // Select a model variant based on EP info and component metadata and get its path.
       ModelPackageContext model_package_context(package_root);
 
@@ -454,7 +478,8 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       } else {
         return OrtApis::CreateStatus(ORT_FAIL,
                                      "No suitable model variant found for the available execution providers."
-                                     "Try specifying the model file path instead.");
+                                     "Try specifying the model file path instead of a model package, or check the "
+                                     "model variants' constraints in the manifest json or metadata json.");
       }
 
       ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
