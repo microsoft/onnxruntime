@@ -105,6 +105,14 @@ class ApiNode final : public api::NodeRef {
   int SinceVersion() const override;
   int64_t Id() const override;
 
+  std::string_view GetLayeringAnnotation() const override {
+    return node_.GetLayeringAnnotation();
+  }
+
+  void SetLayeringAnnotation(std::string_view annotation) override {
+    node_.SetLayeringAnnotation(std::string(annotation));
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
 };
@@ -762,6 +770,9 @@ std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node
   Node& node = CreateNodeHelper(graph_, source_node.Name(), op_type, source_node.Inputs(),
                                 source_node.Outputs().size(), domain, new_node_since_version,
                                 source_node.GetExecutionProviderType());
+
+  const auto& layering_annotation = source_node.GetLayeringAnnotation();
+  node.SetLayeringAnnotation(std::string(layering_annotation));
 
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
   new_node->CopyAttributes(source_node);
