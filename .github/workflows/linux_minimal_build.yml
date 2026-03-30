@@ -29,28 +29,28 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
           disable-terrapin: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
 
       - name: Upload Test Data Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test_data
           path: ${{ runner.temp }}/minimal_build_test_data/
@@ -66,15 +66,15 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -85,7 +85,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Build 2 (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -100,7 +100,7 @@ jobs:
             --enable_training_ops
 
       - name: Run Build 2 (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -125,24 +125,24 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
           disable-terrapin: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           reduced-ops-config-file: required_ops.ort_models.config
           enable-custom-ops: 'true'
@@ -159,23 +159,23 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
           disable-terrapin: 'true'
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           reduced-ops-config-file: required_ops_and_types.ort_models.config
           enable-type-reduction: 'true'
@@ -191,24 +191,24 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
           disable-terrapin: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           globally_allowed_types: 'bool,float,int8_t,uint8_t'
           enable-type-reduction: 'true'
@@ -225,15 +225,15 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -245,7 +245,7 @@ jobs:
 
 
       - name: Run Build 5 (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -258,7 +258,7 @@ jobs:
             --minimal_build extended
 
       - name: Run Build 5 (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -270,7 +270,7 @@ jobs:
             --use_binskim_compliant_compile_flags
             --minimal_build extended
       - name: Run Build 5 (Test)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -292,12 +292,12 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -314,7 +314,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Run Build 6a (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -330,7 +330,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6a (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -347,7 +347,7 @@ jobs:
 
 
       - name: Run Build 6a (Test)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -372,7 +372,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -383,7 +383,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -394,7 +394,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Build 6b (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -413,7 +413,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6b (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -441,7 +441,7 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -452,7 +452,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -469,7 +469,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Run Build 6c (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -488,7 +488,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6c (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
             }}
@@ -518,10 +518,10 @@ jobs:
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - name: Download Test Data Artifact
@@ -531,7 +531,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
