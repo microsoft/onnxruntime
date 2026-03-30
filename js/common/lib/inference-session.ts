@@ -520,7 +520,7 @@ export declare namespace InferenceSession {
 /**
  * Represent a runtime instance of an ONNX model.
  */
-export interface InferenceSession {
+export interface InferenceSession extends AsyncDisposable {
   // #region run()
 
   /**
