@@ -1,3 +1,7 @@
+schedules:
+- cron: '0 12 * * *'
+  displayName: "Nightly RC Build"
+
 trigger: none
 
 parameters:

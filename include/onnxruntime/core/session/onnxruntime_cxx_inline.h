@@ -904,6 +904,11 @@ inline Env& Env::UnregisterExecutionProviderLibrary(const char* registration_nam
   return *this;
 }
 
+inline Env& Env::SetPerSessionThreadPoolCallbacks(const OrtThreadPoolCallbacksConfig& config) {
+  ThrowOnError(GetApi().SetPerSessionThreadPoolCallbacks(p_, &config));
+  return *this;
+}
+
 inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
   size_t num_devices = 0;
   const OrtEpDevice* const* device_ptrs = nullptr;
