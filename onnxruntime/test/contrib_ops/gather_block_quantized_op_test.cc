@@ -82,7 +82,7 @@ void CheckDataAndShape(const std::vector<T>& data, const std::vector<int64_t>& s
 
   ORT_ENFORCE(static_cast<int64_t>(data.size()) == total_elements, "Data size does not match the shape",
               "Data size: ", data.size(), ", Expected size: ", total_elements,
-              ", Shape: ", VectorToString(shape), " Name:", name, " Type:", typeid(T).name());
+              ", Shape: ", VectorToString(shape), " Name:", name);
 }
 
 // Combinations: types, gather_axis, quantize_axis, block_size, indices, scale shape vs data shape
