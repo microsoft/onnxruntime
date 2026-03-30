@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 // GPU transpose kernel for the Scan control flow helper.
-// Handles arbitrary N-D permutations by computing output coordinates
-// from linear indices.
+// Supports permutations up to kMaxTransposeDims dimensions by computing
+// output coordinates from linear indices.
 
 #include <cuda_runtime.h>
 #include <cstddef>

@@ -8,6 +8,7 @@
 #endif
 
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 #include "core/framework/allocator.h"
@@ -131,12 +132,16 @@ struct OpKernelContext {
     return Output(index, TensorShape{shape});
   }
   [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
-    const auto* ort_ep = op_kernel_.Info().GetOrtEp();
+    const auto* execution_provider = op_kernel_.Info().GetExecutionProvider();
+    ORT_ENFORCE(execution_provider != nullptr, "Kernel does not have an execution provider.");
+    const auto* ort_ep = execution_provider->GetOrtEp();
     ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
     return static_cast<const Ep*>(ort_ep)->GetTempSpaceCPUAllocator(output);
   }
   [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
-    const auto* ort_ep = op_kernel_.Info().GetOrtEp();
+    const auto* execution_provider = op_kernel_.Info().GetExecutionProvider();
+    ORT_ENFORCE(execution_provider != nullptr, "Kernel does not have an execution provider.");
+    const auto* ort_ep = execution_provider->GetOrtEp();
     ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
     return static_cast<const Ep*>(ort_ep)->GetTempSpaceAllocator(output);
   }

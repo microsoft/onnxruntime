@@ -61,11 +61,12 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
                                                    "CUDA Plugin EP created",
                                                    ORT_FILE, __LINE__, __FUNCTION__));
 
-  // Store per-EP runtime configuration in a global map keyed by the
-  // adapter-wrapped execution provider pointer. Migrated kernels retrieve these
-  // settings at compute time via GetCudaKernelAdapterRuntimeConfigForProvider().
-  // Adding a new config field only requires updating CudaKernelAdapterRuntimeConfig,
-  // CudaEp::Config, and the struct-initializer below — no function-signature change.
+  // Store per-EP runtime configuration inside the adapter-wrapped execution
+  // provider itself. Migrated kernels retrieve a shared config object at
+  // compute time via GetCudaKernelAdapterRuntimeConfigForProvider().
+  // Adding a new config field only requires updating
+  // CudaKernelAdapterRuntimeConfig, CudaEp::Config, and the struct-initializer
+  // below — no function-signature change.
   onnxruntime::cuda::detail::CudaKernelAdapterRuntimeConfig adapter_config;
   adapter_config.use_tf32 = config_.use_tf32;
   adapter_config.skip_layer_norm_strict_mode = config_.enable_skip_layer_norm_strict_mode;

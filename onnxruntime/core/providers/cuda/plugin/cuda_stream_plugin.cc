@@ -106,7 +106,6 @@ OrtStatus* CudaSyncStream::InitHandles() {
   PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id_));
 
   PL_CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
-  RegisterStream(cuda_stream_, this);
 
   PL_CUBLAS_RETURN_IF_ERROR(cublasCreate(&cublas_handle_));
   PL_CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas_handle_, cuda_stream_));
@@ -115,6 +114,7 @@ OrtStatus* CudaSyncStream::InitHandles() {
   PL_CUDNN_RETURN_IF_ERROR(cudnnSetStream(cudnn_handle_, cuda_stream_));
 
   PL_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&cublas_lt_handle_));
+  RegisterStream(cuda_stream_, this);
 
   return nullptr;
 }

@@ -124,6 +124,14 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
   size_t& num_ep_devices = *p_num_ep_devices;
   num_ep_devices = 0;
+  auto release_ep_devices = [&](OrtStatus* status) -> OrtStatus* {
+    for (size_t j = 0; j < num_ep_devices; ++j) {
+      factory->ep_api_.ReleaseEpDevice(ep_devices[j]);
+      ep_devices[j] = nullptr;
+    }
+    num_ep_devices = 0;
+    return status;
+  };
 
   int cuda_device_index = 0;
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
@@ -194,19 +202,30 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       factory->ort_api_.ReleaseKeyValuePairs(ep_options);
 
       if (status != nullptr) {
-        return status;
+        return release_ep_devices(status);
       }
 
+      auto release_current_ep_device = [factory](OrtEpDevice* device) {
+        factory->ep_api_.ReleaseEpDevice(device);
+      };
+      // ep_device_guard owns the current device. On error, release_ep_devices cleans up
+      // previously committed devices [0, num_ep_devices), while the guard cleans up this one.
+      std::unique_ptr<OrtEpDevice, decltype(release_current_ep_device)> ep_device_guard(ep_device, release_current_ep_device);
+
       // Register allocator info for GPU device memory
-      RETURN_IF_ERROR(factory->ep_api_.EpDevice_AddAllocatorInfo(
-          ep_device, cache_entry->device_memory_info));
+      status = factory->ep_api_.EpDevice_AddAllocatorInfo(ep_device, cache_entry->device_memory_info);
+      if (status != nullptr) {
+        return release_ep_devices(status);
+      }
 
       // Register allocator info for pinned host memory associated with the
       // same CUDA ordinal as the device allocator above.
-      RETURN_IF_ERROR(factory->ep_api_.EpDevice_AddAllocatorInfo(
-          ep_device, cache_entry->pinned_memory_info));
+      status = factory->ep_api_.EpDevice_AddAllocatorInfo(ep_device, cache_entry->pinned_memory_info);
+      if (status != nullptr) {
+        return release_ep_devices(status);
+      }
 
-      ep_devices[num_ep_devices++] = ep_device;
+      ep_devices[num_ep_devices++] = ep_device_guard.release();
     }
   }
 

@@ -439,7 +439,7 @@ template <>
 struct SizeOf<void> {
   static constexpr size_t value = 0;
 };
-inline size_t BytesForCount(size_t count_or_bytes, size_t element_size) {
+[[nodiscard]] inline size_t BytesForCount(size_t count_or_bytes, size_t element_size) {
   if (element_size == 0) return count_or_bytes;
   if (count_or_bytes > (std::numeric_limits<size_t>::max() / element_size)) return 0;
   return count_or_bytes * element_size;
@@ -479,19 +479,27 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
   auto [it, inserted] = handles_by_device.try_emplace(device_id);
   if (inserted) {
     int prev_device = -1;
-    cudaGetDevice(&prev_device);
+    const cudaError_t get_device_result = cudaGetDevice(&prev_device);
     PL_CUDA_CALL_THROW(cudaSetDevice(device_id));
     if (cublasCreate(&it->second.cublas) != CUBLAS_STATUS_SUCCESS) {
-      cudaSetDevice(prev_device);
+      if (get_device_result == cudaSuccess) {
+        cudaSetDevice(prev_device);
+      }
+      handles_by_device.erase(it);
       ORT_THROW("Failed to create default cuBLAS handle for CUDA plugin device ", device_id);
     }
     if (cudnnCreate(&it->second.cudnn) != CUDNN_STATUS_SUCCESS) {
       cublasDestroy(it->second.cublas);
       it->second.cublas = nullptr;
-      cudaSetDevice(prev_device);
+      if (get_device_result == cudaSuccess) {
+        cudaSetDevice(prev_device);
+      }
+      handles_by_device.erase(it);
       ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
     }
-    PL_CUDA_CALL_THROW(cudaSetDevice(prev_device));
+    if (get_device_result == cudaSuccess) {
+      PL_CUDA_CALL_THROW(cudaSetDevice(prev_device));
+    }
   }
 
   return it->second;
@@ -504,9 +512,9 @@ inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
   auto it = props.find(device_id);
   if (it == props.end()) {
     auto prop = std::make_unique<cudaDeviceProp>();
-    if (cudaGetDeviceProperties(prop.get(), device_id) != cudaSuccess) {
-      std::memset(prop.get(), 0, sizeof(*prop));
-      prop->major = -1;
+    const cudaError_t result = cudaGetDeviceProperties(prop.get(), device_id);
+    if (result != cudaSuccess) {
+      ORT_THROW("Failed to query CUDA device properties for device ", device_id, ": ", cudaGetErrorString(result));
     }
     it = props.emplace(device_id, std::move(prop)).first;
   }
@@ -983,6 +991,9 @@ class CudaKernel : public OpKernel {
   inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t cnt) const {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
     size_t sz = detail::BytesForCount(cnt, detail::SizeOf<T>::value);
+    if (sz == 0) {
+      ORT_THROW("CUDA pinned CPU buffer allocation size overflow for ", cnt, " elements");
+    }
     void* p = nullptr;
     if (cudaHostAlloc(&p, sz, cudaHostAllocDefault) != cudaSuccess) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
     return IAllocatorUniquePtr<T>(static_cast<T*>(p), [](T* ptr) { if (ptr) cudaFreeHost(ptr); });
@@ -997,7 +1008,9 @@ class CudaKernel : public OpKernel {
       T* p = CpuPtr();
       for (size_t i = 0; i != n; ++i) *p++ = v;
     }
-    CudaAsyncBuffer(const CudaKernel* ok, gsl::span<T const> vec) : CudaAsyncBuffer(ok, vec.size()) { memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T)); }
+    CudaAsyncBuffer(const CudaKernel* ok, gsl::span<T const> vec) : CudaAsyncBuffer(ok, vec.size()) {
+      memcpy(CpuPtr(), vec.data(), detail::BytesForCount(vec.size(), sizeof(T)));
+    }
     void AllocCpuPtr(size_t n) {
       cpu_ = op_kernel_->AllocateBufferOnCPUPinned<T>(n);
       if (!cpu_) throw std::runtime_error("alloc fail");
@@ -1006,7 +1019,11 @@ class CudaKernel : public OpKernel {
     Status CopyToGpu(void* s) {
       if (cpu_) {
         gpu_ = op_kernel_->GetScratchBuffer<T>(count_, s);
-        if (cudaMemcpyAsync(gpu_.get(), cpu_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice, static_cast<cudaStream_t>(s)) != cudaSuccess) return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Memcpy fail");
+        const size_t bytes = detail::BytesForCount(count_, sizeof(T));
+        if (count_ > 0 && bytes == 0) {
+          ORT_THROW("CUDA async buffer copy size overflow for ", count_, " elements");
+        }
+        if (cudaMemcpyAsync(gpu_.get(), cpu_.get(), bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(s)) != cudaSuccess) return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Memcpy fail");
         op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
       }
       return Status::OK();
