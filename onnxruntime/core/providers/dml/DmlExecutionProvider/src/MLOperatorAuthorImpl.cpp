@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 
+#include "core/common/endian.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/execution_frame.h"
@@ -1589,7 +1590,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
                     auto src = gsl::make_span<const unsigned char>(reinterpret_cast<const unsigned char*>(fileOffset), safeTensorByteSize);
                     auto dst = gsl::make_span<unsigned char>(reinterpret_cast<unsigned char*>(m_unpackedTensor.get()), safeTensorByteSize);
-                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(impl->data_type());
+                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(impl->data_type()));
 
                     // If element size is unknown, set it to 1 to disable byteswapping
                     if (element_size < 1) element_size = 1;

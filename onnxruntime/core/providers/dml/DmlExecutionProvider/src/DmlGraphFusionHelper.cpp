@@ -3,6 +3,7 @@
 #include "DmlGraphFusionHelper.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 
+#include "core/common/endian.h"
 #include "core/framework/endian_utils.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
@@ -131,7 +132,7 @@ namespace DmlGraphFusionHelper
 
                     auto src = gsl::make_span<const unsigned char>(reinterpret_cast<const unsigned char*>(fileOffset), safeTensorByteSize);
                     auto dst = gsl::make_span<unsigned char>(reinterpret_cast<unsigned char*>(unpackedTensor.get()), safeTensorByteSize);
-                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(initializer->data_type());
+                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer->data_type()));
 
                     // If element size is unknown, set it to 1 to disable byteswapping
                     if (element_size < 1) element_size = 1;
