@@ -248,7 +248,6 @@
     endif()
   endif()
 
-  target_compile_features(onnxruntime_providers_webgpu PRIVATE cxx_std_20)
   add_dependencies(onnxruntime_providers_webgpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   if (onnxruntime_WGSL_TEMPLATE)
