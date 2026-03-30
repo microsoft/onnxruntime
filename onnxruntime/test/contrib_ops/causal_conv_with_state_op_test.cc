@@ -510,39 +510,39 @@ TEST(CausalConvWithStateTest, StateContinuity) {
   std::vector<float> expected_output1;
   std::vector<float> expected_state1;
   CausalConvWithStateReference(input1, weight_data, &bias_data, &conv_state,
-                                 expected_output1, expected_state1,
-                                 batch_size, channels, input_length, kernel_size, "none");
+                               expected_output1, expected_state1,
+                               batch_size, channels, input_length, kernel_size, "none");
 
   RunCausalConvWithStateTest(input1, weight_data, &bias_data, &conv_state,
-                               expected_output1, expected_state1,
-                               batch_size, channels, input_length, kernel_size, "none",
-                               TensorType::kFloat);
+                             expected_output1, expected_state1,
+                             batch_size, channels, input_length, kernel_size, "none",
+                             TensorType::kFloat);
 
   // Second token, using present_state from first as conv_state
   std::vector<float> input2 = {2.0f};
   std::vector<float> expected_output2;
   std::vector<float> expected_state2;
   CausalConvWithStateReference(input2, weight_data, &bias_data, &expected_state1,
-                                 expected_output2, expected_state2,
-                                 batch_size, channels, input_length, kernel_size, "none");
+                               expected_output2, expected_state2,
+                               batch_size, channels, input_length, kernel_size, "none");
 
   RunCausalConvWithStateTest(input2, weight_data, &bias_data, &expected_state1,
-                               expected_output2, expected_state2,
-                               batch_size, channels, input_length, kernel_size, "none",
-                               TensorType::kFloat);
+                             expected_output2, expected_state2,
+                             batch_size, channels, input_length, kernel_size, "none",
+                             TensorType::kFloat);
 
   // Third token
   std::vector<float> input3 = {3.0f};
   std::vector<float> expected_output3;
   std::vector<float> expected_state3;
   CausalConvWithStateReference(input3, weight_data, &bias_data, &expected_state2,
-                                 expected_output3, expected_state3,
-                                 batch_size, channels, input_length, kernel_size, "none");
+                               expected_output3, expected_state3,
+                               batch_size, channels, input_length, kernel_size, "none");
 
   RunCausalConvWithStateTest(input3, weight_data, &bias_data, &expected_state2,
-                               expected_output3, expected_state3,
-                               batch_size, channels, input_length, kernel_size, "none",
-                               TensorType::kFloat);
+                             expected_output3, expected_state3,
+                             batch_size, channels, input_length, kernel_size, "none",
+                             TensorType::kFloat);
 
   // The present_state after processing [1, 2, 3] should be [2, 3]
   EXPECT_NEAR(expected_state3[0], 2.0f, 1e-5f);
@@ -573,8 +573,8 @@ TEST(CausalConvWithStateTest, SequenceVsTokenByToken) {
   std::vector<float> full_output;
   std::vector<float> full_final_state;
   CausalConvWithStateReference(full_input, weight_data, &bias_data, &conv_state,
-                                 full_output, full_final_state,
-                                 batch_size, channels, 4, kernel_size, "none");
+                               full_output, full_final_state,
+                               batch_size, channels, 4, kernel_size, "none");
 
   // Process token by token
   std::vector<float> current_state = conv_state;
@@ -589,8 +589,8 @@ TEST(CausalConvWithStateTest, SequenceVsTokenByToken) {
     std::vector<float> token_output;
     std::vector<float> next_state;
     CausalConvWithStateReference(token_input, weight_data, &bias_data, &current_state,
-                                   token_output, next_state,
-                                   batch_size, channels, 1, kernel_size, "none");
+                                 token_output, next_state,
+                                 batch_size, channels, 1, kernel_size, "none");
 
     // Collect outputs
     for (int d = 0; d < channels; ++d) {
