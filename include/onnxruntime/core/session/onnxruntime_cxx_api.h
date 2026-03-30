@@ -30,7 +30,6 @@
 #include <cstddef>
 #include <cstdio>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>

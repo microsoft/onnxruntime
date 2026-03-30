@@ -4,6 +4,7 @@
 #include "core/session/plugin_ep/ep_api.h"
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>

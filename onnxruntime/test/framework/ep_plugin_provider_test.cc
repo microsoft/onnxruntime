@@ -986,6 +986,7 @@ TEST(OpSchemaTypeConstraintTest, AllowedTypesAreValidStrings) {
   }
 }
 
+#if !defined(ORT_NO_EXCEPTIONS)
 // Test out-of-range index for type constraint accessors.
 TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
   Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
@@ -996,6 +997,7 @@ TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
   // Accessing beyond the count should throw
   EXPECT_THROW(schema.GetTypeConstraint(count), Ort::Exception);
 }
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 // Test pointer identity: inputs sharing a constraint return the same pointer.
 TEST(OpSchemaTypeConstraintTest, PointerIdentityForSharedConstraints) {
