@@ -165,27 +165,18 @@ enum class ProgramTensorMetadataDependency : int {
 };
 OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency);
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
 inline ProgramTensorMetadataDependency operator|(ProgramTensorMetadataDependency a, ProgramTensorMetadataDependency b) {
-  return (ProgramTensorMetadataDependency)((int&)a | (int&)b);
+  return static_cast<ProgramTensorMetadataDependency>(static_cast<int>(a) | static_cast<int>(b));
 }
 inline ProgramTensorMetadataDependency operator&(ProgramTensorMetadataDependency a, ProgramTensorMetadataDependency b) {
-  return (ProgramTensorMetadataDependency)((int&)a & (int&)b);
+  return static_cast<ProgramTensorMetadataDependency>(static_cast<int>(a) & static_cast<int>(b));
 }
 inline ProgramTensorMetadataDependency& operator|=(ProgramTensorMetadataDependency& a, ProgramTensorMetadataDependency b) {
-  return (ProgramTensorMetadataDependency&)((int&)a |= (int&)b);
+  return a = a | b;
 }
 inline ProgramTensorMetadataDependency& operator&=(ProgramTensorMetadataDependency& a, ProgramTensorMetadataDependency b) {
-  return (ProgramTensorMetadataDependency&)((int&)a &= (int&)b);
+  return a = a & b;
 }
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
 
