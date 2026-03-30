@@ -38,6 +38,9 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
                 ") must be >= n_supports (", vector_count_, ")");
     ORT_ENFORCE(!support_vectors_.empty(),
                 "SVMRegressor: support_vectors must not be empty when n_supports > 0");
+    ORT_ENFORCE(support_vectors_.size() % static_cast<size_t>(vector_count_) == 0,
+                "SVMRegressor: support_vectors size (", support_vectors_.size(),
+                ") must be a multiple of n_supports (", vector_count_, ")");
 
     feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
     ORT_ENFORCE(feature_count_ > 0,
