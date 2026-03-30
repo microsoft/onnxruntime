@@ -117,7 +117,7 @@ In the plugin build, `provider_api.h` (normally included from `cuda_common.h`) i
 
 ### 3.4 Kernel Adapter (`cuda_kernel_adapter.h`)
 
-This 700+ line header provides everything CUDA kernels need that would normally come from framework infrastructure:
+This 1100+ line header provides everything CUDA kernels need that would normally come from framework infrastructure:
 
 | Section | What It Provides |
 |---------|-----------------|
@@ -575,7 +575,6 @@ Section 7 reflects the current source exclusions in `cmake/onnxruntime_providers
 |----------------|--------------------------|------------------------|
 | `core/providers/cuda/controlflow/*` | The framework controlflow kernels inherit from CPU-side controlflow bases (`If`, `Loop`, `Scan`) and are intentionally omitted from the plugin source list | No change is currently planned. The plugin uses its own `cuda_controlflow_plugin.cc` wrappers instead of these framework sources |
 | `tunable/*` | Depends on the real `CudaTuningContext` and other framework CUDA EP infrastructure that is not available in the plugin build | Add a plugin-capable tuning context and remove the remaining framework-only tunable dependencies |
-| `math/einsum.cc` | The top-level framework einsum provider path is still not plugin-safe even though supporting utility code is now included | Finish a plugin-safe top-level einsum path and then remove the CMake exclusion |
 | `tensor/sequence_op.cc` | Uses `TensorSeq`, which is still not adapter-safe here | Add `TensorSeq` adapter coverage |
 | `contrib_ops/cuda/llm/*` | Contrib LLM sources have not gone through the same adapter-migration pass as the core CUDA LLM kernels | Finish contrib-LLM-specific adapter work |
 | `contrib_ops/cuda/tensor/shrunken_gather.cc` | The training-side header path still depends on framework/provider API wiring | Low-priority training-specific adapter work |
@@ -593,8 +592,6 @@ The current exclusions fall into a few categories:
 2. **Remaining adapter gaps** — `TensorSeq` (needed for `sequence_op.cc`) and contrib-LLM-specific plumbing still need dedicated adapter work.
 
 3. **Deliberate scope cuts** — ATen and collective/NCCL sources remain intentionally out of scope for the standalone CUDA plugin.
-
-4. **Top-level framework wrappers still excluded** — `math/einsum.cc` remains excluded even though supporting pieces such as `einsum_utils/*` are now plugin-safe.
 
 ---
 
@@ -672,21 +669,28 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 
 `onnxruntime/test/python/transformers/test_cuda_plugin_ep.py` provides the current focused plugin validation flow:
 
-| Stage | What It Tests |
-|-------|---------------|
-| Registration | Dynamic loading via `register_execution_provider_library()` and EP device discovery |
-| Stage 2 | Basic ops: Add, MatMul, Gemm, Conv |
-| Stage 3 | NHWC-requested sessions: Conv, BatchNorm, MaxPool, AveragePool. These validate correctness under `prefer_nhwc` and require plugin-backed NHWC execution to succeed; they are the focused regression suite for the plugin NHWC path |
-| Stage 5A | Standard ops: Reshape, Split, Concat, Gather, Unsqueeze |
-| Stage 5B | More ops: Tile, CumSum, ConstantOfShape, SpaceToDepth, Pad, Slice, Resize, Sum |
-| Stage 5C | CPU base class ops: Upsample, DepthToSpace |
-| Stage 5D | Contrib ops: FastGelu, SkipLayerNorm, BiasDropout |
+| Category | What It Tests |
+|----------|---------------|
+| Registration | Dynamic loading via `register_execution_provider_library()` and EP device discovery (Add, MatMul, Gemm, Conv) |
+| Provider options | Valid option parsing, invalid device rejection, multi-device selection |
+| NHWC | NHWC-requested sessions: Conv, BatchNorm, MaxPool, AveragePool. These validate correctness under `prefer_nhwc` and require plugin-backed NHWC execution to succeed; they are the focused regression suite for the plugin NHWC path |
+| Tensor ops | Reshape, Split, Concat, Gather, Unsqueeze, Tile, Pad, Slice, Transpose, Cast, Where, Flatten, ArgMax, TopK, Trilu, NonZero |
+| Math ops | Softmax, Relu, Sigmoid, Tanh, Einsum (single and batched) |
+| Reduce | ReduceMean, ReduceSum |
+| Space/depth | SpaceToDepth, DepthToSpace, Upsample |
+| Shape ops | CumSum, ConstantOfShape, Resize, Sum (variadic) |
+| Normalization | LayerNormalization, InstanceNormalization |
+| Conv | ConvTranspose |
+| Scatter/gather | GatherND, ScatterElements, OneHot |
+| Spatial | GridSample |
+| Contrib ops | FastGelu, Gelu, BiasGelu, SkipLayerNorm, BiasDropout, FusedMatMul |
 | Dropout | Dropout opset 7 and opset 10 — verifies registrations moved to `dropout.cc` |
-| Quantization | DequantizeLinear / QuantizeLinear opset 21 — exercises `TWO_TYPED_KERNEL_EX` adapter macro |
+| Quantization | DequantizeLinear / QuantizeLinear opset 21 — exercises `TWO_TYPED_KERNEL_EX` adapter macro; MatMulInteger |
 | GatherBlockQuantized | Contrib `GatherBlockQuantized` — exercises `THREE_TYPED_KERNEL_EX` adapter macro |
 | Identity | Identity opset 13 and opset 25 — re-enabled op with `TensorSeq` path guarded |
 | Crop | Crop (opset 1) — previously excluded contrib op, now re-enabled |
-| Key-ops probe | Session-based probing of representative ops: Sub, Relu, Softmax, Transpose, Cast, Sigmoid, ConvTranspose, LRN |
+| Memcpy | Explicit `MemcpyFromHost` and `MemcpyToHost` standalone tests to ensure copy ops are dispatched |
+| Key-ops probe | Session-based probing that all key ops are assigned to `CudaPluginExecutionProvider` |
 
 ### 10.2 Running Tests
 
@@ -846,18 +850,22 @@ onnxruntime/core/providers/cuda/plugin/
 ├── cuda_ep.h / .cc              # CudaEp : OrtEp implementation
 ├── cuda_ep_factory.h / .cc      # CudaEpFactory : OrtEpFactory
 ├── cuda_plugin_ep.cc            # DLL entry points (CreateEpFactories/ReleaseEpFactory)
+├── cuda_plugin_ep_symbols.def   # Windows DLL export definitions
 ├── cuda_plugin_kernels.h / .cu  # Kernel registry creation
 ├── cuda_stream_plugin.h / .cc   # CudaSyncStream (handles, notifications)
 ├── cuda_allocator_plugin.h / .cc    # Device/pinned allocators
 ├── cuda_data_transfer_plugin.h / .cc # GPU↔CPU data transfer
+├── cuda_memcpy_plugin.cc        # MemcpyFromHost/MemcpyToHost standalone kernels
 ├── cuda_controlflow_plugin.h / .cc / .cu  # If/Loop/Scan wrappers
 ├── cuda_plugin_utils.h          # Common macros, error handling
 └── provider_api_shims.cc        # Reimplemented utility functions
 
 include/onnxruntime/ep/
+├── README.md                    # EP adapter layer overview
 ├── adapters.h                   # Master include + type aliasing (force-included)
 ├── api.h                        # ORT C API includes
 ├── common.h                     # EP common utilities
+├── get_capability_utils.h       # GetCapability helper utilities
 └── adapter/
     ├── allocator.h              # IAllocator adapter
     ├── data_transfer_manager.h  # DataTransferManager adapter
@@ -979,7 +987,7 @@ include/onnxruntime/ep/
 
     For plugin EPs, the `OrtEp::GetCapability` callback currently has no mechanism to receive or report resource usage — the `OrtEp` C API does not expose `IResourceAccountant`. Two design options:
 
-    - **Option A (preferred — ORT core change):** Add an `OrtEp` analogue of the current `IResourceAccountant` flow instead of inventing a separate plugin-only protocol. In the core path, the partitioner passes an `IResourceAccountant*` into `IExecutionProvider::GetCapability(...)`. The plugin equivalent should preserve that model as closely as possible: either expose an accountant-like object through the `OrtEp` API, or add a small `OrtEp` callback surface that the partitioner can use to compute and accumulate per-node resource cost while still keeping the partitioner's threshold/stop-assignment logic in one place.
+    - **Option A (preferred — ORT core change, completed in PR #27595):** Add an `OrtEp` analogue of the current `IResourceAccountant` flow. PR #27595 introduced `OrtEpGraphSupportInfo_RequestResourceForNode` and `OrtEpGraphSupportInfo_StopAssigningNodesDueToResourceExhaustion` to the C API. This is the implementation path moving forward.
 
     - **Option B (plugin-side workaround):** Expose the VRAM threshold through a plugin-specific session option key. During `GetCapabilityImpl`, the plugin reads the threshold from the parsed config and performs its own initializer-size accounting using `OrtEp_GetNodeAttributes` / node-graph-view APIs already present in the `OrtEp` API surface. This avoids an ORT core change but duplicates budget-tracking logic.
 
@@ -987,4 +995,4 @@ include/onnxruntime/ep/
 
     PR #27595 also introduces `layering_annotations` — node-level `"layer_ann"` metadata that routes nodes to specific EPs or CPU during partitioning. The expected model is that plugin EPs participate through the same `GetCapability` flow and therefore observe whatever node set ORT presents after applying layering rules. In practice that should mean no plugin-specific changes are needed to respect annotations that exclude nodes from the plugin. However, the plugin design should avoid depending on undocumented filtering details in the `OrtGraph*` contract. If the plugin EP itself needs to *read* layering annotations for internal decisions, or if the API needs to make filtered-vs-unfiltered graph semantics explicit, that would require new `OrtEp` API surface.
 
-    **Recommended action:** Extend the `OrtEp` C API with a plugin equivalent of the existing resource-accounting flow (Option A), and document the graph-view contract for plugin `GetCapability` under layering annotations as part of the same effort that exposes `kOrtSessionOptionsLayerAssignmentSettings` to plugin EP sessions.
+    **Recommended action:** Combine with the recently added `OrtEpGraphSupportInfo_RequestResourceForNode` C API explicitly (completed in PR #27595 on the ORT core side) to correctly assign nodes within the budget in the plugin's `CudaEp::GetCapabilityImpl()` when layer assignments exist.
