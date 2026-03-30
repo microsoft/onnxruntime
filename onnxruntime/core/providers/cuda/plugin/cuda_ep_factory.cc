@@ -7,6 +7,7 @@
 #include "core/common/string_utils.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <optional>
 #include <string>
@@ -100,6 +101,14 @@ std::string ToUpper(std::string value) {
 
 std::string GetProviderOptionPrefix(std::string_view provider_name) {
   return "ep." + onnxruntime::utils::GetLowercaseString(std::string{provider_name}) + ".";
+}
+
+void LogWarning(const OrtApi& ort_api, const OrtLogger& logger, const char* file, int line,
+                const char* function, const char* msg) {
+  OrtStatus* st = ort_api.Logger_LogMessage(&logger, ORT_LOGGING_LEVEL_WARNING, msg, file, line, function);
+  if (st != nullptr) {
+    ort_api.ReleaseStatus(st);
+  }
 }
 
 }  // namespace
@@ -368,7 +377,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     }
   };
 
-  auto read_session_config_int = [&](std::initializer_list<std::string_view> keys, int& value) {
+  auto read_session_config_non_negative_int = [&](std::initializer_list<std::string_view> keys, int& value) {
     for (const auto& key : keys) {
       auto raw_value = try_get_session_config(key);
       if (!raw_value.has_value()) {
@@ -376,12 +385,18 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       }
 
       try {
-        value = std::stoi(*raw_value);
+        int parsed = std::stoi(*raw_value);
+        if (parsed < 0) {
+          log_invalid_session_config(key, "a non-negative integer");
+          return;
+        }
+
+        value = parsed;
         return;
       } catch (const std::exception&) {
       }
 
-      log_invalid_session_config(key, "an integer");
+      log_invalid_session_config(key, "a non-negative integer");
       return;
     }
   };
@@ -420,7 +435,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   read_session_config_bool(
       {fuse_conv_bias_key, "ep.cuda.fuse_conv_bias", "fuse_conv_bias"},
       config.fuse_conv_bias);
-  read_session_config_int(
+  read_session_config_non_negative_int(
       {sdpa_kernel_key, "ep.cuda.sdpa_kernel", "sdpa_kernel"},
       config.sdpa_kernel);
 
@@ -477,8 +492,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
 
 /*static*/
 void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
-    OrtEpFactory* /*this_ptr*/, OrtAllocator* allocator) noexcept {
+    OrtEpFactory* this_ptr, OrtAllocator* allocator) noexcept {
   if (!allocator) return;
+  auto* factory = static_cast<CudaEpFactory*>(this_ptr);
   auto* typed_allocator = static_cast<CudaAllocatorBase*>(allocator);
   switch (typed_allocator->GetKind()) {
     case CudaAllocatorKind::kDevice:
@@ -488,8 +504,11 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
       delete static_cast<CudaPinnedAllocator*>(allocator);
       return;
     default:
-      // Cannot throw in noexcept function
-      break;
+      LogWarning(factory->ort_api_, factory->default_logger_, __FILE__, __LINE__,
+                 "CudaEpFactory::ReleaseAllocatorImpl",
+                 "ReleaseAllocatorImpl received an unknown CudaAllocatorKind. Leaking the allocator instance.");
+      assert(false && "Unknown CudaAllocatorKind");
+      return;
   }
 }
 

@@ -41,7 +41,7 @@ OrtStatus* CreateCudaKernelRegistry(const OrtEpApi& /*ep_api*/,
   ::onnxruntime::ep::adapter::KernelRegistry registry;
 
   // Iterate all self-registered BuildKernelCreateInfoFn pointers.
-  const auto& entries = ::onnxruntime::cuda::PluginKernelCollector::Instance().Entries();
+  auto entries = ::onnxruntime::cuda::PluginKernelCollector::Instance().Entries();
   for (auto build_fn : entries) {
     ::onnxruntime::ep::adapter::KernelCreateInfo info = build_fn();
     if (info.kernel_def != nullptr) {  // filter the BuildKernelCreateInfo<void> sentinel

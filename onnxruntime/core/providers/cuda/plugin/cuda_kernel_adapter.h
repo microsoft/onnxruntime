@@ -221,11 +221,14 @@ class PluginKernelCollector {
     std::lock_guard<std::mutex> lock(mutex_);
     entries_.push_back(fn);
   }
-  const std::vector<BuildKernelCreateInfoFn>& Entries() const { return entries_; }
+  std::vector<BuildKernelCreateInfoFn> Entries() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return entries_;
+  }
 
  private:
   std::vector<BuildKernelCreateInfoFn> entries_;
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 };
 
 }  // namespace cuda
@@ -963,14 +966,22 @@ class CudaKernel : public OpKernel {
 
     return IAllocatorUniquePtr<T>(static_cast<T*>(p), [s, used_async_alloc](T* ptr) {
       if (ptr) {
-        if (used_async_alloc && s) {
+        // Guard: only attempt async free if the stream is still registered.
+        // CudaSyncStream::~CudaSyncStream guarantees UnregisterStream() is
+        // called before cudaStreamDestroy(), so a non-null lookup here means
+        // the raw cudaStream_t handle is still valid.
+        if (used_async_alloc && s &&
+            cuda_plugin::CudaSyncStream::FromCudaStream(static_cast<cudaStream_t>(s)) != nullptr) {
           cudaError_t free_result = cudaFreeAsync(ptr, static_cast<cudaStream_t>(s));
-          if (free_result == cudaErrorNotSupported || free_result == cudaErrorInvalidValue) {
-            cudaFree(ptr);
+          if (free_result == cudaSuccess) {
+            return;
           }
-        } else {
-          cudaFree(ptr);
         }
+
+        // Fall back to synchronous free if async free is unsupported or if the
+        // stream is no longer registered. cudaFree is valid for allocations
+        // returned by cudaMallocAsync and avoids using a stale stream handle.
+        cudaFree(ptr);
       }
     });
   }
@@ -985,6 +996,20 @@ class CudaKernel : public OpKernel {
       sync->EnqueueDeferredCPUBuffer(p);
       return;
     }
+
+    if (s != nullptr) {
+      cudaError_t sync_result = cudaStreamSynchronize(static_cast<cudaStream_t>(s));
+      if (sync_result != cudaSuccess) {
+        // If the raw stream handle is already invalid during teardown, prefer a
+        // bounded leak over freeing pinned memory that could still be in use by
+        // an in-flight async copy.
+        LOGS_DEFAULT(WARNING) << "AddDeferredReleaseCPUPtr: cudaStreamSynchronize failed ("
+                              << cudaGetErrorString(sync_result)
+                              << "); leaking pinned buffer to avoid use-after-free";
+        return;
+      }
+    }
+
     cudaFreeHost(p);
   }
   template <typename T>
