@@ -265,8 +265,17 @@ class UpsampleBase {
     if (scales_input_idx_ > 0) {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
-      auto x_shape = node.InputDefs()[0]->Shape();
-      int64_t rank = x_shape ? x_shape->dim_size() : -1;
+      int64_t rank = -1;
+      if constexpr (std::is_same_v<KernelInfoType, onnxruntime::OpKernelInfo>) {
+        auto x_shape = node.InputDefs()[0]->Shape();
+        if (x_shape != nullptr) {
+          rank = x_shape->dim_size();
+        }
+      } else {
+        auto type_info = info.GetKernelInfo().GetInputTypeInfo(0);
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        rank = static_cast<int64_t>(tensor_info.GetDimensionsCount());
+      }
       if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
         ORT_THROW_IF_ERROR(ParseScalesData(scale, scales_, rank));
         scales_cached_ = true;
