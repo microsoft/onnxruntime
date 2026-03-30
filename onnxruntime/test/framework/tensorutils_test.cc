@@ -728,6 +728,64 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
 
+TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
+  // Case 1: Annotation exists
+  {
+    ONNX_NAMESPACE::NodeProto node_proto;
+    node_proto.set_name("test_node");
+    auto* prop = node_proto.add_metadata_props();
+    prop->set_key(utils::kNodeProtoLayerAnnotation);
+    prop->set_value("foo");
+
+    auto result = utils::GetNodeProtoLayeringAnnotation(node_proto);
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value(), "foo");
+  }
+
+  // Case 2: Annotation missing (empty metadata_props)
+  {
+    ONNX_NAMESPACE::NodeProto node_proto;
+    node_proto.set_name("test_node");
+
+    auto result = utils::GetNodeProtoLayeringAnnotation(node_proto);
+    EXPECT_FALSE(result.has_value());
+  }
+
+  // Case 3: Other metadata exists, but not the annotation
+  {
+    ONNX_NAMESPACE::NodeProto node_proto;
+    node_proto.set_name("test_node");
+    auto* prop = node_proto.add_metadata_props();
+    prop->set_key("some_other_key");
+    prop->set_value("some_value");
+
+    auto result = utils::GetNodeProtoLayeringAnnotation(node_proto);
+    EXPECT_FALSE(result.has_value());
+  }
+
+  // Case 4: Multiple metadata, including the annotation
+  {
+    ONNX_NAMESPACE::NodeProto node_proto;
+    node_proto.set_name("test_node");
+
+    auto* prop1 = node_proto.add_metadata_props();
+    prop1->set_key("some_other_key");
+    prop1->set_value("some_value");
+
+    auto* prop2 = node_proto.add_metadata_props();
+    prop2->set_key(utils::kNodeProtoLayerAnnotation);
+    prop2->set_value("bar");
+
+    auto* prop3 = node_proto.add_metadata_props();
+    prop3->set_key("yet_another_key");
+    prop3->set_value("baz");
+
+    auto result = utils::GetNodeProtoLayeringAnnotation(node_proto);
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value(), "bar");
+  }
+}
+
 // Tests for ValidateEmbeddedTensorProtoDataSizeAndShape and embedded initializer size limits
 
 TEST(TensorProtoDataSizeShapeValidationTest, ValidTensorProtoWithRawData) {

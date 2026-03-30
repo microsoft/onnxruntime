@@ -325,9 +325,12 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
             // Generate a WGSL loop header for reduction over this dimension
             // Format like: for(var j: u32 = 0; j < uniforms.input0_shape[1]; j++) {, given equation
             // "ij,jk->ik".
+            std::string shape_access = GetElementAt(
+                "uniforms.input" + std::to_string(lhs_term_index) + "_shape",
+                input_index,
+                static_cast<int>(inputs[lhs_term_index].get().Rank()));
             reduce_ops_loop_headers.push_back("for(var " + symbol + ": u32 = 0; " + symbol + " < " +
-                                              "uniforms.input" + std::to_string(lhs_term_index) +
-                                              "_shape[" + std::to_string(input_index) + "]; " +
+                                              shape_access + "; " +
                                               symbol + "++) {");
 
             // Add corresponding loop closing brace

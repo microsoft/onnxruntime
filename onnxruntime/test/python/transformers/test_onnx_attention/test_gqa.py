@@ -610,7 +610,7 @@ def gqa_prompt_test_cases():
     seqs = [(16, 16), (64, 64), (128, 128)]
     heads = [(8, 2), (8, 4)]
     h_sizes = [128] if quick_build else [64, 128]
-    softcap_opts = [0.0]
+    softcap_opts = [0.0, 50.0]
 
     h_sizes_to_test = h_sizes[:1] if pipeline_mode else h_sizes
 
@@ -645,7 +645,7 @@ def gqa_past_test_cases():
     seqs = [(1, 32), (1, 128), (1, 512)]
     heads = [(8, 2), (8, 4)]
     h_sizes = [128] if quick_build else [64, 128]
-    softcap_opts = [0.0]
+    softcap_opts = [0.0, 50.0]
 
     h_sizes_to_test = h_sizes[:1] if pipeline_mode else h_sizes
 
