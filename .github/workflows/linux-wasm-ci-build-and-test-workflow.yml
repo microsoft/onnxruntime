@@ -77,7 +77,7 @@ jobs:
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           ccache-version: 4.13.1
-          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adbb4cff73388000a62050cb1b00766214ee
+          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
           vcpkg-version: '2025.06.13'
           vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
           cmake-version: '3.31.6'
