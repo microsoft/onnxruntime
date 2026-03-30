@@ -232,8 +232,6 @@ namespace DmlGraphFusionHelper
                     }
                 }
 
-                // Tensor sizes in DML must be a multiple of 4 bytes large.
-                tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
                 if(graphSerializationEnabled)
                 {
                     WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
@@ -264,9 +262,10 @@ namespace DmlGraphFusionHelper
                         initializeInputBuffer = CreateCpuResource(providerImpl, tensorPtr, tensorByteSize);
                     }
 
-                    // Set the binding for operator initialization to the buffer
+                    // Set the binding for operator initialization to the buffer.
+                    // DML requires buffer binding sizes to be a multiple of 4 bytes.
                     initInputBindings[i].Buffer = initializeInputBuffer.Get();
-                    initInputBindings[i].SizeInBytes = tensorByteSize;
+                    initInputBindings[i].SizeInBytes = AlignToPow2<size_t>(tensorByteSize, 4);
                     initializeResourceRefs.push_back(std::move(initializeInputBuffer));
                 }
 

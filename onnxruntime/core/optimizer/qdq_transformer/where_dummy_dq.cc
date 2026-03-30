@@ -134,6 +134,7 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
           "DeQuantizeLinear from WhereDummyDq GraphTransformer",
           {&dummy_data_arg, &dummy_scale_arg, &dummy_zp_arg},
           {&dummy_dq_arg},
+          node,
           nullptr,
           dq_node->Domain());
 

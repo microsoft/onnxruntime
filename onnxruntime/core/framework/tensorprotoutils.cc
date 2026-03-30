@@ -2531,5 +2531,18 @@ Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer, std
   return UnpackInitializerData(initializer, std::filesystem::path(), unpacked_tensor);
 }
 
+std::optional<std::string> GetNodeProtoLayeringAnnotation(const ONNX_NAMESPACE::NodeProto& node_proto) {
+  std::optional<std::string> result;
+  for (const auto& prop : node_proto.metadata_props()) {
+    if (prop.key() == kNodeProtoLayerAnnotation) {
+      if (!prop.value().empty()) {
+        result = prop.value();
+        break;
+      }
+    }
+  }
+  return result;
+}
+
 }  // namespace utils
 }  // namespace onnxruntime
