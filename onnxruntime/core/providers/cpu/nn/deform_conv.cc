@@ -285,6 +285,9 @@ ORT_FORCEINLINE void BilinearPlanOneSample(
   T plan_w10 = lh * hw;
   T plan_w11 = lh * lw;
 
+  // Safe under DeformConvValidateAndParse precondition: (H + 1) * W <= int_max.
+  // With h_high <= H and w_high <= W, these linearized int indices stay in range.
+  // Near borders h_low/w_low can be -1, but lower bounds also remain representable in int32.
   const int base_low = h_low * width;
   const int base_high = h_high * width;
   int32_t idx00 = base_low + w_low;
