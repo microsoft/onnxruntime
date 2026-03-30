@@ -159,7 +159,7 @@ TEST(LRNTest, SizeGreaterThanChannels) {
   test.Run();
 }
 
-// Test with minimum valid size (size=3) and a single channel where size == C.
+// Test with minimum valid size (size=3) where size == C for a 3-channel input.
 TEST(LRNTest, SizeEqualsChannels) {
   constexpr float alpha = 0.0001f;
   constexpr float beta = 0.75f;
