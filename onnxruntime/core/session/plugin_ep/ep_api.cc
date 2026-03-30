@@ -862,6 +862,7 @@ ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_v
   }
 
   // Build input/output → constraint lookup tables.
+  // ONNX guarantees each input/output has at most one type parameter (FormalParameter::type_str_ is a single string).
   const auto& inputs = onnx_schema->inputs();
   result->input_to_constraint.resize(inputs.size(), nullptr);
   for (auto& constraint : result->constraints) {
