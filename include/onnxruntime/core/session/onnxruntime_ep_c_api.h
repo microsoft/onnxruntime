@@ -1598,6 +1598,13 @@ struct OrtEpApi {
    * Returns a non-owning pointer to the OrtOpSchemaTypeConstraint at the given index.
    * The returned pointer is valid as long as the parent OrtOpSchema is alive.
    *
+   * Constraints are returned in the order they are declared in the ONNX operator schema
+   * definition. The order is stable but has no semantic significance.
+   *
+   * Use this API to iterate all type constraints (e.g., to register allowed types for
+   * each constraint). Use OpSchema_GetInputTypeConstraint / OpSchema_GetOutputTypeConstraint
+   * to look up the constraint for a specific input or output.
+   *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the type constraint.
    * \param[out] out Output parameter set to the type constraint.
