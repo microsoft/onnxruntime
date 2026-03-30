@@ -416,7 +416,7 @@ template <typename T, size_t N>
 struct is_const_std_array<const std::array<T, N>> : std::true_type {};
 
 // The following variable templates check whether certain static members exist in the derived class.
-// Uses std::void_t for SFINAE-based member detection, working with both static and non-static members.
+// Uses std::void_t with decltype(T::member) for SFINAE-based detection of named static data members.
 
 template <typename T, typename = void>
 inline constexpr bool has_member_constants = false;

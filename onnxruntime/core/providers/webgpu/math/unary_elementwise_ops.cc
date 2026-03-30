@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <utility>
+#include <cstring>
 #include <limits>
 
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"

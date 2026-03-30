@@ -4,6 +4,7 @@
 #include "core/providers/webgpu/math/einsum.h"
 
 #include <algorithm>
+#include <cctype>
 #include <regex>
 #include <set>
 #include <vector>
