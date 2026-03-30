@@ -33,7 +33,7 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
   if (vector_count_ > 0) {
     // Validate attribute array sizes against declared dimensions to prevent
     // out-of-bounds reads from crafted models.
-    ORT_ENFORCE(static_cast<ptrdiff_t>(coefficients_.size()) >= vector_count_,
+    ORT_ENFORCE(coefficients_.size() >= static_cast<size_t>(vector_count_),
                 "SVMRegressor: coefficients size (", coefficients_.size(),
                 ") must be >= n_supports (", vector_count_, ")");
     ORT_ENFORCE(!support_vectors_.empty(),
