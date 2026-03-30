@@ -298,11 +298,9 @@ void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_op
   std::vector<int64_t> shape = {3, 2};
   std::vector<float> input0_data(6, 2.0f);
   std::vector<Ort::Value> ort_inputs;
-  std::vector<const char*> ort_input_names;
 
   ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
       memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
-  ort_input_names.push_back("X");
 
   Ort::IoBinding io_binding(session);
   io_binding.BindInput("X", ort_inputs[0]);
@@ -1135,15 +1133,15 @@ TEST(OrtEpLibrary, PluginEp_Sync) {
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   Utils::LoadExampleEpHooksPtr example_ep_hooks;
-  Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks);
-  ASSERT_NE(example_ep_hooks->reset, nullptr);
-  ASSERT_NE(example_ep_hooks->get, nullptr);
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks));
+  ASSERT_NE(example_ep_hooks->reset_sync_count, nullptr);
+  ASSERT_NE(example_ep_hooks->get_sync_count, nullptr);
 
-  example_ep_hooks->reset();
+  example_ep_hooks->reset_sync_count();
 
   RunMulModelWithPluginEpUsingIOBinding(session_options);
 
-  ASSERT_EQ(example_ep_hooks->get(), 1) << "Expected Sync to be called once during inference";
+  ASSERT_EQ(example_ep_hooks->get_sync_count(), 1) << "Expected Sync to be called once during inference";
 }
 }  // namespace test
 }  // namespace onnxruntime

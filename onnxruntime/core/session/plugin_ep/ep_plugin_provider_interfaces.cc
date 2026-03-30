@@ -628,7 +628,7 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
 }
 
 Status PluginExecutionProvider::Sync() const {
-  if (ort_ep_->Sync == nullptr) {
+  if (ort_ep_->ort_version_supported < 25 || ort_ep_->Sync == nullptr) {
     return Base::Sync();
   }
   return ToStatusAndRelease(ort_ep_->Sync(ort_ep_.get()));

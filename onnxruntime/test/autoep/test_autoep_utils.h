@@ -35,11 +35,11 @@ struct Utils {
                                       RegisteredEpDeviceUniquePtr& example_ep);
 
   struct ExampleEpHooks {
-    using ResetFn = void (*)();
-    using GetFn = uint64_t (*)();
+    using ResetSyncCountFn = void (*)();
+    using GetSyncCountFn = uint64_t (*)();
 
-    ResetFn reset{};
-    GetFn get{};
+    ResetSyncCountFn reset_sync_count{};
+    GetSyncCountFn get_sync_count{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

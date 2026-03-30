@@ -81,17 +81,17 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
   HMODULE lib = LoadLibraryW(ep_info.library_path.wstring().c_str());
   ASSERT_NE(lib, nullptr);
 
-  hooks.reset = reinterpret_cast<ExampleEpHooks::ResetFn>(
+  hooks.reset_sync_count = reinterpret_cast<ExampleEpHooks::ResetSyncCountFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_ResetSyncCount"));
-  hooks.get = reinterpret_cast<ExampleEpHooks::GetFn>(
+  hooks.get_sync_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_GetSyncCount"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
 
-  hooks.reset = reinterpret_cast<Utils::ExampleEpHooks::ResetFn>(
+  hooks.reset_sync_count = reinterpret_cast<Utils::ExampleEpHooks::ResetSyncCountFn>(
       dlsym(lib, "ExampleEpTestHooks_ResetSyncCount"));
-  hooks.get = reinterpret_cast<ExampleEpHooks::GetFn>(
+  hooks.get_sync_count = reinterpret_cast<Utils::ExampleEpHooks::GetSyncCountFn>(
       dlsym(lib, "ExampleEpTestHooks_GetSyncCount"));
 #endif
 

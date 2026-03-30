@@ -14,7 +14,7 @@
 #elif defined(__APPLE__)
 #define EXPORT_SYMBOL __attribute__((visibility("default")))
 #else
-#define EXPORT_SYMBOL __attribute__((visibility("default")))
+#define EXPORT_SYMBOL
 #endif
 
 extern "C" {
