@@ -64,6 +64,11 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
 
   const ptrdiff_t X_size = narrow<ptrdiff_t>(X_shape.Size());
 
+  if (X_size == 0) {
+    // Nothing to compute.
+    return Status::OK();
+  }
+
   // Note: `ptrdiff_t X_size` being set successfully implies that N*C*H*W will not overflow ptrdiff_t.
 
   const ptrdiff_t image_size = C * H * W;

@@ -1,10 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+#include <algorithm>
+
 #include "gtest/gtest.h"
 #include "default_providers.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
