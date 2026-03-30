@@ -75,7 +75,7 @@ class FastOStringStream {
 
   // Integer types
   template <typename T>
-    requires (std::is_integral_v<T> && !std::is_same_v<T, char>)
+    requires(std::is_integral_v<T> && !std::is_same_v<T, char>)
   FastOStringStream& operator<<(T value) {
     std::array<char, 32> buffer;
     auto [ptr, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);

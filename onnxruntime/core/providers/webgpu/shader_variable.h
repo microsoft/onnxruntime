@@ -15,7 +15,7 @@ namespace webgpu {
 
 template <typename TIdx,
           typename TRank>
-  requires (std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>)
+  requires(std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>)
 std::string GetElementAt(std::string_view var, const TIdx& idx, TRank rank, bool is_f16 = false) {
   if (var.starts_with("uniforms.")) {
     if (is_f16) {

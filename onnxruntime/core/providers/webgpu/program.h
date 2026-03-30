@@ -446,26 +446,26 @@ inline constexpr bool has_member_uniform_variables<T, std::void_t<decltype(T::un
 
 template <typename T>
 concept has_constants_correct_type = requires {
-    T::constants;
-    requires is_const_std_array<decltype(T::constants)>::value;
-    requires std::is_const_v<decltype(T::constants)>;
-    requires !std::is_member_pointer_v<decltype(&T::constants)>;
+  T::constants;
+  requires is_const_std_array<decltype(T::constants)>::value;
+  requires std::is_const_v<decltype(T::constants)>;
+  requires !std::is_member_pointer_v<decltype(&T::constants)>;
 };
 
 template <typename T>
 concept has_overridable_constants_correct_type = requires {
-    T::overridable_constants;
-    requires is_const_std_array<decltype(T::overridable_constants)>::value;
-    requires std::is_const_v<decltype(T::overridable_constants)>;
-    requires !std::is_member_pointer_v<decltype(&T::overridable_constants)>;
+  T::overridable_constants;
+  requires is_const_std_array<decltype(T::overridable_constants)>::value;
+  requires std::is_const_v<decltype(T::overridable_constants)>;
+  requires !std::is_member_pointer_v<decltype(&T::overridable_constants)>;
 };
 
 template <typename T>
 concept has_uniform_variables_correct_type = requires {
-    T::uniform_variables;
-    requires is_const_std_array<decltype(T::uniform_variables)>::value;
-    requires std::is_const_v<decltype(T::uniform_variables)>;
-    requires !std::is_member_pointer_v<decltype(&T::uniform_variables)>;
+  T::uniform_variables;
+  requires is_const_std_array<decltype(T::uniform_variables)>::value;
+  requires std::is_const_v<decltype(T::uniform_variables)>;
+  requires !std::is_member_pointer_v<decltype(&T::uniform_variables)>;
 };
 
 }  // namespace details

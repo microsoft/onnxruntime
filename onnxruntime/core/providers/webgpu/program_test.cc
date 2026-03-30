@@ -21,10 +21,10 @@ inline constexpr bool test_has_a<T, std::void_t<decltype(T::a)>> = true;
 // Test-specific type correctness concept for a member named 'a'
 template <typename T>
 concept test_has_a_correct_type = requires {
-    T::a;
-    requires is_const_std_array<decltype(T::a)>::value;
-    requires std::is_const_v<decltype(T::a)>;
-    requires !std::is_member_pointer_v<decltype(&T::a)>;
+  T::a;
+  requires is_const_std_array<decltype(T::a)>::value;
+  requires std::is_const_v<decltype(T::a)>;
+  requires !std::is_member_pointer_v<decltype(&T::a)>;
 };
 
 struct TestClass_Empty {};
