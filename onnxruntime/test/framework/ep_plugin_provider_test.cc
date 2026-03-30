@@ -3,6 +3,7 @@
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <limits>
 #include "gsl/gsl"
@@ -873,9 +874,14 @@ TEST(OpSchemaTypeConstraintTest, Add_SingleConstraint) {
   Ort::ConstOpSchemaTypeConstraint tc = schema.GetTypeConstraint(0);
   EXPECT_EQ(tc.GetTypeParamName(), "T");
 
-  // T should have multiple allowed types (at least float and double)
+  // T should allow tensor(float) and tensor(double) among others
   auto allowed_types = tc.GetAllowedTypes();
   EXPECT_GT(allowed_types.size(), 1u);
+  auto has_type = [&](const char* t) {
+    return std::find(allowed_types.begin(), allowed_types.end(), t) != allowed_types.end();
+  };
+  EXPECT_TRUE(has_type("tensor(float)")) << "Expected T to allow tensor(float)";
+  EXPECT_TRUE(has_type("tensor(double)")) << "Expected T to allow tensor(double)";
 
   // Both inputs use T
   auto input_indices = tc.GetInputIndices();
@@ -916,31 +922,40 @@ TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
   ASSERT_NE(t_ptr, nullptr) << "Expected to find type constraint 'T'";
   ASSERT_NE(t1_ptr, nullptr) << "Expected to find type constraint 'T1'";
 
-  // T should include float types (e.g., tensor(float), tensor(double))
+  auto has_type = [](gsl::span<const std::string> types, const char* t) {
+    return std::find(types.begin(), types.end(), t) != types.end();
+  };
+
+  // T should include tensor(float) and tensor(double)
   auto t_types = t_tc.GetAllowedTypes();
   EXPECT_GT(t_types.size(), 0u);
+  EXPECT_TRUE(has_type(t_types, "tensor(float)")) << "Expected T to allow tensor(float)";
+  EXPECT_TRUE(has_type(t_types, "tensor(double)")) << "Expected T to allow tensor(double)";
 
-  // T1 should include integer types (e.g., tensor(int32))
+  // T1 should include tensor(int32) (sequence_lens is int32)
   auto t1_types = t1_tc.GetAllowedTypes();
   EXPECT_GT(t1_types.size(), 0u);
 
-  // T and T1 should have different allowed types
-  // T1 is for sequence_lens which is int32 only
-  bool found_int32 = false;
-  for (const auto& type : t1_types) {
-    if (type == "tensor(int32)") {
-      found_int32 = true;
-    }
-  }
-  EXPECT_TRUE(found_int32) << "Expected T1 to allow tensor(int32)";
+  // T1 is for sequence_lens which is int32
+  EXPECT_TRUE(has_type(t1_types, "tensor(int32)")) << "Expected T1 to allow tensor(int32)";
 
-  // T should have inputs (X, W, R, B, etc.)
+  // T should map to inputs X (0), W (1), R (2), B (3), initial_h (5), initial_c (6), P (7)
   auto t_inputs = t_tc.GetInputIndices();
-  EXPECT_GT(t_inputs.size(), 0u);
+  EXPECT_EQ(t_inputs.size(), 7u);
+  EXPECT_EQ(t_inputs[0], 0u);  // X
+  EXPECT_EQ(t_inputs[1], 1u);  // W
+  EXPECT_EQ(t_inputs[2], 2u);  // R
+  EXPECT_EQ(t_inputs[3], 3u);  // B
+  EXPECT_EQ(t_inputs[4], 5u);  // initial_h
+  EXPECT_EQ(t_inputs[5], 6u);  // initial_c
+  EXPECT_EQ(t_inputs[6], 7u);  // P
 
-  // T should have outputs (Y, Y_h, Y_c)
+  // T should map to outputs Y (0), Y_h (1), Y_c (2)
   auto t_outputs = t_tc.GetOutputIndices();
-  EXPECT_GT(t_outputs.size(), 0u);
+  ASSERT_EQ(t_outputs.size(), 3u);
+  EXPECT_EQ(t_outputs[0], 0u);  // Y
+  EXPECT_EQ(t_outputs[1], 1u);  // Y_h
+  EXPECT_EQ(t_outputs[2], 2u);  // Y_c
 
   // T1 should map to the sequence_lens input (index 4)
   auto t1_inputs = t1_tc.GetInputIndices();
@@ -1027,6 +1042,10 @@ TEST(OpSchemaTypeConstraintTest, InputToAllowedTypesWorkflow) {
   // Now get the allowed types — this is the 2-call workflow
   auto allowed_types = tc.GetAllowedTypes();
   EXPECT_GT(allowed_types.size(), 1u);
+
+  // Verify specific types are present
+  auto has_float_type = std::find(allowed_types.begin(), allowed_types.end(), "tensor(float)") != allowed_types.end();
+  EXPECT_TRUE(has_float_type);
 }
 
 }  // namespace onnxruntime::test
