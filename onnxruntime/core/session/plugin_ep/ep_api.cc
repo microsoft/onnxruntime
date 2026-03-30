@@ -883,6 +883,10 @@ ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_v
   API_IMPL_END
 }
 
+ORT_API(void, ReleaseOpSchema, _Frees_ptr_opt_ OrtOpSchema* schema) {
+  delete schema;
+}
+
 ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(schema == nullptr, ORT_INVALID_ARGUMENT, "schema must not be null");
@@ -1046,10 +1050,6 @@ ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetOutputIndices,
   API_IMPL_END
 }
 
-ORT_API(void, ReleaseOpSchema, _Frees_ptr_opt_ OrtOpSchema* schema) {
-  delete schema;
-}
-
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1115,6 +1115,7 @@ static constexpr OrtEpApi ort_ep_api = {
     // End of Version 24 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::GetOpSchema,
+    &OrtExecutionProviderApi::ReleaseOpSchema,
     &OrtExecutionProviderApi::OpSchema_GetSinceVersion,
     &OrtExecutionProviderApi::OpSchema_GetNumInputs,
     &OrtExecutionProviderApi::OpSchema_GetInputName,
@@ -1128,7 +1129,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetAllowedTypes,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetInputIndices,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetOutputIndices,
-    &OrtExecutionProviderApi::ReleaseOpSchema,
     // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
@@ -1139,7 +1139,7 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
-static_assert(offsetof(OrtEpApi, ReleaseOpSchema) / sizeof(void*) == 64,
+static_assert(offsetof(OrtEpApi, OpSchemaTypeConstraint_GetOutputIndices) / sizeof(void*) == 64,
               "Size of version 25 API cannot change");
 
 }  // namespace OrtExecutionProviderApi

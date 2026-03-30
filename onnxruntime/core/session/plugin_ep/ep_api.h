@@ -123,6 +123,7 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
 // OpSchema APIs
 ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
                     _In_ const char* domain, _Outptr_result_maybenull_ OrtOpSchema** out_schema);
+ORT_API(void, ReleaseOpSchema, _Frees_ptr_opt_ OrtOpSchema* schema);
 ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out);
 ORT_API_STATUS_IMPL(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
@@ -145,5 +146,4 @@ ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetInputIndices, _In_ const OrtOpSche
                     _Outptr_ const size_t** out_indices, _Out_ size_t* count);
 ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetOutputIndices, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
                     _Outptr_ const size_t** out_indices, _Out_ size_t* count);
-ORT_API(void, ReleaseOpSchema, _Frees_ptr_opt_ OrtOpSchema* schema);
 }  // namespace OrtExecutionProviderApi

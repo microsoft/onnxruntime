@@ -1461,6 +1461,7 @@ struct OrtEpApi {
    * \param[in] max_inclusive_version The maximum inclusive opset version.
    * \param[in] domain A null-terminated string for the operator domain.
    * \param[out] out_schema Output parameter set to the schema pointer, or nullptr if not found.
+   *                        Must be released via OrtEpApi::ReleaseOpSchema.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1468,6 +1469,8 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
                   _In_ const char* domain, _Outptr_result_maybenull_ OrtOpSchema** out_schema);
+
+  ORT_CLASS_RELEASE(OpSchema);
 
   /** \brief Get the first ONNX opset version that introduced this operator schema.
    *
@@ -1480,7 +1483,7 @@ struct OrtEpApi {
    * operator schema entry for "Foo" with a since_version of 6.
    *
    * \param[in] schema The OrtOpSchema instance.
-   * \param[out] out The ONNX opset version.
+   * \param[out] out Output parameter set to the ONNX opset version.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1491,7 +1494,7 @@ struct OrtEpApi {
   /** \brief Get the number of inputs defined by the operator schema.
    *
    * \param[in] schema The OrtOpSchema instance.
-   * \param[out] out The number of inputs.
+   * \param[out] out Output parameter set to the number of inputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1503,7 +1506,8 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the input parameter.
-   * \param[out] out The name of the input parameter. Valid as long as the OrtOpSchema exists.
+   * \param[out] out Output parameter set to the name of the input parameter (null-terminated UTF8 string).
+   *                 Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1519,11 +1523,11 @@ struct OrtEpApi {
    * If the input has no type constraint, *out is set to nullptr.
    *
    * Multiple inputs sharing the same type constraint (e.g., both using "T") return the same pointer.
-   * Pointer equality can be used to check if two inputs share a type constraint.
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the input parameter.
-   * \param[out] out The type constraint, or nullptr if the input has no type constraint.
+   * \param[out] out Output parameter set to the type constraint, or NULL if the input has no type constraint.
+   *                 Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1535,7 +1539,7 @@ struct OrtEpApi {
   /** \brief Get the number of outputs defined by the operator schema.
    *
    * \param[in] schema The OrtOpSchema instance.
-   * \param[out] out The number of outputs.
+   * \param[out] out Output parameter set to the number of outputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1547,7 +1551,8 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the output parameter.
-   * \param[out] out The name of the output parameter. Valid as long as the OrtOpSchema exists.
+   * \param[out] out Output parameter set to the name of the output parameter (null-terminated UTF8 string).
+   *                 Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1567,7 +1572,8 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the output parameter.
-   * \param[out] out The type constraint, or nullptr if the output has no type constraint.
+   * \param[out] out Output parameter set to the type constraint, or NULL if the output has no type constraint.
+   *                 Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1579,7 +1585,7 @@ struct OrtEpApi {
   /** \brief Get the number of unique type constraints in the operator schema.
    *
    * \param[in] schema The OrtOpSchema instance.
-   * \param[out] out The number of type constraints.
+   * \param[out] out Output set to the number of type constraints.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1594,7 +1600,8 @@ struct OrtEpApi {
    *
    * \param[in] schema The OrtOpSchema instance.
    * \param[in] index Zero-based index of the type constraint.
-   * \param[out] out The type constraint.
+   * \param[out] out Output parameter set to the type constraint.
+   *                 Valid as long as the OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1606,7 +1613,8 @@ struct OrtEpApi {
   /** \brief Get the type parameter name of a type constraint (e.g., "T", "T1").
    *
    * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
-   * \param[out] out The type parameter name. Valid as long as the parent OrtOpSchema exists.
+   * \param[out] out Output parameter set to the type parameter name.
+   *                 Valid as long as the parent OrtOpSchema exists.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1622,8 +1630,9 @@ struct OrtEpApi {
    * as long as the parent OrtOpSchema exists.
    *
    * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
-   * \param[out] out_types Output array of type strings.
-   * \param[out] num_types Number of elements in the output array.
+   * \param[out] out_types Output parameter set to the output array of type strings.
+   *                       Valid as long as the parent OrtOpSchema exists.
+   * \param[out] num_types Output parameter set to the number of elements in the output array.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1638,8 +1647,8 @@ struct OrtEpApi {
    * matches this type constraint. The array is valid as long as the parent OrtOpSchema exists.
    *
    * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
-   * \param[out] out_indices Output array of input indices.
-   * \param[out] count Number of elements in the output array.
+   * \param[out] out_indices Output parameter set to the output array of input indices.
+   * \param[out] count Output parameter set to the number of elements in the output array.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1654,8 +1663,8 @@ struct OrtEpApi {
    * matches this type constraint. The array is valid as long as the parent OrtOpSchema exists.
    *
    * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
-   * \param[out] out_indices Output array of output indices.
-   * \param[out] count Number of elements in the output array.
+   * \param[out] out_indices Output parameter set to the output array of output indices.
+   * \param[out] count Output parameter set to the number of elements in the output array.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1663,8 +1672,6 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(OpSchemaTypeConstraint_GetOutputIndices, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
                   _Outptr_ const size_t** out_indices, _Out_ size_t* count);
-
-  ORT_CLASS_RELEASE(OpSchema);
 };
 
 /**
