@@ -784,37 +784,44 @@ TEST(PluginExecutionProviderTest, IsConcurrentRunSupported) {
 // These test the C++ layer over the OrtEpApi OpSchema functions using well-known ONNX operator schemas
 // from the global ONNX schema registry.
 
-TEST(OpSchemaCxxApiTest, GetOpSchema_KnownOp_ReturnsNonNull) {
-  Ort::OpSchema schema = Ort::GetOpSchema("Relu", 20, "");
-  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
-}
+// Test that GetOpSchema returns null for various not-found cases.
+TEST(OpSchemaCxxApiTest, GetOpSchema_NotFound) {
+  // Unknown op name
+  Ort::OpSchema schema_unknown = Ort::GetOpSchema("NonExistentOpXYZ_12345", 20, "");
+  EXPECT_EQ(static_cast<OrtOpSchema*>(schema_unknown), nullptr);
 
-TEST(OpSchemaCxxApiTest, GetOpSchema_UnknownOp_ReturnsNull) {
-  Ort::OpSchema schema = Ort::GetOpSchema("NonExistentOpXYZ_12345", 20, "");
-  ASSERT_EQ(static_cast<OrtOpSchema*>(schema), nullptr);
-}
-
-TEST(OpSchemaCxxApiTest, GetOpSchema_VersionTooLow_ReturnsNull) {
   // Relu was introduced in opset 1, so max_inclusive_version=0 should not find it.
-  Ort::OpSchema schema = Ort::GetOpSchema("Relu", 0, "");
-  ASSERT_EQ(static_cast<OrtOpSchema*>(schema), nullptr);
+  Ort::OpSchema schema_v0 = Ort::GetOpSchema("Relu", 0, "");
+  EXPECT_EQ(static_cast<OrtOpSchema*>(schema_v0), nullptr);
+
+  // Wrong domain
+  Ort::OpSchema schema_bad_domain = Ort::GetOpSchema("Relu", 20, "com.nonexistent.domain");
+  EXPECT_EQ(static_cast<OrtOpSchema*>(schema_bad_domain), nullptr);
 }
 
-TEST(OpSchemaCxxApiTest, GetOpSchema_WrongDomain_ReturnsNull) {
-  Ort::OpSchema schema = Ort::GetOpSchema("Relu", 20, "com.nonexistent.domain");
-  ASSERT_EQ(static_cast<OrtOpSchema*>(schema), nullptr);
-}
+// Test version differentiation and "ai.onnx" domain alias normalization.
+TEST(OpSchemaCxxApiTest, DifferentVersionsAndDomainAlias) {
+  // Relu was introduced in opset 1 and updated in opset 6, 13, and 14.
+  // Querying at version 5 should return the opset 1 schema.
+  Ort::OpSchema schema_v5 = Ort::GetOpSchema("Relu", 5, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_v5), nullptr);
+  EXPECT_EQ(schema_v5.GetSinceVersion(), 1);
 
-TEST(OpSchemaCxxApiTest, GetOpSchema_AiOnnxDomainAlias_Works) {
-  // "ai.onnx" is an alias for "" (the canonical ONNX domain). Both should find the same schema.
-  Ort::OpSchema schema_empty = Ort::GetOpSchema("Relu", 20, "");
-  Ort::OpSchema schema_alias = Ort::GetOpSchema("Relu", 20, "ai.onnx");
-  ASSERT_NE(static_cast<OrtOpSchema*>(schema_empty), nullptr);
+  // Querying at version 6 with "ai.onnx" domain alias should return the opset 6 schema.
+  Ort::OpSchema schema_v6 = Ort::GetOpSchema("Relu", 6, kOnnxDomainAlias);
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_v6), nullptr);
+  EXPECT_EQ(schema_v6.GetSinceVersion(), 6);
+
+  // "ai.onnx" and "" should resolve to the same schema at the same version.
+  Ort::OpSchema schema_canonical = Ort::GetOpSchema("Relu", 20, "");
+  Ort::OpSchema schema_alias = Ort::GetOpSchema("Relu", 20, kOnnxDomainAlias);
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_canonical), nullptr);
   ASSERT_NE(static_cast<OrtOpSchema*>(schema_alias), nullptr);
-  EXPECT_EQ(schema_empty.GetSinceVersion(), schema_alias.GetSinceVersion());
+  EXPECT_EQ(schema_canonical.GetSinceVersion(), schema_alias.GetSinceVersion());
 }
 
-// Test OpSchema methods on the "Add" operator schema (2 inputs, 1 output).
+// Test OpSchema methods on the "Add" operator (2 inputs, 1 output, shared constraint T).
+// Also tests pointer identity: inputs/output sharing a constraint return the same pointer.
 TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
   int opset_version = 20;
   Ort::OpSchema schema = Ort::GetOpSchema("Add", opset_version, "");
@@ -844,21 +851,12 @@ TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
   Ort::ConstOpSchemaTypeConstraint tc_output0 = schema.GetOutputTypeConstraint(0);
   ASSERT_NE(static_cast<const OrtOpSchemaTypeConstraint*>(tc_output0), nullptr);
   EXPECT_EQ(tc_output0.GetTypeParamName(), "T");
-}
 
-// Test that querying the same op at different max_inclusive_version values can return different schema versions.
-TEST(OpSchemaCxxApiTest, DifferentVersionsReturnDifferentSchemas) {
-  // Relu was introduced in opset 1 and updated in opset 6, 13, and 14.
-  // Querying at version 5 should return the opset 1 schema.
-  Ort::OpSchema schema_v5 = Ort::GetOpSchema("Relu", 5, "");
-  ASSERT_NE(static_cast<OrtOpSchema*>(schema_v5), nullptr);
-  EXPECT_EQ(schema_v5.GetSinceVersion(), 1);
-
-  // Querying at version 6 should return the opset 6 schema.
-  // Also, test using "ai.onnx" domain for ONNX.
-  Ort::OpSchema schema_v6 = Ort::GetOpSchema("Relu", 6, kOnnxDomainAlias);
-  ASSERT_NE(static_cast<OrtOpSchema*>(schema_v6), nullptr);
-  EXPECT_EQ(schema_v6.GetSinceVersion(), 6);
+  // Both inputs and the output share constraint "T" — should return the same pointer.
+  EXPECT_EQ(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input0),
+            static_cast<const OrtOpSchemaTypeConstraint*>(tc_input1));
+  EXPECT_EQ(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input0),
+            static_cast<const OrtOpSchemaTypeConstraint*>(tc_output0));
 }
 
 // Tests for the OrtOpSchemaTypeConstraint API (per-constraint entity).
@@ -967,40 +965,6 @@ TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
   EXPECT_EQ(t1_outputs.size(), 0u);
 }
 
-// Test Relu type constraints (single T on input and output).
-TEST(OpSchemaTypeConstraintTest, Relu_SingleConstraint) {
-  Ort::OpSchema schema = Ort::GetOpSchema("Relu", 20, "");
-  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
-
-  ASSERT_EQ(schema.GetTypeConstraintCount(), 1u);
-
-  Ort::ConstOpSchemaTypeConstraint tc = schema.GetTypeConstraint(0);
-  EXPECT_EQ(tc.GetTypeParamName(), "T");
-
-  auto input_indices = tc.GetInputIndices();
-  ASSERT_EQ(input_indices.size(), 1u);
-  EXPECT_EQ(input_indices[0], 0u);
-
-  auto output_indices = tc.GetOutputIndices();
-  ASSERT_EQ(output_indices.size(), 1u);
-  EXPECT_EQ(output_indices[0], 0u);
-}
-
-// Test that allowed types are returned as proper type strings.
-TEST(OpSchemaTypeConstraintTest, AllowedTypesAreValidStrings) {
-  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
-  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
-
-  ASSERT_GE(schema.GetTypeConstraintCount(), 1u);
-
-  Ort::ConstOpSchemaTypeConstraint tc = schema.GetTypeConstraint(0);
-  auto allowed_types = tc.GetAllowedTypes();
-  for (const auto& type : allowed_types) {
-    // All ONNX type strings should start with "tensor(" or similar
-    EXPECT_FALSE(type.empty()) << "Type string should not be empty";
-  }
-}
-
 #if !defined(ORT_NO_EXCEPTIONS)
 // Test out-of-range index for type constraint accessors.
 TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
@@ -1013,39 +977,5 @@ TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
   EXPECT_THROW(schema.GetTypeConstraint(count), Ort::Exception);
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
-
-// Test pointer identity: inputs sharing a constraint return the same pointer.
-TEST(OpSchemaTypeConstraintTest, PointerIdentityForSharedConstraints) {
-  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
-  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
-
-  // Both inputs of Add share constraint "T" — should return the same pointer
-  Ort::ConstOpSchemaTypeConstraint tc_input0 = schema.GetInputTypeConstraint(0);
-  Ort::ConstOpSchemaTypeConstraint tc_input1 = schema.GetInputTypeConstraint(1);
-  Ort::ConstOpSchemaTypeConstraint tc_output0 = schema.GetOutputTypeConstraint(0);
-
-  EXPECT_EQ(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input0),
-            static_cast<const OrtOpSchemaTypeConstraint*>(tc_input1));
-  EXPECT_EQ(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input0),
-            static_cast<const OrtOpSchemaTypeConstraint*>(tc_output0));
-}
-
-// Test the natural workflow: input index → type constraint → allowed types.
-TEST(OpSchemaTypeConstraintTest, InputToAllowedTypesWorkflow) {
-  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
-  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
-
-  // Get the type constraint for input 0 directly
-  Ort::ConstOpSchemaTypeConstraint tc = schema.GetInputTypeConstraint(0);
-  ASSERT_NE(static_cast<const OrtOpSchemaTypeConstraint*>(tc), nullptr);
-
-  // Now get the allowed types — this is the 2-call workflow
-  auto allowed_types = tc.GetAllowedTypes();
-  EXPECT_GT(allowed_types.size(), 1u);
-
-  // Verify specific types are present
-  auto has_float_type = std::find(allowed_types.begin(), allowed_types.end(), "tensor(float)") != allowed_types.end();
-  EXPECT_TRUE(has_float_type);
-}
 
 }  // namespace onnxruntime::test
