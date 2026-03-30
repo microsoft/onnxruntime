@@ -938,6 +938,10 @@ def parse_arguments() -> argparse.Namespace:
     if args.android_ndk_path:
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
 
+    # Treat --build_wasm_static_lib as implying --build_wasm
+    if args.build_wasm_static_lib:
+        args.build_wasm = True
+
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:
         args.disable_wasm_exception_catching = True  # Catching at API level implies disabling broader catching
