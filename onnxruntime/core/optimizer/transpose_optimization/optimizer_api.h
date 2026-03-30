@@ -258,6 +258,18 @@ class NodeRef {
   /// <returns>Id</returns>
   virtual int64_t Id() const = 0;
 
+  /// <summary>
+  /// Get the layering annotation of the node.
+  /// </summary>
+  /// <returns>annotation</returns>
+  virtual std::string_view GetLayeringAnnotation() const = 0;
+
+  /// <summary>
+  /// Set layering annotation
+  /// </summary>
+  /// <param name="annotation"></param>
+  virtual void SetLayeringAnnotation(std::string_view annotation) = 0;
+
   virtual ~NodeRef() {};
 };
 
