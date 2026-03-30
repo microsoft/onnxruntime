@@ -1031,7 +1031,7 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tenative_candidates, *GetLogger());
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
-    if (cpu_nodes.count(node_index) > 0) {
+    if (cpu_nodes.contains(node_index)) {
       continue;
     }
 

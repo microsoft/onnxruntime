@@ -14,8 +14,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 template <typename TIdx,
-          typename TRank,
-          typename = std::enable_if_t<std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>>>
+          typename TRank>
+  requires (std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>)
 std::string GetElementAt(std::string_view var, const TIdx& idx, TRank rank, bool is_f16 = false) {
   if (var.starts_with("uniforms.")) {
     if (is_f16) {
@@ -235,7 +235,8 @@ inline ShaderUsage& operator&=(ShaderUsage& a, ShaderUsage b) {
 #endif
 
 namespace detail {
-template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+template <typename T>
+  requires std::is_integral_v<T>
 std::string pass_as_string(T&& v) {
   return std::to_string(std::forward<T>(v));
 }
