@@ -1448,11 +1448,14 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
 
-  /** \brief Get an ONNX operator schema from the global registry.
+  /** \brief Get an operator schema from the global schema registry.
    *
    * Looks up a schema by name, maximum inclusive version, and domain.
    * The returned pointer is owned by the caller and must be released via ReleaseOpSchema.
    * If the schema is not found, *out_schema is set to nullptr (no allocation occurs).
+   *
+   * Available schemas include standard ONNX operators (domain "" or "ai.onnx"), ONNX ML operators
+   * (domain "ai.onnx.ml"), and ORT contrib operators (domain "com.microsoft").
    *
    * \param[in] name A null-terminated string for the operator name.
    * \param[in] max_inclusive_version The maximum inclusive opset version.

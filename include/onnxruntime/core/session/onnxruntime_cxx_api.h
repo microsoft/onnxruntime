@@ -3592,9 +3592,11 @@ struct OpSchemaImpl : Base<T> {
 /// Owning wrapper around an `OrtOpSchema*`.
 using OpSchema = detail::OpSchemaImpl<OrtOpSchema>;
 
-/// \brief Get an ONNX operator schema from the global registry.
+/// \brief Get an operator schema from the global schema registry.
 ///
 /// Wraps OrtEpApi::GetOpSchema. Returns an OpSchema that may wrap nullptr if the schema is not found.
+/// Available schemas include standard ONNX ops (domain "" or "ai.onnx"), ONNX ML ops ("ai.onnx.ml"),
+/// and ORT contrib ops ("com.microsoft").
 OpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain);
 
 namespace detail {

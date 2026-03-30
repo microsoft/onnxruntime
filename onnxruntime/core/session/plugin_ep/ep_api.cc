@@ -18,6 +18,7 @@
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/tensor.h"
+#include "core/graph/constants.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_devices.h"
@@ -815,8 +816,11 @@ ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_v
   ORT_API_RETURN_IF(domain == nullptr, ORT_INVALID_ARGUMENT, "domain must not be null");
   ORT_API_RETURN_IF(out_schema == nullptr, ORT_INVALID_ARGUMENT, "out_schema must not be null");
 
+  // Normalize "ai.onnx" to "" (the canonical ONNX domain used by the schema registry).
+  const char* lookup_domain = (strcmp(domain, kOnnxDomainAlias) == 0) ? kOnnxDomain : domain;
+
   const auto* onnx_schema = ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(
-      name, max_inclusive_version, domain);
+      name, max_inclusive_version, lookup_domain);
 
   if (onnx_schema == nullptr) {
     *out_schema = nullptr;

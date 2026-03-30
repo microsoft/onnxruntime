@@ -804,6 +804,15 @@ TEST(OpSchemaCxxApiTest, GetOpSchema_WrongDomain_ReturnsNull) {
   ASSERT_EQ(static_cast<OrtOpSchema*>(schema), nullptr);
 }
 
+TEST(OpSchemaCxxApiTest, GetOpSchema_AiOnnxDomainAlias_Works) {
+  // "ai.onnx" is an alias for "" (the canonical ONNX domain). Both should find the same schema.
+  Ort::OpSchema schema_empty = Ort::GetOpSchema("Relu", 20, "");
+  Ort::OpSchema schema_alias = Ort::GetOpSchema("Relu", 20, "ai.onnx");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_empty), nullptr);
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_alias), nullptr);
+  EXPECT_EQ(schema_empty.GetSinceVersion(), schema_alias.GetSinceVersion());
+}
+
 // Test OpSchema methods on the "Add" operator schema (2 inputs, 1 output).
 TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
   int opset_version = 20;
@@ -845,7 +854,8 @@ TEST(OpSchemaCxxApiTest, DifferentVersionsReturnDifferentSchemas) {
   EXPECT_EQ(schema_v5.GetSinceVersion(), 1);
 
   // Querying at version 6 should return the opset 6 schema.
-  Ort::OpSchema schema_v6 = Ort::GetOpSchema("Relu", 6, "");
+  // Also, test using "ai.onnx" domain for ONNX.
+  Ort::OpSchema schema_v6 = Ort::GetOpSchema("Relu", 6, kOnnxDomainAlias);
   ASSERT_NE(static_cast<OrtOpSchema*>(schema_v6), nullptr);
   EXPECT_EQ(schema_v6.GetSinceVersion(), 6);
 }
