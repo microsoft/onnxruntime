@@ -2016,6 +2016,13 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
     const auto& node = graph.GetNode(node_idx);
     const bool is_context_node = node && !node->OpType().empty() && node->OpType() == EPCONTEXT_OP;
     if (is_context_node) {
+      // Only claim EPContext nodes that belong to this EP.
+      // If the source attribute is present and doesn't match, skip the node.
+      const auto& attrs = node->GetAttributes();
+      if (attrs.count(SOURCE) > 0 &&
+          attrs.at(SOURCE).s() != kNvTensorRTRTXExecutionProvider) {
+        continue;
+      }
       SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{node_idx}, true));
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
 
@@ -3328,6 +3335,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
   auto trt_runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(trt_engine->createRuntimeConfig());
   if (trt_runtime_config && cuda_graph_enable_) {
     trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
+#if TRT_MAJOR_RTX > 1 || (TRT_MAJOR_RTX == 1 && TRT_MINOR_RTX >= 3)
+    auto cuda_strategy_flag = trt_runtime_config->setCudaGraphStrategy(nvinfer1::CudaGraphStrategy::kWHOLE_GRAPH_CAPTURE);
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] CUDA graph strategy with RTX Graph capture enabled : " << cuda_strategy_flag;
+#else
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] CUDA graph is enabled but RTX Graph capture is not available. "
+                          << "The current TRT RTX version does not support RTX Graph. "
+                          << "Please upgrade to TRT RTX >= 1.3 to use RTX Graph capture feature for optimal CUDA graph performance.";
+#endif
   }
   trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
   std::string runtime_cache_file = "";

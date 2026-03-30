@@ -238,7 +238,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // GQA CUDA uses either flash attention or memory efficient attention. Neither kernel supports returning the QK output.
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckNoQKOutput(
       context->OutputCount(),
-      static_cast<int>(Info().GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
+      static_cast<int>(Info().template GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
 
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -259,8 +259,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache, dense_head_size};
 
   TensorShape present_shape(present_dims);
-  context->Output(1, present_shape);  // present_key
-  context->Output(2, present_shape);  // present_value
+  Tensor* present_key_tensor = context->Output(1, present_shape);
+  Tensor* present_value_tensor = context->Output(2, present_shape);
 
   IAllocatorUniquePtr<void> k_buffer;
   IAllocatorUniquePtr<void> v_buffer;
@@ -288,8 +288,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
 
-  data.present_key = reinterpret_cast<CudaU*>(context->Output<Tensor>(1)->MutableData<U>());
-  data.present_value = reinterpret_cast<CudaU*>(context->Output<Tensor>(2)->MutableData<U>());
+  data.present_key = reinterpret_cast<CudaU*>(present_key_tensor->MutableData<U>());
+  data.present_value = reinterpret_cast<CudaU*>(present_value_tensor->MutableData<U>());
 
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
   // This compares the final pointer values after quantization handling.

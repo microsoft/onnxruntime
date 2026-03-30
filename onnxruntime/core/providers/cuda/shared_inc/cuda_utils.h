@@ -140,6 +140,17 @@ struct NumericLimits<half> {
   }
 };
 
+template <>
+struct NumericLimits<BFloat16> {
+  __inline__ __host__ __device__ static BFloat16 Lowest() {
+    return BFloat16::FromBits(0xFF7FU);  // -3.38953139e38
+  }
+
+  __inline__ __host__ __device__ static BFloat16 Max() {
+    return BFloat16::FromBits(0x7F7FU);  // 3.38953139e38
+  }
+};
+
 // TODO Where to put this? good places might be
 // core/framework/tensor_shape.h
 // core/util/matrix_layout.h

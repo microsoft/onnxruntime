@@ -244,6 +244,11 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  // 1D transpose is identity - just copy the GPU buffer.
+  if (rank == 1) {
+    return Info().GetDataTransferManager().CopyTensor(*input_tensor, *output_tensor);
+  }
+
   return DoTranspose(context, *p_perm, *input_tensor, *output_tensor);
 }
 

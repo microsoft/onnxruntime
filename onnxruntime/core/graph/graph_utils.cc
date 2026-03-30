@@ -32,6 +32,154 @@ static int GetIndexFromName(const Node& node, const std::string& name, bool is_i
   return static_cast<int>(index);
 }
 
+Status CreateFilteredIndexedGraph(gsl::span<const Node* const> nodes, const Graph& graph,
+                                  std::unique_ptr<IndexedSubGraph>& result) {
+  // Following data structures help determine the final inputs/outputs of the subgraph.
+  // Note: The 'subgraph' here refers to a graph that contains a subset of nodes in the 'src_graph'.
+
+  // Pre-pass: Identify all outputs produced by nodes within the subgraph.
+  // This allows O(1) checks to determine if an input is internal or from the boundary.
+  InlinedHashSet<NodeIndex> node_set;
+  InlinedHashSet<const NodeArg*> internal_outputs;
+  for (size_t i = 0, lim = nodes.size(); i < lim; i++) {
+    const auto& node = *nodes[i];
+    node_set.insert(node.Index());
+    for (const auto& output : node.OutputDefs()) {
+      internal_outputs.insert(output);
+    }
+  }
+
+  // Source graph output names
+  InlinedHashSet<std::string> graph_output_names;
+  for (const auto* output_arg : graph.GetOutputs()) {
+    graph_output_names.insert(output_arg->Name());
+  }
+
+  // These maps store the inputs and outputs of the subgraph.
+  // Value is order index to maintain deterministic order.
+  InlinedHashMap<const NodeArg*, int> subgraph_inputs, subgraph_outputs;
+
+  int input_order = 0;
+  int output_order = 0;
+
+  std::unique_ptr<IndexedSubGraph> indexed_sub_graph = std::make_unique<IndexedSubGraph>();
+  InlinedVector<std::string> initializers;
+
+  // Add nodes and identify boundary inputs/outputs
+  for (size_t i = 0, lim = nodes.size(); i < lim; i++) {
+    const auto& node = *nodes[i];
+    indexed_sub_graph->nodes.push_back(node.Index());
+
+    // Process Inputs: If an input is not produced internally, it's a subgraph input.
+    auto process_inputs = [&](gsl::span<const NodeArg* const> inputs) {
+      for (const auto& input : inputs) {
+        if (!input->Exists()) continue;
+
+        const auto* tensor_proto = graph.GetConstantInitializer(input->Name(), true);
+        if (tensor_proto != nullptr) {
+          initializers.push_back(input->Name());
+          continue;
+        }
+
+        // If not produced by this subgraph, it's a boundary input
+        if (internal_outputs.count(input) == 0) {
+          // Use insert to keep the first occurrence's order
+          auto emplace_result = subgraph_inputs.emplace(input, input_order);
+          if (emplace_result.second) {
+            ++input_order;
+          }
+        }
+      }
+    };
+
+    process_inputs(gsl::make_span(node.InputDefs().data(), node.InputDefs().size()));
+    process_inputs(gsl::make_span(node.ImplicitInputDefs().data(), node.ImplicitInputDefs().size()));
+
+    // Process Outputs: If an output is graph output OR consumed externally, it's a subgraph output.
+    for (const auto& output : node.OutputDefs()) {
+      if (!output->Exists()) continue;
+
+      bool is_boundary_output = false;
+
+      // 1. Is it a graph output?
+      if (graph_output_names.count(output->Name()) > 0) {
+        is_boundary_output = true;
+      } else {
+        // 2. Is it consumed by any node outside the subgraph?
+        for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+          // Check if the edge uses this specific output
+          if (it->GetSrcArgIndex() < static_cast<int>(node.OutputDefs().size()) &&
+              node.OutputDefs()[it->GetSrcArgIndex()] == output) {
+            if (node_set.count(it->GetNode().Index()) == 0) {
+              is_boundary_output = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (is_boundary_output) {
+        subgraph_outputs.insert({output, output_order++});
+      }
+    }
+  }
+
+  std::multimap<int, const NodeArg*> inputs, outputs;
+
+  // Get the input order of the original graph
+  InlinedHashMap<const NodeArg*, int> original_inputs;
+  int order = 0;
+  for (const auto* input : graph.GetInputs()) {
+    original_inputs[input] = order++;
+  }
+
+  // input order needs to be consistent with original graph's input order
+  for (const auto& [node_arg, subgraph_input_order] : subgraph_inputs) {
+    const auto original_input_it = original_inputs.find(node_arg);
+
+    if (original_input_it != original_inputs.end()) {
+      inputs.emplace(
+          original_input_it->second,  // input order from original graph
+          node_arg);
+    } else {
+      inputs.emplace(
+          subgraph_input_order,  // input order from subgraph
+          node_arg);
+    }
+  }
+
+  // Sort outputs by the order they were added
+  for (const auto& [node_arg, subgraph_output_order] : subgraph_outputs) {
+    outputs.emplace(subgraph_output_order, node_arg);
+  }
+
+  std::unique_ptr<IndexedSubGraph::MetaDef> meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  meta_def->name = "sub_graph";
+  meta_def->since_version = 1;
+
+  // Assign inputs and outputs to subgraph's meta_def
+  for (const auto& input : inputs) {
+    if (input.second->Exists()) {
+      meta_def->inputs.push_back(input.second->Name());
+    }
+  }
+
+  for (const auto& initializer : initializers) {
+    meta_def->constant_initializers.push_back(initializer);
+  }
+
+  for (const auto& output : outputs) {
+    if (output.second->Exists()) {
+      meta_def->outputs.push_back(output.second->Name());
+    }
+  }
+
+  indexed_sub_graph->SetMetaDef(std::move(meta_def));
+  result = std::move(indexed_sub_graph);
+
+  return Status::OK();
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1010,6 +1158,5 @@ NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg) {
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
 }  // namespace graph_utils
 }  // namespace onnxruntime
