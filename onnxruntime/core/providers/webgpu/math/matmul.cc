@@ -251,7 +251,7 @@ Status ComputeMatMul(ComputeContext* context,
     const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, has_bias, /*is_gemm*/ false, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
     if (need_split_k) {
       ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
-      ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
+      ORT_ENFORCE(is_vec4, "Split-K MatMul requires vec4 packing.");
 
       if (has_bias) {
         ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
