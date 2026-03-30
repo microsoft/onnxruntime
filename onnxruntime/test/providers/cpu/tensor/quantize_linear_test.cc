@@ -531,6 +531,90 @@ TEST(QuantizeLinearOpTest, Int8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Repro for new-delete-type-mismatch in DML EP during graph fusion.
+// QuantizeLinear float32→int8 with 5D input triggers a type-size
+// mismatch (192 bytes allocated, 1 byte deallocated) visible under ASan.
+TEST(QuantizeLinearOpTest, Int8_5D_DML_TypeMismatch) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Same as above but with per-axis quantization along axis 0 to exercise
+// the DML graph fusion path with per-channel int8 quantization.
+TEST(QuantizeLinearOpTest, Int8_5D_PerAxis_DML_TypeMismatch) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {6}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<int8_t>("y_zero_point", {6}, {0, 0, 0, 0, 0, 0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Opset 21 QuantizeLinear float32→uint8 WITHOUT zero_point.
+// Without zero_point, the output type defaults to uint8.
+TEST(QuantizeLinearOpTest, Uint8_5D_NoZeroPoint_Opset21_DML) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {0.0f, 51.0f, 102.0f, 153.0f, 204.0f, 255.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddOutput<uint8_t>("y", dims, {0, 51, 102, 153, 204, 255});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Opset 21 QuantizeLinear float32→int8 with zero_point (the customer's exact scenario).
+TEST(QuantizeLinearOpTest, Int8_5D_WithZeroPoint_Opset21_DML) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
 // Test uint16 QuantizeLinear (per tensor)
 TEST(QuantizeLinearOpTest, Uint16) {
   OpTester test("QuantizeLinear", 21);
