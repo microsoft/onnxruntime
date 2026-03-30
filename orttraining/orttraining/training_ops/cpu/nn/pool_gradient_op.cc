@@ -52,9 +52,13 @@ Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
   const int64_t* indices_data = indices->template Data<int64_t>();
   T* dX_data = dX->template MutableData<T>();
 
-  EigenVectorMap<T>(dX_data, narrow<Eigen::Index>(dX_shape.Size())).setZero();
+  const int64_t dX_size = dX_shape.Size();
+  EigenVectorMap<T>(dX_data, narrow<Eigen::Index>(dX_size)).setZero();
 
   for (int64_t i = 0; i < dY->Shape().Size(); ++i) {
+    ORT_RETURN_IF(indices_data[i] < 0 || indices_data[i] >= dX_size,
+                  "MaxPoolGrad: index value ", indices_data[i],
+                  " at position ", i, " is out of range [0, ", dX_size, ")");
     T* p_dX_data = dX_data + indices_data[i];
     *p_dX_data += dY_data[i];
   }
