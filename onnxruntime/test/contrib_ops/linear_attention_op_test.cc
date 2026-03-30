@@ -12,7 +12,6 @@
 
 using namespace onnxruntime::test;
 
-
 namespace onnxruntime {
 namespace test {
 
@@ -32,11 +31,10 @@ void LinearAttentionReference(
     const std::vector<float>* beta,
     std::vector<float>& output,
     std::vector<float>& final_state) {
+  int bht = batch_size * num_heads * seq_length;
+  bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht);
 
-    int bht = batch_size * num_heads * seq_length;
-    bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht);
-
-      // State: (B, H, dk, dv)
+  // State: (B, H, dk, dv)
   final_state.resize(batch_size * num_heads * head_dim_k * head_dim_v, 0.0f);
   output.resize(batch_size * num_heads * seq_length * head_dim_v, 0.0f);
 
@@ -133,7 +131,7 @@ void LinearAttentionReference(
 
 // Convert data from 4D (B,H,T,D) layout to 3D packed (B,T,H*D) layout
 std::vector<float> PackBHTD_to_BTHD(const std::vector<float>& data_4d,
-                                     int B, int H, int T, int D) {
+                                    int B, int H, int T, int D) {
   std::vector<float> packed(B * T * H * D);
   for (int b = 0; b < B; b++) {
     for (int h = 0; h < H; h++) {
@@ -151,7 +149,7 @@ std::vector<float> PackBHTD_to_BTHD(const std::vector<float>& data_4d,
 
 // Convert decay/beta from (B,H,T) layout to (B,T,H) layout
 std::vector<float> TransposeBHT_to_BTH(const std::vector<float>& data,
-                                        int B, int H, int T) {
+                                       int B, int H, int T) {
   std::vector<float> transposed(B * T * H);
   for (int b = 0; b < B; b++) {
     for (int h = 0; h < H; h++) {
