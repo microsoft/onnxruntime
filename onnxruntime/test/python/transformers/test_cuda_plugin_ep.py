@@ -945,7 +945,7 @@ class TestCudaPluginEP(unittest.TestCase):
             "Dropout_opset10",
             model,
             {"X": x},
-            lambda f: [f["X"], np.ones((2, 4), dtype=bool)],
+            lambda f: [f["X"], np.zeros((2, 4), dtype=bool)],
         )
         self.assertEqual(result, TEST_PASS, "Dropout opset 10 plugin op test failed")
 

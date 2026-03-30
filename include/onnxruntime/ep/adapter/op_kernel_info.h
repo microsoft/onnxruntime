@@ -79,6 +79,9 @@ struct OpKernelInfo {
   const IExecutionProvider* GetExecutionProvider() const noexcept {
     return cache_->ep_impl_;
   }
+  const OrtEp* GetOrtEp() const noexcept {
+    return cache_->ort_ep_;
+  }
 
   KernelDef GetKernelDef() const noexcept {
     return KernelDef{cache_->kernel_info_};
