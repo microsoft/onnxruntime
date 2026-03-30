@@ -3518,40 +3518,33 @@ struct KernelRegistry : detail::Base<OrtKernelRegistry> {
 };
 
 namespace detail {
-/** \brief Non-owning wrapper around a `const OrtOpSchemaTypeConstraints*` view.
+/** \brief Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
  *
- * Holds precomputed type constraint data extracted from an OrtOpSchema, including
- * each constraint's name, allowed data types, and associated input/output indices.
+ * Holds a single type constraint from an operator schema, providing access to
+ * the constraint's name, allowed data types, and associated input/output indices.
  * This is a non-owning view — the lifetime is tied to the parent OrtOpSchema.
  */
 template <typename T>
-struct OpSchemaTypeConstraintsImpl : Base<T> {
+struct OpSchemaTypeConstraintImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
-  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetCount
-  size_t GetCount() const;
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetName
+  std::string GetName() const;
 
-  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetName
-  std::string GetName(size_t index) const;
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetAllowedTypes
+  std::vector<std::string> GetAllowedTypes() const;
 
-  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetAllowedTypes
-  std::vector<std::string> GetAllowedTypes(size_t index) const;
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetInputIndices
+  std::vector<size_t> GetInputIndices() const;
 
-  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetInputIndices
-  std::vector<size_t> GetInputIndices(size_t index) const;
-
-  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_GetOutputIndices
-  std::vector<size_t> GetOutputIndices(size_t index) const;
-
-  ///< Wraps OrtEpApi::OpSchemaTypeConstraints_FindByName.
-  ///< Returns the index of the named constraint, or std::nullopt if not found.
-  std::optional<size_t> FindByName(const char* type_str) const;
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetOutputIndices
+  std::vector<size_t> GetOutputIndices() const;
 };
 }  // namespace detail
 
-/// Non-owning wrapper around a `const OrtOpSchemaTypeConstraints*` view.
-using ConstOpSchemaTypeConstraints = detail::OpSchemaTypeConstraintsImpl<detail::Unowned<const OrtOpSchemaTypeConstraints>>;
+/// Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
+using ConstOpSchemaTypeConstraint = detail::OpSchemaTypeConstraintImpl<detail::Unowned<const OrtOpSchemaTypeConstraint>>;
 
 namespace detail {
 /** \brief Owning wrapper around an `OrtOpSchema*`.
@@ -3574,8 +3567,9 @@ struct OpSchemaImpl : Base<T> {
   ///< Wraps OrtEpApi::OpSchema_GetInputName
   std::string GetInputName(size_t index) const;
 
-  ///< Wraps OrtEpApi::OpSchema_GetInputTypeStr
-  std::string GetInputTypeStr(size_t index) const;
+  ///< Wraps OrtEpApi::OpSchema_GetInputTypeConstraint. Returns the type constraint for the given input,
+  ///< or a wrapper around nullptr if the input has no type constraint.
+  ConstOpSchemaTypeConstraint GetInputTypeConstraint(size_t index) const;
 
   ///< Wraps OrtEpApi::OpSchema_GetNumOutputs
   size_t GetNumOutputs() const;
@@ -3583,11 +3577,15 @@ struct OpSchemaImpl : Base<T> {
   ///< Wraps OrtEpApi::OpSchema_GetOutputName
   std::string GetOutputName(size_t index) const;
 
-  ///< Wraps OrtEpApi::OpSchema_GetOutputTypeStr
-  std::string GetOutputTypeStr(size_t index) const;
+  ///< Wraps OrtEpApi::OpSchema_GetOutputTypeConstraint. Returns the type constraint for the given output,
+  ///< or a wrapper around nullptr if the output has no type constraint.
+  ConstOpSchemaTypeConstraint GetOutputTypeConstraint(size_t index) const;
 
-  ///< Wraps OrtEpApi::OpSchema_GetTypeConstraints. Returns a non-owning ConstOpSchemaTypeConstraints view.
-  ConstOpSchemaTypeConstraints GetTypeConstraints() const;
+  ///< Wraps OrtEpApi::OpSchema_GetTypeConstraintCount
+  size_t GetTypeConstraintCount() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetTypeConstraint. Returns the i-th type constraint.
+  ConstOpSchemaTypeConstraint GetTypeConstraint(size_t index) const;
 };
 }  // namespace detail
 

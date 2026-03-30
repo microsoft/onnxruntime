@@ -127,26 +127,23 @@ ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _O
 ORT_API_STATUS_IMPL(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const char** out);
-ORT_API_STATUS_IMPL(OpSchema_GetInputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
-                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(OpSchema_GetInputTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_result_maybenull_ const OrtOpSchemaTypeConstraint** out);
 ORT_API_STATUS_IMPL(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
                     _Outptr_ const char** out);
-ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeStr, _In_ const OrtOpSchema* schema, _In_ size_t index,
+ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_result_maybenull_ const OrtOpSchemaTypeConstraint** out);
+ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraintCount, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_ const OrtOpSchemaTypeConstraint** out);
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
                     _Outptr_ const char** out);
-ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraints, _In_ const OrtOpSchema* schema,
-                    _Outptr_ const OrtOpSchemaTypeConstraints** out);
-ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetCount, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
-                    _Out_ size_t* out);
-ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetName, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
-                    _In_ size_t index, _Outptr_ const char** out);
-ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetAllowedTypes, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
-                    _In_ size_t index, _Outptr_ const char* const** out_types, _Out_ size_t* num_types);
-ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetInputIndices, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
-                    _In_ size_t index, _Outptr_ const size_t** out_indices, _Out_ size_t* count);
-ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_GetOutputIndices, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
-                    _In_ size_t index, _Outptr_ const size_t** out_indices, _Out_ size_t* count);
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetAllowedTypes, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                    _Outptr_ const char* const** out_types, _Out_ size_t* num_types);
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetInputIndices, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                    _Outptr_ const size_t** out_indices, _Out_ size_t* count);
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetOutputIndices, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                    _Outptr_ const size_t** out_indices, _Out_ size_t* count);
 ORT_API(void, ReleaseOpSchema, _Frees_ptr_opt_ OrtOpSchema* schema);
-ORT_API_STATUS_IMPL(OpSchemaTypeConstraints_FindByName, _In_ const OrtOpSchemaTypeConstraints* type_constraints,
-                    _In_ const char* type_str, _Out_ size_t* out_index);
 }  // namespace OrtExecutionProviderApi

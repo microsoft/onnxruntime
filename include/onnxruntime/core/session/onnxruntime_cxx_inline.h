@@ -3965,10 +3965,10 @@ inline std::string OpSchemaImpl<T>::GetInputName(size_t index) const {
 }
 
 template <typename T>
-inline std::string OpSchemaImpl<T>::GetInputTypeStr(size_t index) const {
-  const char* type_str = nullptr;
-  ThrowOnError(GetEpApi().OpSchema_GetInputTypeStr(this->p_, index, &type_str));
-  return std::string(type_str);
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetInputTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
 }
 
 template <typename T>
@@ -3986,38 +3986,38 @@ inline std::string OpSchemaImpl<T>::GetOutputName(size_t index) const {
 }
 
 template <typename T>
-inline std::string OpSchemaImpl<T>::GetOutputTypeStr(size_t index) const {
-  const char* type_str = nullptr;
-  ThrowOnError(GetEpApi().OpSchema_GetOutputTypeStr(this->p_, index, &type_str));
-  return std::string(type_str);
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetOutputTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
 }
 
 template <typename T>
-inline Ort::ConstOpSchemaTypeConstraints OpSchemaImpl<T>::GetTypeConstraints() const {
-  const OrtOpSchemaTypeConstraints* tcs = nullptr;
-  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraints(this->p_, &tcs));
-  return Ort::ConstOpSchemaTypeConstraints{tcs};
-}
-
-template <typename T>
-inline size_t OpSchemaTypeConstraintsImpl<T>::GetCount() const {
+inline size_t OpSchemaImpl<T>::GetTypeConstraintCount() const {
   size_t count = 0;
-  ThrowOnError(GetEpApi().OpSchemaTypeConstraints_GetCount(this->p_, &count));
+  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraintCount(this->p_, &count));
   return count;
 }
 
 template <typename T>
-inline std::string OpSchemaTypeConstraintsImpl<T>::GetName(size_t index) const {
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline std::string OpSchemaTypeConstraintImpl<T>::GetName() const {
   const char* name = nullptr;
-  ThrowOnError(GetEpApi().OpSchemaTypeConstraints_GetName(this->p_, index, &name));
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetName(this->p_, &name));
   return std::string(name);
 }
 
 template <typename T>
-inline std::vector<std::string> OpSchemaTypeConstraintsImpl<T>::GetAllowedTypes(size_t index) const {
+inline std::vector<std::string> OpSchemaTypeConstraintImpl<T>::GetAllowedTypes() const {
   const char* const* types = nullptr;
   size_t num_types = 0;
-  ThrowOnError(GetEpApi().OpSchemaTypeConstraints_GetAllowedTypes(this->p_, index, &types, &num_types));
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetAllowedTypes(this->p_, &types, &num_types));
   std::vector<std::string> result;
   result.reserve(num_types);
   for (size_t i = 0; i < num_types; ++i) {
@@ -4027,29 +4027,19 @@ inline std::vector<std::string> OpSchemaTypeConstraintsImpl<T>::GetAllowedTypes(
 }
 
 template <typename T>
-inline std::vector<size_t> OpSchemaTypeConstraintsImpl<T>::GetInputIndices(size_t index) const {
+inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetInputIndices() const {
   const size_t* indices = nullptr;
   size_t count = 0;
-  ThrowOnError(GetEpApi().OpSchemaTypeConstraints_GetInputIndices(this->p_, index, &indices, &count));
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetInputIndices(this->p_, &indices, &count));
   return std::vector<size_t>(indices, indices + count);
 }
 
 template <typename T>
-inline std::vector<size_t> OpSchemaTypeConstraintsImpl<T>::GetOutputIndices(size_t index) const {
+inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetOutputIndices() const {
   const size_t* indices = nullptr;
   size_t count = 0;
-  ThrowOnError(GetEpApi().OpSchemaTypeConstraints_GetOutputIndices(this->p_, index, &indices, &count));
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetOutputIndices(this->p_, &indices, &count));
   return std::vector<size_t>(indices, indices + count);
-}
-
-template <typename T>
-inline std::optional<size_t> OpSchemaTypeConstraintsImpl<T>::FindByName(const char* type_str) const {
-  size_t index = SIZE_MAX;
-  ThrowOnError(GetEpApi().OpSchemaTypeConstraints_FindByName(this->p_, type_str, &index));
-  if (index == SIZE_MAX) {
-    return std::nullopt;
-  }
-  return index;
 }
 }  // namespace detail
 
