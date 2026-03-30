@@ -126,7 +126,7 @@ namespace DmlGraphFusionHelper
             THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*initializer,  graph.ModelPath(), /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
             if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
             {
-                if constexpr (endian::native != endian::little)
+                if constexpr (onnxruntime::endian::native != onnxruntime::endian::little)
                 {
                     unpackedTensor.reset(new std::byte[safeTensorByteSize]);
 

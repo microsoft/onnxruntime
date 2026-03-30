@@ -1584,7 +1584,7 @@ namespace Windows::AI::MachineLearning::Adapter
             THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*impl,  modelPath, /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
             if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
             {
-                if constexpr (endian::native != endian::little)
+                if constexpr (onnxruntime::endian::native != onnxruntime::endian::little)
                 {
                     m_unpackedTensor.reset(new std::byte[safeTensorByteSize]);
 
