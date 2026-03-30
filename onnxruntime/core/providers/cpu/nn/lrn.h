@@ -18,7 +18,7 @@ class LRN : public OpKernel {
     int64_t size;
     ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("size", &size));
     size_ = narrow<ptrdiff_t>(size);
-    ORT_ENFORCE(size_ > 1);
+    ORT_ENFORCE(size_ > 0);
     ORT_ENFORCE(size_ % 2 == 1);
     ORT_THROW_IF_ERROR(info.GetAttr<float>("alpha", &alpha_));
     ORT_ENFORCE(alpha_ > 0.0f);
