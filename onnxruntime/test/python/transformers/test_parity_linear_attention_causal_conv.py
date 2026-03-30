@@ -10,7 +10,6 @@ from onnx import TensorProto, helper
 
 import onnxruntime
 
-
 onnxruntime.preload_dlls()
 
 
@@ -268,6 +267,100 @@ class TestLinearAttentionCausalConvPyTorchParity(unittest.TestCase):
 
                 np.testing.assert_allclose(cuda_output, ref_output, rtol=1e-4, atol=2e-4)
                 np.testing.assert_allclose(cuda_state, ref_state, rtol=1e-5, atol=1e-5)
+
+
+class TestLinearAttentionCausalConvCPUParity(unittest.TestCase):
+    def test_linear_attention_cpu_pytorch_parity(self):
+        rng = np.random.default_rng(0)
+
+        q_num_heads = 4
+        kv_num_heads = 2
+        d_k = 64
+        d_v = 64
+        batch = 2
+
+        model = _build_linear_attention_model(
+            q_num_heads=q_num_heads,
+            kv_num_heads=kv_num_heads,
+            update_rule="gated_delta",
+            scale=1.0 / np.sqrt(float(d_k)),
+        )
+
+        for seq_len in (1, 5):
+            with self.subTest(seq_len=seq_len):
+                inputs = {
+                    "query": rng.standard_normal((batch, seq_len, q_num_heads * d_k), dtype=np.float32),
+                    "key": rng.standard_normal((batch, seq_len, kv_num_heads * d_k), dtype=np.float32),
+                    "value": rng.standard_normal((batch, seq_len, kv_num_heads * d_v), dtype=np.float32),
+                    "past_state": rng.standard_normal((batch, kv_num_heads, d_k, d_v), dtype=np.float32),
+                    "decay": rng.standard_normal((batch, seq_len, kv_num_heads), dtype=np.float32),
+                    "beta": rng.uniform(0.0, 1.0, size=(batch, seq_len, 1)).astype(np.float32),
+                }
+
+                cpu_output, cpu_state = _run_onnx(model, inputs, "CPUExecutionProvider")
+                ref_output, ref_state = _torch_linear_attention_reference(
+                    query=inputs["query"],
+                    key=inputs["key"],
+                    value=inputs["value"],
+                    past_state=inputs["past_state"],
+                    decay=inputs["decay"],
+                    beta=inputs["beta"],
+                    q_num_heads=q_num_heads,
+                    kv_num_heads=kv_num_heads,
+                    d_k=d_k,
+                    d_v=d_v,
+                    scale=1.0 / np.sqrt(float(d_k)),
+                )
+
+                output_max_diff = np.max(np.abs(cpu_output - ref_output))
+                state_max_diff = np.max(np.abs(cpu_state - ref_state))
+                print(
+                    "LinearAttention CPU parity "
+                    f"(seq_len={seq_len}): output_max_diff={output_max_diff:.6e}, "
+                    f"state_max_diff={state_max_diff:.6e}"
+                )
+
+                np.testing.assert_allclose(cpu_output, ref_output, rtol=2e-4, atol=3e-4)
+                np.testing.assert_allclose(cpu_state, ref_state, rtol=2e-4, atol=3e-4)
+
+    def test_causal_conv_with_state_cpu_pytorch_parity(self):
+        rng = np.random.default_rng(1)
+
+        batch = 2
+        channels = 16
+        kernel = 4
+        pad = kernel - 1
+
+        model = _build_causal_conv_model(activation="silu")
+
+        for seq_len in (1, 7):
+            with self.subTest(seq_len=seq_len):
+                inputs = {
+                    "input": rng.standard_normal((batch, channels, seq_len), dtype=np.float32),
+                    "weight": rng.standard_normal((channels, 1, kernel), dtype=np.float32),
+                    "bias": rng.standard_normal((channels,), dtype=np.float32),
+                    "past_state": rng.standard_normal((batch, channels, pad), dtype=np.float32),
+                }
+
+                cpu_output, cpu_state = _run_onnx(model, inputs, "CPUExecutionProvider")
+                ref_output, ref_state = _torch_causal_conv_reference(
+                    x=inputs["input"],
+                    weight=inputs["weight"],
+                    bias=inputs["bias"],
+                    past_state=inputs["past_state"],
+                    activation="silu",
+                )
+
+                output_max_diff = np.max(np.abs(cpu_output - ref_output))
+                state_max_diff = np.max(np.abs(cpu_state - ref_state))
+                print(
+                    "CausalConvWithState CPU parity "
+                    f"(seq_len={seq_len}): output_max_diff={output_max_diff:.6e}, "
+                    f"state_max_diff={state_max_diff:.6e}"
+                )
+
+                np.testing.assert_allclose(cpu_output, ref_output, rtol=1e-5, atol=1e-5)
+                np.testing.assert_allclose(cpu_state, ref_state, rtol=1e-5, atol=1e-5)
 
 
 if __name__ == "__main__":

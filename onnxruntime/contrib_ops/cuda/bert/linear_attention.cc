@@ -12,22 +12,19 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCudaType
 
-#define REGISTER_KERNEL_TYPED(T)                                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      LinearAttention,                                                \
-      kMSDomain,                                                      \
-      1,                                                              \
-      T,                                                              \
-      kCudaExecutionProvider,                                         \
-      (*KernelDefBuilder::Create())                                   \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-          .TypeConstraint("S", {DataTypeImpl::GetTensorType<float>(), \
-                                DataTypeImpl::GetTensorType<T>()}),   \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      LinearAttention,                                            \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LinearAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info) {
@@ -64,16 +61,14 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const int seq_len = static_cast<int>(query_shape[1]);
   const int query_hidden = static_cast<int>(query_shape[2]);
 
-  // Determine d_k, d_v — packed QKV not supported on CUDA path (builder always provides separate Q,K,V)
-  bool packed_qkv = (key_tensor == nullptr && value_tensor == nullptr);
-  ORT_RETURN_IF_NOT(!packed_qkv, "Packed QKV not supported in CUDA LinearAttention; use separate Q, K, V inputs");
-  ORT_RETURN_IF_NOT(key_tensor != nullptr && value_tensor != nullptr, "key and value are required");
+  ORT_RETURN_IF_NOT(key_tensor != nullptr && value_tensor != nullptr, "key and value inputs are required");
 
   const auto& key_shape = key_tensor->Shape();
   const auto& value_shape = value_tensor->Shape();
 
   int d_k = query_hidden / q_num_heads_;
   int d_v = static_cast<int>(value_shape[2]) / kv_num_heads_;
+  int n_k_heads = static_cast<int>(key_shape[2]) / d_k;  // key may have different head count than value
 
   float s = scale_;
   if (s == 0.0f) {
@@ -97,7 +92,7 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   // Allocate outputs
-  int output_hidden = q_num_heads_ * d_v;
+  int output_hidden = std::max(q_num_heads_, kv_num_heads_) * d_v;
   TensorShape output_shape({batch_size, seq_len, output_hidden});
   Tensor* output_tensor = context->Output(0, output_shape);
 
@@ -107,15 +102,15 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // If past_state is nullptr, zero-init present_state on device
   if (past_state_tensor == nullptr) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-        present_state_tensor->MutableData<float>(), 0,
-        static_cast<size_t>(batch_size) * kv_num_heads_ * d_k * d_v * sizeof(float),
+        present_state_tensor->MutableData<T>(), 0,
+        static_cast<size_t>(batch_size) * kv_num_heads_ * d_k * d_v * sizeof(T),
         Stream(context)));
   } else {
     // Copy past_state -> present_state (will be updated in-place by kernel)
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-        present_state_tensor->MutableData<float>(),
-        past_state_tensor->Data<float>(),
-        static_cast<size_t>(batch_size) * kv_num_heads_ * d_k * d_v * sizeof(float),
+        present_state_tensor->MutableData<T>(),
+        past_state_tensor->Data<T>(),
+        static_cast<size_t>(batch_size) * kv_num_heads_ * d_k * d_v * sizeof(T),
         cudaMemcpyDeviceToDevice,
         Stream(context)));
   }
@@ -130,11 +125,12 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
       decay_tensor ? reinterpret_cast<const CudaT*>(decay_tensor->Data<T>()) : nullptr,
       beta_tensor ? reinterpret_cast<const CudaT*>(beta_tensor->Data<T>()) : nullptr,
       reinterpret_cast<CudaT*>(output_tensor->MutableData<T>()),
-      present_state_tensor->MutableData<float>(),
+      reinterpret_cast<CudaT*>(present_state_tensor->MutableData<T>()),
       batch_size,
       seq_len,
       q_num_heads_,
       kv_num_heads_,
+      n_k_heads,
       d_k,
       d_v,
       s,

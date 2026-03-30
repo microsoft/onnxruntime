@@ -17,12 +17,12 @@ namespace cuda {
 template <typename T>
 Status LaunchCausalConvWithStateKernel(
     cudaStream_t stream,
-    const T* input,           // [B, C, L]
-    const T* weight,          // [C, 1, K]
-    const T* bias,            // [C] or nullptr
-    const float* past_state,  // [B, C, K-1] or nullptr (fp32 for stability)
-    T* output,                // [B, C, L]
-    float* present_state,     // [B, C, K-1]
+    const T* input,       // [B, C, L]
+    const T* weight,      // [C, 1, K]
+    const T* bias,        // [C] or nullptr
+    const T* past_state,  // [B, C, K-1] or nullptr
+    T* output,            // [B, C, L]
+    T* present_state,     // [B, C, K-1]
     int batch_size,
     int channels,
     int seq_len,

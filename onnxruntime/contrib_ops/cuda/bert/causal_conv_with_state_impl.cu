@@ -12,7 +12,7 @@
 // 2. Prefill (L>1): Load past_state + input into shared memory as a padded buffer,
 //    then each thread computes one output position's convolution.
 //
-// State is stored in fp32 for cross-call stability (matching the CPU kernel).
+// State is stored in type T to match the op schema convention.
 
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -65,13 +65,13 @@ __device__ __forceinline__ float silu_fn(float x) {
 // =============================================================================
 template <typename T>
 __global__ void CausalConvDecodeKernel(
-    const T* __restrict__ input,           // [B, C, 1]
-    const T* __restrict__ weight,          // [C, 1, K]
-    const T* __restrict__ bias,            // [C] or nullptr
-    const float* __restrict__ past_state,  // [B, C, K-1] or nullptr
-    T* __restrict__ output,                // [B, C, 1]
-    float* __restrict__ present_state,     // [B, C, K-1]
-    int batch_channels,                    // = batch_size * channels (actual element count)
+    const T* __restrict__ input,       // [B, C, 1]
+    const T* __restrict__ weight,      // [C, 1, K]
+    const T* __restrict__ bias,        // [C] or nullptr
+    const T* __restrict__ past_state,  // [B, C, K-1] or nullptr
+    T* __restrict__ output,            // [B, C, 1]
+    T* __restrict__ present_state,     // [B, C, K-1]
+    int batch_channels,                // = batch_size * channels (actual element count)
     int channels,
     int kernel_size,
     bool apply_silu) {
@@ -81,7 +81,14 @@ __global__ void CausalConvDecodeKernel(
   const int c = bc % channels;
 
   const int pad = kernel_size - 1;
-  const float* w = nullptr;
+
+  // Cache input value in register — avoids redundant global reads
+  const float input_val = to_float(input[(int64_t)b * channels + c]);
+
+  // Cache past_state base pointer for this (b, c)
+  const T* ps_in = (past_state != nullptr)
+                       ? past_state + (int64_t)b * channels * pad + (int64_t)c * pad
+                       : nullptr;
 
   // Load weight for this channel: [K] values
   // weight layout: [C, 1, K], so channel c starts at c * K
@@ -90,14 +97,11 @@ __global__ void CausalConvDecodeKernel(
   // Convolution window: [past_state[0..K-2], input[0]]
   for (int k = 0; k < pad; ++k) {
     float wk = to_float(weight[c * kernel_size + k]);
-    float xk = (past_state != nullptr)
-                   ? past_state[(int64_t)b * channels * pad + (int64_t)c * pad + k]
-                   : 0.0f;
+    float xk = (ps_in != nullptr) ? to_float(ps_in[k]) : 0.0f;
     sum += wk * xk;
   }
   // Last element of window is current input
-  sum += to_float(weight[c * kernel_size + pad]) *
-         to_float(input[(int64_t)b * channels + c]);
+  sum += to_float(weight[c * kernel_size + pad]) * input_val;
 
   if (apply_silu) {
     sum = silu_fn(sum);
@@ -105,16 +109,12 @@ __global__ void CausalConvDecodeKernel(
   output[(int64_t)b * channels + c] = from_float<T>(sum);
 
   // Update present_state: shift left by 1, append input
-  // present_state[b, c, 0..K-3] = past_state[b, c, 1..K-2]
-  // present_state[b, c, K-2]    = input[b, c, 0]
-  float* ps = present_state + (int64_t)b * channels * pad + (int64_t)c * pad;
+  T* ps_out = present_state + (int64_t)b * channels * pad + (int64_t)c * pad;
   for (int k = 0; k < pad - 1; ++k) {
-    ps[k] = (past_state != nullptr)
-                ? past_state[(int64_t)b * channels * pad + (int64_t)c * pad + k + 1]
-                : 0.0f;
+    ps_out[k] = (ps_in != nullptr) ? ps_in[k + 1] : from_float<T>(0.0f);
   }
   if (pad > 0) {
-    ps[pad - 1] = to_float(input[(int64_t)b * channels + c]);
+    ps_out[pad - 1] = from_float<T>(input_val);
   }
 }
 
@@ -123,9 +123,9 @@ __global__ void CausalConvDecodeKernelFixedK(
     const T* __restrict__ input,
     const T* __restrict__ weight,
     const T* __restrict__ bias,
-    const float* __restrict__ past_state,
+    const T* __restrict__ past_state,
     T* __restrict__ output,
-    float* __restrict__ present_state,
+    T* __restrict__ present_state,
     int batch_channels,
     int channels,
     bool apply_silu) {
@@ -138,14 +138,14 @@ __global__ void CausalConvDecodeKernelFixedK(
 
   float sum = (bias != nullptr) ? to_float(bias[c]) : 0.0f;
   const T* w = weight + static_cast<int64_t>(c) * K;
-  const float* ps_in = (past_state != nullptr)
-                           ? past_state + static_cast<int64_t>(b) * channels * pad + static_cast<int64_t>(c) * pad
-                           : nullptr;
+  const T* ps_in = (past_state != nullptr)
+                       ? past_state + static_cast<int64_t>(b) * channels * pad + static_cast<int64_t>(c) * pad
+                       : nullptr;
 
   if (ps_in != nullptr) {
 #pragma unroll
     for (int k = 0; k < pad; ++k) {
-      sum += to_float(w[k]) * ps_in[k];
+      sum += to_float(w[k]) * to_float(ps_in[k]);
     }
   }
   sum += to_float(w[pad]) * to_float(input[static_cast<int64_t>(b) * channels + c]);
@@ -155,13 +155,13 @@ __global__ void CausalConvDecodeKernelFixedK(
   }
   output[static_cast<int64_t>(b) * channels + c] = from_float<T>(sum);
 
-  float* ps_out = present_state + static_cast<int64_t>(b) * channels * pad + static_cast<int64_t>(c) * pad;
+  T* ps_out = present_state + static_cast<int64_t>(b) * channels * pad + static_cast<int64_t>(c) * pad;
   if constexpr (pad > 0) {
 #pragma unroll
     for (int k = 0; k < pad - 1; ++k) {
-      ps_out[k] = (ps_in != nullptr) ? ps_in[k + 1] : 0.0f;
+      ps_out[k] = (ps_in != nullptr) ? ps_in[k + 1] : from_float<T>(0.0f);
     }
-    ps_out[pad - 1] = to_float(input[static_cast<int64_t>(b) * channels + c]);
+    ps_out[pad - 1] = input[static_cast<int64_t>(b) * channels + c];
   }
 }
 
@@ -173,12 +173,12 @@ __global__ void CausalConvDecodeKernelFixedK(
 // =============================================================================
 template <typename T>
 __global__ void CausalConvPrefillKernel(
-    const T* __restrict__ input,           // [B, C, L]
-    const T* __restrict__ weight,          // [C, 1, K]
-    const T* __restrict__ bias,            // [C] or nullptr
-    const float* __restrict__ past_state,  // [B, C, K-1] or nullptr
-    T* __restrict__ output,                // [B, C, L]
-    float* __restrict__ present_state,     // [B, C, K-1]
+    const T* __restrict__ input,       // [B, C, L]
+    const T* __restrict__ weight,      // [C, 1, K]
+    const T* __restrict__ bias,        // [C] or nullptr
+    const T* __restrict__ past_state,  // [B, C, K-1] or nullptr
+    T* __restrict__ output,            // [B, C, L]
+    T* __restrict__ present_state,     // [B, C, K-1]
     int seq_len,
     int channels,
     int kernel_size,
@@ -199,7 +199,7 @@ __global__ void CausalConvPrefillKernel(
   // Past state portion: [0..pad-1]
   for (int i = tid; i < pad; i += blockDim.x) {
     if (past_state != nullptr) {
-      s_padded[i] = past_state[(int64_t)b * channels * pad + (int64_t)c * pad + i];
+      s_padded[i] = to_float(past_state[(int64_t)b * channels * pad + (int64_t)c * pad + i]);
     } else {
       s_padded[i] = 0.0f;
     }
@@ -229,9 +229,9 @@ __global__ void CausalConvPrefillKernel(
 
   // Save present_state: last K-1 elements of padded input
   __syncthreads();
-  float* ps = present_state + (int64_t)b * channels * pad + (int64_t)c * pad;
+  T* ps = present_state + (int64_t)b * channels * pad + (int64_t)c * pad;
   for (int i = tid; i < pad; i += blockDim.x) {
-    ps[i] = s_padded[padded_len - pad + i];
+    ps[i] = from_float<T>(s_padded[padded_len - pad + i]);
   }
 }
 
@@ -243,9 +243,9 @@ Status LaunchCausalConvWithStateKernel(
     const T* input,
     const T* weight,
     const T* bias,
-    const float* past_state,
+    const T* past_state,
     T* output,
-    float* present_state,
+    T* present_state,
     int batch_size,
     int channels,
     int seq_len,
@@ -309,13 +309,13 @@ template Status LaunchCausalConvWithStateKernel<float>(
     float*, float*, int, int, int, int, bool, int);
 
 template Status LaunchCausalConvWithStateKernel<half>(
-    cudaStream_t, const half*, const half*, const half*, const float*,
-    half*, float*, int, int, int, int, bool, int);
+    cudaStream_t, const half*, const half*, const half*, const half*,
+    half*, half*, int, int, int, int, bool, int);
 
 #if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
 template Status LaunchCausalConvWithStateKernel<__nv_bfloat16>(
-    cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const float*,
-    __nv_bfloat16*, float*, int, int, int, int, bool, int);
+    cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
+    __nv_bfloat16*, __nv_bfloat16*, int, int, int, int, bool, int);
 #endif
 
 }  // namespace cuda

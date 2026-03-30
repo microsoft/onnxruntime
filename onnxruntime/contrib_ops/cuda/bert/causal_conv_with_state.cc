@@ -12,21 +12,19 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCudaType
 
-#define REGISTER_KERNEL_TYPED(T)                                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      CausalConvWithState,                                            \
-      kMSDomain,                                                      \
-      1,                                                              \
-      T,                                                              \
-      kCudaExecutionProvider,                                         \
-      (*KernelDefBuilder::Create())                                   \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>()), \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      CausalConvWithState,                                        \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       CausalConvWithState<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKernel(info) {
@@ -66,8 +64,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   // Initialize present_state: copy from past or zero
   if (past_state_tensor == nullptr) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-        present_state_tensor->MutableData<float>(), 0,
-        static_cast<size_t>(batch_size) * channels * pad * sizeof(float),
+        present_state_tensor->MutableData<T>(), 0,
+        static_cast<size_t>(batch_size) * channels * pad * sizeof(T),
         Stream(context)));
   }
   // Note: past_state pointer is passed to kernel; kernel reads it directly
@@ -81,9 +79,9 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(input_tensor->Data<T>()),
       reinterpret_cast<const CudaT*>(weight_tensor->Data<T>()),
       bias_tensor ? reinterpret_cast<const CudaT*>(bias_tensor->Data<T>()) : nullptr,
-      past_state_tensor ? past_state_tensor->Data<float>() : nullptr,
+      past_state_tensor ? reinterpret_cast<const CudaT*>(past_state_tensor->Data<T>()) : nullptr,
       reinterpret_cast<CudaT*>(output_tensor->MutableData<T>()),
-      present_state_tensor->MutableData<float>(),
+      reinterpret_cast<CudaT*>(present_state_tensor->MutableData<T>()),
       batch_size,
       channels,
       L,

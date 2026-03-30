@@ -17,17 +17,15 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      LinearAttention,                                                  \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCpuExecutionProvider,                                            \
-      KernelDefBuilder()                                                \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("S", {DataTypeImpl::GetTensorType<T>(),       \
-                                DataTypeImpl::GetTensorType<float>()}), \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      LinearAttention,                                            \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LinearAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -63,18 +61,21 @@ namespace {
 void ProcessHead(
     float* S,                 // State matrix [d_k, d_v], in-place updated
     const float* q_data,      // Packed Q: (B, T, H_q*d_k)
-    const float* k_data,      // Packed K: (B, T, H_kv*d_k)
+    const float* k_data,      // Packed K: (B, T, n_k*d_k)
     const float* v_data,      // Packed V: (B, T, H_kv*d_v)
     const float* decay_data,  // Decay gates (may be nullptr)
     const float* beta_data,   // Beta rates (may be nullptr)
     float* output_data,       // Output: (B, T, H_q*d_v)
+    float* retrieved_buf,     // Pre-allocated scratch buffer [d_v]
     int64_t batch_idx,
     int h_kv,
+    int h_k,  // Key head index (may differ from h_kv when n_k != kv_num_heads)
     int64_t seq_len,
     int64_t d_k,
     int64_t d_v,
     int q_num_heads,
     int kv_num_heads,
+    int n_k_heads,
     int heads_per_group,
     int64_t output_hidden,
     float scale,
@@ -87,12 +88,9 @@ void ProcessHead(
   const size_t dv = static_cast<size_t>(d_v);
   const bool use_mlas = (d_k * d_v >= 4096);
 
-  // Per-head scratch buffer reused across timesteps.
-  std::vector<float> retrieved_buf(dv);
-
   for (int64_t t = 0; t < seq_len; ++t) {
-    // Pointers into packed 3D tensors at position [batch_idx, t, h_kv*d]
-    const float* kt = k_data + (batch_idx * seq_len + t) * (kv_num_heads * d_k) + h_kv * d_k;
+    // Pointers into packed 3D tensors at position [batch_idx, t, head*d]
+    const float* kt = k_data + (batch_idx * seq_len + t) * (n_k_heads * d_k) + h_k * d_k;
     const float* vt = v_data + (batch_idx * seq_len + t) * (kv_num_heads * d_v) + h_kv * d_v;
 
     // ---- Step 1: Apply decay S *= exp(g_t) ----
@@ -130,7 +128,7 @@ void ProcessHead(
             S,
             dv,
             0.0f,
-            retrieved_buf.data(),
+            retrieved_buf,
             dv,
             nullptr,
             nullptr);
@@ -168,7 +166,7 @@ void ProcessHead(
             1.0f,
             kt,
             1,
-            retrieved_buf.data(),
+            retrieved_buf,
             dv,
             1.0f,
             S,
@@ -216,10 +214,47 @@ void ProcessHead(
 
     // ---- Step 4: Query readout for each q head in this kv group ----
     // o_t = scale * q_t^T @ S -> [1, d_v]
-    for (int g = 0; g < heads_per_group; ++g) {
-      int h_q = h_kv * heads_per_group + g;
+    //
+    // Standard GQA (heads_per_group > 0): multiple Q heads share this KV state.
+    // Inverse GQA (heads_per_group == 0): multiple KV states share one Q head.
+    if (heads_per_group > 0) {
+      for (int g = 0; g < heads_per_group; ++g) {
+        int h_q = h_kv * heads_per_group + g;
+        const float* qt = q_data + (batch_idx * seq_len + t) * (q_num_heads * d_k) + h_q * d_k;
+        float* ot = output_data + (batch_idx * seq_len + t) * output_hidden + h_q * d_v;
+
+        if (use_mlas) {
+          MlasGemm(
+              CblasNoTrans,
+              CblasNoTrans,
+              1,
+              dv,
+              dk,
+              scale,
+              qt,
+              dk,
+              S,
+              dv,
+              0.0f,
+              ot,
+              dv,
+              nullptr,
+              nullptr);
+        } else {
+          for (int64_t j = 0; j < d_v; ++j) {
+            float acc = 0.0f;
+            for (int64_t i = 0; i < d_k; ++i) {
+              acc += qt[i] * S[i * d_v + j];
+            }
+            ot[j] = scale * acc;
+          }
+        }
+      }
+    } else {
+      // Inverse GQA: this KV head's Q is determined by h_kv * q_num / kv_num
+      int h_q = h_kv * q_num_heads / kv_num_heads;
       const float* qt = q_data + (batch_idx * seq_len + t) * (q_num_heads * d_k) + h_q * d_k;
-      float* ot = output_data + (batch_idx * seq_len + t) * output_hidden + h_q * d_v;
+      float* ot = output_data + (batch_idx * seq_len + t) * output_hidden + h_kv * d_v;
 
       if (use_mlas) {
         MlasGemm(
@@ -273,55 +308,17 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
   const int64_t seq_len = query_shape[1];
   const int64_t query_hidden = query_shape[2];
 
-  // ==== Determine d_k and d_v, handle packed QKV ====
-  bool packed_qkv = (key_tensor == nullptr && value_tensor == nullptr);
-  ORT_RETURN_IF_NOT(packed_qkv || (key_tensor != nullptr && value_tensor != nullptr),
-                    "key and value must both be provided or both be absent");
+  // ==== Determine d_k and d_v ====
+  ORT_RETURN_IF_NOT(key_tensor != nullptr && value_tensor != nullptr,
+                    "key and value inputs are required");
 
   int64_t d_k, d_v;
+  int n_k_heads;
   const float* q_data;
   const float* k_data;
   const float* v_data;
 
-  // For packed QKV, we use zero-copy pointer arithmetic into the query buffer.
-  // q_stride/k_stride/v_stride track the packed row size so we can index directly.
-  // For separate inputs, the pointers are the raw tensor data pointers.
-  //
-  // Packed QKV layout per row: [Q_heads..., K_heads..., V_heads...]
-  // We need contiguous Q, K, V for MlasGemm, so we still split into separate buffers.
-  // But we avoid per-element copies by using memcpy of full row chunks.
-  std::vector<float> unpacked_q, unpacked_k, unpacked_v;
-
-  if (packed_qkv) {
-    int64_t total_heads = q_num_heads_ + 2 * kv_num_heads_;
-    d_k = query_hidden / total_heads;
-    d_v = d_k;
-    ORT_RETURN_IF_NOT(query_hidden == total_heads * d_k,
-                      "query hidden size must be divisible by (q_num_heads + 2*kv_num_heads)");
-
-    int64_t q_chunk = q_num_heads_ * d_k;
-    int64_t k_chunk = kv_num_heads_ * d_k;
-    int64_t v_chunk = kv_num_heads_ * d_v;
-    int64_t row_size = q_chunk + k_chunk + v_chunk;
-    int64_t num_rows = batch_size * seq_len;
-
-    unpacked_q.resize(static_cast<size_t>(num_rows * q_chunk));
-    unpacked_k.resize(static_cast<size_t>(num_rows * k_chunk));
-    unpacked_v.resize(static_cast<size_t>(num_rows * v_chunk));
-
-    const float* src = query_tensor->Data<float>();
-
-    // Split packed QKV rows using bulk memcpy per row
-    for (int64_t r = 0; r < num_rows; ++r) {
-      const float* row = src + r * row_size;
-      std::memcpy(unpacked_q.data() + r * q_chunk, row, static_cast<size_t>(q_chunk) * sizeof(float));
-      std::memcpy(unpacked_k.data() + r * k_chunk, row + q_chunk, static_cast<size_t>(k_chunk) * sizeof(float));
-      std::memcpy(unpacked_v.data() + r * v_chunk, row + q_chunk + k_chunk, static_cast<size_t>(v_chunk) * sizeof(float));
-    }
-    q_data = unpacked_q.data();
-    k_data = unpacked_k.data();
-    v_data = unpacked_v.data();
-  } else {
+  {
     const auto& key_shape = key_tensor->Shape();
     const auto& value_shape = value_tensor->Shape();
     ORT_RETURN_IF_NOT(key_shape.NumDimensions() == 3 && value_shape.NumDimensions() == 3,
@@ -334,8 +331,9 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
     d_k = query_hidden / q_num_heads_;
     ORT_RETURN_IF_NOT(query_hidden == q_num_heads_ * d_k,
                       "query hidden size must be divisible by q_num_heads");
-    ORT_RETURN_IF_NOT(key_shape[2] == kv_num_heads_ * d_k,
-                      "key hidden size mismatch");
+    ORT_RETURN_IF_NOT(key_shape[2] % d_k == 0,
+                      "key hidden size must be divisible by d_k");
+    n_k_heads = static_cast<int>(key_shape[2] / d_k);
     d_v = value_shape[2] / kv_num_heads_;
     ORT_RETURN_IF_NOT(value_shape[2] == kv_num_heads_ * d_v,
                       "value hidden size must be divisible by kv_num_heads");
@@ -408,15 +406,32 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   // ==== Allocate output ====
-  int64_t output_hidden = q_num_heads_ * d_v;
+  // Output hidden dim: max(q_num_heads, kv_num_heads) * d_v
+  // Standard GQA: q_num_heads * d_v; Inverse GQA: kv_num_heads * d_v
+  int64_t output_hidden = std::max(q_num_heads_, kv_num_heads_) * d_v;
   TensorShape output_shape({batch_size, seq_len, output_hidden});
   Tensor* output_tensor = context->Output(0, output_shape);
   float* output_data = output_tensor->MutableData<float>();
 
-  // ==== GQA ====
-  ORT_RETURN_IF_NOT(q_num_heads_ % kv_num_heads_ == 0,
-                    "q_num_heads must be divisible by kv_num_heads");
-  int heads_per_group = q_num_heads_ / kv_num_heads_;
+  // ==== GQA head mapping ====
+  // Standard GQA: q_num_heads >= kv_num_heads, multiple Q heads per KV group.
+  // Inverse GQA: q_num_heads < kv_num_heads (e.g., Qwen3.5 9B: n_k=16, n_kv=32).
+  // Also n_k_heads may differ from both (K has its own head count).
+  int heads_per_group;  // Q heads per KV group (0 if inverse GQA)
+  if (q_num_heads_ >= kv_num_heads_) {
+    ORT_RETURN_IF_NOT(q_num_heads_ % kv_num_heads_ == 0,
+                      "q_num_heads must be divisible by kv_num_heads");
+    heads_per_group = q_num_heads_ / kv_num_heads_;
+  } else {
+    ORT_RETURN_IF_NOT(kv_num_heads_ % q_num_heads_ == 0,
+                      "kv_num_heads must be divisible by q_num_heads (inverse GQA)");
+    heads_per_group = 0;  // signals inverse GQA to ProcessHead
+  }
+
+  // K-to-KV head mapping: when n_k < kv_num_heads, multiple KV heads share one K head
+  ORT_RETURN_IF_NOT(kv_num_heads_ % n_k_heads == 0,
+                    "kv_num_heads must be divisible by n_k_heads");
+  int kv_per_k_head = kv_num_heads_ / n_k_heads;
 
   // ==== Thread-parallel over (batch, kv_head) pairs ====
   // Each (b, h_kv) pair is fully independent — the state matrix for each
@@ -434,16 +449,21 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
       static_cast<std::ptrdiff_t>(total_tasks),
       cost_per_task,
       [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+        // Pre-allocate scratch buffer per thread-batch to avoid malloc in hot loop
+        std::vector<float> retrieved_buf(static_cast<size_t>(d_v));
+
         for (std::ptrdiff_t task = first; task < last; ++task) {
           int64_t b = task / kv_num_heads_;
           int h_kv = static_cast<int>(task % kv_num_heads_);
+          int h_k = h_kv / kv_per_k_head;  // map KV head to K head
 
           float* S = state_data + (b * kv_num_heads_ + h_kv) * state_per_head;
 
           ProcessHead(
               S, q_data, k_data, v_data, decay_data, beta_data, output_data,
-              b, h_kv, seq_len, d_k, d_v,
-              q_num_heads_, kv_num_heads_, heads_per_group, output_hidden,
+              retrieved_buf.data(),
+              b, h_kv, h_k, seq_len, d_k, d_v,
+              q_num_heads_, kv_num_heads_, n_k_heads, heads_per_group, output_hidden,
               s, needs_decay, decay_per_key_dim, needs_beta, beta_per_head,
               needs_retrieval);
         }

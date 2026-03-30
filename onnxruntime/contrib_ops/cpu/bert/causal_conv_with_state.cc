@@ -17,16 +17,15 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T)                                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
-      CausalConvWithState,                                            \
-      kMSDomain,                                                      \
-      1,                                                              \
-      T,                                                              \
-      kCpuExecutionProvider,                                          \
-      KernelDefBuilder()                                              \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>()), \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      CausalConvWithState,                                        \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       CausalConvWithState<T>);
 
 REGISTER_KERNEL_TYPED(float)
