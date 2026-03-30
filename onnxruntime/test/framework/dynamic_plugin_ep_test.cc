@@ -6,6 +6,7 @@
 #include "core/framework/execution_provider.h"
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
 
+#include <limits>
 #include <string>
 
 #include "test/util/include/asserts.h"
@@ -112,6 +113,23 @@ TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBias
   EXPECT_FALSE(attention_kernel_options->UseFlashAttention());
   EXPECT_FALSE(attention_kernel_options->UseEfficientAttention());
   EXPECT_FALSE(attention_kernel_options->UseCudnnFlashAttention());
+}
+
+TEST(DynamicPluginEpInfraTest, CudaKernelAdapterTryBytesForCountDetectsOverflow) {
+  size_t bytes = 0;
+  EXPECT_FALSE(onnxruntime::cuda::detail::TryBytesForCount(std::numeric_limits<size_t>::max(), 2, bytes));
+}
+
+TEST(DynamicPluginEpInfraTest, CudaKernelAdapterTryBytesForCountPreservesRawByteCounts) {
+  size_t bytes = 0;
+  ASSERT_TRUE(onnxruntime::cuda::detail::TryBytesForCount(123, 0, bytes));
+  EXPECT_EQ(bytes, size_t{123});
+}
+
+TEST(DynamicPluginEpInfraTest, CudaKernelAdapterTryBytesForCountNormalCase) {
+  size_t bytes = 0;
+  ASSERT_TRUE(onnxruntime::cuda::detail::TryBytesForCount(10, 4, bytes));
+  EXPECT_EQ(bytes, size_t{40});
 }
 #endif
 

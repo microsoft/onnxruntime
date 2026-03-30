@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import logging
 import os
 import sys
 from importlib.metadata import PackageNotFoundError, distribution
@@ -10,14 +11,14 @@ import torch
 
 import onnxruntime as onnxrt
 
+CUDA_PLUGIN_EP_NAME = "CudaPluginExecutionProvider"
+enable_debug_print = False
+logger = logging.getLogger(__name__)
+
 
 class _CudaPluginRegistrationState:
     attempted = False
     registered = False
-
-
-CUDA_PLUGIN_EP_NAME = "CudaPluginExecutionProvider"
-enable_debug_print = False
 
 
 def should_test_with_cuda_plugin_ep(default_value: bool = True) -> bool:
@@ -188,5 +189,6 @@ def get_cuda_provider_name() -> str | None:
 def _is_plugin_provider_type_available() -> bool:
     try:
         return CUDA_PLUGIN_EP_NAME in onnxrt.get_available_providers()
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to query available providers while checking %s availability: %s", CUDA_PLUGIN_EP_NAME, e)
         return False

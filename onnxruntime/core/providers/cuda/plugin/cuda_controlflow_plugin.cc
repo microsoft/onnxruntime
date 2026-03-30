@@ -110,20 +110,28 @@ OrtStatus* ORT_API_CALL PluginLoopHelper::ConcatOutputImpl(
 
     Ort::ConstValue first_output(per_iteration_outputs[0]);
     size_t bytes_per_iteration = first_output.GetTensorSizeInBytes();
+    if (bytes_per_iteration > output_size_in_bytes) {
+      return Ort::Status("Loop ConcatOutput: output buffer too small for first iteration", ORT_FAIL).release();
+    }
 
     char* cur = static_cast<char*>(output);
+    size_t total_bytes_copied = 0;
     for (size_t i = 0; i < num_per_iteration_outputs; i++) {
       Ort::ConstValue val(per_iteration_outputs[i]);
       size_t cur_bytes = val.GetTensorSizeInBytes();
       if (cur_bytes != bytes_per_iteration) {
         return Ort::Status("Inconsistent size in loop output iteration", ORT_FAIL).release();
       }
+      if (cur_bytes > output_size_in_bytes - total_bytes_copied) {
+        return Ort::Status("Loop ConcatOutput: output buffer too small", ORT_FAIL).release();
+      }
       PL_CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cur, val.GetTensorRawData(), bytes_per_iteration,
                                               cudaMemcpyDeviceToDevice, cuda_stream));
       cur += bytes_per_iteration;
+      total_bytes_copied += bytes_per_iteration;
     }
 
-    if (static_cast<size_t>(cur - static_cast<char*>(output)) != output_size_in_bytes) {
+    if (total_bytes_copied != output_size_in_bytes) {
       return Ort::Status("Loop ConcatOutput: output buffer not fully filled", ORT_FAIL).release();
     }
 
@@ -194,6 +202,18 @@ OrtStatus* ORT_API_CALL PluginScanHelper::TransposeImpl(
 
     if (num_dims != num_permutation_elems) {
       return Ort::Status("Scan Transpose: permutation size does not match input rank", ORT_FAIL).release();
+    }
+
+    std::vector<bool> seen_permutation_indices(num_dims, false);
+    for (size_t i = 0; i < num_permutation_elems; ++i) {
+      const size_t perm_index = permutation[i];
+      if (perm_index >= num_dims) {
+        return Ort::Status("Scan Transpose: permutation index is out of range", ORT_FAIL).release();
+      }
+      if (seen_permutation_indices[perm_index]) {
+        return Ort::Status("Scan Transpose: permutation contains duplicate indices", ORT_FAIL).release();
+      }
+      seen_permutation_indices[perm_index] = true;
     }
 
     if (total_elements == 0) return nullptr;

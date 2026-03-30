@@ -442,10 +442,22 @@ template <>
 struct SizeOf<void> {
   static constexpr size_t value = 0;
 };
-[[nodiscard]] inline size_t BytesForCount(size_t count_or_bytes, size_t element_size) {
-  if (element_size == 0) return count_or_bytes;
-  if (count_or_bytes > (std::numeric_limits<size_t>::max() / element_size)) return 0;
-  return count_or_bytes * element_size;
+
+[[nodiscard]] inline bool TryBytesForCount(size_t count_or_bytes, size_t element_size, size_t& bytes) {
+  if (element_size == 0) {
+    // `element_size == 0` is the sentinel for the `T = void` path.
+    // In that mode callers already pass a raw byte count to helpers like
+    // GetScratchBuffer<void>(workspace_bytes, ...), so no multiplication is needed.
+    bytes = count_or_bytes;
+    return true;
+  }
+
+  if (count_or_bytes > (std::numeric_limits<size_t>::max() / element_size)) {
+    return false;
+  }
+
+  bytes = count_or_bytes * element_size;
+  return true;
 }
 
 template <typename T>
@@ -942,8 +954,8 @@ class CudaKernel : public OpKernel {
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* s) const {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
-    size_t sz = detail::BytesForCount(cnt, detail::SizeOf<T>::value);
-    if (sz == 0) {
+    size_t sz = 0;
+    if (!detail::TryBytesForCount(cnt, detail::SizeOf<T>::value, sz)) {
       ORT_THROW("CUDA scratch buffer allocation size overflow for ", cnt, " elements");
     }
 
@@ -1015,8 +1027,8 @@ class CudaKernel : public OpKernel {
   template <typename T>
   inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t cnt) const {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
-    size_t sz = detail::BytesForCount(cnt, detail::SizeOf<T>::value);
-    if (sz == 0) {
+    size_t sz = 0;
+    if (!detail::TryBytesForCount(cnt, detail::SizeOf<T>::value, sz)) {
       ORT_THROW("CUDA pinned CPU buffer allocation size overflow for ", cnt, " elements");
     }
     void* p = nullptr;
@@ -1034,7 +1046,11 @@ class CudaKernel : public OpKernel {
       for (size_t i = 0; i != n; ++i) *p++ = v;
     }
     CudaAsyncBuffer(const CudaKernel* ok, gsl::span<T const> vec) : CudaAsyncBuffer(ok, vec.size()) {
-      memcpy(CpuPtr(), vec.data(), detail::BytesForCount(vec.size(), sizeof(T)));
+      size_t bytes = 0;
+      if (!detail::TryBytesForCount(vec.size(), sizeof(T), bytes)) {
+        ORT_THROW("CUDA async buffer host copy size overflow for ", vec.size(), " elements");
+      }
+      memcpy(CpuPtr(), vec.data(), bytes);
     }
     void AllocCpuPtr(size_t n) {
       cpu_ = op_kernel_->AllocateBufferOnCPUPinned<T>(n);
@@ -1044,8 +1060,8 @@ class CudaKernel : public OpKernel {
     Status CopyToGpu(void* s) {
       if (cpu_) {
         gpu_ = op_kernel_->GetScratchBuffer<T>(count_, s);
-        const size_t bytes = detail::BytesForCount(count_, sizeof(T));
-        if (count_ > 0 && bytes == 0) {
+        size_t bytes = 0;
+        if (!detail::TryBytesForCount(count_, sizeof(T), bytes)) {
           ORT_THROW("CUDA async buffer copy size overflow for ", count_, " elements");
         }
         if (cudaMemcpyAsync(gpu_.get(), cpu_.get(), bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(s)) != cudaSuccess) return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Memcpy fail");
