@@ -5222,6 +5222,40 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
+  // After optimizations such as function inlining, intermediate NodeArgs may have
+  // type/shape info (from shape inference during Resolve) but not be present in
+  // value_info_. Emit value_info for all intermediate node outputs that have type
+  // info so the saved model faithfully captures ORT's internal shape knowledge.
+  {
+    std::unordered_set<const NodeArg*> already_emitted(value_info_.begin(), value_info_.end());
+
+    // Collect graph inputs and outputs so we can skip them (they are already serialized).
+    for (const auto* input_arg : GetInputsIncludingInitializers()) {
+      already_emitted.insert(input_arg);
+    }
+    for (const auto* output_arg : GetOutputs()) {
+      already_emitted.insert(output_arg);
+    }
+
+    // Collect all intermediate node outputs with type info that are not yet emitted.
+    std::vector<const NodeArg*> extra_value_info;
+    for (const auto& node : Nodes()) {
+      for (const auto* output_def : node.OutputDefs()) {
+        if (output_def->Exists() && output_def->TypeAsProto() != nullptr &&
+            already_emitted.find(output_def) == already_emitted.end()) {
+          extra_value_info.push_back(output_def);
+          already_emitted.insert(output_def);
+        }
+      }
+    }
+
+    // Sort for deterministic output.
+    std::sort(extra_value_info.begin(), extra_value_info.end(), sort_predicate);
+    for (const auto* vi : extra_value_info) {
+      *(graph_proto.mutable_value_info()->Add()) = vi->ToProto();
+    }
+  }
+
   // add the NodeArg info for outer scope NodeArgs so we capture the type information
   for (const auto& name : outer_scope_node_arg_names_) {
     auto* node_arg = GetNodeArg(name);
