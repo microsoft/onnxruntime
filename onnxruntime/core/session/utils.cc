@@ -398,7 +398,7 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
-  // Model path could be an onnx model file, or a model package directory.
+  // `model_path` could be a single ONNX file path, an ORT format model path, or a model package directory.
   const ORTCHAR_T* model_path_to_use = model_path;
 
   // keep storage alive if ORT selects a model variant.
@@ -457,10 +457,8 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
                                      "Try specifying the model file path instead.");
       }
 
-      Status status;
-      status = ToStatusAndRelease(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
-                                                                      model_data, model_data_length, sess));
-      ORT_API_RETURN_IF_STATUS_NOT_OK(status);
+      ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
+                                                                  model_data, model_data_length, sess));
 
       // Register execution providers
       for (auto& provider : provider_list) {

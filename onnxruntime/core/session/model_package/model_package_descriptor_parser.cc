@@ -46,6 +46,7 @@ namespace onnxruntime {
 //         <model_name_1> : {
 //             "model_variants" : {
 //                 <variant_name_1> : {
+//                     "model_type": "onnx",
 //                     "file" : <ep_context_model_1 onnx file>,
 //                     "constraints" : {
 //                         "ep" : <ep_name>,
@@ -66,6 +67,7 @@ namespace onnxruntime {
 //        <variant_name_1> : {
 //            "file" : <ep_context_model_1 onnx file>,
 //            "constraints" : {
+//                "model_type": "onnx",
 //                "ep" : <ep_name>,
 //                "device" : <device_type>,
 //                "ep_compatibility_info" : <ep_compatibility_info_1>
@@ -74,6 +76,7 @@ namespace onnxruntime {
 //        <variant_name_2> : {
 //             "file" : <ep_context_model_2 onnx file>,
 //             "constraints" : {
+//                 "model_type": "onnx",
 //                 "ep" : <ep_name>,
 //                 "device" : <device_type>,
 //                 "ep_compatibility_info" : <ep_compatibility_info_1>
@@ -81,8 +84,8 @@ namespace onnxruntime {
 //         }
 //     }
 // }
-Status ModelPackageDescriptorParser::ParseManifest(const std::filesystem::path& package_root,
-                                                   /*out*/ std::vector<ModelVariantInfo>& variants) const {
+Status ModelPackageDescriptorParser::ParseManifestAndMetadata(const std::filesystem::path& package_root,
+                                                              /*out*/ std::vector<ModelVariantInfo>& variants) const {
   variants.clear();
   const auto manifest_path = package_root / kModelPackageManifestFileName;
   if (!std::filesystem::exists(manifest_path)) {
@@ -329,6 +332,8 @@ Status ModelPackageDescriptorParser::ParseManifest(const std::filesystem::path& 
         }
 
         variant.model_path = resolved_model_path;
+
+        // TODO: Might need to check agasint "model_type" field in the future if we support multiple model formats.
 
         if (variant_json.contains(kConstraintsKey) && variant_json[kConstraintsKey].is_object()) {
           ORT_RETURN_IF_ERROR(ParseModelVariantConstraints(variant_json[kConstraintsKey], variant));

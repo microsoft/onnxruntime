@@ -519,7 +519,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
 
     ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
     std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseManifest(package_root, variants);
+    auto status = parser.ParseManifestAndMetadata(package_root, variants);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
     ASSERT_EQ(variants.size(), 1u);
     EXPECT_EQ(variants[0].model_path.filename().string(), "only.onnx");
@@ -549,7 +549,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
 
     ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
     std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseManifest(package_root, variants);
+    auto status = parser.ParseManifestAndMetadata(package_root, variants);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
     ASSERT_EQ(variants.size(), 1u);
     EXPECT_EQ(variants[0].model_path.filename().string(), "auto.onnx");
@@ -581,7 +581,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
 
     ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
     std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseManifest(package_root, variants);
+    auto status = parser.ParseManifestAndMetadata(package_root, variants);
     ASSERT_FALSE(status.IsOK());
     EXPECT_THAT(status.ErrorMessage(),
                 ::testing::HasSubstr("Multiple ONNX model files found under"));
