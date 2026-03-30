@@ -9,6 +9,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/op_kernel.h"
+#include "core/graph/function_utils.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -18,7 +19,12 @@
 #include "test/internal_testing_ep/internal_testing_execution_provider.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#endif
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -662,5 +668,301 @@ TEST(FunctionTest, Test_GH_issue_16438) {
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
+// Verify that function_utils::Specialize correctly renames value_info entries
+// in Scan body subgraphs (fix for ORT issue #27887).
+//
+// When a local function containing a Scan op is inlined, the Inliner renames
+// all node outputs in the Scan body with a unique prefix. Before the fix,
+// value_info entries in the body (intermediate value shape annotations) were
+// NOT renamed, leaving them orphaned. CUDA EP's memory planner reads these
+// annotations to pre-allocate carry state buffers; orphaned entries cause it to
+// fall back to dim_value=0 (treated as 1), producing undersized buffers.
+//
+// The test builds a FunctionProto whose Scan body has an intermediate value
+// "temp" annotated in value_info, calls Specialize, and asserts that the
+// value_info name was updated to match the renamed node output.
+TEST(FunctionTest, ScanBodyValueInfoRenamedAfterSpecialize) {
+  using namespace ONNX_NAMESPACE;
+
+  // Helper: build a ValueInfoProto with symbolic-dim shape.
+  auto make_vi = [](const std::string& name, int elem_type,
+                    const std::vector<std::string>& dims) -> ValueInfoProto {
+    ValueInfoProto vi;
+    vi.set_name(name);
+    auto* t = vi.mutable_type()->mutable_tensor_type();
+    t->set_elem_type(elem_type);
+    for (const auto& d : dims)
+      t->mutable_shape()->add_dim()->set_dim_param(d);
+    return vi;
+  };
+
+  // Build the Scan body GraphProto.
+  // Inputs:  carry_in [B,H], x_in [B,H]
+  // Outputs: carry_out [B,H], x_out [B,H]
+  // Nodes:   temp = Add(carry_in, x_in)
+  //          carry_out = Identity(temp)
+  //          x_out     = Identity(temp)
+  // value_info: temp [B,H]  ← this must be renamed after Specialize
+  GraphProto body;
+  body.set_name("scan_body");
+  *body.add_input() = make_vi("carry_in", TensorProto_DataType_FLOAT, {"B", "H"});
+  *body.add_input() = make_vi("x_in", TensorProto_DataType_FLOAT, {"B", "H"});
+  *body.add_output() = make_vi("carry_out", TensorProto_DataType_FLOAT, {"B", "H"});
+  *body.add_output() = make_vi("x_out", TensorProto_DataType_FLOAT, {"B", "H"});
+  *body.add_value_info() = make_vi("temp", TensorProto_DataType_FLOAT, {"B", "H"});
+
+  {
+    auto* n = body.add_node();
+    n->set_op_type("Add");
+    n->add_input("carry_in");
+    n->add_input("x_in");
+    n->add_output("temp");
+  }
+  {
+    auto* n = body.add_node();
+    n->set_op_type("Identity");
+    n->add_input("temp");
+    n->add_output("carry_out");
+  }
+  {
+    auto* n = body.add_node();
+    n->set_op_type("Identity");
+    n->add_input("temp");
+    n->add_output("x_out");
+  }
+
+  // Build a FunctionProto: RunScan(fn_init, fn_seq) => (fn_final, fn_out)
+  // containing the Scan node.
+  FunctionProto func;
+  func.set_domain("local");
+  func.set_name("RunScan");
+  func.add_input("fn_init");
+  func.add_input("fn_seq");
+  func.add_output("fn_final");
+  func.add_output("fn_out");
+  func.add_opset_import()->set_version(18);
+
+  {
+    auto* scan = func.add_node();
+    scan->set_op_type("Scan");
+    scan->add_input("fn_init");
+    scan->add_input("fn_seq");
+    scan->add_output("fn_final");
+    scan->add_output("fn_out");
+
+    auto* num_scan = scan->add_attribute();
+    num_scan->set_name("num_scan_inputs");
+    num_scan->set_type(AttributeProto_AttributeType_INT);
+    num_scan->set_i(1);
+
+    auto* body_attr = scan->add_attribute();
+    body_attr->set_name("body");
+    body_attr->set_type(AttributeProto_AttributeType_GRAPH);
+    *body_attr->mutable_g() = body;
+  }
+
+  // Build the calling NodeProto: result_final, result_out = local.RunScan(init, seq)
+  NodeProto call_node;
+  call_node.set_op_type("RunScan");
+  call_node.set_domain("local");
+  call_node.add_input("init");
+  call_node.add_input("seq");
+  call_node.add_output("result_final");
+  call_node.add_output("result_out");
+
+  // Call Specialize — this simulates what Graph::InlineFunction does.
+  const std::string prefix = "inl";
+  onnxruntime::NodeAttributes empty_attrs;
+  function_utils::Specialize(func, call_node, empty_attrs, prefix);
+
+  // Find the Scan node in the specialized function and inspect its body.
+  for (const auto& node : func.node()) {
+    if (node.op_type() != "Scan") continue;
+
+    for (const auto& attr : node.attribute()) {
+      if (attr.name() != "body" || !attr.has_g()) continue;
+
+      const GraphProto& spec_body = attr.g();
+
+      // Collect all node output names (these have been renamed, e.g. "inl_temp").
+      std::unordered_set<std::string> node_outputs;
+      for (const auto& n : spec_body.node())
+        for (const auto& out : n.output())
+          node_outputs.insert(out);
+
+      // There must be at least one value_info entry (the one we added for "temp").
+      ASSERT_GT(spec_body.value_info_size(), 0)
+          << "value_info entries in the Scan body were lost after Specialize.";
+
+      // Every value_info name must match a node output name.
+      // Before the fix: "temp" is not renamed → not in node_outputs → test fails.
+      // After the fix:  "inl_temp" is in node_outputs → test passes.
+      for (const auto& vi : spec_body.value_info()) {
+        EXPECT_NE(node_outputs.find(vi.name()), node_outputs.end())
+            << "value_info '" << vi.name() << "' is orphaned after Specialize: "
+            << "its name does not match any renamed node output. "
+            << "Fix: rename value_info entries in Inliner::transform(GraphProto&). "
+            << "See https://github.com/microsoft/onnxruntime/issues/27887";
+      }
+      return;
+    }
+  }
+
+  FAIL() << "Scan node with body attribute not found in specialized FunctionProto";
+}
+
+// Verifies that when a local function containing a Scan is inlined at a call site with
+// concrete input shapes (e.g. init: float[4]), the inliner propagates those concrete
+// shapes into the Scan body's value_info entries (replacing symbolic dim_params with
+// concrete dim_values).
+//
+// This is important for CUDA EP: its memory planner reads the Scan body's value_info
+// shape annotations to pre-allocate carry-state buffers.  If the annotations still use
+// dim_param="S" after inlining, the planner falls back to dim_value=0 (treated as 1),
+// causing undersized buffers and wrong results.
+//
+// Model: testdata/scan_in_local_function.onnx (generated by scan_in_local_function.py)
+//   Main graph: init: float[4], seq: float[3,4]  (concrete dims)
+//   Function local.RunAccum contains a Scan whose body value_info uses dim_param="S"
+//   After inlining with concrete init:float[4], "S" must become dim_value=4.
+TEST(FunctionTest, ScanBodyValueInfoConcreteShapeAfterInline) {
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/scan_in_local_function.onnx");
+
+  // Use InferenceSessionWrapper so we can inspect the model proto after Initialize()
+  // triggers AOT function inlining via Graph::InlineFunction (the Node& variant that
+  // has access to concrete input TypeProtos).
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // After initialization all functions are inlined; find the Scan node in the flat graph.
+  const auto model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(model_proto.functions_size(), 0) << "Functions should all be inlined after Initialize()";
+
+  bool found_scan = false;
+  for (const auto& node : model_proto.graph().node()) {
+    if (node.op_type() != "Scan") continue;
+    found_scan = true;
+
+    for (const auto& attr : node.attribute()) {
+      if (attr.name() != "body" || !attr.has_g()) continue;
+
+      const GraphProto& body = attr.g();
+
+      // Every value_info entry that has a shape should have only concrete dim_values —
+      // no symbolic dim_params should remain after inlining with concrete call-site shapes.
+      for (const auto& vi : body.value_info()) {
+        if (!vi.has_type() || !vi.type().has_tensor_type()) continue;
+        const auto& tensor_type = vi.type().tensor_type();
+        if (!tensor_type.has_shape()) continue;
+
+        for (const auto& dim : tensor_type.shape().dim()) {
+          EXPECT_TRUE(dim.dim_param().empty())
+              << "value_info '" << vi.name() << "' still has symbolic dim_param='"
+              << dim.dim_param() << "' after inlining with concrete call-site shapes. "
+              << "Expected dim_param to be replaced with a concrete dim_value. "
+              << "Fix: Inliner::Specialize(Node&) must build outer_var_types and pass "
+              << "concrete shapes to build_scan_dim_bindings. "
+              << "See https://github.com/microsoft/onnxruntime/issues/27887";
+          if (!dim.dim_param().empty()) continue;
+          // The carry-state dim should be 4 (from init: float[4]).
+          EXPECT_GT(dim.dim_value(), 0)
+              << "value_info '" << vi.name() << "' has dim_value=0 after inlining; "
+              << "expected a positive concrete value (e.g. 4 from init: float[4]).";
+        }
+      }
+      break;
+    }
+    break;
+  }
+
+  EXPECT_TRUE(found_scan) << "No Scan node found in the inlined graph — the function was not inlined.";
+}
+//
+// Verifies that after function inlining ORT can successfully run a model
+// whose local function body contains a Scan with symbolic dim annotations in
+// value_info.  CUDA EP's memory planner pre-allocates Scan carry-state buffers
+// using the shape annotations; without the value_info renaming fix the names
+// are orphaned after inlining and CUDA falls back to dim_value=0 (→ size 1),
+// producing undersized buffers and wrong results.
+//
+// Model: testdata/scan_in_local_function.onnx  (generated by scan_in_local_function.py)
+//   Function local.RunAccum(fn_init: float[S], fn_seq: float[N,S])
+//     Scan body: temp = Add(carry_in, x_in); value_info: temp: float[S]
+//   Main graph (concrete dims): init: float[4], seq: float[3,4]
+//
+// Input:  init=[0,0,0,0], seq=[[1,1,1,1],[2,2,2,2],[3,3,3,3]]
+// Output: result=[6,6,6,6], out_seq=[[1,1,1,1],[3,3,3,3],[6,6,6,6]]
+static void RunScanInLocalFunctionTest(InferenceSession& session) {
+  std::unique_ptr<CPUExecutionProvider> cpu_provider =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  auto alloc = cpu_provider->CreatePreferredAllocators()[0];
+
+  // init: float[4] = [0, 0, 0, 0]
+  OrtValue init_val;
+  CreateMLValue<float>(alloc, {4}, {0.f, 0.f, 0.f, 0.f}, &init_val);
+
+  // seq: float[3, 4] = [[1,1,1,1],[2,2,2,2],[3,3,3,3]]
+  OrtValue seq_val;
+  CreateMLValue<float>(alloc, {3, 4},
+                       {1.f, 1.f, 1.f, 1.f, 2.f, 2.f, 2.f, 2.f, 3.f, 3.f, 3.f, 3.f},
+                       &seq_val);
+
+  NameMLValMap feeds{{"init", init_val}, {"seq", seq_val}};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+
+  const std::vector<std::string> output_names = {"result", "out_seq"};
+  ASSERT_STATUS_OK(session.Run(run_options, feeds, AsSpan(output_names), &fetches));
+  ASSERT_EQ(fetches.size(), 2u);
+
+  // result: float[4] = [6, 6, 6, 6]
+  const auto& result_tensor = fetches[0].Get<Tensor>();
+  ASSERT_EQ(result_tensor.Shape().GetDims(), (std::vector<int64_t>{4}));
+  for (float v : result_tensor.DataAsSpan<float>()) {
+    EXPECT_FLOAT_EQ(v, 6.f);
+  }
+
+  // out_seq: float[3, 4] = [[1,1,1,1],[3,3,3,3],[6,6,6,6]]
+  const auto& out_seq_tensor = fetches[1].Get<Tensor>();
+  ASSERT_EQ(out_seq_tensor.Shape().GetDims(), (std::vector<int64_t>{3, 4}));
+  const float* out_data = out_seq_tensor.Data<float>();
+  const float expected_out_seq[12] = {1, 1, 1, 1, 3, 3, 3, 3, 6, 6, 6, 6};
+  for (int i = 0; i < 12; ++i) {
+    EXPECT_FLOAT_EQ(out_data[i], expected_out_seq[i]) << "at index " << i;
+  }
+}
+
+TEST(FunctionTest, ScanInLocalFunctionEndToEnd_CPU) {
+  // Model generated by testdata/scan_in_local_function.py
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/scan_in_local_function.onnx");
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunScanInLocalFunctionTest(session_object);
+}
+
+#ifdef USE_CUDA
+TEST(FunctionTest, ScanInLocalFunctionEndToEnd_CUDA) {
+  // Exercises the CUDA EP memory planner path that reads value_info shape
+  // annotations from the inlined Scan body to pre-allocate carry state
+  // buffers. Without the fix, orphaned value_info names cause the planner to
+  // fall back to dim_value=0 (treated as 1), producing undersized buffers.
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/scan_in_local_function.onnx");
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunScanInLocalFunctionTest(session_object);
+}
+#endif  // USE_CUDA
+
 }  // namespace test
 }  // namespace onnxruntime
