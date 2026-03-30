@@ -214,7 +214,7 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
                                << " of node: " << n->Name();
         continue;
       }
-      const NodeArg* node_arg = n->InputDefs()[edge_it->GetDstArgIndex()];
+      const NodeArg* node_arg = edge_it->GetDstArgIndex() < n->InputDefs().size() ? n->InputDefs()[edge_it->GetDstArgIndex()] : n->ImplicitInputDefs()[edge_it->GetDstArgIndex() - n->InputDefs().size()];
       if (!node_arg) {
         LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                                << " of node: " << n->Name() << " because it is not found in the graph.";
