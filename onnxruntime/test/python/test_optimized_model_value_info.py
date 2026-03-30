@@ -17,64 +17,35 @@ import os
 import tempfile
 import unittest
 
-import numpy as np
 import onnx
-from onnx import TensorProto, helper
 
 import onnxruntime as ort
 
+# A minimal model with a model-local function ``MyAdd``.
+# The function body has an intermediate tensor ``tmp`` (output of Add,
+# input to Identity).  After ORT inlines the function, ``tmp`` becomes
+# a main-graph intermediate (renamed ``_inlfunc_MyAdd_tmp``) and should
+# appear in the saved model's value_info.
+_MODEL_TEXT = """\
+<ir_version: 8, opset_import: ["" : 18, "test.domain" : 1]>
+agraph (float[2, 3] X1, float[2, 3] X2) => (float[2, 3] Z) {
+    mid = test.domain.MyAdd(X1, X2)
+    Z = Relu(mid)
+}
 
-def _make_model_with_function() -> onnx.ModelProto:
-    """Build a small model whose graph calls a model-local function.
-
-    The function ``MyAdd`` computes ``Y = A + B`` via an intermediate
-    tensor.  After ORT inlines the function, the intermediate should
-    get a value_info entry in the saved optimized model.
-    """
-    # --- Define a simple function: MyAdd(A, B) -> Y ---
-    # Body: tmp = Add(A, B); Y = Identity(tmp)
-    # The Identity creates a named intermediate that, after inlining,
-    # should appear in value_info.
-    func_nodes = [
-        helper.make_node("Add", ["A", "B"], ["tmp"]),
-        helper.make_node("Identity", ["tmp"], ["Y"]),
-    ]
-    my_func = helper.make_function(
-        domain="test.domain",
-        fname="MyAdd",
-        inputs=["A", "B"],
-        outputs=["Y"],
-        nodes=func_nodes,
-        opset_imports=[helper.make_opsetid("", 18)],
-    )
-
-    # --- Main graph calls the function ---
-    X1 = helper.make_tensor_value_info("X1", TensorProto.FLOAT, [2, 3])
-    X2 = helper.make_tensor_value_info("X2", TensorProto.FLOAT, [2, 3])
-    Z = helper.make_tensor_value_info("Z", TensorProto.FLOAT, [2, 3])
-
-    # Call MyAdd to produce mid, then Relu to produce Z
-    call_node = helper.make_node("MyAdd", ["X1", "X2"], ["mid"], domain="test.domain")
-    relu_node = helper.make_node("Relu", ["mid"], ["Z"])
-
-    graph = helper.make_graph([call_node, relu_node], "main", [X1, X2], [Z])
-    model = helper.make_model(
-        graph,
-        opset_imports=[
-            helper.make_opsetid("", 18),
-            helper.make_opsetid("test.domain", 1),
-        ],
-        functions=[my_func],
-    )
-    model.ir_version = 8
-    onnx.checker.check_model(model)
-    return model
+<domain: "test.domain", opset_import: ["" : 18]>
+MyAdd (A, B) => (Y) {
+    tmp = Add(A, B)
+    Y = Identity(tmp)
+}
+"""
 
 
 class TestOptimizedModelValueInfo(unittest.TestCase):
     def test_inlined_function_intermediates_have_value_info(self):
         """Verify that function-inlined intermediates appear in value_info."""
-        model = _make_model_with_function()
+        model = onnx.parser.parse_model(_MODEL_TEXT)
+        onnx.checker.check_model(model)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             input_path = os.path.join(tmpdir, "input_model.onnx")
