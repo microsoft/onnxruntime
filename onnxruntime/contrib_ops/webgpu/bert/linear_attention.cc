@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+// #include "core/providers/webgpu/wgsl_templates/wgsl_gen.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 using namespace onnxruntime::webgpu;
@@ -41,6 +42,23 @@ LinearAttentionUpdateRule ParseUpdateRule(const std::string& rule_str) {
 Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const bool use_vec4 = (components_ == 4);
 
+  // Map update rule to integer for template conditionals
+  int update_rule_int = 0;
+  switch (update_rule_) {
+    case LinearAttentionUpdateRule::Linear:
+      update_rule_int = 0;
+      break;
+    case LinearAttentionUpdateRule::Gated:
+      update_rule_int = 1;
+      break;
+    case LinearAttentionUpdateRule::Delta:
+      update_rule_int = 2;
+      break;
+    case LinearAttentionUpdateRule::GatedDelta:
+      update_rule_int = 3;
+      break;
+  }
+
   // Add inputs
   shader.AddInput("query", ShaderUsage::UseUniform);
   shader.AddInput("key", ShaderUsage::UseUniform);
@@ -59,253 +77,12 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("present_state", ShaderUsage::UseUniform);
 
-  // Shared memory for parallel reduction across dk threads
-  // and for broadcasting delta values.
-  // When use_vec4, each reduction_buf entry is a vec4<f32> (4 dv values packed),
-  // eliminating the inner TILE_V loop and enabling native SIMD operations.
-  if (use_vec4) {
-    shader.AdditionalImplementation()
-        << "var<workgroup> reduction_buf: array<vec4<f32>, workgroup_size_x>;\n"
-        << "var<workgroup> broadcast_val: vec4<f32>;\n";
-  } else {
-    // TILE_V is emitted as a compile-time constant (not overridable) because
-    // private address space arrays require fixed sizes in WGSL.
-    shader.AdditionalImplementation()
-        << "const TILE_V: u32 = " << tile_v_ << "u;\n"
-        << "var<workgroup> reduction_buf: array<f32, workgroup_size_x * TILE_V>;\n"
-        << "var<workgroup> broadcast_buf: array<f32, TILE_V>;\n";
-  }
-
-  // Identify which (batch, head, dv_tile) this workgroup handles
-  shader.MainFunctionBody()
-      << "let bh = workgroup_idx / uniforms.num_dv_tiles;\n"
-      << "let dv_tile_idx = workgroup_idx % uniforms.num_dv_tiles;\n"
-      << "let batch_idx = bh / uniforms.num_heads;\n"
-      << "let head_idx = bh % uniforms.num_heads;\n"
-      << "let dk_idx = local_idx;  // thread index = row in state matrix\n";
-  if (!use_vec4) {
-    shader.MainFunctionBody() << "let dv_start = dv_tile_idx * TILE_V;\n";
-  }
-  // Precompute packed strides for 3D packed inputs (B, T, H*D)
-  // When use_vec4, head_dim_v is already divided by 4 (vectorized), so
-  // packed_dv = num_heads * (head_dim_v/4) and dv_tile_idx indexes vec4 elements.
-  shader.MainFunctionBody()
-      << "\n"
-      << "let packed_dk = uniforms.num_heads * uniforms.head_dim_k;\n"
-      << "let packed_dv = uniforms.num_heads * uniforms.head_dim_v;\n"
-      << "\n";
-
-  // Initialize state tile in private memory
-  if (use_vec4) {
-    shader.MainFunctionBody() << "var state = vec4<f32>(0.0);\n";
-  } else {
-    shader.MainFunctionBody()
-        << "var state: array<f32, TILE_V>;\n"
-        << "for (var j = 0u; j < TILE_V; j++) {\n"
-        << "  state[j] = 0.0;\n"
-        << "}\n";
-  }
-
-  // Load initial state if provided
-  if (has_initial_state_) {
-    shader.MainFunctionBody() << "if (dk_idx < uniforms.head_dim_k) {\n";
-    if (use_vec4) {
-      shader.MainFunctionBody()
-          << "  let state_offset = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_tile_idx;\n"
-          << "  state = vec4<f32>(initial_state[state_offset]);\n";
-    } else {
-      shader.MainFunctionBody()
-          << "  let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;\n"
-          << "  for (var j = 0u; j < TILE_V; j++) {\n"
-          << "    if (dv_start + j < uniforms.head_dim_v) {\n"
-          << "      state[j] = f32(initial_state[state_base + j]);\n"
-          << "    }\n"
-          << "  }\n";
-    }
-    shader.MainFunctionBody() << "}\n";
-  }
-
-  // Main token processing loop
-  shader.MainFunctionBody()
-      << "\n// Process each token sequentially\n"
-      << "for (var t = 0u; t < uniforms.seq_length; t++) {\n"
-      << "  let bt_offset = batch_idx * uniforms.seq_length + t;\n"
-      << "  var k_val: f32 = 0.0;\n"
-      << "  var q_val: f32 = 0.0;\n"
-      << "  if (dk_idx < uniforms.head_dim_k) {\n"
-      << "    let qk_idx = bt_offset * packed_dk + head_idx * uniforms.head_dim_k + dk_idx;\n"
-      << "    k_val = f32(key[qk_idx]);\n"
-      << "    q_val = f32(query[qk_idx]);\n"
-      << "  }\n";
-
-  // Step 1: Apply decay (for gated and gated_delta modes)
-  if (update_rule_ == LinearAttentionUpdateRule::Gated || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
-    shader.MainFunctionBody()
-        << "\n  // Apply exponential decay: S *= exp(decay)\n";
-    if (decay_broadcast_dk_) {
-      shader.MainFunctionBody()
-          << "  let exp_g = exp(f32(decay[bt_offset * uniforms.num_heads + head_idx]));\n";
-    } else {
-      shader.MainFunctionBody()
-          << "  var exp_g: f32 = 1.0;\n"
-          << "  if (dk_idx < uniforms.head_dim_k) {\n"
-          << "    exp_g = exp(f32(decay[bt_offset * packed_dk + head_idx * uniforms.head_dim_k + dk_idx]));\n"
-          << "  }\n";
-    }
-    if (use_vec4) {
-      shader.MainFunctionBody() << "  state *= exp_g;\n";
-    } else {
-      shader.MainFunctionBody()
-          << "  for (var j = 0u; j < TILE_V; j++) {\n"
-          << "    state[j] *= exp_g;\n"
-          << "  }\n";
-    }
-  }
-
-  // Step 2: For delta/gated_delta rules, compute retrieved = S^T @ k (reduction across dk)
-  if (update_rule_ == LinearAttentionUpdateRule::Delta || update_rule_ == LinearAttentionUpdateRule::GatedDelta) {
-    if (use_vec4) {
-      shader.MainFunctionBody()
-          << "\n  // Compute retrieved = S^T @ k (parallel reduction over dk)\n"
-          << "  reduction_buf[dk_idx] = state * k_val;\n"
-          << "  workgroupBarrier();\n"
-          << "  for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {\n"
-          << "    if (dk_idx < stride) {\n"
-          << "      reduction_buf[dk_idx] += reduction_buf[dk_idx + stride];\n"
-          << "    }\n"
-          << "    workgroupBarrier();\n"
-          << "  }\n"
-          << "  // Compute delta = beta * (v - retrieved) and broadcast\n"
-          << "  let v_idx = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_tile_idx;\n"
-          << "  let beta_base = bt_offset * uniforms.num_heads + head_idx;\n"
-          << "  if (dk_idx == 0u) {\n"
-          << "    let beta_val = f32(beta[beta_base]);\n"
-          << "    broadcast_val = beta_val * (vec4<f32>(value[v_idx]) - reduction_buf[0]);\n"
-          << "  }\n"
-          << "  workgroupBarrier();\n"
-          << "  state += k_val * broadcast_val;\n"
-          << "  workgroupBarrier();\n";
-    } else {
-      shader.MainFunctionBody()
-          << "\n  // Compute retrieved = S^T @ k (parallel reduction over dk)\n"
-          << "  for (var j = 0u; j < TILE_V; j++) {\n"
-          << "    reduction_buf[j * workgroup_size_x + dk_idx] = state[j] * k_val;\n"
-          << "  }\n"
-          << "  workgroupBarrier();\n"
-          << "  // Tree reduction\n"
-          << "  for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {\n"
-          << "    if (dk_idx < stride) {\n"
-          << "      for (var j = 0u; j < TILE_V; j++) {\n"
-          << "        reduction_buf[j * workgroup_size_x + dk_idx] += reduction_buf[j * workgroup_size_x + dk_idx + stride];\n"
-          << "      }\n"
-          << "    }\n"
-          << "    workgroupBarrier();\n"
-          << "  }\n"
-          << "  // Compute delta = beta * (v - retrieved) and broadcast\n"
-          << "  let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;\n"
-          << "  let beta_base = bt_offset * uniforms.num_heads + head_idx;\n"
-          << "  if (dk_idx == 0u) {\n"
-          << "    let beta_val = f32(beta[beta_base]);\n"
-          << "    for (var j = 0u; j < TILE_V; j++) {\n"
-          << "      if (dv_start + j < uniforms.head_dim_v) {\n"
-          << "        let retrieved_j = reduction_buf[j * workgroup_size_x];\n"
-          << "        let v_val = f32(value[v_base + j]);\n"
-          << "        broadcast_buf[j] = beta_val * (v_val - retrieved_j);\n"
-          << "      }\n"
-          << "    }\n"
-          << "  }\n"
-          << "  workgroupBarrier();\n"
-          << "  // Update state: S += k ⊗ delta\n"
-          << "  for (var j = 0u; j < TILE_V; j++) {\n"
-          << "    state[j] += k_val * broadcast_buf[j];\n"
-          << "  }\n"
-          << "  workgroupBarrier();\n";
-    }
-  } else {
-    // For linear and gated modes: S += k ⊗ v (no delta rule)
-    if (use_vec4) {
-      shader.MainFunctionBody()
-          << "\n  // Update state: S += k ⊗ v\n"
-          << "  let v_idx = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_tile_idx;\n"
-          << "  state += k_val * vec4<f32>(value[v_idx]);\n";
-    } else {
-      shader.MainFunctionBody()
-          << "\n  // Update state: S += k ⊗ v\n"
-          << "  let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;\n"
-          << "  for (var j = 0u; j < TILE_V; j++) {\n"
-          << "    if (dv_start + j < uniforms.head_dim_v) {\n"
-          << "      let v_val = f32(value[v_base + j]);\n"
-          << "      state[j] += k_val * v_val;\n"
-          << "    }\n"
-          << "  }\n";
-    }
-  }
-
-  // Step 3: Compute output = scale * S^T @ q (reduction across dk)
-  if (use_vec4) {
-    shader.MainFunctionBody()
-        << "\n  // Compute output = scale * S^T @ q (parallel reduction over dk)\n"
-        << "  reduction_buf[dk_idx] = state * q_val;\n"
-        << "  workgroupBarrier();\n"
-        << "  for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {\n"
-        << "    if (dk_idx < stride) {\n"
-        << "      reduction_buf[dk_idx] += reduction_buf[dk_idx + stride];\n"
-        << "    }\n"
-        << "    workgroupBarrier();\n"
-        << "  }\n"
-        << "  if (dk_idx == 0u) {\n"
-        << "    let out_idx = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_tile_idx;\n"
-        << "    output[out_idx] = output_value_t(reduction_buf[0] * uniforms.scale);\n"
-        << "  }\n"
-        << "  workgroupBarrier();\n"
-        << "}\n";  // end token loop
-  } else {
-    shader.MainFunctionBody()
-        << "\n  // Compute output = scale * S^T @ q (parallel reduction over dk)\n"
-        << "  for (var j = 0u; j < TILE_V; j++) {\n"
-        << "    reduction_buf[j * workgroup_size_x + dk_idx] = state[j] * q_val;\n"
-        << "  }\n"
-        << "  workgroupBarrier();\n"
-        << "  for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {\n"
-        << "    if (dk_idx < stride) {\n"
-        << "      for (var j = 0u; j < TILE_V; j++) {\n"
-        << "        reduction_buf[j * workgroup_size_x + dk_idx] += reduction_buf[j * workgroup_size_x + dk_idx + stride];\n"
-        << "      }\n"
-        << "    }\n"
-        << "    workgroupBarrier();\n"
-        << "  }\n"
-        << "  if (dk_idx == 0u) {\n"
-        << "    let out_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;\n"
-        << "    for (var j = 0u; j < TILE_V; j++) {\n"
-        << "      if (dv_start + j < uniforms.head_dim_v) {\n"
-        << "        output[out_base + j] = output_element_t(reduction_buf[j * workgroup_size_x] * uniforms.scale);\n"
-        << "      }\n"
-        << "    }\n"
-        << "  }\n"
-        << "  workgroupBarrier();\n"
-        << "}\n";  // end token loop
-  }
-
-  // Write final state (4D: B, H_kv, dk, dv)
-  shader.MainFunctionBody()
-      << "\n// Write present_state\n"
-      << "if (dk_idx < uniforms.head_dim_k) {\n";
-  if (use_vec4) {
-    shader.MainFunctionBody()
-        << "  let state_offset = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_tile_idx;\n"
-        << "  present_state[state_offset] = output_value_t(state);\n";
-  } else {
-    shader.MainFunctionBody()
-        << "  let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;\n"
-        << "  for (var j = 0u; j < TILE_V; j++) {\n"
-        << "    if (dv_start + j < uniforms.head_dim_v) {\n"
-        << "      present_state[state_base + j] = output_element_t(state[j]);\n"
-        << "    }\n"
-        << "  }\n";
-  }
-  shader.MainFunctionBody() << "}\n";
-
-  return Status::OK();
+  return WGSL_TEMPLATE_APPLY(shader, "bert/linear_attention.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(decay_broadcast_dk, decay_broadcast_dk_),
+                             WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
+                             WGSL_TEMPLATE_PARAMETER(tile_v, tile_v_),
+                             WGSL_TEMPLATE_PARAMETER(update_rule, update_rule_int),
+                             WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4));
 }
 
 // =============================================================================
@@ -330,7 +107,6 @@ LinearAttention::LinearAttention(const OpKernelInfo& info)
   kv_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("kv_num_heads"));
 }
 
-
 /*
   3D packed inputs:
       query:         (B, T, H_q * d_k)   — packed query
@@ -348,9 +124,9 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   const Tensor* query = context.Input(0);
   const Tensor* key = context.Input(1);
   const Tensor* value = context.Input(2);
-  const Tensor* past_state = context.Input(3);   // optional
-  const Tensor* decay = context.Input(4);         // optional
-  const Tensor* beta = context.Input(5);          // optional
+  const Tensor* past_state = context.Input(3);  // optional
+  const Tensor* decay = context.Input(4);       // optional
+  const Tensor* beta = context.Input(5);        // optional
 
   // Validate 3D packed inputs
   const auto& q_shape = query->Shape();

@@ -2428,7 +2428,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             auto& query_shape = getInputShape(ctx, 0);
             auto& value_shape = getInputShape(ctx, 2);
             TensorShapeProto state_shape;
-            *state_shape.add_dim() = query_shape.dim(0);  // B
+            *state_shape.add_dim() = query_shape.dim(0);         // B
             state_shape.add_dim()->set_dim_value(kv_num_heads);  // H_kv
             // d_k = query.dim(2) / q_num_heads
             if (query_shape.dim(2).has_dim_value()) {
@@ -2447,7 +2447,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             propagateShapeFromInputToOutput(ctx, 3, 1);
           }
         }));
-
 
 }  // namespace contrib
 }  // namespace onnxruntime

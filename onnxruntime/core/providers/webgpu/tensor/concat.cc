@@ -12,24 +12,24 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_CONCAT_VERSIONED_KERNEL(start, end)                    \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                  \
-      Concat,                                                         \
-      kOnnxDomain,                                                    \
-      start,                                                          \
-      end,                                                            \
-      kWebGpuExecutionProvider,                                       \
-      (*KernelDefBuilder::Create())                                   \
+#define WEBGPU_CONCAT_VERSIONED_KERNEL(start, end)            \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                          \
+      Concat,                                                 \
+      kOnnxDomain,                                            \
+      start,                                                  \
+      end,                                                    \
+      kWebGpuExecutionProvider,                               \
+      (*KernelDefBuilder::Create())                           \
           .TypeConstraint("T", WebGpuSupportedNumberTypes()), \
       Concat);
 
-#define WEBGPU_CONCAT_KERNEL(version)                                 \
-  ONNX_OPERATOR_KERNEL_EX(                                            \
-      Concat,                                                         \
-      kOnnxDomain,                                                    \
-      version,                                                        \
-      kWebGpuExecutionProvider,                                       \
-      (*KernelDefBuilder::Create())                                   \
+#define WEBGPU_CONCAT_KERNEL(version)                         \
+  ONNX_OPERATOR_KERNEL_EX(                                    \
+      Concat,                                                 \
+      kOnnxDomain,                                            \
+      version,                                                \
+      kWebGpuExecutionProvider,                               \
+      (*KernelDefBuilder::Create())                           \
           .TypeConstraint("T", WebGpuSupportedNumberTypes()), \
       Concat);
 
