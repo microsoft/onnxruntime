@@ -45,10 +45,12 @@ OrtEpFactory                     OrtEp
 CudaEpFactory                    adapter::Ep
   │                                ↑
   ├─ creates OrtEpDevice           CudaEp
-  ├─ creates CudaSyncStream        ├─ stores session-derived Config
-  ├─ caches kernel registry        └─ owns a real shim CUDAExecutionProvider via EpImpl()
-  ├─ caches stable OrtMemoryInfo objects
-  └─ maps OrtHardwareDevice* → CUDA ordinal
+  ├─ provides fallback             ├─ stores session-derived Config
+  │  CreateSyncStreamForDevice     ├─ implements OrtEp::CreateSyncStreamForDevice
+  ├─ caches kernel registry        │  for per-session CudaSyncStream creation
+  ├─ caches stable OrtMemoryInfo   ├─ synchronizes device (Sync)
+  └─ maps OrtHardwareDevice*       └─ owns a real shim CUDAExecutionProvider via EpImpl()
+       → CUDA ordinal
 
 Migrated CUDA kernels
   └─ use CudaKernel / cuda_kernel_adapter.h
@@ -59,7 +61,9 @@ Migrated CUDA kernels
 
 Key ownership relationships:
 - `CudaEpFactory` implements raw `OrtEpFactory` callbacks and owns shared factory-level state such as the kernel registry, cached `OrtMemoryInfo` instances, and the hardware-device to CUDA-ordinal map.
+- `CudaEpFactory` also implements the factory-level `OrtEpFactory::CreateSyncStreamForDevice` callback as a fallback path when the `OrtEp` callback is not used.
 - `CudaEp` inherits from `ep::adapter::Ep`, which itself derives from `OrtEp` and owns a framework-facing `IExecutionProvider` object.
+- `CudaEp` implements the `OrtEp::CreateSyncStreamForDevice` callback, which is the per-session stream-creation entry point used in preference to the factory callback.
 - The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a real shim object owned by `ep::adapter::Ep`. It is not the full in-tree CUDA EP, but it has its own object identity and stores plugin-specific members — including the wrapped `OrtEp*` and a provider-owned shared runtime-config object.
 - Runtime configuration needed by migrated kernels is stored on that shim provider and exposed to kernels as a cached `shared_ptr<CudaKernelAdapterRuntimeConfig>`, rather than through a separate global map keyed by the provider address.
 - `CudaSyncStream` owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, and `cublasLtHandle_t` for each sync stream created through the EP API.
@@ -259,9 +263,21 @@ Some CPU base classes have heavy dependencies (protobuf, `UnpackTensor`) that ma
 
 `CudaSyncStream` is the plugin's CUDA sync-stream implementation:
 - Owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, `cublasLtHandle_t`
-- Is created by `CudaEpFactory::CreateSyncStreamForDevice`
+- Can be created at two levels:
+  - **OrtEp-level** via `CudaEp::CreateSyncStreamForDeviceImpl` for per-session stream creation
+  - **OrtEpFactory-level** via `CudaEpFactory::CreateSyncStreamForDeviceImpl` as the fallback path
 - Registers itself in a global `cudaStream_t -> CudaSyncStream*` map so migrated kernels can recover per-stream handles from a raw CUDA stream
 - Defers host-buffer cleanup until `OnSessionRunEnd()` after the stream is synchronized
+
+### 5.1.1 Device Synchronization (Sync API)
+
+`CudaEp` implements `OrtEp::Sync` to block until the configured CUDA device has completed all preceding work. ORT uses this path for scenarios such as `IOBinding`, where asynchronous input copies must finish before kernel execution begins.
+
+Implementation details:
+- `CudaEp::SyncImpl` switches to the EP's configured device via `cudaSetDevice(device_id)`
+- It then issues `cudaDeviceSynchronize()` as a conservative device-wide barrier
+
+This is intentionally conservative and correct for the plugin EP's first sync integration. A narrower stream-scoped synchronization strategy can be considered later if profiling shows a need.
 
 ### 5.2 Handle Access Path
 
@@ -690,6 +706,7 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 | Identity | Identity opset 13 and opset 25 — re-enabled op with `TensorSeq` path guarded |
 | Crop | Crop (opset 1) — previously excluded contrib op, now re-enabled |
 | Memcpy | Explicit `MemcpyFromHost` and `MemcpyToHost` standalone tests to ensure copy ops are dispatched |
+| IOBinding / Sync | IOBinding-based tests (Add, MatMul) that exercise `OrtEp::Sync` and `OrtEp::CreateSyncStreamForDevice` |
 | Key-ops probe | Session-based probing that all key ops are assigned to `CudaPluginExecutionProvider` |
 
 ### 10.2 Running Tests
@@ -847,7 +864,7 @@ This is a quality-of-life improvement rather than a required change — the exis
 ```
 onnxruntime/core/providers/cuda/plugin/
 ├── cuda_kernel_adapter.h        # CudaKernel base, macros, CPU shims (force-included)
-├── cuda_ep.h / .cc              # CudaEp : OrtEp implementation
+├── cuda_ep.h / .cc              # CudaEp : OrtEp implementation (GetCapability, Sync, CreateSyncStreamForDevice)
 ├── cuda_ep_factory.h / .cc      # CudaEpFactory : OrtEpFactory
 ├── cuda_plugin_ep.cc            # DLL entry points (CreateEpFactories/ReleaseEpFactory)
 ├── cuda_plugin_ep_symbols.def   # Windows DLL export definitions
