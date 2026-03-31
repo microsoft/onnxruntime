@@ -89,9 +89,6 @@ Option files (e.g., `custom_options.opt`) contain one flag per line. Any additio
 | `--skip_tests` | Skip running tests after build |
 | `--build_wheel` | Build the Python wheel package |
 | `--use_cuda` | Enable CUDA execution provider (requires `--cuda_home` and `--cudnn_home`) |
-| `--use_tensorrt` | Enable TensorRT execution provider |
-| `--use_dml` | Enable DirectML execution provider (Windows) |
-| `--use_openvino` | Enable OpenVINO execution provider |
 | `--target TARGET` | Build a specific CMake target (e.g., `onnxruntime_common`). Can be repeated. |
 | `--targets T1 T2 ...` | Build one or more specific CMake targets in a single flag. |
 | `--build_dir` | Specify build output directory (default: `build/`) |
