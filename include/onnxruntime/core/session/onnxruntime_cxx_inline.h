@@ -4038,4 +4038,113 @@ inline Ort::KeyValuePairs GetEnvConfigEntries() {
 
   return Ort::KeyValuePairs{entries};
 }
+
+namespace detail {
+template <typename T>
+inline int OpSchemaImpl<T>::GetSinceVersion() const {
+  int version = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetSinceVersion(this->p_, &version));
+  return version;
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetNumInputs() const {
+  size_t num = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetNumInputs(this->p_, &num));
+  return num;
+}
+
+template <typename T>
+inline std::string OpSchemaImpl<T>::GetInputName(size_t index) const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputName(this->p_, index, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetInputTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetNumOutputs() const {
+  size_t num = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetNumOutputs(this->p_, &num));
+  return num;
+}
+
+template <typename T>
+inline std::string OpSchemaImpl<T>::GetOutputName(size_t index) const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputName(this->p_, index, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetOutputTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetTypeConstraintCount() const {
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraintCount(this->p_, &count));
+  return count;
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline std::string OpSchemaTypeConstraintImpl<T>::GetTypeParamName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetTypeParamName(this->p_, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline std::vector<std::string> OpSchemaTypeConstraintImpl<T>::GetAllowedTypes() const {
+  const char* const* types = nullptr;
+  size_t num_types = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetAllowedTypes(this->p_, &types, &num_types));
+  std::vector<std::string> result;
+  result.reserve(num_types);
+  for (size_t i = 0; i < num_types; ++i) {
+    result.emplace_back(types[i]);
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetInputIndices() const {
+  const size_t* indices = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetInputIndices(this->p_, &indices, &count));
+  if (count == 0) return {};
+  return std::vector<size_t>(indices, indices + count);
+}
+
+template <typename T>
+inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetOutputIndices() const {
+  const size_t* indices = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetOutputIndices(this->p_, &indices, &count));
+  if (count == 0) return {};
+  return std::vector<size_t>(indices, indices + count);
+}
+}  // namespace detail
+
+inline OpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain) {
+  OrtOpSchema* schema = nullptr;
+  ThrowOnError(GetEpApi().GetOpSchema(name, max_inclusive_version, domain, &schema));
+  return OpSchema{schema};
+}
 }  // namespace Ort

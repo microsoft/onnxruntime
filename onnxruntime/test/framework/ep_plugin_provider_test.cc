@@ -3,6 +3,7 @@
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <limits>
 #include "gsl/gsl"
@@ -779,6 +780,204 @@ TEST(PluginExecutionProviderTest, IsConcurrentRunSupported) {
   }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
+
+// Tests for the Ort::OpSchema C++ wrapper API and Ort::GetOpSchema free function.
+// These test the C++ layer over the OrtEpApi OpSchema functions using well-known ONNX operator schemas
+// from the global ONNX schema registry.
+
+// Test that GetOpSchema returns null for various not-found cases.
+TEST(OpSchemaCxxApiTest, GetOpSchema_NotFound) {
+  // Unknown op name
+  Ort::OpSchema schema_unknown = Ort::GetOpSchema("NonExistentOpXYZ_12345", 20, "");
+  EXPECT_EQ(static_cast<OrtOpSchema*>(schema_unknown), nullptr);
+
+  // Relu was introduced in opset 1, so max_inclusive_version=0 should not find it.
+  Ort::OpSchema schema_v0 = Ort::GetOpSchema("Relu", 0, "");
+  EXPECT_EQ(static_cast<OrtOpSchema*>(schema_v0), nullptr);
+
+  // Wrong domain
+  Ort::OpSchema schema_bad_domain = Ort::GetOpSchema("Relu", 20, "com.nonexistent.domain");
+  EXPECT_EQ(static_cast<OrtOpSchema*>(schema_bad_domain), nullptr);
+}
+
+// Test version differentiation and "ai.onnx" domain alias normalization.
+TEST(OpSchemaCxxApiTest, DifferentVersionsAndDomainAlias) {
+  // Relu was introduced in opset 1 and updated in opset 6, 13, and 14.
+  // Querying at version 5 should return the opset 1 schema.
+  Ort::OpSchema schema_v5 = Ort::GetOpSchema("Relu", 5, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_v5), nullptr);
+  EXPECT_EQ(schema_v5.GetSinceVersion(), 1);
+
+  // Querying at version 6 with "ai.onnx" domain alias should return the opset 6 schema.
+  Ort::OpSchema schema_v6 = Ort::GetOpSchema("Relu", 6, kOnnxDomainAlias);
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_v6), nullptr);
+  EXPECT_EQ(schema_v6.GetSinceVersion(), 6);
+
+  // "ai.onnx" and "" should resolve to the same schema at the same version.
+  Ort::OpSchema schema_canonical = Ort::GetOpSchema("Relu", 20, "");
+  Ort::OpSchema schema_alias = Ort::GetOpSchema("Relu", 20, kOnnxDomainAlias);
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_canonical), nullptr);
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema_alias), nullptr);
+  EXPECT_EQ(schema_canonical.GetSinceVersion(), schema_alias.GetSinceVersion());
+}
+
+// Test OpSchema methods on the "Add" operator (2 inputs, 1 output, shared constraint T).
+// Also tests pointer identity: inputs/output sharing a constraint return the same pointer.
+TEST(OpSchemaCxxApiTest, AddSchemaProperties) {
+  int opset_version = 20;
+  Ort::OpSchema schema = Ort::GetOpSchema("Add", opset_version, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
+
+  // The "since version" will be <= to the opset version used to retrieve the schema.
+  EXPECT_LT(schema.GetSinceVersion(), opset_version + 1);
+  EXPECT_GT(schema.GetSinceVersion(), 0);
+
+  // Add has 2 inputs: A, B
+  ASSERT_EQ(schema.GetNumInputs(), 2u);
+  EXPECT_EQ(schema.GetInputName(0), "A");
+  EXPECT_EQ(schema.GetInputName(1), "B");
+
+  // Both inputs should have a type constraint named "T"
+  Ort::ConstOpSchemaTypeConstraint tc_input0 = schema.GetInputTypeConstraint(0);
+  Ort::ConstOpSchemaTypeConstraint tc_input1 = schema.GetInputTypeConstraint(1);
+  ASSERT_NE(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input0), nullptr);
+  ASSERT_NE(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input1), nullptr);
+  EXPECT_EQ(tc_input0.GetTypeParamName(), "T");
+  EXPECT_EQ(tc_input1.GetTypeParamName(), "T");
+
+  // Add has 1 output: C
+  ASSERT_EQ(schema.GetNumOutputs(), 1u);
+  EXPECT_EQ(schema.GetOutputName(0), "C");
+
+  Ort::ConstOpSchemaTypeConstraint tc_output0 = schema.GetOutputTypeConstraint(0);
+  ASSERT_NE(static_cast<const OrtOpSchemaTypeConstraint*>(tc_output0), nullptr);
+  EXPECT_EQ(tc_output0.GetTypeParamName(), "T");
+
+  // Both inputs and the output share constraint "T" — should return the same pointer.
+  EXPECT_EQ(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input0),
+            static_cast<const OrtOpSchemaTypeConstraint*>(tc_input1));
+  EXPECT_EQ(static_cast<const OrtOpSchemaTypeConstraint*>(tc_input0),
+            static_cast<const OrtOpSchemaTypeConstraint*>(tc_output0));
+}
+
+// Tests for the OrtOpSchemaTypeConstraint API (per-constraint entity).
+
+// Test type constraints for the Add operator (single constraint T on all inputs/outputs).
+TEST(OpSchemaTypeConstraintTest, Add_SingleConstraint) {
+  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
+
+  ASSERT_EQ(schema.GetTypeConstraintCount(), 1u);
+
+  // Constraint "T"
+  Ort::ConstOpSchemaTypeConstraint tc = schema.GetTypeConstraint(0);
+  EXPECT_EQ(tc.GetTypeParamName(), "T");
+
+  // T should allow tensor(float) and tensor(double) among others
+  auto allowed_types = tc.GetAllowedTypes();
+  EXPECT_GT(allowed_types.size(), 1u);
+  auto has_type = [&](const char* t) {
+    return std::find(allowed_types.begin(), allowed_types.end(), t) != allowed_types.end();
+  };
+  EXPECT_TRUE(has_type("tensor(float)")) << "Expected T to allow tensor(float)";
+  EXPECT_TRUE(has_type("tensor(double)")) << "Expected T to allow tensor(double)";
+
+  // Both inputs use T
+  auto input_indices = tc.GetInputIndices();
+  ASSERT_EQ(input_indices.size(), 2u);
+  EXPECT_EQ(input_indices[0], 0u);
+  EXPECT_EQ(input_indices[1], 1u);
+
+  // Output uses T
+  auto output_indices = tc.GetOutputIndices();
+  ASSERT_EQ(output_indices.size(), 1u);
+  EXPECT_EQ(output_indices[0], 0u);
+}
+
+// Test type constraints for LSTM (multiple constraints: T and T1).
+TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
+  Ort::OpSchema schema = Ort::GetOpSchema("LSTM", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
+
+  // LSTM has at least T and T1
+  ASSERT_GE(schema.GetTypeConstraintCount(), 2u);
+
+  // Find the T and T1 constraints by name
+  const OrtOpSchemaTypeConstraint* t_ptr = nullptr;
+  const OrtOpSchemaTypeConstraint* t1_ptr = nullptr;
+  Ort::ConstOpSchemaTypeConstraint t_tc{nullptr};
+  Ort::ConstOpSchemaTypeConstraint t1_tc{nullptr};
+  for (size_t i = 0; i < schema.GetTypeConstraintCount(); ++i) {
+    auto tc = schema.GetTypeConstraint(i);
+    if (tc.GetTypeParamName() == "T") {
+      t_ptr = static_cast<const OrtOpSchemaTypeConstraint*>(tc);
+      t_tc = tc;
+    } else if (tc.GetTypeParamName() == "T1") {
+      t1_ptr = static_cast<const OrtOpSchemaTypeConstraint*>(tc);
+      t1_tc = tc;
+    }
+  }
+
+  ASSERT_NE(t_ptr, nullptr) << "Expected to find type constraint 'T'";
+  ASSERT_NE(t1_ptr, nullptr) << "Expected to find type constraint 'T1'";
+
+  auto has_type = [](gsl::span<const std::string> types, const char* t) {
+    return std::find(types.begin(), types.end(), t) != types.end();
+  };
+
+  // T should include tensor(float) and tensor(double)
+  auto t_types = t_tc.GetAllowedTypes();
+  EXPECT_GT(t_types.size(), 0u);
+  EXPECT_TRUE(has_type(t_types, "tensor(float)")) << "Expected T to allow tensor(float)";
+  EXPECT_TRUE(has_type(t_types, "tensor(double)")) << "Expected T to allow tensor(double)";
+
+  // T1 should include tensor(int32) (sequence_lens is int32)
+  auto t1_types = t1_tc.GetAllowedTypes();
+  EXPECT_GT(t1_types.size(), 0u);
+
+  // T1 is for sequence_lens which is int32
+  EXPECT_TRUE(has_type(t1_types, "tensor(int32)")) << "Expected T1 to allow tensor(int32)";
+
+  // T should map to inputs X (0), W (1), R (2), B (3), initial_h (5), initial_c (6), P (7)
+  auto t_inputs = t_tc.GetInputIndices();
+  EXPECT_EQ(t_inputs.size(), 7u);
+  EXPECT_EQ(t_inputs[0], 0u);  // X
+  EXPECT_EQ(t_inputs[1], 1u);  // W
+  EXPECT_EQ(t_inputs[2], 2u);  // R
+  EXPECT_EQ(t_inputs[3], 3u);  // B
+  EXPECT_EQ(t_inputs[4], 5u);  // initial_h
+  EXPECT_EQ(t_inputs[5], 6u);  // initial_c
+  EXPECT_EQ(t_inputs[6], 7u);  // P
+
+  // T should map to outputs Y (0), Y_h (1), Y_c (2)
+  auto t_outputs = t_tc.GetOutputIndices();
+  ASSERT_EQ(t_outputs.size(), 3u);
+  EXPECT_EQ(t_outputs[0], 0u);  // Y
+  EXPECT_EQ(t_outputs[1], 1u);  // Y_h
+  EXPECT_EQ(t_outputs[2], 2u);  // Y_c
+
+  // T1 should map to the sequence_lens input (index 4)
+  auto t1_inputs = t1_tc.GetInputIndices();
+  ASSERT_EQ(t1_inputs.size(), 1u);
+  EXPECT_EQ(t1_inputs[0], 4u);  // sequence_lens is the 5th input (index 4)
+
+  // T1 should not map to any outputs
+  auto t1_outputs = t1_tc.GetOutputIndices();
+  EXPECT_EQ(t1_outputs.size(), 0u);
+}
+
+#if !defined(ORT_NO_EXCEPTIONS)
+// Test out-of-range index for type constraint accessors.
+TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
+  Ort::OpSchema schema = Ort::GetOpSchema("Add", 20, "");
+  ASSERT_NE(static_cast<OrtOpSchema*>(schema), nullptr);
+
+  size_t count = schema.GetTypeConstraintCount();
+
+  // Accessing beyond the count should throw
+  EXPECT_THROW(schema.GetTypeConstraint(count), Ort::Exception);
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 TEST(PluginExecutionProviderTest, CreateProfilingEvent_AllCategories) {
   const OrtProfilingEventCategory categories[] = {

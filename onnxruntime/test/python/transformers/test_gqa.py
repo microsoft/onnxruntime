@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 import numpy
 import torch
+from cuda_plugin_ep_helper import get_cuda_provider_name, resolve_cuda_plugin_ep
 from einops import rearrange, repeat
 
 # --- ONNX and Torch/Numpy Dtype Mappings ---
@@ -34,7 +35,7 @@ from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_build_info
+from onnxruntime import InferenceSession, SessionOptions, get_build_info
 from onnxruntime import __version__ as ort_version
 
 # Set seed for reproducibility
@@ -456,7 +457,7 @@ def gqa_prompt_func(
         new_v = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
 
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[resolve_cuda_plugin_ep(ep)])
     io_binding = ort_session.io_binding()
 
     # Determine input device for binding
@@ -492,8 +493,9 @@ def gqa_prompt_func(
 
     # total_sequence_length is INT32 [1]
     # Schema requires this to be on CPU (OrtMemTypeCPUInput)
-    tsl = torch.tensor([config.q_sequence_length], dtype=torch.int32, device="cpu")
-    bind_tensor(io_binding, "total_sequence_length", tsl, "cpu", TensorProto.INT32)
+    cpu_device = torch.device("cpu")
+    tsl = torch.tensor([config.q_sequence_length], dtype=torch.int32, device=cpu_device)
+    bind_tensor(io_binding, "total_sequence_length", tsl, cpu_device, TensorProto.INT32)
 
     # 5. Optional inputs
     if cos is not None:
@@ -616,7 +618,7 @@ def gqa_past_func(
 
     sess_options = SessionOptions()
     # sess_options.log_severity_level = 0
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[resolve_cuda_plugin_ep(ep)])
     io_binding = ort_session.io_binding()
 
     # Common inputs
@@ -653,8 +655,10 @@ def gqa_past_func(
     seqlens_k_int32 = seqlens_k.to(dtype=torch.int32, device=device)
     bind_tensor(io_binding, "seqlens_k", seqlens_k_int32, device, TensorProto.INT32)
 
-    tsl = torch.tensor([total_seq_len], dtype=torch.int32, device=device)
-    bind_tensor(io_binding, "total_sequence_length", tsl, device, TensorProto.INT32)
+    # GroupQueryAttention expects total_sequence_length as CPU input.
+    cpu_device = torch.device("cpu")
+    tsl = torch.tensor([total_seq_len], dtype=torch.int32, device=cpu_device)
+    bind_tensor(io_binding, "total_sequence_length", tsl, cpu_device, TensorProto.INT32)
 
     # 5. Optional inputs
     if cos is not None:
@@ -1926,7 +1930,7 @@ def gqa_cuda_quantized_test_cases(is_past: bool):
 
 
 def has_cuda_provider():
-    return "CUDAExecutionProvider" in get_available_providers()
+    return get_cuda_provider_name() is not None
 
 
 def has_cuda_device(min_capability: int = 80):
@@ -2342,7 +2346,7 @@ class TestGQARegressions(unittest.TestCase):
         The bug caused q_out to be nullptr when unpacking separate QKV with only Q rotation (standard GQA),
         leading to unrotated Q being used in Attention.
         """
-        if "CUDAExecutionProvider" not in get_available_providers():
+        if not has_cuda_provider():
             self.skipTest("CUDA required")
 
         # Config that triggers the path: Prompt phase, Separate QKV inputs, RoPE enabled
@@ -2381,7 +2385,7 @@ class TestGQARegressions(unittest.TestCase):
         Regression test for batch_size=4 + max_seq_len=8192 + int8 KV cache crash.
         This reproduces a CUDA illegal memory access due to scratch size under-allocation.
         """
-        if "CUDAExecutionProvider" not in get_available_providers():
+        if not has_cuda_provider():
             self.skipTest("CUDA required")
 
         # Config that triggers the crash: batch=4, large max_seq_len, int8 kv

@@ -1,6 +1,9 @@
 schedules:
 - cron: '0 12 * * *'
   displayName: "Nightly RC Build"
+  branches:
+    include:
+    - main
 
 trigger: none
 

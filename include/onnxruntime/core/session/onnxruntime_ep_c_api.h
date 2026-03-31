@@ -26,6 +26,8 @@ ORT_RUNTIME_CLASS(SyncStreamImpl);
 
 ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
 
+ORT_RUNTIME_CLASS(OpSchema);
+ORT_RUNTIME_CLASS(OpSchemaTypeConstraint);
 ORT_RUNTIME_CLASS(ProfilingEventsContainer);
 ORT_RUNTIME_CLASS(ProfilingEvent);  // Based on the Trace Event Format's "complete event"
 
@@ -1645,6 +1647,238 @@ struct OrtEpApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
+
+  /** \brief Get an operator schema from the global schema registry.
+   *
+   * Looks up a schema by name, maximum inclusive version, and domain.
+   * The returned pointer is owned by the caller and must be released via ReleaseOpSchema.
+   * If the schema is not found, *out_schema is set to nullptr (no allocation occurs).
+   *
+   * Available schemas include standard ONNX operators (domain "" or "ai.onnx"), ONNX ML operators
+   * (domain "ai.onnx.ml"), and ORT contrib operators (domain "com.microsoft").
+   *
+   * \param[in] name A null-terminated string for the operator name.
+   * \param[in] max_inclusive_version The maximum inclusive opset version.
+   * \param[in] domain A null-terminated string for the operator domain.
+   * \param[out] out_schema Output parameter set to the schema pointer, or nullptr if not found.
+   *                        Must be released via OrtEpApi::ReleaseOpSchema.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
+                  _In_ const char* domain, _Outptr_result_maybenull_ OrtOpSchema** out_schema);
+
+  ORT_CLASS_RELEASE(OpSchema);
+
+  /** \brief Get the first ONNX opset version that introduced this operator schema.
+   *
+   * If an operator has had no changes that break backwards compatibility, the `since_version` is
+   * just the first opset version that introduced the operator. However, if the operator has had breaking changes,
+   * then `since_version` corresponds to the opset version that introduced the breaking change.
+   *
+   * For example, suppose operator "Foo" was added in version 3 and had a breaking change in version 6.
+   * Then, there will be an operator schema entry for "Foo" with a since_version of 3 and another updated
+   * operator schema entry for "Foo" with a since_version of 6.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out Output parameter set to the ONNX opset version.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out);
+
+  /** \brief Get the number of inputs defined by the operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out Output parameter set to the number of inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+
+  /** \brief Get the name of the i-th input formal parameter from an operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the input parameter.
+   * \param[out] out Output parameter set to the name of the input parameter (null-terminated UTF8 string).
+   *                 Valid as long as the OrtOpSchema exists.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_ const char** out);
+
+  /** \brief Get the type constraint for the i-th input formal parameter from an operator schema.
+   *
+   * Returns a non-owning pointer to the OrtOpSchemaTypeConstraint associated with the given input.
+   * The returned pointer is valid as long as the parent OrtOpSchema is alive.
+   * If the input has no type constraint, *out is set to nullptr.
+   *
+   * Multiple inputs sharing the same type constraint (e.g., both using "T") return the same pointer.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the input parameter.
+   * \param[out] out Output parameter set to the type constraint, or NULL if the input has no type constraint.
+   *                 Valid as long as the OrtOpSchema exists.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetInputTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_result_maybenull_ const OrtOpSchemaTypeConstraint** out);
+
+  /** \brief Get the number of outputs defined by the operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out Output parameter set to the number of outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+
+  /** \brief Get the name of the i-th output formal parameter from an operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the output parameter.
+   * \param[out] out Output parameter set to the name of the output parameter (null-terminated UTF8 string).
+   *                 Valid as long as the OrtOpSchema exists.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_ const char** out);
+
+  /** \brief Get the type constraint for the i-th output formal parameter from an operator schema.
+   *
+   * Returns a non-owning pointer to the OrtOpSchemaTypeConstraint associated with the given output.
+   * The returned pointer is valid as long as the parent OrtOpSchema is alive.
+   * If the output has no type constraint, *out is set to nullptr.
+   *
+   * Multiple outputs sharing the same type constraint return the same pointer.
+   * Pointer equality can be used to check if two outputs share a type constraint.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the output parameter.
+   * \param[out] out Output parameter set to the type constraint, or NULL if the output has no type constraint.
+   *                 Valid as long as the OrtOpSchema exists.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetOutputTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_result_maybenull_ const OrtOpSchemaTypeConstraint** out);
+
+  /** \brief Get the number of unique type constraints in the operator schema.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[out] out Output set to the number of type constraints.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetTypeConstraintCount, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+
+  /** \brief Get the i-th type constraint from the operator schema.
+   *
+   * Returns a non-owning pointer to the OrtOpSchemaTypeConstraint at the given index.
+   * The returned pointer is valid as long as the parent OrtOpSchema is alive.
+   *
+   * Constraints are returned in the order they are declared in the ONNX operator schema
+   * definition. The order is stable but has no semantic significance.
+   *
+   * Use this API to iterate all type constraints (e.g., to register allowed types for
+   * each constraint). Use OpSchema_GetInputTypeConstraint / OpSchema_GetOutputTypeConstraint
+   * to look up the constraint for a specific input or output.
+   *
+   * \param[in] schema The OrtOpSchema instance.
+   * \param[in] index Zero-based index of the type constraint.
+   * \param[out] out Output parameter set to the type constraint.
+   *                 Valid as long as the OrtOpSchema exists.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchema_GetTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                  _Outptr_ const OrtOpSchemaTypeConstraint** out);
+
+  /** \brief Get the type parameter name of a type constraint (e.g., "T", "T1").
+   *
+   * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
+   * \param[out] out Output parameter set to the type parameter name.
+   *                 Valid as long as the parent OrtOpSchema exists.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchemaTypeConstraint_GetTypeParamName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                  _Outptr_ const char** out);
+
+  /** \brief Get the allowed type strings for a type constraint.
+   *
+   * Returns an array of null-terminated strings representing the allowed data types
+   * (e.g., "tensor(float)", "tensor(double)"). The array and its contents are valid
+   * as long as the parent OrtOpSchema exists.
+   *
+   * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
+   * \param[out] out_types Output parameter set to the output array of type strings.
+   *                       Valid as long as the parent OrtOpSchema exists.
+   * \param[out] num_types Output parameter set to the number of elements in the output array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchemaTypeConstraint_GetAllowedTypes, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                  _Outptr_ const char* const** out_types, _Out_ size_t* num_types);
+
+  /** \brief Get the input indices that use a type constraint.
+   *
+   * Returns an array of zero-based input indices whose formal parameter type string
+   * matches this type constraint. The array is valid as long as the parent OrtOpSchema exists.
+   *
+   * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
+   * \param[out] out_indices Output parameter set to the output array of input indices.
+   * \param[out] count Output parameter set to the number of elements in the output array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchemaTypeConstraint_GetInputIndices, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                  _Outptr_ const size_t** out_indices, _Out_ size_t* count);
+
+  /** \brief Get the output indices that use a type constraint.
+   *
+   * Returns an array of zero-based output indices whose formal parameter type string
+   * matches this type constraint. The array is valid as long as the parent OrtOpSchema exists.
+   *
+   * \param[in] type_constraint The OrtOpSchemaTypeConstraint instance.
+   * \param[out] out_indices Output parameter set to the output array of output indices.
+   * \param[out] count Output parameter set to the number of elements in the output array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(OpSchemaTypeConstraint_GetOutputIndices, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                  _Outptr_ const size_t** out_indices, _Out_ size_t* count);
 
   /** \brief Create a profiling event.
    *

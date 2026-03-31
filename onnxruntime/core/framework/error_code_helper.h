@@ -40,6 +40,14 @@ Status ToStatusAndRelease(OrtStatus* ort_status,
 #define API_IMPL_END }
 #endif
 
+// Check condition. If met, return an OrtStatus* error with the given OrtErrorCode.
+#define ORT_API_RETURN_IF(condition, ort_error_code, ...)                                           \
+  do {                                                                                              \
+    if (condition) {                                                                                \
+      return OrtApis::CreateStatus(ort_error_code, ::onnxruntime::MakeString(__VA_ARGS__).c_str()); \
+    }                                                                                               \
+  } while (false)
+
 // Return the OrtStatus if it indicates an error
 #define ORT_API_RETURN_IF_ERROR(expr) \
   do {                                \
