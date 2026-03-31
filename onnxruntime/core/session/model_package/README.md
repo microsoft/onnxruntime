@@ -17,8 +17,7 @@ This document describes the model package directory layout and the JSON files us
     - The data types may vary.
 
 - Model Variant
-  - A ‘model variant’ is typically a single ONNX or ORT format model, however we allow some flexibility here
-    - An ORT GenAI ‘model variant’ is the collection of files required by ORT GenAI such as one or more ONNX models and related configuration files.
+  - A ‘model variant’ is a single ONNX or ORT format model.
 
 
 
@@ -27,7 +26,10 @@ This document describes the model package directory layout and the JSON files us
 ````
 <model>.ortpackage/ 
 ├── manifest.json
-├── pipeline.json  
+├── pipeline.json
+├── configs/ 
+|   ├── genai_config.json 
+|   └── chat_template.jinja
 └── models/ 
     └── model_name/ 
         ├── metadata.json
@@ -42,15 +44,12 @@ This document describes the model package directory layout and the JSON files us
                 └── model.data
             └── ...
         └── base model /   
-            ├── model.onnx 
-            ├── [GenAI config and data files]  
+            ├── model.onnx  
         └── variant A / 
             ├── optimized model.onnx (contains EPContext nodes) 
-            ├── [GenAI config and data files]  
             └── [Compilation artifacts] 
         └── variant B / 
             ├── optimized model.onnx (contains EPContext nodes) 
-            ├── [GenAI config and data files]  
             └── [Compilation artifacts] 
 ````
 
