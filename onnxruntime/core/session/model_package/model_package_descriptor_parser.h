@@ -30,12 +30,18 @@ class ModelPackageDescriptorParser {
  public:
   explicit ModelPackageDescriptorParser(const logging::Logger& logger) : logger_(logger) {}
 
-  Status ParseManifestAndMetadata(const std::filesystem::path& package_root,
-                                  /*out*/ std::vector<ModelVariantInfo>& components) const;
+  Status ParseVariantsFromRoot(const std::filesystem::path& package_root,
+                               /*out*/ std::vector<ModelVariantInfo>& components) const;
 
   Status ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& variant) const;
 
  private:
+  Status ParseVariantsFromComponent(const std::string& component_model_name,
+                                    const std::filesystem::path& component_model_root,
+                                    const json* manifest_variants_obj,
+                                    const json* metadata_variants_obj,
+                                    /*in,out*/ std::vector<ModelVariantInfo>& variants) const;
+
   const logging::Logger& logger_;
 };
 

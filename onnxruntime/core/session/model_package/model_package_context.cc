@@ -293,7 +293,7 @@ Status ModelVariantSelector::SelectVariant(gsl::span<ModelVariantInfo> variants,
 
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  ORT_THROW_IF_ERROR(parser.ParseManifestAndMetadata(package_root, model_variant_infos_));
+  ORT_THROW_IF_ERROR(parser.ParseVariantsFromRoot(package_root, model_variant_infos_));
 }
 
 Status ModelPackageContext::SelectModelVariant(gsl::span<SelectionEpInfo> ep_infos) {

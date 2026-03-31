@@ -87,7 +87,10 @@ std::filesystem::path CreateComponentModelMetadata(
 // Model package end-to-end test
 // ------------------------------------------------------------------
 TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
-  // Parse manifest alone to get model variants' constraints.
+  // Test Case 1:
+  // package_root is a model package directory which contains a full detailed manifest.json.
+  // This model package only contains one component model and it doesn't have metadata.json, so
+  // ORT should parse manifest alone to get model variants' constraints.
   // ORT selects most suitable model variant based on constraints and then loads it to run inference successfully.
   {
     // Build model package on disk
@@ -160,7 +163,10 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
     std::filesystem::remove_all(package_root, ec);
   }
 
-  // Parse manifest and component model's metadata.json to get model variants' constraints.
+  // Test Case 2:
+  // package_root is a model package directory which contains a manifest.json.
+  // This model package only contains one component model and it has a metadata.json.
+  // ORT should parse the manifest and the metadata.json to get model variants' constraints.
   // ORT selects most suitable model variant based on constraints and then loads it to run inference successfully.
   {
     // Build model package on disk
@@ -216,6 +222,89 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
     // Create session from package root (directory)
     // ORT should pick the variant_1 model since the constraints match the example EP device (device "cpu" matches)
     Ort::Session session(*ort_env, package_root.c_str(), session_options);
+
+    // Prepare input X
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::vector<int64_t> shape = {3, 2};
+    std::vector<float> input_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+    Ort::Value input = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
+                                                       shape.data(), shape.size());
+    const char* input_names[] = {"X"};
+    const char* output_names[] = {"Y"};
+    std::vector<Ort::Value> inputs;
+    inputs.push_back(std::move(input));
+
+    // Run
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, inputs.data(), inputs.size(),
+                               output_names, 1);
+    ASSERT_EQ(outputs.size(), 1u);
+    const float* out = outputs[0].GetTensorData<float>();
+    gsl::span<const float> out_span(out, input_data.size());
+    EXPECT_THAT(out_span, ::testing::ElementsAre(1.f, 4.f, 9.f, 16.f, 25.f, 36.f));
+
+    // Cleanup
+    std::error_code ec;
+    std::filesystem::remove_all(package_root, ec);
+  }
+
+  // Test Case 3:
+  // package_root is a component model directory which contains a metadata.json.
+  // ORT should parse metadata.json to get model variants' constraints.
+  // ORT selects most suitable model variant based on constraints and then loads it to run inference successfully.
+  {
+    // Build model package on disk
+    const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
+    constexpr std::string_view manifest_json = R"({
+    "model_name": "test_model",
+    "component_models": {
+      "model_1": {
+      }
+    }
+    })";
+
+    CreateModelPackage(package_root, manifest_json,
+                       "model_1", "variant_1", "variant_2",
+                       std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
+
+    constexpr std::string_view metadata_json = R"({
+      "model_component_name": "model_1",
+      "model_variants": {
+        "variant_1": {
+          "file": "mul_1.onnx",
+          "constraints": {
+            "ep": "example_ep",
+            "device": "cpu",
+            "architecture": "arch1"
+          }
+        },
+        "variant_2": {
+          "file": "mul_16.onnx",
+          "constraints": {
+            "ep": "example_ep",
+            "device": "npu",
+            "architecture": "arch2"
+          }
+        }
+      }
+    })";
+
+    const auto component_model_root = CreateComponentModelMetadata(package_root,
+                                                                   "model_1",
+                                                                   metadata_json);
+
+    // Register example EP and get its device
+    RegisteredEpDeviceUniquePtr example_ep;
+    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+    Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+    // Prepare session options with ExampleEP appended
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Create session from component model root (directory)
+    // ORT should pick the variant_1 model since the constraints match the example EP device (device "cpu" matches)
+    Ort::Session session(*ort_env, component_model_root.c_str(), session_options);
 
     // Prepare input X
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -519,7 +608,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
 
     ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
     std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseManifestAndMetadata(package_root, variants);
+    auto status = parser.ParseVariantsFromRoot(package_root, variants);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
     ASSERT_EQ(variants.size(), 1u);
     EXPECT_EQ(variants[0].model_path.filename().string(), "only.onnx");
@@ -549,7 +638,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
 
     ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
     std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseManifestAndMetadata(package_root, variants);
+    auto status = parser.ParseVariantsFromRoot(package_root, variants);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
     ASSERT_EQ(variants.size(), 1u);
     EXPECT_EQ(variants[0].model_path.filename().string(), "auto.onnx");
@@ -581,7 +670,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
 
     ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
     std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseManifestAndMetadata(package_root, variants);
+    auto status = parser.ParseVariantsFromRoot(package_root, variants);
     ASSERT_FALSE(status.IsOK());
     EXPECT_THAT(status.ErrorMessage(),
                 ::testing::HasSubstr("Multiple ONNX model files found under"));

@@ -16,15 +16,19 @@
 
 namespace onnxruntime {
 
-// This function parses information from manifest.json and metadata.json for all component models as well as
-// their associated model variants, producing a unified list of EpContextVariantInfo.
+// The package_root could be either a component model root (contains metadata.json) or a model package root (contains
+// manifest.json). The parsing logic will first check for metadata.json to see if it's a component model root, and if
+// not found, it will look for manifest.json to treat it as a model package root. This allows flexibility in how the
+// model package is structured.
+//
+// This function parses information from manifest.json and/or metadata.json for the model variants from the same
+// component model, producing a unified list of ModelVariantInfo.
 //
 // If a model variant appears in both, it chooses component model's metadata.json as the source of truth, but
 // falls back to manifest.json if metadata.json is missing required fields.
 //
-// Note: In this initial implementation, we expect only one component model existing in the package, in the future
-//       we will have the "pipeline" ability to execute multiple component models in sequence to better provide the
-//       ease of use for the cases where multiple models are needed (ex: pre/post processing, multi-stage models, etc).
+// Note: If the package_root is a model package root, currently it only supports one component model.
+// #TODO: In the future we may want ORT to support running multiple component models in a single "virtual" session.
 //
 // A manifest.json may look like this:
 //
@@ -84,9 +88,60 @@ namespace onnxruntime {
 //         }
 //     }
 // }
-Status ModelPackageDescriptorParser::ParseManifestAndMetadata(const std::filesystem::path& package_root,
-                                                              /*out*/ std::vector<ModelVariantInfo>& variants) const {
+Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem::path& package_root,
+                                                           /*out*/ std::vector<ModelVariantInfo>& variants) const {
   variants.clear();
+
+  // package_root could be either a component model root (contains metadata.json) or a model package root (contains manifest.json).
+
+  // Mode 1: package_root is a component model root (contains metadata.json).
+  // In this mode metadata.json is the source of truth and manifest.json is ignored.
+  const auto component_metadata_path = package_root / kComponentModelMetadataFileName;
+  if (std::filesystem::exists(component_metadata_path) &&
+      std::filesystem::is_regular_file(component_metadata_path)) {
+    std::ifstream mf(component_metadata_path, std::ios::binary);
+    if (!mf) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Failed to open metadata.json at ", component_metadata_path.string());
+    }
+
+    json metadata_doc;
+    ORT_TRY {
+      metadata_doc = json::parse(mf);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "metadata.json at ", component_metadata_path.string(),
+                             " is not valid JSON: ", ex.what());
+    }
+
+    if (!metadata_doc.contains(kModelVariantsKey) || !metadata_doc[kModelVariantsKey].is_object()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "metadata.json at ", component_metadata_path.string(),
+                             " must contain a \"model_variants\" object");
+    }
+
+    const std::string component_model_name =
+        (metadata_doc.contains("component_model_name") && metadata_doc["component_model_name"].is_string())
+            ? metadata_doc["component_model_name"].get<std::string>()
+            : package_root.filename().string();
+
+    ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
+                                                   package_root,
+                                                   nullptr,
+                                                   &metadata_doc[kModelVariantsKey],
+                                                   variants));
+
+    for (const auto& v : variants) {
+      LOGS(logger_, INFO) << "manifest variant: file='" << v.model_path.string()
+                          << "' ep='" << v.ep << "' device='" << v.device
+                          << "' arch='" << v.architecture << "'";
+    }
+
+    return Status::OK();
+  }
+
+  // Mode 2: package_root is a model package root, resolve via manifest.json.
   const auto manifest_path = package_root / kModelPackageManifestFileName;
   if (!std::filesystem::exists(manifest_path)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -180,17 +235,19 @@ Status ModelPackageDescriptorParser::ParseManifestAndMetadata(const std::filesys
 
   if (components_ref.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json should contain exactly one model component field.");
+                           "manifest.json should contain exactly one model component field or "
+                           "the models directory should contain exactly one component model.");
   }
 
   for (const auto& item : components_ref.items()) {
     const std::string& component_model_name = item.key();
     const auto& component_obj = item.value();
 
-    // Load metadata.json (if present) for this component model
+    // Load metadata.json (if present) for this component model.
     json metadata_doc;
     const json* metadata_variants_obj = nullptr;
     const auto metadata_path = package_root / "models" / component_model_name / kComponentModelMetadataFileName;
+
     if (!has_component_models) {
       auto it_meta = discovered_metadata_docs.find(component_model_name);
       if (it_meta != discovered_metadata_docs.end()) {
@@ -207,7 +264,7 @@ Status ModelPackageDescriptorParser::ParseManifestAndMetadata(const std::filesys
           }
         }
         ORT_CATCH(const std::exception&) {
-          // ignore metadata parse errors; fall back to manifest-only flow
+          // Ignore metadata parse errors; fall back to manifest-only flow.
         }
       }
     }
@@ -217,140 +274,147 @@ Status ModelPackageDescriptorParser::ParseManifestAndMetadata(const std::filesys
             ? &component_obj[kModelVariantsKey]
             : nullptr;
 
-    // Build a combined, deterministic list of variant names:
-    //   1) all manifest variants in manifest order
-    //   2) any metadata-only variants appended after
-    std::vector<std::string> variant_names;
-    std::unordered_set<std::string> variant_name_set;
-    if (manifest_variants_obj != nullptr) {
-      for (const auto& variant_item : manifest_variants_obj->items()) {
-        variant_names.push_back(variant_item.key());
-        variant_name_set.insert(variant_item.key());
-      }
-    }
-    if (metadata_variants_obj != nullptr) {
-      for (const auto& variant_item : metadata_variants_obj->items()) {
-        const std::string& variant_name = variant_item.key();
-        if (variant_name_set.insert(variant_name).second) {
-          variant_names.push_back(variant_name);
-        }
-      }
-    }
-
-    for (const auto& variant_name : variant_names) {
-      const json* manifest_variant = nullptr;
-      if (manifest_variants_obj != nullptr) {
-        auto it = manifest_variants_obj->find(variant_name);
-        if (it != manifest_variants_obj->end()) {
-          manifest_variant = &it.value();
-        }
-      }
-
-      const json* metadata_variant = nullptr;
-      if (metadata_variants_obj != nullptr) {
-        auto it = metadata_variants_obj->find(variant_name);
-        if (it != metadata_variants_obj->end()) {
-          metadata_variant = &it.value();
-        }
-      }
-
-      // Pick the variant object (prefer metadata, fall back to manifest).
-      const json* chosen_variant = metadata_variant != nullptr ? metadata_variant : manifest_variant;
-      if (chosen_variant == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Model variant '", variant_name,
-                               "' missing in both manifest and metadata for component model: ",
-                               component_model_name);
-      }
-
-      // Local helper to parse a single variant for this component.
-      auto parse_variant = [&](const std::string& variant_name,
-                               const json& variant_json) -> Status {
-        ModelVariantInfo variant;
-        const std::filesystem::path model_dir =
-            package_root / "models" / component_model_name / variant_name;
-
-        auto find_single_onnx = [&](const std::filesystem::path& search_dir,
-                                    std::filesystem::path& resolved_path) -> Status {
-          std::vector<std::filesystem::path> onnx_files;
-          for (const auto& entry : std::filesystem::directory_iterator(search_dir)) {
-            if (!entry.is_regular_file()) {
-              continue;
-            }
-            std::string ext = entry.path().extension().string();
-            std::transform(ext.begin(), ext.end(), ext.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (ext == ".onnx") {
-              onnx_files.push_back(entry.path());
-            }
-          }
-
-          if (onnx_files.empty()) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "No ONNX model file found under ", search_dir.string());
-          }
-
-          if (onnx_files.size() > 1) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Multiple ONNX model files found under ", search_dir.string(),
-                                   ". Multiple ONNX files per variant are not supported yet.");
-          }
-
-          resolved_path = onnx_files.front();
-          return Status::OK();
-        };
-
-        std::filesystem::path resolved_model_path;
-
-        const bool has_file = variant_json.contains(kFileKey);
-        if (has_file && variant_json[kFileKey].is_string()) {
-          const auto file_value = variant_json[kFileKey].get<std::string>();
-          const std::filesystem::path candidate_path = model_dir / file_value;
-
-          if (!std::filesystem::exists(candidate_path)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Variant '", variant_name, "' file path does not exist: ",
-                                   candidate_path.string());
-          }
-
-          if (std::filesystem::is_regular_file(candidate_path)) {
-            resolved_model_path = candidate_path;
-          } else if (std::filesystem::is_directory(candidate_path)) {
-            ORT_RETURN_IF_ERROR(find_single_onnx(candidate_path, resolved_model_path));
-          } else {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Variant '", variant_name,
-                                   "' file path is neither a file nor a directory: ",
-                                   candidate_path.string());
-          }
-        } else if (has_file && !variant_json[kFileKey].is_string()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Variant '", variant_name, "' has a non-string \"file\" field");
-        } else {
-          // No "file" provided: search the variant directory for a single ONNX file.
-          ORT_RETURN_IF_ERROR(find_single_onnx(model_dir, resolved_model_path));
-        }
-
-        variant.model_path = resolved_model_path;
-
-        // TODO: Might need to check agasint "model_type" field in the future if we support multiple model formats.
-
-        if (variant_json.contains(kConstraintsKey) && variant_json[kConstraintsKey].is_object()) {
-          ORT_RETURN_IF_ERROR(ParseModelVariantConstraints(variant_json[kConstraintsKey], variant));
-        }
-
-        variants.push_back(std::move(variant));
-        return Status::OK();
-      };
-
-      ORT_RETURN_IF_ERROR(parse_variant(variant_name, *chosen_variant));
-    }
+    const auto component_model_root = package_root / "models" / component_model_name;
+    ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
+                                                   component_model_root,
+                                                   manifest_variants_obj,
+                                                   metadata_variants_obj,
+                                                   variants));
   }
 
   for (const auto& v : variants) {
     LOGS(logger_, INFO) << "manifest variant: file='" << v.model_path.string()
                         << "' ep='" << v.ep << "' device='" << v.device
                         << "' arch='" << v.architecture << "'";
+  }
+
+  return Status::OK();
+}
+
+Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
+    const std::string& component_model_name,
+    const std::filesystem::path& component_model_root,
+    const json* manifest_variants_obj,
+    const json* metadata_variants_obj,
+    /*in,out*/ std::vector<ModelVariantInfo>& variants) const {
+  // Build a combined, deterministic list of variant names:
+  //   1) all manifest variants in manifest order
+  //   2) any metadata-only variants appended after
+  std::vector<std::string> variant_names;
+  std::unordered_set<std::string> variant_name_set;
+  if (manifest_variants_obj != nullptr) {
+    for (const auto& variant_item : manifest_variants_obj->items()) {
+      variant_names.push_back(variant_item.key());
+      variant_name_set.insert(variant_item.key());
+    }
+  }
+  if (metadata_variants_obj != nullptr) {
+    for (const auto& variant_item : metadata_variants_obj->items()) {
+      const std::string& variant_name = variant_item.key();
+      if (variant_name_set.insert(variant_name).second) {
+        variant_names.push_back(variant_name);
+      }
+    }
+  }
+
+  for (const auto& variant_name : variant_names) {
+    const json* manifest_variant = nullptr;
+    if (manifest_variants_obj != nullptr) {
+      auto it = manifest_variants_obj->find(variant_name);
+      if (it != manifest_variants_obj->end()) {
+        manifest_variant = &it.value();
+      }
+    }
+
+    const json* metadata_variant = nullptr;
+    if (metadata_variants_obj != nullptr) {
+      auto it = metadata_variants_obj->find(variant_name);
+      if (it != metadata_variants_obj->end()) {
+        metadata_variant = &it.value();
+      }
+    }
+
+    // Pick the variant object (prefer metadata, fall back to manifest).
+    const json* chosen_variant = metadata_variant != nullptr ? metadata_variant : manifest_variant;
+    if (chosen_variant == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Model variant '", variant_name,
+                             "' missing in both manifest and metadata for component model: ",
+                             component_model_name);
+    }
+
+    ModelVariantInfo variant;
+    const std::filesystem::path model_dir = component_model_root / variant_name;
+
+    auto find_single_onnx = [&](const std::filesystem::path& search_dir,
+                                std::filesystem::path& resolved_path) -> Status {
+      std::vector<std::filesystem::path> onnx_files;
+      for (const auto& entry : std::filesystem::directory_iterator(search_dir)) {
+        if (!entry.is_regular_file()) {
+          continue;
+        }
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (ext == ".onnx") {
+          onnx_files.push_back(entry.path());
+        }
+      }
+
+      if (onnx_files.empty()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "No ONNX model file found under ", search_dir.string());
+      }
+
+      if (onnx_files.size() > 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Multiple ONNX model files found under ", search_dir.string(),
+                               ". Multiple ONNX files per variant are not supported yet.");
+      }
+
+      resolved_path = onnx_files.front();
+      return Status::OK();
+    };
+
+    std::filesystem::path resolved_model_path;
+
+    const bool has_file = chosen_variant->contains(kFileKey);
+    if (has_file && (*chosen_variant)[kFileKey].is_string()) {
+      const auto file_value = (*chosen_variant)[kFileKey].get<std::string>();
+      const std::filesystem::path candidate_path = model_dir / file_value;
+
+      if (!std::filesystem::exists(candidate_path)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Variant '", variant_name, "' file path does not exist: ",
+                               candidate_path.string());
+      }
+
+      if (std::filesystem::is_regular_file(candidate_path)) {
+        resolved_model_path = candidate_path;
+      } else if (std::filesystem::is_directory(candidate_path)) {
+        ORT_RETURN_IF_ERROR(find_single_onnx(candidate_path, resolved_model_path));
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Variant '", variant_name,
+                               "' file path is neither a file nor a directory: ",
+                               candidate_path.string());
+      }
+    } else if (has_file && !(*chosen_variant)[kFileKey].is_string()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Variant '", variant_name, "' has a non-string \"file\" field");
+    } else {
+      // No "file" provided: search the variant directory for a single ONNX file.
+      ORT_RETURN_IF_ERROR(find_single_onnx(model_dir, resolved_model_path));
+    }
+
+    variant.model_path = resolved_model_path;
+
+    // TODO: Might need to check agasint "model_type" field in the future if we support multiple model formats.
+    if (chosen_variant->contains(kConstraintsKey) && (*chosen_variant)[kConstraintsKey].is_object()) {
+      ORT_RETURN_IF_ERROR(ParseModelVariantConstraints((*chosen_variant)[kConstraintsKey], variant));
+    }
+
+    variants.push_back(std::move(variant));
   }
 
   return Status::OK();
