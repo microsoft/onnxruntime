@@ -540,7 +540,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     }
   }
 
-    std::vector<NodeIndex> nodes_to_remove{
+  std::vector<NodeIndex> nodes_to_remove{
       qkv_reshape->Index(),
       split->Index(),
       q_transpose->Index(),
