@@ -30,10 +30,6 @@
 #include "onnxruntime_config.h"
 #include "version_info.h"  // version_info.hpp.in
 
-// Build marker for verifying component alignment
-static const char* BUILD_MARKER_GLOBAL_API = "[BUILD:global_api:" __DATE__ " " __TIME__ "]";
-static volatile const char* keep_global_api_marker = BUILD_MARKER_GLOBAL_API;
-
 using namespace onnxruntime;
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -97,8 +93,8 @@ struct OrtVitisAIEpAPI {
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       const char* const* keys,
       const char* const* values, size_t kv_len) = nullptr;
-  void (*profiler_start)(uint64_t profiling_start_time_ns);
-  void (*profiler_stop)();
+  void (*profiler_start)(uint64_t profiling_start_time_ns) = nullptr;
+  void (*profiler_stop)() = nullptr;
   // v1: Original 5-element EventInfo
   void (*profiler_collect)(
       std::vector<EventInfo>& api_events,
@@ -157,12 +153,8 @@ struct OrtVitisAIEpAPI {
                                            (void**)&vaip_get_version);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_start", (void**)&profiler_start);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_stop", (void**)&profiler_stop);
-    // Try v2 first (extended metadata), fall back to v1 if not available
-    auto status_v2 = env.GetSymbolFromLibrary(handle_, "profiler_collect_v2", (void**)&profiler_collect_v2);
-    if (!status_v2.IsOK()) {
-      // v2 not available, try v1
-      std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
-    }
+    std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect_v2", (void**)&profiler_collect_v2);
     std::ignore = env.GetSymbolFromLibrary(handle_, "get_compiled_model_compatibility_info", (void**)&get_compiled_model_compatibility_info);
     std::ignore = env.GetSymbolFromLibrary(handle_, "validate_compiled_model_compatibility_info", (void**)&validate_compiled_model_compatibility_info);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
@@ -211,28 +203,19 @@ void profiler_stop() {
   }
 }
 
-// v2 API: Extended with args metadata
+void profiler_collect(
+    std::vector<EventInfo>& api_events,
+    std::vector<EventInfo>& kernel_events) {
+  if (s_library_vitisaiep.profiler_collect) {
+    s_library_vitisaiep.profiler_collect(api_events, kernel_events);
+  }
+}
+
 void profiler_collect_v2(
     std::vector<EventInfoV2>& api_events,
     std::vector<EventInfoV2>& kernel_events) {
   if (s_library_vitisaiep.profiler_collect_v2) {
-    // v2 available - use it directly
     s_library_vitisaiep.profiler_collect_v2(api_events, kernel_events);
-  } else if (s_library_vitisaiep.profiler_collect) {
-    // Fall back to v1 and convert to v2 format
-    std::vector<EventInfo> api_v1, kernel_v1;
-    s_library_vitisaiep.profiler_collect(api_v1, kernel_v1);
-    // Convert v1 to v2 (add empty args)
-    for (auto& e : api_v1) {
-      api_events.emplace_back(std::get<0>(e), std::get<1>(e), std::get<2>(e),
-                              std::get<3>(e), std::get<4>(e),
-                              std::unordered_map<std::string, std::string>{});
-    }
-    for (auto& e : kernel_v1) {
-      kernel_events.emplace_back(std::get<0>(e), std::get<1>(e), std::get<2>(e),
-                                 std::get<3>(e), std::get<4>(e),
-                                 std::unordered_map<std::string, std::string>{});
-    }
   }
 }
 

@@ -12,9 +12,6 @@
 #include "vaip/custom_op.h"
 #include <optional>
 #include <memory>
-#include <vector>
-#include <utility>
-#include <unordered_map>
 void initialize_vitisai_ep();
 void deinitialize_vitisai_ep();
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options);
@@ -31,7 +28,7 @@ int vitisai_ep_set_ep_dynamic_options(
     const char* const* keys,
     const char* const* values, size_t kv_len);
 
-// Notify EP that profiling has started with the base timestamp (in nanoseconds since epoch)
+// Notify EP that profiling has started with the base timestamp (in microseconds since epoch)
 // The EP can use this to:
 // 1. Calculate relative timestamps (event_ts - base_ts) for the profiling timeline
 // 2. Store the absolute base timestamp if needed for other purposes
@@ -51,21 +48,24 @@ using EventInfo = std::tuple<
     long long,    // timestamp
     long long     // duration
     >;
+void profiler_collect(
+    std::vector<EventInfo>& api_events,
+    std::vector<EventInfo>& kernel_events);
 
 /**
  * EventInfoV2: Extended 6-element tuple with args map (v2 API)
  * 6th element: args map for extended metadata (subgraph_name, flow_type, kernel_idx)
  */
 using EventInfoV2 = std::tuple<
-    std::string,  // name
-    int,          // pid
-    int,          // tid
-    long long,    // timestamp
-    long long,    // duration
+    std::string,                                  // name
+    int,                                          // pid
+    int,                                          // tid
+    long long,                                    // timestamp
+    long long,                                    // duration
     std::unordered_map<std::string, std::string>  // args
     >;
 
-// v2 API: Use this - automatically falls back to v1 if vaip doesn't have v2
+// v2 API
 void profiler_collect_v2(
     std::vector<EventInfoV2>& api_events,
     std::vector<EventInfoV2>& kernel_events);
