@@ -101,11 +101,7 @@ stages:
             }
 
             # Create .npmrc file with required content
-            $npmrcContent = @"
-            registry=${{ parameters.npm_registry_url }}
-
-            always-auth=true
-            "@
+            $npmrcContent = "registry=${{ parameters.npm_registry_url }}`n`nalways-auth=true"
 
             Set-Content -Path $npmrcPath -Value $npmrcContent -Encoding UTF8
             Write-Host "Created .npmrc at: $npmrcPath"

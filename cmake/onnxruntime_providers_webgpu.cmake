@@ -84,7 +84,7 @@
     add_definitions("-DONNX_NAMESPACE=onnx")
     add_definitions("-DONNX_USE_LITE_PROTO=1")
 
-    # Default plugin EP version to ORT_VERSION if not explicitly provided.
+    # Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
     if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
       set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
     endif()

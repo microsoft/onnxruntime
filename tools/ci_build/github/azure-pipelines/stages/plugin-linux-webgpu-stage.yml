@@ -65,7 +65,12 @@ stages:
       - script: |
           set -e -x
           mkdir -p $(Build.ArtifactStagingDirectory)/bin
-          cp $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_webgpu.so $(Build.ArtifactStagingDirectory)/bin/ || true
+          plugin_path="$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_webgpu.so"
+          if [ ! -f "$plugin_path" ]; then
+            echo "Error: Expected plugin binary not found at '$plugin_path'. Failing build to avoid publishing an invalid package."
+            exit 1
+          fi
+          cp "$plugin_path" "$(Build.ArtifactStagingDirectory)/bin/"
         displayName: 'Copy plugin binaries'
 
       - script: |
