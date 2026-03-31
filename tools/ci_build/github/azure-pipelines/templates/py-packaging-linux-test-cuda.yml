@@ -46,7 +46,7 @@ jobs:
     value: true
   - name: trt_version
     ${{ if eq(parameters.arch, 'aarch64') }}:
-      value: ${{ variables.cuda13_trt_version }}
+      value: ${{ variables.aarch64_trt_version }}
     ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
       value: ${{ variables.linux_trt_version_cuda13 }}
     ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
