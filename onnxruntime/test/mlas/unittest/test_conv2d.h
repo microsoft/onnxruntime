@@ -316,10 +316,10 @@ class MlasConv2DTest : public MlasTestBase {
     constexpr float Beta = 1.0f;
 
     const int64_t OutputHeight64 =
-      ((int64_t(InputHeight) + int64_t(PaddingLeftHeight) + int64_t(PaddingRightHeight)) -
-       (int64_t(DilationHeight) * (int64_t(KernelHeight) - 1) + 1)) /
-        int64_t(StrideHeight) +
-      1;
+        ((int64_t(InputHeight) + int64_t(PaddingLeftHeight) + int64_t(PaddingRightHeight)) -
+         (int64_t(DilationHeight) * (int64_t(KernelHeight) - 1) + 1)) /
+            int64_t(StrideHeight) +
+        1;
     const int64_t OutputWidth64 =
       ((int64_t(InputWidth) + int64_t(PaddingLeftWidth) + int64_t(PaddingRightWidth)) -
        (int64_t(DilationWidth) * (int64_t(KernelWidth) - 1) + 1)) /
