@@ -377,37 +377,37 @@ class MlasConv2DTest : public MlasTestBase {
                           Output);
 
     ReferenceConv2DWithOptions(BatchCount,
-                   GroupCount,
-                   InputChannels,
-                   InputHeight,
-                   InputWidth,
-                   FilterCount,
-                   KernelHeight,
-                   KernelWidth,
-                   PaddingLeftHeight,
-                   PaddingLeftWidth,
-                   DilationHeight,
-                   DilationWidth,
-                   StrideHeight,
-                   StrideWidth,
-                   OutputHeight,
-                   OutputWidth,
-                   Input,
-                   Filter,
-                   Bias,
-                   Activation,
-                   Beta,
-                   InitialOutput,
-                   OutputReference);
+                               GroupCount,
+                               InputChannels,
+                               InputHeight,
+                               InputWidth,
+                               FilterCount,
+                               KernelHeight,
+                               KernelWidth,
+                               PaddingLeftHeight,
+                               PaddingLeftWidth,
+                               DilationHeight,
+                               DilationWidth,
+                               StrideHeight,
+                               StrideWidth,
+                               OutputHeight,
+                               OutputWidth,
+                               Input,
+                               Filter,
+                               Bias,
+                               Activation,
+                               Beta,
+                               InitialOutput,
+                               OutputReference);
 
     for (size_t i = 0; i < OutputElements; ++i) {
       ASSERT_TRUE(CloseEnough(Output[i], OutputReference[i]))
-        << "Mismatch at output index " << i
-        << " for G" << GroupCount
-        << "/H" << InputHeight
-        << "/W" << InputWidth
-        << ": actual=" << Output[i]
-        << ", expected=" << OutputReference[i];
+          << "Mismatch at output index " << i
+          << " for G" << GroupCount
+          << "/H" << InputHeight
+          << "/W" << InputWidth
+          << ": actual=" << Output[i]
+          << ", expected=" << OutputReference[i];
     }
   }
 
