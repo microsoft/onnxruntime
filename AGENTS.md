@@ -24,7 +24,7 @@ Custom operators not in the ONNX standard, organized by EP (`cpu/`, `cuda/`, `js
 
 ### Training (`orttraining/`)
 
-Training-specific code (gradient ops, loss functions, optimizers, `TrainingSession`) layered on top of the inference framework.
+Training-specific code (gradient ops, loss functions, optimizers, `TrainingSession`) layered on top of the inference framework. The training code is not being actively developed.
 
 ### Language bindings
 
