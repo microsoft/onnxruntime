@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/graph/graph_utils.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/attention_fusion_helper.h"
 #include <cmath>
+#include <optional>
 
 namespace onnxruntime {
 
@@ -104,7 +106,13 @@ static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_r
 
   num_heads = reshape_dims[3];
   head_size = reshape_dims[4];
-  hidden_size = num_heads * head_size;
+
+  try {
+    hidden_size = SafeInt<int64_t>(num_heads) * head_size;
+  } catch (const OnnxRuntimeException&) {
+    return false;
+  }
+
   return hidden_size > 0;
 }
 
@@ -126,13 +134,13 @@ static std::optional<ONNX_NAMESPACE::TypeProto> TryCreateMobileClipMhaOutputType
   return mha_output_type;
 }
 
-static const Node* GetOnlyChildByOutputIndex(const Graph& graph, const Node& node, size_t output_index, const char* child_op_type) {
+static Node* GetOnlyChildByOutputIndex(Graph& graph, const Node& node, size_t output_index, const char* child_op_type) {
   const auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node, output_index);
   if (output_edges.size() != 1) {
     return nullptr;
   }
 
-  const Node* child = graph.GetNode(output_edges[0].dst_node);
+  Node* child = graph.GetNode(output_edges[0].dst_node);
   if (child == nullptr || child->OpType() != child_op_type) {
     return nullptr;
   }
@@ -166,6 +174,10 @@ static bool TryCreateNormalizedProjectionGemm(Graph& graph,
   }
 
   const int64_t m = input_shape.SizeToDimension(input_shape.NumDimensions() - 1);
+  if (m <= 0) {
+    return false;
+  }
+
   const int64_t k = dim_k.dim_value();
   const int64_t n = dim_n.dim_value();
   if (input_shape[input_shape.NumDimensions() - 1] != k) {
@@ -190,7 +202,8 @@ static bool TryCreateNormalizedProjectionGemm(Graph& graph,
     shape_initializer_proto.set_name(graph.GenerateNodeArgName(name));
     shape_initializer_proto.add_dims(static_cast<int64_t>(shape.size()));
     shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    utils::SetRawDataInTensorProto(shape_initializer_proto, shape.data(), shape.size() * sizeof(int64_t));
+    const size_t shape_bytes = SafeInt<size_t>(shape.size()) * sizeof(int64_t);
+    utils::SetRawDataInTensorProto(shape_initializer_proto, shape.data(), shape_bytes);
     return graph_utils::AddInitializerWithOrtValue(graph, shape_initializer_proto);
   };
 
@@ -278,7 +291,8 @@ static bool TryRewriteProjectionGemm(Graph& graph,
 }
 
 static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::Logger& logger) {
-  const auto fail = [&](const char*) {
+  const auto fail = [&](const char* message) {
+    LOGS(logger, VERBOSE) << "MobileClipMHA[" << qkv_matmul.Name() << "]: fusion skipped: " << message;
     return false;
   };
 
@@ -298,32 +312,34 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
   const Node* sequence_transpose = graph_utils::GetInputNode(qkv_matmul, 0);
   if (sequence_transpose == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*sequence_transpose, "Transpose", {1, 13}, kOnnxDomain) ||
-      !HasExpectedPerm(*sequence_transpose, {0, 2, 1})) {
+      !HasExpectedPerm(*sequence_transpose, {0, 2, 1}) ||
+      !optimizer_utils::CheckOutputEdges(graph, *sequence_transpose, 1)) {
     return false;
   }
 
   const Node* input_reshape = graph_utils::GetInputNode(*sequence_transpose, 0);
   if (input_reshape == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*input_reshape, "Reshape", {5, 13, 14}, kOnnxDomain)) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*input_reshape, "Reshape", {5, 13, 14}, kOnnxDomain) ||
+      !optimizer_utils::CheckOutputEdges(graph, *input_reshape, 1)) {
     return fail("missing input Reshape before sequence transpose");
   }
 
-  const Node* qkv_reshape = GetOnlyChildByOutputIndex(graph, qkv_matmul, 0, "Reshape");
+  Node* qkv_reshape = GetOnlyChildByOutputIndex(graph, qkv_matmul, 0, "Reshape");
   if (qkv_reshape == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*qkv_reshape, "Reshape", {5, 13, 14}, kOnnxDomain) ||
       !optimizer_utils::CheckOutputEdges(graph, *qkv_reshape, 1)) {
     return fail("qkv Reshape after MatMul not matched");
   }
 
-  const Node* split = GetOnlyChildByOutputIndex(graph, *qkv_reshape, 0, "Split");
+  Node* split = GetOnlyChildByOutputIndex(graph, *qkv_reshape, 0, "Split");
   if (split == nullptr || !graph_utils::IsSupportedOptypeVersionAndDomain(*split, "Split", {13, 18}, kOnnxDomain) ||
       split->OutputDefs().size() != 3 || !optimizer_utils::IsAttributeWithExpectedValue(*split, "axis", static_cast<int64_t>(2))) {
     return fail("qkv Split(axis=2, outputs=3) not matched");
   }
 
-  const Node* q_transpose = GetOnlyChildByOutputIndex(graph, *split, 0, "Transpose");
-  const Node* k_squeeze = GetOnlyChildByOutputIndex(graph, *split, 1, "Squeeze");
-  const Node* v_transpose = GetOnlyChildByOutputIndex(graph, *split, 2, "Transpose");
+  Node* q_transpose = GetOnlyChildByOutputIndex(graph, *split, 0, "Transpose");
+  Node* k_squeeze = GetOnlyChildByOutputIndex(graph, *split, 1, "Squeeze");
+  Node* v_transpose = GetOnlyChildByOutputIndex(graph, *split, 2, "Transpose");
   if (q_transpose == nullptr || k_squeeze == nullptr || v_transpose == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*q_transpose, "Transpose", {1, 13}, kOnnxDomain) ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*k_squeeze, "Squeeze", {13}, kOnnxDomain) ||
@@ -334,8 +350,8 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return fail("q/k/v branch entry pattern after Split not matched");
   }
 
-  const Node* q_squeeze = GetOnlyChildByOutputIndex(graph, *q_transpose, 0, "Squeeze");
-  const Node* v_squeeze = GetOnlyChildByOutputIndex(graph, *v_transpose, 0, "Squeeze");
+  Node* q_squeeze = GetOnlyChildByOutputIndex(graph, *q_transpose, 0, "Squeeze");
+  Node* v_squeeze = GetOnlyChildByOutputIndex(graph, *v_transpose, 0, "Squeeze");
   if (q_squeeze == nullptr || v_squeeze == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*q_squeeze, "Squeeze", {13}, kOnnxDomain) ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*v_squeeze, "Squeeze", {13}, kOnnxDomain) ||
@@ -344,8 +360,8 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return fail("q/v squeeze pattern not matched");
   }
 
-  const Node* q_scale_mul = GetOnlyChildByOutputIndex(graph, *q_squeeze, 0, "Mul");
-  const Node* k_transpose = GetOnlyChildByOutputIndex(graph, *k_squeeze, 0, "Transpose");
+  Node* q_scale_mul = GetOnlyChildByOutputIndex(graph, *q_squeeze, 0, "Mul");
+  Node* k_transpose = GetOnlyChildByOutputIndex(graph, *k_squeeze, 0, "Transpose");
   if (q_scale_mul == nullptr || k_transpose == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*q_scale_mul, "Mul", {7, 13, 14}, kOnnxDomain) ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*k_transpose, "Transpose", {1, 13}, kOnnxDomain) ||
@@ -359,7 +375,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return fail("q scale constant not found");
   }
 
-  const Node* qk_matmul = GetOnlyChildByOutputIndex(graph, *q_scale_mul, 0, "MatMul");
+  Node* qk_matmul = GetOnlyChildByOutputIndex(graph, *q_scale_mul, 0, "MatMul");
   if (qk_matmul == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*qk_matmul, "MatMul", {1, 9, 13}, kOnnxDomain) ||
       graph_utils::GetInputNode(*qk_matmul, 1) == nullptr ||
@@ -368,7 +384,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return fail("qk MatMul not matched");
   }
 
-  const Node* softmax = GetOnlyChildByOutputIndex(graph, *qk_matmul, 0, "Softmax");
+  Node* softmax = GetOnlyChildByOutputIndex(graph, *qk_matmul, 0, "Softmax");
   if (softmax == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*softmax, "Softmax", {1, 11, 13}, kOnnxDomain) ||
       !optimizer_utils::IsAttributeWithExpectedValue(*softmax, "axis", static_cast<int64_t>(-1)) ||
@@ -376,7 +392,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return fail("Softmax(axis=-1) not matched");
   }
 
-  const Node* qkv_matmul_1 = GetOnlyChildByOutputIndex(graph, *softmax, 0, "MatMul");
+  Node* qkv_matmul_1 = GetOnlyChildByOutputIndex(graph, *softmax, 0, "MatMul");
   if (qkv_matmul_1 == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*qkv_matmul_1, "MatMul", {1, 9, 13}, kOnnxDomain) ||
       graph_utils::GetInputNode(*qkv_matmul_1, 1) == nullptr ||
@@ -385,7 +401,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return fail("attention-value MatMul not matched");
   }
 
-  const Node* transpose_3 = GetOnlyChildByOutputIndex(graph, *qkv_matmul_1, 0, "Transpose");
+  Node* transpose_3 = GetOnlyChildByOutputIndex(graph, *qkv_matmul_1, 0, "Transpose");
   if (transpose_3 == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*transpose_3, "Transpose", {1, 13}, kOnnxDomain) ||
       !HasExpectedPerm(*transpose_3, {0, 2, 1, 3}) ||
@@ -393,18 +409,18 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return fail("output Transpose(0,2,1,3) not matched");
   }
 
-  const Node* reshape_2 = GetOnlyChildByOutputIndex(graph, *transpose_3, 0, "Reshape");
+  Node* reshape_2 = GetOnlyChildByOutputIndex(graph, *transpose_3, 0, "Reshape");
   if (reshape_2 == nullptr ||
       !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_2, "Reshape", {5, 13, 14}, kOnnxDomain) ||
       !optimizer_utils::CheckOutputEdges(graph, *reshape_2, 1)) {
     return fail("output Reshape not matched");
   }
 
-  const Node* proj_matmul = GetOnlyChildByOutputIndex(graph, *reshape_2, 0, "MatMul");
-  const Node* proj_gemm = proj_matmul == nullptr ? GetOnlyChildByOutputIndex(graph, *reshape_2, 0, "Gemm") : nullptr;
-  const Node* proj_gemm_input_reshape = nullptr;
-  const Node* proj_gemm_output_reshape = nullptr;
-  const Node* proj_add = nullptr;
+  Node* proj_matmul = GetOnlyChildByOutputIndex(graph, *reshape_2, 0, "MatMul");
+  Node* proj_gemm = proj_matmul == nullptr ? GetOnlyChildByOutputIndex(graph, *reshape_2, 0, "Gemm") : nullptr;
+  Node* proj_gemm_input_reshape = nullptr;
+  Node* proj_gemm_output_reshape = nullptr;
+  Node* proj_add = nullptr;
 
   if (proj_matmul != nullptr) {
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(*proj_matmul, "MatMul", {1, 9, 13}, kOnnxDomain) ||
@@ -514,13 +530,13 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
   mha_node.SetExecutionProviderType(provider);
 
   if (proj_matmul != nullptr) {
-    if (!TryRewriteProjectionMatMulAddToGemm(graph, *mha_output, const_cast<Node&>(*proj_matmul), const_cast<Node&>(*proj_add))) {
+    if (!TryRewriteProjectionMatMulAddToGemm(graph, *mha_output, *proj_matmul, *proj_add)) {
       return fail("projection MatMul/Add could not be rewritten to Gemm");
     }
   } else if (proj_gemm_input_reshape != nullptr) {
-    graph_utils::ReplaceDownstreamNodeInput(graph, *const_cast<Node*>(reshape_2), 0, mha_node, 0);
+    graph_utils::ReplaceDownstreamNodeInput(graph, *reshape_2, 0, mha_node, 0);
   } else {
-    if (!TryRewriteProjectionGemm(graph, *mha_output, const_cast<Node&>(*proj_gemm))) {
+    if (!TryRewriteProjectionGemm(graph, *mha_output, *proj_gemm)) {
       return fail("projection Gemm could not be normalized");
     }
   }
