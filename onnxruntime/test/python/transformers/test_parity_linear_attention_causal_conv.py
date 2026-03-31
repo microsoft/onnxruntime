@@ -5,7 +5,7 @@ import unittest
 
 import numpy as np
 import torch
-from onnx import TensorProto, helper, checker
+from onnx import TensorProto, checker, helper
 
 import onnxruntime
 
@@ -132,7 +132,7 @@ def _build_linear_attention_model(
         ],
         ir_version=8,
     )
-    onnx.checker.check_model(model)
+    checker.check_model(model)
     return model.SerializeToString()
 
 
