@@ -148,6 +148,12 @@ class Conv2dShortExecuteTest : public MlasTestFixture<Conv2dTester> {
       test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
       test_registered += RegisterSingleTest(1, 128, 1, 32, 32, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
       test_registered += RegisterSingleTest(1, 256, 1, 16, 16, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+
+      // Near misses should bypass the specialized MobileClip kernel and fall back
+      // to the generic path while still matching the reference implementation.
+      test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 3, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+      test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 2, 5, 5, 2, 2, 2, 2, 1, 1, 2, 2);
+      test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 2, 7, 7, 3, 3, 3, 3, 1, 1, 1, 1);
     }
 
     return test_registered;

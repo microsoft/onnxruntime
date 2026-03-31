@@ -95,7 +95,10 @@ Return Value:
     assert(Parameters->Padding[3] == 3);
 
 #if defined(MLAS_TARGET_AMD64)
-    assert(GetMlasPlatform().ConvNchwFloatKernel == MlasConvNchwFloatKernelAvx512F);
+    if (GetMlasPlatform().ConvNchwFloatKernel != MlasConvNchwFloatKernelAvx512F) {
+        MLAS_THROW_EX(std::runtime_error,
+            "MlasConvDepthwiseWithMultiplierFloat_CHW: invalid AVX512F kernel dispatch");
+    }
 
     MlasConvDepthwiseMultiplier2CHWKernel7x7S2Avx512F(
         Input,
@@ -111,6 +114,7 @@ Return Value:
     MLAS_UNREFERENCED_PARAMETER(Input);
     MLAS_UNREFERENCED_PARAMETER(Filter);
     MLAS_UNREFERENCED_PARAMETER(Output);
-    assert(false);
+    MLAS_THROW_EX(std::runtime_error,
+        "MlasConvDepthwiseWithMultiplierFloat_CHW: not implemented for this platform");
 #endif
 }

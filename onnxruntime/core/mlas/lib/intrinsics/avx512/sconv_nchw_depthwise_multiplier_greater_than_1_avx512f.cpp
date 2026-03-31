@@ -150,8 +150,8 @@ Return Value:
                 const __m512 filter0_vec = _mm512_maskz_loadu_ps(ValidKernelMask, Filter0 + kh * KernelSize);
                 const __m512 filter1_vec = _mm512_maskz_loadu_ps(ValidKernelMask, Filter1 + kh * KernelSize);
 
-                acc0 = _mm512_add_ps(acc0, _mm512_mul_ps(input_vec, filter0_vec));
-                acc1 = _mm512_add_ps(acc1, _mm512_mul_ps(input_vec, filter1_vec));
+                acc0 = _mm512_fmadd_ps(input_vec, filter0_vec, acc0);
+                acc1 = _mm512_fmadd_ps(input_vec, filter1_vec, acc1);
             }
 
             const size_t output_index = oh * OutputWidth + ow;
