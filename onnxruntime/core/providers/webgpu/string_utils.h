@@ -48,7 +48,7 @@ class FastOStringStream {
   }
 
   std::string str() && {
-    return str_;
+    return std::move(str_);
   }
 
   // String types

@@ -470,12 +470,12 @@ class Program : public details::ProgramWrapper {
   static ProgramMetadata GetMetadata() {
     ProgramMetadata metadata;
     if constexpr (details::has_member_constants<T>) {
-      constexpr const ProgramConstant* ptr = T::constants.data();
-      constexpr size_t len = T::constants.size();
-
       static_assert(details::has_constants_correct_type<T>,
                     "Derived class of \"Program\" has member \"constants\" but its type is incorrect. "
                     "Please use macro WEBGPU_PROGRAM_DEFINE_CONSTANTS() or WEBGPU_PROGRAM_EXTEND_CONSTANTS() to declare constants.");
+
+      constexpr const ProgramConstant* ptr = T::constants.data();
+      constexpr size_t len = T::constants.size();
 
       metadata.constants = {ptr, len};
     } else {
@@ -483,12 +483,12 @@ class Program : public details::ProgramWrapper {
     }
 
     if constexpr (details::has_member_overridable_constants<T>) {
-      constexpr const ProgramOverridableConstantDefinition* ptr = T::overridable_constants.data();
-      constexpr size_t len = T::overridable_constants.size();
-
       static_assert(details::has_overridable_constants_correct_type<T>,
                     "Derived class of \"Program\" has member \"overridable_constants\" but its type is incorrect. "
                     "Please use macro WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS() or WEBGPU_PROGRAM_EXTEND_OVERRIDABLE_CONSTANTS() to declare overridable constants.");
+
+      constexpr const ProgramOverridableConstantDefinition* ptr = T::overridable_constants.data();
+      constexpr size_t len = T::overridable_constants.size();
 
       metadata.overridable_constants = {ptr, len};
     } else {
@@ -496,12 +496,12 @@ class Program : public details::ProgramWrapper {
     }
 
     if constexpr (details::has_member_uniform_variables<T>) {
-      constexpr const ProgramUniformVariableDefinition* ptr = T::uniform_variables.data();
-      constexpr size_t len = T::uniform_variables.size();
-
       static_assert(details::has_uniform_variables_correct_type<T>,
                     "Derived class of \"Program\" has member \"uniform_variables\" but its type is incorrect. "
                     "Please use macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES() or WEBGPU_PROGRAM_EXTEND_UNIFORM_VARIABLES() to declare uniform variables.");
+
+      constexpr const ProgramUniformVariableDefinition* ptr = T::uniform_variables.data();
+      constexpr size_t len = T::uniform_variables.size();
 
       metadata.uniform_variables = {ptr, len};
     } else {
