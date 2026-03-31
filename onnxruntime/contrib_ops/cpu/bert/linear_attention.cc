@@ -224,13 +224,14 @@ void ProcessHead(
         float* ot = output_data + (batch_idx * seq_len + t) * output_hidden + h_q * d_v;
 
         if (use_mlas) {
+          // Use alpha=1.0 to hit the MLAS M=1 gemv fast path, then scale output.
           MlasGemm(
               CblasNoTrans,
               CblasNoTrans,
               1,
               dv,
               dk,
-              scale,
+              1.0f,
               qt,
               dk,
               S,
@@ -240,6 +241,11 @@ void ProcessHead(
               dv,
               nullptr,
               nullptr);
+          if (scale != 1.0f) {
+            for (size_t j = 0; j < dv; ++j) {
+              ot[j] *= scale;
+            }
+          }
         } else {
           for (int64_t j = 0; j < d_v; ++j) {
             float acc = 0.0f;
@@ -257,13 +263,14 @@ void ProcessHead(
       float* ot = output_data + (batch_idx * seq_len + t) * output_hidden + h_kv * d_v;
 
       if (use_mlas) {
+        // Use alpha=1.0 to hit the MLAS M=1 gemv fast path, then scale output.
         MlasGemm(
             CblasNoTrans,
             CblasNoTrans,
             1,
             dv,
             dk,
-            scale,
+            1.0f,
             qt,
             dk,
             S,
@@ -273,6 +280,11 @@ void ProcessHead(
             dv,
             nullptr,
             nullptr);
+        if (scale != 1.0f) {
+          for (size_t j = 0; j < dv; ++j) {
+            ot[j] *= scale;
+          }
+        }
       } else {
         for (int64_t j = 0; j < d_v; ++j) {
           float acc = 0.0f;
