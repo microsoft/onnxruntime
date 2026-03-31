@@ -4036,6 +4036,7 @@ inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetInputIndices() cons
   const size_t* indices = nullptr;
   size_t count = 0;
   ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetInputIndices(this->p_, &indices, &count));
+  if (count == 0) return {};
   return std::vector<size_t>(indices, indices + count);
 }
 
@@ -4044,6 +4045,7 @@ inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetOutputIndices() con
   const size_t* indices = nullptr;
   size_t count = 0;
   ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetOutputIndices(this->p_, &indices, &count));
+  if (count == 0) return {};
   return std::vector<size_t>(indices, indices + count);
 }
 }  // namespace detail
