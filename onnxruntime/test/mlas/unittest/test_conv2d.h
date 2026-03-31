@@ -297,9 +297,9 @@ class MlasConv2DTest : public MlasTestBase {
 
   MlasConv2DTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
-    void TestMobileClipBetaActivationRegression(size_t GroupCount,
-                          size_t InputHeight,
-                          size_t InputWidth) {
+  void TestMobileClipBetaActivationRegression(size_t GroupCount,
+                                              size_t InputHeight,
+                                              size_t InputWidth) {
     constexpr size_t BatchCount = 1;
     constexpr size_t InputChannels = 1;
     constexpr size_t FilterCount = 2;
