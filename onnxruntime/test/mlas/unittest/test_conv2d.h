@@ -45,6 +45,8 @@ class MlasConv2DTest : public MlasTestBase {
     const size_t OutputElements = BatchCount * GroupCount * FilterCount * OutputHeight * OutputWidth;
     if (InitialOutput != nullptr) {
       std::memcpy(Output, InitialOutput, OutputElements * sizeof(float));
+    } else {
+      std::fill_n(Output, OutputElements, 0.0f);
     }
 
     MLAS_CONV_PARAMETERS Parameters;
