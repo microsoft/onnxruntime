@@ -48,6 +48,9 @@ Detect the platform and use the correct script automatically.
 
 # Build Python wheel
 ./build.sh --config Release --parallel --build_wheel
+
+# Build only a specific CMake target (much faster than a full build)
+./build.sh --config Release --build --parallel --target onnxruntime_common
 ```
 
 ## Key flags
@@ -62,7 +65,23 @@ Detect the platform and use the correct script automatically.
 | `--use_tensorrt` | Enable TensorRT execution provider |
 | `--use_dml` | Enable DirectML execution provider (Windows) |
 | `--use_openvino` | Enable OpenVINO execution provider |
+| `--target TARGET` | Build a specific CMake target (e.g., `onnxruntime_common`). Can be repeated. |
+| `--targets T1 T2 ...` | Build one or more specific CMake targets in a single flag. |
 | `--build_dir` | Specify build output directory (default: `build/`) |
+
+## Build duration
+
+A full ONNX Runtime build can take a **long time** (tens of minutes to over an hour depending on hardware and configuration). If you have other work to do while the build runs, consider redirecting output to a file and running the build in the background so you can continue with other tasks:
+
+```bash
+# Run build in the background, redirecting output to a log file
+./build.sh --config Release --parallel > build.log 2>&1 &
+
+# Windows equivalent (PowerShell)
+Start-Process -NoNewWindow -FilePath .\build.bat -ArgumentList '--config','Release','--parallel' -RedirectStandardOutput build.log -RedirectStandardError build_err.log
+```
+
+When using the CLI agent's shell tools, prefer running the build with `mode="sync"` and a short `initial_wait` — the command will continue in the background and you'll be notified when it completes, freeing you to do other work in the meantime.
 
 ## Workflow
 
@@ -70,4 +89,5 @@ Detect the platform and use the correct script automatically.
 2. Detect the OS and choose `build.bat` or `build.sh`.
 3. Construct the build command with the appropriate flags.
 4. Run the build. Use `--parallel` by default unless the user says otherwise.
-5. If the build fails, examine the error output and suggest fixes.
+5. Since the build may take a long time, continue with other tasks while waiting for it to complete.
+6. If the build fails, examine the error output and suggest fixes.
