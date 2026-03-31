@@ -41,6 +41,13 @@ void DebugTrap() {
 }
 #endif
 
+bool ShouldRouteCudaToDynamicPluginEp(const std::optional<std::string>& dynamic_plugin_ep_name) {
+  // Route CUDA requests to the CUDA plugin EP when unit test main has initialized
+  // dynamic plugin EP infrastructure with the CUDA plugin registration.
+  return dynamic_plugin_ep_name.has_value() &&
+         *dynamic_plugin_ep_name == dynamic_plugin_ep_infra::kCudaPluginExecutionProviderName;
+}
+
 }  // namespace
 
 BaseTester::~BaseTester() {
@@ -689,9 +696,10 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
 
       const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+      const bool route_cuda_to_dynamic_plugin_ep = ShouldRouteCudaToDynamicPluginEp(dynamic_plugin_ep_name);
 
       std::optional<std::vector<std::string>> provider_types_including_dynamic_plugin_ep{};
-      if (dynamic_plugin_ep_name.has_value()) {
+      if (dynamic_plugin_ep_name.has_value() && !route_cuda_to_dynamic_plugin_ep) {
         ORT_ENFORCE(std::find(all_provider_types.begin(), all_provider_types.end(),
                               *dynamic_plugin_ep_name) == all_provider_types.end(),
                     "Dynamic plugin EP name conflicts with a known EP name: ", *dynamic_plugin_ep_name);
@@ -716,7 +724,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
         if (provider_type == onnxruntime::kCpuExecutionProvider)
           execution_provider = DefaultCpuExecutionProvider();
         else if (provider_type == onnxruntime::kCudaExecutionProvider)
-          execution_provider = DefaultCudaExecutionProvider();
+          execution_provider = route_cuda_to_dynamic_plugin_ep ? dynamic_plugin_ep_infra::MakeEp() : DefaultCudaExecutionProvider();
 #ifdef ENABLE_CUDA_NHWC_OPS
         else if (provider_type == onnxruntime::kCudaNHWCExecutionProvider)
           execution_provider = DefaultCudaNHWCExecutionProvider();
@@ -812,10 +820,19 @@ void BaseTester::ExecuteModelForEps(
     bool allow_released_onnx_opset_only,
     size_t* number_of_pre_packed_weights_counter,
     size_t* number_of_shared_pre_packed_weights_counter) {
+  const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+  const bool route_cuda_to_dynamic_plugin_ep = ShouldRouteCudaToDynamicPluginEp(dynamic_plugin_ep_name);
+
   for (auto& entry : execution_providers) {
     // Be noted, entry in execution providers passed in OpTester will be std::moved in the first BaseTester::Run(),
     // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
     ASSERT_TRUE(entry) << "Execution provider entry invalid.";
+
+    if (route_cuda_to_dynamic_plugin_ep && entry->Type() == kCudaExecutionProvider) {
+      auto plugin_ep = dynamic_plugin_ep_infra::MakeEp();
+      ASSERT_TRUE(plugin_ep) << "Failed to create CUDA plugin EP while routing from CUDAExecutionProvider.";
+      entry = std::move(plugin_ep);
+    }
 
     if (entry->Type() == kDmlExecutionProvider) {
       sess_options.enable_mem_pattern = false;
