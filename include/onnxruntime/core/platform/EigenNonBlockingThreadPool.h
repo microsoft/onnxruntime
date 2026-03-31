@@ -1642,9 +1642,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    constexpr int log2_spin = 20;
-    const int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
-    const int steal_count = spin_count / 100;
+    // Time-based spin: spin for up to 1ms before blocking. This avoids
+    // burning CPU for hundreds of milliseconds with iteration-count-based
+    // spinning, where the actual wall-clock duration depends heavily on
+    // the pause instruction used (_mm_pause ~10-40 cycles vs _tpause ~1000 cycles).
+    constexpr std::chrono::microseconds spin_duration{1000};  // 1ms
+    constexpr int steal_interval = 100;  // attempt steal every 100 iterations
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
@@ -1652,19 +1655,24 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     while (!should_exit) {
       Work w = q.PopFront();
       if (!w) {
-        // Spin waiting for work.
-        for (int i = 0; i < spin_count && !done_; i++) {
-          if (((i + 1) % steal_count == 0)) {
-            w = Steal(StealAttemptKind::TRY_ONE);
-          } else {
-            w = q.PopFront();
-          }
-          if (w) break;
+        // Spin waiting for work with a time-based exit condition.
+        if (allow_spinning_) {
+          const auto spin_deadline = std::chrono::high_resolution_clock::now() + spin_duration;
+          for (int i = 0; !done_; i++) {
+            if (((i + 1) % steal_interval == 0)) {
+              w = Steal(StealAttemptKind::TRY_ONE);
+              // Re-check deadline after steal attempt (which is more expensive)
+              if (!t && std::chrono::high_resolution_clock::now() >= spin_deadline) break;
+            } else {
+              w = q.PopFront();
+            }
+            if (w) break;
 
-          if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
-            break;
+            if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
+              break;
+            }
+            onnxruntime::concurrency::SpinPause();
           }
-          onnxruntime::concurrency::SpinPause();
         }
 
         // Attempt to block
