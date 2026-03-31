@@ -409,7 +409,7 @@ class MlasConv2DTest : public MlasTestBase {
         << ": actual=" << Output[i]
         << ", expected=" << OutputReference[i];
     }
-    }
+  }
 
   void Test(
       size_t BatchCount,
