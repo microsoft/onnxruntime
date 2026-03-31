@@ -363,6 +363,7 @@ TEST(TransformerTest, FuseFp16InitializersWithFp32Node_with_graph_optimizations_
 
   // Create session and check graph before / after initiation
   InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
   ASSERT_STATUS_OK(session.Load(model_uri));
   test_graph_structure_at_init(session.GetGraph());
   ASSERT_STATUS_OK(session.Initialize());
@@ -402,6 +403,7 @@ TEST(TransformerTest, FuseFp16InitializersWithFp32Node_with_graph_optimizations_
 
   // Create session and check graph before / after initiation
   InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
   ASSERT_STATUS_OK(session.Load(model_uri));
   test_graph_structure_at_init(session.GetGraph());
   ASSERT_STATUS_OK(session.Initialize());
@@ -443,6 +445,7 @@ TEST(TransformerTest, FuseFp16InitializersWithFp32Node_with_graph_optimizations_
 
   // Create session and check graph before / after initiation
   InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
   ASSERT_STATUS_OK(session.Load(model_uri));
   test_graph_structure_at_init(session.GetGraph());
   ASSERT_STATUS_OK(session.Initialize());
@@ -490,11 +493,11 @@ TEST(TransformerTest, FuseFp16InitializersWithGraphOutputs) {
   so.graph_optimization_level = TransformerLevel::MaxLevel;
   // Create session and check graph before / after initiation
   InferenceSessionWrapper session{so, GetEnvironment()};
-  // Disabling ConstantFolding optimizer as it will remove the Cast node
+  // Disabling ConstantFolding and NhwcTransformer optimizer as it will remove the Cast node
   // by folding it with Add node. This will not allow us to test the
   // scenario where Cast node is producing graph output and need to
   // kept untouched by FuseInitializersTransformer.
-  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"ConstantFolding"}));
+  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"ConstantFolding", "NhwcTransformer"}));
   ASSERT_STATUS_OK(session.Load(model_uri));
   _graph_structure_at_load(session.GetGraph());
   ASSERT_STATUS_OK(session.Initialize());

@@ -202,6 +202,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     session_options.session_logid = "NchwcOptimizerTests";
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+    ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
     ASSERT_STATUS_OK(session.Initialize());
 
     RunOptions run_options;
