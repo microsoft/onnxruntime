@@ -19,12 +19,39 @@ For native builds, if none of `--update`, `--build`, or `--test` are specified (
 
 For cross-compiled builds, the default is `--update` + `--build` only; `--test` must be specified explicitly.
 
+### When to use `--update`
+
+`--update` triggers CMake regeneration. You need it when:
+- **First build** in a new build directory
+- **New source files** are added (CMake glob patterns need to be re-evaluated)
+- **CMake configuration changes** (new flags, updated CMakeLists.txt, etc.)
+
+You do **not** need `--update` when:
+- Only modifying existing `.cc`/`.h` files (just use `--build`)
+- Re-running the same build after a prior successful build
+
+Skipping `--update` when unnecessary saves time since CMake regeneration can be slow.
+
 ## Platform detection
 
 - On **Windows**, use `.\build.bat`
 - On **Linux/macOS**, use `./build.sh`
 
 Detect the platform and use the correct script automatically.
+
+## Option files
+
+Build flags can be stored in option files and loaded with the `@` prefix:
+
+```bash
+# Load flags from an option file
+./build.sh "@./custom_options.opt" --build --parallel
+
+# Windows equivalent
+.\build.bat "@./custom_options.opt" --build --parallel
+```
+
+Option files (e.g., `custom_options.opt`) contain one flag per line. Any additional flags on the command line are merged with the file's flags. Option files can be used to avoid repeating common flags across build calls.
 
 ## Common build commands
 
@@ -77,11 +104,21 @@ A full ONNX Runtime build can take a **long time** (tens of minutes to over an h
 # Run build in the background, redirecting output to a log file
 ./build.sh --config Release --parallel > build.log 2>&1 &
 
-# Windows equivalent (PowerShell)
-Start-Process -NoNewWindow -FilePath .\build.bat -ArgumentList '--config','Release','--parallel' -RedirectStandardOutput build.log -RedirectStandardError build_err.log
+# Windows — redirect output to a file in a background terminal
+.\build.bat --config Release --parallel > build_output.txt 2>&1
 ```
 
-When using the CLI agent's shell tools, prefer running the build with `mode="sync"` and a short `initial_wait` — the command will continue in the background and you'll be notified when it completes, freeing you to do other work in the meantime.
+To monitor progress, periodically check the output file:
+
+```powershell
+# Check last few lines of build output
+Get-Content build_output.txt -Tail 20
+
+# Search for errors
+Select-String -Path build_output.txt -Pattern "error C|error LNK|FAILED|Build succeeded"
+```
+
+When using the CLI agent's shell tools, run the build command in a background terminal with output redirected to a file. Use a separate terminal to periodically check progress. Do **not** run the build in a foreground terminal and then run another command in the same terminal — this will interrupt the build with a `KeyboardInterrupt`.
 
 ## Workflow
 
