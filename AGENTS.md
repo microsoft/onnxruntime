@@ -1,69 +1,8 @@
 # Agent Instructions for ONNX Runtime
 
-## Build
+## Build, Test, and Lint
 
-Main build scripts are `build.sh` and `build.bat`. They delegate to `tools/ci_build/build.py`, which has three main phases:
-
-- `--update` — generate CMake build files
-- `--build` — compile (add `--parallel` to speed this up)
-- `--test` — run tests
-
-For native builds, if none of `--update`, `--build`, or `--test` are specified and you do not pass `--skip_tests`, **all three run by default**. For cross-compiled builds, the default is `--update` + `--build` only, and you must specify `--test` explicitly if you want to run tests.
-
-```bash
-# Full build (update + build + test)
-./build.sh --config Release --parallel
-# Windows equivalent
-.\build.bat --config Release --parallel
-
-# Just regenerate CMake files
-./build.sh --config Release --update
-# Just compile (skip CMake regeneration and tests)
-./build.sh --config Release --build --parallel
-# Just run tests (after a prior build)
-./build.sh --config Release --test
-
-# Build with specific execution provider
-./build.sh --config Release --parallel --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/local/cuda
-# Build Python wheel
-./build.sh --config Release --parallel --build_wheel
-```
-
-Key flags: `--config` (Debug|MinSizeRel|Release|RelWithDebInfo), `--parallel`, `--skip_tests`, `--build_wheel`, `--use_cuda`, `--use_tensorrt`, `--use_dml`, `--use_openvino`.
-
-## Test
-
-C++ tests use Google Test. Python tests use `unittest` (preferred) and `pytest`.
-
-```bash
-# Run all C++ tests after build
-cd build/<platform>/Release && ctest
-
-# Run a single C++ test binary
-./build/Linux/Release/onnxruntime_test_all --gtest_filter="*TestName*"
-
-# Run Python tests
-pytest onnxruntime/test/python/test_specific.py
-pytest onnxruntime/test/python/test_specific.py::TestClass::test_method
-```
-
-Python test naming convention: `test_<method>_<expected_behavior>_[when_<condition>]` (e.g., `test_method_x_raises_error_when_dims_is_not_a_sequence`).
-
-## Lint
-
-Uses [lintrunner](https://github.com/suo/lintrunner) for both C++ (clang-format) and Python (ruff).
-
-```bash
-pip install -r requirements-lintrunner.txt
-lintrunner init
-
-# Format changed files
-lintrunner -a
-# Format all files
-lintrunner -a --all-files
-# Format Python files only
-lintrunner f --all-files
-```
+See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`) for detailed build, test, and lint instructions.
 
 ## Architecture Overview
 
