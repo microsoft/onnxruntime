@@ -101,7 +101,7 @@ Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     auto& attr = attributes.at("scan_output_axes");
     std::vector<int64_t> scan_output_axes(attr.mutable_ints()->begin(), attr.mutable_ints()->end());
     for (size_t i = 0; i < n_carries; i++)
-      scan_output_axes.insert(scan_output_axes.begin() + n_carries, 0);
+      scan_output_axes.insert(scan_output_axes.begin(), 0);
     if (scan_output_axes.back() == 0)
       for (size_t i = 0; i < activation.size(); i++)
         scan_output_axes.push_back(-1);
@@ -127,7 +127,7 @@ Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     auto& attr = attributes.at("scan_output_directions");
     std::vector<int64_t> scan_output_directions(attr.mutable_ints()->begin(), attr.mutable_ints()->end());
     for (size_t i = 0; i < n_carries; i++)
-      scan_output_directions.insert(scan_output_directions.begin() + n_carries, 0);
+      scan_output_directions.insert(scan_output_directions.begin(), 0);
     for (size_t i = 0; i < activation.size(); i++)
       scan_output_directions.push_back(0);
     attr.mutable_ints()->Assign(scan_output_directions.begin(), scan_output_directions.end());
