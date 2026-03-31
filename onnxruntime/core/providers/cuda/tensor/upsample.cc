@@ -42,6 +42,9 @@ REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
 Upsample<T>::Upsample(const OpKernelInfo& info) : UpsampleBase(info), CudaKernel(info) {
+  // The device pointer cached here is safe in plugin builds: the EP's allocator
+  // (obtained via OpKernelInfo::GetAllocator) outlives all kernel instances because
+  // kernels are destroyed before the EP during session teardown.
   if (antialias_) {
     const uint8_t* lookup_table = GetLookupTableShared();
     auto alloc = info.GetAllocator(OrtMemTypeDefault);

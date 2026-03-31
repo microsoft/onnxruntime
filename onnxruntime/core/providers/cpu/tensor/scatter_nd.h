@@ -26,7 +26,7 @@ inline Status ValidateShapes(const TensorShape& input_shape,
 
   if (input_rank == 0 || indice_rank == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "input tensor and indices tensor must has rank larger than 0. ",
+                           "input tensor and indices tensor must have rank larger than 0. ",
                            "input shape: ", input_shape, ", indices shape: ", indice_shape);
   }
 

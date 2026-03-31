@@ -109,6 +109,8 @@ class SpaceDepthBase {
   int64_t blocksize_;
 };
 
+#if !defined(SHARED_PROVIDER) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+
 class SpaceToDepth final : public OpKernel, SpaceDepthBase {
  public:
   explicit SpaceToDepth(const OpKernelInfo& info) : OpKernel(info), SpaceDepthBase(info) {
@@ -127,5 +129,7 @@ class DepthToSpace final : public OpKernel, SpaceDepthBase {
  private:
   bool is_dcr_ = true;
 };
+
+#endif  // !defined(SHARED_PROVIDER) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 
 }  // namespace onnxruntime

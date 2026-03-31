@@ -581,6 +581,8 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
+// Inlined rather than delegated through g_host_cpu because ValidateShapes is
+// pure shape arithmetic with no framework dependencies.
 Status ScatterND::ValidateShapes(const TensorShape& input_shape,
                                  const TensorShape& indice_shape,
                                  const TensorShape& update_shape) { return scatter_nd_internal::ValidateShapes(input_shape, indice_shape, update_shape); }
