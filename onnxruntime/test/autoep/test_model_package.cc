@@ -679,5 +679,108 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
   std::filesystem::remove_all(package_root, ec);
 }
 
-}  // namespace test
-}  // namespace onnxruntime
+TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_parse_from_package_root";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+
+  // package_root is a model package directory (has manifest.json).
+  constexpr std::string_view manifest_json = R"({
+    "model_name": "test_model",
+    "component_models": {
+      "model_1": {}
+    }
+  })";
+
+  CreateModelPackage(package_root, manifest_json,
+                     "model_1", "variant_1", "variant_2",
+                     std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
+
+  constexpr std::string_view metadata_json = R"({
+    "component_model_name": "model_1",
+    "model_variants": {
+      "variant_1": {
+        "file": "mul_1.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "cpu",
+          "architecture": "arch1"
+        }
+      },
+      "variant_2": {
+        "file": "mul_16.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "npu",
+          "architecture": "arch2"
+        }
+      }
+    }
+  })";
+
+  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
+  std::vector<ModelVariantInfo> variants;
+  auto status = parser.ParseVariantsFromRoot(package_root, variants);
+
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_EQ(variants.size(), 2u);
+
+  EXPECT_EQ(variants[0].model_path.filename().string(), "mul_1.onnx");
+  EXPECT_EQ(variants[0].ep, "example_ep");
+  EXPECT_EQ(variants[0].device, "cpu");
+  EXPECT_EQ(variants[0].architecture, "arch1");
+
+  EXPECT_EQ(variants[1].model_path.filename().string(), "mul_16.onnx");
+  EXPECT_EQ(variants[1].ep, "example_ep");
+  EXPECT_EQ(variants[1].device, "npu");
+  EXPECT_EQ(variants[1].architecture, "arch2");
+
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
+  const auto component_root = std::filesystem::temp_directory_path() / "ort_model_package_parse_from_component_root";
+  std::error_code ec;
+  std::filesystem::remove_all(component_root, ec);
+  std::filesystem::create_directories(component_root);
+
+  // package_root is a component model directory (has metadata.json, no manifest.json).
+  const auto variant_dir = component_root / "variant_1";
+  std::filesystem::create_directories(variant_dir);
+  std::filesystem::copy_file("testdata/mul_1.onnx", variant_dir / "mul_1.onnx",
+                             std::filesystem::copy_options::overwrite_existing, ec);
+
+  constexpr std::string_view metadata_json = R"({
+    "component_model_name": "model_1",
+    "model_variants": {
+      "variant_1": {
+        "file": "mul_1.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "cpu",
+          "architecture": "arch1"
+        }
+      }
+    }
+  })";
+
+  {
+    std::ofstream os(component_root / "metadata.json", std::ios::binary);
+    os << metadata_json;
+  }
+
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
+  std::vector<ModelVariantInfo> variants;
+  auto status = parser.ParseVariantsFromRoot(component_root, variants);
+
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_EQ(variants.size(), 1u);
+  EXPECT_EQ(variants[0].model_path.filename().string(), "mul_1.onnx");
+  EXPECT_EQ(variants[0].ep, "example_ep");
+  EXPECT_EQ(variants[0].device, "cpu");
+  EXPECT_EQ(variants[0].architecture, "arch1");
+
+  std::filesystem::remove_all(component_root, ec);
+}
