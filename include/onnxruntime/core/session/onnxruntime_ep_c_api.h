@@ -2074,6 +2074,21 @@ struct OrtEp {
    */
   ORT_API2_STATUS(IsConcurrentRunSupported, _In_ OrtEp* this_ptr, _Outptr_ bool* is_supported);
 
+  /** \brief Called by ORT to block until the device has completed all preceding requested tasks.
+   *
+   * Currently this is primarily used by the IOBinding object to ensure that all inputs have been copied
+   * to the device before execution begins.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   *
+   * \note Implementation of this function is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(Sync, _In_ OrtEp* this_ptr);
+
   /** \brief Return a new profiler for the execution provider.
    *
    * If the EP supports profiling, it should create and return an OrtEpProfilerImpl instance.

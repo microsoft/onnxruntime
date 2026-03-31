@@ -115,6 +115,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
 
+  Status Sync() const override;
+
   Status SetEpDynamicOptions(gsl::span<const char* const> keys,
                              gsl::span<const char* const> values) override;
 
