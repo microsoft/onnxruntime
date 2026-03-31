@@ -14,6 +14,7 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "test/autoep/test_autoep_utils.h"
+#include "test/autoep/library/example_plugin_ep/ep_test_hooks.h"
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -287,6 +288,36 @@ void RunAddMulAddModel(const Ort::SessionOptions& session_options,
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(7, 17, 31, 49, 71, 97));
+}
+
+void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+  // Create input
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data(6, 2.0f);
+  std::vector<Ort::Value> ort_inputs;
+
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+
+  Ort::IoBinding io_binding(session);
+  io_binding.BindInput("X", ort_inputs[0]);
+  io_binding.BindOutput("Y", memory_info);
+
+  Ort::RunOptions run_options;
+
+  // Run session and get outputs
+  session.Run(run_options, io_binding);
+  io_binding.SynchronizeOutputs();
+  std::vector<Ort::Value> ort_outputs = io_binding.GetOutputValues();
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
 }  // namespace
@@ -1091,5 +1122,26 @@ TEST(OrtEpLibrary, CompilingPluginEp_MultiSubgraphs_DuplicateMetaDefIdBug) {
   ASSERT_NO_FATAL_FAILURE(RunIfMulModel(session_options, /*if_condition*/ true));
 }
 
+TEST(OrtEpLibrary, PluginEp_Sync) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // Create session with example plugin EP
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks));
+  ASSERT_NE(example_ep_hooks->reset_sync_count, nullptr);
+  ASSERT_NE(example_ep_hooks->get_sync_count, nullptr);
+
+  example_ep_hooks->reset_sync_count();
+
+  RunMulModelWithPluginEpUsingIOBinding(session_options);
+
+  ASSERT_EQ(example_ep_hooks->get_sync_count(), 1) << "Expected Sync to be called once during inference";
+}
 }  // namespace test
 }  // namespace onnxruntime
