@@ -4,9 +4,8 @@
 import unittest
 
 import numpy as np
-import onnx
 import torch
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, checker
 
 import onnxruntime
 
@@ -170,7 +169,7 @@ def _build_causal_conv_model(activation: str) -> bytes:
         ],
         ir_version=8,
     )
-    onnx.checker.check_model(model)
+    checker.check_model(model)
     return model.SerializeToString()
 
 
