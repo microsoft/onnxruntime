@@ -110,8 +110,9 @@ class EpProfiler {
   ///         std::chrono::duration_cast<std::chrono::microseconds>(event_start_time - profiling_start_time).count();
   ///
   /// Because relative ORT event IDs are relative to profiling start, different profiling sessions may reuse the same
-  /// values. If the EP's profiling utilities (e.g., CUPTI or ROCTracer) require correlation IDs that are unique
-  /// across concurrent profiling sessions, then the EP profiler should compute an absolute correlation ID:
+  /// values. If the EP's profiling utilities (e.g., CUPTI or ROCTracer) require correlation IDs that are practically
+  /// unique across concurrent profiling sessions (collisions require sub-microsecond event concurrency), then the
+  /// EP profiler should compute an absolute correlation ID:
   ///     absolute_ort_correlation_id =
   ///        relative_ort_event_id +
   ///        std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();

@@ -531,9 +531,10 @@ struct OrtEpProfilerImpl {
    *
    * \note The ORT event correlation ID is an absolute, epoch-based timestamp in microseconds. It is computed
    *       from the ORT event's start time using std::chrono::high_resolution_clock (platform-defined epoch).
-   *       Because it is absolute rather than relative to profiling start, it is unique across concurrent profiling
-   *       sessions within the same process and can be used directly as a correlation ID for EP profiling
-   *       utilities (e.g., CUPTI or ROCTracer).
+   *       Because it is absolute rather than relative to profiling start, it is practically unique across
+   *       concurrent profiling sessions within the same process (collisions require sub-microsecond event
+   *       concurrency) and can be used directly as a correlation ID for EP profiling utilities
+   *       (e.g., CUPTI or ROCTracer).
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
    * \param[in] ort_event_correlation_id Absolute, epoch-based correlation ID for the ORT event that is starting.
@@ -569,9 +570,10 @@ struct OrtEpProfilerImpl {
    *
    * \note The ORT event correlation ID is an absolute, epoch-based timestamp in microseconds. It is computed
    *       from the ORT event's start time using std::chrono::high_resolution_clock (platform-defined epoch).
-   *       Because it is absolute rather than relative to profiling start, it is unique across concurrent profiling
-   *       sessions within the same process and can be used directly as a correlation ID for EP profiling
-   *       utilities (e.g., CUPTI or ROCTracer).
+   *       Because it is absolute rather than relative to profiling start, it is practically unique across
+   *       concurrent profiling sessions within the same process (collisions require sub-microsecond event
+   *       concurrency) and can be used directly as a correlation ID for EP profiling utilities
+   *       (e.g., CUPTI or ROCTracer).
    *
    * \param[in] this_ptr Pointer to the OrtEpProfilerImpl instance.
    * \param[in] ort_event_correlation_id Absolute, epoch-based correlation ID for the ORT event that is ending.
