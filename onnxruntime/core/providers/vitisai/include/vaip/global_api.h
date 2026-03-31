@@ -12,9 +12,6 @@
 #include "vaip/custom_op.h"
 #include <optional>
 #include <memory>
-#include <vector>
-#include <utility>
-#include <unordered_map>
 void initialize_vitisai_ep();
 void deinitialize_vitisai_ep();
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options);
@@ -51,6 +48,9 @@ using EventInfo = std::tuple<
     long long,    // timestamp
     long long     // duration
     >;
+void profiler_collect(
+    std::vector<EventInfo>& api_events,
+    std::vector<EventInfo>& kernel_events);
 
 /**
  * EventInfoV2: Extended 6-element tuple with args map (v2 API)
@@ -65,7 +65,7 @@ using EventInfoV2 = std::tuple<
     std::unordered_map<std::string, std::string>  // args
     >;
 
-// v2 API: Use this - automatically falls back to v1 if vaip doesn't have v2
+// v2 API
 void profiler_collect_v2(
     std::vector<EventInfoV2>& api_events,
     std::vector<EventInfoV2>& kernel_events);
