@@ -236,7 +236,7 @@ def fetch_onnx_inputs_outputs_name(
         "input_ids": {0: "batch_size", 1: "seq_len"},
         "attention_mask": {0: "batch_size", 1: "seq_len"},
     }
-    # add dyanmic dimensions for the unkonw inputs
+    # add dynamic dimensions for the unkonw inputs
     for idx, name in enumerate(onnx_inp_names):
         if name not in onnx_dynamic_axes:
             unknown_dims = {i: f"{idx}__unknown_dims__{i}" for i in range(onnx_inputs[idx].dim())}
