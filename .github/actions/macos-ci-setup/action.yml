@@ -31,7 +31,7 @@ runs:
   using: "composite"
   steps:
     - name: Use Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python_version }}
 
@@ -43,7 +43,7 @@ runs:
         assert platform.machine().lower() == "${{ inputs.platform_machine}}", "This job expects to be run on an ${{ inputs.platform_machine}} machine."
 
     - name: Use Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: ${{ inputs.node_version }}
 
@@ -52,7 +52,7 @@ runs:
       run: brew install coreutils ninja
 
     - name: Install Java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: "temurin"
         java-version: ${{ inputs.java_version }}
