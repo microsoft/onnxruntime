@@ -796,6 +796,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwFloatKernel;
 #if defined(__aarch64__) && defined(__linux__)
+        MLAS_CONV_FLOAT_KERNEL* const KernelFloat = GetMlasPlatform().ConvNchwFloatKernel;
         if (WorkBlock->UseBf16) {
             Kernel = GetMlasPlatform().ConvNchwBf16Kernel;
         }
@@ -818,6 +819,26 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih,
                 &EffectiveKernelHeight);
 
+            MLAS_CONV_FLOAT_KERNEL* KernelToUse = Kernel;
+#if defined(__aarch64__) && defined(__linux__)
+            if (WorkBlock->UseBf16 &&
+                EffectiveKernelHeight == 3 &&
+                KernelWidth == 3) {
+                //
+                // The current direct BF16 asm uses a two-output load pattern
+                // that reads one float past the end of the third source row.
+                // That is valid for interior rows because the next row is
+                // contiguous in memory, but it would step into the guard page
+                // on the final source row of the image.
+                //
+                const bool HasTrailingSourceRow =
+                    (ih + (EffectiveKernelHeight - 1) * DilationHeight + 1) < InputHeight;
+                if (!HasTrailingSourceRow) {
+                    KernelToUse = KernelFloat;
+                }
+            }
+#endif
+
             //
             // Apply the convolution kernel to each channel of the input tensor.
             //
@@ -833,7 +854,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 // Invoke the convolution kernel.
                 //
 
-                Kernel(input + (ih * InputWidth - PaddingLeftX), filter, output,
+                KernelToUse(input + (ih * InputWidth - PaddingLeftX), filter, output,
                     StrideWidthBytes, DilationWidthBytes, FilterCount, InputStrideBytes,
                     FilterStrideBytes, OutputStrideBytes, EffectiveKernelHeight,
                     KernelWidth, input + (ih * InputWidth), InputWidthBytes,

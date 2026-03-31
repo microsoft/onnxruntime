@@ -14,10 +14,12 @@ Abstract:
       - NCHWC block size of 16 floats.
       - KernelHeight == KernelWidth == 3.
       - No left/right padding for the processed output range.
-      - KernelFlags == 0 (no accumulation, bias, or activation).
-
-    The wrapper in sconv_nchwc_kernel_neon.cpp validates these conditions and
-    falls back to the generic C++ implementation otherwise.
+      - KernelFlags may include MLAS_CONV_FLAG_BIAS and/or MLAS_CONV_FLAG_RELU
+        only; all other flags are clear. The dispatcher applies the shared
+        BF16 bias/ReLU epilogue when these flags are set.
+    The wrapper in sbconv_kernel_neon.cpp validates these conditions (including
+    the supported flags) and falls back to the generic C++ implementation
+    otherwise.
 
 --*/
 
@@ -503,8 +505,8 @@ Abstract:
     ret
 
 //
-// When StrideWidthBytes equals DilationWidthBytes, adjacent outputs overlap 
-// by two columns. This kernel reuses those overlapping input columns across 
+// When StrideWidthBytes equals DilationWidthBytes, adjacent outputs overlap
+// by two columns. This kernel reuses those overlapping input columns across
 // a two-output pair and reduces the number of input loads in the steady state.
 //
 // The contract matches MlasConvDepthwiseBf16KernelNeon3x3MidAsm.
