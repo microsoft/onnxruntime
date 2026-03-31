@@ -85,6 +85,10 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv1d, Conv2d, and Conv3d are supported.");
   } else if (rank == 5) {
     // Conv3D - use naive per-element shader (matching JS implementation)
+    if (conv_attrs_.group != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Conv3D does not support grouped convolution (group=", conv_attrs_.group, ").");
+    }
     const auto output_size = static_cast<uint32_t>(output_shape.Size());
     const auto kernel_depth = static_cast<uint32_t>(kernel_shape[2]);
     const auto kernel_height = static_cast<uint32_t>(kernel_shape[3]);

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <sstream>
 #include <string>
 
 #include "core/providers/webgpu/nn/conv3d_naive.h"
@@ -52,17 +51,17 @@ Status Conv3DNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var value = x_value_t(0);\n"
                             << "for (var wF = 0u; wF < uniforms.filter_dims[0]; wF++) {\n"
                             << "  let xF = xFCorner + wF * uniforms.dilations[0];\n"
-                            << "  if (xF < 0u || xF >= xShapeY) {\n"
+                            << "  if (xF >= xShapeY) {\n"
                             << "    continue;\n"
                             << "  }\n"
                             << "  for (var wR = 0u; wR < uniforms.filter_dims[1]; wR++) {\n"
                             << "    let xR = xRCorner + wR * uniforms.dilations[1];\n"
-                            << "    if (xR < 0u || xR >= xShapeZ) {\n"
+                            << "    if (xR >= xShapeZ) {\n"
                             << "      continue;\n"
                             << "    }\n"
                             << "    for (var wC = 0u; wC < uniforms.filter_dims[2]; wC++) {\n"
                             << "      let xC = xCCorner + wC * uniforms.dilations[2];\n"
-                            << "      if (xC < 0u || xC >= xShapeW) {\n"
+                            << "      if (xC >= xShapeW) {\n"
                             << "        continue;\n"
                             << "      }\n"
                             << "      for (var d1 = 0u; d1 < inputDepthNearestVec4; d1 += 4u) {\n";
