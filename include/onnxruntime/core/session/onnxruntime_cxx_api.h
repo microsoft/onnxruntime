@@ -661,6 +661,7 @@ ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelRegistry, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(OpSchema, GetEpApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
@@ -3520,6 +3521,88 @@ struct KernelRegistry : detail::Base<OrtKernelRegistry> {
   Status AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,
                    void* kernel_create_func_state);
 };
+
+namespace detail {
+/** \brief Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
+ *
+ * Holds a single type constraint from an operator schema, providing access to
+ * the constraint's name, allowed data types, and associated input/output indices.
+ * This is a non-owning view — the lifetime is tied to the parent OrtOpSchema.
+ */
+template <typename T>
+struct OpSchemaTypeConstraintImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetTypeParamName
+  std::string GetTypeParamName() const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetAllowedTypes
+  std::vector<std::string> GetAllowedTypes() const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetInputIndices
+  std::vector<size_t> GetInputIndices() const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetOutputIndices
+  std::vector<size_t> GetOutputIndices() const;
+};
+}  // namespace detail
+
+/// Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
+using ConstOpSchemaTypeConstraint = detail::OpSchemaTypeConstraintImpl<detail::Unowned<const OrtOpSchemaTypeConstraint>>;
+
+namespace detail {
+/** \brief Owning wrapper around an `OrtOpSchema*`.
+ *
+ * Provides access to operator schema metadata such as version, input/output names,
+ * and type constraints. The underlying OrtOpSchema is owned by this wrapper and
+ * released automatically on destruction.
+ */
+template <typename T>
+struct OpSchemaImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::OpSchema_GetSinceVersion
+  int GetSinceVersion() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetNumInputs
+  size_t GetNumInputs() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetInputName
+  std::string GetInputName(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetInputTypeConstraint. Returns the type constraint for the given input,
+  ///< or a wrapper around nullptr if the input has no type constraint.
+  ConstOpSchemaTypeConstraint GetInputTypeConstraint(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetNumOutputs
+  size_t GetNumOutputs() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetOutputName
+  std::string GetOutputName(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetOutputTypeConstraint. Returns the type constraint for the given output,
+  ///< or a wrapper around nullptr if the output has no type constraint.
+  ConstOpSchemaTypeConstraint GetOutputTypeConstraint(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetTypeConstraintCount
+  size_t GetTypeConstraintCount() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetTypeConstraint. Returns the i-th type constraint.
+  ConstOpSchemaTypeConstraint GetTypeConstraint(size_t index) const;
+};
+}  // namespace detail
+
+/// Owning wrapper around an `OrtOpSchema*`.
+using OpSchema = detail::OpSchemaImpl<OrtOpSchema>;
+
+/// \brief Get an operator schema from the global schema registry.
+///
+/// Wraps OrtEpApi::GetOpSchema. Returns an OpSchema that may wrap nullptr if the schema is not found.
+/// Available schemas include standard ONNX ops (domain "" or "ai.onnx"), ONNX ML ops ("ai.onnx.ml"),
+/// and ORT contrib ops ("com.microsoft").
+OpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain);
 
 namespace detail {
 template <typename T>
