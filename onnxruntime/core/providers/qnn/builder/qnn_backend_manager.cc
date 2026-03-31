@@ -1440,16 +1440,20 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   }
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-  ORT_RETURN_IF(blob_version.major == 0 && blob_version.minor == 0 && blob_version.patch == 0,
-                "Unable to retrieve the context binary version.");
-  // Cannot use contextCreateFromBinaryWithCallback() unless context bin version is >= 3.3.3
-  if (use_file_mapping && (blob_version.major < 3 ||
-                           (blob_version.major == 3 && blob_version.minor < 3) ||
-                           (blob_version.major == 3 && blob_version.minor == 3 && blob_version.patch < 3))) {
-    LOGS(*logger_, WARNING) << "Context binary of " << node_name << " is " << std::to_string(blob_version.major) << "."
-                            << std::to_string(blob_version.minor) << "." << std::to_string(blob_version.patch)
-                            << ". File mapping is only supported for versions >= 3.3.3. Disabling file mapping for this node.";
-    use_file_mapping = false;
+  if (use_file_mapping) {
+    if (blob_version.major == 0 && blob_version.minor == 0 && blob_version.patch == 0) {
+      LOGS(*logger_, WARNING) << "Failed to retrieve context binary version for " << node_name << ". Disabling file mapping.";
+      use_file_mapping = false;
+
+      // Cannot use contextCreateFromBinaryWithCallback() unless context bin version is >= 3.3.3
+    } else if (blob_version.major < 3 ||
+               (blob_version.major == 3 && blob_version.minor < 3) ||
+               (blob_version.major == 3 && blob_version.minor == 3 && blob_version.patch < 3)) {
+      LOGS(*logger_, WARNING) << "Context binary of " << node_name << " is v" << std::to_string(blob_version.major) << "."
+                              << std::to_string(blob_version.minor) << "." << std::to_string(blob_version.patch)
+                              << ". File mapping is only supported for versions >= 3.3.3. Disabling file mapping for this node.";
+      use_file_mapping = false;
+    }
   }
 #endif
 
