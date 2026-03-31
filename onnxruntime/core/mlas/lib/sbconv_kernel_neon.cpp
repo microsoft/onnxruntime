@@ -14,13 +14,14 @@ Abstract:
 
 --*/
 
-#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
+#include "mlasi.h"
+
+#if defined(MLAS_ARM64_BF16_CONV_RUNTIME_AVAILABLE)
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
-#include "mlasi.h"
 #include "sconv_nchwc_kernel_neon.h"
 
 constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;

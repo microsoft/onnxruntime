@@ -37,6 +37,10 @@ Abstract:
 
 #include "core/mlas/inc/mlas.h"
 
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__) && !defined(_WIN32)
+#define MLAS_ARM64_BF16_CONV_RUNTIME_AVAILABLE
+#endif
+
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -1024,7 +1028,7 @@ extern "C" {
     // AArch64 assembly micro-kernel for pointwise NCHWc convolution
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeonAsm;
 #endif
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_ARM64_BF16_CONV_RUNTIME_AVAILABLE)
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwBf16KernelNeon;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseBf16KernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
@@ -1450,7 +1454,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_ARM64_BF16_CONV_RUNTIME_AVAILABLE)
     MLAS_CONV_FLOAT_KERNEL* ConvNchwBf16Kernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseBf16Kernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseBf16Kernel;
