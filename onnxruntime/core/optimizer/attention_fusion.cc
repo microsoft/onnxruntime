@@ -542,20 +542,20 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
   }
 
   std::vector<NodeIndex> nodes_to_remove{
-      qkv_reshape->Index(),
-      split->Index(),
-      q_transpose->Index(),
-      q_squeeze->Index(),
-      q_scale_mul->Index(),
-      k_squeeze->Index(),
-      k_transpose->Index(),
-      qk_matmul->Index(),
-      softmax->Index(),
-      v_transpose->Index(),
-      v_squeeze->Index(),
-      qkv_matmul_1->Index(),
-      transpose_3->Index(),
-      reshape_2->Index(),
+    qkv_reshape->Index(),
+    split->Index(),
+    q_transpose->Index(),
+    q_squeeze->Index(),
+    q_scale_mul->Index(),
+    k_squeeze->Index(),
+    k_transpose->Index(),
+    qk_matmul->Index(),
+    softmax->Index(),
+    v_transpose->Index(),
+    v_squeeze->Index(),
+    qkv_matmul_1->Index(),
+    transpose_3->Index(),
+    reshape_2->Index(),
   };
 
   if (proj_matmul != nullptr) {
