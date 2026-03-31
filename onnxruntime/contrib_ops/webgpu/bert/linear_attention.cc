@@ -5,7 +5,6 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-// #include "core/providers/webgpu/wgsl_templates/wgsl_gen.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 using namespace onnxruntime::webgpu;
@@ -179,7 +178,6 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
     tile_v = head_dim_v;
   }
   const int head_dim_v_vectorized = head_dim_v / components;
-  const int num_dv_tiles = (head_dim_v_vectorized + tile_v - 1) / tile_v;
 
   // Workgroup size = head_dim_k (one thread per dk row)
   // Ensure it's a power of 2 for tree reduction (round up)
@@ -190,6 +188,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // Cap at GPU limits
   workgroup_size = std::min(workgroup_size, static_cast<uint32_t>(256));
 
+  const int num_dv_tiles = (head_dim_v_vectorized + tile_v - 1) / tile_v;
   const uint32_t num_workgroups = batch_size * num_heads * num_dv_tiles;
 
   bool has_initial_state = past_state != nullptr;

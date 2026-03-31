@@ -10,6 +10,9 @@
 // - Each thread maintains TILE_V columns of its state row in private memory
 // - Tokens are processed sequentially; matrix ops are parallelized across threads
 // - Reductions across dk (for S^T @ k and S^T @ q) use shared memory
+// - For delta/gated_delta: the S^T@k (retrieval) and S^T@q (output) reductions
+//   are fused into a single barrier tree, nearly halving barrier count per token.
+//   Key identity: output = scale * (S_old^T @ q + delta * (k^T @ q))
 //
 
 #param use_vec4
@@ -24,19 +27,29 @@
 #define UPDATE_GATED_DELTA 3
 #param update_rule
 
-// Shared memory for parallel reduction across dk threads
-// and for broadcasting delta values.
+// Type aliases: vtype is the element type for state and reductions.
+// otype is the output storage type.
 #if use_vec4
-// When use_vec4, each reduction_buf entry is a vec4<f32> (4 dv values packed),
-// eliminating the inner TILE_V loop and enabling native SIMD operations.
-var<workgroup> reduction_buf: array<vec4<f32>, workgroup_size_x>;
-var<workgroup> broadcast_val: vec4<f32>;
+alias vtype = vec4<f32>;
+alias otype = output_value_t;
 #else
-// TILE_V is emitted as a compile-time constant because
-// private address space arrays require fixed sizes in WGSL.
+alias vtype = f32;
+alias otype = output_element_t;
+#endif
+
 const TILE_V: u32 = tile_v;
-var<workgroup> reduction_buf: array<f32, workgroup_size_x * TILE_V>;
-var<workgroup> broadcast_buf: array<f32, TILE_V>;
+
+// Shared memory for parallel reduction across dk threads.
+#if update_rule == UPDATE_DELTA || update_rule == UPDATE_GATED_DELTA
+// Fused reduction: retrieved (S^T@k), pre_output (S^T@q), and kq_dot (k^T@q)
+// are reduced in a single barrier tree.
+var<workgroup> red_retrieved: array<vtype, workgroup_size_x * TILE_V>;
+var<workgroup> red_preout: array<vtype, workgroup_size_x * TILE_V>;
+var<workgroup> red_kq: array<f32, workgroup_size_x>;
+var<workgroup> broadcast_buf: array<vtype, TILE_V>;
+#else
+// Output-only reduction for linear/gated.
+var<workgroup> reduction_buf: array<vtype, workgroup_size_x * TILE_V>;
 #endif
 
 $MAIN {
@@ -46,40 +59,27 @@ $MAIN {
   let batch_idx = bh / uniforms.num_heads;
   let head_idx = bh % uniforms.num_heads;
   let dk_idx = local_idx;  // thread index = row in state matrix
-#if !use_vec4
   let dv_start = dv_tile_idx * TILE_V;
-#endif
 
   // Precompute packed strides for 3D packed inputs (B, T, H*D)
-  // When use_vec4, head_dim_v is already divided by 4 (vectorized), so
-  // packed_dv = num_heads * (head_dim_v/4) and dv_tile_idx indexes vec4 elements.
   let packed_dk = uniforms.num_heads * uniforms.head_dim_k;
   let packed_dv = uniforms.num_heads * uniforms.head_dim_v;
 
   // Initialize state tile in private memory
-#if use_vec4
-  var state = vec4<f32>(0.0);
-#else
-  var state: array<f32, TILE_V>;
+  var state: array<vtype, TILE_V>;
   for (var j = 0u; j < TILE_V; j++) {
-    state[j] = 0.0;
+    state[j] = vtype(0.0);
   }
-#endif
 
   // Load initial state if provided
 #if has_initial_state
   if (dk_idx < uniforms.head_dim_k) {
-#if use_vec4
-    let state_offset = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_tile_idx;
-    state = vec4<f32>(initial_state[state_offset]);
-#else
     let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;
     for (var j = 0u; j < TILE_V; j++) {
       if (dv_start + j < uniforms.head_dim_v) {
-        state[j] = f32(initial_state[state_base + j]);
+        state[j] = vtype(initial_state[state_base + j]);
       }
     }
-#endif
   }
 #endif
 
@@ -105,107 +105,68 @@ $MAIN {
       exp_g = exp(f32(decay[bt_offset * packed_dk + head_idx * uniforms.head_dim_k + dk_idx]));
     }
 #endif
-#if use_vec4
-    state *= exp_g;
-#else
     for (var j = 0u; j < TILE_V; j++) {
       state[j] *= exp_g;
     }
 #endif
-#endif
 
-    // Step 2: State update
 #if update_rule == UPDATE_DELTA || update_rule == UPDATE_GATED_DELTA
-    // For delta/gated_delta rules, compute retrieved = S^T @ k (reduction across dk)
-#if use_vec4
-    // Compute retrieved = S^T @ k (parallel reduction over dk)
-    reduction_buf[dk_idx] = state * k_val;
-    workgroupBarrier();
-    for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
-      if (dk_idx < stride) {
-        reduction_buf[dk_idx] += reduction_buf[dk_idx + stride];
-      }
-      workgroupBarrier();
-    }
-    // Compute delta = beta * (v - retrieved) and broadcast
-    let v_idx = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_tile_idx;
-    let beta_base = bt_offset * uniforms.num_heads + head_idx;
-    if (dk_idx == 0u) {
-      let beta_val = f32(beta[beta_base]);
-      broadcast_val = beta_val * (vec4<f32>(value[v_idx]) - reduction_buf[0]);
-    }
-    workgroupBarrier();
-    state += k_val * broadcast_val;
-    workgroupBarrier();
-#else
-    // Compute retrieved = S^T @ k (parallel reduction over dk)
+    // Fused reduction: compute retrieved = S^T@k, pre_output = S^T@q,
+    // and kq_dot = k^T@q in a single barrier tree.
+    // Then: output = scale * (pre_output + delta * kq_dot)
     for (var j = 0u; j < TILE_V; j++) {
-      reduction_buf[j * workgroup_size_x + dk_idx] = state[j] * k_val;
+      red_retrieved[j * workgroup_size_x + dk_idx] = state[j] * k_val;
+      red_preout[j * workgroup_size_x + dk_idx] = state[j] * q_val;
     }
+    red_kq[dk_idx] = k_val * q_val;
     workgroupBarrier();
-    // Tree reduction
+
     for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
       if (dk_idx < stride) {
         for (var j = 0u; j < TILE_V; j++) {
-          reduction_buf[j * workgroup_size_x + dk_idx] += reduction_buf[j * workgroup_size_x + dk_idx + stride];
+          red_retrieved[j * workgroup_size_x + dk_idx] += red_retrieved[j * workgroup_size_x + dk_idx + stride];
+          red_preout[j * workgroup_size_x + dk_idx] += red_preout[j * workgroup_size_x + dk_idx + stride];
         }
+        red_kq[dk_idx] += red_kq[dk_idx + stride];
       }
       workgroupBarrier();
     }
-    // Compute delta = beta * (v - retrieved) and broadcast
+
+    // Thread 0: compute delta, broadcast it, and write fused output.
     let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
     let beta_base = bt_offset * uniforms.num_heads + head_idx;
     if (dk_idx == 0u) {
       let beta_val = f32(beta[beta_base]);
+      let kq_dot = red_kq[0];
       for (var j = 0u; j < TILE_V; j++) {
         if (dv_start + j < uniforms.head_dim_v) {
-          let retrieved_j = reduction_buf[j * workgroup_size_x];
-          let v_val = f32(value[v_base + j]);
-          broadcast_buf[j] = beta_val * (v_val - retrieved_j);
+          let retrieved = red_retrieved[j * workgroup_size_x];
+          let pre_out = red_preout[j * workgroup_size_x];
+          let v_val = vtype(value[v_base + j]);
+          let delta_j = beta_val * (v_val - retrieved);
+          broadcast_buf[j] = delta_j;
+          output[v_base + j] = otype((pre_out + delta_j * kq_dot) * uniforms.scale);
         }
       }
     }
     workgroupBarrier();
-    // Update state: S += k ⊗ delta
+
+    // All threads: update state with delta
     for (var j = 0u; j < TILE_V; j++) {
       state[j] += k_val * broadcast_buf[j];
     }
     workgroupBarrier();
-#endif
+
 #else
-    // For linear and gated modes: S += k ⊗ v (no delta rule)
-#if use_vec4
-    // Update state: S += k ⊗ v
-    let v_idx = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_tile_idx;
-    state += k_val * vec4<f32>(value[v_idx]);
-#else
-    // Update state: S += k ⊗ v
+    // Linear/gated: S += k ⊗ v, then output = scale * S^T @ q
     let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
     for (var j = 0u; j < TILE_V; j++) {
       if (dv_start + j < uniforms.head_dim_v) {
-        let v_val = f32(value[v_base + j]);
-        state[j] += k_val * v_val;
+        state[j] += k_val * vtype(value[v_base + j]);
       }
     }
-#endif
-#endif
 
-    // Step 3: Compute output = scale * S^T @ q (parallel reduction over dk)
-#if use_vec4
-    reduction_buf[dk_idx] = state * q_val;
-    workgroupBarrier();
-    for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
-      if (dk_idx < stride) {
-        reduction_buf[dk_idx] += reduction_buf[dk_idx + stride];
-      }
-      workgroupBarrier();
-    }
-    if (dk_idx == 0u) {
-      let out_idx = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_tile_idx;
-      output[out_idx] = output_value_t(reduction_buf[0] * uniforms.scale);
-    }
-    workgroupBarrier();
-#else
+    // Output = scale * S^T @ q (parallel reduction over dk)
     for (var j = 0u; j < TILE_V; j++) {
       reduction_buf[j * workgroup_size_x + dk_idx] = state[j] * q_val;
     }
@@ -222,7 +183,7 @@ $MAIN {
       let out_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
       for (var j = 0u; j < TILE_V; j++) {
         if (dv_start + j < uniforms.head_dim_v) {
-          output[out_base + j] = output_element_t(reduction_buf[j * workgroup_size_x] * uniforms.scale);
+          output[out_base + j] = otype(reduction_buf[j * workgroup_size_x] * uniforms.scale);
         }
       }
     }
@@ -232,16 +193,11 @@ $MAIN {
 
   // Write present_state
   if (dk_idx < uniforms.head_dim_k) {
-#if use_vec4
-    let state_offset = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_tile_idx;
-    present_state[state_offset] = output_value_t(state);
-#else
     let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;
     for (var j = 0u; j < TILE_V; j++) {
       if (dv_start + j < uniforms.head_dim_v) {
-        present_state[state_base + j] = output_element_t(state[j]);
+        present_state[state_base + j] = otype(state[j]);
       }
     }
-#endif
   }
 } // MAIN

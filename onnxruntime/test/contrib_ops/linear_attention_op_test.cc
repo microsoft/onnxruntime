@@ -729,5 +729,83 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_NonPowerOf2DK) {
                          &initial_state, &decay, &beta);
 }
 
+// ===========================================================================
+// Tests: Larger dimensions exercising multi-tile vec4 path (tile_v > 1)
+// ===========================================================================
+TEST(ContribOpLinearAttentionTest, LinearRule_LargerDims) {
+  const int B = 1, H = 2, T = 4, dk = 16, dv = 64;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * H * T * dk);
+  std::vector<float> key(B * H * T * dk);
+  std::vector<float> value(B * H * T * dv);
+
+  for (int i = 0; i < B * H * T * dk; i++) {
+    query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.13f);
+    key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.17f);
+  }
+  for (int i = 0; i < B * H * T * dv; i++) {
+    value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.23f + 0.5f);
+  }
+
+  RunLinearAttentionTest("linear", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         nullptr, nullptr, nullptr);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedRule_LargerDims) {
+  const int B = 1, H = 2, T = 4, dk = 32, dv = 64;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * H * T * dk);
+  std::vector<float> key(B * H * T * dk);
+  std::vector<float> value(B * H * T * dv);
+  std::vector<float> decay(B * H * T * dk);
+
+  for (int i = 0; i < B * H * T * dk; i++) {
+    query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.13f);
+    key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.17f);
+    decay[i] = -0.05f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.07f));
+  }
+  for (int i = 0; i < B * H * T * dv; i++) {
+    value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.23f + 0.5f);
+  }
+
+  std::vector<float> initial_state(B * H * dk * dv, 0.01f);
+
+  RunLinearAttentionTest("gated", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         &initial_state, &decay, nullptr);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_LargerDims) {
+  const int B = 2, H = 2, T = 4, dk = 32, dv = 64;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * H * T * dk);
+  std::vector<float> key(B * H * T * dk);
+  std::vector<float> value(B * H * T * dv);
+  std::vector<float> decay(B * H * T * dk);
+  std::vector<float> beta(B * H * T);
+
+  for (int i = 0; i < B * H * T * dk; i++) {
+    query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.13f);
+    key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.17f);
+    decay[i] = -0.05f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.07f));
+  }
+  for (int i = 0; i < B * H * T * dv; i++) {
+    value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.23f + 0.5f);
+  }
+  for (int i = 0; i < B * H * T; i++) {
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.31f);
+  }
+
+  std::vector<float> initial_state(B * H * dk * dv, 0.01f);
+
+  RunLinearAttentionTest("gated_delta", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         &initial_state, &decay, &beta);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
