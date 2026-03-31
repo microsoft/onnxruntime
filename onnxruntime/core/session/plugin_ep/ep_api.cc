@@ -844,7 +844,7 @@ ORT_API_STATUS_IMPL(CreateProfilingEvent,
       const char* value = arg_values[i];
       ORT_API_RETURN_IF(key == nullptr, ORT_INVALID_ARGUMENT, "Arg key at index ", i, " is NULL");
       ORT_API_RETURN_IF(value == nullptr, ORT_INVALID_ARGUMENT, "Arg value at index ", i, " is NULL");
-      args[key] = value;
+      args.emplace(key, value);
     }
   }
 
@@ -935,12 +935,16 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
   ORT_API_RETURN_IF(events == nullptr || num_events == 0, ORT_INVALID_ARGUMENT,
                     "Must provide at least one event to add to OrtProfilingEventsContainer.");
 
+  // Return error if any events are NULL (before modifying events array)
+  for (size_t i = 0; i < num_events; ++i) {
+    ORT_API_RETURN_IF(events[i] == nullptr, ORT_INVALID_ARGUMENT,
+                      "OrtProfilingEvent instance at index ", i, " is NULL");
+  }
+
   auto& all_events = events_container->events;
   all_events.reserve(all_events.size() + num_events);
 
   for (size_t i = 0; i < num_events; ++i) {
-    ORT_API_RETURN_IF(events[i] == nullptr, ORT_INVALID_ARGUMENT,
-                      "OrtProfilingEvent instance at index ", i, " is NULL");
     all_events.push_back(*FromOpaqueProfilingEvent(events[i]));
   }
 
