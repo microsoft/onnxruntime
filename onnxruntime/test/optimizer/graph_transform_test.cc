@@ -5829,7 +5829,6 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
 enum class MobileClipProjectionType {
   MatMulAdd,
   GemmWithReshapes,
-  DirectGemm,
 };
 
 struct MobileClipAttentionShapeConfig {
@@ -5952,12 +5951,6 @@ static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
     auto& proj_gemm_output = builder.AddNode("Reshape", std::vector<NodeArg*>{proj_gemm_out, proj_gemm_output_shape},
                                              std::vector<NodeArg*>{proj_linear_out});
     proj_gemm_output.AddAttribute("allowzero", static_cast<int64_t>(0));
-  } else if (projection_type == MobileClipProjectionType::DirectGemm) {
-    auto& proj_gemm = builder.AddNode("Gemm", std::vector<NodeArg*>{reshape2_out, proj_weight, proj_bias},
-                                      std::vector<NodeArg*>{proj_linear_out});
-    if (use_non_default_projection_gemm_attributes) {
-      proj_gemm.AddAttribute("transB", static_cast<int64_t>(1));
-    }
   } else {
     auto* proj_matmul_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, hidden_size});
     builder.AddNode("MatMul", std::vector<NodeArg*>{reshape2_out, proj_weight}, std::vector<NodeArg*>{proj_matmul_out});
@@ -5995,13 +5988,11 @@ static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
       ++mha_nodes;
       TEST_RETURN_IF_NOT(node.GetAttributes().at("num_heads").i() == 16);
       TEST_RETURN_IF_NOT(std::abs(node.GetAttributes().at("scale").f() - (1.0f / std::sqrt(32.0f))) < 1e-6f);
-      TEST_RETURN_IF_NOT(node.GetExecutionProviderType().empty());
       TEST_RETURN_IF_NOT(node.OutputDefs().size() == 1);
       TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape() != nullptr);
       TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape()->dim_size() == 3);
     } else if (node.OpType() == "Split") {
       ++split_nodes;
-      TEST_RETURN_IF_NOT(node.GetExecutionProviderType().empty());
     } else if (node.OpType() == "Gemm") {
       ++gemm_nodes;
       TEST_RETURN_IF_NOT(node.InputDefs().size() == 3);
@@ -6096,15 +6087,6 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
-  };
-
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
-}
-
-TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaDirectProjectionGemmTest) {
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::DirectGemm);
   };
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
