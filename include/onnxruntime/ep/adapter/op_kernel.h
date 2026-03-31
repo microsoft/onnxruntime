@@ -132,16 +132,18 @@ struct OpKernelContext {
     return Output(index, TensorShape{shape});
   }
   [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
-    const auto* execution_provider = op_kernel_.Info().GetExecutionProvider();
-    ORT_ENFORCE(execution_provider != nullptr, "Kernel does not have an execution provider.");
-    const auto* ort_ep = execution_provider->GetOrtEp();
+    // Use GetOrtEp() directly from the cached KernelInfoCache rather than going through
+    // GetExecutionProvider()->GetOrtEp(). GetExecutionProvider() returns the native EP impl
+    // (e.g. WebGpuExecutionProvider), which doesn't override GetOrtEp() and returns nullptr.
+    // The cached ort_ep_ is resolved from the plugin wrapper's IExecutionProvider during
+    // KernelInfoCache construction, so it correctly holds the OrtEp instance.
+    const auto* ort_ep = op_kernel_.Info().GetOrtEp();
     ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
     return static_cast<const Ep*>(ort_ep)->GetTempSpaceCPUAllocator(output);
   }
   [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
-    const auto* execution_provider = op_kernel_.Info().GetExecutionProvider();
-    ORT_ENFORCE(execution_provider != nullptr, "Kernel does not have an execution provider.");
-    const auto* ort_ep = execution_provider->GetOrtEp();
+    // See comment in GetTempSpaceCPUAllocator for why we use GetOrtEp() directly.
+    const auto* ort_ep = op_kernel_.Info().GetOrtEp();
     ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
     return static_cast<const Ep*>(ort_ep)->GetTempSpaceAllocator(output);
   }
