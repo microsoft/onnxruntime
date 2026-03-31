@@ -529,6 +529,11 @@ struct OrtEpProfilerImpl {
    * Tagging EP events with the ORT event correlation ID enables the EP to annotate its own events
    * with metadata from the parent ORT event (e.g., operator name).
    *
+   * \note **Threading:** For a given ORT event, StartEvent, the kernel's Compute() entry point, and StopEvent
+   *       are all invoked on the same CPU thread (Compute() may asynchronously launch device work).
+   *       Different ORT events may run on different threads (e.g., inter-op parallelism), so correlation
+   *       stacks (e.g., for CUPTI) should use thread-local storage.
+   *
    * \note The ORT event correlation ID is an absolute, epoch-based timestamp in microseconds. It is computed
    *       from the ORT event's start time using std::chrono::high_resolution_clock (platform-defined epoch).
    *       Because it is absolute rather than relative to profiling start, it is practically unique across
@@ -567,6 +572,11 @@ struct OrtEpProfilerImpl {
    *
    * Tagging EP events with the ORT event correlation ID enables the EP to annotate its own events
    * with metadata from the parent ORT event (e.g., operator name).
+   *
+   * \note **Threading:** For a given ORT event, StartEvent, the kernel's Compute() entry point, and StopEvent
+   *       are all invoked on the same CPU thread (Compute() may asynchronously launch device work).
+   *       Different ORT events may run on different threads (e.g., inter-op parallelism), so correlation
+   *       stacks (e.g., for CUPTI) should use thread-local storage.
    *
    * \note The ORT event correlation ID is an absolute, epoch-based timestamp in microseconds. It is computed
    *       from the ORT event's start time using std::chrono::high_resolution_clock (platform-defined epoch).
