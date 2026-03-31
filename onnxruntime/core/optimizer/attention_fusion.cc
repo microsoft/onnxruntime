@@ -9,6 +9,7 @@
 #include "core/optimizer/utils.h"
 #include "core/optimizer/attention_fusion_helper.h"
 #include <cmath>
+#include <optional>
 
 namespace onnxruntime {
 
