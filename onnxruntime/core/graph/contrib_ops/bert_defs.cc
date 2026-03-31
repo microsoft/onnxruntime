@@ -2333,7 +2333,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The update rule for the linear attention recurrence. "
               "One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.",
               AttributeProto::STRING,
-              "gated_delta")
+              std::string("gated_delta"))
         .Attr("scale",
               "Output scaling factor. When 0.0 (default), derives d_k = query.shape[-1] / q_num_heads "
               "and uses 1/sqrt(d_k). Set explicitly to override.",
