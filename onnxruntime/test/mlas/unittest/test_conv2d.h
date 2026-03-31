@@ -321,10 +321,10 @@ class MlasConv2DTest : public MlasTestBase {
             int64_t(StrideHeight) +
         1;
     const int64_t OutputWidth64 =
-      ((int64_t(InputWidth) + int64_t(PaddingLeftWidth) + int64_t(PaddingRightWidth)) -
-       (int64_t(DilationWidth) * (int64_t(KernelWidth) - 1) + 1)) /
-        int64_t(StrideWidth) +
-      1;
+        ((int64_t(InputWidth) + int64_t(PaddingLeftWidth) + int64_t(PaddingRightWidth)) -
+         (int64_t(DilationWidth) * (int64_t(KernelWidth) - 1) + 1)) /
+            int64_t(StrideWidth) +
+        1;
 
     ASSERT_GT(OutputHeight64, 0);
     ASSERT_GT(OutputWidth64, 0);
