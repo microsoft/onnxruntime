@@ -627,6 +627,13 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
 }
 
+Status PluginExecutionProvider::Sync() const {
+  if (ort_ep_->ort_version_supported < 25 || ort_ep_->Sync == nullptr) {
+    return Base::Sync();
+  }
+  return ToStatusAndRelease(ort_ep_->Sync(ort_ep_.get()));
+}
+
 Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
                                                     gsl::span<const char* const> values) {
   if (ort_ep_->SetDynamicOptions == nullptr) {
