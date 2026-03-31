@@ -71,6 +71,23 @@ Use `reserve()` not `resize()`. Do not use `absl::` directly—use the ORT typed
 - `using namespace` is allowed in limited scope but never at global scope in headers.
 - Use `std::make_unique()` for heap allocations; prefer `std::optional` over `unique_ptr` for optional/delayed construction.
 
+## Python Environment
+
+The build and test processes may install Python dependencies. To avoid modifying the system or user Python environment, create and activate an isolated virtual environment before building or testing:
+
+```bash
+# Create a virtual environment (one-time setup)
+python -m venv .venv
+
+# Activate it
+# Linux/macOS
+source .venv/bin/activate
+# Windows (PowerShell)
+.\.venv\Scripts\Activate.ps1
+```
+
+If a virtual environment already exists (e.g., `.venv/`), activate it rather than creating a new one.
+
 ## Python Conventions
 
 - Follow [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) (extension of PEP 8).
