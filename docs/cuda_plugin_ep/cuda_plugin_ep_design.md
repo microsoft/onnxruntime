@@ -213,7 +213,7 @@ The primary approach moves pure-computation helpers from CPU `.cc` files to head
 - `roialign.h` — `CheckROIAlignValidInput`, `RoiAlignBase` constructor (templatized on info type)
 - `upsamplebase.h` — `UpsampleBase::AdjustOutputSizeAsPolicy`
 - `crop.h` — `CropBase` constructor (templatized on info type)
-- `space_depth_ops.h` — `SpaceDepthBase` constructor (templatized on info type)
+- `space_depth_ops.h` — `SpaceDepthBase` constructor plus shared `ReadBlocksize`, `ReadIsDCR`, and dimension-validation helpers (templatized on info/context type where needed)
 - `clip.h` — Clip min/max attribute handling (removed `Clip_6Base` CPU dependency)
 - `cuda_common_type_helpers.h` — CUDA type conversion and handle error string helpers (moved from `cuda_common.cc`)
 
@@ -249,7 +249,8 @@ This allows the base class constructor to work with both the framework `OpKernel
 Some CPU base classes have heavy dependencies (protobuf, `UnpackTensor`) that make inlining impractical:
 
 - **`ConstantOfShapeBase`** — depends on `TensorProto` and `UnpackTensor`. The plugin path in `constant_of_shape.h` stays self-contained: it reuses `ConstantOfShapeCore` but fetches the `value` attribute through the ORT C++ API instead of depending on the full CPU base implementation.
-- **`UpsampleBase`** — partially addressed: `AdjustOutputSizeAsPolicy` moved to header (#27628). Still depends on `InputDefs()` and `OpKernelInfo::GetAllocator()` which are not in the adapter.
+
+`UpsampleBase` no longer belongs in this category: the adapter now exposes `OpKernelInfo::GetAllocator(OrtMemType)`, and the remaining shape-rank query already has an adapter-safe fallback when `Node::InputDefs()` is unavailable. That lets the CUDA `Upsample` antialias path reuse the same persistent device lookup-table initialization in both bundled and plugin builds instead of keeping a plugin-only scratch-buffer fallback.
 
 ---
 
@@ -603,7 +604,7 @@ The branch still contains a small set of plugin guards in both infrastructure an
 - `generator/constant_of_shape.h` still needs a plugin-specific path because `ConstantOfShapeBase` depends on framework-only tensor-attribute helpers.
 - Tunable kernels such as `math/matmul.cc` still gate framework-only registration paths.
 - `tensor/identity_op.h` guards the `TensorSeq` code path and `context->InputType()` call with `#ifndef BUILD_CUDA_EP_AS_PLUGIN` — the plugin build handles only the `Tensor` path. `identity_op.cc` uses conditional macros (`IDENTITY_V_TYPES` / `IDENTITY_V_TYPES_IRv9`) so opset 14+ registrations use `AllFixedSizeTensorTypes()` in the plugin build. Additionally, old Dropout opset 7–9 and 10–11 kernel registrations were moved from `identity_op.cc` to `nn/dropout.cc` so that each op's registrations live in that op's own source file.
-- A few tensor kernels (`pad.cc`, `tile.cc`, `unsqueeze.cc`, `upsample.*`, `space_depth_ops.h`, `scatter_nd.*`) still contain localized plugin guards where adapter and framework paths have not fully converged.
+- A few tensor kernels (`pad.cc`, `tile.cc`, `unsqueeze.cc`) still contain localized plugin guards where adapter and framework paths have not fully converged. Recent cleanup removed the plugin-only branches from `upsample.*`, `space_depth_ops.h`, and `scatter_nd.*` by moving reusable logic into shared adapter-safe helpers and by adding allocator access to `ep::adapter::OpKernelInfo`.
 
 The broad trend remains positive: most operator-level plugin conditionals were removed by moving reusable CPU/helper logic into shared headers and by centralizing stream bridging in `CudaKernel` helpers.
 

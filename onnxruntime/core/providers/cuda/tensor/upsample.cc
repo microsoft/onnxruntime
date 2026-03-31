@@ -42,7 +42,6 @@ REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
 Upsample<T>::Upsample(const OpKernelInfo& info) : UpsampleBase(info), CudaKernel(info) {
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
   if (antialias_) {
     const uint8_t* lookup_table = GetLookupTableShared();
     auto alloc = info.GetAllocator(OrtMemTypeDefault);
@@ -50,7 +49,6 @@ Upsample<T>::Upsample(const OpKernelInfo& info) : UpsampleBase(info), CudaKernel
     CUDA_CALL_THROW(cudaMemcpyAsync(shared_lookup_table_ondevice_.get(), lookup_table, kLookupTableSize,
                                     cudaMemcpyHostToDevice, nullptr));
   }
-#endif
 }
 
 template <typename T>
@@ -105,18 +103,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     }
 
     if (antialias_) {
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-      // Plugin builds copy the lookup table to a per-call scratch buffer because
-      // plugin kernels cannot safely hold persistent device pointers across sessions.
-      // Non-plugin builds cache the table in a member IAllocator::UniquePtr.
-      const uint8_t* lookup_table = GetLookupTableShared();
-      auto shared_lookup_table_ondevice_buffer = GetScratchBuffer<uint8_t>(kLookupTableSize, GetComputeStream(context));
-      CUDA_CALL_THROW(cudaMemcpyAsync(shared_lookup_table_ondevice_buffer.get(), lookup_table, kLookupTableSize,
-                                      cudaMemcpyHostToDevice, Stream(context)));
-      const auto* shared_lookup_table_ondevice = shared_lookup_table_ondevice_buffer.get();
-#else
       const auto* shared_lookup_table_ondevice = shared_lookup_table_ondevice_.get();
-#endif
 
       TempSpaceAllocateFunc allocate_temp_space = [&](size_t bytes_size) {
         return GetScratchBuffer<uint8_t>(bytes_size, GetComputeStream(context));

@@ -73,6 +73,27 @@ struct OpKernelInfo {
   const DataTransferManager& GetDataTransferManager() const noexcept {
     return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
+
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const {
+    const auto* ort_ep = cache_->ort_ep_;
+    ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
+
+    AllocatorPtr allocator;
+    const auto* ep = static_cast<const Ep*>(ort_ep);
+
+    if (mem_type == OrtMemTypeDefault) {
+      ORT_THROW_IF_ERROR(ep->GetTempSpaceAllocator(&allocator));
+      return allocator;
+    }
+
+    if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput || mem_type == OrtMemTypeCPU) {
+      ORT_THROW_IF_ERROR(ep->GetTempSpaceCPUAllocator(&allocator));
+      return allocator;
+    }
+
+    ORT_THROW("Unsupported OrtMemType in adapter::OpKernelInfo::GetAllocator: ", static_cast<int>(mem_type));
+  }
+
   Node node() const noexcept {
     return Node{cache_->kernel_info_};
   }
