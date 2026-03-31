@@ -5,7 +5,6 @@
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-// #include "core/providers/webgpu/wgsl_templates/wgsl_gen.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 using namespace onnxruntime::webgpu;

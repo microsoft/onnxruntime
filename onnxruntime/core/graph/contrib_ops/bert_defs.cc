@@ -2280,7 +2280,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Contains the last (k-1) values from the virtual input along the causal axis.",
                 "T")
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)"},
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2333,7 +2333,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The update rule for the linear attention recurrence. "
               "One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.",
               AttributeProto::STRING,
-              std::string("gated_delta"))
+              "gated_delta")
         .Attr("scale",
               "Output scaling factor. When 0.0 (default), derives d_k = query.shape[-1] / q_num_heads "
               "and uses 1/sqrt(d_k). Set explicitly to override.",
@@ -2394,7 +2394,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Updated recurrent state with shape (B, H_kv, d_k, d_v). Always 4D.",
                 "T")
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)"},
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
