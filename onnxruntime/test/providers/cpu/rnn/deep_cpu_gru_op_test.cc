@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 
 #include <iterator>
+#include <limits>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"

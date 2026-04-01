@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include "contrib_ops/cpu/bert/attention_parameters.h"
@@ -52,17 +53,17 @@ Status CheckSparseAttentionInputs(const SparseAttentionCheckInputsData& data) {
   parameters.rotary_interleaved = false;
 
   return contrib::sparse_attention_helper::CheckInputs(&parameters,
-                                                       data.query.Get<Tensor>(),
-                                                       data.key.Get<Tensor>(),
-                                                       data.value.Get<Tensor>(),
-                                                       data.past_key.Get<Tensor>(),
-                                                       data.past_value.Get<Tensor>(),
+                                                       &data.query.Get<Tensor>(),
+                                                       &data.key.Get<Tensor>(),
+                                                       &data.value.Get<Tensor>(),
+                                                       &data.past_key.Get<Tensor>(),
+                                                       &data.past_value.Get<Tensor>(),
                                                        nullptr,
                                                        nullptr,
-                                                       data.block_row_indices.Get<Tensor>(),
-                                                       data.block_col_indices.Get<Tensor>(),
-                                                       data.total_key_lengths.Get<Tensor>(),
-                                                       data.total_seq_len.Get<Tensor>());
+                                                       &data.block_row_indices.Get<Tensor>(),
+                                                       &data.block_col_indices.Get<Tensor>(),
+                                                       &data.total_key_lengths.Get<Tensor>(),
+                                                       &data.total_seq_len.Get<Tensor>());
 }
 
 }  // namespace
