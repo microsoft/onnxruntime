@@ -583,7 +583,7 @@ Return Value:
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
-#if defined(MLAS_ARM64_BF16_CONV_RUNTIME_AVAILABLE)
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
     this->ConvNchwBf16Kernel = MlasConvNchwBf16KernelNeon;
     this->ConvDepthwiseBf16Kernel = MlasConvDepthwiseBf16KernelNeon;
     this->ConvPointwiseBf16Kernel = MlasConvPointwiseBf16KernelNeon;

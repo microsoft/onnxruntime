@@ -16,7 +16,7 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(MLAS_ARM64_BF16_CONV_RUNTIME_AVAILABLE)
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
 
 #include <algorithm>
 #include <cstddef>
