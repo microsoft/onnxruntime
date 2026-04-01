@@ -95,6 +95,7 @@ Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
                                               std::vector<const OrtHardwareDevice*>& constraint_devices,
                                               OrtCompiledModelCompatibility* compiled_model_compatibility) {
   if (compatibility_info.empty()) {
+    LOGS_DEFAULT(INFO) << "No compatibility info constraint for this variant. Skip compatibility validation.";
     return Status::OK();
   }
 
@@ -115,6 +116,21 @@ Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
 }
 
 bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
+  LOGS_DEFAULT(INFO) << "Checking model variant with EP constraint '" << variant.ep
+                     << "', device constraint '" << variant.device
+                     << "' and compatibility info constraint '" << variant.compatibility_info
+                     << "' against EP '" << ep_info.ep_name << "' with supported devices: "
+                     << [&ep_info]() {
+                          std::string devices_str;
+                          for (const auto* hd : ep_info.hardware_devices) {
+                            if (!devices_str.empty()) {
+                              devices_str += ", ";
+                            }
+                            devices_str += hd->vendor + " " + std::to_string(hd->device_id);
+                          }
+                          return devices_str.empty() ? "none" : devices_str;
+                        }();
+
   // 1) Check EP constraint
   if (variant.ep.empty() ||
       (!variant.ep.empty() && variant.ep != ep_info.ep_name)) {
@@ -191,6 +207,8 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
                        << "'. Skip this variant.";
     return false;
   }
+
+  LOGS_DEFAULT(INFO) << "This model variant is selected and could be used for EP '" << ep_info.ep_name << "'.";
 
   return true;
 }

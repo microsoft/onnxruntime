@@ -16,13 +16,13 @@ using json = nlohmann::json;
 namespace onnxruntime {
 
 struct ModelVariantInfo {
-  std::string ep;
-  std::string device;
-  std::string architecture;
-  std::string compatibility_info;
-  std::unordered_map<std::string, std::string> metadata;
-  OrtCompiledModelCompatibility compiled_model_compatibility;
-  std::filesystem::path model_path;
+  std::string ep{};
+  std::string device{};
+  std::string architecture{};
+  std::string compatibility_info{};
+  std::unordered_map<std::string, std::string> metadata{};
+  OrtCompiledModelCompatibility compiled_model_compatibility{};
+  std::filesystem::path model_path{};
 };
 
 struct SelectionEpInfo {
