@@ -92,7 +92,7 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   // Allocate outputs
-  int output_hidden = kv_num_heads_ * d_v;
+  int output_hidden = std::max(q_num_heads_, kv_num_heads_) * d_v;
   TensorShape output_shape({batch_size, seq_len, output_hidden});
   Tensor* output_tensor = context->Output(0, output_shape);
 
