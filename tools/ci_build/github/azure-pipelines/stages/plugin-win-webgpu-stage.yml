@@ -63,6 +63,11 @@ stages:
         value: 'Visual Studio 17 2022'
       - name: CrossCompileDefines
         value: ''
+      - name: ArchFlag
+        ${{ if eq(parameters.arch, 'arm64') }}:
+          value: '--arm64'
+        ${{ else }}:
+          value: ''
       steps:
       - checkout: self
         clean: true
@@ -132,6 +137,7 @@ stages:
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: >-
+            $(ArchFlag)
             --config ${{ parameters.cmake_build_type }}
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
