@@ -51,7 +51,9 @@ Build flags can be stored in option files and loaded with the `@` prefix:
 .\build.bat "@./custom_options.opt" --build --parallel
 ```
 
-Option files (e.g., `custom_options.opt`) contain one flag per line. Any additional flags on the command line are merged with the file's flags. Option files can be used to avoid repeating common flags across build calls.
+Option files (e.g., `custom_options.opt`) contain one flag per line. Any additional flags on the command line are merged with the file's flags.
+
+Option files can be used to avoid repeating common flags across build calls.
 
 ## Common build commands
 
@@ -89,39 +91,35 @@ Option files (e.g., `custom_options.opt`) contain one flag per line. Any additio
 | `--skip_tests` | Skip running tests after build |
 | `--build_wheel` | Build the Python wheel package |
 | `--use_cuda` | Enable CUDA execution provider (requires `--cuda_home` and `--cudnn_home`) |
-| `--target TARGET` | Build a specific CMake target (e.g., `onnxruntime_common`). Can be repeated. |
-| `--targets T1 T2 ...` | Build one or more specific CMake targets in a single flag. |
+| `--targets T1 T2 ...` | Build one or more specific CMake targets in a single flag (e.g., `onnxruntime_common`, `onnxruntime_test_all`). |
 | `--build_dir` | Specify build output directory (default: `build/`) |
 
 ## Build duration
 
-A full ONNX Runtime build can take a **long time** (tens of minutes to over an hour depending on hardware and configuration). If you have other work to do while the build runs, consider redirecting output to a file and running the build in the background so you can continue with other tasks:
+A full ONNX Runtime build can take a **long time** (tens of minutes to over an hour depending on hardware and configuration).
+
+ORT builds produce a lot of output that can exceed terminal truncation limits. Run the build in a **background terminal** and wait for it to complete. When the build finishes, start by reading only the **last few lines** of output to check for `Build complete` or error indicators. Avoid reading the full output initially — only read more if you need to diagnose a failure.
+
+**Tip:** Consider redirecting build output to a file. This avoids consuming context with verbose build output while preserving the full log for later inspection. You can then search the log with `grep` or `Select-String`, or read just the last few lines.
 
 ```bash
-# Run build in the background, redirecting output to a log file
-./build.sh --config Release --parallel > build.log 2>&1 &
+# Windows (PowerShell)
+.\build.bat ... > build.log 2>&1
 
-# Windows — redirect output to a file in a background terminal
-.\build.bat --config Release --parallel > build_output.txt 2>&1
+# Linux/macOS
+./build.sh ... > build.log 2>&1
 ```
 
-To monitor progress, periodically check the output file:
+If the build is still running, wait patiently rather than polling rapidly.
 
-```powershell
-# Check last few lines of build output
-Get-Content build_output.txt -Tail 20
-
-# Search for errors
-Select-String -Path build_output.txt -Pattern "error C|error LNK|FAILED|Build succeeded"
-```
-
-When using the CLI agent's shell tools, run the build command in a background terminal with output redirected to a file. Use a separate terminal to periodically check progress. Do **not** run the build in a foreground terminal and then run another command in the same terminal — this will interrupt the build with a `KeyboardInterrupt`.
+Do **not** run the build in a foreground terminal and then run another command in the same terminal — this will interrupt the build.
 
 ## Workflow
 
-1. Ask the user what they want to build (config, execution providers, wheel, etc.) if not clear from their prompt.
-2. Detect the OS and choose `build.bat` or `build.sh`.
-3. Construct the build command with the appropriate flags.
-4. Run the build. Use `--parallel` by default unless the user says otherwise.
-5. Since the build may take a long time, continue with other tasks while waiting for it to complete.
-6. If the build fails, examine the error output and suggest fixes.
+1. **Activate a Python virtual environment** before building. See the "Python Environment" section in `AGENTS.md` for instructions.
+2. Ask the user what they want to build(config, execution providers, wheel, etc.) if not clear from their prompt.
+3. Detect the OS and choose `build.bat` or `build.sh`.
+4. Construct the build command with the appropriate flags.
+5. Run the build in a background terminal. Use `--parallel` by default unless the user says otherwise.
+6. Wait for the build to complete. Check the last few lines for `Build complete` or errors.
+7. If the build fails, examine the error output and suggest fixes.
