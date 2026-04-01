@@ -174,7 +174,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
     return GenerateShaderCodeOnIntel(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
-                  "onnxruntime does not support subgroup matrix on this verdor.");
+                  "onnxruntime does not support subgroup matrix on this vendor.");
   }
 }
 
@@ -260,7 +260,14 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t batch_count,
                                        uint32_t N,
                                        uint32_t K,
+                                       uint32_t nbits,
+                                       bool is_fp16,
                                        int32_t& config_index) {
+  // Subgroup matrix kernels only support 4-bit/8-bit quantization.
+  if (nbits != 4 && nbits != 8) {
+    return false;
+  }
+
   bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
   if (has_subgroup_matrix) {
     if (context.AdapterInfo().vendor == std::string_view{"apple"}) {
@@ -270,7 +277,8 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
       // FP32 is around 7s.
       has_subgroup_matrix = accuracy_level == 4;
     } else if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-      has_subgroup_matrix = IsSubgroupMatrixConfigSupportedOnIntel(context, config_index);
+      // Intel subgroup matrix config is f16-only.
+      has_subgroup_matrix = is_fp16 && IsSubgroupMatrixConfigSupportedOnIntel(context, config_index);
     }
   }
 
