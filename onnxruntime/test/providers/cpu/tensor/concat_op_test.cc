@@ -40,6 +40,19 @@ TEST(ConcatOpTest, Concat1D_int32) {
   test.Run();
 }
 
+TEST(ConcatOpTest, Concat1D_int64) {
+  // webgpu ep will fail for 0x1122334455667788
+  const int64_t val = 0x11223344;
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  test.AddInput<int64_t>("input1", {1}, {val});
+  test.AddInput<int64_t>("input2", {2}, {2, 3});
+  test.AddInput<int64_t>("input3", {4}, {4, 5, 6, 7});
+  test.AddOutput<int64_t>("concat_result", {7}, {val, 2, 3, 4, 5, 6, 7});
+  test.Run();
+}
+
 TEST(ConcatOpTest, Concat1D_int32_negative_axis) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{-1});
