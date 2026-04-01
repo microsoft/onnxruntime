@@ -17,19 +17,18 @@ This gap means the plugin EP has significantly worse allocation performance for 
 
 ---
 
-## 2. Three Arena Modes
+## 2. Device Arena Modes
 
-The CUDA EP has three mutually exclusive arena modes for the **device** allocator:
+The CUDA EP has two mutually exclusive arena modes for the **device** allocator:
 
 | Mode | Trigger | Arena Type | BFCArena Wrapping? |
 |------|---------|-----------|-------------------|
-| **Default** | Always (unless mempool configured) | `StreamAwareBFCArena` wrapping `CUDAAllocator` | Yes — with default `OrtArenaCfg{0, -1, -1, -1, -1, -1L}` |
+| **Default** | Always (unless mempool configured) | `StreamAwareBFCArena` wrapping `CUDAAllocator` | Yes — in-tree defaults: `OrtArenaCfg{gpu_mem_limit, arena_extend_strategy, -1, -1, -1, -1L}` where `gpu_mem_limit` defaults to `SIZE_MAX` and `arena_extend_strategy` defaults to `kNextPowerOfTwo` (0) |
 | **CUDA Mempool** | `OrtArenaCfg::use_cuda_mempool == 1` | `CudaMempoolArena` (native CUDA pool) | No — is its own arena |
-| **No Arena** | `DisableCpuMemArena()` API | N/A | **CPU-only** — CUDA device allocator is unaffected |
 
 The **pinned allocator** is always wrapped in `BFCArena` (non-stream-aware) in the in-tree EP.
 
-The `DisableCpuMemArena()` public API sets `SessionOptions::enable_cpu_mem_arena = false` but only affects the CPU EP. The CUDA EP always uses arena: *"CUDA malloc/free is expensive so always use an arena"* (comment in `cuda_execution_provider.cc`).
+The `DisableCpuMemArena()` public API sets `SessionOptions::enable_cpu_mem_arena = false` and only affects CPU allocators (primarily the CPU EP). It does **not** disable CUDA arenas or change the CUDA device allocator behavior: the CUDA EP always uses an arena because *"CUDA malloc/free is expensive so always use an arena"* (comment in `cuda_execution_provider.cc`).
 
 ---
 
@@ -65,7 +64,7 @@ SessionState constructor
     → session allocator maps
 ```
 
-**Key gap:** Neither path passes arena configuration (`allocator_options` is always `nullptr`), and neither path wraps the result in BFCArena.
+**Key gap:** In the automatic shared allocator creation path (`RegisterExecutionProviderLibrary` → `CreateSharedAllocatorImpl`) and in the per-session `PluginExecutionProvider::CreatePreferredAllocators()` path, arena configuration is not propagated (`allocator_options` is always `nullptr`), and neither path wraps the result in BFCArena. (The newer public API `OrtApi::CreateSharedAllocator` does accept `allocator_options`, but `RegisterExecutionProviderLibrary` does not use it.)
 
 **Out of scope: `CreateAndRegisterAllocator` / `CreateAndRegisterAllocatorV2`.** These are legacy public C API functions (`OrtApi::CreateAndRegisterAllocator`, `OrtApi::CreateAndRegisterAllocatorV2`) for registering shared allocators at the environment level. V1 is CPU-only. V2 has hardcoded `#ifdef USE_CUDA` branches that use the in-tree provider bridge (`GetProviderInfo_CUDA()`) — not the plugin EP factory. V2 does accept `OrtArenaCfg*` and faithfully forwards it to both GPU device and pinned allocator creation (including configurable pinned arena parameters). However, these functions are irrelevant for plugin EPs: plugin EP shared allocators are created through `CreateSharedAllocatorImpl` (called by `RegisterExecutionProviderLibrary` and the newer `OrtApi::CreateSharedAllocator`), which uses `OrtKeyValuePairs*` not `OrtArenaCfg*`. Adding new per-provider `#ifdef` branches to V2 for plugin EPs would be the wrong direction — the plugin architecture is meant to avoid that pattern.
 
@@ -104,7 +103,7 @@ SessionState constructor
 **Changes needed:**
 - `PluginExecutionProvider::CreatePreferredAllocators()` — after creating the `IAllocator` wrapper, conditionally wrap in BFCArena using `CreateAllocator(AllocatorCreationInfo{...})`
 - `Environment::CreateSharedAllocatorImpl()` — parse `allocator_options` for arena config, wrap returned allocator in BFCArena when appropriate
-- `Environment::RegisterExecutionProviderLibrary()` — construct and pass default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`) instead of `nullptr`
+- `Environment::RegisterExecutionProviderLibrary()` — construct and pass sentinel arena defaults (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` — see Decided 3 for how BFCArena resolves these) instead of `nullptr`
 - Arena config stored on `PluginExecutionProvider` for the per-session path (populated during EP creation from session/provider options)
 
 | Pros | Cons |
@@ -142,7 +141,7 @@ For the plugin CUDA EP, configuration arrives through `session_options` as key-v
 
 1. **Check environment config entries** (`Environment::config_entries_`) for `ep_factory.<registration_name>.arena.*` keys.
 2. **If found:** Extract matching arena keys, strip the `ep_factory.<registration_name>.` prefix, and build an `OrtKeyValuePairs` with bare `"arena.*"` keys.
-3. **If not found but the EP has opted in to default arena wrapping** (e.g., via a `ep_factory.<registration_name>.enable_arena` config flag, or by recognizing known EP registration names like `"cuda"`)**:** Construct default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` expressed as bare-key `OrtKeyValuePairs`). For all other EPs, leave `allocator_options == nullptr` to preserve existing behavior.
+3. **If not found but the EP has opted in to default arena wrapping** (e.g., via a `ep_factory.<registration_name>.enable_arena` config flag, or by recognizing known EP registration names like `"cuda"`)**:** Construct sentinel arena defaults (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` expressed as bare-key `OrtKeyValuePairs` — BFCArena resolves `0` to `SIZE_MAX`, `-1` to built-in defaults; see Decided 3). For all other EPs, leave `allocator_options == nullptr` to preserve existing behavior.
 4. **Pass the resulting `OrtKeyValuePairs*`** (or `nullptr` for non-opted-in EPs) to `CreateSharedAllocatorImpl()` as `allocator_options`.
 
 This leverages the existing `CreateEnvWithOptions` API — the application provides arena config at environment creation time via `OrtEnvCreationOptions::config_entries`:
@@ -384,7 +383,7 @@ These can be parsed via `OrtArenaCfg::FromKeyValuePairs()` or directly from the 
 
 Option B is recommended because it requires no new public API surface, uses existing `allocator_options` plumbing, covers both shared and per-session allocator paths, and is naturally gated by arena config keys (only EPs that pass them get wrapping).
 
-1. Update `Environment::RegisterExecutionProviderLibrary()` to extract `ep_factory.<registration_name>.arena.*` keys from `config_entries_`; if found, strip the prefix and build `OrtKeyValuePairs` with bare `"arena.*"` keys; if not found and the EP has opted in to arena wrapping, construct default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`); otherwise pass `nullptr`. Pass the result to `CreateSharedAllocatorImpl()`.
+1. Update `Environment::RegisterExecutionProviderLibrary()` to extract `ep_factory.<registration_name>.arena.*` keys from `config_entries_`; if found, strip the prefix and build `OrtKeyValuePairs` with bare `"arena.*"` keys; if not found and the EP has opted in to arena wrapping, construct sentinel arena defaults (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` — see Decided 3); otherwise pass `nullptr`. Pass the result to `CreateSharedAllocatorImpl()`.
 2. Update `Environment::CreateSharedAllocatorImpl()` to parse `allocator_options` for arena config keys and wrap the returned `IAllocator` in BFCArena via `CreateAllocator(AllocatorCreationInfo{...})` when arena keys are present
 3. Update `PluginExecutionProvider::CreatePreferredAllocators()` to wrap returned allocators in BFCArena using EP-stored arena config (populated during EP creation from session/provider options)
 4. Extract a shared helper for the arena-wrapping logic so both sites stay consistent
@@ -420,8 +419,8 @@ This phase requires ORT core changes from Phase 1 to be in place (arena-already-
    - Without arena wrapping, `use_env_allocators=1` replaces arena-backed per-session allocators with raw shared ones, silently degrading performance.
    - If the default arena config causes excessive upfront memory usage, the application can correct this by providing explicit arena options via `CreateEnvWithOptions` environment config (e.g., `ep_factory.cuda.arena.max_mem`).
    - **Pinned allocator exception (plugin path only):** In the plugin EP paths (`RegisterExecutionProviderLibrary` → `CreateSharedAllocatorImpl` and `CreatePreferredAllocators`), the pinned allocator arena is always created with default `AllocatorCreationInfo` settings regardless of env or session options. This means: `use_stream_aware_arena = false`, `use_arena = true`, and `OrtArenaCfg{0, -1, -1, -1, -1, -1L}`. The pinned allocator arena config is not configurable via `ep_factory.*` or `ep.*` keys; only the device allocator's arena config is driven by those options. Note: this does **not** restrict the legacy C API — `CreateAndRegisterAllocatorV2` already allows callers to register a CUDA pinned allocator with custom `OrtArenaCfg` via the in-tree provider bridge, but that path is separate from the plugin EP architecture.
-   - **Needs validation:** Confirm that default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`) do not cause excessive upfront memory allocation in BFCArena. The `max_mem=0` default means "ORT chooses" — verify what BFCArena actually allocates at construction time vs. on first `Alloc()` call.
+   - **Needs validation:** Confirm that sentinel arena defaults (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`) produce reasonable BFCArena behavior. BFCArena resolves `max_mem=0` to `SIZE_MAX` and `-1` sentinels to built-in defaults (1 MB initial chunk, 128 MB max dead bytes, 2 MB initial growth, 1 GB max power-of-two extend). Verify this does not cause excessive upfront memory allocation at construction time vs. on first `Alloc()` call.
 
-3. **Default arena config values: use in-tree defaults.** The plugin path will use the same defaults as the in-tree EP (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`) for both GPU device and pinned allocators. This is already captured in Decided 2 (for the plugin path, pinned uses defaults; device uses env/session options or falls back to defaults). The "Needs validation" item in Decided 2 covers confirming that `max_mem=0` does not cause excessive upfront allocation.
+3. **Default arena config values: use sentinel defaults.** The plugin path will use `OrtArenaCfg{0, -1, -1, -1, -1, -1L}` as the default when no explicit arena config is provided. These are sentinel values that `BFCArena` resolves to its built-in defaults (`max_mem=0` → `SIZE_MAX`, `arena_extend_strategy=-1` → `kNextPowerOfTwo`, etc.). Note: the in-tree CUDA EP constructs its fallback as `OrtArenaCfg{gpu_mem_limit, arena_extend_strategy, -1, -1, -1, -1L}` where `gpu_mem_limit` defaults to `SIZE_MAX` and `arena_extend_strategy` defaults to `kNextPowerOfTwo` (0) — the effective behavior is identical, just expressed differently. This is already captured in Decided 2 (for the plugin path, pinned uses defaults; device uses env/session options or falls back to defaults). The "Needs validation" item in Decided 2 covers confirming that the sentinel defaults produce reasonable BFCArena behavior.
 
 4. **Helper function for arena wrapping: yes, extract a shared helper.** Both `CreateSharedAllocatorImpl` and `CreatePreferredAllocators` need the same wrapping logic: parse `OrtArenaCfg` from options, determine stream-awareness from `OrtMemoryInfo`, check allocator name against `OrtEpDevice` baseline to detect self-contained arenas (Section 3.5), and call `CreateAllocator(AllocatorCreationInfo{...})`. A shared helper (e.g., `MaybeWrapInArena(AllocatorPtr, const OrtKeyValuePairs*, const OrtEpDevice&)`) keeps both sites consistent. This is an implementation detail, not a design question.
