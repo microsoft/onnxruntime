@@ -460,6 +460,24 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     return Status::OK();
   }
 
+  Status GetGraphInfoAndBinVersion(void* buffer, size_t buffer_length,
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+                                   Qnn_Version_t& blob_version,
+#endif
+                                   uint32_t& graph_count,
+                                   QnnSystemContext_GraphInfo_t* graphs_info);
+
+  // Checks if act_ver is >= min_ver. An act_ver of 0.0.0 is considered invalid.
+  bool MinVersionMet(const Qnn_Version_t& act_ver, const Qnn_Version_t& min_ver) {
+    if (act_ver.major == 0 && act_ver.minor == 0 && act_ver.patch == 0) {
+      return false;
+    }
+
+    return act_ver.major > min_ver.major ||
+           (act_ver.major == min_ver.major && act_ver.minor >= min_ver.minor) ||
+           (act_ver.major == min_ver.major && act_ver.minor == min_ver.minor && act_ver.patch >= min_ver.patch);
+  }
+
  private:
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
