@@ -881,6 +881,8 @@ TEST(MatMulNBits, Basic_M10_N128_K512) {
 #endif
 
 // Test that out-of-range g_idx values are rejected with INVALID_ARGUMENT.
+// Skip in debug builds to avoid hitting CUDA_KERNEL_ASSERT which corrupts the CUDA device context.
+#ifdef NDEBUG
 TEST(MatMulNBits, InvalidGIdx_OutOfRange) {
   constexpr int64_t M = 2, N = 4, K = 32, block_size = 16;
   constexpr int64_t k_blocks = (K + block_size - 1) / block_size;  // 2
@@ -923,7 +925,7 @@ TEST(MatMulNBits, InvalidGIdx_OutOfRange) {
   test.AddOutput<float>("Y", {M, N}, y_data);
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
-           {kDmlExecutionProvider, kWebGpuExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // Test that negative g_idx values are rejected.
@@ -963,8 +965,9 @@ TEST(MatMulNBits, InvalidGIdx_Negative) {
   test.AddOutput<float>("Y", {M, N}, y_data);
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
-           {kDmlExecutionProvider, kWebGpuExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
+#endif  // NDEBUG
 
 }  // namespace test
 }  // namespace onnxruntime
