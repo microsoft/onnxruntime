@@ -26,12 +26,12 @@ struct ModelVariantInfo {
 };
 
 struct SelectionEpInfo {
-  std::string ep_name;
-  OrtEpFactory* ep_factory;
-  std::vector<const OrtEpDevice*> ep_devices;
-  std::vector<const OrtHardwareDevice*> hardware_devices;
-  std::vector<const OrtKeyValuePairs*> ep_metadata;
-  ProviderOptions ep_options;
+  std::string ep_name{};
+  OrtEpFactory* ep_factory{nullptr};
+  std::vector<const OrtEpDevice*> ep_devices{};
+  std::vector<const OrtHardwareDevice*> hardware_devices{};
+  std::vector<const OrtKeyValuePairs*> ep_metadata{};
+  ProviderOptions ep_options{};
 };
 
 class ModelVariantSelector {
