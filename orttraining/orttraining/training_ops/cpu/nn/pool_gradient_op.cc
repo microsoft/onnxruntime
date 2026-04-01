@@ -55,7 +55,8 @@ Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
   const int64_t dX_size = dX_shape.Size();
   EigenVectorMap<T>(dX_data, narrow<Eigen::Index>(dX_size)).setZero();
 
-  for (int64_t i = 0; i < dY->Shape().Size(); ++i) {
+  const int64_t dY_size = dY->Shape().Size();
+  for (int64_t i = 0; i < dY_size; ++i) {
     if (indices_data[i] < 0 || indices_data[i] >= dX_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "MaxPoolGrad: index value ", indices_data[i],
