@@ -929,7 +929,7 @@ TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
   EXPECT_GT(t1_types.size(), 0u);
 
   // T1 is for sequence_lens which is int32
-  EXPECT_TRUE(t1_types, ::testing::Contains("tensor(int32)")) << "Expected T1 to allow tensor(int32)";
+  EXPECT_THAT(t1_types, ::testing::Contains("tensor(int32)")) << "Expected T1 to allow tensor(int32)";
 
   // T should map to inputs X (0), W (1), R (2), B (3), initial_h (5), initial_c (6), P (7)
   auto t_inputs = t_tc.GetInputIndices();
