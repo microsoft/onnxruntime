@@ -3613,12 +3613,6 @@ struct KernelRegistry : detail::Base<OrtKernelRegistry> {
 };
 
 namespace detail {
-/** \brief Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
- *
- * Holds a single type constraint from an operator schema, providing access to
- * the constraint's name, allowed data types, and associated input/output indices.
- * This is a non-owning view — the lifetime is tied to the parent OrtOpSchema.
- */
 template <typename T>
 struct OpSchemaTypeConstraintImpl : Base<T> {
   using B = Base<T>;
@@ -3639,15 +3633,11 @@ struct OpSchemaTypeConstraintImpl : Base<T> {
 }  // namespace detail
 
 /// Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
+/// Holds a single type constraint from an operator schema, providing access to
+/// the constraint's name, allowed data types, and associated input/output indices.
 using ConstOpSchemaTypeConstraint = detail::OpSchemaTypeConstraintImpl<detail::Unowned<const OrtOpSchemaTypeConstraint>>;
 
 namespace detail {
-/** \brief Owning wrapper around an `OrtOpSchema*`.
- *
- * Provides access to operator schema metadata such as version, input/output names,
- * and type constraints. The underlying OrtOpSchema is owned by this wrapper and
- * released automatically on destruction.
- */
 template <typename T>
 struct OpSchemaImpl : Base<T> {
   using B = Base<T>;
@@ -3685,6 +3675,9 @@ struct OpSchemaImpl : Base<T> {
 }  // namespace detail
 
 /// Owning wrapper around an `OrtOpSchema*`.
+/// Provides access to operator schema metadata such as version, input/output names,
+/// and type constraints. The underlying OrtOpSchema is owned by this wrapper and
+/// released automatically on destruction.
 using OpSchema = detail::OpSchemaImpl<OrtOpSchema>;
 
 /// \brief Get an operator schema from the global schema registry.
