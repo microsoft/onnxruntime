@@ -13,6 +13,11 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+TEST(GRUTest, CalculateBufferElementCountThrowsOnOverflow) {
+  EXPECT_THROW((void)onnxruntime::detail::CalculateBufferElementCount({std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5}),
+               OnnxRuntimeException);
+}
+
 static const std::vector<string> default_activations = {"Sigmoid", "Tanh"};
 
 static void RunGruTest(const std::vector<float>& X_data,

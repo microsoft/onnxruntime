@@ -11,6 +11,7 @@
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -528,6 +529,16 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 //
 // Implementation of internal helper code
 namespace detail {
+
+size_t CalculateBufferElementCount(std::initializer_list<int> dimensions) {
+  SafeInt<size_t> count{1};
+
+  for (int dimension : dimensions) {
+    count *= dimension;
+  }
+
+  return count;
+}
 
 template <typename T>
 UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
@@ -1050,34 +1061,32 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
 
 template <typename T>
 void UniDirectionalGru<T>::AllocateBuffers() {
-  cur_h_ = Allocate(allocator_, hidden_size_ * batch_size_, cur_h_ptr_);
-  batched_hidden0_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_hidden0_ptr_, true);
+  cur_h_ = Allocate(allocator_, CalculateBufferElementCount({hidden_size_, batch_size_}), cur_h_ptr_);
+  batched_hidden0_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_hidden0_ptr_, true);
 
   if (use_bias_) {
-    batched_bias_WRz_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_bias_WRz_ptr_);
-    batched_bias_WRr_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_bias_WRr_ptr_);
+    batched_bias_WRz_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRz_ptr_);
+    batched_bias_WRr_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRr_ptr_);
 
     if (linear_before_reset_) {
-      batched_bias_Wh_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_bias_Wh_ptr_);
-      batched_bias_Rh_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_bias_Rh_ptr_);
+      batched_bias_Wh_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_Wh_ptr_);
+      batched_bias_Rh_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_Rh_ptr_);
     } else {
-      batched_bias_WRh_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_bias_WRh_ptr_);
+      batched_bias_WRh_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRh_ptr_);
     }
   }
 
   if (linear_before_reset_) {
-    linear_output_ = Allocate(allocator_, batch_size_ * hidden_size_, linear_output_ptr_);
+    linear_output_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), linear_output_ptr_);
   }
 
-  auto batch_times_seq_length = batch_size_ * seq_length_;
-
   if (!training_mode_) {
-    outputZRH_ = Allocate(allocator_, hidden_size_ * 3 * batch_times_seq_length, outputZRH_ptr_, true);
+    outputZRH_ = Allocate(allocator_, CalculateBufferElementCount({hidden_size_, 3, batch_size_, seq_length_}), outputZRH_ptr_, true);
   }
 
   if (direction_ == kReverse) {
-    inputs_reverse_ = Allocate(allocator_, batch_times_seq_length * input_size_, inputs_reverse_ptr_);
-    outputs_reverse_ = Allocate(allocator_, batch_times_seq_length * hidden_size_, outputs_reverse_ptr_);
+    inputs_reverse_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, seq_length_, input_size_}), inputs_reverse_ptr_);
+    outputs_reverse_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, seq_length_, hidden_size_}), outputs_reverse_ptr_);
   }
 }
 

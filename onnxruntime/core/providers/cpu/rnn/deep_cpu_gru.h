@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <initializer_list>
 #include <limits>
 
 #include "core/common/narrow.h"
@@ -101,6 +102,8 @@ class DeepCpuGruOp final : public OpKernel {
 };
 
 namespace detail {
+
+size_t CalculateBufferElementCount(std::initializer_list<int> dimensions);
 
 template <typename T>
 class UniDirectionalGru {
