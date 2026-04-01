@@ -64,7 +64,7 @@ extern "C" void ortenv_setup() {
 
     OrtThreadingOptions tpo;
 
-    OrtLoggingLevel log_level = ORT_LOGGING_LEVEL_WARNING;
+    OrtLoggingLevel log_level = ORT_LOGGING_LEVEL_VERBOSE;
     if (auto log_level_override = onnxruntime::ParseEnvironmentVariable<int>(env_var_names::kLogLevel);
         log_level_override.has_value()) {
       *log_level_override = std::clamp(*log_level_override,
