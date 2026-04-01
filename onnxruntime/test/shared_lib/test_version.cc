@@ -11,19 +11,21 @@ using onnxruntime::version_check::IsOrtVersionValid;
 using onnxruntime::version_check::ParseUint;
 
 // Compile-time tests for ParseUint
-static_assert(ParseUint("0") == 0);
-static_assert(ParseUint("1") == 1);
-static_assert(ParseUint("25") == 25);
-static_assert(ParseUint("123") == 123);
-static_assert(ParseUint("4294967295") == 4294967295);  // UINT32_MAX
-static_assert(ParseUint("4294967296") == -1);          // UINT32_MAX + 1 overflows
-static_assert(ParseUint("") == -1);                    // empty
-static_assert(ParseUint("01") == -1);                  // leading zero
-static_assert(ParseUint("00") == -1);                  // leading zero
-static_assert(ParseUint("abc") == -1);                 // non-digit
-static_assert(ParseUint("1a") == -1);                  // trailing non-digit
-static_assert(ParseUint("-1") == -1);                  // negative sign
-static_assert(ParseUint("1.0") == -1);                 // contains dot
+static_assert(ParseUint("0") == 0u);
+static_assert(ParseUint("1") == 1u);
+static_assert(ParseUint("25") == 25u);
+static_assert(ParseUint("123") == 123u);
+static_assert(ParseUint("4294967295") == 4294967295u);   // UINT32_MAX
+static_assert(ParseUint("4294967296") == std::nullopt);  // UINT32_MAX + 1 overflows
+static_assert(ParseUint("") == std::nullopt);            // empty
+static_assert(ParseUint("01") == std::nullopt);          // leading zero
+static_assert(ParseUint("00") == std::nullopt);          // leading zero
+static_assert(ParseUint("abc") == std::nullopt);         // non-digit
+static_assert(ParseUint("1a") == std::nullopt);          // trailing non-digit
+static_assert(ParseUint("-1") == std::nullopt);          // negative sign
+static_assert(ParseUint("1.0") == std::nullopt);         // contains dot
+static_assert(ParseUint("0").has_value());
+static_assert(!ParseUint("").has_value());
 
 // Compile-time tests for IsOrtVersionValid (default expected_api_version = ORT_API_VERSION)
 static_assert(IsOrtVersionValid(ORT_VERSION));  // current version must be valid

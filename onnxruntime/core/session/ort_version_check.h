@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <climits>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 #include "core/session/onnxruntime_c_api.h"
@@ -12,18 +12,18 @@
 namespace onnxruntime::version_check {
 
 // Parse a non-negative integer from a string_view without leading zeros.
-// Returns -1 on failure (empty, leading zero, non-digit, or overflow).
-consteval int64_t ParseUint(std::string_view str) {
-  if (str.empty()) return -1;
+// Returns std::nullopt on failure (empty, leading zero, non-digit, or overflow).
+consteval std::optional<uint32_t> ParseUint(std::string_view str) {
+  if (str.empty()) return std::nullopt;
   // Leading zeros are not allowed (except "0" itself).
-  if (str.size() > 1 && str[0] == '0') return -1;
-  int64_t result = 0;
+  if (str.size() > 1 && str[0] == '0') return std::nullopt;
+  uint64_t result = 0;
   for (char c : str) {
-    if (c < '0' || c > '9') return -1;
-    result = result * 10 + (c - '0');
-    if (result > UINT32_MAX) return -1;
+    if (c < '0' || c > '9') return std::nullopt;
+    result = result * 10 + static_cast<uint64_t>(c - '0');
+    if (result > UINT32_MAX) return std::nullopt;
   }
-  return result;
+  return static_cast<uint32_t>(result);
 }
 
 // Validates a version string at compile time.
@@ -43,12 +43,12 @@ consteval bool IsOrtVersionValid(std::string_view version, uint32_t expected_api
   if (major != "1") {
     return false;
   }
-  int64_t minor_val = ParseUint(minor);
-  int64_t patch_val = ParseUint(patch);
-  if (minor_val < 0 || patch_val < 0) {
+  auto minor_val = ParseUint(minor);
+  auto patch_val = ParseUint(patch);
+  if (!minor_val || !patch_val) {
     return false;
   }
-  if (static_cast<uint32_t>(minor_val) != expected_api_version) {
+  if (*minor_val != expected_api_version) {
     return false;
   }
   return true;
