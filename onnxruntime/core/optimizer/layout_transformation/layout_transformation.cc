@@ -31,7 +31,7 @@ std::optional<size_t> TryInferLayoutRank(const api::GraphRef& graph, const api::
 
   const auto input_value_info = graph.GetValueInfo(inputs[0]);
   if (auto rank = input_value_info->ShapeRank(); rank.has_value()) {
-    return rank;
+    return *rank >= 2 ? rank : std::nullopt;
   }
 
   const auto try_infer_from_attrs = [&](std::initializer_list<std::pair<std::string_view, size_t>> attrs)
