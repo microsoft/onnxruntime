@@ -420,7 +420,7 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
   // ==== Allocate output ====
   // Output hidden dim: max(q_num_heads, kv_num_heads) * d_v
   // Standard GQA: q_num_heads * d_v; Inverse GQA: kv_num_heads * d_v
-  int64_t output_hidden = std::max(q_num_heads_, kv_num_heads_) * d_v;
+  int64_t output_hidden = kv_num_heads_ * d_v;
   TensorShape output_shape({batch_size, seq_len, output_hidden});
   Tensor* output_tensor = context->Output(0, output_shape);
   float* output_data = output_tensor->MutableData<float>();

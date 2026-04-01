@@ -2416,7 +2416,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             // H_q * d_v: d_v = value.dim(2) / kv_num_heads, then H_q * d_v
             if (value_shape.dim(2).has_dim_value()) {
               int64_t d_v = value_shape.dim(2).dim_value() / kv_num_heads;
-              output_shape.add_dim()->set_dim_value(q_num_heads * d_v);
+              output_shape.add_dim()->set_dim_value(kv_num_heads * d_v);
             } else {
               output_shape.add_dim();  // unknown
             }
