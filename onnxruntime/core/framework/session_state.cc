@@ -441,7 +441,7 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
 
   // BUG CHECK: Ensure that the kernel used the provided shared buffers
   // Mostly a debug check to ensure that the kernel has an overridden implementation of the
-  // base UseSharedPrePackedBuffers() which is a no-op.
+  // base UseSharedPrePackedBuffers() which is basically a no-op.
   if (!used_shared_buffers)
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The kernel corresponding to the node ", node_name,
                            " doesn't have an implementation that can consume provided pre-packed weights");
