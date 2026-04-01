@@ -225,8 +225,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   TensorShape y_shape{1, M, N};
   const bool has_zero_points = zero_points != nullptr;
   const bool has_bias = bias != nullptr;
-  const bool has_weight_idx = weight_index > 0;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
+  const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
     tile_size_a = 64;
