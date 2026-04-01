@@ -255,23 +255,7 @@ This means:
 - The two allocator sets are independent — they don't compete for the same resources at the same time.
 - If `use_env_allocators=1` causes shared allocators to replace per-session ones, the shared allocators already carry their env-configured arena behavior.
 
-### 3.8 Prefix Schema Mismatch
-
-**Problem:** The two config namespaces use different prefix schemas with different `<ep_name>` values:
-
-| Namespace | Prefix pattern | `<ep_name>` value |
-|---|---|---|
-| Environment | `ep_factory.<registration_name>.<key>` | The `registration_name` passed to `RegisterExecutionProviderLibrary` (e.g., `"cuda"`) |
-| Session | `ep.<lowercase_provider_name>.<key>` | Lowercased EP type name (e.g., `"cudapluginexecutionprovider"`) |
-
-For the CUDA plugin EP, identical arena keys use different full key paths:
-
-```
-Environment: ep_factory.cuda.arena.extend_strategy
-Session:     ep.cudapluginexecutionprovider.arena.extend_strategy
-```
-
-This inconsistency is a guaranteed source of user confusion. However, both prefix schemes are already published and in use — they cannot be changed without breaking backward compatibility. Documentation and examples must clearly explain which prefix to use in which context.
+**Prefix schema mismatch:** Note that the two namespaces use different `<ep_name>` values — environment uses the `registration_name` passed to `RegisterExecutionProviderLibrary` (e.g., `"cuda"`), while session uses the lowercased EP type name (e.g., `"cudapluginexecutionprovider"`). This inconsistency is a guaranteed source of user confusion. However, both prefix schemes are already published and in use — they cannot be changed without breaking backward compatibility. Documentation and examples must clearly explain which prefix to use in which context.
 
 ---
 
@@ -289,7 +273,7 @@ This inconsistency is a guaranteed source of user confusion. However, both prefi
 | `core/providers/cuda/cuda_stream_handle.h` | ✅ | But only for `Stream::GetHandle()` → `cudaStream_t` |
 | `core/providers/shared_library/provider_api.h` | ⚠️ | **No-op in plugin build** (`BUILD_CUDA_EP_AS_PLUGIN`) |
 | `core/providers/cuda/shared_inc/cuda_call.h` | ✅ | CUDA error-handling macros |
-| `IArena` base class | ⚠️ | Defined in framework `allocator.h` — available in plugin (not behind `SHARED_PROVIDER`) |
+| `IArena` base class | ✅ | Defined in `include/onnxruntime/core/framework/allocator.h` — public header, no `SHARED_PROVIDER` guard. `onnxruntime_framework` static lib is linked into the plugin, so vtable and `SafeArenaCast()` are available at link time. |
 | `OrtMemoryInfo` | ✅ | Public framework struct |
 | `AllocatorStats` | ✅ | Plain POD struct in public header |
 | `logging::Logger*` | ❌ | **Primary blocker** — `provider_api.h` forward-declares `Logger` as struct; `LoggingManager::DefaultLogger()` not available in plugin |
@@ -347,7 +331,9 @@ Wrap all `LOGS()` calls in `#ifndef BUILD_CUDA_EP_AS_PLUGIN` guards. Simplest, b
 
 ### 4.4 OrtAllocator Wrapper
 
-The plugin factory's `CreateAllocatorImpl` returns `OrtAllocator*`. `CudaMempoolArena` is an `IArena`. A thin wrapper is needed:
+`IArena` (and `IAllocator`) are fully available in the plugin binary — the header is public and `onnxruntime_framework` is statically linked. `CudaMempoolArena` can inherit from `IArena` without issue.
+
+However, the plugin factory's `CreateAllocatorImpl` must return `OrtAllocator*` (C API struct), not `IAllocator*`. This is the standard plugin C API boundary: plugin factories communicate through C structs, not C++ class hierarchies. A thin wrapper bridges the two:
 
 ```cpp
 class CudaMempoolOrtAllocator : public OrtAllocator {
