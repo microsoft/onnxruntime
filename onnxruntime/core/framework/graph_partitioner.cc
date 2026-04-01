@@ -262,23 +262,38 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     const NodeIndex end_node = graph.MaxNodeIndex();
 
-    ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+    // Keep pass-1 EP assignments through the second GetCapability call so that EPs can
+    // recognize already-tagged nodes (e.g. nodes transformed into kMSInternalNHWCDomain).
     capabilities.clear();
 
     const GraphViewer graph_viewer(graph);
     capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
     if (params.check_load_cancellation_fn()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
     }
 
-    // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
+    // Collect pass-2 node indices and track new nodes for NHWC domain validation.
+    InlinedHashSet<NodeIndex> pass2_node_indices;
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
     for (const auto& capability : capabilities) {
       for (auto node_index : capability->sub_graph->nodes) {
+        pass2_node_indices.insert(node_index);
         if (node_index >= first_new_node) {
           new_nodes_in_capabilities.insert(node_index);
+        }
+      }
+    }
+
+    // Clear pass-1 temporary assignments for nodes NOT re-claimed in pass 2.
+    // Nodes present in both passes keep their EP tag for correct downstream assignment.
+    for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+      if (pass2_node_indices.count(node_index) == 0) {
+        auto* node = graph.GetNode(node_index);
+        if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
+          node->SetExecutionProviderType("");
         }
       }
     }

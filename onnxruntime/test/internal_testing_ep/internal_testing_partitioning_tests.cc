@@ -52,8 +52,17 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
                 const IKernelLookup&,
                 const GraphOptimizerRegistry&,
                 IResourceAccountant*) const override {
-    ++get_capability_calls_;
-    const bool second_pass = get_capability_calls_ > 1;
+    // Detect second pass by checking if any node already has our EP type assigned
+    // (set during the first-pass assignment). Real NHWC EPs use this pattern to
+    // recognize nodes that were transformed into kMSInternalNHWCDomain.
+    bool second_pass = false;
+    for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const Node* node = graph_viewer.GetNode(node_index);
+      if (node != nullptr && node->GetExecutionProviderType() == Type()) {
+        second_pass = true;
+        break;
+      }
+    }
 
     auto generate_metadef_name = [this, &graph_viewer]() {
       HashValue model_hash;
@@ -109,7 +118,6 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
   }
 
  private:
-  mutable size_t get_capability_calls_{0};
   mutable ModelMetadefIdGenerator metadef_id_generator_;
 };
 
