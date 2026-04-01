@@ -21,6 +21,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
+#include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/partitioning_utils.h"
 
@@ -192,6 +193,10 @@ PluginExecutionProvider::~PluginExecutionProvider() {
   }
 }
 
+const logging::Logger& PluginExecutionProvider::GetEpLoggerOrDefault() const {
+  return GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+}
+
 std::shared_ptr<KernelRegistry> PluginExecutionProvider::GetKernelRegistry() const {
   return kernel_registry_;
 }
@@ -204,7 +209,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(graph_optimizer_registry);  // TODO: Add support
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
 
-  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+  const logging::Logger& logger = GetEpLoggerOrDefault();
 
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   if (Status status = EpGraph::Create(graph_viewer, ep_graph, true); !status.IsOK()) {
@@ -414,7 +419,7 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
                 " did not provide a valid ReleaseNodeComputeInfos() function");
 
-  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+  const logging::Logger& logger = GetEpLoggerOrDefault();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
   std::vector<const OrtGraph*> api_graphs;
@@ -627,6 +632,13 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
 }
 
+Status PluginExecutionProvider::Sync() const {
+  if (ort_ep_->ort_version_supported < 25 || ort_ep_->Sync == nullptr) {
+    return Base::Sync();
+  }
+  return ToStatusAndRelease(ort_ep_->Sync(ort_ep_.get()));
+}
+
 Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
                                                     gsl::span<const char* const> values) {
   if (ort_ep_->SetDynamicOptions == nullptr) {
@@ -744,7 +756,7 @@ std::string PluginExecutionProvider::GetCompiledModelCompatibilityInfo(const onn
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   auto ort_status = EpGraph::Create(graph_viewer, ep_graph);
   if (!ort_status.IsOK()) {
-    LOGS(*GetLogger(), ERROR) << "Failed to create EpGraph: " << ort_status.ToString();
+    LOGS(GetEpLoggerOrDefault(), ERROR) << "Failed to create EpGraph: " << ort_status.ToString();
     return {};
   }
   // Call EP plugin's OrtEp::GenerateCompiledModelCompatibilityInfo() function.
@@ -775,6 +787,35 @@ Status PluginExecutionProvider::ValidateCompiledModelCompatibilityInfo(const std
 
 const OrtEp* PluginExecutionProvider::GetOrtEp() const {
   return ort_ep_.get();
+}
+
+std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
+  if (ort_ep_->ort_version_supported < 25 || ort_ep_->CreateProfiler == nullptr) {
+    return {};
+  }
+
+  const logging::Logger& logger = GetEpLoggerOrDefault();
+  OrtEpProfilerImpl* profiler_impl = nullptr;
+  Status status = ToStatusAndRelease(ort_ep_->CreateProfiler(ort_ep_.get(), &profiler_impl));
+
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << "OrtEp::CreateProfiler for " << Type() << " returned an error status: "
+                        << status.ErrorMessage();
+    return {};
+  }
+
+  if (profiler_impl == nullptr) {
+    return {};  // plugin EP doesn't have a profiler
+  }
+
+  std::unique_ptr<PluginEpProfiler> ep_profiler;
+  status = PluginEpProfiler::Create(*profiler_impl, logger, Type(), /*out*/ ep_profiler);
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << status.ErrorMessage();
+    return {};
+  }
+
+  return ep_profiler;
 }
 
 }  // namespace onnxruntime

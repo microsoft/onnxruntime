@@ -428,6 +428,16 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+    auto apply_work_callbacks = [&session_env](OrtThreadPoolParams& params) {
+      const auto* env_cbs = session_env.GetPerSessionWorkCallbacks();
+      if (env_cbs != nullptr) {
+        params.work_callbacks = *env_cbs;
+      }
+    };
+#endif
+
     {
       if (!external_intra_op_thread_pool_) {
         bool allow_intra_op_spinning =
@@ -468,6 +478,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
         }
 
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+        apply_work_callbacks(to);
+#endif
+
         thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
       }
@@ -503,6 +517,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         if (to.custom_create_thread_fn) {
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
         }
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+        apply_work_callbacks(to);
+#endif
+
         inter_op_thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
         if (inter_op_thread_pool_ == nullptr) {
@@ -1400,7 +1419,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   //
   // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
   // with a TensorProto that has the same data type, shape and name. However, its external data
-  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoNativeEndianMemoryAddressTag,
   // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
   // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it. For this reason,
   // we do not convert them at the graph constructor because Node::ToProto() reconstructs Graph instances for subgraphs

@@ -99,7 +99,8 @@ Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               onnxruntime::Stream* ort_stream,
                               const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
-  const cublasHandle_t cublas_handle = transpose_kernel.GetCublasHandleOrDefault(ort_stream);
+  const cublasHandle_t cublas_handle =
+      ort_stream ? transpose_kernel.GetCublasHandle(ort_stream) : transpose_kernel.DefaultCublasHandle();
   return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(),
                                 cuda_stream,
                                 cublas_handle,
