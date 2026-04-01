@@ -97,7 +97,7 @@ Status CheckInputs(void* params,
 
     if (key->Shape() != value->Shape()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'value' shall have same shape");
+                             "Input 'key' and 'value' shall have same shape");
     }
   } else {
     // packed qkv
