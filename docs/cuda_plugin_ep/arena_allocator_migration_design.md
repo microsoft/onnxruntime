@@ -97,7 +97,7 @@ SessionState constructor
 
 `CreateSharedAllocatorImpl` already accepts `const OrtKeyValuePairs* allocator_options` and has full access to the `OrtEpDevice` and `OrtMemoryInfo`. Today the caller (`RegisterExecutionProviderLibrary`) passes `nullptr` for options. The fix is:
 1. Pass default arena options from `RegisterExecutionProviderLibrary` instead of `nullptr`
-2. Inside `CreateSharedAllocatorImpl`, after creating `IAllocatorImplWrappingOrtAllocator` (line 864), conditionally wrap in BFCArena using `CreateAllocator(AllocatorCreationInfo{...})` before pushing to `shared_allocators_`
+2. Inside `CreateSharedAllocatorImpl`, after creating `IAllocatorImplWrappingOrtAllocator`, conditionally wrap in BFCArena using `CreateAllocator(AllocatorCreationInfo{...})` before pushing to `shared_allocators_`
 
 **Changes needed:**
 - `PluginExecutionProvider::CreatePreferredAllocators()` — after creating the `IAllocator` wrapper, conditionally wrap in BFCArena using `CreateAllocator(AllocatorCreationInfo{...})`
@@ -112,8 +112,8 @@ SessionState constructor
 | Arena config naturally available from EP's parsed options (per-session) and from `allocator_options` param (shared) | |
 | Reuses existing `CreateAllocator(AllocatorCreationInfo)` utility | |
 | `use_env_allocators` works correctly — shared allocators are also arena-wrapped | |
-| **Naturally gated by EP type** — arena options (`arena.extend_strategy`, `arena.max_mem`, etc.) are only recognized by CUDA EP. Non-CUDA plugin EPs don't pass arena keys, so no wrapping occurs. The presence of arena keys in `allocator_options` is the signal — no device-type checks needed in ORT core. | |
-| **No new public API surface** — uses existing `allocator_options` parameter and the existing `CreateEnvWithOptions` API with `ep_factory.<registration_name>.*` config entries for environment-level config. | |
+| **Naturally gated by EP opt-in** — only EP registrations that explicitly declare arena support (initially the CUDA plugin EP) cause `RegisterExecutionProviderLibrary()` to synthesize default `arena.*` options. Non-CUDA plugin EPs neither emit nor consume `arena.*` keys, so they keep their existing allocator behavior. The presence of arena keys in `allocator_options` is the signal — no device-type checks needed in ORT core. | |
+| **No new public API surface** — uses existing `allocator_options` parameter and the existing `CreateEnvWithOptions` API with `ep_factory.<registration_name>.*` config entries for environment-level config. The EP opt-in for arena support is expressed via environment config or internal registration metadata, not a new public API. | |
 
 ### 3.3 Allocator Config Flow — In-Tree vs. Plugin
 
@@ -136,12 +136,12 @@ For the plugin CUDA EP, configuration arrives through `session_options` as key-v
 
 `RegisterExecutionProviderLibrary()` is called at environment level — no session exists yet, so no session-specific arena config is available. Today it passes `nullptr` for `allocator_options` to `CreateSharedAllocatorImpl()`, which means shared allocators for plugin EPs are never arena-wrapped.
 
-**Resolution:** `RegisterExecutionProviderLibrary` must always extract arena options and pass them to `CreateSharedAllocatorImpl()` instead of `nullptr`. The logic is:
+**Resolution:** `RegisterExecutionProviderLibrary` must extract arena options and pass them to `CreateSharedAllocatorImpl()` instead of `nullptr` for EPs that support arena wrapping. The logic is:
 
 1. **Check environment config entries** (`Environment::config_entries_`) for `ep_factory.<registration_name>.arena.*` keys.
 2. **If found:** Extract matching arena keys, strip the `ep_factory.<registration_name>.` prefix, and build an `OrtKeyValuePairs` with bare `"arena.*"` keys.
-3. **If not found:** Construct default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` expressed as bare-key `OrtKeyValuePairs`).
-4. **Pass the resulting `OrtKeyValuePairs*`** to `CreateSharedAllocatorImpl()` as `allocator_options`.
+3. **If not found but the EP has opted in to default arena wrapping** (e.g., via a `ep_factory.<registration_name>.enable_arena` config flag, or by recognizing known EP registration names like `"cuda"`)**:** Construct default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` expressed as bare-key `OrtKeyValuePairs`). For all other EPs, leave `allocator_options == nullptr` to preserve existing behavior.
+4. **Pass the resulting `OrtKeyValuePairs*`** (or `nullptr` for non-opted-in EPs) to `CreateSharedAllocatorImpl()` as `allocator_options`.
 
 This leverages the existing `CreateEnvWithOptions` API — the application provides arena config at environment creation time via `OrtEnvCreationOptions::config_entries`:
 
@@ -304,9 +304,9 @@ Replace `const logging::Logger* logger_` with a thin logging abstraction that wo
 // In cuda_mempool_arena.h:
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
   // Plugin build: use OrtLogger-based logging
-  #include "cuda_plugin_utils.h"  // provides LOG_INFO, LOG_VERBOSE, LOG_WARNING macros
+  #include "cuda_plugin_utils.h"  // add OrtLogger-based LOG_INFO / LOG_VERBOSE / LOG_WARNING-style macros
   // No logger_ member needed — macros use the factory/EP logger directly
-  // OR: store an OrtLogger* and define thin macros
+  // OR: store an OrtLogger* and define thin macros in cuda_plugin_utils.h as part of this work
 #else
   // In-tree build: use existing logging::Logger
   const logging::Logger* logger_;
@@ -349,7 +349,7 @@ class CudaMempoolOrtAllocator : public OrtAllocator {
 };
 ```
 
-The `AllocOnStream` callback must resolve `OrtSyncStream*` → `cudaStream_t`. The `OrtEpApi::SyncStream_GetHandle()` function provides this.
+The `AllocOnStream` callback must resolve `OrtSyncStream*` → `cudaStream_t`. This is done via `OrtApi::SyncStream_GetHandle()` (or the C++ wrapper `Ort::SyncStream::GetHandle()`).
 
 **Important:** The `OrtMemoryInfo::alloc_type` must be `OrtDeviceAllocator`, not `OrtArenaAllocator`. Both `CreatePreferredAllocators` and `CreateSharedAllocatorImpl` reject `OrtArenaAllocator` from plugin factories.
 
@@ -382,7 +382,7 @@ These can be parsed via `OrtArenaCfg::FromKeyValuePairs()` or directly from the 
 
 Option B is recommended because it requires no new public API surface, uses existing `allocator_options` plumbing, covers both shared and per-session allocator paths, and is naturally gated by arena config keys (only EPs that pass them get wrapping).
 
-1. Update `Environment::RegisterExecutionProviderLibrary()` to extract `ep_factory.<registration_name>.arena.*` keys from `config_entries_`; if found, strip the prefix and build `OrtKeyValuePairs` with bare `"arena.*"` keys; if not found, construct default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`). Pass the result to `CreateSharedAllocatorImpl()` instead of `nullptr`.
+1. Update `Environment::RegisterExecutionProviderLibrary()` to extract `ep_factory.<registration_name>.arena.*` keys from `config_entries_`; if found, strip the prefix and build `OrtKeyValuePairs` with bare `"arena.*"` keys; if not found and the EP has opted in to arena wrapping, construct default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`); otherwise pass `nullptr`. Pass the result to `CreateSharedAllocatorImpl()`.
 2. Update `Environment::CreateSharedAllocatorImpl()` to parse `allocator_options` for arena config keys and wrap the returned `IAllocator` in BFCArena via `CreateAllocator(AllocatorCreationInfo{...})` when arena keys are present
 3. Update `PluginExecutionProvider::CreatePreferredAllocators()` to wrap returned allocators in BFCArena using EP-stored arena config (populated during EP creation from session/provider options)
 4. Extract a shared helper for the arena-wrapping logic so both sites stay consistent
