@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
+#include "core/providers/webgpu/program.h"
 
 namespace onnxruntime {
 namespace webgpu {
