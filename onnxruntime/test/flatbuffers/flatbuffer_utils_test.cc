@@ -309,7 +309,7 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
   auto dims = builder.CreateVector(std::vector<int64_t>{2});
   auto string_data = builder.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>{
       builder.CreateString("string_0"),
-      0,
+      builder.CreateString("string_1"),
   });
 
   fbs::TensorBuilder tensor_builder(builder);
@@ -319,7 +319,14 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
   tensor_builder.add_string_data(string_data);
   builder.Finish(tensor_builder.Finish());
 
-  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+  auto* fbs_tensor = flatbuffers::GetMutableRoot<fbs::Tensor>(builder.GetBufferPointer());
+  ASSERT_NE(fbs_tensor, nullptr);
+
+  const auto* fbs_string_data = fbs_tensor->string_data();
+  ASSERT_NE(fbs_string_data, nullptr);
+  auto* string_offsets = const_cast<flatbuffers::uoffset_t*>(
+      reinterpret_cast<const flatbuffers::uoffset_t*>(fbs_string_data->Data()));
+  flatbuffers::WriteScalar(&string_offsets[1], flatbuffers::uoffset_t{0});
 
   ONNX_NAMESPACE::TensorProto initializer;
   OrtFormatLoadOptions options;
