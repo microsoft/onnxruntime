@@ -7,39 +7,62 @@ description: Run ONNX Runtime tests. Use this skill when asked to run tests, deb
 
 ONNX Runtime uses **Google Test** for C++ and **unittest** (preferred) / **pytest** for Python.
 
-## C++ tests
-
-### Run all tests via CTest
-
-```bash
-# Linux/macOS
-cd build/Linux/Release && ctest
-
-# Windows
-cd build\Windows\Release && ctest
-```
-
-The platform subdirectory under `build/` matches the OS (e.g., `Linux`, `Windows`, `Darwin`).
-
-### Run a specific C++ test binary
-
-The main test binary is `onnxruntime_test_all`. Use `--gtest_filter` to select tests:
-
-```bash
-# Run a specific test by name pattern
-./build/Linux/Release/onnxruntime_test_all --gtest_filter="*TestName*"
-
-# Windows
-.\build\Windows\Release\onnxruntime_test_all.exe --gtest_filter="*TestName*"
-```
-
-### Run via build script
+## Run tests via build script
 
 ```bash
 # Run all tests through the build script (skips update and build)
 ./build.sh --config Release --test
 .\build.bat --config Release --test
 ```
+
+## C++ tests
+
+### C++ test executables
+
+There are multiple test executables, each covering different areas:
+
+| Executable | What it tests |
+|---|---|
+| `onnxruntime_test_all` | Core framework, graph, optimizer, session tests |
+| `onnxruntime_provider_test` | Operator/kernel tests (Conv, MatMul, etc.) across execution providers |
+
+Use `--gtest_filter` to select specific tests:
+
+```bash
+./onnxruntime_provider_test --gtest_filter="*Conv3D*"
+```
+
+### Running test executables
+
+**Always run test executables from the build output directory** (where the executable and test data/DLLs are located), not from the repo root. Tests may fail to find dependencies otherwise.
+
+```bash
+# Navigate to the build output directory first
+cd build/Linux/Release
+./onnxruntime_provider_test --gtest_filter="*TestName*"
+
+# Windows
+cd build\Windows\Release
+.\onnxruntime_provider_test.exe --gtest_filter="*TestName*"
+```
+
+### Locating the build output directory
+
+The build output path depends on the build directory provided to `build.py`.
+
+If you're unsure where the test executable is, search for it:
+
+```powershell
+# Windows
+Get-ChildItem -Path build -Recurse -Filter "onnxruntime_provider_test.exe" | Select-Object -ExpandProperty FullName
+
+# Linux/macOS
+find build -name "onnxruntime_provider_test" -type f
+```
+
+Common locations:
+- Default: `build/<Platform>/<Config>/` (e.g., `build/Windows/Release/`)
+- Specified with `build.sh` or `build.bat` `--build_dir` option
 
 ## Python tests
 
@@ -59,7 +82,7 @@ pytest -v onnxruntime/test/python/test_specific.py
 pytest -k "test_keyword" onnxruntime/test/python/
 ```
 
-## Test naming convention
+### Test naming convention
 
 Python tests follow this pattern:
 
@@ -71,8 +94,9 @@ Example: `test_method_x_raises_error_when_dims_is_not_a_sequence`
 
 ## Workflow
 
-1. Determine what the user wants to test (all tests, specific C++ test, specific Python test, etc.).
-2. Detect the platform to construct the correct paths.
-3. For C++ tests, check that the build directory exists and a prior build has been completed.
-4. Construct and run the appropriate test command.
-5. If tests fail, analyze the output and help debug the failures.
+1. **Activate a Python virtual environment** before running tests. See the "Python Environment" section in `AGENTS.md` for instructions.
+2. Determine what the user wants to test(all tests, specific C++ test, specific Python test, etc.).
+3. Detect the platform to construct the correct paths.
+4. For C++ tests, check that the build directory exists and a prior build has been completed.
+5. Construct and run the appropriate test command.
+6. If tests fail, analyze the output and help debug the failures.
