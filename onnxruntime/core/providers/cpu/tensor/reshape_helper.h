@@ -5,6 +5,7 @@
 
 #include <limits>
 
+#include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
