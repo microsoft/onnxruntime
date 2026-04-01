@@ -17,6 +17,7 @@
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
 
@@ -975,6 +976,132 @@ TEST(OpSchemaTypeConstraintTest, OutOfRangeIndex) {
 
   // Accessing beyond the count should throw
   EXPECT_THROW(schema.GetTypeConstraint(count), Ort::Exception);
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
+TEST(PluginExecutionProviderTest, CreateProfilingEvent_AllCategories) {
+  const OrtProfilingEventCategory categories[] = {
+      OrtProfilingEventCategory_SESSION,
+      OrtProfilingEventCategory_NODE,
+      OrtProfilingEventCategory_KERNEL,
+      OrtProfilingEventCategory_API,
+  };
+
+  for (auto cat : categories) {
+    OrtProfilingEvent* event = nullptr;
+    Ort::Status status{Ort::GetEpApi().CreateProfilingEvent(
+        cat, -1, -1, "test", 0, 0, nullptr, nullptr, 0, &event)};
+    Ort::ProfilingEvent cxx_event(event);
+
+    ASSERT_TRUE(status.IsOK()) << "Failed for category " << static_cast<int>(cat);
+    ASSERT_NE(event, nullptr);
+
+    OrtProfilingEventCategory actual_cat{};
+    ASSERT_ORTSTATUS_OK(Ort::GetEpApi().ProfilingEvent_GetCategory(event, &actual_cat));
+    EXPECT_EQ(actual_cat, cat);
+  }
+}
+
+TEST(PluginExecutionProviderTest, CreateProfilingEvent_NullOutput) {
+  const auto& ep_api = Ort::GetEpApi();
+
+  Ort::Status status{ep_api.CreateProfilingEvent(
+      OrtProfilingEventCategory_KERNEL, -1, -1,
+      "event", 0, 0, nullptr, nullptr, 0, /*out=*/nullptr)};
+
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("output parameter is NULL"));
+}
+
+TEST(PluginExecutionProviderTest, ProfilingEvent_GetArgValue_NullKey) {
+  const auto& ep_api = Ort::GetEpApi();
+
+  OrtProfilingEvent* event = nullptr;
+  ASSERT_ORTSTATUS_OK(ep_api.CreateProfilingEvent(
+      OrtProfilingEventCategory_KERNEL, -1, -1,
+      "event", 0, 0, nullptr, nullptr, 0, &event));
+
+  Ort::ProfilingEvent cxx_event(event);
+
+  const char* val = nullptr;
+  Ort::Status status{ep_api.ProfilingEvent_GetArgValue(event, /*key=*/nullptr, &val)};
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Key parameter is NULL"));
+}
+
+TEST(PluginExecutionProviderTest, ProfilingEvent_GetArgValue_NullOutput) {
+  const auto& ep_api = Ort::GetEpApi();
+
+  OrtProfilingEvent* event = nullptr;
+  ASSERT_ORTSTATUS_OK(ep_api.CreateProfilingEvent(
+      OrtProfilingEventCategory_KERNEL, -1, -1,
+      "event", 0, 0, nullptr, nullptr, 0, &event));
+
+  Ort::ProfilingEvent cxx_event(event);
+
+  Ort::Status status{ep_api.ProfilingEvent_GetArgValue(event, "key", /*out=*/nullptr)};
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Output parameter is NULL"));
+}
+
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(PluginExecutionProviderTest, ProfilingEvent_CxxWrapper) {
+  // Test the owning ProfilingEvent C++ wrapper with args.
+  std::unordered_map<std::string, std::string> args = {{"op_name", "Conv"},
+                                                       {"parent_name", "Conv_node_event"}};
+
+  Ort::ProfilingEvent event(OrtProfilingEventCategory_NODE, /*process_id=*/1, /*thread_id=*/2,
+                            "node_exec", /*timestamp_us=*/5000, /*duration_us=*/300,
+                            args);
+
+  EXPECT_EQ(event.GetCategory(), OrtProfilingEventCategory_NODE);
+  EXPECT_STREQ(event.GetName(), "node_exec");
+  EXPECT_EQ(event.GetTimestampUs(), 5000);
+  EXPECT_EQ(event.GetDurationUs(), 300);
+  EXPECT_EQ(event.GetArgValue("op_name"), args["op_name"]);
+  EXPECT_EQ(event.GetArgValue("parent_name"), args["parent_name"]);
+  EXPECT_EQ(event.GetArgValue("missing"), nullptr);
+}
+
+TEST(PluginExecutionProviderTest, ProfilingEvent_CxxWrapper_ArgsCArrays) {
+  std::array<const char*, 2> arg_keys = {"op_name", "parent_name"};
+  std::array<const char*, 2> arg_values = {"Conv", "Conv_node_event"};
+
+  Ort::ProfilingEvent event(OrtProfilingEventCategory_NODE, /*process_id=*/1, /*thread_id=*/2,
+                            "node_exec", /*timestamp_us=*/5000, /*duration_us=*/300,
+                            arg_keys.data(), arg_values.data(), arg_keys.size());
+
+  EXPECT_EQ(event.GetCategory(), OrtProfilingEventCategory_NODE);
+  EXPECT_STREQ(event.GetName(), "node_exec");
+  EXPECT_EQ(event.GetTimestampUs(), 5000);
+  EXPECT_EQ(event.GetDurationUs(), 300);
+  EXPECT_STREQ(event.GetArgValue("op_name"), arg_values[0]);
+  EXPECT_STREQ(event.GetArgValue("parent_name"), arg_values[1]);
+  EXPECT_EQ(event.GetArgValue("missing"), nullptr);
+}
+
+TEST(PluginExecutionProviderTest, ProfilingEvent_CxxWrapper_NoArgs) {
+  Ort::ProfilingEvent event(OrtProfilingEventCategory_API, -1, -1,
+                            "api_call", 0, 100);
+
+  EXPECT_EQ(event.GetCategory(), OrtProfilingEventCategory_API);
+  EXPECT_STREQ(event.GetName(), "api_call");
+  EXPECT_EQ(event.GetTimestampUs(), 0);
+  EXPECT_EQ(event.GetDurationUs(), 100);
+  EXPECT_EQ(event.GetArgValue("any_key"), nullptr);
+}
+
+TEST(PluginExecutionProviderTest, ProfilingEvent_ConstWrapper) {
+  // Create an event, then wrap the raw pointer as ConstProfilingEvent (non-owning).
+  Ort::ProfilingEvent owned_event(OrtProfilingEventCategory_KERNEL, 10, 20,
+                                  "kernel_op", 999, 111);
+
+  Ort::ConstProfilingEvent const_event = owned_event.GetConst();
+
+  EXPECT_EQ(const_event.GetCategory(), OrtProfilingEventCategory_KERNEL);
+  EXPECT_STREQ(const_event.GetName(), "kernel_op");
+  EXPECT_EQ(const_event.GetTimestampUs(), 999);
+  EXPECT_EQ(const_event.GetDurationUs(), 111);
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 

@@ -32,6 +32,8 @@
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 #include "core/session/utils.h"
+#include "core/common/profiler_common.h"
+#include "core/session/plugin_ep/ep_event_profiling.h"
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
@@ -1052,6 +1054,150 @@ ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetOutputIndices,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(CreateProfilingEvent,
+                    _In_ OrtProfilingEventCategory category,
+                    _In_ int32_t process_id,
+                    _In_ int32_t thread_id,
+                    _In_ const char* event_name,
+                    _In_ int64_t timestamp_us,
+                    _In_ int64_t duration_us,
+                    _In_reads_(num_args) const char* const* arg_keys,
+                    _In_reads_(num_args) const char* const* arg_values,
+                    _In_ size_t num_args,
+                    _Outptr_ OrtProfilingEvent** out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent output parameter is NULL");
+  ORT_API_RETURN_IF(event_name == nullptr, ORT_INVALID_ARGUMENT, "Event name argument is NULL");
+
+  *out = nullptr;
+
+  const int category_value = static_cast<int>(category);
+  const int min_category_val = static_cast<int>(profiling::EventCategory::SESSION_EVENT);
+  const int max_category_val = static_cast<int>(profiling::EventCategory::EVENT_CATEGORY_MAX);
+  ORT_API_RETURN_IF(category_value < min_category_val || category_value >= max_category_val, ORT_INVALID_ARGUMENT,
+                    "OrtProfilingEventCategory value '", category_value, "' is out of the expected range: [",
+                    min_category_val, " ... ", max_category_val, ")");
+
+  onnxruntime::InlinedHashMap<std::string, std::string> args;
+  if (num_args > 0) {
+    ORT_API_RETURN_IF(arg_keys == nullptr || arg_values == nullptr, ORT_INVALID_ARGUMENT,
+                      "`arg_keys` and `arg_values` must be non-null when `num_args` > 0");
+
+    args.reserve(num_args);
+
+    for (size_t i = 0; i < num_args; ++i) {
+      const char* key = arg_keys[i];
+      const char* value = arg_values[i];
+      ORT_API_RETURN_IF(key == nullptr, ORT_INVALID_ARGUMENT, "Arg key at index ", i, " is NULL");
+      ORT_API_RETURN_IF(value == nullptr, ORT_INVALID_ARGUMENT, "Arg value at index ", i, " is NULL");
+      args.emplace(key, value);
+    }
+  }
+
+  auto record = std::make_unique<profiling::EventRecord>(
+      static_cast<onnxruntime::profiling::EventCategory>(category_value),
+      static_cast<int>(process_id),
+      static_cast<int>(thread_id),
+      event_name,
+      static_cast<long long>(timestamp_us),
+      static_cast<long long>(duration_us),
+      std::move(args));
+
+  *out = ToOpaqueProfilingEvent(record.release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseProfilingEvent, _Frees_ptr_opt_ OrtProfilingEvent* event) {
+  delete FromOpaqueProfilingEvent(event);
+}
+
+ORT_API_STATUS_IMPL(ProfilingEvent_GetCategory, _In_ const OrtProfilingEvent* event,
+                    _Out_ OrtProfilingEventCategory* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEventCategory output parameter is NULL");
+  const auto* record = FromOpaqueProfilingEvent(event);
+  *out = static_cast<OrtProfilingEventCategory>(record->cat);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(ProfilingEvent_GetName, _In_ const OrtProfilingEvent* event,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "output parameter for the event name is NULL");
+  const auto* record = FromOpaqueProfilingEvent(event);
+  *out = record->name.c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(ProfilingEvent_GetTimestampUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "output parameter for the event timestamp is NULL");
+  const auto* record = FromOpaqueProfilingEvent(event);
+  *out = static_cast<int64_t>(record->ts);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "output parameter for the event duration is NULL");
+  const auto* record = FromOpaqueProfilingEvent(event);
+  *out = static_cast<int64_t>(record->dur);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue,
+                    _In_ const OrtProfilingEvent* event,
+                    _In_ const char* key,
+                    _Outptr_result_maybenull_ const char** out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(event == nullptr, ORT_INVALID_ARGUMENT, "OrtProfilingEvent is NULL");
+  ORT_API_RETURN_IF(key == nullptr, ORT_INVALID_ARGUMENT, "Key parameter is NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "Output parameter is NULL");
+  const auto* record = FromOpaqueProfilingEvent(event);
+  auto it = record->args.find(key);
+  *out = (it != record->args.end()) ? it->second.c_str() : nullptr;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
+                    _In_ OrtProfilingEventsContainer* events_container,
+                    _In_reads_(num_events) const OrtProfilingEvent* const* events,
+                    _In_ size_t num_events) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(events_container == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtProfilingEventsContainer instance is NULL");
+  ORT_API_RETURN_IF(events == nullptr || num_events == 0, ORT_INVALID_ARGUMENT,
+                    "Must provide at least one event to add to OrtProfilingEventsContainer.");
+
+  // Return error if any events are NULL (before modifying events array)
+  for (size_t i = 0; i < num_events; ++i) {
+    ORT_API_RETURN_IF(events[i] == nullptr, ORT_INVALID_ARGUMENT,
+                      "OrtProfilingEvent instance at index ", i, " is NULL");
+  }
+
+  auto& all_events = events_container->events;
+  all_events.reserve(all_events.size() + num_events);
+
+  for (size_t i = 0; i < num_events; ++i) {
+    all_events.push_back(*FromOpaqueProfilingEvent(events[i]));
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1131,6 +1277,15 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetAllowedTypes,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetInputIndices,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetOutputIndices,
+
+    &OrtExecutionProviderApi::CreateProfilingEvent,
+    &OrtExecutionProviderApi::ReleaseProfilingEvent,
+    &OrtExecutionProviderApi::ProfilingEvent_GetCategory,
+    &OrtExecutionProviderApi::ProfilingEvent_GetName,
+    &OrtExecutionProviderApi::ProfilingEvent_GetTimestampUs,
+    &OrtExecutionProviderApi::ProfilingEvent_GetDurationUs,
+    &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
+    &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
@@ -1141,7 +1296,7 @@ static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void
               "Size of version 23 API cannot change");
 static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
-static_assert(offsetof(OrtEpApi, OpSchemaTypeConstraint_GetOutputIndices) / sizeof(void*) == 64,
+static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
               "Size of version 25 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
