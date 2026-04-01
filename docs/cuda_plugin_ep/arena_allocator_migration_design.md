@@ -33,128 +33,11 @@ The `DisableCpuMemArena()` public API sets `SessionOptions::enable_cpu_mem_arena
 
 ---
 
-## 3. Part A — Migrating `CudaMempoolArena` to the Plugin
-
-### 3.1 Current Dependencies
-
-`CudaMempoolArena` in `cuda_mempool_arena.h/.cc` has these dependencies:
-
-| Dependency | Plugin-Safe? | Notes |
-|-----------|-------------|-------|
-| `<cuda_runtime_api.h>` | ✅ | CUDA SDK — always available |
-| `core/common/common.h` | ✅ | `ORT_THROW`, `ORT_ENFORCE` — no framework deps |
-| `core/common/inlined_containers.h` | ✅ | STL-based containers, no framework deps |
-| `core/providers/cuda/cuda_stream_handle.h` | ✅ | But only for `Stream::GetHandle()` → `cudaStream_t` |
-| `core/providers/shared_library/provider_api.h` | ⚠️ | **No-op in plugin build** (`BUILD_CUDA_EP_AS_PLUGIN`) |
-| `core/providers/cuda/shared_inc/cuda_call.h` | ✅ | CUDA error-handling macros |
-| `IArena` base class | ⚠️ | Defined in framework `allocator.h` — available in plugin (not behind `SHARED_PROVIDER`) |
-| `OrtMemoryInfo` | ✅ | Public framework struct |
-| `AllocatorStats` | ✅ | Plain POD struct in public header |
-| `logging::Logger*` | ❌ | **Primary blocker** — `provider_api.h` forward-declares `Logger` as struct; `LoggingManager::DefaultLogger()` not available in plugin |
-| `Stream*` | ✅ | Only uses `stream->GetHandle()` → `void*` → `cudaStream_t` |
-
-### 3.2 The Logger Problem
-
-`CudaMempoolArena` uses `LOGS(*logger_, ...)` in 6 locations:
-- Constructor (INFO): pool creation message
-- `Alloc()` (VERBOSE): per-allocation trace
-- `AllocOnStream()` (VERBOSE): per-allocation trace
-- `Free()` (WARNING): unknown pointer warning
-- `Shrink()` (INFO): pool trim stats
-
-The plugin has its own logger type: `OrtLogger` (from the EP C API). The factory stores `const OrtLogger& default_logger_`.
-
-### 3.3 Proposed Changes
-
-**Approach: Make `CudaMempoolArena` compilable in both in-tree and plugin builds.**
-
-The class itself is almost entirely CUDA SDK code. Only the logging needs adaptation.
-
-#### Option 1: Conditional Logger (Recommended)
-
-Replace `const logging::Logger* logger_` with a thin logging abstraction that works in both builds:
-
-```cpp
-// In cuda_mempool_arena.h:
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  // Plugin build: use OrtLogger-based logging
-  #include "cuda_plugin_utils.h"  // provides LOG_INFO, LOG_VERBOSE, LOG_WARNING macros
-  // No logger_ member needed — macros use the factory/EP logger directly
-  // OR: store an OrtLogger* and define thin macros
-#else
-  // In-tree build: use existing logging::Logger
-  const logging::Logger* logger_;
-#endif
-```
-
-**Concrete steps:**
-1. Replace `#include "core/providers/shared_library/provider_api.h"` with a conditional include for the logger type.
-2. Make the `logger_` member type conditional: `const logging::Logger*` in-tree, `const OrtLogger*` in plugin.
-3. Define a `MEMPOOL_LOG(level, msg)` macro that dispatches to either `LOGS()` or OrtLogger-based logging.
-4. Add `cuda_mempool_arena.cc` to the plugin CMake source list (remove from exclusion list in `onnxruntime_providers_cuda_plugin.cmake`).
-
-#### Option 2: Template on Logger Type
-
-Make the constructor accept a callable/functor for logging, avoiding compile-time branching.
-
-#### Option 3: Strip Logging Entirely in Plugin Build
-
-Wrap all `LOGS()` calls in `#ifndef BUILD_CUDA_EP_AS_PLUGIN` guards. Simplest, but loses diagnostic capability.
-
-**Recommendation:** Option 1. The logging is genuinely useful for diagnosing mempool behavior. The plugin already has `OrtLogger` available; we just need a thin macro bridge.
-
-### 3.4 OrtAllocator Wrapper
-
-The plugin factory's `CreateAllocatorImpl` returns `OrtAllocator*`. `CudaMempoolArena` is an `IArena`. A thin wrapper is needed:
-
-```cpp
-class CudaMempoolOrtAllocator : public OrtAllocator {
-  std::unique_ptr<CudaMempoolArena> arena_;
-  const OrtMemoryInfo* memory_info_;
-
-  // OrtAllocator callbacks:
-  static void* AllocImpl(OrtAllocator* this_, size_t size);
-  static void FreeImpl(OrtAllocator* this_, void* p);
-  static void* ReserveImpl(OrtAllocator* this_, size_t size);
-  static void* AllocOnStreamImpl(OrtAllocator* this_, size_t size, OrtSyncStream* stream);
-  static const OrtMemoryInfo* InfoImpl(const OrtAllocator* this_);
-};
-```
-
-The `AllocOnStream` callback must resolve `OrtSyncStream*` → `cudaStream_t`. The `OrtEpApi::SyncStream_GetHandle()` function provides this.
-
-**Important:** The `OrtMemoryInfo::alloc_type` must be `OrtDeviceAllocator`, not `OrtArenaAllocator`. Both `CreatePreferredAllocators` and `CreateSharedAllocatorImpl` reject `OrtArenaAllocator` from plugin factories.
-
-### 3.5 Arena Config Parsing
-
-The plugin factory's `CreateAllocatorImpl` receives `const OrtKeyValuePairs* allocator_options` (currently ignored). The relevant keys:
-- `arena.use_cuda_mempool` — `"1"` to enable
-- `arena.cuda_mempool_release_threshold` — bytes; `0` disables threshold
-- `arena.cuda_mempool_bytes_to_keep_on_shrink` — bytes retained after `Shrink()`
-
-These can be parsed via `OrtArenaCfg::FromKeyValuePairs()` or directly from the key-value pairs using the `OrtApi`.
-
-**Problem:** `CreateAllocatorImpl` currently receives `nullptr` for `allocator_options` from both callers (see Part B). The plugin can work around this by parsing arena config from session/provider options in `CudaEpFactory` and storing them for later use by `CreateAllocatorImpl`.
-
-### 3.6 Summary of Changes for CudaMempoolArena Migration
-
-| File | Change |
-|------|--------|
-| `cuda_mempool_arena.h` | Conditional logger type; add `#ifdef BUILD_CUDA_EP_AS_PLUGIN` for logger include |
-| `cuda_mempool_arena.cc` | Replace `LOGS()` with build-conditional macro |
-| `cmake/onnxruntime_providers_cuda_plugin.cmake` | Remove `cuda_mempool_arena.cc` from exclusion list |
-| `plugin/cuda_allocator_plugin.h` | Add `CudaMempoolOrtAllocator` wrapper class |
-| `plugin/cuda_allocator_plugin.cc` | Implement wrapper callbacks |
-| `plugin/cuda_ep_factory.cc` | Parse mempool options; create `CudaMempoolOrtAllocator` in `CreateAllocatorImpl` when configured |
-| `plugin/cuda_ep_factory.cc` | Handle `CudaMempoolOrtAllocator` in `ReleaseAllocatorImpl` |
-
----
-
-## 4. Part B — Integrating BFCArena for the Plugin EP
+## 3. Part A — Integrating BFCArena for the Plugin EP
 
 `BFCArena` lives in `onnxruntime/core/framework/bfc_arena.h/.cc` and is part of the ORT core framework. Duplicating it into the plugin would be a significant code duplication burden. Instead, the framework should wrap the plugin's raw allocator in BFCArena on the ORT core side.
 
-### 4.1 Current Allocator Lifecycle
+### 3.1 Current Allocator Lifecycle
 
 There are two paths through which plugin allocators are created and used:
 
@@ -184,7 +67,7 @@ SessionState constructor
 
 **Key gap:** Neither path passes arena configuration (`allocator_options` is always `nullptr`), and neither path wraps the result in BFCArena.
 
-### 4.2 Three Options for BFCArena Integration
+### 3.2 Two Options for BFCArena Integration
 
 #### Option A: Wrap at All Callers
 
@@ -230,42 +113,9 @@ SessionState constructor
 | Reuses existing `CreateAllocator(AllocatorCreationInfo)` utility | |
 | `use_env_allocators` works correctly — shared allocators are also arena-wrapped | |
 | **Naturally gated by EP type** — arena options (`arena.extend_strategy`, `arena.max_mem`, etc.) are only recognized by CUDA EP. Non-CUDA plugin EPs don't pass arena keys, so no wrapping occurs. The presence of arena keys in `allocator_options` is the signal — no device-type checks needed in ORT core. | |
-| **No new public API surface** — uses existing `allocator_options` parameter. It is always easier to add a new API later (Option C) than to remove a wrong one. Option B can be promoted to Option C if the convention proves insufficient. | |
+| **No new public API surface** — uses existing `allocator_options` parameter and the existing `CreateEnvWithOptions` API with `ep_factory.<registration_name>.*` config entries for environment-level config. | |
 
-#### Option C: Declarative Arena Request via `OrtEpDevice` API
-
-**Where:** The plugin declares at device-registration time (in `GetSupportedDevices`) that allocators for a given memory type should be BFCArena-wrapped by ORT, including the arena config. ORT core reads this declaration and wraps after receiving the raw `OrtAllocator*`.
-
-**API changes:**
-```c
-// New OrtEpApi function:
-ORT_API2_STATUS(EpDevice_RequestArenaWrapping,
-                _In_ OrtEpDevice* ep_device,
-                _In_ const OrtMemoryInfo* allocator_memory_info,
-                _In_opt_ const OrtKeyValuePairs* arena_config);
-```
-
-**Internal changes:**
-- `OrtEpDevice` gains a `std::vector<ArenaRequest>` field storing per-memory-info arena configuration
-- `Environment::CreateSharedAllocatorImpl()` checks `OrtEpDevice` for arena request → wraps with the declared config (or defaults)
-- `PluginExecutionProvider::CreatePreferredAllocators()` does the same check and wrap
-
-**Plugin-side changes:**
-- `CudaEpFactory::GetSupportedDevicesImpl` calls `EpDevice_RequestArenaWrapping` for device memory (with default BFCArena config) and for pinned memory
-
-| Pros | Cons |
-|------|------|
-| **Covers both paths uniformly** — same `OrtEpDevice` declaration drives wrapping in both shared and per-session paths | New public API surface on `OrtEpApi` — requires API review |
-| **Config plumbing solved cleanly** — plugin declares arena needs upfront with full config | Medium effort: new API + two wrapping callsites + plugin callsite |
-| **Fully opt-in** — zero behavior change for existing EPs or the bridge-based CUDA EP | |
-| **Preserves environment shared allocators** — shared allocators are arena-wrapped → `use_env_allocators` works correctly | |
-| **Extensible** — any future plugin EP can request arena wrapping the same way | |
-| Reuses existing `CreateAllocator(AllocatorCreationInfo)` — no BFCArena code duplication | |
-| `OrtArenaAllocator` rejection stays unchanged — raw allocator from factory is still `OrtDeviceAllocator` | |
-| Plugin controls arena mode: BFCArena, CudaMempoolArena, or no arena per memory type | |
-| Natural API idiom — mirrors existing `EpDevice_AddAllocatorInfo` | |
-
-### 4.3 Allocator Config Flow — In-Tree vs. Plugin
+### 3.3 Allocator Config Flow — In-Tree vs. Plugin
 
 The in-tree CUDA EP receives arena config through `OrtCUDAProviderOptionsV2`, which contains `OrtArenaCfg* default_memory_arena_cfg`. This is stored in `CUDAExecutionProviderInfo` and cached on the EP instance as `info_`. Both allocator creation paths read from this cached config:
 
@@ -284,9 +134,34 @@ For the plugin CUDA EP, configuration arrives through `session_options` as key-v
 
 **Shared allocator config flow (Path 1 — `CreateSharedAllocatorImpl`):**
 
-`RegisterExecutionProviderLibrary()` is called at environment level — no session exists yet, so no session-specific arena config is available. The fix is to pass default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` expressed as `OrtKeyValuePairs` with bare `"arena.*"` keys) to `CreateSharedAllocatorImpl()`. The function already accepts `const OrtKeyValuePairs* allocator_options` — it just needs the caller to provide defaults.
+`RegisterExecutionProviderLibrary()` is called at environment level — no session exists yet, so no session-specific arena config is available. Today it passes `nullptr` for `allocator_options` to `CreateSharedAllocatorImpl()`, which means shared allocators for plugin EPs are never arena-wrapped.
 
-### 4.4 Key Name Prefix Mismatch
+**Resolution:** `RegisterExecutionProviderLibrary` must always extract arena options and pass them to `CreateSharedAllocatorImpl()` instead of `nullptr`. The logic is:
+
+1. **Check environment config entries** (`Environment::config_entries_`) for `ep_factory.<registration_name>.arena.*` keys.
+2. **If found:** Extract matching arena keys, strip the `ep_factory.<registration_name>.` prefix, and build an `OrtKeyValuePairs` with bare `"arena.*"` keys.
+3. **If not found:** Construct default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` expressed as bare-key `OrtKeyValuePairs`).
+4. **Pass the resulting `OrtKeyValuePairs*`** to `CreateSharedAllocatorImpl()` as `allocator_options`.
+
+This leverages the existing `CreateEnvWithOptions` API — the application provides arena config at environment creation time via `OrtEnvCreationOptions::config_entries`:
+
+```cpp
+// Application provides arena config at env creation:
+api->AddKeyValuePair(kvps, "ep_factory.cuda.arena.extend_strategy", "1");
+api->AddKeyValuePair(kvps, "ep_factory.cuda.arena.max_mem", "0");
+api->AddKeyValuePair(kvps, "ep_factory.cuda.arena.use_cuda_mempool", "1");
+
+OrtEnvCreationOptions options{};
+options.config_entries = kvps;
+// ...
+api->CreateEnvWithOptions(&options, &env);
+```
+
+For **Option A**: Each caller site constructs options and does its own wrapping.
+
+For **Option B**: `CreateSharedAllocatorImpl` uses the options it already receives to decide on wrapping. `RegisterExecutionProviderLibrary` extracts from env config or uses defaults. `CreatePreferredAllocators` extracts arena keys from session_options (with env config as fallback).
+
+### 3.4 Key Name Prefix Mismatch
 
 **Issue:** `OrtArenaCfg::FromKeyValuePairs()` expects bare key names (e.g., `"arena.extend_strategy"`, `"arena.max_mem"`). However, session options store EP config with an EP-specific prefix:
 
@@ -304,7 +179,7 @@ OrtArenaCfg expects:  "arena.extend_strategy"
 
 The plugin factory's `CreateAllocatorImpl` then calls `OrtArenaCfg::FromKeyValuePairs()` on the received KVPs and gets correct parsing.
 
-### 4.5 Arena-Already-Handled Signal Problem
+### 3.5 Arena-Already-Handled Signal Problem
 
 Under Option B, ORT core wraps raw allocators from the factory in BFCArena. But when the factory returns a self-contained arena (CudaMempoolArena), ORT must **not** double-wrap it.
 
@@ -333,58 +208,210 @@ This approach:
 - The in-tree CUDA EP already follows this pattern: `CudaMempoolArena` uses `"CUDAMemPoolArena"` while the raw allocator uses `"Cuda"`.
 - The `OrtEpDevice` already declares the expected memory info names at device registration time, so ORT core has the baseline to compare against.
 
-### 4.6 Default Arena Options Fix (Applies to All Options)
+### 3.6 Comparison Matrix
 
-Today, `Environment::RegisterExecutionProviderLibrary()` calls `CreateSharedAllocatorImpl()` with `nullptr` for `allocator_options`. This means shared allocators for plugin EPs are never arena-wrapped, even when they should be.
+| Criterion | A (Callers wrap) | B (Adapter wraps) |
+|-----------|:-:|:-:|
+| Covers per-session allocators | ✅ | ✅ |
+| Covers shared (environment) allocators | ✅ (with fix) | ✅ (via `allocator_options` param) |
+| `use_env_allocators` works correctly | ⚠️ fragile | ✅ (shared allocators arena-wrapped) |
+| Arena config plumbing | Ad-hoc per site | `allocator_options` (shared) + EP-stored (per-session) |
+| ORT core change surface | Multiple files | 2 files (`CreatePreferredAllocators` + `CreateSharedAllocatorImpl`) + caller fix |
+| Plugin code changes | None | None |
+| Backward compatible | ⚠️ all plugin EPs affected | ✅ gated by arena options — only EPs that pass arena keys get wrapping |
+| Future EP extensibility | Poor | Good — any EP can pass arena keys |
+| Supports both BFC and CudaMempool modes | Must distinguish externally | Must distinguish externally |
+| Stream-aware BFCArena support | Must plumb stream-awareness flag | Must plumb stream-awareness flag |
+| Effort | Medium | Low-Medium |
 
-**Required fix (independent of which option is chosen for BFCArena integration):**
+### 3.7 Environment vs. Session Config: Conflict Blindness
 
-`RegisterExecutionProviderLibrary` must construct and pass default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}` as bare-key `OrtKeyValuePairs`) to `CreateSharedAllocatorImpl()` instead of `nullptr`.
+ORT has two separate configuration namespaces for EP-specific options:
 
-For **Option A**: Each caller site constructs options and does its own wrapping.
+| | Environment-level | Session-level |
+|---|---|---|
+| **Prefix** | `ep_factory.<registration_name>.` | `ep.<ep_name>.` |
+| **Example** | `ep_factory.cuda.arena.extend_strategy` | `ep.cudapluginexecutionprovider.arena.extend_strategy` |
+| **Set via** | `CreateEnvWithOptions` (`OrtEnvCreationOptions.config_entries`) | `SessionOptionsAppendExecutionProvider_V2` |
+| **Storage** | `Environment::config_entries_` | `SessionOptions::config_options` |
+| **Read by EP** | `GetEnvConfigEntries()` — returns all entries unfiltered | `GetSessionConfigEntry(session_options, key)` |
 
-For **Option B**: `CreateSharedAllocatorImpl` uses the options it already receives to decide on wrapping. `RegisterExecutionProviderLibrary` passes defaults. `CreatePreferredAllocators` extracts arena keys from session_options.
+**The EP is blind to conflicts.** At each point in its lifecycle, the EP only sees one source of config:
 
-For **Option C**: The `OrtEpDevice` arena declaration is available to `CreateSharedAllocatorImpl` — default arena config is carried by the declaration, so the fix is automatic.
+- **Shared allocator creation** (`RegisterExecutionProviderLibrary` → `CreateSharedAllocatorImpl`): happens at environment level, before any session exists. Only environment config (`ep_factory.*`) is available. The EP factory's `CreateAllocatorImpl` receives `allocator_options` derived from env config. **No session options exist yet — no conflict possible.**
 
-### 4.7 Comparison Matrix
+- **Per-session allocator creation** (`CreatePreferredAllocators`): happens at session creation time. ORT core builds `allocator_options` from session options (stripping the EP prefix). The factory's `CreateAllocatorImpl` receives these options. **The EP does not simultaneously see env config — it only sees whatever ORT core passes.**
 
-| Criterion | A (Callers wrap) | B (Adapter wraps) | C (Declarative API) |
-|-----------|:-:|:-:|:-:|
-| Covers per-session allocators | ✅ | ✅ | ✅ |
-| Covers shared (environment) allocators | ✅ (with fix) | ✅ (via `allocator_options` param) | ✅ (built-in) |
-| `use_env_allocators` works correctly | ⚠️ fragile | ✅ (shared allocators arena-wrapped) | ✅ |
-| Arena config plumbing | Ad-hoc per site | `allocator_options` (shared) + EP-stored (per-session) | Declared upfront per device |
-| ORT core change surface | Multiple files | 2 files (`CreatePreferredAllocators` + `CreateSharedAllocatorImpl`) + caller fix | 2 files + new API |
-| Plugin code changes | None | None | Small (1 API call) |
-| Backward compatible | ⚠️ all plugin EPs affected | ✅ gated by arena options — only EPs that pass arena keys get wrapping | ✅ fully opt-in |
-| Future EP extensibility | Poor | Good — any EP can pass arena keys | Good |
-| Supports both BFC and CudaMempool modes | Must distinguish externally | Must distinguish externally | Plugin declares what it wants |
-| Stream-aware BFCArena support | Must plumb stream-awareness flag | Must plumb stream-awareness flag | Config key (`arena.stream_aware`) |
-| Effort | Medium | Low-Medium | Medium |
+- **EP instance creation** (`CreateEpImpl`): receives `session_options` only. The factory *could* also call `GetEnvConfigEntries()`, but the CUDA plugin factory does not do this today.
+
+This means:
+1. An EP cannot detect that `ep_factory.cuda.arena.max_mem=1073741824` (env) conflicts with `ep.cudapluginexecutionprovider.arena.max_mem=2147483648` (session).
+2. The effective config depends on which path creates the allocator — shared allocators use env config, per-session allocators use session config.
+3. The existing API documentation states: *"If an environment-level configuration conflicts with a session-level configuration, then precedence is determined by the execution provider library itself."* In practice, this is aspirational — the EP lacks the mechanism to implement precedence because it sees only one source at each decision point.
+
+**Implication for arena config:** This is acceptable for the arena use case because:
+- Shared allocators are environment-scoped and should use environment config.
+- Per-session allocators are session-scoped and should use session config.
+- The two allocator sets are independent — they don't compete for the same resources at the same time.
+- If `use_env_allocators=1` causes shared allocators to replace per-session ones, the shared allocators already carry their env-configured arena behavior.
+
+### 3.8 Prefix Schema Mismatch
+
+**Problem:** The two config namespaces use different prefix schemas with different `<ep_name>` values:
+
+| Namespace | Prefix pattern | `<ep_name>` value |
+|---|---|---|
+| Environment | `ep_factory.<registration_name>.<key>` | The `registration_name` passed to `RegisterExecutionProviderLibrary` (e.g., `"cuda"`) |
+| Session | `ep.<lowercase_provider_name>.<key>` | Lowercased EP type name (e.g., `"cudapluginexecutionprovider"`) |
+
+For the CUDA plugin EP, identical arena keys use different full key paths:
+
+```
+Environment: ep_factory.cuda.arena.extend_strategy
+Session:     ep.cudapluginexecutionprovider.arena.extend_strategy
+```
+
+This inconsistency is a guaranteed source of user confusion. However, both prefix schemes are already published and in use — they cannot be changed without breaking backward compatibility. Documentation and examples must clearly explain which prefix to use in which context.
+
+---
+
+## 4. Part B — Migrating `CudaMempoolArena` to the Plugin
+
+### 4.1 Current Dependencies
+
+`CudaMempoolArena` in `cuda_mempool_arena.h/.cc` has these dependencies:
+
+| Dependency | Plugin-Safe? | Notes |
+|-----------|-------------|-------|
+| `<cuda_runtime_api.h>` | ✅ | CUDA SDK — always available |
+| `core/common/common.h` | ✅ | `ORT_THROW`, `ORT_ENFORCE` — no framework deps |
+| `core/common/inlined_containers.h` | ✅ | STL-based containers, no framework deps |
+| `core/providers/cuda/cuda_stream_handle.h` | ✅ | But only for `Stream::GetHandle()` → `cudaStream_t` |
+| `core/providers/shared_library/provider_api.h` | ⚠️ | **No-op in plugin build** (`BUILD_CUDA_EP_AS_PLUGIN`) |
+| `core/providers/cuda/shared_inc/cuda_call.h` | ✅ | CUDA error-handling macros |
+| `IArena` base class | ⚠️ | Defined in framework `allocator.h` — available in plugin (not behind `SHARED_PROVIDER`) |
+| `OrtMemoryInfo` | ✅ | Public framework struct |
+| `AllocatorStats` | ✅ | Plain POD struct in public header |
+| `logging::Logger*` | ❌ | **Primary blocker** — `provider_api.h` forward-declares `Logger` as struct; `LoggingManager::DefaultLogger()` not available in plugin |
+| `Stream*` | ✅ | Only uses `stream->GetHandle()` → `void*` → `cudaStream_t` |
+
+### 4.2 The Logger Problem
+
+`CudaMempoolArena` uses `LOGS(*logger_, ...)` in 6 locations:
+- Constructor (INFO): pool creation message
+- `Alloc()` (VERBOSE): per-allocation trace
+- `AllocOnStream()` (VERBOSE): per-allocation trace
+- `Free()` (WARNING): unknown pointer warning
+- `Shrink()` (INFO): pool trim stats
+
+The plugin has its own logger type: `OrtLogger` (from the EP C API). The factory stores `const OrtLogger& default_logger_`.
+
+### 4.3 Proposed Changes
+
+**Approach: Make `CudaMempoolArena` compilable in both in-tree and plugin builds.**
+
+The class itself is almost entirely CUDA SDK code. Only the logging needs adaptation.
+
+#### Option 1: Conditional Logger (Recommended)
+
+Replace `const logging::Logger* logger_` with a thin logging abstraction that works in both builds:
+
+```cpp
+// In cuda_mempool_arena.h:
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // Plugin build: use OrtLogger-based logging
+  #include "cuda_plugin_utils.h"  // provides LOG_INFO, LOG_VERBOSE, LOG_WARNING macros
+  // No logger_ member needed — macros use the factory/EP logger directly
+  // OR: store an OrtLogger* and define thin macros
+#else
+  // In-tree build: use existing logging::Logger
+  const logging::Logger* logger_;
+#endif
+```
+
+**Concrete steps:**
+1. Replace `#include "core/providers/shared_library/provider_api.h"` with a conditional include for the logger type.
+2. Make the `logger_` member type conditional: `const logging::Logger*` in-tree, `const OrtLogger*` in plugin.
+3. Define a `MEMPOOL_LOG(level, msg)` macro that dispatches to either `LOGS()` or OrtLogger-based logging.
+4. Add `cuda_mempool_arena.cc` to the plugin CMake source list (remove from exclusion list in `onnxruntime_providers_cuda_plugin.cmake`).
+
+#### Option 2: Template on Logger Type
+
+Make the constructor accept a callable/functor for logging, avoiding compile-time branching.
+
+#### Option 3: Strip Logging Entirely in Plugin Build
+
+Wrap all `LOGS()` calls in `#ifndef BUILD_CUDA_EP_AS_PLUGIN` guards. Simplest, but loses diagnostic capability.
+
+**Recommendation:** Option 1. The logging is genuinely useful for diagnosing mempool behavior. The plugin already has `OrtLogger` available; we just need a thin macro bridge.
+
+### 4.4 OrtAllocator Wrapper
+
+The plugin factory's `CreateAllocatorImpl` returns `OrtAllocator*`. `CudaMempoolArena` is an `IArena`. A thin wrapper is needed:
+
+```cpp
+class CudaMempoolOrtAllocator : public OrtAllocator {
+  std::unique_ptr<CudaMempoolArena> arena_;
+  const OrtMemoryInfo* memory_info_;
+
+  // OrtAllocator callbacks:
+  static void* AllocImpl(OrtAllocator* this_, size_t size);
+  static void FreeImpl(OrtAllocator* this_, void* p);
+  static void* ReserveImpl(OrtAllocator* this_, size_t size);
+  static void* AllocOnStreamImpl(OrtAllocator* this_, size_t size, OrtSyncStream* stream);
+  static const OrtMemoryInfo* InfoImpl(const OrtAllocator* this_);
+};
+```
+
+The `AllocOnStream` callback must resolve `OrtSyncStream*` → `cudaStream_t`. The `OrtEpApi::SyncStream_GetHandle()` function provides this.
+
+**Important:** The `OrtMemoryInfo::alloc_type` must be `OrtDeviceAllocator`, not `OrtArenaAllocator`. Both `CreatePreferredAllocators` and `CreateSharedAllocatorImpl` reject `OrtArenaAllocator` from plugin factories.
+
+### 4.5 Arena Config Parsing
+
+The plugin factory's `CreateAllocatorImpl` receives `const OrtKeyValuePairs* allocator_options` (after the Part A fix — previously `nullptr`). The relevant keys:
+- `arena.use_cuda_mempool` — `"1"` to enable
+- `arena.cuda_mempool_release_threshold` — bytes; `0` disables threshold
+- `arena.cuda_mempool_bytes_to_keep_on_shrink` — bytes retained after `Shrink()`
+
+These can be parsed via `OrtArenaCfg::FromKeyValuePairs()` or directly from the key-value pairs using the `OrtApi`.
+
+### 4.6 Summary of Changes for CudaMempoolArena Migration
+
+| File | Change |
+|------|--------|
+| `cuda_mempool_arena.h` | Conditional logger type; add `#ifdef BUILD_CUDA_EP_AS_PLUGIN` for logger include |
+| `cuda_mempool_arena.cc` | Replace `LOGS()` with build-conditional macro |
+| `cmake/onnxruntime_providers_cuda_plugin.cmake` | Remove `cuda_mempool_arena.cc` from exclusion list |
+| `plugin/cuda_allocator_plugin.h` | Add `CudaMempoolOrtAllocator` wrapper class |
+| `plugin/cuda_allocator_plugin.cc` | Implement wrapper callbacks |
+| `plugin/cuda_ep_factory.cc` | Parse mempool options; create `CudaMempoolOrtAllocator` in `CreateAllocatorImpl` when configured |
+| `plugin/cuda_ep_factory.cc` | Handle `CudaMempoolOrtAllocator` in `ReleaseAllocatorImpl` |
 
 ---
 
 ## 5. Recommended Plan
 
-### Phase 1: Migrate `CudaMempoolArena` to Plugin Build
+### Phase 1: BFCArena Integration (Option B — ORT Core Changes)
 
-1. Add conditional logger abstraction to `cuda_mempool_arena.h/.cc` (Option 1 from Section 3.3)
+Option B is recommended because it requires no new public API surface, uses existing `allocator_options` plumbing, covers both shared and per-session allocator paths, and is naturally gated by arena config keys (only EPs that pass them get wrapping).
+
+1. Update `Environment::RegisterExecutionProviderLibrary()` to extract `ep_factory.<registration_name>.arena.*` keys from `config_entries_`; if found, strip the prefix and build `OrtKeyValuePairs` with bare `"arena.*"` keys; if not found, construct default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`). Pass the result to `CreateSharedAllocatorImpl()` instead of `nullptr`.
+2. Update `Environment::CreateSharedAllocatorImpl()` to parse `allocator_options` for arena config keys and wrap the returned `IAllocator` in BFCArena via `CreateAllocator(AllocatorCreationInfo{...})` when arena keys are present
+3. Update `PluginExecutionProvider::CreatePreferredAllocators()` to wrap returned allocators in BFCArena using EP-stored arena config (populated during EP creation from session/provider options)
+4. Extract a shared helper for the arena-wrapping logic so both sites stay consistent
+5. Test both shared allocator path and per-session path; verify `use_env_allocators` works correctly
+
+### Phase 2: Migrate `CudaMempoolArena` to Plugin Build
+
+This phase requires ORT core changes from Phase 1 to be in place (arena-already-handled signal from Section 3.5).
+
+1. Add conditional logger abstraction to `cuda_mempool_arena.h/.cc` (Option 1 from Section 4.3)
 2. Create `CudaMempoolOrtAllocator` wrapper in `plugin/cuda_allocator_plugin.h/.cc`
 3. Update `CudaEpFactory::CreateAllocatorImpl` to create mempool allocator when configured
 4. Parse mempool options from provider/session options in `CudaEpFactory`
 5. Remove `cuda_mempool_arena.cc` from plugin CMake exclusion list
 6. Test with `arena.use_cuda_mempool=1` provider option
-
-### Phase 2: BFCArena Integration (Option B Recommended)
-
-Option B is recommended as the starting point because it requires no new public API surface, uses existing `allocator_options` plumbing, covers both shared and per-session allocator paths, and is naturally gated by arena config keys (only EPs that pass them get wrapping). Option C (declarative API) can be added later if a more formal mechanism proves necessary — it is always easier to add a new API than to remove a wrong one.
-
-1. Update `Environment::RegisterExecutionProviderLibrary()` to construct and pass default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`) to `CreateSharedAllocatorImpl()` instead of `nullptr`
-2. Update `Environment::CreateSharedAllocatorImpl()` to parse `allocator_options` for arena config keys and wrap the returned `IAllocator` in BFCArena via `CreateAllocator(AllocatorCreationInfo{...})` when arena keys are present
-3. Update `PluginExecutionProvider::CreatePreferredAllocators()` to wrap returned allocators in BFCArena using EP-stored arena config (populated during EP creation from session/provider options)
-4. Extract a shared helper for the arena-wrapping logic so both sites stay consistent
-5. Test both shared allocator path and per-session path; verify `use_env_allocators` works correctly
 
 ### Phase 3: Parity Validation
 
@@ -395,16 +422,18 @@ Option B is recommended as the starting point because it requires no new public 
 
 ---
 
-## 6. Open Questions
+## 6. Decisions and Open Questions
 
-1. **Stream-aware BFCArena for shared allocators.** The per-session GPU allocator in the in-tree EP uses `StreamAwareBFCArena`. Should `CreateSharedAllocatorImpl` also create stream-aware arenas when wrapping? The in-tree EP only creates arenas in `CreatePreferredAllocators()` (per-session), so there is no precedent for shared stream-aware arenas. A `stream_aware` key in `allocator_options` could control this — decide whether to add it now or default to non-stream-aware for shared allocators.
+### Decided
 
-2. **Arena wrapping for shared allocators at `RegisterExecutionProviderLibrary` time.** Wrapping shared allocators in BFCArena at EP library registration ensures that when `use_env_allocators=1` replaces per-session allocators with shared ones, the shared allocators already have arena behavior — otherwise the session loses arena wrapping entirely. However, BFCArena may pre-allocate significant GPU memory at registration time, before any session exists. This is a trade-off:
-   - **If we wrap:** Shared allocators are arena-backed. `use_env_allocators` works correctly. But memory is committed early (at `RegisterExecutionProviderLibrary` time), potentially wasting resources if no session is ever created, or if the arena config (e.g., `max_mem`) is too aggressive for a shared context.
-   - **If we don't wrap:** Shared allocators remain raw. `use_env_allocators` replaces arena-wrapped per-session allocators with raw shared ones, losing arena performance. Users who set `use_env_allocators=1` get worse allocation behavior than without it.
-   - **Pinned allocator:** The in-tree EP wraps pinned in `BFCArena` (non-stream-aware) using the same arena options as the device allocator — defaults are `OrtArenaCfg{0, -1, -1, -1, -1, -1L}`. The plugin should use the same arena options for pinned allocators to maintain parity.
+1. **Stream-aware BFCArena: match in-tree behavior by memory type.** The in-tree CUDA EP hardcodes the stream-awareness decision per allocator type: GPU device allocator → `StreamAwareBFCArena` (`use_stream_aware_arena = true`), pinned allocator → `BFCArena` (`use_stream_aware_arena = false`). The plugin path will follow the same convention. The arena-wrapping helper (used by both `CreateSharedAllocatorImpl` and `CreatePreferredAllocators`) determines stream-awareness from the `OrtMemoryInfo` of the allocator being wrapped: if the memory is on a GPU device, create `StreamAwareBFCArena`; if it is host-accessible (pinned), create `BFCArena`. This matches the in-tree EP's `AllocatorCreationInfo` parameters without introducing a new config key.
+
+2. **Arena wrapping for shared allocators at `RegisterExecutionProviderLibrary` time.** Shared allocators will be wrapped in BFCArena at EP library registration, matching the behavior of per-session allocators for uniformity. The rationale:
+   - Without arena wrapping, `use_env_allocators=1` replaces arena-backed per-session allocators with raw shared ones, silently degrading performance.
+   - If the default arena config causes excessive upfront memory usage, the application can correct this by providing explicit arena options via `CreateEnvWithOptions` environment config (e.g., `ep_factory.cuda.arena.max_mem`).
+   - **Pinned allocator exception:** The pinned allocator arena is always created with default `AllocatorCreationInfo` settings regardless of env or session options. This means: `use_stream_aware_arena = false`, `use_arena = true`, and `OrtArenaCfg{0, -1, -1, -1, -1, -1L}`. This behavior must be preserved — the pinned allocator arena config is not configurable via `ep_factory.*` or `ep.*` keys. Only the device allocator's arena config is driven by options.
    - **Needs validation:** Confirm that default arena options (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`) do not cause excessive upfront memory allocation in BFCArena. The `max_mem=0` default means "ORT chooses" — verify what BFCArena actually allocates at construction time vs. on first `Alloc()` call.
 
-3. **Helper function for arena wrapping.** Both `CreateSharedAllocatorImpl` and `CreatePreferredAllocators` need the same wrapping logic: parse `OrtArenaCfg` from options, call `CreateAllocator(AllocatorCreationInfo{...})`. Extract a shared helper (e.g., `MaybeWrapInArena(AllocatorPtr, OrtArenaCfg)`) to keep both sites consistent and avoid logic duplication.
+3. **Default arena config values: use in-tree defaults.** The plugin path will use the same defaults as the in-tree EP (`OrtArenaCfg{0, -1, -1, -1, -1, -1L}`) for both GPU device and pinned allocators. This is already captured in Decided 2 (pinned always uses defaults; device uses env/session options or falls back to defaults). The "Needs validation" item in Decided 2 covers confirming that `max_mem=0` does not cause excessive upfront allocation.
 
-4. **Default arena config values.** The in-tree EP uses `OrtArenaCfg{0, -1, -1, -1, -1, -1L}` as defaults for GPU and pinned. Confirm these defaults are appropriate for the plugin path, or whether any should differ (e.g., different `max_mem` for multi-session shared allocators).
+4. **Helper function for arena wrapping: yes, extract a shared helper.** Both `CreateSharedAllocatorImpl` and `CreatePreferredAllocators` need the same wrapping logic: parse `OrtArenaCfg` from options, determine stream-awareness from `OrtMemoryInfo`, check allocator name against `OrtEpDevice` baseline to detect self-contained arenas (Section 3.5), and call `CreateAllocator(AllocatorCreationInfo{...})`. A shared helper (e.g., `MaybeWrapInArena(AllocatorPtr, const OrtKeyValuePairs*, const OrtEpDevice&)`) keeps both sites consistent. This is an implementation detail, not a design question.
