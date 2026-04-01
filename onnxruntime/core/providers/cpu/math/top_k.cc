@@ -542,7 +542,7 @@ static void TopkOpset11ConstructorCommon(const OpKernelInfo& op_kernel_info,
     return ComputeImplOpset1011<TYPE>(p_op_kernel_context, axis_, largest_, sorted_);      \
   }
 
-// Generate specializations for opset 11 (used by versioned kernel 11-23)
+// Generate specializations for opset 11-23 (used by versioned kernel 11-23)
 TOPK_MODERN_OPSET_SPECIALIZATIONS(23, float);
 TOPK_MODERN_OPSET_SPECIALIZATIONS(23, double);
 TOPK_MODERN_OPSET_SPECIALIZATIONS(23, int32_t);
