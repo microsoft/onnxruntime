@@ -55,6 +55,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -4829,53 +4830,8 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   return nullptr;  // Unsupported version
 }
 
-namespace {
-// Parse a non-negative integer from a string_view without leading zeros.
-// Returns -1 on failure (empty, leading zero, non-digit, or overflow).
-consteval int64_t ParseUint(std::string_view str) {
-  if (str.empty()) return -1;
-  // Leading zeros are not allowed (except "0" itself).
-  if (str.size() > 1 && str[0] == '0') return -1;
-  int64_t result = 0;
-  for (char c : str) {
-    if (c < '0' || c > '9') return -1;
-    result = result * 10 + (c - '0');
-    if (result > UINT32_MAX) return -1;
-  }
-  return result;
-}
-
-consteval bool IsOrtVersionValid(std::string_view version) {
-  // Validates ORT_VERSION at compile time.
-  // It must be in the format "1.Y.Z" where:
-  //   - Major version is 1
-  //   - Y and Z are non-negative integers without leading zeros
-  //   - Y (minor version) must equal ORT_API_VERSION
-  size_t first_dot = version.find('.');
-  if (first_dot == std::string_view::npos) return false;
-  size_t second_dot = version.find('.', first_dot + 1);
-  if (second_dot == std::string_view::npos) return false;
-  if (version.find('.', second_dot + 1) != std::string_view::npos) return false;  // Exactly two dots
-  std::string_view major = version.substr(0, first_dot);
-  std::string_view minor = version.substr(first_dot + 1, second_dot - first_dot - 1);
-  std::string_view patch = version.substr(second_dot + 1);
-  if (major != "1") {
-    return false;  // Major version must be 1
-  }
-  int64_t minor_val = ParseUint(minor);
-  int64_t patch_val = ParseUint(patch);
-  if (minor_val < 0 || patch_val < 0) {
-    return false;  // Minor and patch must be valid non-negative integers without leading zeros
-  }
-  if (static_cast<uint32_t>(minor_val) != ORT_API_VERSION) {
-    return false;  // Minor version must match ORT_API_VERSION
-  }
-  return true;
-}
-}  // namespace
-
 ORT_API(const char*, OrtApis::GetVersionString) {
-  static_assert(IsOrtVersionValid(ORT_VERSION),
+  static_assert(onnxruntime::version_check::IsOrtVersionValid(ORT_VERSION),
                 "ORT_VERSION must be in the format '1.Y.Z' where Y and Z are non-negative integers without leading "
                 "zeros, and Y must equal ORT_API_VERSION");
   return ORT_VERSION;
