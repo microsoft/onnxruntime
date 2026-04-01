@@ -26,7 +26,7 @@ struct SparseAttentionCheckInputsData {
 };
 
 SparseAttentionCheckInputsData CreateSparseAttentionCheckInputsData(const std::vector<int32_t>& total_key_lengths_data,
-                                                                   const std::vector<int64_t>& total_key_lengths_dims) {
+                                                                    const std::vector<int64_t>& total_key_lengths_dims) {
   SparseAttentionCheckInputsData data;
   auto allocator = CPUAllocator::DefaultInstance();
 
