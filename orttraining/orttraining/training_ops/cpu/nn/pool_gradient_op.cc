@@ -54,9 +54,13 @@ Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
 
   EigenVectorMap<T>(dX_data, narrow<Eigen::Index>(dX_shape.Size())).setZero();
 
+  const int64_t dX_size = dX_shape.Size();
   for (int64_t i = 0; i < dY->Shape().Size(); ++i) {
-    T* p_dX_data = dX_data + indices_data[i];
-    *p_dX_data += dY_data[i];
+    int64_t index = indices_data[i];
+    ORT_ENFORCE(index >= 0 && index < dX_size,
+                "Invalid index in MaxPoolGrad: index value ", index,
+                " is out of range [0, ", dX_size, ").");
+    dX_data[index] += dY_data[i];
   }
 
   return Status::OK();
