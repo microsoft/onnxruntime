@@ -122,7 +122,9 @@ void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normaliz
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
   // DML currently has known failures in this 4D MVN coverage.
-  // OpenVINO does not support MVN below opset 9. TensorRT does not support MVN opset 8.
+  // See https://github.com/microsoft/onnxruntime/issues/27933 and remove this exclusion once
+  // that issue is fixed. OpenVINO does not support MVN below opset 9. TensorRT does not
+  // support MVN opset 8.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kDmlExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 }
@@ -191,8 +193,10 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.AddAttribute("normalize_variance", normalize_variance ? one : zero);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
-  // DML currently has known failures in this 4D MVN coverage.
   // OpenVINO does not support MVN below opset 9. TensorRT does not support MVN opset 8.
+  // DML currently has known failures in this 4D MVN coverage.
+  // See https://github.com/microsoft/onnxruntime/issues/27933 and remove this exclusion once
+  // that issue is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kDmlExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 }

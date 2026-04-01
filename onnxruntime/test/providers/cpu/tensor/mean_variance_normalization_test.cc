@@ -69,8 +69,9 @@ TEST(MeanVarianceNormalizationTest, DefaultAxes) {
   OpTester test("MeanVarianceNormalization", 9);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
-  // DML currently has known failures in this 4D default-axes MVN coverage. Keep coverage on
-  // CPU/other EPs while the DML-specific issue is investigated.
+  // DML currently has known failures in this 4D default-axes MVN coverage.
+  // See https://github.com/microsoft/onnxruntime/issues/27933 and remove this exclusion once
+  // that issue is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
@@ -94,6 +95,8 @@ static void TestMeanVarianceNormalizationOverAllAxes(const std::vector<int64_t>&
 
   if (shape.size() == 4) {
     // Restrict the DML exclusion to the known failing 4D all-axes coverage.
+    // See https://github.com/microsoft/onnxruntime/issues/27933 and remove this exclusion once
+    // that issue is fixed.
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
   } else {
     test.Run();
@@ -164,8 +167,7 @@ TEST(MeanVarianceNormalizationTest, AxesSubsets5D) {
     test.AddOutput<float>("output", shape, Y.data(), Y.size());
 
     if (DefaultDmlExecutionProvider().get() != nullptr) {
-      // 5D subset-axis coverage stays enabled for DML. Use a small tolerance to account for
-      // expected numeric drift without masking the separate 4D DML-specific failures.
+      // 5D subset-axis coverage stays enabled for DML.
       test.SetOutputTolerance(0.001f);
     }
 
