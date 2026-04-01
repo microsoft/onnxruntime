@@ -112,7 +112,7 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
   target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})
-  target_link_libraries(onnxruntime_graph PRIVATE nlohmann_json::nlohmann_json)
+  target_link_libraries(onnxruntime_graph PRIVATE onnxruntime_training nlohmann_json::nlohmann_json)
 endif()
 
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
