@@ -7,6 +7,10 @@
 
 #include "test_util.h"
 
+#if defined(MLAS_TARGET_AMD64)
+#include "core/mlas/lib/mlasi.h"
+#endif
+
 template <bool Threaded>
 class MlasConv2DTest : public MlasTestBase {
  protected:
@@ -298,6 +302,79 @@ class MlasConv2DTest : public MlasTestBase {
   }
 
   MlasConv2DTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
+
+#if defined(MLAS_TARGET_AMD64)
+  void TestMobileClipAvx512DispatchSelection(size_t GroupCount,
+                                             size_t InputHeight,
+                                             size_t InputWidth) {
+    if (GetMlasPlatform().ConvNchwFloatKernel != MlasConvNchwFloatKernelAvx512F) {
+      return;
+    }
+
+    constexpr size_t BatchCount = 1;
+    constexpr size_t InputChannels = 1;
+    constexpr size_t FilterCount = 2;
+    constexpr size_t KernelHeight = 7;
+    constexpr size_t KernelWidth = 7;
+    constexpr size_t PaddingLeftHeight = 3;
+    constexpr size_t PaddingLeftWidth = 3;
+    constexpr size_t PaddingRightHeight = 3;
+    constexpr size_t PaddingRightWidth = 3;
+    constexpr size_t DilationHeight = 1;
+    constexpr size_t DilationWidth = 1;
+    constexpr size_t StrideHeight = 2;
+    constexpr size_t StrideWidth = 2;
+
+    const int64_t OutputHeight64 =
+        ((int64_t(InputHeight) + int64_t(PaddingLeftHeight) + int64_t(PaddingRightHeight)) -
+         (int64_t(DilationHeight) * (int64_t(KernelHeight) - 1) + 1)) /
+            int64_t(StrideHeight) +
+        1;
+    const int64_t OutputWidth64 =
+        ((int64_t(InputWidth) + int64_t(PaddingLeftWidth) + int64_t(PaddingRightWidth)) -
+         (int64_t(DilationWidth) * (int64_t(KernelWidth) - 1) + 1)) /
+            int64_t(StrideWidth) +
+        1;
+
+    ASSERT_GT(OutputHeight64, 0);
+    ASSERT_GT(OutputWidth64, 0);
+
+    int64_t InputShape[] = {int64_t(InputHeight), int64_t(InputWidth)};
+    int64_t KernelShape[] = {int64_t(KernelHeight), int64_t(KernelWidth)};
+    int64_t DilationShape[] = {int64_t(DilationHeight), int64_t(DilationWidth)};
+    int64_t Padding[] = {int64_t(PaddingLeftHeight), int64_t(PaddingLeftWidth), int64_t(PaddingRightHeight), int64_t(PaddingRightWidth)};
+    int64_t StrideShape[] = {int64_t(StrideHeight), int64_t(StrideWidth)};
+    int64_t OutputShape[] = {OutputHeight64, OutputWidth64};
+
+    MLAS_ACTIVATION Activation;
+    Activation.ActivationKind = MlasIdentityActivation;
+
+    MLAS_CONV_PARAMETERS Parameters;
+    size_t WorkingBufferSize = 0;
+
+    MlasConvPrepare(&Parameters,
+                    2,
+                    BatchCount,
+                    GroupCount,
+                    InputChannels,
+                    InputShape,
+                    KernelShape,
+                    DilationShape,
+                    Padding,
+                    StrideShape,
+                    OutputShape,
+                    FilterCount,
+                    &Activation,
+                    &WorkingBufferSize,
+                    0.0f,
+                    threadpool_);
+
+    ASSERT_EQ(Parameters.Algorithm, MlasConvAlgorithmDepthwiseMultiplierGreaterThan1)
+        << "Expected AVX512 MobileClip dispatch for G" << GroupCount
+        << "/H" << InputHeight
+        << "/W" << InputWidth;
+  }
+#endif
 
   void TestMobileClipBetaActivationRegression(size_t GroupCount,
                                               size_t InputHeight,
@@ -601,6 +678,11 @@ class MlasConv2DTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
+#if defined(MLAS_TARGET_AMD64)
+    TestMobileClipAvx512DispatchSelection(64, 64, 64);
+    TestMobileClipAvx512DispatchSelection(128, 32, 32);
+    TestMobileClipAvx512DispatchSelection(256, 16, 16);
+#endif
     TestMobileClipBetaActivationRegression(64, 64, 64);
     TestMobileClipBetaActivationRegression(128, 32, 32);
     TestMobileClipBetaActivationRegression(256, 16, 16);
