@@ -7,16 +7,16 @@ description: Lint and format ONNX Runtime code. Use this skill when asked to lin
 
 ONNX Runtime uses [lintrunner](https://github.com/suo/lintrunner) to manage linting for both C++ (clang-format) and Python (ruff).
 
-## Setup (one-time)
+## Initial Setup
 
-Install lintrunner and initialize it:
+Install lintrunner and its dependencies, then initialize:
 
 ```bash
 pip install -r requirements-lintrunner.txt
 lintrunner init
 ```
 
-This downloads and configures the required linting tools (clang-format, ruff, etc.).
+This setup only needs to be done once.
 
 ## Common commands
 
@@ -51,7 +51,8 @@ lintrunner -a path/to/file.py path/to/other_file.cc
 
 ## Workflow
 
-1. If lintrunner is not yet set up, install dependencies and run `lintrunner init`.
-2. Determine scope: changed files only (`lintrunner -a`) or all files (`lintrunner -a --all-files`).
-3. Run the appropriate lint command.
-4. If there are unfixable issues, report them to the user with file locations and descriptions.
+1. **Activate a Python virtual environment** before installing dependencies. See the "Python Environment" section in `AGENTS.md` for instructions.
+2. If lintrunner is not yet set up, install and initialize. See the [initial setup section](#initial-setup) for instructions.
+3. Determine scope: changed files only (`lintrunner -a`) or all files (`lintrunner -a --all-files`).
+4. Run the appropriate lint command.
+5. If there are unfixable issues, report them to the user with file locations and descriptions.
