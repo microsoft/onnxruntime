@@ -1307,14 +1307,14 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   Qnn_Version_t blob_version;
   ORT_RETURN_IF_ERROR(GetGraphInfoAndBinVersion(sys_ctx_handle.get(),
-                                                buffer,
+                                                static_cast<void*>(buffer),
                                                 buffer_length,
                                                 blob_version,
                                                 graph_count,
                                                 &graphs_info));
 #else
   ORT_RETURN_IF_ERROR(GetGraphInfoAndBinVersion(sys_ctx_handle.get(),
-                                                buffer,
+                                                static_cast<void*>(buffer),
                                                 buffer_length,
                                                 graph_count,
                                                 &graphs_info));
