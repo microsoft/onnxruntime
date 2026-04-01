@@ -5842,7 +5842,8 @@ struct MobileClipAttentionShapeConfig {
 static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
                                              MobileClipProjectionType projection_type,
                                              const MobileClipAttentionShapeConfig& shape_config = {},
-                                             bool use_non_default_projection_gemm_attributes = false) {
+                                             bool use_non_default_projection_gemm_attributes = false,
+                                             bool omit_projection_input_shape = false) {
   const int64_t input_channels = shape_config.input_channels;
   const int64_t hidden_size = shape_config.hidden_size;
   const int64_t num_heads = shape_config.num_heads;
@@ -5887,7 +5888,9 @@ static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
   auto* v_squeeze_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, head_size});
   auto* attn_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, head_size});
   auto* transpose3_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, num_heads, head_size});
-  auto* reshape2_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, hidden_size});
+  auto* reshape2_out = omit_projection_input_shape
+                           ? builder.MakeIntermediate<float>(std::nullopt)
+                           : builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, hidden_size});
   auto* proj_gemm_input_out = builder.MakeIntermediate<float>(std::vector<int64_t>{64, hidden_size});
   auto* proj_gemm_out = builder.MakeIntermediate<float>(std::vector<int64_t>{64, hidden_size});
   auto* proj_linear_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, hidden_size});
@@ -6112,6 +6115,16 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmNonDe
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
                                         TransformerLevel::Level2, 1, nullptr,
                                         CheckMobileClipAttentionUnfusedProjectionGemmGraph));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionRewriteFailureLeavesGraphUnfusedTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd, {}, false, true);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr,
+                                        CheckMobileClipAttentionUnfusedMatMulGraph));
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {

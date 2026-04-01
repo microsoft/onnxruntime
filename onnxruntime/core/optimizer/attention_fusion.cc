@@ -67,6 +67,10 @@ static bool ValidateProjectionGemmInitializer(const Graph& graph, const Node& ge
          optimizer_utils::ValidateShape(input_c, {hidden_size});
 }
 
+// Most attention fusions require all matched nodes to already be assigned to an execution provider
+// that supports the fused op. MobileClipMHA is matched before partitioning in graph-transform tests,
+// so nodes may still be unassigned here. Accept CPU or unassigned nodes, and preserve the original
+// provider string on the fused nodes once the pattern is rewritten.
 static bool IsCpuOrUnassignedNode(const Node& node) {
   const auto& provider = node.GetExecutionProviderType();
   return provider.empty() || provider == kCpuExecutionProvider;
@@ -487,6 +491,21 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return fail("qkv weight shape is not [hidden, 3*hidden]");
   }
 
+  auto mha_output_type = TryCreateMobileClipMhaOutputType(*qkv_matmul.OutputDefs()[0], hidden_size);
+  auto* mha_output = &graph.GetOrCreateNodeArg(
+      graph.GenerateNodeArgName("mobileclip_mha_output"),
+      mha_output_type ? &*mha_output_type : nullptr);
+
+  if (proj_matmul != nullptr) {
+    if (!TryRewriteProjectionMatMulAddToGemm(graph, *mha_output, *proj_matmul, *proj_add)) {
+      return fail("projection MatMul/Add could not be rewritten to Gemm");
+    }
+  } else if (proj_gemm_input_reshape == nullptr) {
+    if (!TryRewriteProjectionGemm(graph, *mha_output, *proj_gemm)) {
+      return fail("projection Gemm could not be normalized");
+    }
+  }
+
   ONNX_NAMESPACE::TensorProto split_sizes_tensor;
   split_sizes_tensor.set_name(graph.GenerateNodeArgName("mobileclip_mha_split_sizes"));
   split_sizes_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
@@ -509,11 +528,6 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
       kOnnxDomain);
   split_for_mha.AddAttribute("axis", static_cast<int64_t>(2));
 
-  auto mha_output_type = TryCreateMobileClipMhaOutputType(*qkv_matmul.OutputDefs()[0], hidden_size);
-  auto* mha_output = &graph.GetOrCreateNodeArg(
-      graph.GenerateNodeArgName("mobileclip_mha_output"),
-      mha_output_type ? &*mha_output_type : nullptr);
-
   Node& mha_node = graph.AddNode(
       graph.GenerateNodeName("MobileClipMultiHeadAttention"),
       "MultiHeadAttention",
@@ -529,16 +543,8 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
   split_for_mha.SetExecutionProviderType(provider);
   mha_node.SetExecutionProviderType(provider);
 
-  if (proj_matmul != nullptr) {
-    if (!TryRewriteProjectionMatMulAddToGemm(graph, *mha_output, *proj_matmul, *proj_add)) {
-      return fail("projection MatMul/Add could not be rewritten to Gemm");
-    }
-  } else if (proj_gemm_input_reshape != nullptr) {
+  if (proj_gemm_input_reshape != nullptr) {
     graph_utils::ReplaceDownstreamNodeInput(graph, *reshape_2, 0, mha_node, 0);
-  } else {
-    if (!TryRewriteProjectionGemm(graph, *mha_output, *proj_gemm)) {
-      return fail("projection Gemm could not be normalized");
-    }
   }
 
   std::vector<NodeIndex> nodes_to_remove{
