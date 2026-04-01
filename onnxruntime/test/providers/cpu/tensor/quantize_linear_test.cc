@@ -74,6 +74,34 @@ TEST(DequantizeLinearOpTest, Int4_LargeInitializerInput) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Regression test: int8 tensor whose byte size is not a multiple of 4.
+// DML graph fusion rounds tensor sizes to a multiple of 4 via AlignToPow2.
+// If the original buffer is not padded, the subsequent memcpy reads past the
+// allocation boundary (heap-buffer-overflow detectable with ASan).
+// Mirrors the WebNN PoC: dequantizeLinear with int8[135] (135 % 4 != 0).
+TEST(DequantizeLinearOpTest, Int8_NonAlignedSize_Initializer) {
+  OpTester test("DequantizeLinear", 10);
+  constexpr int64_t kNumElements = 135;  // 135 bytes, AlignToPow2(135,4)=136
+
+  std::vector<int8_t> x_data(kNumElements);
+  std::vector<float> y_expected(kNumElements);
+  const float scale = 0.5f;
+  const int8_t zero_point = 0;
+  for (int64_t i = 0; i < kNumElements; ++i) {
+    x_data[i] = static_cast<int8_t>(i % 127);
+    y_expected[i] = (x_data[i] - zero_point) * scale;
+  }
+
+  // Mark all inputs as initializers so they go through DML's ProcessInputData
+  // → UnpackInitializer → AlignToPow2 code path during graph fusion.
+  test.AddInput<int8_t>("x", {kNumElements}, x_data, /*is_initializer=*/true);
+  test.AddInput<float>("x_scale", {1}, {scale}, /*is_initializer=*/true);
+  test.AddInput<int8_t>("x_zero_point", {1}, {zero_point}, /*is_initializer=*/true);
+  test.AddOutput<float>("y", {kNumElements}, y_expected);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // scalar zero & scale with int4
 TEST(DequantizeLinearOpTest, Int4) {
   OpTester test("DequantizeLinear", 21);
@@ -514,6 +542,90 @@ TEST(QuantizeLinearOpTest, Int8) {
   test.AddOutput<int8_t>("y", dims, {0, 51, 76, 127, -51, -127});
   // Disable Tensorrt EP due to the error, out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Repro for new-delete-type-mismatch in DML EP during graph fusion.
+// QuantizeLinear float32→int8 with 5D input triggers a type-size
+// mismatch (192 bytes allocated, 1 byte deallocated) visible under ASan.
+TEST(QuantizeLinearOpTest, Int8_5D_DML_TypeMismatch) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Same as above but with per-axis quantization along axis 0 to exercise
+// the DML graph fusion path with per-channel int8 quantization.
+TEST(QuantizeLinearOpTest, Int8_5D_PerAxis_DML_TypeMismatch) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {6}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<int8_t>("y_zero_point", {6}, {0, 0, 0, 0, 0, 0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Opset 21 QuantizeLinear float32→uint8 WITHOUT zero_point.
+// Without zero_point, the output type defaults to uint8.
+TEST(QuantizeLinearOpTest, Uint8_5D_NoZeroPoint_Opset21_DML) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {0.0f, 51.0f, 102.0f, 153.0f, 204.0f, 255.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddOutput<uint8_t>("y", dims, {0, 51, 102, 153, 204, 255});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Opset 21 QuantizeLinear float32→int8 with zero_point (the customer's exact scenario).
+TEST(QuantizeLinearOpTest, Int8_5D_WithZeroPoint_Opset21_DML) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
 }
 
 // Test uint16 QuantizeLinear (per tensor)
@@ -1275,6 +1387,11 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
+
   eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -1320,6 +1437,12 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  if (!ep) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep) {
+      eps.push_back(std::move(webgpu_ep));
+    }
+  }
   eps.push_back(ep ? std::move(ep) : DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -1365,6 +1488,10 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Float8(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -1553,7 +1680,14 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  if (!ep) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep) {
+      eps.push_back(std::move(webgpu_ep));
+    }
+  }
   eps.push_back(ep ? std::move(ep) : DefaultCpuExecutionProvider());
+
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
   bool use_zero_point = !x_zero_point_.empty();
 
@@ -1597,6 +1731,10 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
@@ -1633,6 +1771,10 @@ void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
