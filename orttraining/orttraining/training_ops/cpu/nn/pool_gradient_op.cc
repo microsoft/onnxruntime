@@ -57,9 +57,11 @@ Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
   const int64_t dX_size = dX_shape.Size();
   for (int64_t i = 0; i < dY->Shape().Size(); ++i) {
     int64_t index = indices_data[i];
-    ORT_ENFORCE(index >= 0 && index < dX_size,
-                "Invalid index in MaxPoolGrad: index value ", index,
-                " is out of range [0, ", dX_size, ").");
+    if (index < 0 || index >= dX_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid index in MaxPoolGrad: index value ", index,
+                             " is out of range [0, ", dX_size, ").");
+    }
     dX_data[index] += dY_data[i];
   }
 
