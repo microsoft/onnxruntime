@@ -31,7 +31,12 @@ class ReshapeHelper {
                       " the dimension size of the input tensor.");
           requested_shape[i] = input_shape[i];
         }
-        size *= requested_shape[i];
+        try {
+          size *= requested_shape[i];
+        } catch (const OnnxRuntimeException&) {
+          ORT_THROW("The requested shape has too many elements. Input shape:", input_shape,
+                    ", requested shape:", TensorShape(requested_shape));
+        }
       }
     }
 

@@ -199,7 +199,15 @@ TEST(TensorOpTest, ReshapeHelper_RejectsRequestedShapeOverflow) {
   TensorShape input_shape({1});
   TensorShapeVector requested_shape{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()};
 
-  EXPECT_THROW({ ReshapeHelper helper(input_shape, requested_shape); }, OnnxRuntimeException);
+  try {
+    ReshapeHelper helper(input_shape, requested_shape);
+    FAIL() << "Expected ReshapeHelper to throw";
+  } catch (const OnnxRuntimeException& exception) {
+    const std::string message = exception.what();
+    EXPECT_NE(message.find("The requested shape has too many elements."), std::string::npos);
+    EXPECT_NE(message.find("Input shape:{1}"), std::string::npos);
+    EXPECT_NE(message.find("requested shape:{9223372036854775807,9223372036854775807}"), std::string::npos);
+  }
 }
 
 TEST(TensorOpTest, ReshapeSixDimNewShape) {
