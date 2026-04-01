@@ -3,7 +3,8 @@
 
 #pragma once
 
-#include "core/common/safeint.h"
+#include <limits>
+
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
@@ -18,7 +19,7 @@ class ReshapeHelper {
 
     auto nDims = requested_shape.size();
     ptrdiff_t unknown_dim = -1;
-    SafeInt<int64_t> size = 1;
+    int64_t size = 1;
     for (size_t i = 0; i < nDims; ++i) {
       ORT_ENFORCE(requested_shape[i] >= -1, "A dimension cannot be less than -1, got ", requested_shape[i]);
       if (requested_shape[i] == -1) {
@@ -31,16 +32,16 @@ class ReshapeHelper {
                       " the dimension size of the input tensor.");
           requested_shape[i] = input_shape[i];
         }
-        try {
-          size *= requested_shape[i];
-        } catch (const OnnxRuntimeException&) {
+        const int64_t dim = requested_shape[i];
+        if (dim != 0 && size > (std::numeric_limits<int64_t>::max() / dim)) {
           ORT_THROW("The requested shape has too many elements. Input shape:", input_shape,
                     ", requested shape:", TensorShape(requested_shape));
         }
+        size *= dim;
       }
     }
 
-    const auto requested_shape_size = static_cast<int64_t>(size);
+    const auto requested_shape_size = size;
 
     if (unknown_dim != -1) {
       // calculate unknown dimension
