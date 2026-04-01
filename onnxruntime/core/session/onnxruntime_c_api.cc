@@ -4830,36 +4830,54 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
 }
 
 namespace {
-consteval bool IsOrtVersionValid() {
-  // This is a consteval function to validate the format of ORT_VERSION at compile time.
-  // It should be in the format "X.Y.Z" where X == 1, Y and Z are non-negative integers.
-  std::string_view version(ORT_VERSION);
+// Parse a non-negative integer from a string_view without leading zeros.
+// Returns -1 on failure (empty, leading zero, non-digit, or overflow).
+consteval int64_t ParseUint(std::string_view str) {
+  if (str.empty()) return -1;
+  // Leading zeros are not allowed (except "0" itself).
+  if (str.size() > 1 && str[0] == '0') return -1;
+  int64_t result = 0;
+  for (char c : str) {
+    if (c < '0' || c > '9') return -1;
+    result = result * 10 + (c - '0');
+    if (result > UINT32_MAX) return -1;
+  }
+  return result;
+}
+
+consteval bool IsOrtVersionValid(std::string_view version) {
+  // Validates ORT_VERSION at compile time.
+  // It must be in the format "1.Y.Z" where:
+  //   - Major version is 1
+  //   - Y and Z are non-negative integers without leading zeros
+  //   - Y (minor version) must equal ORT_API_VERSION
   size_t first_dot = version.find('.');
-  if (first_dot == std::string_view::npos || first_dot == 0 || first_dot == version.size() - 1) {
-    return false;  // Must have two dots and cannot start or end with a dot
-  }
+  if (first_dot == std::string_view::npos) return false;
   size_t second_dot = version.find('.', first_dot + 1);
-  if (second_dot == std::string_view::npos || second_dot == first_dot + 1 || second_dot == version.size() - 1) {
-    return false;  // Must have two dots and cannot be adjacent or end with a dot
-  }
+  if (second_dot == std::string_view::npos) return false;
+  if (version.find('.', second_dot + 1) != std::string_view::npos) return false;  // Exactly two dots
   std::string_view major = version.substr(0, first_dot);
   std::string_view minor = version.substr(first_dot + 1, second_dot - first_dot - 1);
   std::string_view patch = version.substr(second_dot + 1);
   if (major != "1") {
     return false;  // Major version must be 1
   }
-  auto is_non_negative_integer = [](std::string_view str) {
-    return !str.empty() && std::all_of(str.begin(), str.end(), [](char c) { return c >= '0' && c <= '9'; });
-  };
-  if (!is_non_negative_integer(minor) || !is_non_negative_integer(patch)) {
-    return false;  // Minor and patch versions must be non-negative integers
+  int64_t minor_val = ParseUint(minor);
+  int64_t patch_val = ParseUint(patch);
+  if (minor_val < 0 || patch_val < 0) {
+    return false;  // Minor and patch must be valid non-negative integers without leading zeros
+  }
+  if (static_cast<uint32_t>(minor_val) != ORT_API_VERSION) {
+    return false;  // Minor version must match ORT_API_VERSION
   }
   return true;
 }
 }  // namespace
 
 ORT_API(const char*, OrtApis::GetVersionString) {
-  static_assert(IsOrtVersionValid(), "ORT_VERSION must be in the format '1.Y.Z' where Y and Z are non-negative integers");
+  static_assert(IsOrtVersionValid(ORT_VERSION),
+                "ORT_VERSION must be in the format '1.Y.Z' where Y and Z are non-negative integers without leading "
+                "zeros, and Y must equal ORT_API_VERSION");
   return ORT_VERSION;
 }
 
