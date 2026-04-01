@@ -283,7 +283,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
   }
 
   for (const auto& v : variants) {
-    LOGS(logger_, INFO) << "manifest variant: file='" << v.model_path.string()
+    LOGS(logger_, INFO) << "model variant: file='" << v.model_path.string()
                         << "' ep='" << v.ep << "' device='" << v.device
                         << "' arch='" << v.architecture << "'";
   }

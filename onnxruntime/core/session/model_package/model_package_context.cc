@@ -118,6 +118,8 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
   // 1) Check EP constraint
   if (variant.ep.empty() ||
       (!variant.ep.empty() && variant.ep != ep_info.ep_name)) {
+    LOGS_DEFAULT(INFO) << "Variant EP constraint '" << variant.ep << "' does not match EP name '"
+                       << ep_info.ep_name << "'. Skip this variant.";
     return false;
   }
 
@@ -143,6 +145,9 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
   }
 
   if (!device_ok) {
+    LOGS_DEFAULT(INFO) << "Variant device constraint '" << variant.device
+                       << "' does not match any device supported by EP '"
+                       << ep_info.ep_name << "'. Skip this variant.";
     return false;
   }
 
@@ -150,6 +155,9 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
   // Gets the target device if matched.
   for (const auto& [key, value] : ep_info.ep_options) {
     if (!MatchesDeviceTypeProviderOption(key, value, variant.device, ep_info.hardware_devices, constraint_devices)) {
+      LOGS_DEFAULT(INFO) << "Provider option '" << key << "' with value '" << value
+                         << "' does not match device constraint '" << variant.device
+                         << "'. Skip this variant.";
       return false;
     }
   }
@@ -178,6 +186,9 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
   }
 
   if (variant.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_UNSUPPORTED) {
+    LOGS_DEFAULT(INFO) << "Variant compatibility info indicates unsupported model for EP '" << ep_info.ep_name
+                       << "'. Compatibility info: '" << variant.compatibility_info
+                       << "'. Skip this variant.";
     return false;
   }
 
