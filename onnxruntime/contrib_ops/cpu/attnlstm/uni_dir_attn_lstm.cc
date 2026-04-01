@@ -9,6 +9,8 @@
 
 #include "uni_dir_attn_lstm.h"
 
+#include "core/common/safeint.h"
+
 #include <thread>
 
 #ifdef _MSC_VER

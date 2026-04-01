@@ -200,7 +200,7 @@ TEST(TensorOpTest, ReshapeHelper_RejectsRequestedShapeOverflow) {
   TensorShapeVector requested_shape{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()};
 
   try {
-    ReshapeHelper helper(input_shape, requested_shape);
+    ReshapeHelper(input_shape, requested_shape);
     FAIL() << "Expected ReshapeHelper to throw";
   } catch (const OnnxRuntimeException& exception) {
     const std::string message = exception.what();
