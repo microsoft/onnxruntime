@@ -53,6 +53,8 @@ inline bool TryGetAPIVersionFromVersionString(const char* version_str, uint32_t&
   return true;
 }
 
+inline uint32_t g_current_ort_api_version{};
+
 }  // namespace detail
 
 /// <summary>
@@ -97,6 +99,9 @@ inline void ApiInit(const OrtApiBase* ort_api_base) {
       throw std::runtime_error("Failed to initialize EP API: the current ORT version is \"" + std::string(version_str) +
                                "\" but it does not support the parsed API version " + std::to_string(current_ort_version) + ".");
     }
+
+    detail::g_current_ort_api_version = current_ort_version;
+
     const OrtEpApi* ep_api = ort_api->GetEpApi();
     const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
 
@@ -106,6 +111,15 @@ inline void ApiInit(const OrtApiBase* ort_api_base) {
     // Initialize the global API instance
     detail::g_api_ptrs.emplace(*ort_api, *ep_api, *model_editor_api);
   });
+}
+
+/// <summary>
+/// Get the current ORT API version that the EP API has been initialized with.
+///
+/// This function should be called after ApiInit() to get the actual API version.
+/// </summary>
+inline uint32_t CurrentOrtApiVersion() {
+  return detail::g_current_ort_api_version;
 }
 
 }  // namespace ep
