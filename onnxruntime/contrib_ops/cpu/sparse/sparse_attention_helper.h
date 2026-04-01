@@ -205,13 +205,14 @@ Status CheckInputs(void* params,
   }
 
   const auto* key_len_data = total_key_lengths->Data<int32_t>();
+  const int min_key_length = (total_sequence_length == sequence_length) ? 0 : sequence_length;
   for (int i = 0; i < batch_size; ++i) {
     const int key_length = key_len_data[i];
-    if (key_length < sequence_length || key_length > total_sequence_length) {
+    if (key_length < min_key_length || key_length > total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "key_total_sequence_lengths value ", key_length,
                              " at batch index ", i,
-                             " is out of range [", sequence_length, ", ", total_sequence_length, "].");
+                             " is out of range [", min_key_length, ", ", total_sequence_length, "].");
     }
   }
 
