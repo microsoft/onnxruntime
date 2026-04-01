@@ -5843,7 +5843,7 @@ static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
                                              MobileClipProjectionType projection_type,
                                              const MobileClipAttentionShapeConfig& shape_config = {},
                                              bool use_non_default_projection_gemm_attributes = false,
-                                             bool omit_projection_input_shape = false) {
+                                             bool use_runtime_projection_shape_input = false) {
   const int64_t input_channels = shape_config.input_channels;
   const int64_t hidden_size = shape_config.hidden_size;
   const int64_t num_heads = shape_config.num_heads;
@@ -5862,7 +5862,9 @@ static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
   auto* squeeze_axis_0 = builder.Make1DInitializer<int64_t>({0});
   auto* squeeze_axis_2 = builder.Make1DInitializer<int64_t>({2});
   auto* scale = builder.MakeScalarInitializer<float>(1.0f / std::sqrt(static_cast<float>(head_size)));
-  auto* reshape2_shape = builder.Make1DInitializer<int64_t>({1, 64, hidden_size});
+  auto* reshape2_shape = use_runtime_projection_shape_input
+                             ? builder.MakeInput<int64_t>({3}, {1, 64, hidden_size})
+                             : builder.Make1DInitializer<int64_t>({1, 64, hidden_size});
   auto* proj_gemm_input_shape = builder.Make1DInitializer<int64_t>({64, hidden_size});
   auto* proj_weight = builder.MakeInitializer<float>({hidden_size, hidden_size}, -0.05f, 0.05f);
   auto* proj_bias = builder.MakeInitializer<float>({hidden_size}, -0.02f, 0.02f);
@@ -5888,7 +5890,7 @@ static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
   auto* v_squeeze_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, head_size});
   auto* attn_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, head_size});
   auto* transpose3_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, num_heads, head_size});
-  auto* reshape2_out = omit_projection_input_shape
+  auto* reshape2_out = use_runtime_projection_shape_input
                            ? builder.MakeIntermediate<float>(std::nullopt)
                            : builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, hidden_size});
   auto* proj_gemm_input_out = builder.MakeIntermediate<float>(std::vector<int64_t>{64, hidden_size});
