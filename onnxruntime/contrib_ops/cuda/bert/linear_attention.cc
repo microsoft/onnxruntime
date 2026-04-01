@@ -37,6 +37,9 @@ LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info)
   kv_num_heads_ = static_cast<int>(kv_num_heads);
 
   update_rule_ = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
+  ORT_ENFORCE(update_rule_ == "linear" || update_rule_ == "gated" ||
+                  update_rule_ == "delta" || update_rule_ == "gated_delta",
+              "update_rule must be one of: linear, gated, delta, gated_delta");
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   int64_t chunk_size = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
@@ -68,7 +71,20 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   int d_k = query_hidden / q_num_heads_;
   int d_v = static_cast<int>(value_shape[2]) / kv_num_heads_;
-  int n_k_heads = static_cast<int>(key_shape[2]) / d_k;  // key may have different head count than value
+  ORT_ENFORCE(static_cast<int>(key_shape[2]) % d_k == 0,
+              "key last dim (", key_shape[2], ") must be divisible by d_k (", d_k, ")");
+  int n_k_heads = static_cast<int>(key_shape[2]) / d_k;
+
+  // GQA head mapping validations
+  if (q_num_heads_ >= kv_num_heads_) {
+    ORT_ENFORCE(q_num_heads_ % kv_num_heads_ == 0,
+                "q_num_heads must be divisible by kv_num_heads");
+  } else {
+    ORT_ENFORCE(kv_num_heads_ % q_num_heads_ == 0,
+                "kv_num_heads must be divisible by q_num_heads (inverse GQA)");
+  }
+  ORT_ENFORCE(kv_num_heads_ % n_k_heads == 0,
+              "kv_num_heads must be divisible by n_k_heads");
 
   float s = scale_;
   if (s == 0.0f) {
@@ -78,6 +94,11 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool needs_decay = (update_rule_ == "gated" || update_rule_ == "gated_delta");
   bool needs_beta = (update_rule_ == "delta" || update_rule_ == "gated_delta");
   bool needs_retrieval = (update_rule_ == "delta" || update_rule_ == "gated_delta");
+
+  ORT_ENFORCE(!needs_decay || decay_tensor != nullptr,
+              "decay input is required for update_rule=", update_rule_);
+  ORT_ENFORCE(!needs_beta || beta_tensor != nullptr,
+              "beta input is required for update_rule=", update_rule_);
 
   bool decay_per_key_dim = false;
   if (decay_tensor != nullptr) {
@@ -106,6 +127,14 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
         static_cast<size_t>(batch_size) * kv_num_heads_ * d_k * d_v * sizeof(T),
         Stream(context)));
   } else {
+    // Validate past_state shape matches expected (B, H_kv, d_k, d_v)
+    const auto& past_shape = past_state_tensor->Shape();
+    ORT_ENFORCE(past_shape.NumDimensions() == 4,
+                "past_state must be rank 4 (B, H_kv, d_k, d_v), got rank ", past_shape.NumDimensions());
+    ORT_ENFORCE(past_shape[0] == batch_size && past_shape[1] == kv_num_heads_ &&
+                    past_shape[2] == d_k && past_shape[3] == d_v,
+                "past_state shape mismatch: expected (", batch_size, ", ", kv_num_heads_, ", ", d_k, ", ", d_v,
+                "), got (", past_shape[0], ", ", past_shape[1], ", ", past_shape[2], ", ", past_shape[3], ")");
     // Copy past_state -> present_state (will be updated in-place by kernel)
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
         present_state_tensor->MutableData<T>(),

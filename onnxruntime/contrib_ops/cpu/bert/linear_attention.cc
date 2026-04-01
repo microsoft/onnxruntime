@@ -376,7 +376,13 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
 
   bool decay_per_key_dim = false;
   if (decay_tensor != nullptr) {
-    int64_t decay_last = decay_tensor->Shape()[2];
+    const auto& decay_shape = decay_tensor->Shape();
+    ORT_RETURN_IF_NOT(decay_shape.NumDimensions() == 3,
+                      "decay must be rank 3 (B, T, ...), got rank ", decay_shape.NumDimensions());
+    ORT_RETURN_IF_NOT(decay_shape[0] == batch_size && decay_shape[1] == seq_len,
+                      "decay dims 0/1 must match (B=", batch_size, ", T=", seq_len,
+                      "), got (", decay_shape[0], ", ", decay_shape[1], ")");
+    int64_t decay_last = decay_shape[2];
     if (decay_last == kv_num_heads_ * d_k) {
       decay_per_key_dim = true;
     } else {
@@ -387,7 +393,13 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
 
   bool beta_per_head = false;
   if (beta_tensor != nullptr) {
-    int64_t beta_last = beta_tensor->Shape()[2];
+    const auto& beta_shape = beta_tensor->Shape();
+    ORT_RETURN_IF_NOT(beta_shape.NumDimensions() == 3,
+                      "beta must be rank 3 (B, T, ...), got rank ", beta_shape.NumDimensions());
+    ORT_RETURN_IF_NOT(beta_shape[0] == batch_size && beta_shape[1] == seq_len,
+                      "beta dims 0/1 must match (B=", batch_size, ", T=", seq_len,
+                      "), got (", beta_shape[0], ", ", beta_shape[1], ")");
+    int64_t beta_last = beta_shape[2];
     if (beta_last == kv_num_heads_) {
       beta_per_head = true;
     } else {

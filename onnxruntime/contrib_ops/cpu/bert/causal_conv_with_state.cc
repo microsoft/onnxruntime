@@ -33,7 +33,7 @@ REGISTER_KERNEL_TYPED(float)
 template <typename T>
 CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : OpKernel(info) {
   int64_t ndim = info.GetAttrOrDefault<int64_t>("ndim", 1);
-  ORT_ENFORCE(ndim >= 1 && ndim <= 3, "ndim must be 1, 2, or 3");
+  ORT_ENFORCE(ndim == 1, "CPU CausalConvWithState only supports ndim=1");
   ndim_ = static_cast<int>(ndim);
 
   activation_ = info.GetAttrOrDefault<std::string>("activation", "none");

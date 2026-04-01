@@ -50,11 +50,40 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const auto& input_shape = input_tensor->Shape();
   const auto& weight_shape = weight_tensor->Shape();
 
+  // Validate input rank and weight rank
+  ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 3,
+                    "input must be rank 3 (batch, channels, length), got rank ", input_shape.NumDimensions());
+  ORT_RETURN_IF_NOT(weight_shape.NumDimensions() == 3,
+                    "weight must be rank 3 (channels, 1, kernel_size), got rank ", weight_shape.NumDimensions());
+
   const int batch_size = static_cast<int>(input_shape[0]);
   const int channels = static_cast<int>(input_shape[1]);
   const int L = static_cast<int>(input_shape[2]);
   const int K = static_cast<int>(weight_shape[2]);
   const int pad = K - 1;
+
+  // Validate weight shape compatibility
+  ORT_RETURN_IF_NOT(weight_shape[0] == channels,
+                    "weight[0] (", weight_shape[0], ") must match input channels (", channels, ")");
+  ORT_RETURN_IF_NOT(weight_shape[1] == 1,
+                    "weight[1] must be 1 for depthwise convolution, got ", weight_shape[1]);
+
+  // Validate optional bias shape
+  if (bias_tensor != nullptr) {
+    const auto& bias_shape = bias_tensor->Shape();
+    ORT_RETURN_IF_NOT(bias_shape.NumDimensions() == 1 && bias_shape[0] == channels,
+                      "bias must have shape (", channels, "), got ", bias_shape.ToString());
+  }
+
+  // Validate optional past_state shape
+  if (past_state_tensor != nullptr) {
+    const auto& past_shape = past_state_tensor->Shape();
+    ORT_RETURN_IF_NOT(past_shape.NumDimensions() == 3,
+                      "past_state must be rank 3 (batch, channels, kernel_size-1), got rank ", past_shape.NumDimensions());
+    ORT_RETURN_IF_NOT(past_shape[0] == batch_size && past_shape[1] == channels && past_shape[2] == pad,
+                      "past_state shape mismatch: expected (", batch_size, ", ", channels, ", ", pad,
+                      "), got (", past_shape[0], ", ", past_shape[1], ", ", past_shape[2], ")");
+  }
 
   // Allocate outputs
   Tensor* output_tensor = context->Output(0, input_shape);
