@@ -784,3 +784,5 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
 
   std::filesystem::remove_all(component_root, ec);
 }
+}  // namespace test
+}  // namespace onnxruntime
