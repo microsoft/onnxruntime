@@ -42,6 +42,26 @@ inline OrtStatus* StatusFromCudaError(cudaError_t cuda_err) {
           .c_str());
 }
 
+inline OrtStatus* StatusFromCublasError(cublasStatus_t cublas_err) {
+  if (cublas_err == CUBLAS_STATUS_SUCCESS) {
+    return nullptr;
+  }
+
+  return Ort::GetApi().CreateStatus(
+      ORT_EP_FAIL,
+      (std::string("cuBLAS error: ") + cublasGetStatusString(cublas_err)).c_str());
+}
+
+inline OrtStatus* StatusFromCudnnError(cudnnStatus_t cudnn_err) {
+  if (cudnn_err == CUDNN_STATUS_SUCCESS) {
+    return nullptr;
+  }
+
+  return Ort::GetApi().CreateStatus(
+      ORT_EP_FAIL,
+      (std::string("cuDNN error: ") + cudnnGetErrorString(cudnn_err)).c_str());
+}
+
 inline bool TryGetCurrentCudaDevice(int& device_id) noexcept {
   return cudaGetDevice(&device_id) == cudaSuccess;
 }
@@ -67,16 +87,16 @@ inline void RestoreCudaDeviceIfNeeded(bool restore_prev_device, int prev_device)
 #endif
 
 #ifndef PL_CUBLAS_RETURN_IF_ERROR
-#define PL_CUBLAS_RETURN_IF_ERROR(cublas_call_expr)       \
-  do {                                                    \
-    cublasStatus_t _cublas_err = (cublas_call_expr);      \
-    if (_cublas_err != CUBLAS_STATUS_SUCCESS) {           \
-      return Ort::GetApi().CreateStatus(                  \
-          ORT_EP_FAIL,                                    \
-          (std::string("cuBLAS error: ") +                \
-           std::to_string(static_cast<int>(_cublas_err))) \
-              .c_str());                                  \
-    }                                                     \
+#define PL_CUBLAS_RETURN_IF_ERROR(cublas_call_expr)  \
+  do {                                               \
+    cublasStatus_t _cublas_err = (cublas_call_expr); \
+    if (_cublas_err != CUBLAS_STATUS_SUCCESS) {      \
+      return Ort::GetApi().CreateStatus(             \
+          ORT_EP_FAIL,                               \
+          (std::string("cuBLAS error: ") +           \
+           cublasGetStatusString(_cublas_err))       \
+              .c_str());                             \
+    }                                                \
   } while (0)
 #endif
 

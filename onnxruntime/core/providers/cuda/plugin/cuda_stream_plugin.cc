@@ -111,50 +111,19 @@ OrtStatus* CudaSyncStream::InitHandles() {
     status = StatusFromCudaError(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
   }
   if (status == nullptr) {
-    const cublasStatus_t cublas_create_status = cublasCreate(&cublas_handle_);
-    if (cublas_create_status != CUBLAS_STATUS_SUCCESS) {
-      status = Ort::GetApi().CreateStatus(
-          ORT_EP_FAIL,
-          (std::string("cuBLAS error: ") +
-           std::to_string(static_cast<int>(cublas_create_status)))
-              .c_str());
-    }
+    status = StatusFromCublasError(cublasCreate(&cublas_handle_));
   }
   if (status == nullptr) {
-    const cublasStatus_t cublas_set_stream_status = cublasSetStream(cublas_handle_, cuda_stream_);
-    if (cublas_set_stream_status != CUBLAS_STATUS_SUCCESS) {
-      status = Ort::GetApi().CreateStatus(
-          ORT_EP_FAIL,
-          (std::string("cuBLAS error: ") +
-           std::to_string(static_cast<int>(cublas_set_stream_status)))
-              .c_str());
-    }
+    status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
   }
   if (status == nullptr) {
-    const cudnnStatus_t cudnn_create_status = cudnnCreate(&cudnn_handle_);
-    if (cudnn_create_status != CUDNN_STATUS_SUCCESS) {
-      status = Ort::GetApi().CreateStatus(
-          ORT_EP_FAIL,
-          (std::string("cuDNN error: ") + cudnnGetErrorString(cudnn_create_status)).c_str());
-    }
+    status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
   }
   if (status == nullptr) {
-    const cudnnStatus_t cudnn_set_stream_status = cudnnSetStream(cudnn_handle_, cuda_stream_);
-    if (cudnn_set_stream_status != CUDNN_STATUS_SUCCESS) {
-      status = Ort::GetApi().CreateStatus(
-          ORT_EP_FAIL,
-          (std::string("cuDNN error: ") + cudnnGetErrorString(cudnn_set_stream_status)).c_str());
-    }
+    status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
   }
   if (status == nullptr) {
-    const cublasStatus_t cublas_lt_create_status = cublasLtCreate(&cublas_lt_handle_);
-    if (cublas_lt_create_status != CUBLAS_STATUS_SUCCESS) {
-      status = Ort::GetApi().CreateStatus(
-          ORT_EP_FAIL,
-          (std::string("cuBLAS error: ") +
-           std::to_string(static_cast<int>(cublas_lt_create_status)))
-              .c_str());
-    }
+    status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
   }
 
   if (restore_prev_device) {
