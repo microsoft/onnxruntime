@@ -1688,8 +1688,6 @@ MlasFp32FromBits(
 #endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
-
-
 void
 MLASCALL
 MlasConvDepthwiseFloat_CHW(
@@ -1702,6 +1700,28 @@ MlasConvDepthwiseFloat_CHW(
 
 #endif
 
+void
+MlasConvDepthwiseWithMultiplierFloat_CHW(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    const float* Zeros
+    );
+
+#if defined(MLAS_TARGET_AMD64)
+void
+MlasConvDepthwiseMultiplier2CHWKernel7x7S2Avx512F(
+    const float* Input,
+    size_t InputHeight,
+    size_t InputWidth,
+    const float* Filter,
+    float* Output,
+    size_t OutputHeight,
+    size_t OutputWidth,
+    float Beta
+    );
+#endif
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
