@@ -34,8 +34,6 @@ void WordConvEmbedding::CharEmbeddingLookup(
           memcpy(cur_dst_ptr,
                  char_embedding_weight_p + static_cast<size_t>(char_index) * char_embedding_size,
                  sizeof(float) * char_embedding_size);
-        } else {
-          std::memset(cur_dst_ptr, 0, sizeof(float) * char_embedding_size);
         }
         cur_dst_ptr += char_embedding_size;
         cur_seq_ptr++;
@@ -141,7 +139,8 @@ void WordConvEmbedding::CalculateLengthOfEachWordInSequence(
   }
 }
 
-Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, const TensorShape& w_char_embedding_shape) const {
+Status WordConvEmbedding::ValidateInputShape(const TensorShape& sequence_shape, const TensorShape& w_conv_shape,
+                                             const TensorShape& w_char_embedding_shape) const {
   if (embedding_size_ != -1 && w_conv_shape[0] != embedding_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv filter size does not match embedding_size attribute.",
                            " embedding_size attribute: ", embedding_size_,
@@ -166,6 +165,12 @@ Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, co
                            " Conv kernal size 2 : ", w_conv_shape[3]);
   }
 
+  if (w_conv_shape[2] > sequence_shape[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv kernel width must not exceed word length.",
+                           " Conv kernel width: ", w_conv_shape[2],
+                           " Word length: ", sequence_shape[1]);
+  }
+
   return Status::OK();
 }
 
@@ -180,7 +185,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   const TensorShape& w_conv_shape = w_conv.Shape();
   const TensorShape& w_char_embedding_shape = w_char_embedding.Shape();
 
-  ORT_RETURN_IF_ERROR(ValidateInputShape(w_conv_shape, w_char_embedding_shape));
+  ORT_RETURN_IF_ERROR(ValidateInputShape(sequence_shape, w_conv_shape, w_char_embedding_shape));
 
   int64_t seq_len = sequence_shape[0];
   int64_t word_len = sequence_shape[1];

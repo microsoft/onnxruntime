@@ -143,5 +143,17 @@ TEST(ContribOpTest, WordConvEmbedding_out_of_range_char_index_treated_as_padding
   test.Run();
 }
 
+TEST(ContribOpTest, WordConvEmbedding_rejects_filter_width_larger_than_word_length) {
+  OpTester test("WordConvEmbedding", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<int>("Sequence", {1, 2}, {1, 2});
+  test.AddInput<float>("W", {1, 1, 3, 1}, {1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("B", {1}, {0.0f});
+  test.AddInput<float>("C", {3, 1}, {0.0f, 1.0f, 2.0f});
+  test.AddOutput<float>("Y", {1, 1}, {0.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Conv kernel width must not exceed word length");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

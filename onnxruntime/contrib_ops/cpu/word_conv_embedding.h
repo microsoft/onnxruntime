@@ -52,6 +52,7 @@ class WordConvEmbedding final : public OpKernel {
       size_t word_len) const;
 
   Status ValidateInputShape(
+      const TensorShape& sequence_shape,
       const TensorShape& w_conv_shape,
       const TensorShape& w_char_embedding_shape) const;
 
