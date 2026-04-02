@@ -243,8 +243,8 @@ The pinned allocator is also wrapped in the same `ArenaAllocator` but does not n
 Environment-level config can be passed via `OrtEnvCreationOptions::config_entries`:
 
 ```cpp
-api->AddKeyValuePair(kvps, "ep_factory.cuda.arena.extend_strategy", "1");
-api->AddKeyValuePair(kvps, "ep_factory.cuda.arena.max_mem", "4294967296");
+api->AddKeyValuePair(kvps, "ep_factory.cudapluginexecutionprovider.arena.extend_strategy", "1");
+api->AddKeyValuePair(kvps, "ep_factory.cudapluginexecutionprovider.arena.max_mem", "4294967296");
 
 OrtEnvCreationOptions options{};
 options.config_entries = kvps;
@@ -253,7 +253,7 @@ api->CreateEnvWithOptions(&options, &env);
 
 **Current gap:** `RegisterExecutionProviderLibrary` does not extract env config entries and pass them as `allocator_options` to `CreateSharedAllocatorImpl`. To support env-level arena config, this needs to be plumbed:
 
-1. `RegisterExecutionProviderLibrary` reads `ep_factory.<registration_name>.arena.*` keys from `Environment::config_entries_`
+1. `RegisterExecutionProviderLibrary` constructs a prefix via `"ep_factory." + GetLowercaseString(factory->GetName()) + "."` and scans `Environment::config_entries_` for matching `arena.*` keys (see Section 3.6 for casing convention)
 2. Strips the prefix and builds `OrtKeyValuePairs` with bare `arena.*` keys
 3. Passes to `CreateSharedAllocatorImpl` as `allocator_options`
 4. `CreateSharedAllocatorImpl` forwards to `ep_factory->CreateAllocator`
@@ -262,13 +262,56 @@ This is a small ORT core change that enables the existing config mechanism to re
 
 ### 3.6 Environment vs. Session Config
 
-ORT has two separate configuration namespaces for EP-specific options:
+ORT has two separate configuration namespaces for EP-specific options.
+
+#### Current state
 
 | | Environment-level | Session-level |
 |---|---|---|
-| **Prefix** | `ep_factory.<registration_name>.` | `ep.<ep_name>.` |
-| **Example** | `ep_factory.cuda.arena.extend_strategy` | `ep.cudapluginexecutionprovider.arena.extend_strategy` |
+| **Prefix pattern** | `ep_factory.<ep_name>.` | `ep.<ep_name>.` |
+| **Who constructs the prefix?** | No one — convention from C API doc comments only | ORT core (`GetProviderOptionPrefix`) |
+| **Lowercasing applied?** | **Not defined** — ORT never constructs or parses this prefix today | **Yes** — `GetLowercaseString(GetName())` |
+| **Backing store** | `std::map<string,string>` (case-sensitive) | `std::unordered_map<string,string>` (case-sensitive) |
 | **Set via** | `CreateEnvWithOptions` (`OrtEnvCreationOptions.config_entries`) | `SessionOptionsAppendExecutionProvider_V2` |
+| **CUDA plugin `GetName()`** | `"CudaPluginExecutionProvider"` | `"CudaPluginExecutionProvider"` |
+
+The C API documentation (`onnxruntime_c_api.h`) describes the environment-level prefix as `ep_factory.<ep_name>.` where `<ep_name>` is the factory's own name (from `OrtEpFactory::GetName()`), **not** the user-provided registration name passed to `RegisterExecutionProviderLibrary`. However, ORT core does not currently construct, parse, or normalize this prefix — it is purely a documentation convention. The design (Section 3.5 / 5.3) proposes new code in `RegisterExecutionProviderLibrary` that would extract these keys for the first time, which requires deciding on a casing convention.
+
+The session-level prefix is always lowercased by ORT via `GetLowercaseString`:
+
+```cpp
+// abi_session_options.cc — GetProviderOptionPrefix
+std::string key_prefix = "ep.";
+key_prefix += onnxruntime::utils::GetLowercaseString(provider_name);
+key_prefix += ".";
+```
+
+Both backing stores (`std::map` and `std::unordered_map`) use exact string comparison — key lookup is case-sensitive.
+
+#### Casing convention for `ep_factory.` prefix
+
+Since new code must be written to extract `ep_factory.` keys, we must decide how the `<ep_name>` portion is matched:
+
+| Option | Env-level example key | Pros | Cons |
+|--------|----------------------|------|------|
+| **(A) Use `GetName()` as-is** | `ep_factory.CudaPluginExecutionProvider.arena.*` | Exact match to factory identity; unambiguous | Inconsistent with session-level (lowercase); users must get casing exactly right; error-prone |
+| **(B) Lowercase like session-level** | `ep_factory.cudapluginexecutionprovider.arena.*` | Consistent with `ep.cudapluginexecutionprovider.*`; users see one pattern | Diverges from C API doc comment which doesn't specify lowercasing; slight surprise if user reads `GetName()` |
+| **(C) Case-insensitive matching** | Either casing works | Most forgiving for users | Requires scanning all map entries (can't use `std::map::find`); unusual; extra code |
+
+**Recommendation: Option B** — lowercase the `<ep_name>` when constructing the env-level prefix, matching the session-level convention. Both paths then use `GetLowercaseString(GetName())`:
+
+```
+Environment: ep_factory.cudapluginexecutionprovider.arena.extend_strategy
+Session:     ep.cudapluginexecutionprovider.arena.extend_strategy
+```
+
+This means the new code in `RegisterExecutionProviderLibrary` would construct the prefix as:
+
+```cpp
+std::string prefix = "ep_factory." + onnxruntime::utils::GetLowercaseString(factory->GetName()) + ".";
+```
+
+#### Conflict between namespaces
 
 The EP is blind to conflicts between these two namespaces. This is acceptable because:
 - Shared allocators run before any session exists — only env config applies.
@@ -293,7 +336,8 @@ The EP is blind to conflicts between these two namespaces. This is acceptable be
 | `core/common/common.h` | ✅ | `ORT_THROW`, `ORT_ENFORCE` — no framework deps |
 | `core/providers/cuda/cuda_stream_handle.h` | ✅ | Only for `Stream::GetHandle()` → `cudaStream_t` |
 | `core/providers/cuda/shared_inc/cuda_call.h` | ✅ | CUDA error-handling macros |
-| `logging::Logger*` | ❌ | **Primary blocker** — not available in plugin build |
+| `core/providers/shared_library/provider_api.h` | ❌ | Provider-bridge header defining `logging::Logger` forward decl used by `CudaMempoolArena`; must be removed/guarded in plugin build |
+| `logging::Logger*` | ❌ | **Primary blocker** — provider-bridge logger type (from `provider_api.h`), not available in plugin build |
 
 ### 4.3 Logger Adaptation
 
@@ -301,14 +345,22 @@ Replace `const logging::Logger* logger_` with a build-conditional type using `#i
 
 ```cpp
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-  const OrtLogger* logger_;      // plugin: OrtLogger from EP C API
-  #define MEMPOOL_LOG(logger, level, msg) \
-    ort_api.Logger_LogMessage(logger, level, (msg).c_str(), ORT_FILE, __LINE__, __FUNCTION__)
+  const OrtApi& ort_api_;                  // stored reference to OrtApi (set at construction)
+  const OrtLogger* logger_;                // plugin: OrtLogger from EP C API
+  // Logger_LogMessage returns OrtStatus* which must be released if non-null.
+  #define MEMPOOL_LOG(ort_api_ref, logger, level, msg) do {          \
+    OrtStatus* _s = (ort_api_ref).Logger_LogMessage(                 \
+        (logger), ORT_LOGGING_LEVEL_##level,                         \
+        (msg).c_str(), ORT_FILE, __LINE__, __FUNCTION__);            \
+    if (_s) (ort_api_ref).ReleaseStatus(_s);                         \
+  } while (0)
 #else
-  const logging::Logger* logger_;  // in-tree: ORT internal logger
-  #define MEMPOOL_LOG(logger, level, msg) LOGS(*logger, level) << msg
+  const logging::Logger* logger_;          // in-tree: ORT internal logger
+  #define MEMPOOL_LOG(ort_api_ref, logger, level, msg) LOGS(*logger, level) << msg
 #endif
 ```
+
+The plugin build stores a `const OrtApi&` reference (passed at construction from the factory) so the macro can call `Logger_LogMessage`. The returned `OrtStatus*` is released if non-null — logging failures are not propagated.
 
 **Decision:** Use the `#ifdef` macro approach (not a virtual `ICudaMempoolLogger` interface) for consistency with the existing codebase convention.
 
@@ -413,7 +465,7 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 
 | File | Change |
 |------|--------|
-| `environment.cc` | `RegisterExecutionProviderLibrary`: extract `ep_factory.<name>.arena.*` keys from `config_entries_`, strip prefix, build `OrtKeyValuePairs` with bare `arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` instead of `nullptr`. |
+| `environment.cc` | `RegisterExecutionProviderLibrary`: construct prefix `"ep_factory." + GetLowercaseString(factory->GetName()) + "."`, extract matching `arena.*` keys from `config_entries_`, strip prefix, build `OrtKeyValuePairs` with bare `arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` instead of `nullptr` (see Section 3.6 for casing convention). |
 
 This is the only ORT core change needed — it enables env-level arena config to reach the plugin factory. The arena wrapping itself happens entirely inside the plugin.
 
@@ -432,7 +484,7 @@ This is the only ORT core change needed — it enables env-level arena config to
 7. **Rewrite `ReleaseAllocatorImpl` in `cuda_ep_factory.cc`:** Detect arena allocator (compare pointer against device cache entries), decrement ref count, destroy if zero. Fall back to `delete` for non-arena types.
 8. **Update `OnSessionRunEndImpl` in `cuda_stream_plugin.cc`:** After existing stream sync and deferred buffer cleanup, call `arena->ResetChunksUsingStream(this_ptr)` for the device's arena (Section 3.4).
 9. **No CMake changes needed:** The glob picks up new `.cc` files in `plugin/` automatically.
-10. **Update `RegisterExecutionProviderLibrary` in `environment.cc`:** Extract `ep_factory.<name>.arena.*` keys from env config, pass as `allocator_options` to `CreateSharedAllocatorImpl`.
+10. **Update `RegisterExecutionProviderLibrary` in `environment.cc`:** Construct prefix via `GetLowercaseString(factory->GetName())`, extract `ep_factory.<lowercase_ep_name>.arena.*` keys from env config, pass as `allocator_options` to `CreateSharedAllocatorImpl` (see Section 3.6).
 
 ### Phase 2: CudaMempoolArena Migration
 
