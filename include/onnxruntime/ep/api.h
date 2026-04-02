@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <charconv>
+#include <cstring>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -32,21 +34,14 @@ inline bool TryGetAPIVersionFromVersionString(const char* version_str, uint32_t&
   if (!version_str || version_str[0] != '1' || version_str[1] != '.') {
     return false;
   }
-  const char* p = version_str + 2;
-  if (*p < '0' || *p > '9') {
+  const char* begin = version_str + 2;
+  const char* end = std::strchr(begin, '.');
+  if (!end) {
     return false;
   }
   uint32_t version = 0;
-  constexpr uint32_t kMaxBeforeMultiply = UINT32_MAX / 10;
-  while (*p >= '0' && *p <= '9') {
-    uint32_t digit = static_cast<uint32_t>(*p - '0');
-    if (version > kMaxBeforeMultiply || (version == kMaxBeforeMultiply && digit > UINT32_MAX % 10)) {
-      return false;
-    }
-    version = version * 10 + digit;
-    ++p;
-  }
-  if (*p != '.' && *p != '\0') {
+  auto [ptr, ec] = std::from_chars(begin, end, version);
+  if (ec != std::errc{} || ptr != end) {
     return false;
   }
   api_version = version;
