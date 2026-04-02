@@ -66,9 +66,9 @@ ArenaImpl::ArenaImpl(AllocatorUniquePtr allocator, const ArenaConfig& config, co
     size_t bin_size = BinNumToSize(b);
     new (BinFromIndex(b)) Bin(this, bin_size);
     CUDA_ARENA_ENFORCE((BinForSize(bin_size) == BinFromIndex(b) &&
-                         BinForSize(bin_size + 255) == BinFromIndex(b) &&
-                         BinForSize(bin_size * 2 - 1) == BinFromIndex(b)),
-                        "Invalid bin size for bin " << b);
+                        BinForSize(bin_size + 255) == BinFromIndex(b) &&
+                        BinForSize(bin_size * 2 - 1) == BinFromIndex(b)),
+                       "Invalid bin size for bin " << b);
 
     if (b + 1 < kNumBins) {
       CUDA_ARENA_ENFORCE(BinForSize(bin_size * 2) != BinFromIndex(b), "Invalid bin size for " << b);
@@ -101,8 +101,8 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
 
   if (rounded_bytes > available_bytes) {
     CUDA_ARENA_RETURN_ERROR(ORT_EP_FAIL, "Available memory of " << available_bytes
-                                                                 << " is smaller than requested bytes of "
-                                                                 << rounded_bytes);
+                                                                << " is smaller than requested bytes of "
+                                                                << rounded_bytes);
   }
 
   auto safe_alloc = [this](size_t alloc_bytes) {
@@ -177,7 +177,7 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
   stats_.total_allocated_bytes += bytes;
   CUDA_ARENA_LOG(INFO, "Total allocated bytes: " << stats_.total_allocated_bytes);
   CUDA_ARENA_LOG(INFO, "Allocated memory at " << mem_addr << " to "
-                                               << static_cast<void*>(static_cast<char*>(mem_addr) + bytes));
+                                              << static_cast<void*>(static_cast<char*>(mem_addr) + bytes));
 
   region_manager_.AddAllocationRegion(mem_addr, bytes, stats_.num_arena_extensions);
   stats_.num_arena_extensions += 1;
@@ -304,9 +304,9 @@ void* ArenaImpl::AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bo
   }
 
   CUDA_ARENA_LOG(INFO, "Extending arena for " << allocator_name_
-                                               << ". bin_num:" << bin_num
-                                               << " (requested) num_bytes: " << num_bytes
-                                               << " (actual) rounded_bytes:" << rounded_bytes);
+                                              << ". bin_num:" << bin_num
+                                              << " (requested) num_bytes: " << num_bytes
+                                              << " (actual) rounded_bytes:" << rounded_bytes);
 
   auto status = Extend(rounded_bytes);
   if (status == nullptr) {
@@ -624,12 +624,13 @@ void ArenaImpl::DumpMemoryLog(size_t num_bytes) {
   size_t total_bytes = 0;
   for (auto& it : in_use_by_size) {
     CUDA_ARENA_LOG(INFO, "  " << it.second << " chunks of size " << it.first
-                               << ". Total " << it.first * it.second);
+                              << ". Total " << it.first * it.second);
     total_bytes += (it.first * it.second);
   }
 
   CUDA_ARENA_LOG(INFO, "Sum Total of in-use chunks: " << total_bytes);
-  CUDA_ARENA_LOG(INFO, "Stats: \n" << stats_.DebugString());
+  CUDA_ARENA_LOG(INFO, "Stats: \n"
+                           << stats_.DebugString());
 }
 
 OrtStatus* ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {

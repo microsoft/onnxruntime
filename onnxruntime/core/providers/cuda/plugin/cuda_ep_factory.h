@@ -111,8 +111,8 @@ class CudaEpFactory : public OrtEpFactory {
   struct HardwareDeviceKey {
     OrtHardwareDeviceType type{OrtHardwareDeviceType::OrtHardwareDeviceType_CPU};
     uint32_t vendor_id{0};
-    uint32_t device_id{0};    // PCI device ID — identifies the hardware model, NOT a unique device
-    int cuda_ordinal{-1};     // CUDA ordinal — unique per physical GPU on this host
+    uint32_t device_id{0};  // PCI device ID — identifies the hardware model, NOT a unique device
+    int cuda_ordinal{-1};   // CUDA ordinal — unique per physical GPU on this host
 
     bool operator==(const HardwareDeviceKey&) const = default;
   };

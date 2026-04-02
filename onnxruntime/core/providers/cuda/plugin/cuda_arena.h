@@ -141,20 +141,20 @@ struct ArenaConfig {
     }                                                     \
   } while (false)
 
-#define CUDA_ARENA_LOG(level, ...)                                                                        \
-  do {                                                                                                    \
-    std::ostringstream ss;                                                                                \
-    ss << __VA_ARGS__;                                                                                    \
+#define CUDA_ARENA_LOG(level, ...)                                                                         \
+  do {                                                                                                     \
+    std::ostringstream ss;                                                                                 \
+    ss << __VA_ARGS__;                                                                                     \
     OrtStatus* _log_status = api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), \
-                                                    __FILE__, __LINE__, __FUNCTION__);                    \
-    if (_log_status) api_.ReleaseStatus(_log_status);                                                     \
+                                                    __FILE__, __LINE__, __FUNCTION__);                     \
+    if (_log_status) api_.ReleaseStatus(_log_status);                                                      \
   } while (false)
 
-#define CUDA_ARENA_RETURN_ERROR(code, ...)                     \
-  do {                                                         \
-    std::ostringstream ss;                                     \
-    ss << __VA_ARGS__;                                         \
-    return api_.CreateStatus(code, ss.str().c_str());          \
+#define CUDA_ARENA_RETURN_ERROR(code, ...)            \
+  do {                                                \
+    std::ostringstream ss;                            \
+    ss << __VA_ARGS__;                                \
+    return api_.CreateStatus(code, ss.str().c_str()); \
   } while (false)
 
 // A memory allocator that implements a 'best-fit with coalescing' algorithm.
@@ -397,9 +397,9 @@ class ArenaImpl {
                                   const Bin::FreeChunkSet::iterator& c);
   void RemoveFreeChunkFromBin(ChunkHandle h);
   Chunk* SplitFreeChunkFromBin(Bin::FreeChunkSet* free_chunks,
-                                const Bin::FreeChunkSet::iterator& citer,
-                                size_t rounded_bytes,
-                                size_t num_bytes);
+                               const Bin::FreeChunkSet::iterator& citer,
+                               size_t rounded_bytes,
+                               size_t num_bytes);
   void DeleteChunk(ChunkHandle h);
   void DumpMemoryLog(size_t num_bytes);
   ChunkHandle AllocateChunk();
