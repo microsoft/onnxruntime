@@ -21,7 +21,7 @@ For native builds, if none are specified (and `--skip_tests` is not passed), **a
 
 You need `--update` when:
 - First build in a new build directory
-- New source files are added (CMake glob patterns need re-evaluation)
+- New source files are added (some CMake targets use glob patterns, others use explicit file lists — re-run to pick up new files either way)
 - CMake configuration changes (new flags, updated CMakeLists.txt)
 
 You do **not** need `--update` when only modifying existing `.cc`/`.h` files — just use `--build`. Skipping it saves time.
@@ -64,7 +64,7 @@ You do **not** need `--update` when only modifying existing `.cc`/`.h` files —
 | `--skip_tests` | Skip running tests after build |
 | `--build_wheel` | Build the Python wheel package |
 | `--use_cuda` | Enable CUDA EP. Requires `--cuda_home`/`--cudnn_home` or `CUDA_HOME`/`CUDNN_HOME` env vars. On Windows, only `cuda_home`/`CUDA_HOME` is validated. |
-| `--target T` | Build a specific CMake target (e.g., `onnxruntime_common`, `onnxruntime_test_all`) |
+| `--target T` | Build a specific CMake target (requires `--build`; e.g., `onnxruntime_common`, `onnxruntime_test_all`) |
 | `--build_dir` | Build output directory |
 
 ## Build output path
