@@ -176,7 +176,7 @@ TEST(MLOpTest, SVMRegressorUndersizedSupportVectors) {
   test.AddInput<float>("X", {1, 3}, {1.f, 0.f, 0.4f});
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
-  // feature_count_ = 2/5 = 0, which triggers the feature_count_ > 0 check
+  // support_vectors.size() (= 2) is not a multiple of n_supports (= 5), triggering the support_vectors size validation
   test.Run(OpTester::ExpectResult::kExpectFailure, "support_vectors size");
 }
 
