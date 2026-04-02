@@ -115,10 +115,6 @@ ONNX_NAMESPACE::TensorProto CreateInitializer(const std::string& name,
       ORT_THROW("Unsupported data type: ", data_type);
   }
 
-  if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto(tp);
-  }
-
   return tp;
 }
 
@@ -261,9 +257,6 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
   for (const auto* fbs_tensor : *fbs_tensors2) {
     ONNX_NAMESPACE::TensorProto initializer;
     ASSERT_STATUS_OK(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader));
-    if constexpr (endian::native != endian::little) {
-      utils::ConvertRawDataInTensorProto(initializer);
-    }
     loaded_initializers.emplace_back(std::move(initializer));
     // also check that the loaded flatbuffer tensors have accurately written to the external_data_offset field
     if (fbs_tensor->data_type() != fbs::TensorDataType::STRING && fbs_tensor->name()->str() != "tensor_32_small") {

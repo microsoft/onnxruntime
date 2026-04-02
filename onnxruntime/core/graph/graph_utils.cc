@@ -378,7 +378,8 @@ bool CheckInMemoryDataMatch(const ONNX_NAMESPACE::TensorProto& tensor_proto, con
     // Retrieve external data using ExternalData structure
     std::unique_ptr<ExternalDataInfo> external_data;
     ORT_THROW_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data));
-    return (external_data->GetRelPath().compare(utils::kTensorProtoMemoryAddressTag) == 0) &&
+    return ((external_data->GetRelPath().compare(utils::kTensorProtoLittleEndianMemoryAddressTag) == 0) ||
+            (external_data->GetRelPath().compare(utils::kTensorProtoNativeEndianMemoryAddressTag) == 0)) &&
            (tensor.DataRaw() == reinterpret_cast<const void*>(external_data->GetOffset()));
   }
   return false;

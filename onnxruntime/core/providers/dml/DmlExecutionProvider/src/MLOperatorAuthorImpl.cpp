@@ -3,7 +3,9 @@
 
 #include "precomp.h"
 
+#include "core/common/endian.h"
 #include "core/framework/customregistry.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/TensorSeq.h"
 
@@ -1580,7 +1582,31 @@ namespace Windows::AI::MachineLearning::Adapter
             onnxruntime::FileOffsetType fileOffset;
             SafeInt<size_t> safeTensorByteSize;
             THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*impl,  modelPath, /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
-            if (externalFilePath == onnxruntime::utils::kTensorProtoMemoryAddressTag)
+            if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
+            {
+                if constexpr (onnxruntime::endian::native != onnxruntime::endian::little)
+                {
+                    m_unpackedTensor.reset(new std::byte[safeTensorByteSize]);
+
+                    auto src = gsl::make_span<const unsigned char>(reinterpret_cast<const unsigned char*>(fileOffset), safeTensorByteSize);
+                    auto dst = gsl::make_span<unsigned char>(reinterpret_cast<unsigned char*>(m_unpackedTensor.get()), safeTensorByteSize);
+                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(impl->data_type()));
+
+                    // If element size is unknown, set it to 1 to disable byteswapping
+                    if (element_size < 1) element_size = 1;
+
+                    THROW_IF_NOT_OK(onnxruntime::utils::ReadLittleEndian(element_size, src, dst));
+
+                    m_dataPtr = m_unpackedTensor.get();
+                    m_tensorByteSize = safeTensorByteSize;
+                }
+                else
+                {
+                    m_dataPtr = reinterpret_cast<std::byte*>(fileOffset);
+                    m_tensorByteSize = safeTensorByteSize;
+                }
+            }
+            else if (externalFilePath == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag)
             {
                 m_dataPtr = reinterpret_cast<std::byte*>(fileOffset);
                 m_tensorByteSize = safeTensorByteSize;
