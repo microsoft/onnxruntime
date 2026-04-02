@@ -897,6 +897,42 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   # points to ORT's root instead. Fix by adding the actual source dir as an include path.
   if(TARGET mat)
     target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR})
+    # Also add subdirectories for bundled headers (sqlite3.h, zlib.h) that are included without path prefix
+    target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR}/sqlite)
+    target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR}/zlib)
+    # ORT enables -ffast-math globally, which conflicts with std::numeric_limits<double>::infinity()
+    # in the 1DS SDK's bundled nlohmann/json.hpp. Re-enable finite math to fix.
+    # Also suppress warnings in the 1DS SDK code that are treated as errors.
+    target_compile_options(mat PRIVATE
+      -fno-finite-math-only
+      -Wno-unused-const-variable
+      $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
+      $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
+    )
+  endif()
+
+  # The 1DS SDK creates GLOBAL imported targets 'z' and 'sqlite3' without setting IMPORTED_LOCATION,
+  # which causes link errors on cross-compile. For Android, the 1DS cmake now builds from bundled source.
+  # For other platforms, resolve the imported targets if possible.
+  if(NOT ANDROID)
+    if(TARGET z)
+      get_target_property(_z_loc z IMPORTED_LOCATION)
+      if(NOT _z_loc OR _z_loc STREQUAL "_z_loc-NOTFOUND")
+        find_package(ZLIB QUIET)
+        if(ZLIB_FOUND)
+          set_target_properties(z PROPERTIES IMPORTED_LOCATION "${ZLIB_LIBRARIES}")
+        endif()
+      endif()
+    endif()
+    if(TARGET sqlite3)
+      get_target_property(_sqlite3_loc sqlite3 IMPORTED_LOCATION)
+      if(NOT _sqlite3_loc OR _sqlite3_loc STREQUAL "_sqlite3_loc-NOTFOUND")
+        find_library(_sqlite3_lib sqlite3)
+        if(_sqlite3_lib)
+          set_target_properties(sqlite3 PROPERTIES IMPORTED_LOCATION "${_sqlite3_lib}")
+        endif()
+      endif()
+    endif()
   endif()
 
   set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
