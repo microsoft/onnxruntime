@@ -112,7 +112,7 @@ struct TreeEnsembleAttributesV3 {
                 "target_class_weights and target_class_weights_as_tensor cannot both be non-empty");
     ORT_ENFORCE(nodes_modes.size() < std::numeric_limits<uint32_t>::max(),
                 "nodes_modes size (", nodes_modes.size(), ") exceeds uint32_t max");
-  
+
     int64_t min_ids = *std::min_element(target_class_ids.begin(), target_class_ids.end());
     ORT_ENFORCE(min_ids >= 0, "target_ids or class_ids cannot have negative values (", min_ids, ").");
     int64_t max_ids = *std::max_element(target_class_ids.begin(), target_class_ids.end());
