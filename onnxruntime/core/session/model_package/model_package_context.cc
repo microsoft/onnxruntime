@@ -235,6 +235,12 @@ int ModelVariantSelector::CalculateVariantScore(const ModelVariantInfo& variant)
     score += 50;
   }
 
+  // The base model with no constraints (meaning any EP can run it) gets a base score of 0.
+  // Other model variants with EP constraint get a higher score, so that they will be preferred over the base model.
+  if (!variant.ep.empty()) {
+    score += 10;
+  }
+
   return score;
 }
 

@@ -55,8 +55,6 @@ This document describes the model package directory layout and the JSON files us
 
 
 ## Notes:
-- Only one component model is allowed in the package for now, but the format allows for multiple component models in the future.
-- If it's an ORT GenAI model variant, the variant directory contains all GenAI files. ORT GenAI used as-is.
 - Shared weights is not yet supported, but the format allows for it in the future.
 
 ## `manifest.json` (required)
@@ -74,7 +72,7 @@ Schema:
         - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT-GenAI"`). If omitted, ORT will treat it as an ONNX model by default.
         - `file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `file` is omitted, ORT will discover the ONNX model file within that directory.
         - `constraints` (object, required):
-          - `ep` (string, required): Execution provider name (e.g., `"TensorrtExecutionProvider"`, `"QNNExecutionProvider"`, `"OpenVINOExecutionProvider"`).
+          - `ep` (string, required (except base model)): Execution provider name (e.g., `"TensorrtExecutionProvider"`, `"QNNExecutionProvider"`, `"OpenVINOExecutionProvider"`).
           - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
           - `architecture` (string, optional): Hardware architecture hint; interpreted by the EP if needed.
           - `ep_compatibility_info` (string, optional): EP-specific compatibility string (as produced by `OrtEp::GetCompiledModelCompatibilityInfo()`); validated by the EP when selecting a variant. **The compatibility value returned by the EP is critical—ORT uses it to rank and choose the model variant.**
@@ -140,7 +138,7 @@ Schema:
     - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT-GenAI"`). If omitted, ORT will treat it as an ONNX model by default.
     - `file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `file` is omitted, ORT will discover the ONNX model file within that directory.
     - `constraints` (object, required):
-      - `ep` (string, required): Execution provider name.
+      - `ep` (string, required (except base model)): Execution provider name.
       - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
       - `architecture` (string, optional): Hardware architecture hint.
       - `ep_compatibility_info` (string, optional): EP-specific compatibility string (as produced by `OrtEp::GetCompiledModelCompatibilityInfo()`); validated by the EP when selecting a variant. **The compatibility value returned by the EP is critical—ORT uses it to rank and choose the model variant.**
