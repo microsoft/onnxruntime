@@ -71,6 +71,13 @@ enum class DataLayout {
   Default = NCHW,
 };
 
+enum class GraphCaptureNodeAssignmentPolicy {
+  // All nodes in the main graph must be assigned to this EP. No CPU fallback allowed.
+  AllNodesOnEp,
+  // Compute nodes must be on this EP. CPU shape nodes allowed if no memcpy nodes exist.
+  AllowCpuForShapes,
+};
+
 class IExecutionProvider {
  protected:
   IExecutionProvider(const std::string& type)
@@ -272,6 +279,15 @@ class IExecutionProvider {
    */
   virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
     return Status::OK();
+  }
+
+  /**
+     Get the node assignment validation policy for graph capture.
+     When graph capture is enabled, ORT validates that nodes are assigned to EPs
+     in a way compatible with graph capture. This tells ORT which policy to apply.
+   */
+  virtual GraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const {
+    return GraphCaptureNodeAssignmentPolicy::AllNodesOnEp;
   }
 
   /**

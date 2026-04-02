@@ -97,6 +97,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  GraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
+    return GraphCaptureNodeAssignmentPolicy::AllowCpuForShapes;
+  }
   webgpu::BufferManager& BufferManager() const;
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }

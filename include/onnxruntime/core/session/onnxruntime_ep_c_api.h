@@ -2028,6 +2028,23 @@ typedef enum OrtEpDataLayout {
 } OrtEpDataLayout;
 
 /**
+ * \brief Node assignment policies for graph capture validation.
+ *
+ * When graph capture is enabled, ORT validates that nodes are assigned to EPs in a way that is
+ * compatible with graph capture. An EP can specify which validation policy ORT should apply.
+ *
+ * \since Version 1.26.
+ */
+typedef enum OrtGraphCaptureNodeAssignmentPolicy {
+  /** All nodes in the main graph must be assigned to this EP. No CPU fallback is allowed. */
+  OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP = 0,
+
+  /** Compute nodes must be on this EP. CPU nodes are allowed for shape computation as long as
+   *  no memory copy nodes exist. */
+  OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES = 1,
+} OrtGraphCaptureNodeAssignmentPolicy;
+
+/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
@@ -2382,6 +2399,22 @@ struct OrtEp {
    * \since Version 1.26.
    */
   ORT_API2_STATUS(ReplayGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Get the node assignment validation policy for graph capture.
+   *
+   * When graph capture is enabled, ORT validates that nodes are assigned to EPs in a way that is
+   * compatible with graph capture. This function tells ORT which validation policy to apply.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \return The node assignment policy for graph capture.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT uses
+   *       OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP (strictest validation).
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(OrtGraphCaptureNodeAssignmentPolicy, GetGraphCaptureNodeAssignmentPolicy,
+            _In_ const OrtEp* this_ptr);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
