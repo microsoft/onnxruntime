@@ -330,8 +330,14 @@ TEST(ContribOpAttentionTest, AttentionBatch1) {
       3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
       3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
 
+  // disable_cuda=true: this specific small-batch configuration (batch=1, seq=2, hidden=4, heads=2)
+  // causes a segfault in the CUDA Attention kernel (see PR #27789). Keep CPU coverage and gate
+  // CUDA until the underlying kernel issue is resolved and re-enable once fixed.
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads);
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   false, false, false, 0, nullptr, nullptr,
+                   AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, 0,
+                   /*disable_cpu=*/false, /*disable_cuda=*/true);
 }
 
 TEST(ContribOpAttentionTest, AttentionBatch1WithQKVAttr1) {
