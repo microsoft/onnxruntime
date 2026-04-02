@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <cstring>
 #include <fstream>
 #include <iostream>
 
@@ -326,7 +327,9 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
   ASSERT_NE(fbs_string_data, nullptr);
   auto* mutable_string_data =
       const_cast<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*>(fbs_string_data);
-  mutable_string_data->MutateOffset(1, 0);
+  auto* string_offsets = mutable_string_data->data();
+  const flatbuffers::Offset<flatbuffers::String> null_string_offset;
+  std::memcpy(&string_offsets[1], &null_string_offset, sizeof(null_string_offset));
 
   ONNX_NAMESPACE::TensorProto initializer;
   OrtFormatLoadOptions options;
