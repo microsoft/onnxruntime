@@ -145,9 +145,20 @@ jobs:
           # MapAsync calls eventually exhaust resources (observed hang at ActivationOpTest.Elu).
           # Each shard runs in its own process with an isolated WebGPU context, so GPU
           # resources are released between shards.
+          #
+          # Use 2 shards (not more) to reduce D3D12 device creation/teardown cycles.
+          # Each shard process creates and destroys a D3D12 command queue; Windows WDDM
+          # releases those resources asynchronously, so rapid successive device creations
+          # can exhaust GPU memory (E_OUTOFMEMORY). Fewer shards means fewer cycles.
+          # A 15-second pause between shards gives WDDM time to drain the previous
+          # shard's deferred cleanup before the next shard creates a new device.
           $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
-          $totalShards = 4
+          $totalShards = 2
           for ($i = 0; $i -lt $totalShards; $i++) {
+            if ($i -gt 0) {
+              Write-Host "Waiting 15 seconds for WDDM to release GPU resources from previous shard..."
+              Start-Sleep -Seconds 15
+            }
             $env:GTEST_TOTAL_SHARDS = $totalShards
             $env:GTEST_SHARD_INDEX = $i
             Write-Host "Running shard $($i + 1) of $totalShards..."
