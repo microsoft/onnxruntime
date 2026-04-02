@@ -326,7 +326,7 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
   ASSERT_NE(fbs_string_data, nullptr);
   auto* mutable_string_data =
       const_cast<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*>(fbs_string_data);
-  ASSERT_TRUE(mutable_string_data->MutateOffset(1, 0));
+  mutable_string_data->MutateOffset(1, 0);
 
   ONNX_NAMESPACE::TensorProto initializer;
   OrtFormatLoadOptions options;
