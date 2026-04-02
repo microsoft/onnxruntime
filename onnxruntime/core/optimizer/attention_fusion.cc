@@ -78,6 +78,37 @@ static bool IsSupportedOrUnassignedNode(const Node& node,
          graph_utils::IsSupportedProvider(node, compatible_execution_providers);
 }
 
+static bool IsSupportedOrUnassignedNode(const Node& node,
+                                        std::string_view required_execution_provider,
+                                        const InlinedHashSet<std::string_view>& compatible_execution_providers) {
+  const auto& execution_provider = node.GetExecutionProviderType();
+  return execution_provider.empty() ||
+         (execution_provider == required_execution_provider &&
+          compatible_execution_providers.count(required_execution_provider) != 0);
+}
+
+static bool AreSupportedOrUnassignedNodes(
+    const Node& anchor_node,
+    const std::initializer_list<const Node*>& nodes,
+    const InlinedHashSet<std::string_view>& compatible_execution_providers) {
+  if (!IsSupportedOrUnassignedNode(anchor_node, compatible_execution_providers)) {
+    return false;
+  }
+
+  const auto& required_execution_provider = anchor_node.GetExecutionProviderType();
+  for (const Node* node : nodes) {
+    if (node == nullptr) {
+      continue;
+    }
+
+    if (!IsSupportedOrUnassignedNode(*node, required_execution_provider, compatible_execution_providers)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 static bool HasExpectedPerm(const Node& node, const std::initializer_list<int64_t>& expected_perm) {
   return optimizer_utils::IsAttributeWithExpectedValues(node, "perm", std::vector<int64_t>(expected_perm));
 }
@@ -379,8 +410,27 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
   }
 
   float scale = 0.0f;
-  if (q_scale_mul->InputDefs().size() < 2 ||
-      !optimizer_utils::GetScalarInitializerValue<float>(graph, *q_scale_mul->InputDefs()[1], scale, true)) {
+  if (q_scale_mul->InputDefs().size() < 2) {
+    return fail("q scale constant not found");
+  }
+
+  const NodeArg* q_squeeze_output = q_squeeze->OutputDefs()[0];
+  const NodeArg* mul_input_0 = q_scale_mul->InputDefs()[0];
+  const NodeArg* mul_input_1 = q_scale_mul->InputDefs()[1];
+  const bool input_0_is_q_squeeze = mul_input_0 != nullptr && q_squeeze_output != nullptr &&
+                                    mul_input_0->Name() == q_squeeze_output->Name();
+  const bool input_1_is_q_squeeze = mul_input_1 != nullptr && q_squeeze_output != nullptr &&
+                                    mul_input_1->Name() == q_squeeze_output->Name();
+
+  const NodeArg* scale_input = nullptr;
+  if (input_0_is_q_squeeze && !input_1_is_q_squeeze) {
+    scale_input = mul_input_1;
+  } else if (input_1_is_q_squeeze && !input_0_is_q_squeeze) {
+    scale_input = mul_input_0;
+  }
+
+  if (scale_input == nullptr ||
+      !optimizer_utils::GetScalarInitializerValue<float>(graph, *scale_input, scale, true)) {
     return fail("q scale constant not found");
   }
 
@@ -494,6 +544,33 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
   const NodeArg& qkv_weight = *qkv_matmul.InputDefs()[1];
   if (!optimizer_utils::ValidateShape(qkv_weight, {hidden_size, 3 * hidden_size})) {
     return fail("qkv weight shape is not [hidden, 3*hidden]");
+  }
+
+  if (!AreSupportedOrUnassignedNodes(
+          qkv_matmul,
+          {sequence_transpose,
+           input_reshape,
+           qkv_reshape,
+           split,
+           q_transpose,
+           k_squeeze,
+           v_transpose,
+           q_squeeze,
+           v_squeeze,
+           q_scale_mul,
+           k_transpose,
+           qk_matmul,
+           softmax,
+           qkv_matmul_1,
+           transpose_3,
+           reshape_2,
+           proj_matmul,
+           proj_add,
+           proj_gemm_input_reshape,
+           proj_gemm,
+           proj_gemm_output_reshape},
+          compatible_execution_providers)) {
+    return fail("matched nodes are assigned to incompatible execution providers");
   }
 
   auto mha_output_type = TryCreateMobileClipMhaOutputType(*qkv_matmul.OutputDefs()[0], hidden_size);
