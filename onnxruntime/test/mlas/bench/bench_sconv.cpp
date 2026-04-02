@@ -335,6 +335,23 @@ static void TeamsModel(benchmark::internal::Benchmark* b) {
 BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 
+static void MobileClip(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  // 7x7 grouped depthwise-multiplier-2 shapes.
+  // Input: 1x64x64x64, Filter: 128x1x7x7, Groups: 64, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 64, 1, 2, 64, 64, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+
+  // Input: 1x128x32x32, Filter: 256x1x7x7, Groups: 128, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 128, 1, 2, 32, 32, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+
+  // Input: 1x256x16x16, Filter: 512x1x7x7, Groups: 256, Pad: 3, Stride: 2, Dilation: 1.
+  b->Args({2, 1, 256, 1, 2, 16, 16, 7, 7, 3, 3, 3, 3, 2, 2, 1, 1});
+}
+
+BENCHMARK_CAPTURE(SCONV_NCHW, MobileClip, "")->Apply(MobileClip)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClip, "")->Apply(MobileClip)->UseRealTime();
+
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
   b->ArgsProduct(
