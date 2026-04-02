@@ -504,5 +504,30 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
 }
 #endif
 
+// Regression test: 1D inputs with mismatched K dimensions must fail
+// instead of causing an out-of-bounds read in the MLAS backend.
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_DimensionMismatch) {
+  OpTester test("MatMulInteger", 10);
+  // A is 1D with K=5, B is 1D with K=1 — dimensions don't match.
+  test.AddInput<uint8_t>("T1", {5}, {11, 7, 3, 10, 6});
+  test.AddInput<uint8_t>("T2", {1}, {1});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {}, {0});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "MatMul dimension mismatch");
+}
+
+// Valid 1D × 1D dot product: both vectors have the same K.
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Valid) {
+  OpTester test("MatMulInteger", 10);
+  // A=[2,3], B=[4,5] => dot = 2*4 + 3*5 = 23
+  test.AddInput<uint8_t>("T1", {2}, {2, 3});
+  test.AddInput<uint8_t>("T2", {2}, {4, 5});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {}, {23});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
