@@ -106,40 +106,38 @@ OrtStatus* CudaSyncStream::InitHandles() {
   int prev_device = -1;
   const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
 
-  OrtStatus* status = StatusFromCudaError(cudaSetDevice(device_id_));
-  if (status == nullptr) {
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
+  if (status.IsOK()) {
     status = StatusFromCudaError(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
   }
-  if (status == nullptr) {
+  if (status.IsOK()) {
     status = StatusFromCublasError(cublasCreate(&cublas_handle_));
   }
-  if (status == nullptr) {
+  if (status.IsOK()) {
     status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
   }
-  if (status == nullptr) {
+  if (status.IsOK()) {
     status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
   }
-  if (status == nullptr) {
+  if (status.IsOK()) {
     status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
   }
-  if (status == nullptr) {
+  if (status.IsOK()) {
     status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
   }
 
   if (restore_prev_device) {
-    OrtStatus* restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
-    if (status == nullptr) {
-      status = restore_status;
-    } else if (restore_status != nullptr) {
-      Ort::GetApi().ReleaseStatus(restore_status);
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
     }
   }
 
-  if (status == nullptr) {
+  if (status.IsOK()) {
     RegisterStream(cuda_stream_, this);
   }
 
-  return status;
+  return status.release();
 }
 
 void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {
@@ -265,13 +263,15 @@ CudaSyncNotification::CudaSyncNotification(CudaSyncStream& stream)
   try {
     PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
     PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
-    if (restore_prev_device) {
-      PL_CUDA_CALL_THROW(cudaSetDevice(prev_device));
-    }
   } catch (...) {
+    if (event_ != nullptr) {
+      cudaEventDestroy(event_);
+      event_ = nullptr;
+    }
     RestoreCudaDeviceIfNeeded(restore_prev_device, prev_device);
     throw;
   }
+  RestoreCudaDeviceIfNeeded(restore_prev_device, prev_device);
 }
 
 CudaSyncNotification::~CudaSyncNotification() {

@@ -30,36 +30,36 @@
   } while (0)
 #endif
 
-inline OrtStatus* StatusFromCudaError(cudaError_t cuda_err) {
+inline Ort::Status StatusFromCudaError(cudaError_t cuda_err) {
   if (cuda_err == cudaSuccess) {
-    return nullptr;
+    return Ort::Status{};
   }
 
-  return Ort::GetApi().CreateStatus(
-      ORT_EP_FAIL,
+  return Ort::Status{
       (std::string("CUDA error: ") + cudaGetErrorName(cuda_err) + ": " +
        cudaGetErrorString(cuda_err))
-          .c_str());
+          .c_str(),
+      ORT_EP_FAIL};
 }
 
-inline OrtStatus* StatusFromCublasError(cublasStatus_t cublas_err) {
+inline Ort::Status StatusFromCublasError(cublasStatus_t cublas_err) {
   if (cublas_err == CUBLAS_STATUS_SUCCESS) {
-    return nullptr;
+    return Ort::Status{};
   }
 
-  return Ort::GetApi().CreateStatus(
-      ORT_EP_FAIL,
-      (std::string("cuBLAS error: ") + cublasGetStatusString(cublas_err)).c_str());
+  return Ort::Status{
+      (std::string("cuBLAS error: ") + cublasGetStatusString(cublas_err)).c_str(),
+      ORT_EP_FAIL};
 }
 
-inline OrtStatus* StatusFromCudnnError(cudnnStatus_t cudnn_err) {
+inline Ort::Status StatusFromCudnnError(cudnnStatus_t cudnn_err) {
   if (cudnn_err == CUDNN_STATUS_SUCCESS) {
-    return nullptr;
+    return Ort::Status{};
   }
 
-  return Ort::GetApi().CreateStatus(
-      ORT_EP_FAIL,
-      (std::string("cuDNN error: ") + cudnnGetErrorString(cudnn_err)).c_str());
+  return Ort::Status{
+      (std::string("cuDNN error: ") + cudnnGetErrorString(cudnn_err)).c_str(),
+      ORT_EP_FAIL};
 }
 
 inline bool TryGetCurrentCudaDevice(int& device_id) noexcept {

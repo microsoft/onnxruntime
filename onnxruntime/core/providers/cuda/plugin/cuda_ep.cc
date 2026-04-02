@@ -280,26 +280,28 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 
 /*static*/
 OrtStatus* ORT_API_CALL CudaEp::SyncImpl(OrtEp* this_ptr) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
   auto* ep = static_cast<CudaEp*>(this_ptr);
 
   int prev_device = -1;
   const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
 
-  OrtStatus* status = StatusFromCudaError(cudaSetDevice(ep->config_.device_id));
-  if (status == nullptr) {
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(ep->config_.device_id));
+  if (status.IsOK()) {
     status = StatusFromCudaError(cudaDeviceSynchronize());
   }
 
   if (restore_prev_device) {
-    OrtStatus* restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
-    if (status == nullptr) {
-      status = restore_status;
-    } else if (restore_status != nullptr) {
-      Ort::GetApi().ReleaseStatus(restore_status);
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
     }
   }
 
-  return status;
+  return status.release();
+
+  EXCEPTION_TO_STATUS_END
 }
 
 }  // namespace cuda_plugin
