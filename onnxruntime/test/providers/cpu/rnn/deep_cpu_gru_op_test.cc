@@ -14,10 +14,12 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+#ifndef ORT_NO_EXCEPTIONS
 TEST(GRUTest, CalculateBufferElementCountThrowsOnOverflow) {
   EXPECT_THROW((void)onnxruntime::detail::CalculateBufferElementCount({std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5}),
                OnnxRuntimeException);
 }
+#endif
 
 static const std::vector<string> default_activations = {"Sigmoid", "Tanh"};
 
