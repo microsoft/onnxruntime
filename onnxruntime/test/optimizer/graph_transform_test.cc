@@ -6035,6 +6035,16 @@ static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
   return Status::OK();
 }
 
+static Status CheckMobileClipAttentionFusedGraphOnProvider(Graph& graph, const char* provider) {
+  ORT_RETURN_IF_ERROR(CheckMobileClipAttentionFusedGraph(graph));
+
+  for (Node& node : graph.Nodes()) {
+    TEST_RETURN_IF_NOT(node.GetExecutionProviderType() == provider);
+  }
+
+  return Status::OK();
+}
+
 static Status CheckMobileClipAttentionUnfusedProjectionGemmGraph(Graph& graph) {
   auto op_to_count = CountOpsInGraph(graph);
   TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 0);
@@ -6096,6 +6106,50 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest)
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCudaEpTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    for (Node& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    return CheckMobileClipAttentionFusedGraphOnProvider(graph, kCudaExecutionProvider);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
+      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmCudaEpTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    for (Node& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    return CheckMobileClipAttentionFusedGraphOnProvider(graph, kCudaExecutionProvider);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
+      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaInvalidQkvWeightShapeTest) {

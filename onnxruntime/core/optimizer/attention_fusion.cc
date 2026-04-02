@@ -68,12 +68,14 @@ static bool ValidateProjectionGemmInitializer(const Graph& graph, const Node& ge
 }
 
 // Most attention fusions require all matched nodes to already be assigned to an execution provider
-// that supports the fused op. MobileClipMHA is matched before partitioning in graph-transform tests,
-// so nodes may still be unassigned here. Accept CPU or unassigned nodes, and preserve the original
-// provider string on the fused nodes once the pattern is rewritten.
-static bool IsCpuOrUnassignedNode(const Node& node) {
-  const auto& provider = node.GetExecutionProviderType();
-  return provider.empty() || provider == kCpuExecutionProvider;
+// that supports the fused op. MobileClipMHA is also matched before partitioning in graph-transform
+// tests, so nodes may still be unassigned here. Accept nodes that are either unassigned or already
+// assigned to a compatible provider, and preserve the original provider string on the fused nodes
+// once the pattern is rewritten.
+static bool IsSupportedOrUnassignedNode(const Node& node,
+                                        const InlinedHashSet<std::string_view>& compatible_execution_providers) {
+  return node.GetExecutionProviderType().empty() ||
+         graph_utils::IsSupportedProvider(node, compatible_execution_providers);
 }
 
 static bool HasExpectedPerm(const Node& node, const std::initializer_list<int64_t>& expected_perm) {
@@ -294,7 +296,10 @@ static bool TryRewriteProjectionGemm(Graph& graph,
                                            proj_gemm.GetExecutionProviderType());
 }
 
-static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::Logger& logger) {
+static bool TryFuseMobileClipMHA(Node& qkv_matmul,
+                                 Graph& graph,
+                                 const InlinedHashSet<std::string_view>& compatible_execution_providers,
+                                 const logging::Logger& logger) {
   const auto fail = [&](const char* message) {
     LOGS(logger, VERBOSE) << "MobileClipMHA[" << qkv_matmul.Name() << "]: fusion skipped: " << message;
     return false;
@@ -304,7 +309,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul, Graph& graph, const logging::
     return false;
   }
 
-  if (!IsCpuOrUnassignedNode(qkv_matmul)) {
+  if (!IsSupportedOrUnassignedNode(qkv_matmul, compatible_execution_providers)) {
     return false;
   }
 
@@ -757,7 +762,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (TryFuseMobileClipMHA(node, graph, logger)) {
+    if (TryFuseMobileClipMHA(node, graph, GetCompatibleExecutionProviders(), logger)) {
       fused_count++;
       modified = true;
       continue;
