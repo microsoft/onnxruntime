@@ -575,6 +575,15 @@ def add_client_package_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_threadpool_callback_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for per-session thread pool work callbacks."""
+    parser.add_argument(
+        "--enable_session_threadpool_callbacks",
+        action="store_true",
+        help="Enable per-session thread pool work callbacks.",
+    )
+
+
 def add_python_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Python bindings."""
     parser.add_argument("--enable_pybind", action="store_true", help="Enable Python bindings.")
@@ -905,6 +914,7 @@ def parse_arguments() -> argparse.Namespace:
     add_extension_args(parser)
     add_size_reduction_args(parser)
     add_client_package_args(parser)
+    add_threadpool_callback_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)
