@@ -111,6 +111,10 @@ onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CC_SRCS}
     ${CUDA_PLUGIN_EP_CU_SRCS}
 )
+
+# Mirror directory structure in the Visual Studio solution tree.
+source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${CUDA_EP_CC_SRCS} ${CUDA_EP_CU_SRCS})
+source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${CUDA_CONTRIB_OPS_CC_SRCS} ${CUDA_CONTRIB_OPS_CU_SRCS})
 # Keep the plugin CUDA target aligned with the repo-wide C++20 baseline.
 # Forcing CUDA C++17 here breaks newer protobuf/absl headers used by the plugin
 # build, as absl::compare expects standard ordering support in this configuration.

@@ -114,11 +114,13 @@ void LogWarning(const OrtApi& ort_api, const OrtLogger& logger, const char* file
 }  // namespace
 
 CudaEpFactory::HardwareDeviceKey CudaEpFactory::MakeDeviceKey(const OrtApi& ort_api,
-                                                              const OrtHardwareDevice& device) {
+                                                              const OrtHardwareDevice& device,
+                                                              int cuda_ordinal) {
   return {
       ort_api.HardwareDevice_Type(&device),
       ort_api.HardwareDevice_VendorId(&device),
       ort_api.HardwareDevice_DeviceId(&device),
+      cuda_ordinal,
   };
 }
 
@@ -160,7 +162,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       // mapping from the filtered hardware-device list instead of relying on the
       // ORT hardware device id, which is not guaranteed to be a CUDA ordinal.
       int current_device_id = cuda_device_index++;
-      const auto device_key = CudaEpFactory::MakeDeviceKey(factory->ort_api_, device);
+      const auto device_key = CudaEpFactory::MakeDeviceKey(factory->ort_api_, device, current_device_id);
       DeviceCacheEntry* cache_entry = nullptr;
       {
         std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
@@ -182,6 +184,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
 
         cache_entry = &it->second;
         current_device_id = cache_entry->cuda_device_id;
+        // Build ordinal → key mapping for CreateAllocatorImpl lookups.
+        factory->ordinal_to_device_key_[current_device_id] = device_key;
       }
 
       OrtKeyValuePairs* ep_metadata = nullptr;
@@ -245,7 +249,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
 OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     OrtEpFactory* this_ptr,
     const OrtHardwareDevice* const* devices,
-    const OrtKeyValuePairs* const* /*ep_metadata*/,
+    const OrtKeyValuePairs* const* ep_metadata,
     size_t num_devices,
     const OrtSessionOptions* session_options,
     const OrtLogger* logger,
@@ -273,15 +277,24 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   CudaEp::Config config{};
 
   {
+    // Resolve the CUDA ordinal from ep_metadata (set during GetSupportedDevicesImpl).
+    int cuda_ordinal = -1;
+    if (ep_metadata && ep_metadata[0]) {
+      const char* ordinal_str = factory->ort_api_.GetKeyValue(ep_metadata[0], "cuda_device_id");
+      if (ordinal_str) {
+        cuda_ordinal = std::atoi(ordinal_str);
+      }
+    }
+
     std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
-    auto it = factory->device_cache_.find(CudaEpFactory::MakeDeviceKey(factory->ort_api_, *devices[0]));
-    if (it == factory->device_cache_.end()) {
+    auto* entry = factory->FindDeviceCacheEntryByOrdinal(cuda_ordinal);
+    if (!entry) {
       return factory->ort_api_.CreateStatus(
           ORT_INVALID_ARGUMENT,
           "CUDA EP factory could not resolve the requested device. "
           "Enumerate EP devices again and retry session creation.");
     }
-    config.device_id = it->second.cuda_device_id;
+    config.device_id = entry->cuda_device_id;
   }
 
   auto try_get_session_config = [&](std::string_view key) -> std::optional<std::string> {
@@ -457,8 +470,10 @@ void ORT_API_CALL CudaEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp
 OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
     OrtEpFactory* this_ptr,
     const OrtMemoryInfo* memory_info,
-    const OrtKeyValuePairs* /*allocator_options*/,
+    const OrtKeyValuePairs* allocator_options,
     OrtAllocator** allocator) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
   auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
   *allocator = nullptr;
 
@@ -474,20 +489,65 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
   }
 
   if (name != nullptr && strcmp(name, "Cuda") == 0) {
-    auto cuda_allocator = std::make_unique<CudaDeviceAllocator>(memory_info, req_device_id);
-    *allocator = cuda_allocator.release();
+    DeviceCacheEntry* entry = factory.FindDeviceCacheEntryByOrdinal(req_device_id);
+    if (!entry) {
+      return factory.ort_api_.CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          ("CUDA EP factory has no registered device for ordinal " +
+           std::to_string(req_device_id))
+              .c_str());
+    }
+
+    std::lock_guard<std::mutex> lock{entry->arena_mutex};
+
+    if (!entry->device_arena) {
+      AllocatorUniquePtr raw_allocator(
+          new CudaDeviceAllocator(memory_info, req_device_id),
+          [](OrtAllocator* p) { delete static_cast<CudaDeviceAllocator*>(p); });
+      entry->device_arena_using_defaults = (allocator_options == nullptr);
+      status = CudaArenaAllocator::Create(CudaAllocatorKind::kDevice, memory_info,
+                                          std::move(raw_allocator), allocator_options,
+                                          factory.ort_api_, factory.default_logger_,
+                                          entry->device_arena);
+      if (status != nullptr) return status;
+    }
+    ++entry->num_device_arena_users;
+    *allocator = entry->device_arena.get();
     return nullptr;
   }
 
   if (name != nullptr && strcmp(name, "CudaPinned") == 0) {
-    auto pinned_allocator = std::make_unique<CudaPinnedAllocator>(memory_info);
-    *allocator = pinned_allocator.release();
+    // Pinned memory is CPU-side; find the cache entry for the device it's associated with.
+    DeviceCacheEntry* entry = factory.FindDeviceCacheEntryByOrdinal(req_device_id);
+    if (!entry) {
+      // Fallback: if no device cache entry (shouldn't normally happen), create raw allocator.
+      auto pinned_allocator = std::make_unique<CudaPinnedAllocator>(memory_info);
+      *allocator = pinned_allocator.release();
+      return nullptr;
+    }
+
+    std::lock_guard<std::mutex> lock{entry->arena_mutex};
+
+    if (!entry->pinned_arena) {
+      AllocatorUniquePtr raw_allocator(
+          new CudaPinnedAllocator(memory_info),
+          [](OrtAllocator* p) { delete static_cast<CudaPinnedAllocator*>(p); });
+      status = CudaArenaAllocator::Create(CudaAllocatorKind::kPinned, memory_info,
+                                          std::move(raw_allocator), allocator_options,
+                                          factory.ort_api_, factory.default_logger_,
+                                          entry->pinned_arena);
+      if (status != nullptr) return status;
+    }
+    ++entry->num_pinned_arena_users;
+    *allocator = entry->pinned_arena.get();
     return nullptr;
   }
 
   return factory.ort_api_.CreateStatus(
       ORT_INVALID_ARGUMENT,
       "Unknown memory info provided to CUDA EP CreateAllocator.");
+
+  EXCEPTION_TO_STATUS_END
 }
 
 /*static*/
@@ -495,6 +555,24 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
     OrtEpFactory* this_ptr, OrtAllocator* allocator) noexcept {
   if (!allocator) return;
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
+
+  // Check if allocator is a shared arena (pointer identity match).
+  {
+    std::lock_guard<std::mutex> cache_lock(factory->device_cache_mutex_);
+    for (auto& [key, entry] : factory->device_cache_) {
+      std::lock_guard<std::mutex> lock{entry.arena_mutex};
+      if (allocator == entry.device_arena.get()) {
+        if (--entry.num_device_arena_users == 0) entry.device_arena.reset();
+        return;
+      }
+      if (allocator == entry.pinned_arena.get()) {
+        if (--entry.num_pinned_arena_users == 0) entry.pinned_arena.reset();
+        return;
+      }
+    }
+  }
+
+  // Fallback: raw allocator not managed by arena (e.g. read-only allocator).
   auto* typed_allocator = static_cast<CudaAllocatorBase*>(allocator);
   switch (typed_allocator->GetKind()) {
     case CudaAllocatorKind::kDevice:
@@ -546,6 +624,26 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
   return nullptr;
 
   EXCEPTION_TO_STATUS_END
+}
+
+CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinal(int cuda_ordinal) {
+  std::lock_guard<std::mutex> lock(device_cache_mutex_);
+  auto key_it = ordinal_to_device_key_.find(cuda_ordinal);
+  if (key_it == ordinal_to_device_key_.end()) {
+    return nullptr;
+  }
+  auto cache_it = device_cache_.find(key_it->second);
+  if (cache_it == device_cache_.end()) {
+    return nullptr;
+  }
+  return &cache_it->second;
+}
+
+CudaArenaAllocator* CudaEpFactory::GetDeviceArenaForDevice(int device_id) {
+  DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+  if (!entry) return nullptr;
+  std::lock_guard<std::mutex> lock{entry->arena_mutex};
+  return entry->device_arena.get();
 }
 
 }  // namespace cuda_plugin
