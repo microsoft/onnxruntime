@@ -4,12 +4,13 @@
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 #ifdef _WIN32
-#include <iostream>
 #include <locale>
 #endif
 
