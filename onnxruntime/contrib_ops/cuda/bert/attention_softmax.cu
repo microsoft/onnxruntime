@@ -974,7 +974,7 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
 
   if (use_persistent_softmax) {
     return onnxruntime::cuda::dispatch_warpwise_softmax_forward<T, T, float, false>(
-        ort_stream,
+        stream,
         output,
         persistent_softmax_workspace,
         total_sequence_length,

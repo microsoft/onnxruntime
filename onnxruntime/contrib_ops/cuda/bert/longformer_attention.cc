@@ -78,11 +78,11 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // TODO(tianleiwu): only calculate global index once per model instead of once per LongformerAttention node.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * sequence_length, context->GetComputeStream());
-  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size, context->GetComputeStream());
+  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * sequence_length, GetComputeStream(context));
+  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size, GetComputeStream(context));
 
   size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);
-  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes, context->GetComputeStream());
+  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes, GetComputeStream(context));
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(BuildGlobalIndex(
@@ -116,7 +116,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t qkv_size = static_cast<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size;
   // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
   // TODO(tianleiwu): compact global_q only need batch_size * window * hidden_size * element_size buffer size.
-  auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size, context->GetComputeStream());
+  auto gemm_buffer = GetScratchBuffer<void>(qkv_size + qkv_size, GetComputeStream(context));
 
   bool use_merged_qkv_weights = (weights->Shape().NumDimensions() == 2);
 
@@ -257,7 +257,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              max_num_global,
                                                              window_,
                                                              disable_compact_memory);
-  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize, GetComputeStream(context));
   ORT_RETURN_IF_ERROR(LaunchLongformerAttentionKernel(
       device_prop,
       cublas,
@@ -285,7 +285,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
       use_half4_));
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
-  this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), context->GetComputeStream());
+  this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), GetComputeStream(context));
 
   return Status::OK();
 }

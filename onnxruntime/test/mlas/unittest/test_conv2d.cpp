@@ -14,8 +14,10 @@ static size_t Conv2dRegistLongExecute() {
 
 static size_t Conv2dRegistShortExecute() {
   size_t count = Conv2dShortExecuteTest<MlasConv2DTest<false>>::RegisterShortExecuteTests();
+  count += MlasDirectShortExecuteTests<MlasConv2DTest<false>>::RegisterShortExecute();
   if (GetMlasThreadPool() != nullptr) {
     count += Conv2dShortExecuteTest<MlasConv2DTest<true>>::RegisterShortExecuteTests();
+    count += MlasDirectShortExecuteTests<MlasConv2DTest<true>>::RegisterShortExecute();
   }
   return count;
 }
