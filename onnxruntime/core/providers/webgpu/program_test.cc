@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // Compile-time tests for the type detection utilities in program.h.
-// These static_asserts verify that the has_member_* variable templates
+// These static_asserts verify that is_const_std_array, the has_member_* variable templates,
 // and has_*_correct_type concepts correctly detect static const std::array members.
 
 #include "core/providers/webgpu/program.h"
@@ -12,96 +12,133 @@ namespace webgpu {
 namespace details {
 namespace test {
 
-// Test-specific member detection for a member named 'a'
-template <typename T, typename = void>
-inline constexpr bool test_has_a = false;
-template <typename T>
-inline constexpr bool test_has_a<T, std::void_t<decltype(T::a)>> = true;
+// ============================================================================
+// Tests for is_const_std_array
+// ============================================================================
 
-// Test-specific type correctness concept for a member named 'a'
-template <typename T>
-concept test_has_a_correct_type = requires {
-  T::a;
-  requires is_const_std_array<decltype(T::a)>::value;
-  requires std::is_const_v<decltype(T::a)>;
-  requires !std::is_member_pointer_v<decltype(&T::a)>;
+static_assert(!is_const_std_array<int>::value);
+static_assert(!is_const_std_array<const int>::value);
+static_assert(!is_const_std_array<std::array<int, 3>>::value);
+static_assert(is_const_std_array<const std::array<int, 3>>::value);
+static_assert(is_const_std_array<const std::array<int, 0>>::value);
+
+// ============================================================================
+// Tests for has_member_constants / has_constants_correct_type
+// ============================================================================
+
+struct NoMembers {};
+static_assert(!has_member_constants<NoMembers>);
+static_assert(!has_constants_correct_type<NoMembers>);
+
+struct Constants_WrongName {
+  static constexpr std::array<int, 1> not_constants = {1};
 };
+static_assert(!has_member_constants<Constants_WrongName>);
+static_assert(!has_constants_correct_type<Constants_WrongName>);
 
-struct TestClass_Empty {};
-static_assert(!test_has_a<TestClass_Empty>);
-static_assert(!test_has_a_correct_type<TestClass_Empty>);
-
-struct TestClass_NotArray_0 {
-  int b;
+struct Constants_PlainInt {
+  int constants;
 };
-static_assert(!test_has_a<TestClass_NotArray_0>);
-static_assert(!test_has_a_correct_type<TestClass_NotArray_0>);
+static_assert(has_member_constants<Constants_PlainInt>);
+static_assert(!has_constants_correct_type<Constants_PlainInt>);
 
-struct TestClass_NotArray_1 {
-  int a;
+struct Constants_ConstInt {
+  const int constants;
 };
-static_assert(test_has_a<TestClass_NotArray_1>);
-static_assert(!test_has_a_correct_type<TestClass_NotArray_1>);
+static_assert(has_member_constants<Constants_ConstInt>);
+static_assert(!has_constants_correct_type<Constants_ConstInt>);
 
-struct TestClass_NotArray_2 {
-  const int a;
+struct Constants_CArray {
+  const int constants[2];
 };
-static_assert(test_has_a<TestClass_NotArray_2>);
-static_assert(!test_has_a_correct_type<TestClass_NotArray_2>);
+static_assert(has_member_constants<Constants_CArray>);
+static_assert(!has_constants_correct_type<Constants_CArray>);
 
-struct TestClass_NotStdArray_0 {
-  const int a[2];
+struct Constants_StaticCArray {
+  static constexpr int constants[] = {0};
 };
-static_assert(test_has_a<TestClass_NotStdArray_0>);
-static_assert(!test_has_a_correct_type<TestClass_NotStdArray_0>);
+static_assert(has_member_constants<Constants_StaticCArray>);
+static_assert(!has_constants_correct_type<Constants_StaticCArray>);
 
-struct TestClass_NotStdArray_1 {
-  static constexpr int a[] = {0};
+struct Constants_StaticNonConstCArray {
+  static int constants[];
 };
-static_assert(test_has_a<TestClass_NotStdArray_1>);
-static_assert(!test_has_a_correct_type<TestClass_NotStdArray_1>);
+static_assert(has_member_constants<Constants_StaticNonConstCArray>);
+static_assert(!has_constants_correct_type<Constants_StaticNonConstCArray>);
 
-struct TestClass_NotStdArray_2 {
-  static int a[];
+struct Constants_StaticConstCArray {
+  static const int constants[];
 };
-static_assert(test_has_a<TestClass_NotStdArray_2>);
-static_assert(!test_has_a_correct_type<TestClass_NotStdArray_2>);
+static_assert(has_member_constants<Constants_StaticConstCArray>);
+static_assert(!has_constants_correct_type<Constants_StaticConstCArray>);
 
-struct TestClass_NotStdArray_3 {
-  static const int a[];
+struct Constants_NonConstStdArray {
+  std::array<int, 1> constants = {1};
 };
-static_assert(test_has_a<TestClass_NotStdArray_3>);
-static_assert(!test_has_a_correct_type<TestClass_NotStdArray_3>);
+static_assert(has_member_constants<Constants_NonConstStdArray>);
+static_assert(!has_constants_correct_type<Constants_NonConstStdArray>);
 
-struct TestClass_StdArray_0 {
-  std::array<int, 1> a = {1};
+struct Constants_NonConstStaticStdArray {
+  static std::array<int, 5> constants;
 };
-static_assert(test_has_a<TestClass_StdArray_0>);
-static_assert(!test_has_a_correct_type<TestClass_StdArray_0>);
+static_assert(has_member_constants<Constants_NonConstStaticStdArray>);
+static_assert(!has_constants_correct_type<Constants_NonConstStaticStdArray>);
 
-struct TestClass_StdArray_1 {
-  static constexpr std::array<int, 2> a = {1, 2};
+struct Constants_StaticConstexprStdArray {
+  static constexpr std::array<int, 2> constants = {1, 2};
 };
-static_assert(test_has_a<TestClass_StdArray_1>);
-static_assert(test_has_a_correct_type<TestClass_StdArray_1>);
+static_assert(has_member_constants<Constants_StaticConstexprStdArray>);
+static_assert(has_constants_correct_type<Constants_StaticConstexprStdArray>);
 
-struct TestClass_StdArray_2 {
-  static const std::array<int, 3> a;
+struct Constants_StaticConstStdArray {
+  static const std::array<int, 3> constants;
 };
-static_assert(test_has_a<TestClass_StdArray_2>);
-static_assert(test_has_a_correct_type<TestClass_StdArray_2>);
+static_assert(has_member_constants<Constants_StaticConstStdArray>);
+static_assert(has_constants_correct_type<Constants_StaticConstStdArray>);
 
-struct TestClass_StdArray_3 {
-  static constexpr const std::array<int, 4> a = {1, 2, 3, 4};
+struct Constants_StaticConstexprConstStdArray {
+  static constexpr const std::array<int, 4> constants = {1, 2, 3, 4};
 };
-static_assert(test_has_a<TestClass_StdArray_3>);
-static_assert(test_has_a_correct_type<TestClass_StdArray_3>);
+static_assert(has_member_constants<Constants_StaticConstexprConstStdArray>);
+static_assert(has_constants_correct_type<Constants_StaticConstexprConstStdArray>);
 
-struct TestClass_StdArray_4 {
-  static std::array<int, 5> a;
+// ============================================================================
+// Tests for has_member_overridable_constants / has_overridable_constants_correct_type
+// ============================================================================
+
+static_assert(!has_member_overridable_constants<NoMembers>);
+static_assert(!has_overridable_constants_correct_type<NoMembers>);
+
+struct OverridableConstants_WrongType {
+  int overridable_constants;
 };
-static_assert(test_has_a<TestClass_StdArray_4>);
-static_assert(!test_has_a_correct_type<TestClass_StdArray_4>);
+static_assert(has_member_overridable_constants<OverridableConstants_WrongType>);
+static_assert(!has_overridable_constants_correct_type<OverridableConstants_WrongType>);
+
+struct OverridableConstants_Correct {
+  static constexpr std::array<int, 1> overridable_constants = {1};
+};
+static_assert(has_member_overridable_constants<OverridableConstants_Correct>);
+static_assert(has_overridable_constants_correct_type<OverridableConstants_Correct>);
+
+// ============================================================================
+// Tests for has_member_uniform_variables / has_uniform_variables_correct_type
+// ============================================================================
+
+static_assert(!has_member_uniform_variables<NoMembers>);
+static_assert(!has_uniform_variables_correct_type<NoMembers>);
+
+struct UniformVariables_WrongType {
+  int uniform_variables;
+};
+static_assert(has_member_uniform_variables<UniformVariables_WrongType>);
+static_assert(!has_uniform_variables_correct_type<UniformVariables_WrongType>);
+
+struct UniformVariables_Correct {
+  static constexpr std::array<int, 1> uniform_variables = {1};
+};
+static_assert(has_member_uniform_variables<UniformVariables_Correct>);
+static_assert(has_uniform_variables_correct_type<UniformVariables_Correct>);
 
 }  // namespace test
 }  // namespace details
