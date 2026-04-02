@@ -324,9 +324,10 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
 
   const auto* fbs_string_data = fbs_tensor->string_data();
   ASSERT_NE(fbs_string_data, nullptr);
-  auto* string_offsets = const_cast<flatbuffers::uoffset_t*>(
-      reinterpret_cast<const flatbuffers::uoffset_t*>(fbs_string_data->Data()));
-  flatbuffers::WriteScalar(&string_offsets[1], flatbuffers::uoffset_t{0});
+  auto* mutable_string_data =
+      const_cast<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*>(fbs_string_data);
+    auto* string_offsets = mutable_string_data->data();
+    string_offsets[1] = flatbuffers::Offset<flatbuffers::String>();
 
   ONNX_NAMESPACE::TensorProto initializer;
   OrtFormatLoadOptions options;
