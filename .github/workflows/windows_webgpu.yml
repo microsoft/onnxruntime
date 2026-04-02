@@ -131,12 +131,17 @@ jobs:
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
-      - name: Run tests (onnxruntime_test_all, onnxruntime_provider_test) with verbose logging
+      - name: Run tests (onnxruntime_provider_test) with verbose logging for shader key validation
+        timeout-minutes: 60
         shell: pwsh
         run: |
+          # Test correctness is already validated by CTest in the "Build and Test" step.
+          # This step only re-runs onnxruntime_provider_test with verbose logging to capture
+          # WebGPU shader compilation logs (stderr) for shader key validation.
+          # Running onnxruntime_test_all.exe here is not needed and causes timeouts because
+          # hundreds of tests share a single WebGPU context in one process, exhausting GPU resources.
           $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
-          .\onnxruntime_test_all.exe 2> .\onnxruntime_test_stderr.log
-          .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
+          .\onnxruntime_provider_test.exe 2> .\onnxruntime_test_stderr.log
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
       - name: Check log file
