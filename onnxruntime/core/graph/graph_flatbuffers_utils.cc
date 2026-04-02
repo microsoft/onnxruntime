@@ -320,7 +320,13 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
     ORT_RETURN_IF(nullptr == fbs_str_data, "Missing string data for initializer. Invalid ORT format model.");
     auto mutable_str_data = initializer.mutable_string_data();
     mutable_str_data->Reserve(fbs_str_data->size());
-    for (const auto* fbs_str : *fbs_str_data) {
+    const auto* raw_string_offsets = reinterpret_cast<const uint8_t*>(fbs_str_data->Data());
+    for (flatbuffers::uoffset_t i = 0; i < fbs_str_data->size(); ++i) {
+      const auto entry_offset =
+          flatbuffers::ReadScalar<flatbuffers::uoffset_t>(raw_string_offsets + i * sizeof(flatbuffers::uoffset_t));
+      ORT_RETURN_IF(entry_offset == 0, "Null string data entry for initializer. Invalid ORT format model.");
+
+      const auto* fbs_str = fbs_str_data->Get(i);
       ORT_RETURN_IF(nullptr == fbs_str, "Null string data entry for initializer. Invalid ORT format model.");
       mutable_str_data->Add(fbs_str->str());
     }
