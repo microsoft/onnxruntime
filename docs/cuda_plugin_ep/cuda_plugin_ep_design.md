@@ -274,7 +274,7 @@ Some CPU base classes have heavy dependencies (protobuf, `UnpackTensor`) that ma
 `CudaEp` implements `OrtEp::Sync` to block until the configured CUDA device has completed all preceding work. ORT uses this path for scenarios such as `IOBinding`, where asynchronous input copies must finish before kernel execution begins.
 
 Implementation details:
-- `CudaEp::SyncImpl` switches to the EP's configured device via `cudaSetDevice(device_id)`
+- `CudaEp::SyncImpl` temporarily switches to the EP's configured device via `cudaSetDevice(device_id)` and restores the caller's previous CUDA device before returning
 - It then issues `cudaDeviceSynchronize()` as a conservative device-wide barrier
 
 This is intentionally conservative and correct for the plugin EP's first sync integration. A narrower stream-scoped synchronization strategy can be considered later if profiling shows a need.
@@ -706,7 +706,7 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 | Identity | Identity opset 13 and opset 25 — re-enabled op with `TensorSeq` path guarded |
 | Crop | Crop (opset 1) — previously excluded contrib op, now re-enabled |
 | Memcpy | Explicit `MemcpyFromHost` and `MemcpyToHost` standalone tests to ensure copy ops are dispatched |
-| IOBinding / Sync | IOBinding-based tests (Add, MatMul) that exercise `OrtEp::Sync` and `OrtEp::CreateSyncStreamForDevice` |
+| IOBinding / Sync | IOBinding-based tests (Add, MatMul) that bind CPU inputs and CUDA outputs to exercise `OrtEp::Sync` and `OrtEp::CreateSyncStreamForDevice` |
 | Key-ops probe | Session-based probing that all key ops are assigned to `CudaPluginExecutionProvider` |
 
 ### 10.2 Running Tests

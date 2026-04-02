@@ -103,20 +103,74 @@ CudaSyncStream::~CudaSyncStream() {
 }
 
 OrtStatus* CudaSyncStream::InitHandles() {
-  PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id_));
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
 
-  PL_CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
+  OrtStatus* status = StatusFromCudaError(cudaSetDevice(device_id_));
+  if (status == nullptr) {
+    status = StatusFromCudaError(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
+  }
+  if (status == nullptr) {
+    const cublasStatus_t cublas_create_status = cublasCreate(&cublas_handle_);
+    if (cublas_create_status != CUBLAS_STATUS_SUCCESS) {
+      status = Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("cuBLAS error: ") +
+           std::to_string(static_cast<int>(cublas_create_status)))
+              .c_str());
+    }
+  }
+  if (status == nullptr) {
+    const cublasStatus_t cublas_set_stream_status = cublasSetStream(cublas_handle_, cuda_stream_);
+    if (cublas_set_stream_status != CUBLAS_STATUS_SUCCESS) {
+      status = Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("cuBLAS error: ") +
+           std::to_string(static_cast<int>(cublas_set_stream_status)))
+              .c_str());
+    }
+  }
+  if (status == nullptr) {
+    const cudnnStatus_t cudnn_create_status = cudnnCreate(&cudnn_handle_);
+    if (cudnn_create_status != CUDNN_STATUS_SUCCESS) {
+      status = Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("cuDNN error: ") + cudnnGetErrorString(cudnn_create_status)).c_str());
+    }
+  }
+  if (status == nullptr) {
+    const cudnnStatus_t cudnn_set_stream_status = cudnnSetStream(cudnn_handle_, cuda_stream_);
+    if (cudnn_set_stream_status != CUDNN_STATUS_SUCCESS) {
+      status = Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("cuDNN error: ") + cudnnGetErrorString(cudnn_set_stream_status)).c_str());
+    }
+  }
+  if (status == nullptr) {
+    const cublasStatus_t cublas_lt_create_status = cublasLtCreate(&cublas_lt_handle_);
+    if (cublas_lt_create_status != CUBLAS_STATUS_SUCCESS) {
+      status = Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("cuBLAS error: ") +
+           std::to_string(static_cast<int>(cublas_lt_create_status)))
+              .c_str());
+    }
+  }
 
-  PL_CUBLAS_RETURN_IF_ERROR(cublasCreate(&cublas_handle_));
-  PL_CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas_handle_, cuda_stream_));
+  if (restore_prev_device) {
+    OrtStatus* restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status == nullptr) {
+      status = restore_status;
+    } else if (restore_status != nullptr) {
+      Ort::GetApi().ReleaseStatus(restore_status);
+    }
+  }
 
-  PL_CUDNN_RETURN_IF_ERROR(cudnnCreate(&cudnn_handle_));
-  PL_CUDNN_RETURN_IF_ERROR(cudnnSetStream(cudnn_handle_, cuda_stream_));
+  if (status == nullptr) {
+    RegisterStream(cuda_stream_, this);
+  }
 
-  PL_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&cublas_lt_handle_));
-  RegisterStream(cuda_stream_, this);
-
-  return nullptr;
+  return status;
 }
 
 void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {
@@ -237,8 +291,18 @@ CudaSyncNotification::CudaSyncNotification(CudaSyncStream& stream)
   Release = ReleaseImpl;
 
   // Create a CUDA event for synchronization (disable timing for performance)
-  PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
-  PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+  try {
+    PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
+    PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
+    if (restore_prev_device) {
+      PL_CUDA_CALL_THROW(cudaSetDevice(prev_device));
+    }
+  } catch (...) {
+    RestoreCudaDeviceIfNeeded(restore_prev_device, prev_device);
+    throw;
+  }
 }
 
 CudaSyncNotification::~CudaSyncNotification() {

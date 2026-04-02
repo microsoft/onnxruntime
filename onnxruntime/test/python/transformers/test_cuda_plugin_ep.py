@@ -74,7 +74,10 @@ def get_cuda_plugin_device_id(device):
     if device_id is None:
         raise unittest.SkipTest("CUDA plugin EP device metadata did not include a CUDA device_id")
 
-    return int(device_id)
+    try:
+        return int(device_id)
+    except (TypeError, ValueError) as exc:
+        raise unittest.SkipTest(f"CUDA plugin EP device metadata had non-integer device_id={device_id!r}") from exc
 
 
 def _create_session_options(session_config=None):
@@ -1872,8 +1875,8 @@ class TestCudaPluginEP(unittest.TestCase):
     def test_iobinding_add(self):
         """Run a simple Add model using IOBinding to exercise the EP Sync path.
 
-        IOBinding triggers OrtEp::Sync() to ensure async device copies complete
-        before kernel execution begins.
+        Binding CPU inputs forces ORT to stage host-to-device copies on the
+        plugin sync stream before kernel execution begins.
         """
         target_device = get_cuda_plugin_device()
         cuda_device_id = get_cuda_plugin_device_id(target_device)
@@ -1897,15 +1900,13 @@ class TestCudaPluginEP(unittest.TestCase):
             b = np.random.rand(3, 2).astype(np.float32)
 
             io_binding = sess.io_binding()
-            a_ort = onnxrt.OrtValue.ortvalue_from_numpy(a, "cuda", cuda_device_id)
-            b_ort = onnxrt.OrtValue.ortvalue_from_numpy(b, "cuda", cuda_device_id)
-            io_binding.bind_ortvalue_input("A", a_ort)
-            io_binding.bind_ortvalue_input("B", b_ort)
+            io_binding.bind_cpu_input("A", a)
+            io_binding.bind_cpu_input("B", b)
             io_binding.bind_output("Y", "cuda", cuda_device_id)
 
             sess.run_with_iobinding(io_binding)
 
-            result = io_binding.get_outputs()[0].numpy()
+            result = io_binding.copy_outputs_to_cpu()[0]
             np.testing.assert_allclose(result, a + b, rtol=1e-3, atol=1e-3)
         finally:
             if os.path.exists(model_path):
@@ -1935,15 +1936,13 @@ class TestCudaPluginEP(unittest.TestCase):
             b = np.random.rand(4, 5).astype(np.float32)
 
             io_binding = sess.io_binding()
-            a_ort = onnxrt.OrtValue.ortvalue_from_numpy(a, "cuda", cuda_device_id)
-            b_ort = onnxrt.OrtValue.ortvalue_from_numpy(b, "cuda", cuda_device_id)
-            io_binding.bind_ortvalue_input("A", a_ort)
-            io_binding.bind_ortvalue_input("B", b_ort)
+            io_binding.bind_cpu_input("A", a)
+            io_binding.bind_cpu_input("B", b)
             io_binding.bind_output("Y", "cuda", cuda_device_id)
 
             sess.run_with_iobinding(io_binding)
 
-            result = io_binding.get_outputs()[0].numpy()
+            result = io_binding.copy_outputs_to_cpu()[0]
             np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
         finally:
             if os.path.exists(model_path):

@@ -260,6 +260,14 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
   }
 
   int device_id = ep_api.MemoryDevice_GetDeviceId(memory_device);
+  if (device_id != ep->config_.device_id) {
+    std::string error = "Invalid OrtMemoryDevice. Expected CUDA device ordinal ";
+    error += std::to_string(ep->config_.device_id);
+    error += " for this EP instance. Got ";
+    error += std::to_string(device_id);
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
+  }
+
   auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
 
   RETURN_IF_ERROR(cuda_stream->InitHandles());
@@ -274,10 +282,24 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 OrtStatus* ORT_API_CALL CudaEp::SyncImpl(OrtEp* this_ptr) noexcept {
   auto* ep = static_cast<CudaEp*>(this_ptr);
 
-  PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(ep->config_.device_id));
-  PL_CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
 
-  return nullptr;
+  OrtStatus* status = StatusFromCudaError(cudaSetDevice(ep->config_.device_id));
+  if (status == nullptr) {
+    status = StatusFromCudaError(cudaDeviceSynchronize());
+  }
+
+  if (restore_prev_device) {
+    OrtStatus* restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status == nullptr) {
+      status = restore_status;
+    } else if (restore_status != nullptr) {
+      Ort::GetApi().ReleaseStatus(restore_status);
+    }
+  }
+
+  return status;
 }
 
 }  // namespace cuda_plugin
