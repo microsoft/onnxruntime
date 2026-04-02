@@ -9,6 +9,8 @@ redirect_from: /docs/reference/execution-providers/TensorRTRTX-ExecutionProvider
 # NVIDIA TensorRT RTX Execution Provider
 {: .no_toc }
 
+> **⚠️ Deprecation Notice:** The built-in TensorRT RTX Execution Provider in the ONNX Runtime repository is deprecated. We strongly recommend using the standalone EP ABI plugin instead. The open-source TensorRT RTX EP ABI is available at [NVIDIA/TensorRt-RTX-EP-ABI](https://github.com/NVIDIA/TensorRt-RTX-EP-ABI). Instructions for using the standalone EP ABI are included in the [Usage](#usage) section below. All execution provider options supported by the built-in EP are fully supported by the EP ABI plugin.
+
 The NVIDIA TensorRT-RTX Execution Provider (EP) is an inference deployment solution designed specifically for NVIDIA RTX GPUs. It is optimized for client-centric use cases.. 
 
 TensorRT RTX EP provides the following benefits:
@@ -33,7 +35,13 @@ Currently, TensorRT RTX EP can be built from the source code. Support for instal
 
 ## Build from source
 
-Information on minimum requirements and how to build from source can be found [here](../build/eps.md#nvidia-tensorrt-rtx).
+**Standalone EP ABI Plugin (Recommended)**
+
+To build the standalone TensorRT RTX EP ABI plugin, please refer to the build instructions in the [TensorRT RTX EP ABI repository](https://github.com/NVIDIA/TensorRt-RTX-EP-ABI#build-from-source).
+
+**Built-in EP (Deprecated)**
+
+Information on minimum requirements and how to build the built-in EP from source can be found [here](../build/eps.md#nvidia-tensorrt-rtx).
 
 ## Usage
 
@@ -45,6 +53,47 @@ session_options.AppendExecutionProvider(onnxruntime::kNvTensorRTRTXExecutionProv
 Ort::Session session(env, model_path, session_options);
 ```
 
+**Using the EP ABI (Standalone Plugin)**
+
+If you are using the TensorRT RTX EP as a standalone plugin via the EP ABI (introduced in ORT 1.23.0), use the V2 device-based EP API:
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+OrtApi const& ortApi = Ort::GetApi();
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "MyApp");
+Ort::SessionOptions session_options;
+
+// 1. Register the EP plugin library
+ortApi.RegisterExecutionProviderLibrary(
+    env, "NvTensorRTRTXExecutionProvider",
+    ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
+
+// 2. Enumerate available EP devices and find TensorRT RTX
+const OrtEpDevice* const* ep_devices = nullptr;
+size_t num_ep_devices;
+ortApi.GetEpDevices(env, &ep_devices, &num_ep_devices);
+
+const OrtEpDevice* trt_device = nullptr;
+for (size_t i = 0; i < num_ep_devices; i++) {
+    if (strcmp(ortApi.EpDevice_EpName(ep_devices[i]),
+              "NvTensorRTRTXExecutionProvider") == 0) {
+        trt_device = ep_devices[i];
+        break;
+    }
+}
+
+// 3. Append the EP with provider options
+const char* keys[]   = {"enable_cuda_graph"};
+const char* values[] = {"1"};
+ortApi.SessionOptionsAppendExecutionProvider_V2(
+    session_options, env, &trt_device, 1,
+    keys, values, 1);
+
+// 4. Create session
+Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
+```
+
 ### Python
 
 Register the TensorRT RTX  EP by specifying it in the providers argument when creating an InferenceSession.
@@ -52,6 +101,41 @@ Register the TensorRT RTX  EP by specifying it in the providers argument when cr
 ```python
 import onnxruntime as ort
 session = ort.InferenceSession(model_path, providers=['NvTensorRtRtxExecutionProvider'])
+```
+
+**Using the EP ABI (Standalone Plugin)**
+
+If you are using the TensorRT RTX EP as a standalone plugin via the EP ABI, register the EP plugin library, discover the EP device, and add it to session options:
+
+```python
+import onnxruntime as ort
+
+# 1. Register the EP plugin DLL
+ort.register_execution_provider_library(
+    "NvTensorRTRTXExecutionProvider",
+    "onnxruntime_providers_nv_tensorrt_rtx.dll")
+
+# 2. Discover the TensorRT RTX EP device
+ep_devices = ort.get_ep_devices()
+trt_device = None
+for ep_device in ep_devices:
+    if ep_device.ep_name == "NvTensorRTRTXExecutionProvider":
+        trt_device = ep_device
+        break
+
+# 3. Add EP device to session options with provider options
+session_options = ort.SessionOptions()
+session_options.add_provider_for_devices(
+    [trt_device],
+    {"enable_cuda_graph": "1", "nv_runtime_cache_path": "./cache"})
+
+# 4. Create session and run inference
+session = ort.InferenceSession("model.onnx", sess_options=session_options)
+result = session.run([], {"input": input_data})
+
+# 5. Cleanup: delete session before unregistering
+del session
+ort.unregister_execution_provider_library("NvTensorRTRTXExecutionProvider")
 ```
 
 ## Features
@@ -83,6 +167,13 @@ Ort::Session session(env, model_path, session_options);
 ```
 
 **ONNXRuntime Perf Test**
+
+*Using the EP ABI (Standalone Plugin):*
+```sh
+onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -t 5 -i "enable_cuda_graph|1" "model.onnx"
+```
+
+*Using the Built-in EP (Deprecated):*
 ```sh
 onnxruntime_perf_test.exe -I -t 5 -e nvtensorrtrtx -i "enable_cuda_graph|1" "model.onnx"
 ```
@@ -138,6 +229,12 @@ For a practical example of usage for EP context, please refer to:
 
 ONNXRuntime Perf Test can also be used to quick generate an EP context model:
 
+*Using the EP ABI (Standalone Plugin):*
+```sh
+onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -r 1 --compile_ep_context --compile_model_path "/path/to/model_ctx.onnx" "/path/to/model.onnx"
+```
+
+*Using the Built-in EP (Deprecated):*
 ```sh
 onnxruntime_perf_test.exe -e nvtensorrtrtx -I -r 1 --compile_ep_context --compile_model_path "/path/to/model_ctx.onnx" "/path/to/model.onnx"
 ```
@@ -172,6 +269,8 @@ Runtime caches help reduce JIT compilation time. When a user compiles an EP cont
 
 ## Execution Provider Options
 TensorRT RTX EP provides the following user configurable options with the [Execution Provider Options](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/providers/nv_tensorrt_rtx/nv_provider_options.h)
+
+> **Note:** All the options listed below apply to both the built-in TensorRT RTX EP and the standalone EP ABI plugin.
 
 
 | Parameter | Type | Description | Default |
@@ -256,8 +355,20 @@ session_options.AppendExecutionProvider(onnxruntime::kNvTensorRTRTXExecutionProv
 
 ## Performance test
 
-When using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e nvtensorrttrx`
+**Using the EP ABI (Standalone Plugin)**
 
-## Plugins Support
+When using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test) with the standalone EP ABI plugin, use the `--plugin_eps` and `--plugin_ep_libs` flags:
 
-TensorRT RTX doesn’t support plugins
+```sh
+onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -g -t 5 "/path/to/model.onnx" -
+```
+
+**Using the Built-in EP (Deprecated)**
+
+When using the built-in EP, use the flag `-e nvtensorrtrtx`:
+
+```sh
+onnxruntime_perf_test.exe -e nvtensorrtrtx -I -g -t 5 "/path/to/model.onnx" -
+```
+
+
