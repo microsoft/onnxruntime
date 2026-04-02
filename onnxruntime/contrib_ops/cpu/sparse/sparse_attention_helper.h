@@ -205,7 +205,7 @@ Status CheckInputs(void* params,
   }
 
   const auto* key_len_data = total_key_lengths->Data<int32_t>();
-  const int min_key_length = (total_sequence_length == sequence_length) ? 0 : sequence_length;
+  const int min_key_length = sequence_length;
   for (int i = 0; i < batch_size; ++i) {
     const int key_length = key_len_data[i];
     if (key_length < min_key_length || key_length > total_sequence_length) {

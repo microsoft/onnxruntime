@@ -17,7 +17,8 @@ namespace {
 
 void RunSparseAttentionInvalidInputTest(const std::vector<int32_t>& total_key_lengths_data,
                                         const std::vector<int64_t>& total_key_lengths_dims,
-                                        const std::string& expected_error) {
+                                        const std::string& expected_error,
+                                        int32_t total_sequence_length = 4) {
   OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("num_heads", 2);
   test.AddAttribute<int64_t>("kv_num_heads", 2);
@@ -33,7 +34,7 @@ void RunSparseAttentionInvalidInputTest(const std::vector<int32_t>& total_key_le
   test.AddInput<float>("past_value", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
   test.AddInput<int32_t>("block_row_indices", {1, 5}, {0, 1, 2, 3, 4});
   test.AddInput<int32_t>("block_col_indices", {1, 1}, {0});
-  test.AddInput<int32_t>("total_sequence_length", {1}, {4});
+  test.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length});
   test.AddInput<int32_t>("key_total_sequence_lengths", total_key_lengths_dims, total_key_lengths_data);
   test.AddOptionalInputEdge<float>();
   test.AddOptionalInputEdge<float>();
@@ -55,6 +56,12 @@ TEST(SparseAttentionTest, RejectsOutOfRangeKeyTotalSequenceLengths) {
 
 TEST(SparseAttentionTest, RejectsKeyTotalSequenceLengthsShapeMismatch) {
   RunSparseAttentionInvalidInputTest({4, 4}, {2}, "key_total_sequence_lengths must have shape (batch_size)");
+}
+
+TEST(SparseAttentionTest, RejectsPromptKeyTotalSequenceLengthsShorterThanSequenceLength) {
+  RunSparseAttentionInvalidInputTest({0}, {1},
+                                     "key_total_sequence_lengths value 0 at batch index 0 is out of range [1, 1]",
+                                     1);
 }
 
 }  // namespace test
