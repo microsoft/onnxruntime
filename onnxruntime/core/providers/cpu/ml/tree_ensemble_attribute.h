@@ -117,7 +117,8 @@ struct TreeEnsembleAttributesV3 {
     ORT_ENFORCE(min_ids >= 0, "target_ids or class_ids cannot have negative values (", min_ids, ").");
     int64_t max_ids = *std::max_element(target_class_ids.begin(), target_class_ids.end());
     ORT_ENFORCE(max_ids < n_targets_or_classes, "At least one value (", max_ids,
-                ") in target_ids or class_ids is greater than the number of targets or classes (", n_targets_or_classes, ").");
+                ") in target_ids or class_ids is greater or equal to the number of targets or classes (",
+                n_targets_or_classes, ").");
   }
 
   std::string aggregate_function;
