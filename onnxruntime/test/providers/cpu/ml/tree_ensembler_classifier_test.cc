@@ -448,5 +448,89 @@ TEST(MLOpTest, TreeEnsembleClassifierMismatchedNodeArrays) {
            "nodes_falsenodeids and nodes_featureids must have the same size");
 }
 
+TEST(MLOpTest, TreeEnsembleClassifierBaseValuesTooLargeForBinaryClass) {
+  // For a 1-class classifier, base_values must have at most 2 elements.
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2, -2};
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1, 2};
+  std::vector<int64_t> class_classids = {0, 0};
+  std::vector<float> class_weights = {1.f, 1.f};
+  std::vector<int64_t> classes = {0};
+  // n_targets_or_classes=1 but base_values has 3 elements (must be <= 2)
+  std::vector<float> base_values = {0.f, 0.f, 0.f};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+  test.AddAttribute("base_values", base_values);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0, 1, or 2 values.");
+}
+
+TEST(MLOpTest, TreeEnsembleClassifierBaseValuesWrongSizeMultiClass) {
+  // For a 3-class classifier, base_values must have 0 or 3 elements.
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2, -2};
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1, 2};
+  std::vector<int64_t> class_classids = {0, 2};
+  std::vector<float> class_weights = {1.f, 1.f};
+  std::vector<int64_t> classes = {0, 1, 2};
+  // n_targets_or_classes=3 but base_values has 2 elements (must be 0 or 3)
+  std::vector<float> base_values = {0.f, 0.f};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+  test.AddAttribute("base_values", base_values);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0 or 3 values.");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
