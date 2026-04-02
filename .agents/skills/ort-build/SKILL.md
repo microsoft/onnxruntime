@@ -94,25 +94,21 @@ Option files can be used to avoid repeating common flags across build calls.
 | `--targets T1 T2 ...` | Build one or more specific CMake targets in a single flag (e.g., `onnxruntime_common`, `onnxruntime_test_all`). |
 | `--build_dir` | Specify build output directory (default: `build/`) |
 
+## Build output path
+
+With Visual Studio generators, the config name appears twice in the output path. For example, `--build_dir build/foo --config Debug` produces binaries in `build/foo/Debug/Debug/`.
+
 ## Build duration
 
 A full ONNX Runtime build can take a **long time** (tens of minutes to over an hour depending on hardware and configuration).
 
-ORT builds produce a lot of output that can exceed terminal truncation limits. Run the build in a **background terminal** and wait for it to complete. When the build finishes, start by reading only the **last few lines** of output to check for `Build complete` or error indicators. Avoid reading the full output initially — only read more if you need to diagnose a failure.
+## Agent tips
 
-**Tip:** Consider redirecting build output to a file. This avoids consuming context with verbose build output while preserving the full log for later inspection. You can then search the log with `grep` or `Select-String`, or read just the last few lines.
-
-```bash
-# Windows (PowerShell)
-.\build.bat ... > build.log 2>&1
-
-# Linux/macOS
-./build.sh ... > build.log 2>&1
-```
-
-If the build is still running, wait patiently rather than polling rapidly.
-
-Do **not** run the build in a foreground terminal and then run another command in the same terminal — this will interrupt the build.
+- **Prefer calling `python tools/ci_build/build.py` directly** over `build.bat`/`build.sh` when you need to redirect output. The `.bat` wrapper runs in `cmd.exe`, which breaks PowerShell piping and redirection.
+- **Always redirect build output to a file** (e.g., `python tools/ci_build/build.py ... > build_log.txt 2>&1`). Build output is large and will overflow terminal buffers. You can then search the log with `grep` or `Select-String`, or read just the last few lines.
+- **Verify build success** by checking the log for `"Build complete"` and confirming expected binaries exist on disk.
+- **Run builds as background commands** since they take a long time. Poll the log file for completion rather than relying on terminal idle detection, which can trigger prematurely when MSBuild spawns parallel child processes. Wait patiently rather than polling rapidly.
+- **Do not** run the build in a foreground terminal and then run another command in the same terminal — this will interrupt the build.
 
 ## Workflow
 

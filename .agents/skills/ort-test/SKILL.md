@@ -95,8 +95,13 @@ Example: `test_method_x_raises_error_when_dims_is_not_a_sequence`
 ## Workflow
 
 1. **Activate a Python virtual environment** before running tests. See the "Python Environment" section in `AGENTS.md` for instructions.
-2. Determine what the user wants to test(all tests, specific C++ test, specific Python test, etc.).
+2. Determine what the user wants to test (all tests, specific C++ test, specific Python test, etc.).
 3. Detect the platform to construct the correct paths.
 4. For C++ tests, check that the build directory exists and a prior build has been completed.
 5. Construct and run the appropriate test command.
 6. If tests fail, analyze the output and help debug the failures.
+
+## Agent tips
+
+- **Redirect test output to a file** (e.g., `> test_output.txt 2>&1`). Test output can be large and will overflow terminal buffers. Read the file afterward to check results.
+- When running the full test suite takes too long, use `--gtest_filter` to run a targeted subset of tests relevant to the change being verified.
