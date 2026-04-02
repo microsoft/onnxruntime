@@ -5,54 +5,39 @@ description: Lint and format ONNX Runtime code. Use this skill when asked to lin
 
 # Linting and Formatting ONNX Runtime Code
 
-ONNX Runtime uses [lintrunner](https://github.com/suo/lintrunner) to manage linting for both C++ (clang-format) and Python (ruff).
+ONNX Runtime uses [lintrunner](https://github.com/suo/lintrunner) for both C++ (clang-format) and Python (ruff).
 
-## Initial Setup
-
-Install lintrunner and its dependencies, then initialize:
+## Setup (one-time)
 
 ```bash
 pip install -r requirements-lintrunner.txt
 lintrunner init
 ```
 
-This setup only needs to be done once.
-
-## Common commands
+## Commands
 
 ```bash
-# Auto-fix lint issues in changed files (staged + unstaged vs HEAD)
-lintrunner -a
-
-# Auto-fix lint issues in ALL files
-lintrunner -a --all-files
-
-# Format Python files only
-lintrunner f --all-files
-
-# Check without fixing (dry run)
-lintrunner
-
-# Lint specific files
-lintrunner -a path/to/file.py path/to/other_file.cc
+lintrunner -a                                        # auto-fix changed files
+lintrunner -a --all-files                            # auto-fix all files
+lintrunner -a path/to/file.py path/to/other_file.cc  # auto-fix specific files
+lintrunner f --all-files                             # format Python files only
+lintrunner                                           # check without fixing (dry run)
 ```
 
 ## Style rules
 
 ### C++
-- Google C++ Style with modifications
-- Max line length: 120 characters
+- Google C++ Style with modifications (see `docs/Coding_Conventions_and_Standards.md` for full details)
+- Max line length: 120 characters, but **aim for 80** when possible
 - Configured in `.clang-format` and `.clang-tidy`
 
 ### Python
 - Google Python Style Guide (extension of PEP 8)
 - Max line length: 120 characters
-- Formatter/linter: ruff (configured in `pyproject.toml`)
+- Configured in `pyproject.toml`
 
-## Workflow
+## Agent tips
 
-1. **Activate a Python virtual environment** before installing dependencies. See the "Python Environment" section in `AGENTS.md` for instructions.
-2. If lintrunner is not yet set up, install and initialize. See the [initial setup section](#initial-setup) for instructions.
-3. Determine scope: changed files only (`lintrunner -a`) or all files (`lintrunner -a --all-files`).
-4. Run the appropriate lint command.
-5. If there are unfixable issues, report them to the user with file locations and descriptions.
+- **Activate a Python virtual environment** before installing dependencies. See "Python Environment" in `AGENTS.md`.
+- If lintrunner is not yet set up, install and initialize first (see [Setup](#setup-one-time)).
+- Prefer `lintrunner -a` (changed files only) over `--all-files` unless the user asks for a full sweep.

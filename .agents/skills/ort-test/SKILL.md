@@ -7,19 +7,9 @@ description: Run ONNX Runtime tests. Use this skill when asked to run tests, deb
 
 ONNX Runtime uses **Google Test** for C++ and **unittest** (preferred) / **pytest** for Python.
 
-## Run tests via build script
-
-```bash
-# Run all tests through the build script (skips update and build)
-./build.sh --config Release --test
-.\build.bat --config Release --test
-```
-
 ## C++ tests
 
-### C++ test executables
-
-There are multiple test executables, each covering different areas:
+### Test executables
 
 | Executable | What it tests |
 |---|---|
@@ -32,13 +22,17 @@ Use `--gtest_filter` to select specific tests:
 ./onnxruntime_provider_test --gtest_filter="*Conv3D*"
 ```
 
-### Running test executables
+### Running tests
 
-**Always run test executables from the build output directory** (where the executable and test data/DLLs are located), not from the repo root. Tests may fail to find dependencies otherwise.
+**Always run from the build output directory** — tests may fail to find dependencies otherwise.
 
 ```bash
-# Navigate to the build output directory first
+# Linux
 cd build/Linux/Release
+./onnxruntime_provider_test --gtest_filter="*TestName*"
+
+# macOS
+cd build/MacOS/Release
 ./onnxruntime_provider_test --gtest_filter="*TestName*"
 
 # Windows
@@ -46,11 +40,18 @@ cd build\Windows\Release
 .\onnxruntime_provider_test.exe --gtest_filter="*TestName*"
 ```
 
+You can also run all tests via the build script:
+
+```bash
+./build.sh --config Release --test
+.\build.bat --config Release --test    # Windows
+```
+
 ### Locating the build output directory
 
-The build output path depends on the build directory provided to `build.py`.
+The default path follows the pattern `build/<Platform>/<Config>/` where Platform is `Linux`, `MacOS`, or `Windows`. With Visual Studio multi-config generators on Windows, the config may appear twice (e.g., `build/Windows/Release/Release/`). The path can also be customized via `--build_dir`.
 
-If you're unsure where the test executable is, search for it:
+If you can't find a test binary, search for it:
 
 ```powershell
 # Windows
@@ -60,48 +61,21 @@ Get-ChildItem -Path build -Recurse -Filter "onnxruntime_provider_test.exe" | Sel
 find build -name "onnxruntime_provider_test" -type f
 ```
 
-Common locations:
-- Default: `build/<Platform>/<Config>/` (e.g., `build/Windows/Release/`)
-- Specified with `build.sh` or `build.bat` `--build_dir` option
-
 ## Python tests
 
 Use `pytest` as the test runner:
 
 ```bash
-# Run an entire test file
-pytest onnxruntime/test/python/test_specific.py
-
-# Run a specific test class or method
-pytest onnxruntime/test/python/test_specific.py::TestClass::test_method
-
-# Run with verbose output
-pytest -v onnxruntime/test/python/test_specific.py
-
-# Run tests matching a keyword
-pytest -k "test_keyword" onnxruntime/test/python/
+pytest onnxruntime/test/python/test_specific.py                          # entire file
+pytest onnxruntime/test/python/test_specific.py::TestClass::test_method  # specific test
+pytest -k "test_keyword" onnxruntime/test/python/                        # by keyword
 ```
 
-### Test naming convention
-
-Python tests follow this pattern:
-
-```
-test_<method>_<expected_behavior>_[when_<condition>]
-```
-
-Example: `test_method_x_raises_error_when_dims_is_not_a_sequence`
-
-## Workflow
-
-1. **Activate a Python virtual environment** before running tests. See the "Python Environment" section in `AGENTS.md` for instructions.
-2. Determine what the user wants to test (all tests, specific C++ test, specific Python test, etc.).
-3. Detect the platform to construct the correct paths.
-4. For C++ tests, check that the build directory exists and a prior build has been completed.
-5. Construct and run the appropriate test command.
-6. If tests fail, analyze the output and help debug the failures.
+Python test naming convention: `test_<method>_<expected_behavior>_[when_<condition>]`
 
 ## Agent tips
 
-- **Redirect test output to a file** (e.g., `> test_output.txt 2>&1`). Test output can be large and will overflow terminal buffers. Read the file afterward to check results.
-- When running the full test suite takes too long, use `--gtest_filter` to run a targeted subset of tests relevant to the change being verified.
+- **Activate a Python virtual environment** before running tests. See "Python Environment" in `AGENTS.md`.
+- **Redirect test output to a file** (e.g., `> test_output.txt 2>&1`) — output can be large.
+- For C++ tests, verify the build directory exists and a prior build completed before running.
+- Use `--gtest_filter` to run a targeted subset when the full suite takes too long.

@@ -20,7 +20,7 @@ ONNX Runtime is a cross-platform inference and training engine for ONNX models. 
 
 ### Contrib ops (`onnxruntime/contrib_ops/`)
 
-Custom operators not in the ONNX standard, organized by EP (`cpu/`, `cuda/`, `js/`, `webgpu/`). Registration is in `cpu_contrib_kernels.cc` / `cuda_contrib_kernels.cc`.
+Custom operators not in the ONNX standard, organized by EP (`cpu/`, `cuda/`, `js/`, `webgpu/`). Each EP has its own contrib kernel registration file (e.g., `cpu_contrib_kernels.cc`, `cuda_contrib_kernels.cc`, `js_contrib_kernels.cc`, `webgpu_contrib_kernels.cc`).
 
 ### Training (`orttraining/`)
 
