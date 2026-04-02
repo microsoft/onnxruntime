@@ -319,8 +319,8 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
   tensor_builder.add_string_data(string_data);
   builder.Finish(tensor_builder.Finish());
 
-  auto* string_offsets = mutable_string_data->data();
-  string_offsets[1] = flatbuffers::Offset<flatbuffers::String>();
+  auto* fbs_tensor = flatbuffers::GetMutableRoot<fbs::Tensor>(builder.GetBufferPointer());
+  ASSERT_NE(fbs_tensor, nullptr);
 
   const auto* fbs_string_data = fbs_tensor->string_data();
   ASSERT_NE(fbs_string_data, nullptr);
