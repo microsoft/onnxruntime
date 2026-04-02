@@ -119,9 +119,13 @@ if (strcmp(name, "Cuda") == 0) {
 // Target: wrap in CudaArenaAllocator, following the example plugin pattern.
 // NOTE: The factory must maintain a separate arena per device_id, since each GPU
 // has its own memory space. The factory already has a device_cache_ mapping
-// HardwareDeviceKey → DeviceCacheEntry; the arena is stored there.
+// HardwareDeviceKey → DeviceCacheEntry; the arena is stored there. Because
+// CreateAllocatorImpl only knows the CUDA ordinal (from OrtMemoryInfoGetId),
+// the factory must also maintain an efficient ordinal → DeviceCacheEntry mapping
+// (e.g., a std::unordered_map<int, HardwareDeviceKey> built during
+// GetSupportedDevicesImpl when device_cache_ is populated).
 if (strcmp(name, "Cuda") == 0) {
-  auto& entry = factory.GetOrCreateDeviceCacheEntry(req_device_id);
+  auto& entry = factory.GetDeviceCacheEntryForOrdinal(req_device_id);
   std::lock_guard<std::mutex> lock{entry.arena_mutex};
 
   if (/* use_cuda_mempool option */) {
@@ -144,7 +148,7 @@ if (strcmp(name, "Cuda") == 0) {
 if (strcmp(name, "CudaPinned") == 0) {
   // Pinned memory is CPU-side and technically shared, but each device's pinned
   // allocator has a distinct OrtMemoryInfo (device_id). Keep per-device.
-  auto& entry = factory.GetOrCreateDeviceCacheEntry(req_device_id);
+  auto& entry = factory.GetDeviceCacheEntryForOrdinal(req_device_id);
   std::lock_guard<std::mutex> lock{entry.arena_mutex};
 
   if (!entry.pinned_arena) {
@@ -211,11 +215,11 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
 };
 ```
 
-**Why this works.** `CudaAllocatorBase` has no virtual functions — it adds only plain data members (`kind_`, `memory_info_`) after the `OrtAllocator` C struct layout. There is no vptr, no pointer adjustment: `static_cast<OrtAllocator*>(arena)` and `static_cast<CudaAllocatorBase*>(arena)` both produce the same address. This means:
+**Why this works.** `CudaAllocatorBase` is intentionally defined as a standard-layout type with the `OrtAllocator` base subobject at offset 0; it only adds plain data members (`kind_`, `memory_info_`) after the `OrtAllocator` C struct layout. Under this constraint, `OrtAllocator*` and `CudaAllocatorBase*` (and further-derived pointers) all share the same address. In production code this should be enforced with `static_assert(std::is_standard_layout_v<CudaAllocatorBase>)`, and pointer comparisons should use `static_cast<OrtAllocator*>(entry.device_arena.get())` rather than relying on implicit same-address assumptions. This means:
 
 - **`ReleaseAllocatorImpl`** can safely `static_cast<CudaAllocatorBase*>(allocator)` on arena pointers — `GetKind()` returns `kDevice` or `kPinned` correctly.
 - **`AllocOnStream`** is set to `nullptr` for pinned arenas at construction time; ORT's `AllocateBufferWithOptions` falls through to plain `Alloc()` when `AllocOnStream` is null.
-- **No ABI impact** — the object layout is identical to other `CudaAllocatorBase` subclasses (`CudaDeviceAllocator`, `CudaPinnedAllocator`).
+- **No ABI impact (by construction)** — given the standard-layout/offset-0 requirement, the object layout is compatible across `CudaAllocatorBase` subclasses (`CudaDeviceAllocator`, `CudaPinnedAllocator`, `CudaArenaAllocator`) for the `OrtAllocator` portion.
 
 #### Raw allocator ownership inside `ArenaImpl`
 
@@ -374,7 +378,7 @@ api->CreateEnvWithOptions(&options, &env);
 
 **Current gap:** `RegisterExecutionProviderLibrary` does not extract env config entries and pass them as `allocator_options` to `CreateSharedAllocatorImpl`. To support env-level arena config, this needs to be plumbed:
 
-1. `RegisterExecutionProviderLibrary` constructs a prefix via `"ep_factory." + std::string(factory->GetName()) + "."` (case-sensitive, using `GetName()` as-is — see Section 3.6) and obtains a snapshot of the environment config entries via `Environment::GetConfigEntries()` (which acquires `config_entries_mutex_` under a shared lock)
+1. `RegisterExecutionProviderLibrary` constructs a prefix via `"ep_factory." + std::string(factory->GetName ? factory->GetName(factory) : "") + "."` (case-sensitive, using `GetName` as-is — see Section 3.6). Note: `GetName` is a C function pointer on `OrtEpFactory`, invoked as `factory->GetName(factory)`. Implementations must handle `GetName == nullptr` or a `nullptr` return defensively. The prefix is then used to obtain a snapshot of the environment config entries via `Environment::GetConfigEntries()` (which acquires `config_entries_mutex_` under a shared lock)
 2. Scans the snapshot for keys matching the prefix, strips the prefix, and builds `OrtKeyValuePairs` with bare `arena.*` keys
 3. Passes to `CreateSharedAllocatorImpl` as `allocator_options`
 4. `CreateSharedAllocatorImpl` forwards to `ep_factory->CreateAllocator`
@@ -431,7 +435,10 @@ Session:     ep.cudapluginexecutionprovider.arena.extend_strategy
 The new code in `RegisterExecutionProviderLibrary` constructs the prefix as:
 
 ```cpp
-std::string prefix = "ep_factory." + std::string(factory->GetName()) + ".";
+// Note: GetName is a function pointer on the C struct OrtEpFactory.
+// Must be called as factory->GetName(factory) and null-checked.
+const char* ep_name = (factory->GetName) ? factory->GetName(factory) : nullptr;
+std::string prefix = "ep_factory." + std::string(ep_name ? ep_name : "") + ".";
 ```
 
 The session-level prefix continues to use `GetLowercaseString` independently. While the two prefixes use different casing conventions, the `ep_factory.` prefix is specified by the C API documentation as `<ep_name>` (the factory's identity), and the backing store (`std::map`) is case-sensitive. Introducing lowercasing here would diverge from the documented contract.
@@ -606,7 +613,7 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 
 | File | Change |
 |------|--------|
-| `environment.cc` | `RegisterExecutionProviderLibrary`: construct prefix `"ep_factory." + factory->GetName() + "."` (case-sensitive), obtain config snapshot via `GetConfigEntries()`, extract matching `arena.*` keys, strip prefix, build `OrtKeyValuePairs` with bare `arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` instead of `nullptr` (see Section 3.6 for casing convention). |
+| `environment.cc` | `RegisterExecutionProviderLibrary`: construct prefix `"ep_factory." + factory->GetName(factory) + "."` (case-sensitive, with null-guard), obtain config snapshot via `GetConfigEntries()`, extract matching `arena.*` keys, strip prefix, build `OrtKeyValuePairs` with bare `arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` instead of `nullptr` (see Section 3.6 for casing convention). |
 
 This is the only ORT core change needed — it enables env-level arena config to reach the plugin factory. The arena wrapping itself happens entirely inside the plugin.
 
@@ -625,7 +632,7 @@ This is the only ORT core change needed — it enables env-level arena config to
 7. **Rewrite `ReleaseAllocatorImpl` in `cuda_ep_factory.cc`:** Pointer identity match against device cache entries, decrement ref count, destroy if zero. Fall back to `CudaAllocatorBase`-based `delete` for non-arena types (Section 3.3 pseudocode).
 8. **Update `OnSessionRunEndImpl` in `cuda_stream_plugin.cc`:** After existing stream sync and deferred buffer cleanup, call `arena->ResetChunksUsingStream(this_ptr)` for the device's arena (Section 3.4).
 9. **No CMake changes needed:** The glob picks up new `.cc` files in `plugin/` automatically.
-10. **Update `RegisterExecutionProviderLibrary` in `environment.cc`:** Construct prefix via `factory->GetName()` (case-sensitive), obtain config snapshot via `GetConfigEntries()`, extract `ep_factory.<ep_name>.arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` (see Section 3.6).
+10. **Update `RegisterExecutionProviderLibrary` in `environment.cc`:** Construct prefix via `factory->GetName(factory)` (case-sensitive, with null-guard), obtain config snapshot via `GetConfigEntries()`, extract `ep_factory.<ep_name>.arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` (see Section 3.6).
 
 ### Phase 2: CudaMempoolArena Migration
 
