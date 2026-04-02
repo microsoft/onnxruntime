@@ -30,9 +30,9 @@ static void RunTest(int op_set,
     test.AddAttribute("axis", axis);
   if (op_set <= 9)
     test.AddAttribute("k", k);
-  if (op_set == 11 && largest != 1)
+  if (op_set >= 11 && largest != 1)
     test.AddAttribute("largest", largest);
-  if (op_set == 11 && sorted != 1)
+  if (op_set >= 11 && sorted != 1)
     test.AddAttribute("sorted", sorted);
 
   // Inputs
@@ -677,6 +677,54 @@ TEST(TopKOperator, NthElementHalf_NegtiveVals) {
   std::vector<int64_t> expected_indices = {0, 3, 4, 5};
   std::vector<int64_t> expected_dimensions = {4};
   RunTest(11, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, NthElementBFloat16) {
+  if (!CudaHasBF16Support()) {
+    return;
+  }
+
+  std::vector<float> input_vals_f = {10.0f, 8.0f, 7.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<float> expected_vals_f = {10.0f, 8.0f, 7.0f, 6.0f};
+  std::vector<BFloat16> input_vals = FloatsToBFloat16s(input_vals_f);
+  std::vector<BFloat16> expected_vals = FloatsToBFloat16s(expected_vals_f);
+  std::vector<int64_t> input_dimensions = {6};
+  std::vector<int64_t> expected_indices = {0, 1, 2, 5};
+  std::vector<int64_t> expected_dimensions = {4};
+  RunTest(24, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, NthElementBFloat16_NegativeVals) {
+  if (!CudaHasBF16Support()) {
+    return;
+  }
+
+  std::vector<float> input_vals_f = {10.0f, -8.0f, -7.0f, -4.0f, -5.0f, -6.0f};
+  std::vector<float> expected_vals_f = {10.0f, -4.0f, -5.0f, -6.0f};
+  std::vector<BFloat16> input_vals = FloatsToBFloat16s(input_vals_f);
+  std::vector<BFloat16> expected_vals = FloatsToBFloat16s(expected_vals_f);
+  std::vector<int64_t> input_dimensions = {6};
+  std::vector<int64_t> expected_indices = {0, 3, 4, 5};
+  std::vector<int64_t> expected_dimensions = {4};
+  RunTest(24, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, TopKBFloat16_2D) {
+  if (!CudaHasBF16Support()) {
+    return;
+  }
+
+  std::vector<float> input_vals_f = {0.1f, 0.3f, 0.2f, 0.4f,
+                                     0.1f, 0.3f, 0.3f, 0.2f};
+  std::vector<float> expected_vals_f = {0.4f, 0.3f,
+                                        0.3f, 0.3f};
+  std::vector<BFloat16> input_vals = FloatsToBFloat16s(input_vals_f);
+  std::vector<BFloat16> expected_vals = FloatsToBFloat16s(expected_vals_f);
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<int64_t> expected_indices = {3, 1,
+                                           1, 2};
+  std::vector<int64_t> expected_dimensions = {2, 2};
+  RunTest(24, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
 }
 
 // test dimension in range (GridDim::maxThreadsPerBlock, GridDim::maxThreadsPerBlock * 2], ie. [257, 512]

@@ -239,6 +239,9 @@ class WebGpuContext final {
   }
 
   void StartProfiling();
+  // Collect pending GPU profiling data into the given events vector.
+  void CollectProfilingData(profiling::Events& events);
+  // Collect pending GPU profiling data into the shared events_ vector (run-level).
   void CollectProfilingData();
   void EndProfiling(TimePoint, profiling::Events& events);
 
@@ -357,7 +360,8 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
-  profiling::Events events_;  // cached GPU profiling events
+  // Shared GPU profiling events for run-level profiling.
+  profiling::Events events_;
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};

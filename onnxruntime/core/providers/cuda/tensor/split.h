@@ -13,6 +13,15 @@ class SplitKernel : public CudaKernel, public SplitBase {
   SplitKernel(const OpKernelInfo& info, uint32_t opset) : CudaKernel(info), SplitBase(info, opset) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  Status PrepareForComputeLocal(const TensorShape& input_shape,
+                                int num_outputs,
+                                int64_t& axis,
+                                int& before_dims,
+                                int& after_dims_including_split_axis,
+                                int& after_dims_excluding_split,
+                                std::vector<int64_t>& split_sizes) const;
 };
 
 // versions 2, 11 and 13

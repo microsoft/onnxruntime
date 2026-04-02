@@ -23,6 +23,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
+  ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_greater_than_1.cpp
   ${MLAS_SRC_DIR}/convsym.cpp
   ${MLAS_SRC_DIR}/pooling.cpp
   ${MLAS_SRC_DIR}/transpose.cpp
@@ -34,6 +35,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/eltwise.h
   ${MLAS_SRC_DIR}/eltwise.cpp
   ${MLAS_SRC_DIR}/erf.cpp
+  ${MLAS_SRC_DIR}/silu.cpp
+  ${MLAS_SRC_DIR}/gelu.cpp
   ${MLAS_SRC_DIR}/compute.cpp
   ${MLAS_SRC_DIR}/dequantize.cpp
   ${MLAS_SRC_DIR}/quantize.cpp
@@ -116,7 +119,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-        ${MLAS_SRC_DIR}/sconv_nchw_kernel_neon.cpp
+        ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -201,6 +204,15 @@ function(setup_mlas_source_for_windows)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    set(mlas_platform_srcs_avx512
+      ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
+    )
+
+    set_source_files_properties(${mlas_platform_srcs_avx512} PROPERTIES COMPILE_FLAGS "/arch:AVX512")
+
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
@@ -212,7 +224,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
-      ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${mlas_platform_srcs_avx512}
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
@@ -336,6 +348,7 @@ function (setup_arm_neon_nchwc)
      # separate assembly file allows tighter control over register allocation
      # and avoids the overhead of C++/intrinsics based code generation.
      ${MLAS_SRC_DIR}/aarch64/SconvKernelNeon.S
+     ${MLAS_SRC_DIR}/aarch64/SconvNchwcKernelNeon.S
      ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
      ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
     )
@@ -490,7 +503,7 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-          ${MLAS_SRC_DIR}/sconv_nchw_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp
         )
 
         # Conditionally add the SVE implementation if compiler supports it
@@ -764,7 +777,10 @@ endif()
           ${MLAS_SRC_DIR}/x86_64/SoftmaxKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/TransKernelAvx512F.S
+          ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
 

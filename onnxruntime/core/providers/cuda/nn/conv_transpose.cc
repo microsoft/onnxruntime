@@ -194,8 +194,7 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_operation_graph(handle));
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->create_execution_plans({heur_mode}));
   } catch (const std::exception& ex) {
-    std::string message = MakeString("Failed to initialize CUDNN Frontend", ex.what(),
-                                     "with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
+    std::string message = MakeString("Failed to initialize CUDNN Frontend: ", ex.what());
     return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
   }
 
@@ -206,8 +205,7 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_plans(handle));
   } catch (const std::exception& ex) {
     if (!fuse_bias && !fuse_act && use_tf32) {
-      std::string message = MakeString("OP not supported by CUDNN Frontend", ex.what(),
-                                       "with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
+      std::string message = MakeString("OP not supported by CUDNN Frontend: ", ex.what());
       return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
     }
 
@@ -225,8 +223,9 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
 template <typename T, bool Layout>
 Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dynamic_padding) const {
   constexpr bool channels_last = Layout == LAYOUT_NHWC;
-
-  size_t num_inputs = OpKernel::Node().InputDefs().size();
+  size_t num_inputs = static_cast<size_t>(Info().GetInputCount());
+  // Standard ONNX ConvTranspose has inputs X, W, optional B.
+  // ConvTransposeWithDynamicPads inserts Pads at input 2, so bias becomes input 3.
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   // set X
@@ -362,8 +361,6 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     s_.Y = context->Output(0, s_.y_dims);
 
     s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
-    const CUDAExecutionProvider* cuda_ep =
-        static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
 
     TensorShapeVector x_dims_cudnn{x_dims.begin(), x_dims.end()};
     TensorShapeVector y_dims_cudnn{y_dims.begin(), y_dims.end()};
@@ -390,7 +387,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
       // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
       // See PR #7348 and #7702 for more context.
-      if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+      if (this->GetCudnnConv1dPadToNc1d()) {
         x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
         y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
         w_dims_cudnn.insert(w_dims_cudnn.begin() + 2, 1);
@@ -418,7 +415,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
     auto handle = GetCudnnHandle(context);
 
-    int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+    int cudnn_conv_algo = this->GetCudnnConvAlgo();
 #if !defined(__CUDACC__)
     cudnn_frontend::HeurMode_t heur_mode;
     switch (cudnn_conv_algo) {
@@ -436,8 +433,8 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
         break;
     }
 
-    auto use_tf32 = cuda_ep->UseTF32();
-    const auto fuse_bias = cuda_ep->IsFuseConvBias() || is_fused_node_;
+    auto use_tf32 = this->UseTF32();
+    const auto fuse_bias = this->IsFuseConvBias() || is_fused_node_;
     const auto fuse_act = is_fused_node_;
 
     ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(x_dims_cudnn, w_dims_cudnn, B, y_dims_cudnn, handle, heur_mode,
@@ -483,7 +480,7 @@ Status ConvTranspose<T, Layout>::DoConvTranspose(OpKernelContext* context, bool 
       CUDA_RETURN_IF_ERROR(cudaMemset(s_.y_data, 0, s_.Y->SizeInBytes()));
     }
   }
-  auto ws = GetWorkSpace(context->GetComputeStream());
+  auto ws = GetWorkSpace(GetComputeStream(context));
 
   CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_graph->execute(cudnn_handle,
                                                       s_.variant_pack,

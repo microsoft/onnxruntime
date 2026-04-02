@@ -465,6 +465,8 @@ def generate_build_tree(
         ),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
         "-Donnxruntime_CLIENT_PACKAGE_BUILD=" + ("ON" if args.client_package_build else "OFF"),
+        "-Donnxruntime_ENABLE_SESSION_THREADPOOL_CALLBACKS="
+        + ("ON" if args.enable_session_threadpool_callbacks else "OFF"),
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
@@ -1723,7 +1725,18 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
                 run_subprocess([os.path.join(cwd, exe), test_output], cwd=cwd, dll_path=dll_path)
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.ctest_timeout]
+            num_parallel_jobs = number_of_parallel_jobs(args)
+            ctest_cmd = [
+                ctest_path,
+                "--build-config",
+                config,
+                "--verbose",
+                "--timeout",
+                args.ctest_timeout,
+                "--parallel",
+                str(num_parallel_jobs),
+                "--output-on-failure",
+            ]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
@@ -2326,9 +2339,6 @@ def main():
             raise BuildError("Using --nnapi_min_api requires --use_nnapi")
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
-
-    if args.build_wasm_static_lib:
-        args.build_wasm = True
 
     if args.build_wasm:
         if not args.disable_wasm_exception_catching and args.disable_exceptions:
