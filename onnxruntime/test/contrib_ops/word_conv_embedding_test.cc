@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <vector>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -124,6 +125,22 @@ TEST(ContribOpTest, WordConvEmbedding_char_embedding_shape_conv_shape_not_match)
   test.AddOutput<float>("Y", output_shape, output);
 
   test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(ContribOpTest, WordConvEmbedding_out_of_range_char_index_treated_as_padding) {
+  OpTester test("WordConvEmbedding", 1, onnxruntime::kMSDomain);
+
+  test.AddAttribute<int64_t>("embedding_size", 1LL);
+  test.AddAttribute<int64_t>("conv_window_size", 2LL);
+  test.AddAttribute<int64_t>("char_embedding_size", 1LL);
+
+  test.AddInput<int>("Sequence", {1, 2}, {1, 99});
+  test.AddInput<float>("W", {1, 1, 2, 1}, {1.0f, 1.0f});
+  test.AddInput<float>("B", {1}, {0.0f});
+  test.AddInput<float>("C", {2, 1}, {123.0f, 2.0f});
+  test.AddOutput<float>("Y", {1, 1}, {std::tanh(2.0f)});
+
+  test.Run();
 }
 
 }  // namespace test
