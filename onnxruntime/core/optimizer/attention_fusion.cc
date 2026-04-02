@@ -79,12 +79,10 @@ static bool IsSupportedOrUnassignedNode(const Node& node,
 }
 
 static bool IsSupportedOrUnassignedNode(const Node& node,
-                                        std::string_view required_execution_provider,
-                                        const InlinedHashSet<std::string_view>& compatible_execution_providers) {
+                                        std::string_view required_execution_provider) {
   const auto& execution_provider = node.GetExecutionProviderType();
   return execution_provider.empty() ||
-         (execution_provider == required_execution_provider &&
-          compatible_execution_providers.count(required_execution_provider) != 0);
+         execution_provider == required_execution_provider;
 }
 
 static bool AreSupportedOrUnassignedNodes(
@@ -101,7 +99,7 @@ static bool AreSupportedOrUnassignedNodes(
       continue;
     }
 
-    if (!IsSupportedOrUnassignedNode(*node, required_execution_provider, compatible_execution_providers)) {
+    if (!IsSupportedOrUnassignedNode(*node, required_execution_provider)) {
       return false;
     }
   }
