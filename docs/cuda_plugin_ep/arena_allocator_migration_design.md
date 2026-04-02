@@ -332,12 +332,12 @@ The `OrtApi::CreateSharedAllocator` public API also flows through `CreateAllocat
 
 ### 3.4 Stream Integration
 
-The CUDA plugin's `StreamImpl` (from `OrtSyncStreamImpl`) must call `ResetChunksUsingStream` on the device arena at session run end, following the example. Since there may be multiple GPUs, the stream must know which device's arena to reset. Each stream is created for a specific `OrtMemoryDevice`, which has a device_id — this maps to the corresponding `DeviceCacheEntry`:
+The CUDA plugin's `CudaSyncStream` (from `OrtSyncStreamImpl`) must call `ResetChunksUsingStream` on the device arena at session run end, following the example. Since there may be multiple GPUs, the stream must know which device's arena to reset. Each stream is created for a specific `OrtMemoryDevice`, which has a device_id — this maps to the corresponding `DeviceCacheEntry`:
 
 ```cpp
-// cuda stream_support.cc — OnSessionRunEndImpl:
-OrtStatus* ORT_API_CALL CudaStreamImpl::OnSessionRunEndImpl(OrtSyncStreamImpl* this_ptr) noexcept {
-  auto& impl = *static_cast<CudaStreamImpl*>(this_ptr);
+// cuda_stream_plugin.cc — OnSessionRunEndImpl:
+OrtStatus* ORT_API_CALL CudaSyncStream::OnSessionRunEndImpl(OrtSyncStreamImpl* this_ptr) noexcept {
+  auto& impl = *static_cast<CudaSyncStream*>(this_ptr);
   // impl.device_id_ was set at stream creation from the OrtMemoryDevice
   auto* arena = impl.factory_->GetDeviceArenaAllocator(impl.device_id_);
   if (arena) {
@@ -466,7 +466,7 @@ The EP is unaware of conflicts between these two namespaces. This is acceptable 
 |-----------|-------------|-------|
 | `<cuda_runtime_api.h>` | ✅ | CUDA SDK — always available |
 | `core/common/common.h` | ✅ | `ORT_THROW`, `ORT_ENFORCE` — no framework deps |
-| `core/providers/cuda/cuda_stream_handle.h` | ✅ | Only for `Stream::GetHandle()` → `cudaStream_t` |
+| `core/providers/cuda/cuda_stream_handle.h` | ❌ | Pulls in in-tree framework types (`OrtDevice`, `Stream` base class); plugin CMake excludes its `.cc`. Use `OrtApi::SyncStream_GetHandle` on `OrtSyncStream*` to obtain `cudaStream_t` instead |
 | `core/providers/cuda/shared_inc/cuda_call.h` | ✅ | CUDA error-handling macros |
 | `core/providers/shared_library/provider_api.h` | ❌ | Provider-bridge header defining `logging::Logger` forward decl used by `CudaMempoolArena`; must be removed/guarded in plugin build |
 | `logging::Logger*` | ❌ | **Primary blocker** — provider-bridge logger type (from `provider_api.h`), not available in plugin build |
@@ -591,8 +591,8 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 
 | Source | Target | What to copy | Adaptations needed |
 |---|---|---|---|
-| `ep_arena.h` (~632 lines) | `plugin/cuda_arena.h` | `ArenaExtendStrategy` enum, `ArenaConfig` struct (with `FromKeyValuePairs` parser and `ConfigKeyNames`), `ArenaImpl` class (full arena implementation) | **Namespace:** Wrap in `onnxruntime::cuda_plugin`. **Includes:** Replace `#include "ep_allocator.h"` and `#include "../plugin_ep_utils.h"` with `#include "cuda_allocator_plugin.h"` and `#include "cuda_plugin_utils.h"`. **`ArenaAllocator` → `CudaArenaAllocator`:** The example’s `ArenaAllocator : BaseAllocator` is replaced by `CudaArenaAllocator : CudaAllocatorBase` (see Section 3.2), defined in `cuda_arena.h` alongside the copied `ArenaImpl`. **`AllocatorUniquePtr`:** Redefine as `std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>` (type-erasing deleter — see Section 3.2). **Macros:** The `EP_ENFORCE`, `LOG`, `RETURN_ERROR` macros come from `plugin_ep_utils.h`; replace with equivalents from `cuda_plugin_utils.h` or define locally (see 5.2). **No CUDA-specific changes** — the arena operates on the `OrtAllocator` C interface and is CUDA-agnostic. |
-| `ep_arena.cc` (~750 lines) | `plugin/cuda_arena.cc` | Full `ArenaImpl` implementation: constructor, destructor, `Alloc`, `AllocOnStream`, `Free`, `Reserve`, `Extend`, `FindChunkPtr`, `SplitChunk`, `Merge`, `FreeAndMaybeCoalesce`, `Coalesce`, `ResetChunksUsingStream`, `DumpMemoryLog`, `GetStats` | **Namespace:** Wrap in `onnxruntime::cuda_plugin`. **Include:** `#include "cuda_arena.h"`. **Macros:** Same as header. No other changes needed — the implementation is allocator-agnostic (delegates to `device_allocator_->Alloc/Free`). |
+| `ep_arena.h` (~632 lines) | `plugin/cuda_arena.h` | `ArenaExtendStrategy` enum, `ArenaConfig` struct (with `FromKeyValuePairs` parser and `ConfigKeyNames`), `ArenaImpl` class (full arena implementation) | **License header:** Preserve the original Apache-2.0 TensorFlow-derived license header and attribution notices. **Namespace:** Wrap in `onnxruntime::cuda_plugin`. **Includes:** Replace `#include "ep_allocator.h"` and `#include "../plugin_ep_utils.h"` with `#include "cuda_allocator_plugin.h"` and `#include "cuda_plugin_utils.h"`. **`ArenaAllocator` → `CudaArenaAllocator`:** The example’s `ArenaAllocator : BaseAllocator` is replaced by `CudaArenaAllocator : CudaAllocatorBase` (see Section 3.2), defined in `cuda_arena.h` alongside the copied `ArenaImpl`. **`AllocatorUniquePtr`:** Redefine as `std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>` (type-erasing deleter — see Section 3.2). **Macros:** The `EP_ENFORCE`, `LOG`, `RETURN_ERROR` macros come from `plugin_ep_utils.h`; replace with equivalents from `cuda_plugin_utils.h` or define locally (see 5.2). **No CUDA-specific changes** — the arena operates on the `OrtAllocator` C interface and is CUDA-agnostic. |
+| `ep_arena.cc` (~750 lines) | `plugin/cuda_arena.cc` | Full `ArenaImpl` implementation: constructor, destructor, `Alloc`, `AllocOnStream`, `Free`, `Reserve`, `Extend`, `FindChunkPtr`, `SplitChunk`, `Merge`, `FreeAndMaybeCoalesce`, `Coalesce`, `ResetChunksUsingStream`, `DumpMemoryLog`, `GetStats` | **License header:** Preserve the original Apache-2.0 TensorFlow-derived license header and attribution notices. **Namespace:** Wrap in `onnxruntime::cuda_plugin`. **Include:** `#include "cuda_arena.h"`. **Macros:** Same as header. No other changes needed — the implementation is allocator-agnostic (delegates to `device_allocator_->Alloc/Free`). |
 
 **Not copied** — `ep_allocator.h`. The CUDA plugin already has `cuda_allocator_plugin.h` with `CudaAllocatorBase`, `CudaDeviceAllocator`, `CudaPinnedAllocator`. We add `AllocatorStats` to this existing file (see 5.2). `AllocatorUniquePtr` (type-erasing deleter) is defined in `cuda_arena.h` alongside `ArenaImpl` which uses it. `BaseAllocator` is **not** needed — see Section 3.2.
 
