@@ -236,6 +236,19 @@ AllocatorUniquePtr raw(
 
 This is safe because the arena code (`ArenaImpl`) only calls through the C function pointers and never casts the stored allocator to a C++ type.
 
+#### Class hierarchy
+
+All CUDA plugin allocators inherit from `CudaAllocatorBase`, keeping a uniform object layout and enabling `ReleaseAllocatorImpl` to use `GetKind()` on any plugin-created allocator:
+
+```
+OrtAllocator (C struct)
+  └─ CudaAllocatorBase (adds kind_, memory_info_ — no virtual functions)
+       ├─ CudaDeviceAllocator     (raw cudaMalloc/cudaFree)
+       ├─ CudaPinnedAllocator     (raw cudaHostAlloc/cudaFreeHost)
+       ├─ CudaArenaAllocator      (BFC arena wrapping a raw allocator via ArenaImpl)
+       └─ CudaMempoolOrtAllocator (CUDA native mempool — see Section 4.4)
+```
+
 ### 3.3 Shared Arena Lifecycle and Reference Counting
 
 **Multi-GPU consideration.** A system may have multiple CUDA devices. Each GPU has its own device memory, so each needs its own arena. The CUDA plugin factory already maintains a per-device cache (`device_cache_`) mapping `HardwareDeviceKey → DeviceCacheEntry` that stores `OrtMemoryInfo` instances per GPU. The arena pointers and ref counts are added to this existing cache structure:
@@ -251,8 +264,10 @@ struct DeviceCacheEntry {
   std::mutex arena_mutex;
   std::unique_ptr<CudaArenaAllocator> device_arena;
   std::unique_ptr<CudaArenaAllocator> pinned_arena;
+  std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;  // alternative to device_arena (Section 4)
   int num_device_arena_users = 0;
   int num_pinned_arena_users = 0;
+  int num_mempool_users = 0;
   bool device_arena_using_defaults = true;
 };
 ```
@@ -269,7 +284,7 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
   if (!allocator) return;
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
 
-  // Check if allocator is a shared arena (pointer identity match).
+  // Check if allocator is a shared arena or mempool (pointer identity match).
   for (auto& [key, entry] : factory->device_cache_) {
     std::lock_guard<std::mutex> lock{entry.arena_mutex};
     if (allocator == entry.device_arena.get()) {
@@ -280,9 +295,13 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
       if (--entry.num_pinned_arena_users == 0) entry.pinned_arena.reset();
       return;
     }
+    if (allocator == entry.mempool_allocator.get()) {
+      if (--entry.num_mempool_users == 0) entry.mempool_allocator.reset();
+      return;
+    }
   }
 
-  // Fallback: non-arena allocator (e.g. CudaMempoolArena wrapper).
+  // Fallback: raw allocator not managed by arena/mempool (e.g. read-only allocator).
   // CudaAllocatorBase cast is safe — all CUDA plugin allocators inherit from it.
   auto* typed = static_cast<CudaAllocatorBase*>(allocator);
   switch (typed->GetKind()) {
@@ -472,16 +491,29 @@ The plugin build stores a `const OrtApi&` reference (passed at construction from
 
 ### 4.4 OrtAllocator Wrapper
 
-The factory returns `CudaMempoolArena` wrapped behind `OrtAllocator*`, not inheriting from `IArena`/`IAllocator`. Following the same pattern as the device arena:
+The factory returns `CudaMempoolArena` wrapped behind `OrtAllocator*`, inheriting from `CudaAllocatorBase` — consistent with all other CUDA plugin allocators (see Section 3.2 class hierarchy). This keeps `ReleaseAllocatorImpl`'s `GetKind()` dispatch and pointer-identity match working for mempool allocators:
 
 ```cpp
-struct CudaMempoolOrtAllocator : OrtAllocator {
+class CudaMempoolOrtAllocator final : public CudaAllocatorBase {
+ public:
   static OrtStatus* Create(const OrtMemoryInfo* memory_info,
                            const OrtKeyValuePairs* options,
                            const OrtApi& api,
                            const OrtLogger& logger,
                            std::unique_ptr<CudaMempoolOrtAllocator>& out);
 
+  CudaMempoolOrtAllocator(const OrtMemoryInfo* memory_info, /* ... */)
+      : CudaAllocatorBase(CudaAllocatorKind::kDevice, memory_info) {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    AllocOnStream = AllocOnStreamImpl;  // mempool is stream-aware
+    Free = FreeImpl;
+    Reserve = ReserveImpl;
+    Info = InfoImpl;
+    GetStats = GetStatsImpl;
+  }
+
+ private:
   // OrtAllocator callbacks — delegate to CudaMempoolArena
   static void* ORT_API_CALL AllocImpl(OrtAllocator* this_, size_t size);
   static void* ORT_API_CALL AllocOnStreamImpl(OrtAllocator* this_, size_t size, OrtSyncStream* stream);
@@ -490,10 +522,8 @@ struct CudaMempoolOrtAllocator : OrtAllocator {
   static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_);
   static OrtStatus* ORT_API_CALL GetStatsImpl(const OrtAllocator* this_, OrtKeyValuePairs** out) noexcept;
 
- private:
   const OrtApi& ort_api_;                    // needed for SyncStream_GetHandle, KVP creation
   std::unique_ptr<CudaMempoolArena> arena_;
-  const OrtMemoryInfo& memory_info_;
 };
 ```
 
@@ -520,10 +550,15 @@ OrtStatus* CudaEpFactory::CreateAllocatorImpl(OrtEpFactory* this_ptr,
     }
 
     if (use_mempool) {
-      return CudaMempoolOrtAllocator::Create(memory_info, allocator_options,
-                                             factory.ort_api_, factory.default_logger_,
-                                             factory.mempool_arena_);
-      // ... ref counting as for the arena
+      auto& entry = factory.GetOrCreateDeviceCacheEntry(req_device_id);
+      std::lock_guard<std::mutex> lock{entry.arena_mutex};
+      if (!entry.mempool_allocator) {
+        CudaMempoolOrtAllocator::Create(memory_info, allocator_options,
+                                        factory.ort_api_, factory.default_logger_,
+                                        entry.mempool_allocator);
+      }
+      ++entry.num_mempool_users;
+      *allocator = entry.mempool_allocator.get();
     } else {
       // Arena path (Section 3.1)
     }
@@ -552,7 +587,7 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 | `ep_arena.h` (~632 lines) | `plugin/cuda_arena.h` | `ArenaExtendStrategy` enum, `ArenaConfig` struct (with `FromKeyValuePairs` parser and `ConfigKeyNames`), `ArenaImpl` class (full arena implementation) | **Namespace:** Wrap in `onnxruntime::cuda_plugin`. **Includes:** Replace `#include "ep_allocator.h"` and `#include "../plugin_ep_utils.h"` with `#include "cuda_allocator_plugin.h"` and `#include "cuda_plugin_utils.h"`. **`ArenaAllocator` → `CudaArenaAllocator`:** The example’s `ArenaAllocator : BaseAllocator` is replaced by `CudaArenaAllocator : CudaAllocatorBase` (see Section 3.2), defined in `cuda_arena.h` alongside the copied `ArenaImpl`. **`AllocatorUniquePtr`:** Redefine as `std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>` (type-erasing deleter — see Section 3.2). **Macros:** The `EP_ENFORCE`, `LOG`, `RETURN_ERROR` macros come from `plugin_ep_utils.h`; replace with equivalents from `cuda_plugin_utils.h` or define locally (see 5.2). **No CUDA-specific changes** — the arena operates on the `OrtAllocator` C interface and is CUDA-agnostic. |
 | `ep_arena.cc` (~750 lines) | `plugin/cuda_arena.cc` | Full `ArenaImpl` implementation: constructor, destructor, `Alloc`, `AllocOnStream`, `Free`, `Reserve`, `Extend`, `FindChunkPtr`, `SplitChunk`, `Merge`, `FreeAndMaybeCoalesce`, `Coalesce`, `ResetChunksUsingStream`, `DumpMemoryLog`, `GetStats` | **Namespace:** Wrap in `onnxruntime::cuda_plugin`. **Include:** `#include "cuda_arena.h"`. **Macros:** Same as header. No other changes needed — the implementation is allocator-agnostic (delegates to `device_allocator_->Alloc/Free`). |
 
-**Not copied** — `ep_allocator.h`. The CUDA plugin already has `cuda_allocator_plugin.h` with `CudaAllocatorBase`, `CudaDeviceAllocator`, `CudaPinnedAllocator`. We add the missing types (`AllocatorStats`, `AllocatorUniquePtr`) to this existing file (see 5.2). `BaseAllocator` is **not** needed — see Section 3.2.
+**Not copied** — `ep_allocator.h`. The CUDA plugin already has `cuda_allocator_plugin.h` with `CudaAllocatorBase`, `CudaDeviceAllocator`, `CudaPinnedAllocator`. We add `AllocatorStats` to this existing file (see 5.2). `AllocatorUniquePtr` (type-erasing deleter) is defined in `cuda_arena.h` alongside `ArenaImpl` which uses it. `BaseAllocator` is **not** needed — see Section 3.2.
 
 **CMake:** No changes needed. The plugin CMake uses `file(GLOB_RECURSE ... "core/providers/cuda/*.cc")` which automatically picks up new `.cc` files in the `plugin/` directory.
 
@@ -563,8 +598,8 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 | `plugin/cuda_arena.h` | **New file.** Copied from `ep_arena.h` with namespace/include adaptations per 5.1. Contains `ArenaExtendStrategy`, `ArenaConfig`, `ArenaImpl`, `AllocatorUniquePtr` typedef, and `CudaArenaAllocator` (replaces example’s `ArenaAllocator`). |
 | `plugin/cuda_arena.cc` | **New file.** Copied from `ep_arena.cc` with namespace/include adaptations per 5.1. |
 | `plugin/cuda_allocator_plugin.h` | **(a)** Add `AllocatorStats` struct (POD with `ToKeyValuePairs` helper, copied from `ep_allocator.h`). **(b)** Add arena-support macros: `EP_ENFORCE` (ostringstream + throw), `LOG` (delegates to `OrtApi::Logger_LogMessage`), `RETURN_ERROR` (creates OrtStatus). These can go in `cuda_plugin_utils.h` instead if preferred. |
-| `plugin/cuda_ep_factory.h` | Extend `DeviceCacheEntry` with per-device arena members: `std::mutex arena_mutex; std::unique_ptr<CudaArenaAllocator> device_arena; std::unique_ptr<CudaArenaAllocator> pinned_arena; int num_device_arena_users = 0; int num_pinned_arena_users = 0; bool device_arena_using_defaults = true;`. Add `#include "cuda_arena.h"`. Add helper `CudaArenaAllocator* GetDeviceArenaForDevice(int device_id)` for stream integration. |
-| `plugin/cuda_ep_factory.cc` | Rewrite `CreateAllocatorImpl`: extract `device_id` from `OrtMemoryInfo`, find `DeviceCacheEntry`, create/return shared `CudaArenaAllocator` wrapping `CudaDeviceAllocator` or `CudaPinnedAllocator` per device (Section 3.1 pseudocode). Rewrite `ReleaseAllocatorImpl`: pointer identity match against `DeviceCacheEntry` arenas, decrement ref count, destroy if zero; fall back to `CudaAllocatorBase`-based `delete` for non-arena allocators (Section 3.3 pseudocode). |
+| `plugin/cuda_ep_factory.h` | Extend `DeviceCacheEntry` with per-device arena and mempool members: `std::mutex arena_mutex; std::unique_ptr<CudaArenaAllocator> device_arena; std::unique_ptr<CudaArenaAllocator> pinned_arena; std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;` plus ref counts and `device_arena_using_defaults` flag (Section 3.3). Add `#include "cuda_arena.h"`. Add helper `CudaArenaAllocator* GetDeviceArenaForDevice(int device_id)` for stream integration. |
+| `plugin/cuda_ep_factory.cc` | Rewrite `CreateAllocatorImpl`: extract `device_id` from `OrtMemoryInfo`, find `DeviceCacheEntry`, create/return shared `CudaArenaAllocator` wrapping `CudaDeviceAllocator` or `CudaPinnedAllocator` per device (Section 3.1 pseudocode). Rewrite `ReleaseAllocatorImpl`: pointer identity match against `DeviceCacheEntry` arenas and mempool allocator, decrement ref count, destroy if zero; fall back to `CudaAllocatorBase`-based `delete` for raw allocators (Section 3.3 pseudocode). |
 | `plugin/cuda_stream_plugin.cc` | Update `CudaSyncStream::OnSessionRunEndImpl`: after stream synchronization and deferred buffer cleanup, call `factory.GetDeviceArenaForDevice(stream->device_id_)->ResetChunksUsingStream(this_ptr)` to release chunk-to-stream assignments (Section 3.4). |
 
 ### 5.3 ORT Core Changes (Minimal)
@@ -595,7 +630,7 @@ This is the only ORT core change needed — it enables env-level arena config to
 ### Phase 2: CudaMempoolArena Migration
 
 1. Add conditional logger abstraction to `cuda_mempool_arena.h/.cc`
-2. Create `CudaMempoolOrtAllocator` wrapper following `ArenaAllocator` pattern
+2. Create `CudaMempoolOrtAllocator : CudaAllocatorBase` wrapper (Section 4.4)
 3. Add mempool arena mode selection in `CreateAllocatorImpl` based on `arena.use_cuda_mempool` option
 4. Remove `cuda_mempool_arena.cc` from plugin CMake exclusion list
 
