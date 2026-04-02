@@ -50,28 +50,28 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
     vector_count_ += narrow<ptrdiff_t>(vectors_per_class_[i]);
   }
 
+  ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0, "One of classlabels_strings, classlabels_ints is required.");
+
   using_strings_ = false;
   if (classlabels_strings_.size() > 0) {
     using_strings_ = true;
     class_count_ = classlabels_strings_.size();
-  } else if (classlabels_ints_.size() > 0) {
-    class_count_ = classlabels_ints_.size();
   } else {
-    class_count_ = 1;
+    class_count_ = classlabels_ints_.size();
   }
+
+  ORT_ENFORCE(proba_.size() == probb_.size(), "proba and probb must have the same size.");
+  ORT_ENFORCE(coefficients_.size() > 0, "coefficients are empty.");
 
   if (vector_count_ > 0) {
     feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
     mode_ = SVM_TYPE::SVM_SVC;
+    ORT_ENFORCE(static_cast<int64_t>(vectors_per_class_.size()) == class_count_, "Mismatch between class_labels and vector_per_class dimensions.");
   } else {
     feature_count_ = coefficients_.size() / class_count_;  // liblinear mode
     mode_ = SVM_TYPE::SVM_LINEAR;
     set_kernel_type(KERNEL::LINEAR);
   }
-
-  ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0);
-  ORT_ENFORCE(proba_.size() == probb_.size());
-  ORT_ENFORCE(coefficients_.size() > 0);
 
   // Validate attribute array sizes against the declared dimensions to prevent
   // out-of-bounds reads from crafted models.
