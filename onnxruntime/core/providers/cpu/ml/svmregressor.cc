@@ -43,9 +43,6 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
                 ") must be a multiple of n_supports (", vector_count_, ")");
 
     feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
-    ORT_ENFORCE(feature_count_ > 0,
-                "SVMRegressor: support_vectors size (", support_vectors_.size(),
-                ") is too small for n_supports (", vector_count_, ")");
 
     mode_ = SVM_TYPE::SVM_SVC;
   } else {
