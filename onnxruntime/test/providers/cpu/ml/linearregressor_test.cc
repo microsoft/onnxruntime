@@ -85,5 +85,18 @@ INSTANTIATE_TEST_SUITE_P(
                     LinearRegressorParam("SOFTMAX_ZERO", {3.442477e-14f, 1.f, 1.670142e-05f, 1.f, 1.0f, 0.f}, 2)
 
                         ));
+
+// Regression test: coefficients size must match targets * num_features.
+// A mismatch previously caused an out-of-bounds read in MLAS SGEMM packing.
+TEST(LinearRegressorTest, CoefficientsSizeMismatch) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+  // 1 coefficient but input has 2 features and targets=1 → expects 2 coefficients
+  test.AddAttribute("coefficients", std::vector<float>{1.0f});
+  test.AddAttribute("targets", int64_t{1});
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients attribute size");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

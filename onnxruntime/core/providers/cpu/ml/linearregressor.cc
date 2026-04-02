@@ -86,6 +86,16 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
   ptrdiff_t num_batches = input_shape.NumDimensions() <= 1 ? 1 : narrow<ptrdiff_t>(input_shape[0]);
   ptrdiff_t num_features = input_shape.NumDimensions() <= 1 ? narrow<ptrdiff_t>(input_shape.Size())
                                                             : narrow<ptrdiff_t>(input_shape[1]);
+
+  // Coefficients are treated as a [num_targets, num_features] matrix.
+  // Validate size to prevent out-of-bounds reads in the GEMM backend.
+  if (coefficients_.size() != static_cast<size_t>(num_targets_) * static_cast<size_t>(num_features)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearRegressor: coefficients attribute size (", coefficients_.size(),
+                           ") does not match targets (", num_targets_,
+                           ") * input features (", num_features, ")");
+  }
+
   Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 
