@@ -11,6 +11,7 @@
 #include <dlfcn.h>
 #endif
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -463,7 +464,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   std::unique_ptr<void, std::function<void(void*)>> GetSystemContextHandle();
 
   Status GetGraphInfoAndBinVersion(QnnSystemContext_Handle_t sys_ctx_handle,
-                                   void* buffer, size_t buffer_length,
+                                   void* buffer,
+                                   Qnn_ContextBinarySize_t buffer_length,
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
                                    Qnn_Version_t& blob_version,
 #endif
@@ -471,7 +473,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                    QnnSystemContext_GraphInfo_t** graphs_info);
 
   // Checks if act_ver is >= min_ver. An act_ver of 0.0.0 is considered invalid.
-  bool MinVersionMet(const Qnn_Version_t& act_ver, const Qnn_Version_t& min_ver) {
+  static bool MinVersionMet(const Qnn_Version_t& act_ver, const Qnn_Version_t& min_ver) {
     if (act_ver.major == 0 && act_ver.minor == 0 && act_ver.patch == 0) {
       return false;
     }
@@ -481,7 +483,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
            (act_ver.major == min_ver.major && act_ver.minor == min_ver.minor && act_ver.patch >= min_ver.patch);
   }
 
- private:
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
   const logging::Logger* logger_ = nullptr;
