@@ -3,6 +3,11 @@
 
 #pragma once
 
+// SHARED_PROVIDER is defined in the in-tree CUDA EP shared library build
+// (onnxruntime_providers_cuda). It gates out framework headers that are
+// re-exported via the DLL-boundary proxy.  The plugin EP build uses a
+// different flag (BUILD_CUDA_EP_AS_PLUGIN) and the force-include adapter
+// headers instead.  Both builds need these headers excluded.
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/type_list.h"
@@ -66,8 +71,118 @@ using ConstantOfShapeDefaultOutputTypesOpset23 =
         uint8_t, uint16_t, uint32_t, uint64_t,
         bool>;
 
+#define ORT_CONSTANT_OF_SHAPE_VALUE_TYPES(M)          \
+  M(bool, ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL)         \
+  M(float, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)       \
+  M(MLFloat16, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) \
+  M(double, ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE)     \
+  M(int8_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8)       \
+  M(int16_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16)     \
+  M(int32_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32)     \
+  M(int64_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64)     \
+  M(uint8_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8)     \
+  M(uint16_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16)   \
+  M(uint32_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32)   \
+  M(uint64_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64)   \
+  M(BFloat16, ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16)
+
+template <typename T>
+struct ConstantOfShapeOrtType;
+
+#define DEFINE_CONSTANT_OF_SHAPE_ORT_TYPE(c_type, ort_type)      \
+  template <>                                                    \
+  struct ConstantOfShapeOrtType<c_type> {                        \
+    static constexpr ONNXTensorElementDataType value = ort_type; \
+  };
+
+ORT_CONSTANT_OF_SHAPE_VALUE_TYPES(DEFINE_CONSTANT_OF_SHAPE_ORT_TYPE)
+
+#undef DEFINE_CONSTANT_OF_SHAPE_ORT_TYPE
+
+class ConstantOfShapeCore {
+ protected:
+  void* GetValuePtr() const { return p_value_; }
+
+  template <typename ContextType>
+  static Status PrepareCompute(ContextType* ctx, Tensor** output_tensor) {
+    const auto shape_tensor = ctx->template Input<Tensor>(0);
+    const auto& input_shape = shape_tensor->Shape();
+
+    // If empty the output is a scalar with empty shape
+    // TensorShape::Size() will still return 1 and we will output
+    // one value
+    ORT_RETURN_IF_NOT(input_shape.NumDimensions() > 0, "Must have a valid input shape.");
+
+    const auto span = shape_tensor->template DataAsSpan<int64_t>();
+
+    TensorShape output_shape(span);
+    (*output_tensor) = ctx->Output(0, output_shape);
+
+    return Status::OK();
+  }
+
+  void SetDefaultValue() {
+    float f_value = 0.f;
+    SetValue(sizeof(float), &f_value);
+  }
+
+  template <typename EnabledOutputTypeList>
+  void SetValueFromOrtTensor(ONNXTensorElementDataType tensor_type, const void* data) {
+    bool handled = false;
+    switch (tensor_type) {
+#define CASE_SET_ORT_VALUE(c_type, ort_type)               \
+  case ConstantOfShapeOrtType<c_type>::value: {            \
+    if (utils::HasType<EnabledOutputTypeList, c_type>()) { \
+      SetValue(sizeof(c_type), data);                      \
+      handled = true;                                      \
+    }                                                      \
+    break;                                                 \
+  }
+      ORT_CONSTANT_OF_SHAPE_VALUE_TYPES(CASE_SET_ORT_VALUE)
+#undef CASE_SET_ORT_VALUE
+      default:
+        ORT_THROW("Unsupported value attribute datatype: ", static_cast<int>(tensor_type));
+    }
+
+    ORT_ENFORCE(handled, "Unsupported value attribute datatype in this build: ", static_cast<int>(tensor_type));
+  }
+
+  void SetValue(size_t size, const void* value) {
+    switch (size) {
+      case sizeof(int8_t):
+        s_value_.int8_ = *(reinterpret_cast<const int8_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int8_));
+        break;
+      case sizeof(int16_t):
+        s_value_.int16_ = *(reinterpret_cast<const int16_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int16_));
+        break;
+      case sizeof(int32_t):
+        s_value_.int32_ = *(reinterpret_cast<const int32_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int32_));
+        break;
+      case sizeof(int64_t):
+        s_value_.int64_ = *(reinterpret_cast<const int64_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int64_));
+        break;
+      default:
+        ORT_THROW("Unsupported value attribute datatype with size: ", size);
+    }
+  }
+
+ private:
+  union SizeBasedValue {
+    int8_t int8_;
+    int16_t int16_;
+    int32_t int32_;
+    int64_t int64_;
+  };
+  mutable SizeBasedValue s_value_{};
+  mutable void* p_value_ = nullptr;
+};
+
 template <typename EnabledOutputTypeList = ConstantOfShapeDefaultOutputTypes>
-class ConstantOfShapeBase {
+class ConstantOfShapeBase : public ConstantOfShapeCore {
  protected:
   ConstantOfShapeBase(const OpKernelInfo& info) {
 #ifndef SHARED_PROVIDER
@@ -83,66 +198,15 @@ class ConstantOfShapeBase {
       }
       SetValueFromTensorProto(*t_proto_p);
     } else {
-      float f_value = 0.f;
-      SetValue(sizeof(float), reinterpret_cast<void*>(&f_value));
-    }
-  }
-
-  void* GetValuePtr() const { return p_value_; }
-
-  static Status PrepareCompute(OpKernelContext* ctx, Tensor** output_tensor) {
-    const auto shape_tensor = ctx->Input<Tensor>(0);
-    const auto& input_shape = shape_tensor->Shape();
-
-    // If empty the output is a scalar with empty shape
-    // TensorShape::Size() will still return 1 and we will output
-    // one value
-    ORT_RETURN_IF_NOT(input_shape.NumDimensions() > 0, "Must have a valid input shape.");
-
-    const auto span = shape_tensor->DataAsSpan<int64_t>();
-
-    TensorShape output_shape(span);
-    (*output_tensor) = ctx->Output(0, output_shape);
-
-    return Status::OK();
-  }
-
- private:
-  union SizeBasedValue {
-    int8_t int8_;
-    int16_t int16_;
-    int32_t int32_;
-    int64_t int64_;
-  } s_value_;
-  void* p_value_;
-
-  void SetValue(size_t size, void* value) {
-    switch (size) {
-      case sizeof(int8_t):
-        s_value_.int8_ = *(reinterpret_cast<int8_t*>(value));
-        p_value_ = reinterpret_cast<void*>(&(s_value_.int8_));
-        break;
-      case sizeof(int16_t):
-        s_value_.int16_ = *(reinterpret_cast<int16_t*>(value));
-        p_value_ = reinterpret_cast<void*>(&(s_value_.int16_));
-        break;
-      case sizeof(int32_t):
-        s_value_.int32_ = *(reinterpret_cast<int32_t*>(value));
-        p_value_ = reinterpret_cast<void*>(&(s_value_.int32_));
-        break;
-      case sizeof(int64_t):
-        s_value_.int64_ = *(reinterpret_cast<int64_t*>(value));
-        p_value_ = reinterpret_cast<void*>(&(s_value_.int64_));
-        break;
-      default:
-        ORT_THROW("Unsupported value attribute datatype with size: ", size);
+      SetDefaultValue();
     }
   }
 
   void SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto&);
 };
 
-#define CASE_FETCH_VALUE_DATA(c_type)                                                    \
+// ort_type parameter unused here but required for ORT_CONSTANT_OF_SHAPE_VALUE_TYPES X-macro conformance.
+#define CASE_FETCH_VALUE_DATA(c_type, ort_type)                                          \
   case utils::ToTensorProtoElementType<c_type>(): {                                      \
     if (utils::HasType<EnabledOutputTypeList, c_type>()) {                               \
       c_type val;                                                                        \
@@ -164,19 +228,7 @@ void ConstantOfShapeBase<EnabledOutputTypeList>::SetValueFromTensorProto(const O
   const size_t raw_data_len = utils::HasRawData(t_proto) ? t_proto.raw_data().size() : 0;
   bool handled = false;
   switch (tensor_type) {
-    CASE_FETCH_VALUE_DATA(bool)
-    CASE_FETCH_VALUE_DATA(float)
-    CASE_FETCH_VALUE_DATA(MLFloat16)
-    CASE_FETCH_VALUE_DATA(double)
-    CASE_FETCH_VALUE_DATA(int8_t)
-    CASE_FETCH_VALUE_DATA(int16_t)
-    CASE_FETCH_VALUE_DATA(int32_t)
-    CASE_FETCH_VALUE_DATA(int64_t)
-    CASE_FETCH_VALUE_DATA(uint8_t)
-    CASE_FETCH_VALUE_DATA(uint16_t)
-    CASE_FETCH_VALUE_DATA(uint32_t)
-    CASE_FETCH_VALUE_DATA(uint64_t)
-    CASE_FETCH_VALUE_DATA(BFloat16)
+    ORT_CONSTANT_OF_SHAPE_VALUE_TYPES(CASE_FETCH_VALUE_DATA)
     default:
       ORT_THROW("Unsupported value attribute datatype: ", tensor_type);
   }
@@ -185,5 +237,6 @@ void ConstantOfShapeBase<EnabledOutputTypeList>::SetValueFromTensorProto(const O
 }
 
 #undef CASE_FETCH_VALUE_DATA
+#undef ORT_CONSTANT_OF_SHAPE_VALUE_TYPES
 
 }  // namespace onnxruntime

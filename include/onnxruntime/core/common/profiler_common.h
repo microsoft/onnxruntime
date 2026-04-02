@@ -11,6 +11,8 @@
 namespace onnxruntime {
 namespace profiling {
 
+// Profiling event categories.
+// Note: Keep in sync with OrtProfilingEventCategory in onnxruntime_ep_c_api.h.
 enum EventCategory {
   SESSION_EVENT = 0,
   NODE_EVENT,
@@ -79,10 +81,71 @@ using Events = std::vector<EventRecord>;
 class EpProfiler {
  public:
   virtual ~EpProfiler() = default;
-  virtual bool StartProfiling(TimePoint profiling_start_time) = 0;      // called when profiling starts
-  virtual void EndProfiling(TimePoint start_time, Events& events) = 0;  // called when profiling ends, save all captures numbers to "events"
-  virtual void Start(uint64_t) {}                                       // called before op start, accept an id as argument to identify the op
-  virtual void Stop(uint64_t) {}                                        // called after op stop, accept an id as argument to identify the op
+
+  /// <summary>
+  /// Called when profiling starts.
+  /// Allows EP profiler to initialize profiling utilities and record the profiling start time.
+  /// </summary>
+  /// <param name="profiling_start_time">Timepoint denoting the start of profiling.</param>
+  /// <returns>True if profiling was started successfully.</returns>
+  virtual bool StartProfiling(TimePoint profiling_start_time) = 0;
+
+  /// <summary>
+  /// Called when profiling ends to collect the EP's new profiling events since the last call to StartProfiling.
+  /// </summary>
+  /// <param name="start_time">Timepoint denoting the start of profiling. Same value passed to StartProfiling.</param>
+  /// <param name="events">Modifiable events container to which the EP profiler appends its events.</param>
+  virtual void EndProfiling(TimePoint start_time, Events& events) = 0;
+
+  /// <summary>
+  /// Optional to override (default implementation does nothing).
+  ///
+  /// Called when an ORT event (e.g., session initialization, node kernel execution, etc.) starts.
+  /// ORT pairs every Start call with a corresponding call to Stop with the same relative ORT event ID.
+  /// EP profiler implementations may use the calls to Start and Stop to maintain a stack of ORT event IDs
+  /// that can be correlated with EP events (e.g., GPU kernel events).
+  ///
+  /// A relative ORT event ID is computed as a timestamp offset relative to the profiling start time:
+  ///     relative_ort_event_id =
+  ///         std::chrono::duration_cast<std::chrono::microseconds>(event_start_time - profiling_start_time).count();
+  ///
+  /// Because relative ORT event IDs are relative to profiling start, different profiling sessions may reuse the same
+  /// values. If the EP's profiling utilities (e.g., CUPTI or ROCTracer) require correlation IDs that are practically
+  /// unique across concurrent profiling sessions (collisions require sub-microsecond event concurrency), then the
+  /// EP profiler should compute an absolute correlation ID:
+  ///     absolute_ort_correlation_id =
+  ///        relative_ort_event_id +
+  ///        std::chrono::duration_cast<std::chrono::microseconds>(profiling_start_time.time_since_epoch()).count();
+  ///
+  /// Note: For plugin EPs using the binary-stable C API (OrtEpProfilerImpl), ORT performs this conversion
+  /// automatically. The C API's StartEvent/StopEvent receive the absolute correlation ID directly.
+  /// </summary>
+  /// <param name="relative_ort_event_id">
+  /// Relative ID of the ORT event that is starting (microseconds since profiling start).
+  /// The same value is passed to a corresponding call to Stop.
+  /// </param>
+  virtual void Start(uint64_t /*relative_ort_event_id*/) {}
+
+  /// <summary>
+  /// Optional to override (default implementation does nothing).
+  ///
+  /// Called when an ORT event (e.g., session initialization, node kernel execution, etc.) ends.
+  /// ORT pairs every Start call with a corresponding call to Stop with the same relative ORT event ID.
+  /// EP profiler implementations may use the calls to Start and Stop to maintain a stack of ORT event IDs
+  /// that can be correlated with EP events (e.g., GPU kernel events).
+  ///
+  /// The ort_event parameter provides the full ORT event record including metadata such as op_name
+  /// (in event args), event name, category, timestamps, etc. EP profilers can use this to annotate
+  /// their own events with ORT event context.
+  /// </summary>
+  /// <param name="relative_ort_event_id">
+  /// Relative ID of the ORT event that is ending (microseconds since profiling start).
+  /// The same value was passed to a corresponding call to Start.
+  /// </param>
+  /// <param name="ort_event">
+  /// The ORT event record containing metadata for this event.
+  /// </param>
+  virtual void Stop(uint64_t /*relative_ort_event_id*/, const EventRecord& /*ort_event*/) {}
 };
 
 // Demangle C++ symbols

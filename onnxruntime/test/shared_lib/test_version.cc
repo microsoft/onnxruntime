@@ -27,5 +27,5 @@ TEST(CApiTest, VersionConsistencyWithApiVersion) {
 
   ASSERT_NE(to_uint32_t(version_string_components[0]), std::nullopt);
   ASSERT_EQ(to_uint32_t(version_string_components[1]), uint32_t{ORT_API_VERSION});
-  ASSERT_NE(to_uint32_t(version_string_components[0]), std::nullopt);
+  ASSERT_NE(to_uint32_t(version_string_components[2]), std::nullopt);
 }
