@@ -372,5 +372,41 @@ TEST(GatherNDOpTest, GatherND_zero_batch_dims_error) {
            &cpu_only_ep);  // force CPU
 }
 
+// Regression test: index 0 into a zero-sized dimension must be rejected.
+// Previously err_index==0 was used as a sentinel for "no error", which collided
+// with the actual index value 0, allowing an OOB memory read.
+TEST(GatherNDOpTest, GatherND_zero_dim_index_zero_rejected) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 0);
+
+  // data shape [0]: zero-sized first dimension
+  // indices [0]: index 0 is invalid because dimension size is 0
+  test.AddInput<int32_t>("data", {0}, {});
+  test.AddInput<int64_t>("indices", {1}, {0});
+  test.AddOutput<int32_t>("output", {}, {0});  // dummy, won't be used
+
+  std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cpu_only_ep;
+  cpu_only_ep.push_back(DefaultCpuExecutionProvider());
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "invalid index found",
+           {},
+           nullptr,
+           &cpu_only_ep);
+}
+
+// Verify that index 0 into a non-zero dimension still works correctly.
+TEST(GatherNDOpTest, GatherND_valid_index_zero) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 0);
+
+  // data shape [3]: valid dimension, index 0 should return the first element
+  test.AddInput<int32_t>("data", {3}, {10, 20, 30});
+  test.AddInput<int64_t>("indices", {1}, {0});
+  test.AddOutput<int32_t>("output", {}, {10});
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <atomic>
 #include <core/common/safeint.h>
 #include "gather_nd.h"
 #include "core/platform/threadpool.h"
@@ -85,6 +86,11 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
     sizes_from_slice_dims[onnxruntime::narrow<size_t>(i)] = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_) + i + 1);
   }
 
+  // Use a separate flag to track validation errors instead of relying on the
+  // index value as a sentinel. The value 0 is a valid tensor index, so using
+  // err_index == 0 to mean "no error" creates a collision when a zero-sized
+  // dimension makes index 0 invalid — the error goes undetected.
+  std::atomic<bool> has_invalid_index{false};
   int64_t err_index = 0;
   p.element_bytes = bytes_per_value;
   p.element_count_per_slice = slice_size;
@@ -104,6 +110,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
       const auto upper_limit = input_shape[SafeInt<size_t>(batch_dims_) + dim_idx];
       const auto lower_limit = -upper_limit;
       if (index < lower_limit || index >= upper_limit) {
+        has_invalid_index.store(true, std::memory_order_relaxed);
         err_index = index;
         break;
       }
@@ -123,8 +130,9 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
         }
       });
 
-  return err_index == 0 ? Status::OK()
-                        : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
+  return !has_invalid_index.load(std::memory_order_relaxed)
+             ? Status::OK()
+             : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape&,
