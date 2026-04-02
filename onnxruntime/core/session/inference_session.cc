@@ -1419,7 +1419,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   //
   // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
   // with a TensorProto that has the same data type, shape and name. However, its external data
-  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoNativeEndianMemoryAddressTag,
   // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
   // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it. For this reason,
   // we do not convert them at the graph constructor because Node::ToProto() reconstructs Graph instances for subgraphs

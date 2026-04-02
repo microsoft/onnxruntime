@@ -131,7 +131,7 @@ void VerifyTensorValue(const ONNX_NAMESPACE::TensorProto* tensor, float expected
   ASSERT_TRUE(tensor->dims_size() == 1);
   ASSERT_TRUE(tensor->dims(0) == 1);
   if (tensor->has_raw_data()) {
-    memcpy(&tensor_value, tensor->raw_data().data(), sizeof(float));
+    ASSERT_STATUS_OK(onnxruntime::utils::UnpackTensor<float>(*tensor, std::filesystem::path(), &tensor_value, 1));
   } else {
     tensor_value = *(tensor->float_data().data());
   }
@@ -143,7 +143,7 @@ void VerifyTensorValue(const ONNX_NAMESPACE::TensorProto* tensor, int64_t expect
   ASSERT_TRUE(tensor->dims_size() == 1);
   ASSERT_TRUE(tensor->dims(0) == 1);
   if (tensor->has_raw_data()) {
-    memcpy(&tensor_value, tensor->raw_data().data(), sizeof(int64_t));
+    ASSERT_STATUS_OK(onnxruntime::utils::UnpackTensor<int64_t>(*tensor, std::filesystem::path(), &tensor_value, 1));
   } else {
     tensor_value = *(tensor->int64_data().data());
   }
