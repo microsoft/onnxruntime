@@ -38,6 +38,6 @@ lintrunner                                           # check without fixing (dry
 
 ## Agent tips
 
-- **Activate a Python virtual environment** before installing dependencies. See "Python Environment" in `AGENTS.md`.
+- **Activate a Python virtual environment** before installing dependencies. See "Python > Virtual environment" in `AGENTS.md`.
 - If lintrunner is not yet set up, install and initialize first (see [Setup](#setup-one-time)).
 - Prefer `lintrunner -a` (changed files only) over `--all-files` unless the user asks for a full sweep.

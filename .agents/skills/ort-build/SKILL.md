@@ -77,7 +77,7 @@ It may be customized with `--build_dir`.
 
 ## Agent tips
 
-- **Activate a Python virtual environment** before building. See "Python Environment" in `AGENTS.md`.
+- **Activate a Python virtual environment** before building. See "Python > Virtual environment" in `AGENTS.md`.
 - **Prefer `python tools/ci_build/build.py` directly** over `build.bat`/`build.sh` when redirecting output. The `.bat` wrapper runs in `cmd.exe`, which breaks PowerShell redirection.
 - **Redirect output to a file** (e.g., `> build_log.txt 2>&1`). Build output is large and will overflow terminal buffers.
 - **Run builds in the background** — a full build can take tens of minutes to over an hour. Poll the log for `"Build complete"` or errors.

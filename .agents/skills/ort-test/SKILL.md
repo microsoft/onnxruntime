@@ -75,7 +75,7 @@ Python test naming convention: `test_<method>_<expected_behavior>_[when_<conditi
 
 ## Agent tips
 
-- **Activate a Python virtual environment** before running tests. See "Python Environment" in `AGENTS.md`.
+- **Activate a Python virtual environment** before running tests. See "Python > Virtual environment" in `AGENTS.md`.
 - **Redirect test output to a file** (e.g., `> test_output.txt 2>&1`) — output can be large.
 - For C++ tests, verify the build directory exists and a prior build completed before running.
 - Use `--gtest_filter` to run a targeted subset when the full suite takes too long.
