@@ -215,8 +215,18 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
  * @return Status indicating success or providing error information.
  */
 Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_bytes) {
+  const auto* tensor_name = tensor.name();
+  const auto* tensor_name_str = tensor_name ? tensor_name->c_str() : "<unnamed>";
+  const auto* tensor_data_type_str = fbs::EnumNameTensorDataType(tensor.data_type());
+  if (tensor_data_type_str[0] == '\0') {
+    tensor_data_type_str = "<unknown>";
+  }
+
   const auto* fbs_dims = tensor.dims();
-  ORT_RETURN_IF(nullptr == fbs_dims, "Missing dimensions for tensor. Invalid ORT format model.");
+  ORT_RETURN_IF(nullptr == fbs_dims,
+                "Missing dimensions for tensor '", tensor_name_str,
+                "' with data type '", tensor_data_type_str,
+                "'. Invalid ORT format model.");
 
   auto num_elements = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), SafeInt<size_t>(1),
                                       std::multiplies<>());
@@ -279,10 +289,13 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
 #endif
     case fbs::TensorDataType::STRING:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "String data type is not supported for on-device training.");
+                             "String data type is not supported for tensor '", tensor_name_str,
+                             "' in on-device training.");
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Unsupported tensor data type for tensor. Invalid ORT format model.");
+                             "Unsupported tensor data type '", tensor_data_type_str,
+                             "' for tensor '", tensor_name_str,
+                             "'. Invalid ORT format model.");
   }
   size_in_bytes = num_elements * byte_size_of_one_element;
   return Status::OK();
