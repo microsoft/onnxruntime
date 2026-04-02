@@ -50,7 +50,11 @@ class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
       {"head_dim_k", ProgramUniformVariableDataType::Uint32},
       {"head_dim_v", ProgramUniformVariableDataType::Uint32},
       {"scale", ProgramUniformVariableDataType::Float32},
-      {"num_dv_tiles", ProgramUniformVariableDataType::Uint32});
+      {"num_dv_tiles", ProgramUniformVariableDataType::Uint32},
+      {"heads_per_group", ProgramUniformVariableDataType::Uint32},
+      {"kv_per_k_head", ProgramUniformVariableDataType::Uint32},
+      {"q_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"n_k_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   LinearAttentionUpdateRule update_rule_;

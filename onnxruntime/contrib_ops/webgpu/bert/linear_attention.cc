@@ -130,16 +130,15 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // Validate 3D packed inputs
   const auto& q_shape = query->Shape();
   ORT_RETURN_IF(q_shape.NumDimensions() != 3, "query must be 3D (B, T, H_q*d_k)");
+  const auto& k_shape = key->Shape();
 
   const int batch_size = static_cast<int>(q_shape[0]);
   const int seq_length = static_cast<int>(q_shape[1]);
   const int q_packed_dim = static_cast<int>(q_shape[2]);
   const int num_heads = kv_num_heads_;
-
-  ORT_RETURN_IF(q_num_heads_ != kv_num_heads_,
-                "GQA (q_num_heads != kv_num_heads) is not yet supported");
-
   const int head_dim_k = q_packed_dim / q_num_heads_;
+  const int n_k_heads = static_cast<int>(k_shape[2] / head_dim_k);
+
   ORT_RETURN_IF(q_packed_dim != head_dim_k * q_num_heads_,
                 "query packed dim must be divisible by q_num_heads");
 
@@ -147,6 +146,26 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   const int head_dim_v = v_packed_dim / kv_num_heads_;
   ORT_RETURN_IF(v_packed_dim != head_dim_v * kv_num_heads_,
                 "value packed dim must be divisible by kv_num_heads");
+
+  // ==== GQA head mapping ====
+  // Standard GQA: q_num_heads >= kv_num_heads, multiple Q heads per KV group.
+  // Inverse GQA: q_num_heads < kv_num_heads (e.g., Qwen3.5 9B: n_k=16, n_kv=32).
+  // Also n_k_heads may differ from both (K has its own head count).
+  int heads_per_group;  // Q heads per KV group (0 if inverse GQA)
+  if (q_num_heads_ >= kv_num_heads_) {
+    ORT_RETURN_IF_NOT(q_num_heads_ % kv_num_heads_ == 0,
+                      "q_num_heads must be divisible by kv_num_heads");
+    heads_per_group = q_num_heads_ / kv_num_heads_;
+  } else {
+    ORT_RETURN_IF_NOT(kv_num_heads_ % q_num_heads_ == 0,
+                      "kv_num_heads must be divisible by q_num_heads (inverse GQA)");
+    heads_per_group = 0;  // signals inverse GQA
+  }
+
+  // K-to-KV head mapping: when n_k < kv_num_heads, multiple KV heads share one K head
+  ORT_RETURN_IF_NOT(kv_num_heads_ % n_k_heads == 0,
+                    "kv_num_heads must be divisible by n_k_heads");
+  int kv_per_k_head = kv_num_heads_ / n_k_heads;
 
   // Validate update rule has required inputs
   bool needs_decay = (update_rule_ == LinearAttentionUpdateRule::Gated ||
@@ -163,7 +182,10 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   }
 
   // Allocate outputs — output is 3D packed, state is 4D
-  TensorShapeVector output_shape({batch_size, seq_length, q_num_heads_ * head_dim_v});
+  // Output uses kv_num_heads (matches schema inference: output_dim == V_dim).
+  // For inverse GQA (q < kv): each KV head writes its own output slot.
+  // For standard/MHA (q >= kv): q == kv with this schema, so equivalent.
+  TensorShapeVector output_shape({batch_size, seq_length, kv_num_heads_ * head_dim_v});
   Tensor* output = context.Output(0, output_shape);
 
   TensorShapeVector state_shape({batch_size, num_heads, head_dim_k, head_dim_v});
@@ -234,7 +256,11 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
                             {static_cast<uint32_t>(head_dim_k)},
                             {static_cast<uint32_t>(head_dim_v_vectorized)},
                             {scale},
-                            {static_cast<uint32_t>(num_dv_tiles)}});
+                            {static_cast<uint32_t>(num_dv_tiles)},
+                            {static_cast<uint32_t>(heads_per_group)},
+                            {static_cast<uint32_t>(kv_per_k_head)},
+                            {static_cast<uint32_t>(q_num_heads_)},
+                            {static_cast<uint32_t>(n_k_heads)}});
 
   return context.RunProgram(program);
 }

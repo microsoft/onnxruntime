@@ -2289,14 +2289,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           // Output 0: same shape as input (batch_size, channels, ...)
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
-          // Output 1: (batch_size, channels, kernel_size - 1) for ndim=1
+          // Output 1: state shape is (batch_size, channels, [non-causal spatial dims...], k_last - 1)
+          // For ndim=1: (B, C, k_1-1)
+          // For ndim=2: (B, C, input_H, k_2-1)
+          // For ndim=3: (B, C, input_D, input_H, k_3-1)
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
+            int64_t ndim = getAttribute(ctx, "ndim", 1);
             TensorShapeProto state_shape;
             *state_shape.add_dim() = input_shape.dim(0);  // batch_size
             *state_shape.add_dim() = input_shape.dim(1);  // channels
-            // kernel_size - 1 (last kernel dimension for ndim=1)
+            // Copy non-causal spatial dims from input (dims 2 .. 2+ndim-2)
+            for (int64_t i = 0; i < ndim - 1; ++i) {
+              *state_shape.add_dim() = input_shape.dim(static_cast<int>(2 + i));
+            }
+            // Causal (last) spatial dim: kernel_size - 1
             int last_kernel_dim = weight_shape.dim_size() - 1;
             if (weight_shape.dim(last_kernel_dim).has_dim_value()) {
               state_shape.add_dim()->set_dim_value(weight_shape.dim(last_kernel_dim).dim_value() - 1);
@@ -2368,7 +2376,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_state",
                "Recurrent state from previous step with shape (B, H_kv, d_k, d_v). "
                "Always 4D. If not provided, defaults to zeros.",
-               "T",
+               "S",
                OpSchema::Optional)
         .Input(4,
                "decay",
@@ -2392,10 +2400,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "present_state",
                 "Updated recurrent state with shape (B, H_kv, d_k, d_v). Always 4D.",
-                "T")
+                "S")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
+        .TypeConstraint("S",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain state types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
@@ -2416,7 +2427,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             // H_q * d_v: d_v = value.dim(2) / kv_num_heads, then H_q * d_v
             if (value_shape.dim(2).has_dim_value()) {
               int64_t d_v = value_shape.dim(2).dim_value() / kv_num_heads;
-              output_shape.add_dim()->set_dim_value(q_num_heads * d_v);
+              output_shape.add_dim()->set_dim_value(kv_num_heads * d_v);
             } else {
               output_shape.add_dim();  // unknown
             }

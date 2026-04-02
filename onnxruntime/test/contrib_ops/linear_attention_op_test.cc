@@ -129,6 +129,129 @@ void LinearAttentionReference(
   }
 }
 
+// GQA-aware reference implementation.
+// Q has q_num_heads heads, K has n_k_heads heads, V/state have kv_num_heads heads.
+// Standard GQA: q_num_heads >= kv_num_heads, heads_per_group = q_num_heads / kv_num_heads.
+// K-to-KV sharing: kv_per_k_head = kv_num_heads / n_k_heads.
+void LinearAttentionGQAReference(
+    const std::string& update_rule,
+    int batch_size, int q_num_heads, int kv_num_heads, int n_k_heads,
+    int seq_length, int head_dim_k, int head_dim_v,
+    float scale,
+    const std::vector<float>& query,           // (B, q_num_heads, T, dk)
+    const std::vector<float>& key,             // (B, n_k_heads, T, dk)
+    const std::vector<float>& value,           // (B, kv_num_heads, T, dv)
+    const std::vector<float>* initial_state,   // (B, kv_num_heads, dk, dv)
+    const std::vector<float>* decay,           // (B, kv_num_heads, T[, dk])
+    const std::vector<float>* beta,            // (B, kv_num_heads, T)
+    std::vector<float>& output,                // (B, kv_num_heads, T, dv)
+    std::vector<float>& final_state) {         // (B, kv_num_heads, dk, dv)
+  int bht_kv = batch_size * kv_num_heads * seq_length;
+  bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht_kv);
+  int kv_per_k_head = kv_num_heads / n_k_heads;
+  bool inverse_gqa = q_num_heads < kv_num_heads;
+  int heads_per_group = inverse_gqa ? 0 : q_num_heads / kv_num_heads;
+
+  final_state.resize(batch_size * kv_num_heads * head_dim_k * head_dim_v, 0.0f);
+  // Output always indexed by kv_num_heads (matches schema: output_dim == V_dim)
+  output.resize(batch_size * kv_num_heads * seq_length * head_dim_v, 0.0f);
+
+  if (initial_state != nullptr) {
+    final_state = *initial_state;
+  }
+
+  for (int b = 0; b < batch_size; b++) {
+    for (int kv_h = 0; kv_h < kv_num_heads; kv_h++) {
+      int k_head = kv_h / kv_per_k_head;
+
+      auto state_offset = [&](int k, int v) {
+        return ((b * kv_num_heads + kv_h) * head_dim_k + k) * head_dim_v + v;
+      };
+
+      for (int t = 0; t < seq_length; t++) {
+        // Load k from the K-head that this KV-head maps to
+        std::vector<float> k_vec(head_dim_k), v_vec(head_dim_v);
+        int k_base = ((b * n_k_heads + k_head) * seq_length + t) * head_dim_k;
+        for (int i = 0; i < head_dim_k; i++) k_vec[i] = key[k_base + i];
+        int v_base = ((b * kv_num_heads + kv_h) * seq_length + t) * head_dim_v;
+        for (int i = 0; i < head_dim_v; i++) v_vec[i] = value[v_base + i];
+
+        // Step 1: Apply decay
+        if (update_rule == "gated" || update_rule == "gated_delta") {
+          for (int k = 0; k < head_dim_k; k++) {
+            float exp_g;
+            if (decay_broadcast_dk) {
+              exp_g = std::exp((*decay)[(b * kv_num_heads + kv_h) * seq_length + t]);
+            } else {
+              exp_g = std::exp((*decay)[((b * kv_num_heads + kv_h) * seq_length + t) * head_dim_k + k]);
+            }
+            for (int v_idx = 0; v_idx < head_dim_v; v_idx++) {
+              final_state[state_offset(k, v_idx)] *= exp_g;
+            }
+          }
+        }
+
+        // Step 2: Update state
+        if (update_rule == "delta" || update_rule == "gated_delta") {
+          std::vector<float> retrieved(head_dim_v, 0.0f);
+          for (int v_idx = 0; v_idx < head_dim_v; v_idx++) {
+            for (int k = 0; k < head_dim_k; k++) {
+              retrieved[v_idx] += final_state[state_offset(k, v_idx)] * k_vec[k];
+            }
+          }
+          int beta_idx = (b * kv_num_heads + kv_h) * seq_length + t;
+          float beta_val = (*beta)[beta_idx];
+          std::vector<float> delta(head_dim_v);
+          for (int v_idx = 0; v_idx < head_dim_v; v_idx++) {
+            delta[v_idx] = beta_val * (v_vec[v_idx] - retrieved[v_idx]);
+          }
+          for (int k = 0; k < head_dim_k; k++) {
+            for (int v_idx = 0; v_idx < head_dim_v; v_idx++) {
+              final_state[state_offset(k, v_idx)] += k_vec[k] * delta[v_idx];
+            }
+          }
+        } else {
+          for (int k = 0; k < head_dim_k; k++) {
+            for (int v_idx = 0; v_idx < head_dim_v; v_idx++) {
+              final_state[state_offset(k, v_idx)] += k_vec[k] * v_vec[v_idx];
+            }
+          }
+        }
+
+        // Step 3: Compute output
+        if (!inverse_gqa) {
+          // Standard GQA/MHA: one output per Q head
+          for (int g = 0; g < heads_per_group; g++) {
+            int q_h = kv_h * heads_per_group + g;
+            int q_base = ((b * q_num_heads + q_h) * seq_length + t) * head_dim_k;
+            for (int v_idx = 0; v_idx < head_dim_v; v_idx++) {
+              float sum = 0.0f;
+              for (int k = 0; k < head_dim_k; k++) {
+                sum += final_state[state_offset(k, v_idx)] * query[q_base + k];
+              }
+              // For standard, output head == q head; since q==kv per schema, also == kv_h index
+              int out_idx = ((b * kv_num_heads + (kv_h * heads_per_group + g)) * seq_length + t) * head_dim_v + v_idx;
+              output[out_idx] = scale * sum;
+            }
+          }
+        } else {
+          // Inverse GQA: output indexed by kv_head, Q broadcast
+          int q_h = kv_h * q_num_heads / kv_num_heads;
+          int q_base = ((b * q_num_heads + q_h) * seq_length + t) * head_dim_k;
+          for (int v_idx = 0; v_idx < head_dim_v; v_idx++) {
+            float sum = 0.0f;
+            for (int k = 0; k < head_dim_k; k++) {
+              sum += final_state[state_offset(k, v_idx)] * query[q_base + k];
+            }
+            int out_idx = ((b * kv_num_heads + kv_h) * seq_length + t) * head_dim_v + v_idx;
+            output[out_idx] = scale * sum;
+          }
+        }
+      }
+    }
+  }
+}
+
 // Convert data from 4D (B,H,T,D) layout to 3D packed (B,T,H*D) layout
 std::vector<float> PackBHTD_to_BTHD(const std::vector<float>& data_4d,
                                     int B, int H, int T, int D) {
@@ -273,10 +396,87 @@ void RunLinearAttentionTest(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-}  // namespace
+// GQA-aware test harness.
+// Q: (B, q_num_heads, T, dk), K: (B, n_k_heads, T, dk), V: (B, kv_num_heads, T, dv)
+void RunLinearAttentionGQATest(
+    const std::string& update_rule,
+    int batch_size, int q_num_heads, int kv_num_heads, int n_k_heads,
+    int seq_length, int head_dim_k, int head_dim_v,
+    float scale,
+    const std::vector<float>& query,
+    const std::vector<float>& key,
+    const std::vector<float>& value,
+    const std::vector<float>* initial_state,
+    const std::vector<float>* decay,
+    const std::vector<float>* beta_data) {
+  auto ep = TryGetEpWithLinearAttention();
+  if (!ep) {
+    GTEST_SKIP() << "LinearAttention kernel not registered";
+    return;
+  }
 
-// ===========================================================================
-// Test: Linear update rule (simplest - no decay, no beta)
+  std::vector<float> expected_output_4d, expected_state;
+  LinearAttentionGQAReference(update_rule, batch_size, q_num_heads, kv_num_heads, n_k_heads,
+                              seq_length, head_dim_k, head_dim_v, scale,
+                              query, key, value, initial_state, decay, beta_data,
+                              expected_output_4d, expected_state);
+
+  int bht_kv = batch_size * kv_num_heads * seq_length;
+  bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht_kv);
+
+  // Pack to 3D — each tensor uses its own head count
+  auto query_3d = PackBHTD_to_BTHD(query, batch_size, q_num_heads, seq_length, head_dim_k);
+  auto key_3d = PackBHTD_to_BTHD(key, batch_size, n_k_heads, seq_length, head_dim_k);
+  auto value_3d = PackBHTD_to_BTHD(value, batch_size, kv_num_heads, seq_length, head_dim_v);
+  // Output always indexed by kv_num_heads (matches schema)
+  auto output_3d = PackBHTD_to_BTHD(expected_output_4d, batch_size, kv_num_heads, seq_length, head_dim_v);
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", update_rule);
+  tester.AddAttribute<float>("scale", scale);
+  tester.AddAttribute<int64_t>("q_num_heads", static_cast<int64_t>(q_num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, seq_length, q_num_heads * head_dim_k}, query_3d);
+  tester.AddInput<float>("key", {batch_size, seq_length, n_k_heads * head_dim_k}, key_3d);
+  tester.AddInput<float>("value", {batch_size, seq_length, kv_num_heads * head_dim_v}, value_3d);
+
+  if (initial_state != nullptr) {
+    tester.AddInput<float>("past_state", {batch_size, kv_num_heads, head_dim_k, head_dim_v}, *initial_state);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+
+  if (decay != nullptr) {
+    if (decay_broadcast_dk) {
+      auto decay_3d = TransposeBHT_to_BTH(*decay, batch_size, kv_num_heads, seq_length);
+      tester.AddInput<float>("decay", {batch_size, seq_length, kv_num_heads}, decay_3d);
+    } else {
+      auto decay_3d = PackBHTD_to_BTHD(*decay, batch_size, kv_num_heads, seq_length, head_dim_k);
+      tester.AddInput<float>("decay", {batch_size, seq_length, kv_num_heads * head_dim_k}, decay_3d);
+    }
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+
+  if (beta_data != nullptr) {
+    auto beta_3d = TransposeBHT_to_BTH(*beta_data, batch_size, kv_num_heads, seq_length);
+    tester.AddInput<float>("beta", {batch_size, seq_length, kv_num_heads}, beta_3d);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+
+  tester.AddOutput<float>("output", {batch_size, seq_length, kv_num_heads * head_dim_v},
+                          output_3d, false, 0.005f, 0.005f);
+  tester.AddOutput<float>("present_state", {batch_size, kv_num_heads, head_dim_k, head_dim_v},
+                          expected_state, false, 0.005f, 0.005f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+}  // namespace
 // ===========================================================================
 TEST(ContribOpLinearAttentionTest, LinearRule_SingleToken) {
   const int B = 1, H = 1, T = 1, dk = 4, dv = 4;
@@ -805,6 +1005,196 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_LargerDims) {
   RunLinearAttentionTest("gated_delta", B, H, T, dk, dv, scale,
                          query, key, value,
                          &initial_state, &decay, &beta);
+}
+
+// ===========================================================================
+// Tests: GQA (Grouped Query Attention) — q_num_heads != kv_num_heads
+// ===========================================================================
+// Tests: GQA — K has fewer heads than KV (n_k < kv_num_heads)
+// Schema requires q_num_heads == kv_num_heads; K head count is derived from
+// the key tensor shape. Multiple KV heads share one K head via kv_per_k_head.
+// ===========================================================================
+
+// Small K-GQA: q=kv=4, n_k=2 → each K head serves 2 KV heads
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_KGQA_Small) {
+  const int B = 1, q_H = 4, kv_H = 4, n_k = 2, T = 3, dk = 4, dv = 4;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * q_H * T * dk);
+  std::vector<float> key(B * n_k * T * dk);
+  std::vector<float> value(B * kv_H * T * dv);
+  std::vector<float> decay(B * kv_H * T);  // broadcast
+  std::vector<float> beta(B * kv_H * T);
+
+  for (int i = 0; i < B * q_H * T * dk; i++) {
+    query[i] = 0.5f * std::sin(static_cast<float>(i) * 0.13f);
+  }
+  for (int i = 0; i < B * n_k * T * dk; i++) {
+    key[i] = 0.5f * std::cos(static_cast<float>(i) * 0.17f);
+  }
+  for (int i = 0; i < B * kv_H * T * dv; i++) {
+    value[i] = 0.5f * std::sin(static_cast<float>(i) * 0.23f + 0.5f);
+  }
+  for (int i = 0; i < B * kv_H * T; i++) {
+    decay[i] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.3f));
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.31f);
+  }
+
+  std::vector<float> initial_state(B * kv_H * dk * dv, 0.1f);
+
+  RunLinearAttentionGQATest("gated_delta", B, q_H, kv_H, n_k, T, dk, dv, scale,
+                            query, key, value,
+                            &initial_state, &decay, &beta);
+}
+
+// Linear rule with K-GQA: q=kv=4, n_k=2
+TEST(ContribOpLinearAttentionTest, LinearRule_KGQA) {
+  const int B = 1, q_H = 4, kv_H = 4, n_k = 2, T = 3, dk = 4, dv = 4;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * q_H * T * dk);
+  std::vector<float> key(B * n_k * T * dk);
+  std::vector<float> value(B * kv_H * T * dv);
+
+  for (int i = 0; i < B * q_H * T * dk; i++) {
+    query[i] = 0.5f * std::sin(static_cast<float>(i) * 0.13f);
+  }
+  for (int i = 0; i < B * n_k * T * dk; i++) {
+    key[i] = 0.5f * std::cos(static_cast<float>(i) * 0.17f);
+  }
+  for (int i = 0; i < B * kv_H * T * dv; i++) {
+    value[i] = 0.5f * std::sin(static_cast<float>(i) * 0.23f + 0.5f);
+  }
+
+  RunLinearAttentionGQATest("linear", B, q_H, kv_H, n_k, T, dk, dv, scale,
+                            query, key, value,
+                            nullptr, nullptr, nullptr);
+}
+
+// Qwen3.5 9B-like: q=kv=32, n_k=16 (K has half the heads),
+// dk=128, dv=128, broadcast decay
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_Qwen35_KGQA) {
+  const int B = 1, q_H = 32, kv_H = 32, n_k = 16, T = 4, dk = 128, dv = 128;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * q_H * T * dk);
+  std::vector<float> key(B * n_k * T * dk);
+  std::vector<float> value(B * kv_H * T * dv);
+  std::vector<float> decay(B * kv_H * T);  // broadcast
+  std::vector<float> beta(B * kv_H * T);
+
+  for (int i = 0; i < B * q_H * T * dk; i++) {
+    query[i] = 0.05f * std::sin(static_cast<float>(i) * 0.013f);
+  }
+  for (int i = 0; i < B * n_k * T * dk; i++) {
+    key[i] = 0.05f * std::cos(static_cast<float>(i) * 0.017f);
+  }
+  for (int i = 0; i < B * kv_H * T * dv; i++) {
+    value[i] = 0.05f * std::sin(static_cast<float>(i) * 0.023f + 0.5f);
+  }
+  for (int i = 0; i < B * kv_H * T; i++) {
+    decay[i] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.3f));
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.31f);
+  }
+
+  std::vector<float> initial_state(B * kv_H * dk * dv, 0.01f);
+
+  RunLinearAttentionGQATest("gated_delta", B, q_H, kv_H, n_k, T, dk, dv, scale,
+                            query, key, value,
+                            &initial_state, &decay, &beta);
+}
+
+// ===========================================================================
+// Tests: Inverse GQA — q_num_heads < kv_num_heads
+// Each KV head has its own output slot; Q is broadcast across KV groups.
+// ===========================================================================
+
+// Small inverse GQA: q=2, kv=4 → each Q head shared by 2 KV heads
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_InverseGQA_Small) {
+  const int B = 1, q_H = 2, kv_H = 4, n_k = 4, T = 3, dk = 4, dv = 4;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * q_H * T * dk);
+  std::vector<float> key(B * n_k * T * dk);
+  std::vector<float> value(B * kv_H * T * dv);
+  std::vector<float> decay(B * kv_H * T);  // broadcast
+  std::vector<float> beta(B * kv_H * T);
+
+  for (int i = 0; i < B * q_H * T * dk; i++) {
+    query[i] = 0.5f * std::sin(static_cast<float>(i) * 0.13f);
+  }
+  for (int i = 0; i < B * n_k * T * dk; i++) {
+    key[i] = 0.5f * std::cos(static_cast<float>(i) * 0.17f);
+  }
+  for (int i = 0; i < B * kv_H * T * dv; i++) {
+    value[i] = 0.5f * std::sin(static_cast<float>(i) * 0.23f + 0.5f);
+  }
+  for (int i = 0; i < B * kv_H * T; i++) {
+    decay[i] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.3f));
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.31f);
+  }
+
+  std::vector<float> initial_state(B * kv_H * dk * dv, 0.1f);
+
+  RunLinearAttentionGQATest("gated_delta", B, q_H, kv_H, n_k, T, dk, dv, scale,
+                            query, key, value,
+                            &initial_state, &decay, &beta);
+}
+
+// Linear rule with inverse GQA: q=2, kv=4
+TEST(ContribOpLinearAttentionTest, LinearRule_InverseGQA) {
+  const int B = 1, q_H = 2, kv_H = 4, n_k = 4, T = 3, dk = 4, dv = 4;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * q_H * T * dk);
+  std::vector<float> key(B * n_k * T * dk);
+  std::vector<float> value(B * kv_H * T * dv);
+
+  for (int i = 0; i < B * q_H * T * dk; i++) {
+    query[i] = 0.5f * std::sin(static_cast<float>(i) * 0.13f);
+  }
+  for (int i = 0; i < B * n_k * T * dk; i++) {
+    key[i] = 0.5f * std::cos(static_cast<float>(i) * 0.17f);
+  }
+  for (int i = 0; i < B * kv_H * T * dv; i++) {
+    value[i] = 0.5f * std::sin(static_cast<float>(i) * 0.23f + 0.5f);
+  }
+
+  RunLinearAttentionGQATest("linear", B, q_H, kv_H, n_k, T, dk, dv, scale,
+                            query, key, value,
+                            nullptr, nullptr, nullptr);
+}
+
+// Larger inverse GQA with K-head sharing: q=2, kv=8, n_k=4, dk=16, dv=64
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_InverseGQA_LargerDims) {
+  const int B = 1, q_H = 2, kv_H = 8, n_k = 4, T = 4, dk = 16, dv = 64;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * q_H * T * dk);
+  std::vector<float> key(B * n_k * T * dk);
+  std::vector<float> value(B * kv_H * T * dv);
+  std::vector<float> decay(B * kv_H * T);  // broadcast
+  std::vector<float> beta(B * kv_H * T);
+
+  for (int i = 0; i < B * q_H * T * dk; i++) {
+    query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
+  }
+  for (int i = 0; i < B * n_k * T * dk; i++) {
+    key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
+  }
+  for (int i = 0; i < B * kv_H * T * dv; i++) {
+    value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.023f + 0.5f);
+  }
+  for (int i = 0; i < B * kv_H * T; i++) {
+    decay[i] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.3f));
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.31f);
+  }
+
+  std::vector<float> initial_state(B * kv_H * dk * dv, 0.01f);
+
+  RunLinearAttentionGQATest("gated_delta", B, q_H, kv_H, n_k, T, dk, dv, scale,
+                            query, key, value,
+                            &initial_state, &decay, &beta);
 }
 
 }  // namespace test
