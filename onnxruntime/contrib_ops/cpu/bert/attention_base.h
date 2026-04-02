@@ -124,12 +124,15 @@ inline Status AttentionBase::CheckMask(const Tensor* mask_index,
 
     // Validate that end_position values (first batch_size elements) are non-negative.
     // Negative end_position causes out-of-bounds writes in PrepareMask.
-    const int32_t* mask_data = mask_index->Data<int32_t>();
-    for (int64_t i = 0; i < batch_size; i++) {
-      if (mask_data[i] < 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "mask_index value ", mask_data[i], " at index ", i,
-                               " is negative. mask_index end_position values must be non-negative.");
+    // Only validate when mask_index is on CPU; GPU tensors are clamped in the CUDA kernel.
+    if (mask_index->Location().device.Type() == OrtDevice::CPU) {
+      const int32_t* mask_data = mask_index->Data<int32_t>();
+      for (int64_t i = 0; i < batch_size; i++) {
+        if (mask_data[i] < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "mask_index value ", mask_data[i], " at index ", i,
+                                 " is negative. mask_index end_position values must be non-negative.");
+        }
       }
     }
   } else if (mask_dims.size() == 2) {
