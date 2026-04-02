@@ -2530,6 +2530,52 @@ common::Status InferenceSession::Initialize() {
         }
       }
 
+      // Handle plugin EPs (or any other EP not in the hardcoded list) that support graph capture.
+      if (cached_execution_provider_for_graph_replay_.cached_execution_provider_for_graph_replay_ == nullptr) {
+        for (const auto& ep : execution_providers_) {
+          // Skip EPs already handled by the hardcoded list above.
+          bool is_in_hardcoded_list = false;
+          for (const auto* ep_name : graph_support_ep_list) {
+            if (ep->Type() == ep_name) {
+              is_in_hardcoded_list = true;
+              break;
+            }
+          }
+          if (is_in_hardcoded_list) {
+            continue;
+          }
+
+          if (ep->IsGraphCaptureEnabled()) {
+            if (HasControlflowNodes(graph)) {
+              LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by "
+                                            << "the user as the model has control flow nodes which can't be "
+                                            << "supported by " << ep->Type();
+              ORT_RETURN_IF_ERROR_SESSIONID_(
+                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                  "This session cannot use the graph capture feature as requested by the user "
+                                  "as the model has control flow nodes which can't be supported by " +
+                                      ep->Type()));
+            }
+
+            if (!AreAllNodesInMainGraphAssignedToOneEp(graph, ep->Type())) {
+              LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by "
+                                            << "the user as all the graph nodes have not been assigned to "
+                                            << ep->Type();
+              ORT_RETURN_IF_ERROR_SESSIONID_(
+                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                  "This session cannot use the graph capture feature as requested by the user "
+                                  "as all the graph nodes have not been assigned to " +
+                                      ep->Type()));
+            }
+
+            LOGS(*session_logger_, INFO) << "This session will use the graph capture feature as requested by the user "
+                                         << "with " << ep->Type() << ".";
+            cached_execution_provider_for_graph_replay_.SetExecutionProvider(ep.get());
+            break;  // Only one EP can use graph capture.
+          }
+        }
+      }
+
       const bool disable_cpu_ep_fallback = session_options_.config_options.GetConfigOrDefault(
                                                kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
 

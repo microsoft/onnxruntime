@@ -818,4 +818,25 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
   return ep_profiler;
 }
 
+bool PluginExecutionProvider::IsGraphCaptureEnabled() const {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->IsGraphCaptureEnabled == nullptr) {
+    return false;
+  }
+  return ort_ep_->IsGraphCaptureEnabled(ort_ep_.get());
+}
+
+bool PluginExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->IsGraphCaptured == nullptr) {
+    return false;
+  }
+  return ort_ep_->IsGraphCaptured(ort_ep_.get(), graph_annotation_id);
+}
+
+Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id) {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->ReplayGraph == nullptr) {
+    return Base::ReplayGraph(graph_annotation_id);
+  }
+  return ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id));
+}
+
 }  // namespace onnxruntime

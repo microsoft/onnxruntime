@@ -2346,6 +2346,42 @@ struct OrtEp {
    */
   ORT_API2_STATUS(CreateProfiler, _In_ OrtEp* this_ptr,
                   _Outptr_result_maybenull_ OrtEpProfilerImpl** profiler);
+
+  /** \brief Indicate whether the graph capturing mode (e.g., CUDA graph) is enabled for the provider.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \return true if graph capture mode is enabled, false otherwise.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes graph capture is not enabled.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(bool, IsGraphCaptureEnabled, _In_ const OrtEp* this_ptr);
+
+  /** \brief Indicate whether a graph has been captured and instantiated.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph_annotation_id The graph annotation ID identifying the captured graph.
+   * \return true if the graph has been captured, false otherwise.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes no graph has been captured.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(bool, IsGraphCaptured, _In_ const OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Run the instantiated (captured) graph.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph_annotation_id The graph annotation ID identifying the captured graph to replay.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT returns a default OK status.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(ReplayGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
