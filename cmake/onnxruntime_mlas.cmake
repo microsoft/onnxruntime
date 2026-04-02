@@ -57,7 +57,6 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/rotary_embedding.cpp
   ${MLAS_SRC_DIR}/softmax.h
   ${MLAS_SRC_DIR}/saturation_check.cpp
-  ${MLAS_SRC_DIR}/gelu.cpp
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -121,6 +120,10 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
         ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp
+        ${MLAS_SRC_DIR}/erf_neon_fp16.h
+        ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/gelu_neon_fp16.h
+        ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -505,6 +508,9 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
           ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp
+          ${MLAS_SRC_DIR}/erf_neon_fp16.h
+          ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
+          ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
         )
 
         # Conditionally add the SVE implementation if compiler supports it
