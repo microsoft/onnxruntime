@@ -84,7 +84,13 @@ CudaSyncStream::~CudaSyncStream() {
     //   2. UnregisterStream bumps the TLS generation counter, invalidating cached
     //      lookups in other threads.
     //   3. The stream is destroyed only after it is no longer discoverable.
-    UnregisterStream(cuda_stream_);
+    // Only unregister if the stream was actually registered (InitHandles
+    // succeeded fully). Otherwise we'd bump the global generation counter
+    // for a stream that was never in the map, causing unnecessary TLS
+    // invalidations in other threads.
+    if (registered_) {
+      UnregisterStream(cuda_stream_);
+    }
 
     auto destroy_result = cudaStreamDestroy(cuda_stream_);
     if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
@@ -135,6 +141,7 @@ OrtStatus* CudaSyncStream::InitHandles() {
 
   if (status.IsOK()) {
     RegisterStream(cuda_stream_, this);
+    registered_ = true;
   }
 
   return status.release();
