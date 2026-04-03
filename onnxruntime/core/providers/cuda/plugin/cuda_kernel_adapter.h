@@ -104,7 +104,7 @@ inline constexpr const char* kCudaPluginExecutionProvider = "CudaPluginExecution
 // Defined in provider_api_shims.cc; mirrors the provider_api.h declaration
 // which is a no-op when BUILD_CUDA_EP_AS_PLUGIN is set.
 std::string GetEnvironmentVar(const std::string& var_name);
-}
+}  // namespace onnxruntime
 
 namespace onnxruntime {
 namespace cuda {
