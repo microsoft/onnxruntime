@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <cstring>
 #include <fstream>
 #include <iostream>
 
@@ -293,6 +294,63 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
       ASSERT_EQ_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, string_data());
     }
   }
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_string");
+  auto dims = builder.CreateVector(std::vector<int64_t>{2});
+  auto string_data = builder.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>{
+      builder.CreateString("string_0"),
+      builder.CreateString("string_1"),
+  });
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::STRING);
+  tensor_builder.add_string_data(string_data);
+  builder.Finish(tensor_builder.Finish());
+
+  auto* fbs_tensor = flatbuffers::GetMutableRoot<fbs::Tensor>(builder.GetBufferPointer());
+  ASSERT_NE(fbs_tensor, nullptr);
+
+  const auto* fbs_string_data = fbs_tensor->string_data();
+  ASSERT_NE(fbs_string_data, nullptr);
+  auto* mutable_string_data =
+      const_cast<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*>(fbs_string_data);
+  auto* string_offsets = mutable_string_data->data();
+  const flatbuffers::Offset<flatbuffers::String> null_string_offset;
+  std::memcpy(&string_offsets[1], &null_string_offset, sizeof(null_string_offset));
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options),
+                                      "Null string data entry for initializer");
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithoutDims) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_external");
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_data_type(fbs::TensorDataType::FLOAT);
+  tensor_builder.add_external_data_offset(0);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ExternalDataReader reader = [](uint64_t, gsl::span<uint8_t>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reader should not be called for invalid tensor.");
+  };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader),
+                                      "Missing dimensions for initializer");
 }
 
 #ifdef ENABLE_TRAINING_APIS
