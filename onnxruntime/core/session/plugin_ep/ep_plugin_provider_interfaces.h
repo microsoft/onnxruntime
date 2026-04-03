@@ -115,6 +115,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
 
+  Status Sync() const override;
+
   Status SetEpDynamicOptions(gsl::span<const char* const> keys,
                              gsl::span<const char* const> values) override;
 
@@ -136,7 +138,11 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   const OrtEp* GetOrtEp() const override;
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
  private:
+  const logging::Logger& GetEpLoggerOrDefault() const;
+
   struct FusedNodeState {
     FusedNodeState() = default;
     FusedNodeState(FusedNodeState&& other) = default;

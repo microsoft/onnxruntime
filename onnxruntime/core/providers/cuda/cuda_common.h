@@ -3,6 +3,8 @@
 
 #pragma once
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+
 // The following three lines were copied from ABSL
 // cutlass needs them, because cutlass uses "and"/"or" keywords
 #ifdef __cplusplus
@@ -35,6 +37,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/float4.h"
+#include "core/util/math.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
@@ -51,6 +54,7 @@ namespace cuda {
 #define CUDNN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m))
 #define CUFFT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUFFT_CALL(expr))
 #endif
+
 // Type mapping for MLFloat16 to half
 template <typename T>
 class ToCudaType {
@@ -231,14 +235,13 @@ class HalfGemmOptions {
   static HalfGemmOptions instance;
 };
 
-const char* cublasGetErrorEnum(cublasStatus_t error);
-
-const char* CudaDataTypeToString(cudaDataType_t dt);
-
-const char* CublasComputeTypeToString(cublasComputeType_t ct);
 #endif
-
-cudaDataType_t ToCudaDataType(int32_t element_type);
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#include "core/providers/cuda/cuda_common_type_helpers.h"
+#else
+// Define shims and basic types needed by kernels in plugin build when cuda_common.h is included
+#include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#endif

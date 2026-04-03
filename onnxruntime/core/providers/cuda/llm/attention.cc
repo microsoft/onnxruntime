@@ -19,6 +19,19 @@ using namespace onnxruntime::cuda;
 namespace onnxruntime {
 namespace cuda {
 
+namespace llm_attention_detail {
+
+template <typename NodeType>
+bool HasOutput(const NodeType& node, size_t output_index) {
+  if constexpr (requires(const NodeType& candidate) { candidate.OutputCount(); candidate.OutputExists(output_index); }) {
+    return node.OutputCount() > output_index && node.OutputExists(output_index);
+  } else {
+    return node.OutputDefs().size() > output_index && node.OutputDefs()[output_index]->Exists();
+  }
+}
+
+}  // namespace llm_attention_detail
+
 #define REGISTER_KERNEL_TYPED(T)                                      \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
       Attention,                                                      \
@@ -60,7 +73,8 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   kv_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", 0));
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
-  qk_matmul_output_mode_ = info.node().OutputDefs().size() >= 4 && info.node().OutputDefs()[3]->Exists()
+  const auto& node = info.node();
+  qk_matmul_output_mode_ = llm_attention_detail::HasOutput(node, 3)
                                ? static_cast<attention_helper::QKMatMulOutputMode>(mode)
                                : attention_helper::QKMatMulOutputMode::kNone;
   ORT_ENFORCE(qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone ||
@@ -71,7 +85,13 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
               "qk_matmul_output_mode must be one of: kNone(-1), kQK(0), kQKMask(1), kQKSoftCap(2), kQKSoftMax(3).");
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
+  ORT_ENFORCE(softcap_ >= 0.0f, "softcap must be non-negative");
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
+  // Valid softmax_precision values are TensorProto data types: 0 (not set), 1 (FLOAT), 10 (FLOAT16), 16 (BFLOAT16)
+  // DOUBLE (11) is excluded — CUDA computes softmax in FP32 and cannot satisfy FP64 precision.
+  ORT_ENFORCE(softmax_precision_ == 0 || softmax_precision_ == 1 || softmax_precision_ == 10 ||
+                  softmax_precision_ == 16,
+              "softmax_precision must be a valid TensorProto data type (0, 1, 10, or 16).");
   ORT_ENFORCE(scale_ > 0 || std::isnan(scale_), "scale must be greater than 0 if specified");
 
   const auto* kernel_options = this->GetAttentionKernelOptions();
@@ -132,7 +152,7 @@ Status Attention<T>::ConvertAttnMaskToBias(
     using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
     int64_t num_elements = attn_mask->Shape().Size();
     converted_mask_buffer = GetScratchBuffer<void>(
-        num_elements * sizeof(NativeCudaT), context->GetComputeStream());
+        num_elements * sizeof(NativeCudaT), GetComputeStream(context));
     float mask_filter_value = static_cast<float>(std::numeric_limits<T>::lowest());
     ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
         attn_mask->Data<bool>(),
@@ -171,9 +191,10 @@ Status Attention<T>::ConvertAttnMaskToBias(
 //   Path 3: no past, no mask (prompt) -> mha_fwd
 //   Eligibility: fp16/bf16, head_size==v_head_size, no output_qk,
 //                (no mask OR bool mask + past OR nonpad_kv_seqlen without mask)
-//   Note: softcap and softmax_precision are early-rejected before the cascade.
-//   Note: nonpad_kv_seqlen + attn_mask is supported but routes to MEA/unfused,
-//         not Flash (Flash has no bias parameter for this combination).
+//   Note: softcap is passed to the Flash kernel natively. softmax_precision is
+//   inherently satisfied (Flash accumulates softmax in FP32).
+//   Note: nonpad_kv_seqlen + attn_mask routes to MEA/unfused, not Flash
+//         (Flash has no bias parameter for this combination).
 //
 // PERFORMANCE NOTE: ONNX Attention's internal-cache decode path (past_key/past_value)
 // is ~15-30% slower than contrib GQA's decode path for grouped-query attention workloads.
@@ -212,7 +233,7 @@ Status Attention<T>::RunFlashAttention(
     const attention_helper::AttentionParameters& parameters) const {
 #if USE_FLASH_ATTENTION
   auto& device_prop = GetDeviceProp();
-  auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+  auto cuda_stream = Stream(context);
   const bool is_bf16 = std::is_same<T, BFloat16>::value;
   const bool is_bsnh = parameters.transpose_output;  // 3D inputs → BSNH
 
@@ -226,9 +247,9 @@ Status Attention<T>::RunFlashAttention(
           parameters.total_sequence_length, parameters.q_num_heads,
           parameters.head_size, device_prop.multiProcessorCount);
 
-  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
-  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
 
   if (softmax_lse_accum_bytes > 0) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0,
@@ -245,7 +266,7 @@ Status Attention<T>::RunFlashAttention(
   if (!is_bsnh) {
     size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
                      parameters.q_num_heads * parameters.head_size;
-    q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, context->GetComputeStream());
+    q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
         parameters.batch_size, parameters.q_sequence_length,
         parameters.q_num_heads, parameters.head_size,
@@ -260,7 +281,7 @@ Status Attention<T>::RunFlashAttention(
   if (!is_bsnh) {
     size_t out_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
                        parameters.q_num_heads * parameters.v_head_size;
-    out_bsnh_buffer = GetScratchBuffer<void>(out_bytes, context->GetComputeStream());
+    out_bsnh_buffer = GetScratchBuffer<void>(out_bytes, GetComputeStream(context));
     out_data = out_bsnh_buffer.get();
   }
 
@@ -273,7 +294,7 @@ Status Attention<T>::RunFlashAttention(
                 "(past_sequence_length must be 0, got ",
                 parameters.past_sequence_length, ").");
 
-    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
         nonpad_kv_seqlen->Data<int64_t>(),
         seqlens_k_buffer.get(),
@@ -327,7 +348,7 @@ Status Attention<T>::RunFlashAttention(
 
     // Step 1: Compute per-batch past sequence lengths for the concat kernel.
     // The concat kernel needs past_seq_lens to know where past data ends and new begins.
-    auto past_seqlens_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    auto past_seqlens_buffer = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
       size_t mask_dims = attn_mask->Shape().NumDimensions();
       auto dims = attn_mask->Shape().GetDims();
@@ -357,8 +378,8 @@ Status Attention<T>::RunFlashAttention(
                        parameters.kv_num_heads * parameters.head_size;
       size_t v_bytes = sizeof(T) * parameters.batch_size * parameters.kv_sequence_length *
                        parameters.kv_num_heads * parameters.v_head_size;
-      k_bsnh_buffer = GetScratchBuffer<void>(k_bytes, context->GetComputeStream());
-      v_bsnh_buffer = GetScratchBuffer<void>(v_bytes, context->GetComputeStream());
+      k_bsnh_buffer = GetScratchBuffer<void>(k_bytes, GetComputeStream(context));
+      v_bsnh_buffer = GetScratchBuffer<void>(v_bytes, GetComputeStream(context));
       ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
           parameters.batch_size, parameters.kv_sequence_length,
           parameters.kv_num_heads, parameters.head_size,
@@ -406,7 +427,7 @@ Status Attention<T>::RunFlashAttention(
     // Step 4: Compute total seqlens for mha_fwd_kvcache.
     // With k_new=nullptr, the kernel treats seqlens_k as the total valid token count
     // (not pre-append count), so we need past + new.
-    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
       size_t mask_dims = attn_mask->Shape().NumDimensions();
       auto dims = attn_mask->Shape().GetDims();
@@ -545,7 +566,8 @@ Status Attention<T>::RunFlashAttention(
 //   Eligibility: see has_memory_efficient_attention() (SM50+/53+/80+ by dtype,
 //                head_size <= 1024), plus: no output_qk, no past_key (decode excluded),
 //                bias stride alignment.
-//   Note: softcap and softmax_precision are early-rejected before the cascade.
+//   Note: softcap is forwarded to the MEA kernel via p.softcap. softmax_precision
+//   is inherently satisfied (cutlass FMHA accumulates softmax in FP32).
 //
 template <typename T>
 Status Attention<T>::RunMemoryEfficientAttention(
@@ -559,7 +581,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
   ORT_UNUSED_PARAMETER(past_key);
   ORT_UNUSED_PARAMETER(past_value);
   auto& device_prop = GetDeviceProp();
-  auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+  auto cuda_stream = Stream(context);
   const bool is_bsnh = parameters.transpose_output;
   const int sm = device_prop.major * 10 + device_prop.minor;
 
@@ -573,7 +595,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
   if (!is_bsnh) {
     size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
                      parameters.q_num_heads * parameters.head_size;
-    q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, context->GetComputeStream());
+    q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
         parameters.batch_size, parameters.q_sequence_length,
         parameters.q_num_heads, parameters.head_size,
@@ -588,7 +610,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
   if (!is_bsnh) {
     size_t out_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
                        parameters.q_num_heads * parameters.v_head_size;
-    out_bsnh_buffer = GetScratchBuffer<void>(out_bytes, context->GetComputeStream());
+    out_bsnh_buffer = GetScratchBuffer<void>(out_bytes, GetComputeStream(context));
     out_data = out_bsnh_buffer.get();
   }
 
@@ -614,8 +636,8 @@ Status Attention<T>::RunMemoryEfficientAttention(
                                           static_cast<size_t>(parameters.total_sequence_length) *
                                           static_cast<size_t>(parameters.q_num_heads) *
                                           static_cast<size_t>(parameters.head_size);
-      k_expand_buffer = GetScratchBuffer<void>(expanded_kv_elements * sizeof(T), context->GetComputeStream());
-      v_expand_buffer = GetScratchBuffer<void>(expanded_kv_elements * sizeof(T), context->GetComputeStream());
+      k_expand_buffer = GetScratchBuffer<void>(expanded_kv_elements * sizeof(T), GetComputeStream(context));
+      v_expand_buffer = GetScratchBuffer<void>(expanded_kv_elements * sizeof(T), GetComputeStream(context));
 
       onnxruntime::contrib::GroupQueryAttentionParameters ungroup_params = {};
       ungroup_params.batch_size = parameters.batch_size;
@@ -653,7 +675,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
   if (nonpad_kv_seqlen != nullptr) {
     // Convert nonpad_kv_seqlen to seqlens_k for custom right padding.
     // MEA expects actual token count (not count-1), so use FlashSeqlensK variant.
-    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
         nonpad_kv_seqlen->Data<int64_t>(),
         seqlens_k_buffer.get(),
@@ -685,6 +707,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_causal;
     p.scale = parameters.scale;
+    p.softcap = parameters.softcap;
     p.seqlen_k_ptr = seqlens_k_buffer.get();
     p.has_custom_right_padding = true;
     p.broadcast_attn_bias_dim_0 = broadcast_bias_dim_0;
@@ -701,7 +724,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
             parameters.v_head_size, sizeof(T) == sizeof(float))) {
       size_t workspace_bytes = sizeof(float) * parameters.batch_size * parameters.q_sequence_length *
                                parameters.q_num_heads * parameters.v_head_size;
-      workspace_buffer = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+      workspace_buffer = GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
       p.workspace = workspace_buffer.get();
     } else {
       p.workspace = nullptr;
@@ -734,6 +757,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_causal;
     p.scale = parameters.scale;
+    p.softcap = parameters.softcap;
     p.broadcast_attn_bias_dim_0 = broadcast_bias_dim_0;
     p.broadcast_attn_bias_dim_1 = broadcast_bias_dim_1;
     p.query = q_data;
@@ -748,7 +772,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
             parameters.v_head_size, sizeof(T) == sizeof(float))) {
       size_t workspace_bytes = sizeof(float) * parameters.batch_size * parameters.q_sequence_length *
                                parameters.q_num_heads * parameters.v_head_size;
-      workspace_buffer = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+      workspace_buffer = GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
       p.workspace = workspace_buffer.get();
     } else {
       p.workspace = nullptr;
@@ -821,7 +845,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
 //           (nonpad bias + mask bias added element-wise with cyclic broadcasting)
 //   Path 3: all other cases -> passes mask/bias directly
 //   Supports: all dtypes (fp16/bf16/fp32), all mask types (bool/float/none), all head sizes
-//   Not supported: softcap, softmax_precision, output_qk modes beyond kNone/kQK
+//   Not supported: softcap (rejected at fallback), output_qk modes beyond kNone/kQK
 //   Limitation: MHA only (q_num_heads must equal kv_num_heads)
 //
 template <typename T>
@@ -835,7 +859,8 @@ Status Attention<T>::RunUnfusedAttention(
     const attention_helper::AttentionParameters& parameters) const {
   using CudaT = typename ToCudaType<T>::MappedType;
   auto& device_prop = GetDeviceProp();
-  auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+  auto cuda_stream = Stream(context);
+  auto ort_stream = GetOrtStream(context);
 
   // Bridge to contrib::AttentionParameters for the MHA unfused path
   onnxruntime::contrib::AttentionParameters contribop_parameters;
@@ -917,7 +942,7 @@ Status Attention<T>::RunUnfusedAttention(
     int64_t bias_elements = static_cast<int64_t>(parameters.batch_size) *
                             parameters.q_sequence_length *
                             parameters.total_sequence_length;
-    converted_mask_buffer = GetScratchBuffer<void>(bias_elements * sizeof(NativeCudaT), context->GetComputeStream());
+    converted_mask_buffer = GetScratchBuffer<void>(bias_elements * sizeof(NativeCudaT), GetComputeStream(context));
     ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToAttentionBias<NativeCudaT>(
         nonpad_kv_seqlen->Data<int64_t>(),
         reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
@@ -947,7 +972,7 @@ Status Attention<T>::RunUnfusedAttention(
 
       if (attn_mask->IsDataType<bool>()) {
         // Convert bool mask to additive bias in a temp buffer, then add in-place.
-        mask_bias_buffer = GetScratchBuffer<void>(mask_elements * sizeof(NativeCudaT), context->GetComputeStream());
+        mask_bias_buffer = GetScratchBuffer<void>(mask_elements * sizeof(NativeCudaT), GetComputeStream(context));
         ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
             attn_mask->Data<bool>(),
             reinterpret_cast<NativeCudaT*>(mask_bias_buffer.get()),
@@ -981,7 +1006,7 @@ Status Attention<T>::RunUnfusedAttention(
     if (attn_mask->IsDataType<bool>()) {
       using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
       int64_t num_elements = attn_mask->Shape().Size();
-      converted_mask_buffer = GetScratchBuffer<void>(num_elements * sizeof(NativeCudaT), context->GetComputeStream());
+      converted_mask_buffer = GetScratchBuffer<void>(num_elements * sizeof(NativeCudaT), GetComputeStream(context));
       ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
           attn_mask->Data<bool>(),
           reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
@@ -1015,7 +1040,7 @@ Status Attention<T>::RunUnfusedAttention(
       contribop_parameters.total_sequence_length,
       nullptr, false, false, false, false, false,
       no_qkv_workspace);
-  auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+  auto work_space = GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
 
   data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
@@ -1025,7 +1050,7 @@ Status Attention<T>::RunUnfusedAttention(
   cudnnHandle_t cudnn = GetCudnnHandle(context);
 
   return onnxruntime::contrib::cuda::QkvToContext<CudaT, CudaT>(
-      device_prop, cublas, cudnn, context->GetComputeStream(), contribop_parameters, data);
+      device_prop, cublas, cudnn, ort_stream.get(), contribop_parameters, data);
 }
 
 // ============================================================================
@@ -1093,17 +1118,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
 #endif
 
-  // Early-reject features not supported by any CUDA kernel path.
-  // TODO(titaiwang): Support softcap and softmax_precision on CUDA kernels.
-  // When a kernel adds support, move these checks to the unfused fallback section.
-  if (parameters.softcap != 0.0f) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softcap is not supported yet in Attention op (CUDA).");
-  }
-  if (parameters.softmax_precision != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softmax_precision is not supported yet in Attention op (CUDA).");
-  }
+  // softmax_precision: All CUDA backends (Flash, MEA, Unfused) compute softmax in
+  // FP32 internally (Flash/MEA via tile-based FP32 accumulators, Unfused via FP32
+  // softmax kernel). softmax_precision=1 (FP32) is inherently satisfied;
+  // softmax_precision=0 (default) is also fine since higher precision is always
+  // acceptable per the ONNX spec.
 
 #if USE_FLASH_ATTENTION
   {
@@ -1172,6 +1191,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   // Fallback: unfused attention
+  // Softcap is not implemented in the unfused path — it requires Flash or MEA.
+  if (parameters.softcap > 0.0f) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "softcap requires flash attention or memory efficient attention, "
+                           "but neither is eligible for this configuration. Check dtype (fp16/bf16 required for Flash), "
+                           "head_size constraints, and past_key compatibility.");
+  }
+
   // TODO(titaiwang): Support additional output_qk modes beyond kNone and kQK.
   // Currently only unfused handles output_qk, and only kNone/kQK modes.
   if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
