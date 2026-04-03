@@ -113,6 +113,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
   uint32_t device_id_ = 0;
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
+  qnn::HtpPerformanceMode dynamic_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
   uint32_t default_rpc_polling_time_ = 0;
   bool enable_HTP_FP16_precision_ = true;
