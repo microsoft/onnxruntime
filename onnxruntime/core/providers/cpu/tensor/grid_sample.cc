@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <vector>
 
 #include "core/providers/cpu/tensor/grid_sample.h"
@@ -56,33 +57,41 @@ T GsDenormalize(T n, int64_t length, bool align_corners) {
   return x;
 }
 
-// Reflect by the near border till within the borders
+// Reflect by the near border till within the borders.
+// Computed entirely in floating-point to avoid any integer-cast overflow for
+// extreme (but finite) inputs.
 template <typename T>
 T GsReflect(T x, T x_min, T x_max) {
-  T dx = {};
-  T fx = static_cast<T>(x);
-  T range = x_max - x_min;
-  if (fx < x_min) {
-    dx = x_min - fx;
-    int n = static_cast<int>(dx / range);
-    T r = dx - n * range;
-    if (n % 2 == 0) {
-      fx = x_min + r;
-    } else {
-      fx = x_max - r;
-    }
-  } else if (fx > x_max) {
-    dx = fx - x_max;
-    int n = static_cast<int>(dx / range);
-    T r = dx - n * range;
-    if (n % 2 == 0) {
-      fx = x_max - r;
-    } else {
-      fx = x_min + r;
-    }
+  T fx = x;
+  const T range = x_max - x_min;
+  // Guard against NaN, Inf, or non-positive range which would otherwise produce wild indices.
+  if (!std::isfinite(fx) || !(range > T{0})) {
+    return x_min;
   }
-  // else fallthrough
-  return static_cast<T>(fx);
+  // Reduce (fx - x_min) into one reflection period [0, 2 * range) using fmod,
+  // then map [range, 2 * range) back to [0, range] via reflection.
+  const T period = range + range;
+  T off = std::fmod(fx - x_min, period);
+  if (off < T{0}) {
+    off += period;
+  }
+  if (off > range) {
+    off = period - off;
+  }
+  fx = x_min + off;
+  // Safety clamp to guarantee the result lies within [x_min, x_max] despite
+  // any floating-point rounding in the above arithmetic.
+  return std::clamp(fx, x_min, x_max);
+}
+
+// Returns true when v is finite and its magnitude is small enough that
+// converting it to int64_t via std::floor / std::nearbyint is well-defined.
+// 2^62 is far below INT64_MAX (~9.22e18) and leaves ample margin for any
+// realistic image dimension.
+template <typename T>
+inline bool IsSafeForInt64Conversion(T v) {
+  constexpr T kSafeBound = static_cast<T>(int64_t{1} << 62);
+  return std::isfinite(v) && v >= -kSafeBound && v <= kSafeBound;
 }
 
 // Calculate cubic convolution interpolation coefficients
@@ -123,6 +132,8 @@ T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, in
   } else {  // (padding_mode_ == Reflection)
     c = static_cast<int64_t>(GsReflect(static_cast<T>(c), border[0], border[2]));
     r = static_cast<int64_t>(GsReflect(static_cast<T>(r), border[1], border[3]));
+    c = std::clamp<int64_t>(c, 0, W - 1);
+    r = std::clamp<int64_t>(r, 0, H - 1);
     pixel = image[r * W + c];
   }
   return pixel;
@@ -144,6 +155,9 @@ T GridSample<T>::PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, 
     w = static_cast<int64_t>(GsReflect(static_cast<T>(w), border[0], border[3]));
     h = static_cast<int64_t>(GsReflect(static_cast<T>(h), border[1], border[4]));
     d = static_cast<int64_t>(GsReflect(static_cast<T>(d), border[2], border[5]));
+    w = std::clamp<int64_t>(w, 0, W - 1);
+    h = std::clamp<int64_t>(h, 0, H - 1);
+    d = std::clamp<int64_t>(d, 0, D - 1);
     pixel = image[d * H * W + h * W + w];
   }
   return pixel;
@@ -187,6 +201,19 @@ void PrecomputeBilinearSamplePlan2D(const T* grid_data,
     const T ny = grid_data[idx * 2 + 1];
     const T x = GsDenormalize<T>(nx, W_in, false);
     const T y = GsDenormalize<T>(ny, H_in, false);
+
+    // Coordinates that are non-finite or too large in magnitude for a safe
+    // float->int64 conversion are treated as fully out-of-bounds so that the
+    // zero-padded output is produced without performing the UB cast.
+    if (!IsSafeForInt64Conversion(x) || !IsSafeForInt64Conversion(y)) {
+      plan.x1 = 0;
+      plan.x2 = 0;
+      plan.y1 = 0;
+      plan.y2 = 0;
+      plan.w11 = plan.w12 = plan.w21 = plan.w22 = T{};
+      plan.mask = 0;
+      continue;
+    }
 
     const int64_t x1 = static_cast<int64_t>(std::floor(x));
     const int64_t y1 = static_cast<int64_t>(std::floor(y));
@@ -395,6 +422,14 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                   auto x = GsDenormalize<T>(nx, W_in, align_corners_);  // actual location
                   auto y = GsDenormalize<T>(ny, H_in, align_corners_);
 
+                  // Guard against coordinates that are non-finite or whose magnitude is too large
+                  // for a safe float->int64 conversion via std::floor / std::nearbyint. Such values
+                  // are treated as fully out-of-bounds (output zero) in every padding mode.
+                  if (!IsSafeForInt64Conversion(x) || !IsSafeForInt64Conversion(y)) {
+                    *Y_gridpoint = T{};
+                    continue;
+                  }
+
                   if (mode_ == Nearest) {
                     x = static_cast<T>(std::nearbyint(static_cast<T>(x)));
                     y = static_cast<T>(std::nearbyint(static_cast<T>(y)));
@@ -487,6 +522,14 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                   auto x = GsDenormalize<T>(nx, W_in, align_corners_);  // actual location
                   auto y = GsDenormalize<T>(ny, H_in, align_corners_);
                   auto z = GsDenormalize<T>(nz, D_in, align_corners_);
+
+                  // Guard against coordinates that are non-finite or whose magnitude is too large
+                  // for a safe float->int64 conversion via std::floor / std::nearbyint. Such values
+                  // are treated as fully out-of-bounds (output zero) in every padding mode.
+                  if (!IsSafeForInt64Conversion(x) || !IsSafeForInt64Conversion(y) || !IsSafeForInt64Conversion(z)) {
+                    *Y_gridpoint = T{};
+                    continue;
+                  }
 
                   if (mode_ == Nearest) {
                     x = static_cast<T>(std::nearbyint(static_cast<T>(x)));
