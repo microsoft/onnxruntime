@@ -1,4 +1,4 @@
-name: Linux CUDA Plugin EP CI
+name: CUDA Plugin Linux CI
 
 on:
   push:

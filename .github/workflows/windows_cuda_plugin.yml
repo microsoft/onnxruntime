@@ -1,4 +1,4 @@
-name: ONNX Runtime CUDA Plugin EP Builds
+name: CUDA Plugin Windows CI
 
 on:
   push:
