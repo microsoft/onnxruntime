@@ -279,6 +279,6 @@ stages:
         displayName: 'Copy custom_op_library to: $(Build.ArtifactStagingDirectory)'
         condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
