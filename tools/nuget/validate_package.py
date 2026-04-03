@@ -138,13 +138,15 @@ def check_if_dlls_are_present(
                 folder = package_path + "/lib"
                 header_folder = package_path + "/include"
 
-            # In Nuget GPU package, onnxruntime.dll is in dependent package.
+            # In Nuget GPU package, the versioned onnxruntime DLL is in dependent package.
             if package_contains_library:
-                path = folder + "/" + "onnxruntime.dll"
-                print("Checking path: " + path)
-                if path not in file_list_in_package:
-                    print("onnxruntime.dll not found for " + platform)
-                    raise Exception("onnxruntime.dll not found for " + platform)
+                # The DLL is versioned with the API version (e.g., onnxruntime_25.dll)
+                ort_dll_found = any(
+                    f.startswith(folder + "/onnxruntime_") and f.endswith(".dll") for f in file_list_in_package
+                )
+                if not ort_dll_found:
+                    print("versioned onnxruntime DLL (onnxruntime_*.dll) not found for " + platform)
+                    raise Exception("versioned onnxruntime DLL (onnxruntime_*.dll) not found for " + platform)
 
             if package_contains_cuda_binaries:
                 for dll in win_gpu_package_libraries:

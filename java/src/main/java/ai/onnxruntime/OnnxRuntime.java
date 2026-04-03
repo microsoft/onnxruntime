@@ -45,6 +45,13 @@ final class OnnxRuntime {
   // Post 1.22 builds of the ORT API
   private static final int ORT_API_VERSION_23 = 23;
 
+  /**
+   * ORT API version used for versioned library naming on Windows.
+   * Must be updated each release to match ORT_API_VERSION in onnxruntime_c_api.h
+   * and the minor component of VERSION_NUMBER.
+   */
+  private static final int ORT_LIB_API_VERSION = 25;
+
   // The initial release of the ORT training API.
   private static final int ORT_TRAINING_API_VERSION_1 = 1;
 
@@ -406,11 +413,16 @@ final class OnnxRuntime {
       System.load(extractedPath.get().getAbsolutePath());
       logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
     } else {
-      // failed to load library from resources, try to load it from the library path
+      // failed to load library from resources, try to load it from the library path.
+      // On Windows, use versioned name for the main onnxruntime library.
+      String loadLibName = library;
+      if (library.equals(ONNXRUNTIME_LIBRARY_NAME) && OS_ARCH_STR.startsWith("win")) {
+        loadLibName = ONNXRUNTIME_LIBRARY_NAME + "_" + ORT_LIB_API_VERSION;
+      }
       logger.log(
-          Level.FINE, "Attempting to load native library '" + library + "' from library path");
-      System.loadLibrary(library);
-      logger.log(Level.FINE, "Loaded native library '" + library + "' from library path");
+          Level.FINE, "Attempting to load native library '" + loadLibName + "' from library path");
+      System.loadLibrary(loadLibName);
+      logger.log(Level.FINE, "Loaded native library '" + loadLibName + "' from library path");
     }
   }
 
@@ -463,10 +475,17 @@ final class OnnxRuntime {
    * Maps the library name into a platform dependent library filename. Converts macOS's "jnilib" to
    * "dylib" but otherwise is the same as {@link System#mapLibraryName(String)}.
    *
+   * <p>On Windows, the main onnxruntime library is mapped to a versioned name
+   * (e.g. onnxruntime_25.dll) to prevent loading an incompatible DLL from system directories.
+   *
    * @param library The library name
    * @return The library filename.
    */
   private static String mapLibraryName(String library) {
+    // On Windows, use versioned DLL name for the main onnxruntime library
+    if (library.equals(ONNXRUNTIME_LIBRARY_NAME) && OS_ARCH_STR.startsWith("win")) {
+      return ONNXRUNTIME_LIBRARY_NAME + "_" + ORT_LIB_API_VERSION + ".dll";
+    }
     return System.mapLibraryName(library).replace("jnilib", "dylib");
   }
 

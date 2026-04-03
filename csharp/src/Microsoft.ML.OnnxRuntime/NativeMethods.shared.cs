@@ -928,6 +928,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal class NativeLib
         {
+            /// <summary>
+            /// ORT API version suffix for versioned DLL naming on Windows.
+            /// Must be updated each release to match ORT_API_VERSION in onnxruntime_c_api.h
+            /// and the minor component of VERSION_NUMBER.
+            /// </summary>
+            internal const string OrtApiVersionSuffix = "25";
+
 #if __ANDROID__
             // Define the library name required for Android
             internal const string DllName = "libonnxruntime.so";
@@ -960,8 +967,16 @@ namespace Microsoft.ML.OnnxRuntime
                     string mappedName = null;
                     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     {
-                        // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
-                        mappedName = libraryName + ".dll";
+                        // Use versioned DLL name on Windows to prevent loading an incompatible
+                        // DLL from system directories (e.g. C:\Windows\System32\onnxruntime.dll).
+                        if (libraryName == NativeLib.DllName)
+                        {
+                            mappedName = "onnxruntime_" + NativeLib.OrtApiVersionSuffix + ".dll";
+                        }
+                        else
+                        {
+                            mappedName = libraryName + ".dll";
+                        }
                     }
                     else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                     {

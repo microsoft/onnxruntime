@@ -20,7 +20,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true'">
-    <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_25.dll</OnnxRuntimeBinary>
   </PropertyGroup>
 
   <ItemGroup>
