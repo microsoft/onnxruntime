@@ -59,7 +59,7 @@ jobs:
         shell: cmd
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ github.workspace }}\build\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
@@ -160,7 +160,7 @@ jobs:
         run: |
           python -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
           Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        working-directory: "${{ github.workspace }}\\build\\RelWithDebInfo\\RelWithDebInfo"
+        working-directory: "${{ github.workspace }}\\build\\RelWithDebInfo"
 
       - name: Publish OperatorKernels.md (Conditional)
         uses: actions/upload-artifact@v6

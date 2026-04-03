@@ -29,7 +29,7 @@ Run the ETW sink unit tests
  * Run the tests in etw_sink_test.cc and then stop WPR.
   * This can be done by executing the specific tests in Visual Studio,
   * or by running the exe with all the tests from the platform library
-    * Assuming debug build on Windows run `<path to repo>\build\Windows\Debug\Debug\onnxruntime_test_framework.exe`
+    * Assuming debug build on Windows run `<path to repo>\build\Windows\Debug\onnxruntime_test_framework.exe`
 
 Stop the ETW tracing
     `<path to repo>\onnxruntime\test\platform\windows\logging> wpr -stop TraceCaptureFile.etl EtwSinkTest`

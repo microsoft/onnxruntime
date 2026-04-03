@@ -111,7 +111,7 @@ jobs:
   # Esrp signing
   - template: win-esrp-dll.yml
     parameters:
-      FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+      FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime\capi'
       DisplayName: 'ESRP - Sign Native dlls'
       DoEsrp: true
       Pattern: '*.pyd'
@@ -121,11 +121,11 @@ jobs:
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\setup.py'
       arguments: 'bdist_wheel $(NightlyBuildOption) --wheel_name_suffix=qnn'
-      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo'
 
   - task: CopyFiles@2
     displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\dist'
       Contents: '*.whl'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'

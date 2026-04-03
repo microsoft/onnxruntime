@@ -43,7 +43,7 @@ CMake creates a target to this project
     <!--internal build related properties for Windows -->
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\build\Windows</OnnxRuntimeBuildDirectory>
     <OnnxRuntimePackagesDirectory Condition="'$(OnnxRuntimePackagesDirectory)'==''">$(OnnxRuntimeBuildDirectory)\packages</OnnxRuntimePackagesDirectory>
-    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
     <PythonExe>python</PythonExe>
   </PropertyGroup>
 

@@ -136,7 +136,7 @@
     Properties that are used when creating the managed package using the Pack target.
   -->
   <PropertyGroup Condition="'$(IsWindowsBuild)'=='true'">
-      <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+      <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
       <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
