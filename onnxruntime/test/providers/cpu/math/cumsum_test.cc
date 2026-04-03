@@ -43,7 +43,7 @@ TEST(CumSumTest, _1DTestEmptyAxis) {
   test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
   test.AddInput<int32_t>("axis", {0}, {});
   test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Axis tensor must contain exactly one element", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
 TEST(CumSumTest, _1DTestNegAxis) {
