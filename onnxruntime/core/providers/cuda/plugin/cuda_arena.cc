@@ -56,7 +56,9 @@ ArenaImpl::ArenaImpl(AllocatorUniquePtr allocator, const ArenaConfig& config, co
   curr_region_allocation_bytes_ = RoundedBytes(
       std::min(config_.max_mem, static_cast<size_t>(config_.initial_chunk_size_bytes)));
 
-  stats_.bytes_limit = static_cast<int64_t>(config.max_mem);
+  stats_.bytes_limit = config.max_mem > static_cast<size_t>(std::numeric_limits<int64_t>::max())
+                           ? std::numeric_limits<int64_t>::max()
+                           : static_cast<int64_t>(config.max_mem);
 
   // Create bins of various sizes.
   CUDA_ARENA_LOG(VERBOSE, "Creating " << kNumBins << " bins of max chunk size "
@@ -692,6 +694,9 @@ OrtStatus* CudaArenaAllocator::Create(CudaAllocatorKind kind,
                                       const OrtLogger& logger,
                                       std::unique_ptr<CudaArenaAllocator>& out) {
   ArenaConfig config = options ? ArenaConfig::FromKeyValuePairs(api, *options) : ArenaConfig{};
+  if (!config.IsValid()) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid CUDA arena allocator configuration.");
+  }
   auto impl = std::make_unique<ArenaImpl>(std::move(raw_allocator), config, api, logger);
   out = std::make_unique<CudaArenaAllocator>(kind, memory_info, std::move(impl));
   return nullptr;

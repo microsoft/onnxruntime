@@ -18,15 +18,19 @@ limitations under the License.
 
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "cuda_allocator_plugin.h"

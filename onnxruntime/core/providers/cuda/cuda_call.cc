@@ -5,6 +5,7 @@
 #include "shared_inc/cuda_call.h"
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
 #include "ep/adapters.h"
+#include "plugin/provider_api_shims.h"
 #else
 #include <core/platform/env.h>
 #endif
@@ -102,22 +103,10 @@ std::conditional_t<THRW, void, Status> CudaCall(
   if (retCode != successCode) {
     try {
 #ifdef _WIN32
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-      std::string hostname_str = "?";
-      {
-        char* env_val = nullptr;
-        size_t env_len = 0;
-        if (_dupenv_s(&env_val, &env_len, "COMPUTERNAME") == 0 && env_val != nullptr) {
-          hostname_str = env_val;
-          free(env_val);
-        }
-      }
-#else
       std::string hostname_str = GetEnvironmentVar("COMPUTERNAME");
       if (hostname_str.empty()) {
         hostname_str = "?";
       }
-#endif  // BUILD_CUDA_EP_AS_PLUGIN
       const char* hostname = hostname_str.c_str();
 #else
       char hostname[HOST_NAME_MAX];

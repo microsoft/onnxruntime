@@ -11,6 +11,7 @@
 #include <cctype>
 #include <climits>
 #include <cstdlib>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
