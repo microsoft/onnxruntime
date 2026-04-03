@@ -15,14 +15,19 @@ namespace rotary_embedding_helper {
 namespace detail {
 
 inline Status NarrowNonNegativeToInt32(int64_t value, const char* name, int& output) {
-  ORT_RETURN_IF(value < 0 || value > std::numeric_limits<int>::max(),
-                "RotaryEmbedding: ", name, "=", value, " is out of range for int32");
+  if (value < 0 || value > std::numeric_limits<int>::max()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, "=", value, " is out of range for int32");
+  }
   output = static_cast<int>(value);
   return Status::OK();
 }
 
 inline Status CheckedMulToInt32(int lhs, int rhs, const char* name, int& output) {
-  ORT_RETURN_IF(lhs < 0 || rhs < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (lhs < 0 || rhs < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " must be non-negative");
+  }
   if (lhs != 0 && rhs > std::numeric_limits<int>::max() / lhs) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows int32");
   }

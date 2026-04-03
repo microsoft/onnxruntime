@@ -17,7 +17,9 @@ namespace onnxruntime {
 namespace {
 
 inline Status CheckedMulToPtrdiff(int lhs, int rhs, const char* name, std::ptrdiff_t& output) {
-  ORT_RETURN_IF(lhs < 0 || rhs < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (lhs < 0 || rhs < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " must be non-negative");
+  }
   if (lhs != 0 && rhs > std::numeric_limits<std::ptrdiff_t>::max() / lhs) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
   }
@@ -27,7 +29,9 @@ inline Status CheckedMulToPtrdiff(int lhs, int rhs, const char* name, std::ptrdi
 }
 
 inline Status CheckedMulToPtrdiff(std::ptrdiff_t lhs, int rhs, const char* name, std::ptrdiff_t& output) {
-  ORT_RETURN_IF(lhs < 0 || rhs < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (lhs < 0 || rhs < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " must be non-negative");
+  }
   if (lhs != 0 && static_cast<std::ptrdiff_t>(rhs) > std::numeric_limits<std::ptrdiff_t>::max() / lhs) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
   }
@@ -36,10 +40,24 @@ inline Status CheckedMulToPtrdiff(std::ptrdiff_t lhs, int rhs, const char* name,
   return Status::OK();
 }
 
+inline Status CheckedAddToPtrdiff(std::ptrdiff_t lhs, std::ptrdiff_t rhs, const char* name, std::ptrdiff_t& output) {
+  if (lhs < 0 || rhs < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " must be non-negative");
+  }
+  if (lhs > std::numeric_limits<std::ptrdiff_t>::max() - rhs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
+  }
+
+  output = lhs + rhs;
+  return Status::OK();
+}
+
 inline Status CheckedMulToPtrdiff(int lhs, int rhs, int third, const char* name, std::ptrdiff_t& output) {
   std::ptrdiff_t intermediate = 0;
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(lhs, rhs, name, intermediate));
-  ORT_RETURN_IF(third < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (third < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " must be non-negative");
+  }
   if (intermediate != 0 && third > std::numeric_limits<std::ptrdiff_t>::max() / intermediate) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
   }
@@ -113,6 +131,20 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   // Parallel to calculate based on head_size
   std::ptrdiff_t loop_len = 0;
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(batch_size, sequence_length, n_heads, "total_elements", loop_len));
+
+  std::ptrdiff_t max_batch_offset = 0;
+  std::ptrdiff_t max_seq_offset = 0;
+  std::ptrdiff_t max_head_offset = 0;
+  std::ptrdiff_t max_block_offset = 0;
+  std::ptrdiff_t max_cache_offset = 0;
+  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(batch_size - 1, 0), batch_stride, "max_batch_offset", max_batch_offset));
+  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(sequence_length - 1, 0), seq_stride, "max_seq_offset", max_seq_offset));
+  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(n_heads - 1, 0), head_stride, "max_head_offset", max_head_offset));
+  ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_batch_offset, max_seq_offset, "max_block_offset", max_block_offset));
+  ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_block_offset, max_head_offset, "max_block_offset", max_block_offset));
+  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(max_sequence_length - 1, 0), half_rotary_emb_dim,
+                                          "max_cache_offset", max_cache_offset));
+
   // The cost is calculated as:
   //   - head_size * sizeof(T) for reading input
   //   - head_size * sizeof(T) for writing output
@@ -125,20 +157,21 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const int n = static_cast<int>(ptr % n_heads);
       // Identify the index of batch, sequence, and head (specific range) in the input/output tensor
       // for read/write
-      const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
+      const std::ptrdiff_t block_offset = static_cast<std::ptrdiff_t>(b) * batch_stride +
+                  static_cast<std::ptrdiff_t>(s) * seq_stride +
+                  static_cast<std::ptrdiff_t>(n) * head_stride;
       const T* input_data = input + block_offset;
       T* output_data = output + block_offset;
 
       const T* cos_data;
       const T* sin_data;
-      std::ptrdiff_t cache_offset = 0;
       // position_ids_format == 0 means position_ids is nullptr
       // position_ids_format == 1 means position_ids is a 2D array of size (batch_size, sequence_length)
       std::ptrdiff_t b_s_index = static_cast<std::ptrdiff_t>(b) * sequence_length + s;
       if (position_ids_format != 0) {
         b_s_index = position_ids[b_s_index];
       }
-      ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(b_s_index, half_rotary_emb_dim, "cache_offset", cache_offset));
+      const std::ptrdiff_t cache_offset = b_s_index * half_rotary_emb_dim;
       cos_data = cos_cache + cache_offset;
       sin_data = sin_cache + cache_offset;
 

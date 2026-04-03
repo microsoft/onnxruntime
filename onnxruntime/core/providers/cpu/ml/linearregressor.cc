@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cpu/ml/linearregressor.h"
 #include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
@@ -22,7 +24,9 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
       intercepts_(info.GetAttrsOrDefault<float>("intercepts")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
   ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("targets", &num_targets_));
-  ORT_ENFORCE(num_targets_ > 0, "targets must be greater than 0.");
+  ORT_ENFORCE(num_targets_ > 0 && num_targets_ <= std::numeric_limits<std::ptrdiff_t>::max(),
+              "targets must be in range [1, ", std::numeric_limits<std::ptrdiff_t>::max(),
+              "]. Actual value: ", num_targets_);
   ORT_THROW_IF_ERROR(info.GetAttrs<float>("coefficients", coefficients_));
 
   // use the intercepts_ if they're valid

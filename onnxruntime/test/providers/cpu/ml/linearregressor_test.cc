@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -97,6 +99,19 @@ TEST(MLOpTest, LinearRegressorUndersizedCoefficients) {
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "LinearRegressor: coefficients length (1) must equal targets (1) * features (2)");
+}
+
+TEST(MLOpTest, LinearRegressorOversizedTargets) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", std::numeric_limits<int64_t>::max());
+  test.AddAttribute("coefficients", std::vector<float>{1.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {1, 1}, {1.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "targets must be in range [1,");
 }
 
 }  // namespace test
