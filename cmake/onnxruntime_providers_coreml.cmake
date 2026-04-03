@@ -26,7 +26,7 @@ file(GLOB coreml_proto_srcs "${COREML_PROTO_ROOT}/*.proto")
 onnxruntime_add_static_library(coreml_proto ${coreml_proto_srcs})
 target_include_directories(coreml_proto
                            PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_INCLUDE_DIRECTORIES>
-                           "${CMAKE_CURRENT_BINARY_DIR}")
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
 target_compile_definitions(coreml_proto
                            PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_COMPILE_DEFINITIONS>)
 set_target_properties(coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
@@ -42,6 +42,7 @@ onnxruntime_protobuf_generate(
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   install(TARGETS coreml_proto
+          EXPORT ${PROJECT_NAME}Targets
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
