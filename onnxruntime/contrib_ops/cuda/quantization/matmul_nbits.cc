@@ -304,7 +304,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y->Shape().Size() == 0)
     return Status::OK();
 
-  cudaStream_t stream = static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle());
+  cudaStream_t stream = this->Stream(ctx);
 
   typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
 
@@ -352,7 +352,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm_, params, stream);
       } else {
         const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
-        auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
+        auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
 
         weightOnlyGemmRunner_->gemm(
             a_data,
@@ -394,7 +394,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
-  IAllocatorUniquePtr<T> b_data_ptr = GetScratchBuffer<T>(N_ * K_padded, ctx->GetComputeStream());
+  IAllocatorUniquePtr<T> b_data_ptr = this->template GetScratchBuffer<T>(N_ * K_padded, this->GetComputeStream(ctx));
   auto* b_data = b_data_ptr.get();
 
   if (nbits_ == 8) {

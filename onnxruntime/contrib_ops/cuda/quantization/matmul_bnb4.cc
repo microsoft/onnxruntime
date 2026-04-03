@@ -56,12 +56,12 @@ Status MatMulBnb4<T>::ComputeInternal(OpKernelContext* ctx) const {
   // TODO: find a better way to create the quant_map without using a buffer
   // don't want to use malloc directly so asking from the caller
   // can create a __device__ static array for float but doesn't work for half
-  IAllocatorUniquePtr<T> quant_map_buffer = GetScratchBuffer<T>(16, ctx->GetComputeStream());
+  IAllocatorUniquePtr<T> quant_map_buffer = this->template GetScratchBuffer<T>(16, this->GetComputeStream(ctx));
   auto* quant_map_buffer_data = quant_map_buffer.get();
   ORT_RETURN_IF_ERROR(SetBnbQuantMap<CudaT>(
       SafeInt<int>(quant_type_),
       reinterpret_cast<CudaT*>(quant_map_buffer_data),
-      static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+      this->Stream(ctx)));
 
   constexpr bool transa = false;
   const bool transb = transB_;
@@ -85,10 +85,10 @@ Status MatMulBnb4<T>::ComputeInternal(OpKernelContext* ctx) const {
                              SafeInt<int>(helper.N()),
                              SafeInt<int>(helper.K()),
                              SafeInt<int>(block_size_),
-                             static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
+                             this->Stream(ctx));
 
   if (!is_4bit_done) {
-    IAllocatorUniquePtr<T> b_dequant_ptr = GetScratchBuffer<T>(N_ * K_, ctx->GetComputeStream());
+    IAllocatorUniquePtr<T> b_dequant_ptr = this->template GetScratchBuffer<T>(N_ * K_, this->GetComputeStream(ctx));
     auto* b_dequant_data = b_dequant_ptr.get();
     ORT_RETURN_IF_ERROR(DequantizeBnb4<CudaT>(
         reinterpret_cast<const CudaT*>(quant_map_buffer_data),
@@ -97,7 +97,7 @@ Status MatMulBnb4<T>::ComputeInternal(OpKernelContext* ctx) const {
         reinterpret_cast<const CudaT*>(absmax_data),
         SafeInt<int>(block_size_),
         SafeInt<int>(N_ * K_),
-        static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+        this->Stream(ctx)));
 
     const CudaT alpha = ToCudaType<T>::FromFloat(1.f);
     const CudaT zero = ToCudaType<T>::FromFloat(0.f);
