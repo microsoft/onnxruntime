@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -46,6 +46,75 @@ public final class ModelGenerators {
     builder.setTensorType(tensorBuilder.build());
 
     return builder.build();
+  }
+
+  public void generateExternalEmbedding() throws IOException {
+    OnnxMl.GraphProto.Builder graph = OnnxMl.GraphProto.newBuilder();
+    graph.setName("ort-test-embedding");
+
+    // Add placeholders
+    OnnxMl.ValueInfoProto.Builder input = OnnxMl.ValueInfoProto.newBuilder();
+    input.setName("input");
+    OnnxMl.TypeProto inputType =
+        buildTensorTypeNode(
+            new long[] {-1, -1},
+            new String[] {"batch_size", "sequence_length"},
+            OnnxMl.TensorProto.DataType.INT64);
+    input.setType(inputType);
+    graph.addInput(input);
+    OnnxMl.ValueInfoProto.Builder output = OnnxMl.ValueInfoProto.newBuilder();
+    output.setName("output");
+    OnnxMl.TypeProto outputType =
+        buildTensorTypeNode(
+            new long[] {-1, -1, 4096},
+            new String[] {"batch_size", "sequence_length", null},
+            OnnxMl.TensorProto.DataType.FLOAT);
+    output.setType(outputType);
+    graph.addOutput(output);
+
+    // Add initializer
+    OnnxMl.TensorProto.Builder tensor = OnnxMl.TensorProto.newBuilder();
+    tensor.addDims(256 * 1024);
+    tensor.addDims(4096);
+    tensor.setDataLocation(DataLocation.EXTERNAL);
+    tensor.addExternalData(
+        StringStringEntryProto.newBuilder()
+            .setKey("location")
+            .setValue("external-embedding.out")
+            .build());
+    tensor.addExternalData(
+        StringStringEntryProto.newBuilder().setKey("offset").setValue("0").build());
+    tensor.addExternalData(
+        StringStringEntryProto.newBuilder()
+            .setKey("length")
+            .setValue("" + (4L * 1024L * 1024L * 1024L))
+            .build());
+    tensor.setDataType(OnnxMl.TensorProto.DataType.FLOAT.getNumber());
+    tensor.setName("embedding");
+    graph.addInitializer(tensor);
+
+    // Add operations
+    OnnxMl.NodeProto.Builder matmul = OnnxMl.NodeProto.newBuilder();
+    matmul.setName("gather-0");
+    matmul.setOpType("Gather");
+    matmul.addInput("embedding");
+    matmul.addInput("input");
+    matmul.addOutput("output");
+    graph.addNode(matmul);
+
+    // Build model
+    OnnxMl.ModelProto.Builder model = OnnxMl.ModelProto.newBuilder();
+    model.setGraph(graph);
+    model.setDocString("ORT embedding test");
+    model.setModelVersion(0);
+    model.setIrVersion(8);
+    model.setDomain("ai.onnxruntime.test");
+    model.addOpsetImport(OnnxMl.OperatorSetIdProto.newBuilder().setVersion(18).build());
+    try (OutputStream os =
+        Files.newOutputStream(
+            Paths.get("src", "test", "resources", "java-external-embedding.onnx"))) {
+      model.build().writeTo(os);
+    }
   }
 
   public void generateExternalMatMul() throws IOException {
