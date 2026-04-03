@@ -812,7 +812,7 @@ TEST(ConvTest, Conv3D_1) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<float> X = {-0.43337246775627136f, -0.48385289311408997f, -0.30954962968826294f,
@@ -849,7 +849,7 @@ TEST(ConvTest, Conv3D_2) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<float> X = {0.010772407054901123f, -0.43806642293930054f, 0.455391526222229f, -0.28657248616218567f,
@@ -892,7 +892,7 @@ TEST(ConvTest, Conv3D_Bias) {
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<float> X = {0.46796226501464844f, -0.4613912105560303f, 0.33512794971466064f, -0.4010460674762726f,
