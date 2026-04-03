@@ -662,7 +662,7 @@ Return Value:
     }
 #endif
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
     #if defined(MLAS_USE_SVE)
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
             this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;

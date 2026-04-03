@@ -22,7 +22,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-
+#include <vector>
 //
 // Bundles the constants for use by kernels written in assembly.
 //

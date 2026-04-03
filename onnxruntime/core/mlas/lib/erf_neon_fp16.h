@@ -22,5 +22,6 @@ Abstract:
 #include "mlasi.h"
 #include "fp16_common.h"
 #include "softmax_kernel_neon.h"
+#include <cstring>
 
 void MlasNeonErfFP16Kernel(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N);

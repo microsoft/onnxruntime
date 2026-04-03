@@ -17,7 +17,7 @@ Abstract:
 
 #include "erf_neon_fp16.h"
 
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 using _mlas_fp16_ = uint16_t;
 // Helpers to safely convert between float and FP16-bit representation
@@ -25,7 +25,7 @@ static float
 fp16_to_float(uint16_t h)
 {
     __fp16 tmp;
-    memcpy(&tmp, &h, sizeof(h));
+    std::memcpy(&tmp, &h, sizeof(h));
     return (float)tmp;
 }
 
