@@ -19,10 +19,14 @@ struct OrtCANNProviderOptions {
                                                            // automaticly
   int dump_graphs;                                         // Flag indicating if dumping graphs
   int dump_om_model;                                       // Flag indicating if dumping om model
-  std::string precision_mode;                              // Operator Precision Mode
+  std::string precision_mode_v2;                           // Operator Precision Mode
   std::string op_select_impl_mode;                         // Operator-level model compilation options:
                                                            // Mode selection
   std::string optypelist_for_implmode;                     // Operator-level model compilation options:
                                                            // Operator list
+  std::string input_format;                                // Input format, e.g., "NCHW"
+  std::string dynamic_batch_size;                          // Dynamic batch size, e.g., "2,4,8"
+  std::string dynamic_image_size;                          // Dynamic image size, e.g., "224,224;256,256"
+  std::string dynamic_dims;                                // Dynamic dims, e.g., "1,3,224,224;1,3,256,256"
   OrtArenaCfg* default_memory_arena_cfg;                   // CANN memory arena configuration parameters
 };
