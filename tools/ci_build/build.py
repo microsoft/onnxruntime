@@ -714,7 +714,12 @@ def generate_build_tree(
         flash_nvcc_threads = number_of_flash_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_FLASH_NVCC_THREADS=" + str(flash_nvcc_threads))
 
-        cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
+        if is_windows():
+            # be explicit and use the entire filename name
+            cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc.exe")
+        else:
+            cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
+
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         if args.cuda_version:
             add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
