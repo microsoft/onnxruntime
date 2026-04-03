@@ -839,19 +839,12 @@ Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id) {
   return ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id));
 }
 
-GraphCaptureNodeAssignmentPolicy PluginExecutionProvider::GetGraphCaptureNodeAssignmentPolicy() const {
+OrtGraphCaptureNodeAssignmentPolicy PluginExecutionProvider::GetGraphCaptureNodeAssignmentPolicy() const {
   if (ort_ep_->ort_version_supported < 26 || ort_ep_->GetGraphCaptureNodeAssignmentPolicy == nullptr) {
-    return GraphCaptureNodeAssignmentPolicy::AllNodesOnEp;
+    return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
   }
 
-  auto api_policy = ort_ep_->GetGraphCaptureNodeAssignmentPolicy(ort_ep_.get());
-  switch (api_policy) {
-    case OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES:
-      return GraphCaptureNodeAssignmentPolicy::AllowCpuForShapes;
-    case OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP:
-    default:
-      return GraphCaptureNodeAssignmentPolicy::AllNodesOnEp;
-  }
+  return ort_ep_->GetGraphCaptureNodeAssignmentPolicy(ort_ep_.get());
 }
 
 }  // namespace onnxruntime

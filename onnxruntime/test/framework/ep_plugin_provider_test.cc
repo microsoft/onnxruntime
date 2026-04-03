@@ -1216,9 +1216,9 @@ TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 
   {
-    // NULL function pointer should return AllNodesOnEp (strictest default).
+    // NULL function pointer should return ALL_NODES_ON_EP (strictest default).
     ort_ep->GetGraphCaptureNodeAssignmentPolicy = nullptr;
-    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), GraphCaptureNodeAssignmentPolicy::AllNodesOnEp);
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
   }
 
   {
@@ -1227,7 +1227,7 @@ TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
       return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
     };
     ort_ep->GetGraphCaptureNodeAssignmentPolicy = all_nodes_on_ep;
-    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), GraphCaptureNodeAssignmentPolicy::AllNodesOnEp);
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
   }
 
   {
@@ -1236,17 +1236,17 @@ TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
       return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
     };
     ort_ep->GetGraphCaptureNodeAssignmentPolicy = allow_cpu;
-    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), GraphCaptureNodeAssignmentPolicy::AllowCpuForShapes);
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES);
   }
 
   {
-    // Backward compatibility: version < 26 should return AllNodesOnEp even if function pointer is set.
+    // Backward compatibility: version < 26 should return ALL_NODES_ON_EP even if function pointer is set.
     auto allow_cpu = [](const OrtEp* /*this_ptr*/) noexcept -> OrtGraphCaptureNodeAssignmentPolicy {
       return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
     };
     ort_ep->GetGraphCaptureNodeAssignmentPolicy = allow_cpu;
     ort_ep->ort_version_supported = 25;
-    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), GraphCaptureNodeAssignmentPolicy::AllNodesOnEp);
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
     ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
   }
 }

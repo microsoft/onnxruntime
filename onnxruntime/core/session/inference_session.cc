@@ -2444,7 +2444,7 @@ common::Status InferenceSession::Initialize() {
         }
 
         auto policy = ep->GetGraphCaptureNodeAssignmentPolicy();
-        if (policy == GraphCaptureNodeAssignmentPolicy::AllowCpuForShapes) {
+        if (policy == OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES) {
           // Ensure that all nodes have been partitioned to the EP or CPU EP && there are no memcpy nodes.
           // The reasoning is that certain shape nodes will be forced onto CPU and as long as there are
           // no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP.

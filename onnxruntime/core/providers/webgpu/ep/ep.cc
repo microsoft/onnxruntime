@@ -282,7 +282,7 @@ OrtStatus* ORT_API_CALL Ep::ReplayGraphImpl(_In_ OrtEp* this_ptr, _In_ int graph
 OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL Ep::GetGraphCaptureNodeAssignmentPolicyImpl(
     _In_ const OrtEp* this_ptr) noexcept {
   auto* ep = static_cast<const Ep*>(this_ptr);
-  return static_cast<OrtGraphCaptureNodeAssignmentPolicy>(ep->EpImpl()->GetGraphCaptureNodeAssignmentPolicy());
+  return ep->EpImpl()->GetGraphCaptureNodeAssignmentPolicy();
 }
 
 OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
