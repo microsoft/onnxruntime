@@ -4,6 +4,8 @@
 #include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
 
+#include <limits>
+
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
@@ -12,6 +14,32 @@ using namespace onnxruntime::contrib::rotary_embedding_helper;
 
 namespace onnxruntime {
 namespace contrib {
+
+namespace {
+
+inline Status CheckedMulToPtrdiff(int lhs, int rhs, const char* name, std::ptrdiff_t& output) {
+  ORT_RETURN_IF(lhs < 0 || rhs < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (lhs != 0 && rhs > std::numeric_limits<std::ptrdiff_t>::max() / lhs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
+  }
+
+  output = static_cast<std::ptrdiff_t>(lhs) * rhs;
+  return Status::OK();
+}
+
+inline Status CheckedMulToPtrdiff(int lhs, int rhs, int third, const char* name, std::ptrdiff_t& output) {
+  std::ptrdiff_t intermediate = 0;
+  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(lhs, rhs, name, intermediate));
+  ORT_RETURN_IF(third < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (intermediate != 0 && third > std::numeric_limits<std::ptrdiff_t>::max() / intermediate) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
+  }
+
+  output = intermediate * third;
+  return Status::OK();
+}
+
+}  // namespace
 
 // These ops are internal-only, so register outside of onnx
 #define REGISTER_KERNEL_TYPED(T)                                        \
@@ -32,8 +60,12 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
-  rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
-  num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
+  const int64_t rotary_embedding_dim_attr = info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0);
+  const int64_t num_heads_attr = info.GetAttrOrDefault<int64_t>("num_heads", 0);
+  ORT_ENFORCE(rotary_embedding_dim_attr >= 0 && rotary_embedding_dim_attr <= std::numeric_limits<int>::max());
+  ORT_ENFORCE(num_heads_attr >= 0 && num_heads_attr <= std::numeric_limits<int>::max());
+  rotary_embedding_dim = static_cast<int>(rotary_embedding_dim_attr);
+  num_heads = static_cast<int>(num_heads_attr);
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
   is_packed_batching = (info.GetAttrOrDefault<int64_t>("is_packed_batching", 0) == 1);
 
@@ -59,6 +91,9 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
 
+  std::ptrdiff_t position_count = 0;
+  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(batch_size, sequence_length, "position_ids element count", position_count));
+
   // Validate position_ids values are within cos/sin cache bounds
   if (position_ids_format == 0) {
     // Format 0: single offset, effective positions are [base_pos, base_pos + sequence_length - 1].
@@ -73,7 +108,7 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
     }
   } else if (position_ids_format == 1) {
     // Format 1: 2D array (batch_size, sequence_length)
-    for (int i = 0; i < batch_size * sequence_length; ++i) {
+    for (std::ptrdiff_t i = 0; i < position_count; ++i) {
       int64_t pos = position_ids[i];
       if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -84,7 +119,8 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   }
 
   // Parallel to calculate based on head_size
-  const int loop_len = batch_size * sequence_length * n_heads;
+  std::ptrdiff_t loop_len = 0;
+  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(batch_size, sequence_length, n_heads, "total_elements", loop_len));
   // The cost is calculated as:
   //   - head_size * sizeof(T) for reading input
   //   - head_size * sizeof(T) for writing output

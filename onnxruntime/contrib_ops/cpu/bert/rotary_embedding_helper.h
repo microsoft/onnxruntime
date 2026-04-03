@@ -2,12 +2,36 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <limits>
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rotary_embedding_helper {
+
+namespace detail {
+
+inline Status NarrowNonNegativeToInt32(int64_t value, const char* name, int& output) {
+  ORT_RETURN_IF(value < 0 || value > std::numeric_limits<int>::max(),
+                "RotaryEmbedding: ", name, "=", value, " is out of range for int32");
+  output = static_cast<int>(value);
+  return Status::OK();
+}
+
+inline Status CheckedMulToInt32(int lhs, int rhs, const char* name, int& output) {
+  ORT_RETURN_IF(lhs < 0 || rhs < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (lhs != 0 && rhs > std::numeric_limits<int>::max() / lhs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows int32");
+  }
+
+  output = lhs * rhs;
+  return Status::OK();
+}
+
+}  // namespace detail
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct RotaryParameters {
@@ -73,20 +97,35 @@ Status CheckInputs(const T* input,
   }
 
   // Get attributes from inputs
-  int batch_size = static_cast<int>(input_dims[0]);
-  int sequence_length = static_cast<int>(input_dims[1]);
-  int hidden_size = static_cast<int>(input_dims[2]);
+  int batch_size = 0;
+  int sequence_length = 0;
+  int hidden_size = 0;
+
+  ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[0], "batch_size", batch_size));
+  ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "sequence_length", sequence_length));
+  ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[2], "hidden_size", hidden_size));
 
   bool transposed = false;
   if (input_dims.size() == 4) {
     // input is [batch, num_heads, seq, head_size]
-    sequence_length = static_cast<int>(input_dims[2]);
-    hidden_size = static_cast<int>(input_dims[1]) * static_cast<int>(input_dims[3]);
+    int input_num_heads = 0;
+    int input_head_size = 0;
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[2], "sequence_length", sequence_length));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "num_heads", input_num_heads));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[3], "head_size", input_head_size));
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(input_num_heads, input_head_size, "hidden_size", hidden_size));
     transposed = true;
   }
-  int max_sequence_length = static_cast<int>(cos_cache_dims[0]);
-  int head_size = rotary_embedding_dim == 0 ? static_cast<int>(cos_cache_dims[1]) * 2
-                                            : static_cast<int>(hidden_size / num_heads);
+  int max_sequence_length = 0;
+  int head_size = 0;
+  ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[0], "max_sequence_length", max_sequence_length));
+  if (rotary_embedding_dim == 0) {
+    int cache_width = 0;
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[1], "cache_width", cache_width));
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "head_size", head_size));
+  } else {
+    head_size = static_cast<int>(hidden_size / num_heads);
+  }
   if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
                            "head_size");
@@ -127,13 +166,13 @@ Status CheckInputs(const T* input,
   if (transposed) {
     // Transposed input tensor shape is [batch, n_heads, seq_len, head_size]
     seq_stride = head_size;
-    head_stride = sequence_length * seq_stride;
-    batch_stride = num_heads * head_stride;
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(sequence_length, seq_stride, "head_stride", head_stride));
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(num_heads, head_stride, "batch_stride", batch_stride));
   } else {
     // Default input tensor shape is [batch, seq_len, hidden_size]
     head_stride = head_size;
-    seq_stride = num_heads * head_stride;
-    batch_stride = sequence_length * seq_stride;
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(num_heads, head_stride, "seq_stride", seq_stride));
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(sequence_length, seq_stride, "batch_stride", batch_stride));
   }
 
   // Set rotary parameters

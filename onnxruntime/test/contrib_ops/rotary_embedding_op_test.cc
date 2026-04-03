@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include "gtest/gtest.h"
+#include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -948,6 +949,40 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_OOB_CUDA_Passthroug
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 #endif
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsTotalElementsOverflow) {
+  contrib::rotary_embedding_helper::RotaryParameters parameters{};
+  parameters.batch_size = 1;
+  parameters.sequence_length = 65536;
+  parameters.num_heads = 32768;
+  parameters.head_size = 4;
+  parameters.head_stride = 4;
+  parameters.seq_stride = 8;
+  parameters.batch_stride = 8;
+  parameters.position_ids_format = 0;
+  parameters.max_sequence_length = 65536;
+  parameters.rotary_embedding_dim = 4;
+
+  const int64_t position_ids[] = {0};
+  Status status = contrib::RunRotaryEmbedding<float>(nullptr, parameters, nullptr, position_ids, nullptr, nullptr, nullptr, false);
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_NE(status.ErrorMessage().find("total_elements overflows ptrdiff_t"), std::string::npos);
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsHiddenSizeOverflow) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {0, 32768, 1, 65536}, {});
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 32768}, std::vector<float>(32768, 1.0f));
+  test.AddInput<float>("sin_cache", {1, 32768}, std::vector<float>(32768, 0.0f));
+  test.AddOutput<float>("output", {0, 32768, 1, 65536}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "hidden_size overflows int32", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

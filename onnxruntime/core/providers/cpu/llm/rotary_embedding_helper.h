@@ -2,11 +2,36 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <limits>
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace rotary_embedding_helper {
+
+namespace detail {
+
+inline Status NarrowNonNegativeToInt32(int64_t value, const char* name, int& output) {
+  ORT_RETURN_IF(value < 0 || value > std::numeric_limits<int>::max(),
+                "RotaryEmbedding: ", name, "=", value, " is out of range for int32");
+  output = static_cast<int>(value);
+  return Status::OK();
+}
+
+inline Status CheckedMulToInt32(int lhs, int rhs, const char* name, int& output) {
+  ORT_RETURN_IF(lhs < 0 || rhs < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (lhs != 0 && rhs > std::numeric_limits<int>::max() / lhs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " overflows int32");
+  }
+
+  output = lhs * rhs;
+  return Status::OK();
+}
+
+}  // namespace detail
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct RotaryParameters {
@@ -48,31 +73,34 @@ Status CheckInputs(const T* input,
   //                cos_cache    : (max_position_id_plus_1, rotary_embedding_dim / 2)
   //                sin_cache    : (max_position_id_plus_1, rotary_embedding_dim / 2)
 
-  // Check input is either 3d or 4d
   const auto& input_dims = input->Shape().GetDims();
+  if (input_dims.size() != 3 && input_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'x' is expected to have 3 or 4 dimensions, got ",
+                           input_dims.size());
+  }
 
   // Get attributes from inputs
-  int batch_size = static_cast<int>(input_dims[0]);
-  int sequence_length;
-  int hidden_size;
-  int head_size;
+  int batch_size = 0;
+  int sequence_length = 0;
+  int hidden_size = 0;
+  int head_size = 0;
+
+  ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[0], "batch_size", batch_size));
 
   // If it's 4d, it is expected to have shape [batch, num_heads, seq_len, head_size].
   bool transposed = false;
   if (input_dims.size() == 4) {
-    sequence_length = static_cast<int>(input_dims[2]);
-    num_heads = static_cast<int>(input_dims[1]);
-    head_size = static_cast<int>(input_dims[3]);
-    hidden_size = num_heads * head_size;
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[2], "sequence_length", sequence_length));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "num_heads", num_heads));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[3], "head_size", head_size));
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(num_heads, head_size, "hidden_size", hidden_size));
     transposed = true;
-  } else if (input_dims.size() == 3) {
-    // If it's 3d, it is expected to have shape [batch, seq_len, hidden_size].
-    sequence_length = static_cast<int>(input_dims[1]);
-    hidden_size = static_cast<int>(input_dims[2]);
-    head_size = hidden_size / num_heads;
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'x' is expected to have 3 or 4 dimensions, got ",
-                           input_dims.size());
+    // If it's 3d, it is expected to have shape [batch, seq_len, hidden_size].
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "sequence_length", sequence_length));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[2], "hidden_size", hidden_size));
+    ORT_RETURN_IF(num_heads <= 0, "RotaryEmbedding: num_heads must be greater than 0 for rank-3 input");
+    head_size = hidden_size / num_heads;
   }
 
   int position_ids_format = 0;
@@ -102,7 +130,7 @@ Status CheckInputs(const T* input,
                              "the same shape as input 'x', got ", cos_cache_dims[0], " and ", cos_cache_dims[1]);
     }
 
-    max_sequence_length = static_cast<int>(cos_cache_dims[1]);
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[1], "max_sequence_length", max_sequence_length));
 
     if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
@@ -136,7 +164,7 @@ Status CheckInputs(const T* input,
                              "dimensions, got ", position_ids_dims.size());
     }
 
-    max_sequence_length = static_cast<int>(cos_cache_dims[0]);
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[0], "max_sequence_length", max_sequence_length));
 
     if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
@@ -174,13 +202,13 @@ Status CheckInputs(const T* input,
   if (transposed) {
     // Transposed input tensor shape is [batch, n_heads, seq_len, head_size]
     seq_stride = head_size;
-    head_stride = sequence_length * seq_stride;
-    batch_stride = num_heads * head_stride;
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(sequence_length, seq_stride, "head_stride", head_stride));
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(num_heads, head_stride, "batch_stride", batch_stride));
   } else {
     // Default input tensor shape is [batch, seq_len, hidden_size]
     head_stride = head_size;
-    seq_stride = num_heads * head_stride;
-    batch_stride = sequence_length * seq_stride;
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(num_heads, head_stride, "seq_stride", seq_stride));
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(sequence_length, seq_stride, "batch_stride", batch_stride));
   }
 
   // Set rotary parameters
