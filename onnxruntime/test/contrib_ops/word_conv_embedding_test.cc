@@ -155,5 +155,17 @@ TEST(ContribOpTest, WordConvEmbedding_rejects_filter_width_larger_than_word_leng
   test.Run(OpTester::ExpectResult::kExpectFailure, "Conv kernel width must not exceed word length");
 }
 
+TEST(ContribOpTest, WordConvEmbedding_rejects_sequence_rank_one) {
+  OpTester test("WordConvEmbedding", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<int>("Sequence", {2}, {1, 2});
+  test.AddInput<float>("W", {1, 1, 2, 1}, {1.0f, 1.0f});
+  test.AddInput<float>("B", {1}, {0.0f});
+  test.AddInput<float>("C", {3, 1}, {0.0f, 1.0f, 2.0f});
+  test.AddOutput<float>("Y", {1, 1}, {0.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Sequence input must have rank greater than 1");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

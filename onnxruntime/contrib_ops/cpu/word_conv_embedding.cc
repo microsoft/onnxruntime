@@ -141,6 +141,21 @@ void WordConvEmbedding::CalculateLengthOfEachWordInSequence(
 
 Status WordConvEmbedding::ValidateInputShape(const TensorShape& sequence_shape, const TensorShape& w_conv_shape,
                                              const TensorShape& w_char_embedding_shape) const {
+  if (sequence_shape.NumDimensions() <= 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Sequence input must have rank greater than 1.",
+                           " Sequence rank: ", sequence_shape.NumDimensions());
+  }
+
+  if (w_conv_shape.NumDimensions() <= 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv weight input must have rank greater than 3.",
+                           " Conv weight rank: ", w_conv_shape.NumDimensions());
+  }
+
+  if (w_char_embedding_shape.NumDimensions() <= 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Char embedding input must have rank greater than 1.",
+                           " Char embedding rank: ", w_char_embedding_shape.NumDimensions());
+  }
+
   if (embedding_size_ != -1 && w_conv_shape[0] != embedding_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv filter size does not match embedding_size attribute.",
                            " embedding_size attribute: ", embedding_size_,
