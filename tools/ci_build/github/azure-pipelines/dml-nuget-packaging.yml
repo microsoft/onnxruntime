@@ -80,10 +80,10 @@ extends:
           if errorlevel 1 exit /b 1
           copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
           if errorlevel 1 exit /b 1
-          powershell -ExecutionPolicy Bypass -File $(Build.SourcesDirectory)\tools\ci_build\github\windows\select_dml_package.ps1 -SourceDir "$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo" -IsReleaseBuild "${{ parameters.IsReleaseBuild }}" -Action copy -DestinationDir "$(Build.ArtifactStagingDirectory)"
+          powershell -ExecutionPolicy Bypass -File $(Build.SourcesDirectory)\tools\ci_build\github\windows\select_dml_package.ps1 -SourceDir "$(Build.BinariesDirectory)\RelWithDebInfo" -IsReleaseBuild "${{ parameters.IsReleaseBuild }}" -Action copy -DestinationDir "$(Build.ArtifactStagingDirectory)"
           if errorlevel 1 exit /b 1
           mkdir $(Build.ArtifactStagingDirectory)\testdata
-          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+          copy $(Build.BinariesDirectory)\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
     - template: nuget/templates/dml-vs-2022.yml
       parameters:
@@ -101,12 +101,12 @@ extends:
           python -m pip install setuptools
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
           if errorlevel 1 exit /b 1
-          powershell -ExecutionPolicy Bypass -File $(Build.SourcesDirectory)\tools\ci_build\github\windows\select_dml_package.ps1 -SourceDir "$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo" -IsReleaseBuild "${{ parameters.IsReleaseBuild }}" -Action rename -NewName "win-dml-arm64.zip"
+          powershell -ExecutionPolicy Bypass -File $(Build.SourcesDirectory)\tools\ci_build\github\windows\select_dml_package.ps1 -SourceDir "$(Build.BinariesDirectory)\RelWithDebInfo" -IsReleaseBuild "${{ parameters.IsReleaseBuild }}" -Action rename -NewName "win-dml-arm64.zip"
           if errorlevel 1 exit /b 1
-          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
+          copy $(Build.BinariesDirectory)\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
           if errorlevel 1 exit /b 1
           mkdir $(Build.ArtifactStagingDirectory)\testdata
-          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+          copy $(Build.BinariesDirectory)\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
     - template: stages/nuget_dml_packaging_stage.yml
       parameters:

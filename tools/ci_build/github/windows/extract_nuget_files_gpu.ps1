@@ -3,7 +3,7 @@
 
 # This file is used by Zip-Nuget-Java Packaging Pipeline
 # Define the directory for NuGet artifacts.
-$nuget_artifacts_dir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuget-artifacts"
+$nuget_artifacts_dir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfos"
 # Create the directory if it doesn't exist.
 New-Item -Path $nuget_artifacts_dir -ItemType directory -ErrorAction SilentlyContinue
 
@@ -48,7 +48,7 @@ Foreach-Object {
 New-Item -Path "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\_deps\protobuf-build\RelWithDebInfo" -ItemType directory -ErrorAction SilentlyContinue
 
 # Copy CUDA libraries.
-Copy-Item -Path "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64-cuda-*\lib\*" -Destination "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo"
+Copy-Item -Path "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfos\onnxruntime-win-x64-cuda-*\lib\*" -Destination "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo"RelWithDebInfo
 
 # Install protoc via dotnet.
 $protocInstallDir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\_deps\protobuf-build"
@@ -69,7 +69,7 @@ else {
 }
 
 # Rename onnxruntime directories to a generic format.
-$ort_dirs = Get-ChildItem -Path "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-*" -Directory
+$ort_dirs = Get-ChildItem -Path "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfos\onnxruntime-*" -Directory
 foreach ($ort_dir in $ort_dirs) {
     $dirname = Split-Path -Path $ort_dir -Leaf
     $lastHyphenIndex = $dirname.LastIndexOf('-')
