@@ -5,9 +5,9 @@ ONNX Runtime automatically partitions a model graph across the execution provide
 ## Overview
 
 Large models may exceed the memory capacity of a single accelerator (e.g., a CUDA GPU). These features allow you to:
-1.	Annotate model layers so that specific parts of the model are directed to specific devices (CPU, GPU, NPU).
-2.	Collect per-node memory statistics during a profiling run.
-3.	Set a memory budget for an EP so that ONNX Runtime only places nodes on the accelerator until the budget is exhausted; remaining nodes are then eligible for assignment by the subsequent EPs in the session's provider list (often CPU, but not necessarily).
+1. Annotate model layers so that specific parts of the model are directed to specific devices (CPU, GPU, NPU).
+2. Collect per-node memory statistics during a profiling run.
+3. Set a memory budget for an EP so that ONNX Runtime only places nodes on the accelerator until the budget is exhausted; remaining nodes are then eligible for assignment by the subsequent EPs in the session's provider list (often CPU, but not necessarily).
 
 Together, these form a two-phase workflow: profile the model once to collect memory data, then partition it in production using that data and a memory limit.
 
@@ -15,11 +15,11 @@ Together, these form a two-phase workflow: profile the model once to collect mem
 
 ### Concept
 
-Each node in an ONNX model can carry a metadata property called layer_ann (layering annotation). This is a free-form string that identifies which logical layer or group the node belongs to. At session creation time, you provide a configuration that maps annotation patterns to target devices. ONNX Runtime then uses these mappings to pre-assign nodes to the corresponding EPs before the normal capability-based partitioning runs.
+Each node in an ONNX model can carry a metadata property called `layer_ann` (layering annotation). This is a free-form string that identifies which logical layer or group the node belongs to. At session creation time, you provide a configuration that maps annotation patterns to target devices. ONNX Runtime then uses these mappings to pre-assign nodes to the corresponding EPs before the normal capability-based partitioning runs.
 
 ### Annotating the Model
 
-Annotations are stored in each ONNX NodeProto's metadata_props field with the key layer_ann. You can add them manually using the ONNX Python API:
+Annotations are stored in each ONNX `NodeProto`'s `metadata_props` field with the key `layer_ann`. You can add them manually using the ONNX Python API:
 
 ```python
 import onnx
@@ -90,7 +90,7 @@ You can also use `ModelBuilder` instead of `OnnxConversion` — both paths apply
 #### Step 2 — Run the workflow
 
 ```bash
-pip install olive-ai[auto-opt]
+pip install 'olive-ai[auto-opt]'
 olive run --config annotate_model.json
 ```
 
@@ -120,13 +120,15 @@ The annotated model is now ready for use with the ORT session options described 
 
 Use the session option `session.layer_assignment_settings` to tell ONNX Runtime how to map annotations to devices.
 
-`device1(annotation1, annotation2, ...); device2(=annotation3, annotation4, ...)`
+```
+device1(annotation1, annotation2, ...); device2(=annotation3, annotation4, ...)
+```
 
-- device: a recognized device designator such as cpu, gpu, or npu, matched against the execution providers registered in the session.
-- annotation: string to match against the layer_ann value on each node.
-- = prefix: denotes an exact match. Without =, the annotation is treated as a prefix match (any node whose layer_ann starts with the string will match).
+- `device`: a recognized device designator such as `cpu`, `gpu`, or `npu`, matched against the execution providers registered in the session.
+- `annotation`: string to match against the `layer_ann` value on each node.
+- `=` prefix: denotes an exact match. Without `=`, the annotation is treated as a prefix match (any node whose `layer_ann` starts with the string will match).
 - Prefix rules have higher priority than exact-match rules. Within the same match type, priority is left-to-right.
-- Multiple device rules are separated by ;
+- Multiple device rules are separated by `;`.
 
 ```python
 import onnxruntime as ort
@@ -192,7 +194,7 @@ This produces a CSV file with columns:
 
 In this example, `node_memory_stats.csv` is a relative path. Relative paths are resolved against the model's directory when the model was loaded from a filesystem path. If you provide an absolute path, that path is used as-is. If the model was not loaded from a filesystem path (for example, it was loaded from bytes), the output file is written relative to the current working directory.
 
-Multiple Run() calls update the stats with the maximum values observed per node.
+Multiple `session.run()` calls update the stats with the maximum values observed per node.
 
 ### Step 2: Partition with a Memory Budget
 
@@ -233,12 +235,12 @@ opts.add_session_config_entry(
 ### Setting Format Summary
 The value of `session.resource_cuda_partitioning_settings` is a comma-separated pair:
 
-|Format|Meaning|
+| Format | Meaning |
 |:------|:-------|
-|`<limit_kb>,<stats_file>`|Use both memory limit and pre-recorded stats|
-|`<limit_kb>,`| Memory limit only (ad-hoc estimation)|
-|`,<stats_file>`|	Stats only (no explicit limit)|
-|`,`| Neither (EP attempts auto-detection)|
+| `<limit_kb>,<stats_file>` | Use both memory limit and pre-recorded stats |
+| `<limit_kb>,` | Memory limit only (ad-hoc estimation) |
+| `,<stats_file>` | Stats only (no explicit limit) |
+| `,` | Neither (EP attempts auto-detection) |
 
 The stats file path follows the same resolution rules described above: relative paths are resolved against the model's directory, absolute paths are used as-is.
 
