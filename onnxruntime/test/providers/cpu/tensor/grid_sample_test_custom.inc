@@ -71,3 +71,87 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_zeros_mixed_bound
   test.AddOutput<TypeParam>("Y", Y_shape, Y_data);
   RunTests(test, GetExecutionProviders());
 }
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_reflection_extreme_coords) {
+  // Regression test: extreme grid coordinates caused integer overflow in GsReflect,
+  // leading to heap out-of-bounds reads in reflection padding mode.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  // Small 1x1x2x2 input image
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(2.0f),
+                                          TypeParam(3.0f), TypeParam(4.0f)};
+
+  // Grid with extreme coordinate values that previously caused overflow
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(1.0e+20f), TypeParam(1.0e+20f),
+      TypeParam(-1.0e+20f), TypeParam(-1.0e+20f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+
+  // Non-finite denormalized coordinates produce 0 output (treated as fully out-of-bounds).
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(0.0f), TypeParam(0.0f)});
+  RunTests(test, GetExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_nan_coords) {
+  // Regression test: NaN grid coordinates caused undefined behavior in GsReflect
+  // via wild int64 values from static_cast<int64_t>(floor(NaN)).
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(2.0f),
+                                          TypeParam(3.0f), TypeParam(4.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(nan_val), TypeParam(nan_val),
+      TypeParam(0.0f), TypeParam(nan_val)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+
+  // Both grid points have at least one NaN coordinate, so both outputs should be 0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(0.0f), TypeParam(0.0f)});
+  RunTests(test, GetExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_reflection_infinity_coords) {
+  // Regression test for Inf grid coordinates with reflection padding.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(2.0f),
+                                          TypeParam(3.0f), TypeParam(4.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  float inf_val = std::numeric_limits<float>::infinity();
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(inf_val), TypeParam(-inf_val),
+      TypeParam(-inf_val), TypeParam(inf_val)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+
+  // Inf coordinates produce Inf after GsDenormalize, so output is 0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(0.0f), TypeParam(0.0f)});
+  RunTests(test, GetExecutionProviders());
+}
