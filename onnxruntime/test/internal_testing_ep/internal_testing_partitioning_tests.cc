@@ -5,10 +5,13 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/utils.h"
+#include "core/providers/partitioning_utils.h"
 #include "core/session/inference_session.h"
 
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/internal_testing_ep/internal_testing_execution_provider.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
@@ -31,6 +34,95 @@ using namespace onnxruntime::internal_testing_ep;
 // tests use onnx format models currently so exclude them from a minimal build.
 // it would be possible to use ORT format models but the same partitioning code would run either way
 #if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(DISABLE_CONTRIB_OPS)
+namespace {
+
+class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
+ public:
+  TwoPassNhwcTestExecutionProvider() : IExecutionProvider{"TwoPassNhwcTestExecutionProvider"} {
+  }
+
+  DataLayout GetPreferredLayout() const override {
+    return DataLayout::NHWC;
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer,
+                const IKernelLookup&,
+                const GraphOptimizerRegistry&,
+                IResourceAccountant*) const override {
+    // Detect second pass by checking if any node already has our EP type assigned
+    // (set during the first-pass assignment). Real NHWC EPs use this pattern to
+    // recognize nodes that were transformed into kMSInternalNHWCDomain.
+    bool second_pass = false;
+    for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const Node* node = graph_viewer.GetNode(node_index);
+      if (node != nullptr && node->GetExecutionProviderType() == Type()) {
+        second_pass = true;
+        break;
+      }
+    }
+
+    auto generate_metadef_name = [this, &graph_viewer]() {
+      HashValue model_hash;
+      const int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+      return std::string(Type()) + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
+    };
+
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const Node* node = graph_viewer.GetNode(node_index);
+      if (node == nullptr) {
+        continue;
+      }
+
+      const bool is_conv = node->OpType() == "Conv";
+      const bool is_log_softmax = node->OpType() == "LogSoftmax";
+      if (!is_conv && !is_log_softmax) {
+        continue;
+      }
+
+      if (second_pass && is_log_softmax) {
+        continue;
+      }
+
+      const auto& assigned_ep = node->GetExecutionProviderType();
+      if (!assigned_ep.empty() && assigned_ep != Type()) {
+        continue;
+      }
+
+      capabilities.push_back(utils::MakeComputeCapability(graph_viewer,
+                                                          std::vector<const Node*>{node},
+                                                          generate_metadef_name,
+                                                          Type(),
+                                                          false));
+    }
+
+    return capabilities;
+  }
+
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    for (size_t i = 0; i < fused_nodes.size(); ++i) {
+      NodeComputeInfo compute_info;
+      compute_info.create_state_func = [](ComputeContext*, FunctionState*) { return 0; };
+      compute_info.release_state_func = [](FunctionState) {};
+      compute_info.compute_func = [](FunctionState, const OrtApi*, OrtKernelContext*) {
+        return Status::OK();
+      };
+      node_compute_funcs.push_back(std::move(compute_info));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  mutable ModelMetadefIdGenerator metadef_id_generator_;
+};
+
+}  // namespace
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
@@ -128,6 +220,61 @@ TEST(InternalTestingEP, TestDependenciesCorrectlyHandled) {
   ASSERT_EQ(num_partitions, 2);
   ASSERT_EQ(num_other_nodes, 2);
 }
+
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(InternalTestingEP, NhwcSecondPassDropFallsBackFromCpuKernelNode) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcSecondPassDropFallsBackFromCpuKernelNode",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  const std::vector<int64_t> tensor_shape{1, 1, 3, 3};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* weights = builder.MakeInitializer<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{1.0f});
+  auto* conv_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  builder.AddConvNode(input, weights, conv_output);
+  builder.AddNode("LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{output});
+  builder.SetGraphOutputs();
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+  SessionOptions so;
+  auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+  ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::make_unique<TwoPassNhwcTestExecutionProvider>()));
+
+  ASSERT_STATUS_OK(session->Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session->Initialize());
+
+  bool saw_log_softmax = false;
+  int num_ep_nodes = 0;
+  for (const auto& node : session->GetGraph().Nodes()) {
+    if (node.GetExecutionProviderType() == "TwoPassNhwcTestExecutionProvider") {
+      ++num_ep_nodes;
+    }
+
+    if (node.OpType() == "LogSoftmax") {
+      saw_log_softmax = true;
+      EXPECT_NE(node.GetExecutionProviderType(), "TwoPassNhwcTestExecutionProvider");
+    }
+  }
+
+  EXPECT_GT(num_ep_nodes, 0);
+  EXPECT_TRUE(saw_log_softmax);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 // Infrastructure that was used to check NNAPI coverage.
 // Ideally this could be updated to read the model paths, supported ops and stop ops from input files
