@@ -287,7 +287,9 @@ endif()
 
 if(WIN32)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+  target_link_libraries(onnxruntime PRIVATE delayimp.lib) # required if we're delay loading anything
 endif()
+
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT WIN32)
   set_target_properties(onnxruntime PROPERTIES
