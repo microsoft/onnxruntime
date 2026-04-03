@@ -15,6 +15,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/providers.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {

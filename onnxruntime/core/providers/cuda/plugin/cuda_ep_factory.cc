@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <climits>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -103,7 +105,7 @@ std::string GetProviderOptionPrefix(std::string_view provider_name) {
   return "ep." + onnxruntime::utils::GetLowercaseString(std::string{provider_name}) + ".";
 }
 
-void LogWarning(const OrtApi& ort_api, const OrtLogger& logger, const char* file, int line,
+void LogWarning(const OrtApi& ort_api, const OrtLogger& logger, const ORTCHAR_T* file, int line,
                 const char* function, const char* msg) {
   OrtStatus* st = ort_api.Logger_LogMessage(&logger, ORT_LOGGING_LEVEL_WARNING, msg, file, line, function);
   if (st != nullptr) {
@@ -135,6 +137,13 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
   size_t& num_ep_devices = *p_num_ep_devices;
   num_ep_devices = 0;
+
+  // Clear stale ordinal mappings from any prior enumeration.
+  {
+    std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
+    factory->ordinal_to_device_key_.clear();
+  }
+
   auto release_ep_devices = [&](OrtStatus* status) -> OrtStatus* {
     for (size_t j = 0; j < num_ep_devices; ++j) {
       factory->ep_api_.ReleaseEpDevice(ep_devices[j]);
@@ -282,12 +291,19 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     if (ep_metadata && ep_metadata[0]) {
       const char* ordinal_str = factory->ort_api_.GetKeyValue(ep_metadata[0], "cuda_device_id");
       if (ordinal_str) {
-        cuda_ordinal = std::atoi(ordinal_str);
+        char* end = nullptr;
+        long parsed = std::strtol(ordinal_str, &end, 10);
+        if (end == ordinal_str || *end != '\0' || parsed < 0 || parsed > std::numeric_limits<int>::max()) {
+          return factory->ort_api_.CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              (std::string("Invalid cuda_device_id in ep_metadata: '") + ordinal_str + "'").c_str());
+        }
+        cuda_ordinal = static_cast<int>(parsed);
       }
     }
 
     std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
-    auto* entry = factory->FindDeviceCacheEntryByOrdinal(cuda_ordinal);
+    auto* entry = factory->FindDeviceCacheEntryByOrdinalLocked(cuda_ordinal);
     if (!entry) {
       return factory->ort_api_.CreateStatus(
           ORT_INVALID_ARGUMENT,
@@ -330,7 +346,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
                             ". Using default value.";
 
     OrtStatus* st = factory->ort_api_.Logger_LogMessage(
-        logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), "cuda_ep_factory.cc", __LINE__, "CudaEpFactory");
+        logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), ORT_FILE, __LINE__, "CudaEpFactory");
     if (st != nullptr) {
       factory->ort_api_.ReleaseStatus(st);
     }
@@ -582,7 +598,7 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
       delete static_cast<CudaPinnedAllocator*>(allocator);
       return;
     default:
-      LogWarning(factory->ort_api_, factory->default_logger_, __FILE__, __LINE__,
+      LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__,
                  "CudaEpFactory::ReleaseAllocatorImpl",
                  "ReleaseAllocatorImpl received an unknown CudaAllocatorKind. Leaking the allocator instance.");
       assert(false && "Unknown CudaAllocatorKind");
@@ -626,8 +642,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
   EXCEPTION_TO_STATUS_END
 }
 
-CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinal(int cuda_ordinal) {
-  std::lock_guard<std::mutex> lock(device_cache_mutex_);
+CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinalLocked(int cuda_ordinal) {
   auto key_it = ordinal_to_device_key_.find(cuda_ordinal);
   if (key_it == ordinal_to_device_key_.end()) {
     return nullptr;
@@ -637,6 +652,11 @@ CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinal(in
     return nullptr;
   }
   return &cache_it->second;
+}
+
+CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinal(int cuda_ordinal) {
+  std::lock_guard<std::mutex> lock(device_cache_mutex_);
+  return FindDeviceCacheEntryByOrdinalLocked(cuda_ordinal);
 }
 
 CudaArenaAllocator* CudaEpFactory::GetDeviceArenaForDevice(int device_id) {

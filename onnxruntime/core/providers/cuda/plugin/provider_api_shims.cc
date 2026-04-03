@@ -14,8 +14,17 @@
 namespace onnxruntime {
 
 std::string GetEnvironmentVar(const std::string& var_name) {
+#ifdef _MSC_VER
+  char* buf = nullptr;
+  size_t len = 0;
+  _dupenv_s(&buf, &len, var_name.c_str());
+  std::string result = buf ? std::string(buf) : std::string();
+  free(buf);
+  return result;
+#else
   const char* val = std::getenv(var_name.c_str());
   return val ? std::string(val) : std::string();
+#endif
 }
 
 namespace math {

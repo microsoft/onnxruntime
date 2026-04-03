@@ -40,9 +40,12 @@ class CudaAllocatorBase : public OrtAllocator {
   const OrtMemoryInfo* memory_info_;
 };
 
-static_assert(std::is_standard_layout_v<CudaAllocatorBase>,
-              "CudaAllocatorBase must be standard-layout so that OrtAllocator* and "
-              "CudaAllocatorBase* share the same address.");
+// CudaAllocatorBase derives from OrtAllocator via single non-virtual inheritance.
+// This guarantees OrtAllocator sits at offset 0 in the derived layout, so
+// static_cast between OrtAllocator* and CudaAllocatorBase* is safe.
+static_assert(!std::is_polymorphic_v<CudaAllocatorBase>,
+              "CudaAllocatorBase must not be polymorphic (no virtual functions) "
+              "to ensure OrtAllocator is at offset 0.");
 
 /// Allocator statistics tracked by arena allocators.
 struct AllocatorStats {

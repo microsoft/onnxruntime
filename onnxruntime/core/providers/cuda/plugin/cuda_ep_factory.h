@@ -14,6 +14,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/common/inlined_containers.h"
+
 namespace onnxruntime {
 namespace cuda_plugin {
 
@@ -137,11 +139,14 @@ class CudaEpFactory : public OrtEpFactory {
   std::unordered_map<HardwareDeviceKey, DeviceCacheEntry, HardwareDeviceKeyHasher> device_cache_;
 
   // Ordinal-to-HardwareDeviceKey mapping built during GetSupportedDevicesImpl.
-  std::unordered_map<int, HardwareDeviceKey> ordinal_to_device_key_;
+  InlinedHashMap<int, HardwareDeviceKey> ordinal_to_device_key_;
 
   /// Find the DeviceCacheEntry for a given CUDA ordinal.
   /// Returns nullptr if the ordinal has not been registered.
   DeviceCacheEntry* FindDeviceCacheEntryByOrdinal(int cuda_ordinal);
+
+  /// Same as FindDeviceCacheEntryByOrdinal but assumes device_cache_mutex_ is already held.
+  DeviceCacheEntry* FindDeviceCacheEntryByOrdinalLocked(int cuda_ordinal);
 
   // Kernel registry (cached, shared across EP instances)
   OrtKernelRegistry* kernel_registry_ = nullptr;

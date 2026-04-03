@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -144,9 +145,11 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_CudaMemoryIsValid) {
   auto allocator = ort_env->GetSharedAllocator(device_memory_info);
   ASSERT_NE(allocator, nullptr);
 
-  const size_t kBytes = 4096;
+  constexpr size_t kBytes = 4096;
   void* gpu_ptr = allocator.Alloc(kBytes);
   ASSERT_NE(gpu_ptr, nullptr);
+  auto gpu_ptr_guard = std::unique_ptr<void, std::function<void(void*)>>(
+      gpu_ptr, [&allocator](void* p) { allocator.Free(p); });
 
   ASSERT_EQ(cudaSuccess, cudaMemset(gpu_ptr, 0xAB, kBytes));
   ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
@@ -156,8 +159,6 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_CudaMemoryIsValid) {
   for (size_t i = 0; i < kBytes; ++i) {
     ASSERT_EQ(host_buf[i], 0xAB) << "Mismatch at byte " << i;
   }
-
-  allocator.Free(gpu_ptr);
 }
 
 // Verify that multiple alloc/free cycles reuse arena memory (no new extensions).
@@ -166,7 +167,7 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_ArenaReusesMemory) {
   auto allocator = ort_env->GetSharedAllocator(device_memory_info);
   ASSERT_NE(allocator, nullptr);
 
-  const size_t kBytes = 512;
+  constexpr size_t kBytes = 512;
 
   void* p1 = allocator.Alloc(kBytes);
   ASSERT_NE(p1, nullptr);
@@ -267,14 +268,14 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_LargeAllocation) {
   auto allocator = ort_env->GetSharedAllocator(device_memory_info);
   ASSERT_NE(allocator, nullptr);
 
-  const size_t kLargeSize = 32 * 1024 * 1024;
+  constexpr size_t kLargeSize = 32 * 1024 * 1024;
   void* p = allocator.Alloc(kLargeSize);
   ASSERT_NE(p, nullptr);
+  auto p_guard = std::unique_ptr<void, std::function<void(void*)>>(
+      p, [&allocator](void* ptr) { allocator.Free(ptr); });
 
   ASSERT_EQ(cudaSuccess, cudaMemset(p, 0xFF, kLargeSize));
   ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
-
-  allocator.Free(p);
 }
 
 // Verify GetStats reports InUse correctly during allocation lifecycle.
@@ -286,7 +287,7 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_StatsTrackBytesInUse) {
   auto stats_before = allocator.GetStats();
   int64_t inuse_before = GetStatInt(stats_before, "InUse");
 
-  const size_t kBytes = 4096;
+  constexpr size_t kBytes = 4096;
   void* p = allocator.Alloc(kBytes);
   ASSERT_NE(p, nullptr);
 

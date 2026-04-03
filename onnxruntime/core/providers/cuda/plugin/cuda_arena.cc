@@ -253,6 +253,9 @@ void* ArenaImpl::Reserve(size_t size) {
   CUDA_ARENA_LOG(INFO, "Reserving memory in ArenaImpl for " << allocator_name_ << " size: " << size);
 
   void* ptr = device_allocator_->Alloc(device_allocator_.get(), size);
+  if (ptr == nullptr) {
+    return nullptr;
+  }
   CUDA_ARENA_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end(), __FUNCTION__);
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
   stats_.bytes_in_use += size;
@@ -326,7 +329,10 @@ void* ArenaImpl::AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bo
     DumpMemoryLog(rounded_bytes);
   }
 
-  throw std::runtime_error(api_.GetErrorMessage(status));
+  // Release the OrtStatus and return nullptr instead of throwing — allocate
+  // calls must not propagate exceptions across the C API boundary.
+  api_.ReleaseStatus(status);
+  return nullptr;
 }
 
 OrtStatus* ArenaImpl::GetStats(OrtKeyValuePairs** stats) {
@@ -657,25 +663,17 @@ OrtStatus* ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream_imp
   }
 
   // Coalesce free chunks after clearing stream assignments.
+  // Coalesce returns the (possibly different) handle of the merged chunk,
+  // so we must use that handle for the remainder of the iteration.
   for (const auto& region : region_manager_.regions()) {
-    ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());
-    ChunkHandle h = region_begin_chunk;
+    ChunkHandle h = region_manager_.get_handle(region.ptr());
     while (h != kInvalidChunkHandle) {
       Chunk* c = ChunkFromHandle(h);
       if (!c->in_use()) {
         RemoveFreeChunkFromBin(h);
-        ChunkHandle h_next = c->next;
-        Chunk* c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
-
-        while (c_next && !c_next->in_use() && c_next->stream == c->stream) {
-          Coalesce(h);
-          h_next = c->next;
-          c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
-        }
-
-        if (c->bin_num == kInvalidBinNum) {
-          InsertFreeChunkIntoBin(h);
-        }
+        h = Coalesce(h);
+        c = ChunkFromHandle(h);
+        InsertFreeChunkIntoBin(h);
       }
       h = c->next;
     }

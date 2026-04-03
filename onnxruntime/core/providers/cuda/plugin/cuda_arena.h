@@ -146,7 +146,7 @@ struct ArenaConfig {
     std::ostringstream ss;                                                                                 \
     ss << __VA_ARGS__;                                                                                     \
     OrtStatus* _log_status = api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), \
-                                                    __FILE__, __LINE__, __FUNCTION__);                     \
+                                                    ORT_FILE, __LINE__, __FUNCTION__);                     \
     if (_log_status) api_.ReleaseStatus(_log_status);                                                      \
   } while (false)
 
@@ -527,34 +527,57 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
   }
 
  private:
-  static void* ORT_API_CALL AllocImpl(OrtAllocator* this_, size_t size) {
-    auto& arena = *static_cast<CudaArenaAllocator*>(this_);
-    return arena.impl_->Alloc(size);
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* this_, size_t size) noexcept {
+    try {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      return arena.impl_->Alloc(size);
+    } catch (...) {
+      return nullptr;
+    }
   }
 
-  static void* ORT_API_CALL AllocOnStreamImpl(OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
-    auto& arena = *static_cast<CudaArenaAllocator*>(this_);
-    return arena.impl_->AllocOnStream(size, stream);
+  static void* ORT_API_CALL AllocOnStreamImpl(OrtAllocator* this_, size_t size, OrtSyncStream* stream) noexcept {
+    try {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      return arena.impl_->AllocOnStream(size, stream);
+    } catch (...) {
+      return nullptr;
+    }
   }
 
-  static void* ORT_API_CALL ReserveImpl(OrtAllocator* this_, size_t size) {
-    auto& arena = *static_cast<CudaArenaAllocator*>(this_);
-    return arena.impl_->Reserve(size);
+  static void* ORT_API_CALL ReserveImpl(OrtAllocator* this_, size_t size) noexcept {
+    try {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      return arena.impl_->Reserve(size);
+    } catch (...) {
+      return nullptr;
+    }
   }
 
-  static void ORT_API_CALL FreeImpl(OrtAllocator* this_, void* p) {
-    auto& arena = *static_cast<CudaArenaAllocator*>(this_);
-    arena.impl_->Free(p);
+  static void ORT_API_CALL FreeImpl(OrtAllocator* this_, void* p) noexcept {
+    try {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      arena.impl_->Free(p);
+    } catch (...) {
+      // Swallow: exceptions must not propagate across C ABI boundary.
+    }
   }
 
-  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_) {
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_) noexcept {
     const auto& arena = *static_cast<const CudaArenaAllocator*>(this_);
     return arena.GetMemoryInfo();
   }
 
   static OrtStatus* ORT_API_CALL GetStatsImpl(const OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
-    const auto& arena = *static_cast<const CudaArenaAllocator*>(this_);
-    return arena.impl_->GetStats(out);
+    try {
+      const auto& arena = *static_cast<const CudaArenaAllocator*>(this_);
+      return arena.impl_->GetStats(out);
+    } catch (const std::exception& ex) {
+      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    } catch (...) {
+      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                        "CudaArenaAllocator::GetStats failed with an unknown exception.");
+    }
   }
 
   std::unique_ptr<ArenaImpl> impl_;

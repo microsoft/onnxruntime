@@ -178,7 +178,7 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
   if (arena) {
     OrtStatus* arena_status = arena->ResetChunksUsingStream(this_ptr);
     if (arena_status != nullptr) {
-      // Log the error but don't fail the session run end — buffer cleanup is more critical.
+      // Ignore the arena reset error and continue session run end — buffer cleanup is more critical.
       Ort::GetApi().ReleaseStatus(arena_status);
     }
   }
