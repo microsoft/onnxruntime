@@ -158,7 +158,7 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       // position_ids_format == 1 means position_ids is a 2D array of size (batch_size, sequence_length)
       std::ptrdiff_t b_s_index = static_cast<std::ptrdiff_t>(b) * sequence_length + s;
       if (position_ids_format != 0) {
-        b_s_index = position_ids[b_s_index];
+        b_s_index = static_cast<std::ptrdiff_t>(position_ids[b_s_index]);
       }
       const std::ptrdiff_t cache_offset = b_s_index * half_rotary_emb_dim;
       cos_data = cos_cache + cache_offset;

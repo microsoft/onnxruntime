@@ -956,15 +956,28 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsTotalElementsOverflow) {
   constexpr int kMaxInt = std::numeric_limits<int>::max();
 
   contrib::rotary_embedding_helper::RotaryParameters parameters{};
-  parameters.batch_size = kMaxInt;
-  parameters.sequence_length = kMaxInt;
-  parameters.num_heads = 3;
+  if (std::numeric_limits<std::ptrdiff_t>::max() <= std::numeric_limits<int>::max()) {
+    // On narrow ptrdiff_t platforms, kMaxInt * kMaxInt would overflow earlier when validating
+    // the position_ids element count. Use floor(sqrt(INT_MAX)) for batch and sequence so that
+    // batch_size * sequence_length still fits, then rely on num_heads to trigger the later
+    // total_elements overflow path this regression is targeting.
+    parameters.batch_size = 46340;
+    parameters.sequence_length = 46340;
+    parameters.num_heads = 2;
+    parameters.max_sequence_length = 46340;
+  } else {
+    // On wide ptrdiff_t platforms, batch_size * sequence_length still fits in ptrdiff_t, so use
+    // the largest int dimensions directly and let the extra num_heads factor overflow total_elements.
+    parameters.batch_size = kMaxInt;
+    parameters.sequence_length = kMaxInt;
+    parameters.num_heads = 3;
+    parameters.max_sequence_length = kMaxInt;
+  }
   parameters.head_size = 4;
   parameters.head_stride = 4;
   parameters.seq_stride = 8;
   parameters.batch_stride = 8;
   parameters.position_ids_format = 0;
-  parameters.max_sequence_length = kMaxInt;
   parameters.rotary_embedding_dim = 4;
 
   const int64_t position_ids[] = {0};
