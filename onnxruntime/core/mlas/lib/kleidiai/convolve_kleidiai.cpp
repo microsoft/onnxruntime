@@ -7,6 +7,7 @@
 #include <cassert>
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <functional>
 #include <array>
 #include <vector>
@@ -19,9 +20,18 @@
 
 #include "kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x32p2vlx1_x32p_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme.h"
+#if defined(MLAS_USE_SVE)
+#include "kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x32p4vlx1b_x32_x32_sve.h"
+#endif
 
 
+// SME/SME2 convolution kernel (packed-LHS IMATMUL).
 const KaiF32IMatmulKernel& imatmul_conv = GetKleidiAIF32IMatmulUKernel();
+
+#if defined(MLAS_USE_SVE)
+// SVE convolution kernel (indirection-LHS IMATMUL).
+const KaiF32SveIMatmulKernel imatmul_conv_sve = GetKleidiAISveImatmulUKernel();
+#endif
 
 
 // Right-hand-side (weights) cache key
@@ -177,6 +187,75 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
     return true;
 }
 
+#if defined(MLAS_USE_SVE)
+static bool CheckCapabilitiesSve(const MLAS_CONV_PARAMETERS* Parameters) {
+    const size_t out_h = ComputeConvOutSize(
+        Parameters->InputShape[0],
+        ComputeKernelSize(Parameters->DilationShape[0], Parameters->KernelShape[0]),
+        Parameters->Padding[0],
+        Parameters->StrideShape[0]);
+
+    const size_t out_w = ComputeConvOutSize(
+        Parameters->InputShape[1],
+        ComputeKernelSize(Parameters->DilationShape[1], Parameters->KernelShape[1]),
+        Parameters->Padding[1],
+        Parameters->StrideShape[1]);
+
+    if (Parameters->Dimensions != 2) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSve rejected: unsupported Dimensions=" << Parameters->Dimensions);
+        return false;
+    }
+
+    if (Parameters->BatchCount != 1) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSve rejected: unsupported BatchCount=" << Parameters->BatchCount);
+        return false;
+    }
+
+    if (Parameters->Beta != 0.f) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSve rejected: unsupported Beta=" << Parameters->Beta);
+        return false;
+    }
+
+    if (Parameters->Padding[0] != Parameters->Padding[1] ||
+        Parameters->Padding[0] != Parameters->Padding[2] ||
+        Parameters->Padding[0] != Parameters->Padding[3]) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSve rejected: asymmetric padding="
+                           << Parameters->Padding[0] << ","
+                           << Parameters->Padding[1] << ","
+                           << Parameters->Padding[2] << ","
+                           << Parameters->Padding[3]);
+        return false;
+    }
+
+    if (out_h == 0 || out_w == 0) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSve rejected: zero output size out_h=" << out_h << " out_w=" << out_w
+                           << " input_h=" << Parameters->InputShape[0]
+                           << " input_w=" << Parameters->InputShape[1]
+                           << " kernel_h=" << Parameters->KernelShape[0]
+                           << " kernel_w=" << Parameters->KernelShape[1]
+                           << " dilation_h=" << Parameters->DilationShape[0]
+                           << " dilation_w=" << Parameters->DilationShape[1]
+                           << " stride_h=" << Parameters->StrideShape[0]
+                           << " stride_w=" << Parameters->StrideShape[1]
+                           << " padding=" << Parameters->Padding[0]);
+        return false;
+    }
+
+    if (Parameters->FilterCount == 1) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSve rejected: FilterCount==1");
+        return false;
+    }
+
+    if (Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSve rejected: kernel too small kh="
+                           << Parameters->KernelShape[0] << " kw=" << Parameters->KernelShape[1]);
+        return false;
+    }
+
+    return true;
+}
+#endif
+
 //General purpose axis swapping
 static auto Transpose4D(std::array<const size_t,4> shape_in,
                         const float* in,
@@ -301,6 +380,8 @@ static std::unique_ptr<float[]> NChwToNhwc(const size_t n,
     return t;
 }
 
+
+
 static void MultiThreadedLHSPackSme(MLAS_THREADPOOL* ThreadPool, const size_t ci, const size_t m, const size_t kh,
                                     const size_t kw, const void * const* lhs_ptrs, std::byte* lhs_data,
                                     const float* in_data,
@@ -380,6 +461,51 @@ static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(const size_t co, const
         return packed;
     }
 }
+
+#if defined(MLAS_USE_SVE)
+static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSve(const size_t co, const size_t ci,
+                                                          const size_t kh, const size_t kw,
+                                                          const size_t dilationh, const size_t dilationw,
+                                                          const float* weights, const float* bias,
+                                                          MLAS_THREADPOOL* ThreadPool)
+{
+    thread_local std::unordered_map<RhsCacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
+
+    RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, HashWeights(weights) };
+
+    auto found = rhs_cache.find(key);
+    if (found != rhs_cache.end()) {
+        return found->second;
+    } else {
+        auto nhwc = NChwToNhwc(co, ci, kh, kw, weights, dilationh, dilationw, true, ThreadPool);
+
+        const auto d_kh = ComputeKernelSize(dilationh, kh);
+        const auto d_kw = ComputeKernelSize(dilationw, kw);
+
+        auto t_weights = Transpose4D({co, d_kh, d_kw, ci}, &nhwc[0], {1, 2, 3, 0});
+
+        const auto packed_size = kai_get_rhs_packed_size_rhs_imatmul_pack_kxn_x32p4vlx1b_x32_x32_sve(co, d_kh * d_kw, ci);
+        auto packed = std::shared_ptr<std::byte[]>(new std::byte[packed_size], std::default_delete<std::byte[]>());
+
+        rhs_cache[key] = packed;
+
+        std::vector<float> bias_copy;
+        if (bias) {
+            bias_copy.assign(bias, bias + co);
+        } else {
+            bias_copy.resize(co, 0.0f);
+        }
+
+        KLEIDIAI_KERNEL_LOG("kai_run_rhs_imatmul_pack_kxn_x32p4vlx1b_x32_x32_sve"
+                            << " N=" << co << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci << " rhs_stride_row=" << (co * sizeof(float)));
+        kai_run_rhs_imatmul_pack_kxn_x32p4vlx1b_x32_x32_sve(
+            co, d_kh * d_kw, ci, co * sizeof(float), &t_weights[0], bias_copy.data(), packed.get()
+        );
+
+        return packed;
+    }
+}
+#endif
 
 static std::shared_ptr<const void*[]> LhsPtrFill(const size_t ci, const size_t ih, const size_t iw,
                                                  const size_t kh, const size_t kw, size_t sh, size_t sw,
@@ -525,6 +651,67 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
     return lhs;
 }
 
+#if defined(MLAS_USE_SVE)
+static std::shared_ptr<const void*[]> LhsPtrFillSveIndirect(const size_t ci, const size_t ih, const size_t iw,
+                                                            const size_t kh, const size_t kw, const size_t sh, const size_t sw,
+                                                            const size_t padding,
+                                                            const float* pad_ptr,
+                                                            const size_t m_step) {
+    const auto ih_out_size = (ih + 2 * padding) - kh + 1;
+    const auto iw_out_size = (iw + 2 * padding) - kw + 1;
+
+    const auto m = ComputeConvOutSize(ih, kh, padding, sh) * ComputeConvOutSize(iw, kw, padding, sw);
+    const auto k_chunk_count = kh * kw;
+
+    // KAI indirect input (IMATMUL) expects a pointer table which is "block-reordered" in the M dimension:
+    // it is laid out as blocks of `m_step` rows, and within each block, entries are stored per-string as
+    // `string * m_step + row_in_block`.
+    //
+    // The total number of rows is rounded up to `m_step` to ensure the micro-kernel never reads uninitialized
+    // entries for partial tiles.
+    const size_t m_rounded = m_step * MlasDivRoundup(m, m_step);
+
+    auto lhs_ptrs = std::shared_ptr<const void*[]>(new const void*[k_chunk_count * m_rounded],
+                                                  std::default_delete<const void*[]>());
+    auto lhs_ptrs_ = const_cast<const void**>(lhs_ptrs.get());
+
+    // Default everything to padding (encoded as an absolute pointer equal to pad_ptr).
+    std::fill(lhs_ptrs_, lhs_ptrs_ + (k_chunk_count * m_rounded), reinterpret_cast<const void*>(pad_ptr));
+
+    auto ptrs_offset = [k_chunk_count, m_step](size_t string, size_t row) -> size_t {
+        // This matches KleidiAI test `reorder_block(..., block_height=m_step, block_width=1)`.
+        return ((row / m_step) * k_chunk_count * m_step) + (string * m_step) + (row % m_step);
+    };
+
+    auto pixel_offset_bytes = [=](size_t h, size_t w) -> size_t {
+        const size_t offset_floats = (h * iw + w) * ci;
+        return offset_floats * sizeof(float);
+    };
+
+    size_t row{0};
+    for (size_t oh = 0; oh < ih_out_size && row < m; oh += sh) {
+        for (size_t ow = 0; ow < iw_out_size && row < m; ow += sw, ++row) {
+            size_t string{0};
+            for (size_t kh_ = 0; kh_ < kh; ++kh_) {
+                for (size_t kw_ = 0; kw_ < kw; ++kw_, ++string) {
+                    const ptrdiff_t h_in = static_cast<ptrdiff_t>(oh + kh_) - static_cast<ptrdiff_t>(padding);
+                    const ptrdiff_t w_in = static_cast<ptrdiff_t>(ow + kw_) - static_cast<ptrdiff_t>(padding);
+
+                    if (h_in >= 0 && w_in >= 0 &&
+                        static_cast<size_t>(h_in) < ih &&
+                        static_cast<size_t>(w_in) < iw) {
+                        lhs_ptrs_[ptrs_offset(string, row)] =
+                            reinterpret_cast<const void*>(pixel_offset_bytes(static_cast<size_t>(h_in), static_cast<size_t>(w_in)));
+                    }
+                }
+            }
+        }
+    }
+
+    return lhs_ptrs;
+}
+#endif
+
 static void ConvolveSme(const size_t co, //channels out
                         const size_t ci,  //channels in
                         const size_t ih,  //image height
@@ -645,6 +832,174 @@ static void ConvolveSme(const size_t co, //channels out
     }
 }
 
+#if defined(MLAS_USE_SVE)
+static void ConvolveSve(const size_t co, //channels out
+                        const size_t ci,  //channels in
+                        const size_t ih,  //image height
+                        const size_t iw,  //image width
+                        const size_t kh,  //kernel height
+                        const size_t kw,  //kernel width
+                        const size_t sh,  //kernel stride height
+                        const size_t sw,  //kernel stride width
+                        const size_t dilationh, //kernel dilation stride
+                        const size_t dilationw, //kernel dilation stride
+                        const size_t padding,   //padding size
+                        const size_t groups,       //number of filter groups
+                        const float* weights,      //kernel weights [co,ci,ih,iw]
+                        const float* bias,         //kernel biases
+                        const float* in,           //in image data
+                        float* out,                //out image data
+                        float* tmp_mlas_aligned,   //intermediate buffer if we need to perform a transpose
+                        const float beta,
+                        MLAS_THREADPOOL* ThreadPool) {
+    auto ApplyBetaToOutput = [&](float* dst, const float* original_out, size_t rows, size_t cols, size_t ldc, float beta_value) {
+        if (beta_value == 0.0f) {
+            return;
+        }
+
+        for (size_t row = 0; row < rows; ++row) {
+            float* dst_row = dst + row * ldc;
+            const float* original_row = original_out + row * ldc;
+            for (size_t col = 0; col < cols; ++col) {
+                dst_row[col] += beta_value * original_row[col];
+            }
+        }
+    };
+
+    std::vector<float> beta_output_copy;
+
+    const auto d_kh = ComputeKernelSize(dilationh, kh);
+    const auto d_kw = ComputeKernelSize(dilationw, kw);
+
+    const auto m = ComputeConvOutSize(ih, d_kh, padding, sh) *
+                   ComputeConvOutSize(iw, d_kw, padding, sw);
+
+    const size_t n_step = imatmul_conv_sve.ukernel.get_n_step();
+    const size_t m_step = imatmul_conv_sve.ukernel.get_m_step();
+
+    std::array<size_t,3> dim;
+    dim[0] = 1;                          // B
+    dim[1] = MlasDivRoundup(m, m_step);  // M
+    dim[2] = MlasDivRoundup(co, n_step); // N
+
+    auto RequiredTiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), dim[0]*dim[1]*dim[2]);
+
+    dim[1] = MlasDivRoundup(RequiredTiles * dim[1], dim[1] * dim[2]);
+    dim[2] = MlasDivRoundup(RequiredTiles * dim[2], dim[1] * dim[2]);
+
+    const size_t M_step_full = m_step * MlasDivRoundup(MlasDivRoundup(m, dim[1]), m_step);
+    const size_t M_step_blocks = std::max<size_t>(size_t{1}, M_step_full / m_step);
+    const size_t M_step = std::max<size_t>(m_step, std::max<size_t>(size_t{1}, M_step_blocks / 8) * m_step);
+    const size_t N_step = n_step * MlasDivRoundup(MlasDivRoundup(co, dim[2]), n_step);
+
+    dim[1] = MlasDivRoundup(m, M_step);
+    dim[2] = MlasDivRoundup(co, N_step);
+
+    const size_t group_input_size = ci * ih * iw;
+
+    for (size_t g = 0; g < groups; ++g) {
+
+        float* group_out = out;
+        if (beta != 0.0f) {
+            if (beta_output_copy.size() < m * co) {
+                beta_output_copy.resize(m * co);
+            }
+            std::memcpy(beta_output_copy.data(), group_out, m * co * sizeof(float));
+        }
+
+        auto result{group_out};
+        if (co > 1 || beta != 0.0f) {
+            result = tmp_mlas_aligned;
+        }
+
+        // RHS packed is always required.
+        auto rhs = RhsPackWeightsBiasSve(co, ci, kh, kw, dilationh, dilationw, weights, bias, ThreadPool);
+
+        // SVE iMatMul kernel consumes an indirection pointer table rather than a packed LHS.
+        size_t padsize = 256;
+        if (ci > padsize) {
+            padsize = ((ci + padsize - 1) / padsize) * padsize;
+        }
+
+        thread_local std::vector<float> pad_storage;
+
+        if (pad_storage.size() < padsize) {
+            pad_storage.resize(padsize, 0.f);
+        }
+        const float* pad_ptr = pad_storage.data();
+
+        // Convert input to NHWC so each pixel has a contiguous ci-length row.
+        auto nhwc_sve = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
+        const float* nhwc_base = nhwc_sve.get();
+
+        // Build indirection pointer table for the SVE IMATMUL kernel.
+        //
+        // Entries are encoded as byte offsets relative to `lhs_ptr_offset`, except for padding which is
+        // encoded by storing exactly `pad_ptr` (so the kernel can identify padding and avoid applying the offset).
+        const size_t lhs_ptr_offset = reinterpret_cast<size_t>(nhwc_base);
+
+        auto lhs_indirection = LhsPtrFillSveIndirect(ci, ih, iw, d_kh, d_kw, sh, sw, padding, pad_ptr,
+                                                     imatmul_conv_sve.ukernel.get_m_step());
+
+        const size_t k_chunk_count = d_kh * d_kw;
+
+        MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [&](ptrdiff_t tid) {
+            ptrdiff_t MIdx = (tid % (dim[1] * dim[2])) / dim[2];
+            ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
+
+            const size_t rhs_packed_offset =
+                imatmul_conv_sve.ukernel.get_rhs_packed_offset(NIdx * N_step, k_chunk_count, ci);
+
+            auto BTile = reinterpret_cast<const void*>(
+                reinterpret_cast<const std::byte*>(rhs.get()) + rhs_packed_offset
+            );
+
+            auto TileSizeM = (MIdx + 1) * M_step > m ? (m - MIdx * M_step) : M_step;
+            auto TileSizeN = (NIdx + 1) * N_step > co ? (co - NIdx * N_step) : N_step;
+
+            auto CTile = &reinterpret_cast<std::byte*>(result)[
+                MIdx * M_step * co * sizeof(float) +
+                NIdx * N_step * sizeof(float)];
+
+            // Indirection pointer table is block-reordered by the kernel m_step. Advance to the start row for this M tile.
+            const size_t lhs_offset = static_cast<size_t>(MIdx) * M_step * k_chunk_count;
+            const void* indir_base = reinterpret_cast<const void*>(lhs_indirection.get() + lhs_offset);
+
+            KLEIDIAI_KERNEL_LOG(imatmul_conv_sve.name
+                                << " (SVE indirection) M=" << TileSizeM << " N=" << TileSizeN
+                                << " k_chunk_count=" << k_chunk_count << " k_chunk_length=" << ci);
+
+            imatmul_conv_sve.ukernel.run_imatmul(
+                TileSizeM, TileSizeN, k_chunk_count, ci,
+                indir_base, pad_ptr, lhs_ptr_offset,
+                BTile, CTile, co * sizeof(float),
+                -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+            );
+        });
+
+        if (result == tmp_mlas_aligned) {
+            if (co > 1) {
+                MlasTranspose(tmp_mlas_aligned, group_out, m, co, ThreadPool);
+            } else {
+                std::memcpy(group_out, tmp_mlas_aligned, m * co * sizeof(float));
+            }
+        }
+
+        if (beta != 0.0f) {
+            ApplyBetaToOutput(group_out, beta_output_copy.data(), co, m, m, beta);
+        }
+
+        in += group_input_size;
+        out += m * co;
+        weights += co * ci * kh * kw;
+        if (bias) {
+            bias += co;
+        }
+    }
+
+}
+#endif
+
 bool MLASCALL
 ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t Dimensions,
@@ -707,7 +1062,18 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
     Parameters->ThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
-    if(!CheckCapabilitiesSme(Parameters)){
+    // Prefer SME/SME2 at runtime; fallback to SVE if SME is not available.
+    bool ok = false;
+    if (ArmKleidiAI::UseSME || ArmKleidiAI::UseSME2) {
+        ok = CheckCapabilitiesSme(Parameters);
+    }
+#if defined(MLAS_USE_SVE)
+    else if (ArmKleidiAI::UseSVE) {
+        ok = CheckCapabilitiesSve(Parameters);
+    }
+#endif
+
+    if (!ok) {
         return false;
     }
 
@@ -739,18 +1105,40 @@ ArmKleidiAI::MlasConv(
         return false;
     }
 
-    if(!CheckCapabilitiesSme(Parameters)){
-        // Fallback to Default Mlas
+    // Prefer SME/SME2 at runtime; fallback to SVE if SME is not available.
+    if (ArmKleidiAI::UseSME || ArmKleidiAI::UseSME2) {
+        if (!CheckCapabilitiesSme(Parameters)) {
+            return false;
+        }
+
+        ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
+                    Parameters->InputShape[0], Parameters->InputShape[1],         // image dimensions
+                    Parameters->KernelShape[0], Parameters->KernelShape[1],      // kernel dimensions
+                    Parameters->StrideShape[0], Parameters->StrideShape[1],      // kernel stride dimensions
+                    Parameters->DilationShape[0], Parameters->DilationShape[1],  // kernel dilation
+                    Parameters->Padding[0],                                      // image padding
+                    Parameters->GroupCount,                                      // filter groups
+                    Filter, Bias, Input, Output, WorkingBuffer, ThreadPool);
+    }
+#if defined(MLAS_USE_SVE)
+    else if (ArmKleidiAI::UseSVE) {
+        if (!CheckCapabilitiesSve(Parameters)) {
+            return false;
+        }
+
+        ConvolveSve(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
+                    Parameters->InputShape[0], Parameters->InputShape[1],         // image dimensions
+                    Parameters->KernelShape[0], Parameters->KernelShape[1],      // kernel dimensions
+                    Parameters->StrideShape[0], Parameters->StrideShape[1],      // kernel stride dimensions
+                    Parameters->DilationShape[0], Parameters->DilationShape[1],  // kernel dilation
+                    Parameters->Padding[0],                                      // image padding
+                    Parameters->GroupCount,                                      // filter groups
+                    Filter, Bias, Input, Output, WorkingBuffer, Parameters->Beta, ThreadPool);
+    }
+#endif
+    else {
         return false;
-    };
-    ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
-                Parameters->InputShape[0], Parameters->InputShape[1],         // image dimensions
-                Parameters->KernelShape[0], Parameters->KernelShape[1],      // kernel dimensions
-                Parameters->StrideShape[0], Parameters->StrideShape[1],      // kernel stride dimensions
-                Parameters->DilationShape[0], Parameters->DilationShape[1],  // kernel dilation
-                Parameters->Padding[0],                                      // image padding
-                Parameters->GroupCount,                                      // filter groups
-                Filter, Bias, Input, Output, WorkingBuffer, ThreadPool);
+    }
 
     MlasActivation(Parameters->Activation, Output, nullptr, Parameters->FilterCount, Parameters->OutputSize,
                    Parameters->OutputSize);
