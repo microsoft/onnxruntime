@@ -2377,10 +2377,12 @@ struct OrtEp {
    * graph (no control flow nodes, node assignments compatible with GetGraphCaptureNodeAssignmentPolicy),
    * then caches this EP for graph capture.
    *
-   * On the first `Session::Run()`, ORT calls `OnRunStart` → executes normally → `OnRunEnd`.
-   * The EP should use `OnRunStart`/`OnRunEnd` to manage warm-up run counting and to begin/end capture
-   * when ready. ORT automatically re-runs until `IsGraphCaptured()` returns true, so users only
-   * call `Session::Run()` once. On subsequent runs, if `IsGraphCaptured()` returns true, ORT skips
+   * During the first user call to `Session::Run()`, ORT performs N warm-up runs for memory
+   * allocation followed by 1 run to capture the graph. Each warm-up run invokes
+   * `OnRunStart` → normal execution → `OnRunEnd`. The EP should use these callbacks to track
+   * warm-up runs and begin/end capture when ready. ORT automatically re-runs within the same
+   * `Session::Run()` call until `IsGraphCaptured()` returns true, so users only call
+   * `Session::Run()` once. On subsequent calls, if `IsGraphCaptured()` returns true, ORT skips
    * normal execution and calls `ReplayGraph()` directly.
    *
    * \param[in] this_ptr The OrtEp instance.
@@ -2401,7 +2403,8 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graph_annotation_id Identifies which captured graph to query. Defaults to 0.
    *            Applications may set `gpu_graph_id` in run options to capture multiple graphs
-   *            (e.g., for different input shapes) keyed by different IDs.
+   *            (e.g., for different input shapes) keyed by different IDs. A value of -1 means
+   *            graph capture/replay should be skipped for this run.
    * \return true if the graph has been captured, false otherwise.
    *
    * \note Implementation of this function is optional. If set to NULL, ORT assumes no graph has been captured.
@@ -2415,7 +2418,8 @@ struct OrtEp {
    * Called by ORT instead of normal execution when `IsGraphCaptured()` returns true.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[in] graph_annotation_id Identifies which captured graph to replay.
+   * \param[in] graph_annotation_id Identifies which captured graph to replay. A value of -1 means
+   *            graph replay should be skipped for this run.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
