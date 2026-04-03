@@ -104,7 +104,10 @@ Status CheckInputs(const T* input,
     // If it's 3d, it is expected to have shape [batch, seq_len, hidden_size].
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "sequence_length", sequence_length));
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[2], "hidden_size", hidden_size));
-    ORT_RETURN_IF(num_heads <= 0, "RotaryEmbedding: num_heads must be greater than 0 for rank-3 input");
+    if (num_heads <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: num_heads must be greater than 0 for rank-3 input");
+    }
     head_size = hidden_size / num_heads;
   }
 

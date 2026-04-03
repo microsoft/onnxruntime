@@ -102,6 +102,10 @@ TEST(MLOpTest, LinearRegressorUndersizedCoefficients) {
 }
 
 TEST(MLOpTest, LinearRegressorOversizedTargets) {
+  if (std::numeric_limits<int64_t>::max() <= std::numeric_limits<std::ptrdiff_t>::max()) {
+    GTEST_SKIP() << "No int64_t value exceeds ptrdiff_t on this platform.";
+  }
+
   OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
 
   test.AddAttribute("targets", std::numeric_limits<int64_t>::max());
