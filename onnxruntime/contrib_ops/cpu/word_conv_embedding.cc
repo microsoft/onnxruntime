@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-void WordConvEmbedding::CharEmbeddingLookup(
+Status WordConvEmbedding::CharEmbeddingLookup(
     const int* seq_ptr,
     const float* char_embedding_weight_p,
     size_t num_chars,
@@ -27,15 +27,16 @@ void WordConvEmbedding::CharEmbeddingLookup(
       float* cur_dst_ptr = dst + word_inx * word_len * char_embedding_size;
       size_t char_length_to_lookup = std::min(std::max<size_t>(words_len_ptr[word_inx], filter_width), word_len);
       for (size_t char_inx = 0; char_inx < char_length_to_lookup; char_inx++) {
-        ORT_ENFORCE(*cur_seq_ptr >= 0 && static_cast<size_t>(*cur_seq_ptr) < num_chars,
-                    "CharEmbeddingLookup: character index ", *cur_seq_ptr,
-                    " is out of range [0, ", num_chars, ").");
+        ORT_RETURN_IF_NOT(*cur_seq_ptr >= 0 && static_cast<size_t>(*cur_seq_ptr) < num_chars,
+                          "CharEmbeddingLookup: character index ", *cur_seq_ptr,
+                          " is out of range [0, ", num_chars, ").");
         memcpy(cur_dst_ptr, char_embedding_weight_p + (*cur_seq_ptr) * char_embedding_size, sizeof(float) * char_embedding_size);
         cur_dst_ptr += char_embedding_size;
         cur_seq_ptr++;
       }
     }
   }
+  return Status::OK();
 }
 
 // input : [sequence_length, word_length, char_embedding_size]
@@ -200,15 +201,18 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
 
   CalculateLengthOfEachWordInSequence(seq_ptr, words_length_ptr.get(), onnxruntime::narrow<size_t>(seq_len), onnxruntime::narrow<size_t>(word_len));
 
-  CharEmbeddingLookup(seq_ptr,
-                      w_char_embedding.Data<float>(),
-                      onnxruntime::narrow<size_t>(w_char_embedding_shape[0]),
-                      onnxruntime::narrow<size_t>(seq_len),
-                      onnxruntime::narrow<size_t>(word_len),
-                      onnxruntime::narrow<size_t>(char_embedding_size),
-                      onnxruntime::narrow<size_t>(filter_width),
-                      words_length_ptr.get(),
-                      chars_embeddings_ptr.get());
+  ORT_RETURN_IF_ERROR(CharEmbeddingLookup(seq_ptr,
+                                         w_char_embedding.Data<float>(),
+                                         onnxruntime::narrow<size_t>(w_char_embedding_shape[0]),
+                                         onnxruntime::narrow<size_t>(seq_len),
+                                         onnxruntime::narrow<size_t>(word_len),
+                                         onnxruntime::narrow<size_t>(char_embedding_size),
+                                         onnxruntime::narrow<size_t>(filter_width),
+                                         words_length_ptr.get(),
+                                         chars_embeddings_ptr.get()));
+
+  ORT_RETURN_IF_NOT(filter_width <= word_len,
+                    "filter_width (", filter_width, ") must be <= word_len (", word_len, ").");
 
   ComputeConvMaxPoolWithActivation(
       alloc,
