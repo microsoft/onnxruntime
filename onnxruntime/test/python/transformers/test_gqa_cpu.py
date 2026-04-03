@@ -199,7 +199,7 @@ def create_group_query_attention_graph_prompt(
             smooth_softmax=1 if use_smooth_softmax else 0,
             qk_output=config.qk_output.value,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
-            # kv_share_buffer=1 if share_buffer else 0,
+            # past_present_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
         ),
     ]
@@ -442,7 +442,7 @@ def create_group_query_attention_graph_past(
             smooth_softmax=1 if use_smooth_softmax else 0,
             qk_output=config.qk_output.value,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
-            # kv_share_buffer=1 if share_buffer else 0,
+            # past_present_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
         ),
     ]
@@ -916,7 +916,9 @@ def gqa_prompt_func(
         ort_outputs["output_qk"] = OrtValue.ortvalue_from_numpy(output_qk.detach().cpu().numpy(), "cpu", 0)
         io_binding.bind_ortvalue_output("output_qk", ort_outputs["output_qk"])
 
+    io_binding.synchronize_inputs()
     ort_session.run_with_iobinding(io_binding)
+    io_binding.synchronize_outputs()
 
     out_qk = None
     if config.qk_output != QKOutputType.NO_OUTPUT:
@@ -1083,7 +1085,9 @@ def gqa_past_func(
         ort_outputs["output_qk"] = OrtValue.ortvalue_from_numpy(output_qk.detach().cpu().numpy(), "cpu", 0)
         io_binding.bind_ortvalue_output("output_qk", ort_outputs["output_qk"])
 
+    io_binding.synchronize_inputs()
     ort_session.run_with_iobinding(io_binding)
+    io_binding.synchronize_outputs()
 
     out_qk = None
     if config.qk_output != QKOutputType.NO_OUTPUT:

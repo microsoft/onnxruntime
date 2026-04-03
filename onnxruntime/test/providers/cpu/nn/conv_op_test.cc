@@ -80,6 +80,93 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   test.Run(expect_result, err_str, excluded_providers);
 }
 
+vector<float> ComputeDepthwiseMultiplier2Reference(const vector<float>& input,
+                                                   const vector<int64_t>& input_shape,
+                                                   const vector<float>& weights,
+                                                   const vector<int64_t>& weight_shape,
+                                                   const vector<float>& bias,
+                                                   const vector<int64_t>& output_shape,
+                                                   int64_t stride_h,
+                                                   int64_t stride_w,
+                                                   int64_t pad_h,
+                                                   int64_t pad_w) {
+  const int64_t batch = input_shape[0];
+  const int64_t channels = input_shape[1];
+  const int64_t input_h = input_shape[2];
+  const int64_t input_w = input_shape[3];
+  const int64_t output_channels = weight_shape[0];
+  const int64_t kernel_h = weight_shape[2];
+  const int64_t kernel_w = weight_shape[3];
+  const int64_t output_h = output_shape[2];
+  const int64_t output_w = output_shape[3];
+  const int64_t multiplier = output_channels / channels;
+
+  vector<float> output(static_cast<size_t>(batch * output_channels * output_h * output_w), 0.0f);
+
+  for (int64_t n = 0; n < batch; ++n) {
+    for (int64_t c = 0; c < channels; ++c) {
+      for (int64_t m = 0; m < multiplier; ++m) {
+        const int64_t out_c = c * multiplier + m;
+        for (int64_t oh = 0; oh < output_h; ++oh) {
+          for (int64_t ow = 0; ow < output_w; ++ow) {
+            float sum = bias[out_c];
+            for (int64_t kh = 0; kh < kernel_h; ++kh) {
+              const int64_t ih = oh * stride_h + kh - pad_h;
+              if (ih < 0 || ih >= input_h) {
+                continue;
+              }
+
+              for (int64_t kw = 0; kw < kernel_w; ++kw) {
+                const int64_t iw = ow * stride_w + kw - pad_w;
+                if (iw < 0 || iw >= input_w) {
+                  continue;
+                }
+
+                const size_t input_index = static_cast<size_t>(((n * channels + c) * input_h + ih) * input_w + iw);
+                const size_t weight_index = static_cast<size_t>(((out_c * kernel_h + kh) * kernel_w) + kw);
+                sum += input[input_index] * weights[weight_index];
+              }
+            }
+
+            const size_t output_index = static_cast<size_t>(((n * output_channels + out_c) * output_h + oh) * output_w + ow);
+            output[output_index] = sum;
+          }
+        }
+      }
+    }
+  }
+
+  return output;
+}
+
+void TestMobileClipDepthwiseMultiplier2(int64_t channels, int64_t input_hw) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      channels,                     // group
+      vector<int64_t>{7, 7},        // kernel_shape
+      vector<int64_t>{3, 3, 3, 3},  // pads
+      vector<int64_t>{2, 2},        // strides
+      {}                            // excluded EPs
+  };
+
+  RandomValueGenerator random{static_cast<int>(channels + input_hw)};
+
+  vector<int64_t> input_shape = {1, channels, input_hw, input_hw};
+  vector<int64_t> weight_shape = {channels * 2, 1, 7, 7};
+  vector<int64_t> bias_shape = {channels * 2};
+  vector<int64_t> output_shape = {1, channels * 2, input_hw / 2, input_hw / 2};
+
+  vector<float> input = random.Uniform<float>(input_shape, -1.0f, 1.0f);
+  vector<float> weights = random.Uniform<float>(weight_shape, -0.5f, 0.5f);
+  vector<float> bias = random.Uniform<float>(bias_shape, -0.25f, 0.25f);
+  vector<float> expected_output = ComputeDepthwiseMultiplier2Reference(input, input_shape, weights, weight_shape, bias,
+                                                                       output_shape, 2, 2, 3, 3);
+
+  TestConvOp(attrs, {input, weights, bias}, {input_shape, weight_shape, bias_shape},
+             expected_output, output_shape, true, 1e-4f, OpTester::ExpectResult::kExpectSuccess, "", 12);
+}
+
 }  // namespace
 
 // Conv
@@ -496,6 +583,49 @@ TEST(ConvTest, Conv2D_AutoPad1) {
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+}
+
+// Regression test for issue #26734: SAME_UPPER with stride > 1
+// Tests asymmetric padding calculation that was incorrect in WebGPU EP
+TEST(ConvTest, Conv2D_AutoPad_SAME_UPPER_Stride2) {
+  ConvOpAndTestAttributes attrs = {
+      "SAME_UPPER",           // auto_pad
+      vector<int64_t>{1, 1},  // dilations
+      1,                      // group
+      vector<int64_t>{3, 3},  // kernel_shape
+      {},                     // pads
+      vector<int64_t>{2, 2},  // strides > 1 triggers asymmetric padding
+      {}                      // excluded EPs
+  };
+
+  // 1x1x4x4 input
+  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
+                     5.0f, 6.0f, 7.0f, 8.0f,
+                     9.0f, 10.0f, 11.0f, 12.0f,
+                     13.0f, 14.0f, 15.0f, 16.0f};
+  vector<int64_t> X_shape = {1, 1, 4, 4};
+
+  // 3x3 kernel of all 1s for easy verification
+  vector<float> W = {1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 1, 3, 3};
+
+  // Output: 2x2 (ceil(4/2) = 2)
+  // SAME_UPPER with total_pad=1: pad_head=0, pad_tail=1
+  vector<int64_t> Y_shape = {1, 1, 2, 2};
+
+  // Expected values:
+  // (0,0): 1+2+3+5+6+7+9+10+11 = 54
+  // (0,1): 3+4+0+7+8+0+11+12+0 = 45
+  // (1,0): 9+10+11+13+14+15+0+0+0 = 72
+  // (1,1): 11+12+0+15+16+0+0+0+0 = 54
+  auto expected_vals = {54.0f, 45.0f, 72.0f, 54.0f};
+
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
   // NNAPI/CoreML EP requires weight to be an initializer
@@ -1153,6 +1283,18 @@ TEST(ConvTest, Depthwise2D_Bias_Group15) {
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_64x64) {
+  TestMobileClipDepthwiseMultiplier2(64, 64);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_128x32) {
+  TestMobileClipDepthwiseMultiplier2(128, 32);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_256x16) {
+  TestMobileClipDepthwiseMultiplier2(256, 16);
 }
 
 TEST(ConvTest, ConvDimWithZero) {

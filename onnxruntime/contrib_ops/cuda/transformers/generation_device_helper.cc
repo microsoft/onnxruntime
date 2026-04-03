@@ -139,10 +139,12 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
   output_indices = std::move(*Tensor::Create(DataTypeImpl::GetType<int64_t>(), output_shape, std::move(allocator)));
 
   Status result;
+  auto cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   if (input->IsDataType<float>()) {
     result = TopKImpl<float>(nullptr,  // We limit number of beams in BeamSearchParameters, so K <= 256 and use NULL here
                              false /*use_deterministic_compute*/,
-                             stream,
+                             cuda_stream,
+                             nullptr,  // alloc_stream not needed when kernel is nullptr
                              input->Data<float>(),
                              static_cast<float*>(output_values.MutableDataRaw()),
                              static_cast<int64_t*>(output_indices.MutableDataRaw()),
@@ -157,7 +159,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
   } else if (input->IsDataType<MLFloat16>()) {
     result = TopKImpl<MLFloat16>(nullptr,
                                  false /*use_deterministic_compute*/,
-                                 stream,
+                                 cuda_stream,
+                                 nullptr,  // alloc_stream not needed when kernel is nullptr
                                  input->Data<MLFloat16>(),
                                  static_cast<MLFloat16*>(output_values.MutableDataRaw()),
                                  static_cast<int64_t*>(output_indices.MutableDataRaw()),
@@ -411,7 +414,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const CudaT* X_data = is_reuse_logits_buffer ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
   ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
-      ort_stream, Y_data, X_data, vocab_size,
+      ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr, Y_data, X_data, vocab_size,
       is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
       vocab_size,
       batch_size * num_beams)));
@@ -684,10 +687,10 @@ CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParame
   CUDA_CALL_THROW(cudaEventCreate(&event_process_complete_.Get()));
 
   state_cpu_ = AllocateCPUPinned<cuda::BeamScorerState>();
-  state_cpu_->batch_size_ = static_cast<size_t>(parameters.batch_size);
-  state_cpu_->num_beams_ = static_cast<size_t>(parameters.num_beams);
-  state_cpu_->max_length_ = static_cast<size_t>(parameters.max_length);
-  state_cpu_->num_return_sequences_ = static_cast<size_t>(parameters.num_return_sequences);
+  state_cpu_->batch_size_ = static_cast<int>(parameters.batch_size);
+  state_cpu_->num_beams_ = static_cast<int>(parameters.num_beams);
+  state_cpu_->max_length_ = static_cast<int>(parameters.max_length);
+  state_cpu_->num_return_sequences_ = static_cast<int>(parameters.num_return_sequences);
   state_cpu_->pad_token_id_ = parameters.pad_token_id;
   state_cpu_->eos_token_id_ = parameters.eos_token_id;
   state_cpu_->early_stopping_ = parameters.early_stopping;

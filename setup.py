@@ -78,8 +78,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_vitisai"):
     package_name = "onnxruntime-vitisai"
 elif parse_arg_remove_boolean(sys.argv, "--use_acl"):
     package_name = "onnxruntime-acl"
-elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
-    package_name = "onnxruntime-armnn"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
@@ -401,6 +399,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libHtpPrepare.so",
     ]
     dl_libs.extend(qnn_deps)
+    libs.extend(qnn_deps)
     # NV TensorRT RTX
     nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
     dl_libs.extend(nv_tensorrt_rtx_deps)
@@ -841,21 +840,28 @@ def save_build_and_package_info(package_name, version_number, cuda_version, qnn_
 
 save_build_and_package_info(package_name, version_number, cuda_version, qnn_version)
 
-extras_require = {}
+# sympy is optional - only needed for symbolic shape inference
+# ml_dtypes is optional - needed for quantization utilities
+extras_require = {
+    "symbolic": ["sympy"],
+    "quantization": ["ml_dtypes"],
+}
 if package_name == "onnxruntime-gpu" and cuda_major_version:
     # Determine cufft version: CUDA 13 uses cufft 12, CUDA 12 uses cufft 11
     cufft_version = "12.0" if cuda_major_version == "13" else "11.0"
-    extras_require = {
-        "cuda": [
-            f"nvidia-cuda-nvrtc-cu{cuda_major_version}~={cuda_major_version}.0",
-            f"nvidia-cuda-runtime-cu{cuda_major_version}~={cuda_major_version}.0",
-            f"nvidia-cufft-cu{cuda_major_version}~={cufft_version}",
-            f"nvidia-curand-cu{cuda_major_version}~=10.0",
-        ],
-        "cudnn": [
-            f"nvidia-cudnn-cu{cuda_major_version}~=9.0",
-        ],
-    }
+    extras_require.update(
+        {
+            "cuda": [
+                f"nvidia-cuda-nvrtc-cu{cuda_major_version}~={cuda_major_version}.0",
+                f"nvidia-cuda-runtime-cu{cuda_major_version}~={cuda_major_version}.0",
+                f"nvidia-cufft-cu{cuda_major_version}~={cufft_version}",
+                f"nvidia-curand-cu{cuda_major_version}~=10.0",
+            ],
+            "cudnn": [
+                f"nvidia-cudnn-cu{cuda_major_version}~=9.0",
+            ],
+        }
+    )
 
 setup(
     name=package_name,
@@ -874,7 +880,7 @@ setup(
     data_files=data_files,
     install_requires=install_requires,
     extras_require=extras_require,
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     keywords="onnx machine learning",
     entry_points={
         "console_scripts": [

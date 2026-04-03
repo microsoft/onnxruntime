@@ -25,6 +25,10 @@ class EpLibraryPlugin : public EpLibrary {
     return registration_name_.c_str();
   }
 
+  const std::filesystem::path* LibraryPath() const override {
+    return &library_path_;
+  }
+
   Status Load() override;
 
   const std::vector<OrtEpFactory*>& GetFactories() override {

@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "moe_helper.h"
 #include <limits>
 
@@ -52,8 +53,11 @@ class MoEBaseCPU {
     swiglu_limit_ = op_kernel_info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
     activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.0f);
     activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 0.0f);
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, op_kernel_info.GetConfigOptions());
   }
 
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
   int64_t k_;

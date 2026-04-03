@@ -445,6 +445,7 @@ void QnnLogging(const char* format,
                 QnnLog_Level_t level,
                 uint64_t timestamp,
                 va_list argument_parameter) {
+  ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
   if (!::onnxruntime::logging::LoggingManager::HasDefaultLogger()) {
@@ -454,8 +455,7 @@ void QnnLogging(const char* format,
   }
 
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
-  // Map QNN log level to ORT severity
-  logging::Severity severity = QnnBackendManager::MapQNNLogLevelToOrtSeverity(level);
+  const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
   if (logger.OutputIsEnabled(severity, data_type)) {
@@ -468,9 +468,7 @@ void QnnLogging(const char* format,
   }
 }
 
-Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
-  logger_ = &logger;
-
+Status QnnBackendManager::InitializeQnnLog() {
   // Set Qnn log level align with Ort log level
   auto ort_log_level = logger_->GetSeverity();
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
@@ -526,22 +524,6 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
     case logging::Severity::kFATAL:
     default:
       return QNN_LOG_LEVEL_ERROR;
-  }
-}
-
-/* static */ logging::Severity QnnBackendManager::MapQNNLogLevelToOrtSeverity(QnnLog_Level_t qnn_log_level) {
-  // Map QNN log level to ORT log severity
-  switch (qnn_log_level) {
-    case QNN_LOG_LEVEL_VERBOSE:
-    case QNN_LOG_LEVEL_DEBUG:
-      return logging::Severity::kVERBOSE;
-    case QNN_LOG_LEVEL_INFO:
-      return logging::Severity::kINFO;
-    case QNN_LOG_LEVEL_WARN:
-      return logging::Severity::kWARNING;
-    case QNN_LOG_LEVEL_ERROR:
-    default:
-      return logging::Severity::kERROR;
   }
 }
 
@@ -1367,7 +1349,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   void* bin_buffer = nullptr;
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-  if (file_mapped_weights_enabled_) {
+  // A nonzero buffer length implies an embedded context
+  if (file_mapped_weights_enabled_ && buffer_length == 0) {
     ORT_RETURN_IF(!file_mapper_, "Attemping to use File Mapping feature but file_mapper_ is uninitialized");
 
     ORT_RETURN_IF_ERROR(GetFileSizeIfValid(context_bin_filepath, buffer_length));
@@ -1579,6 +1562,8 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map,
                                        bool enable_htp_extended_udma_mode) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
+  if (logger_ != &logger)
+    logger_ = &logger;
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
 
@@ -1645,7 +1630,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   }
 
   if (status.IsOK()) {
-    status = InitializeQnnLog(logger);
+    status = InitializeQnnLog();
   }
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "SetLogger succeed.";

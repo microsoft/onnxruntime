@@ -621,8 +621,8 @@ void DumpNodeInputs(
           std::cout << " is non-tensor type.\n";
         }
       } else {
-        // this could happen with an empty Optional input
-        std::cout << " was missing data type\n";
+        // this could happen with an empty Optional input or the tensor is removed after pre-packing.
+        std::cout << " was missing data type (maybe pre-packed).\n";
       }
     } else {
       std::cout << "Input " << i << " is optional and was not provided.\n";

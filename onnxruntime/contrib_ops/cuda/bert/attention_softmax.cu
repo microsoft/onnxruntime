@@ -17,7 +17,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <cub/cub.cuh>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -975,7 +974,7 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
 
   if (use_persistent_softmax) {
     return onnxruntime::cuda::dispatch_warpwise_softmax_forward<T, T, float, false>(
-        ort_stream,
+        stream,
         output,
         persistent_softmax_workspace,
         total_sequence_length,

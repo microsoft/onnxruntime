@@ -7,6 +7,50 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+// PLUGIN BUILD ADAPTATION: SCATTER_ND_VALIDATE_SHAPES is defined in the CPU
+// provider (scatter_nd.h) which cannot be linked into the plugin. Inline the
+// same validation logic here. Keep in sync with ScatterND::ValidateShapes.
+namespace onnxruntime {
+namespace scatter_nd_plugin {
+inline Status ValidateShapes(const TensorShape& input_shape,
+                             const TensorShape& indice_shape,
+                             const TensorShape& update_shape) {
+  auto input_rank = input_shape.NumDimensions();
+  auto indice_rank = indice_shape.NumDimensions();
+  auto update_rank = update_shape.NumDimensions();
+  if (input_rank == 0 || indice_rank == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "input tensor and indices tensor must have rank larger than 0. ",
+                           "input shape: ", input_shape, ", indices shape: ", indice_shape);
+  }
+  auto last_indice_dimension = indice_shape[indice_rank - 1];
+  if (last_indice_dimension > static_cast<int64_t>(input_rank)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "last dimension of indices must not be larger than rank of input tensor");
+  }
+  auto expected_update_rank = input_rank + indice_rank - 1 - static_cast<size_t>(last_indice_dimension);
+  if (update_rank != expected_update_rank) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "update tensor shape does not match expected shape");
+  }
+  if (indice_shape.Slice(0, indice_rank - 1) != update_shape.Slice(0, indice_rank - 1)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "update tensor shape mismatch with indices tensor shape");
+  }
+  if (input_shape.Slice(onnxruntime::narrow<size_t>(last_indice_dimension)) != update_shape.Slice(indice_rank - 1)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "update tensor shape mismatch with input tensor shape");
+  }
+  return Status::OK();
+}
+}  // namespace scatter_nd_plugin
+}  // namespace onnxruntime
+#define SCATTER_ND_VALIDATE_SHAPES onnxruntime::scatter_nd_plugin::ValidateShapes
+#else
+#define SCATTER_ND_VALIDATE_SHAPES onnxruntime::ScatterND::ValidateShapes
+#endif
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -46,10 +90,11 @@ ONNX_OPERATOR_KERNEL_EX(ScatterND,
                             .MayInplace(0, 0),
                         ScatterNDWithAtomicReduction);
 
-static Status InitiliazeElementCountsAndInputDimsSpanOrGpu(int64_t last_index_dimension, const TensorShape& input_shape,
+template <typename KernelContextType>
+static Status InitializeElementCountsAndInputDimsSpanOrGpu(int64_t last_index_dimension, const TensorShape& input_shape,
                                                            ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
                                                            CudaKernel::CudaAsyncBuffer<int64_t>& element_counts_and_input_dims_gpu,
-                                                           onnxruntime::OpKernelContext* context) {
+                                                           KernelContextType* stream) {
   TensorPitches input_strides(input_shape);
 
   if (last_index_dimension < 6) {
@@ -65,7 +110,7 @@ static Status InitiliazeElementCountsAndInputDimsSpanOrGpu(int64_t last_index_di
       element_counts_and_input_dims_gpu.CpuPtr()[i] = input_strides[i];
       element_counts_and_input_dims_gpu.CpuPtr()[i + last_index_dimension] = input_shape[i];
     }
-    ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(context->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(stream));
     element_counts_and_input_dims.gpu_ptr = element_counts_and_input_dims_gpu.GpuPtr();
   }
   return Status::OK();
@@ -81,7 +126,7 @@ Status ScatterNDDisjointAndNoReduction::ComputeInternal(OpKernelContext* context
   const auto& updates_shape = updates_tensor->Shape();
 
   // Validate input shapes
-  ORT_RETURN_IF_ERROR(onnxruntime::ScatterND::ValidateShapes(input_shape, indices_shape, updates_shape));
+  ORT_RETURN_IF_ERROR(SCATTER_ND_VALIDATE_SHAPES(input_shape, indices_shape, updates_shape));
 
   auto* output_tensor = context->Output(0, input_shape);
 
@@ -107,10 +152,10 @@ Status ScatterNDDisjointAndNoReduction::ComputeInternal(OpKernelContext* context
   // To avoid multiple GPU data transfers, we combine this into one array and send it through
   ElementCountsAndInputDimsSpanOrGpu element_counts_and_input_dims;
   CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this);
-  ORT_RETURN_IF_ERROR(InitiliazeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
+  ORT_RETURN_IF_ERROR(InitializeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
                                                                    element_counts_and_input_dims,
                                                                    element_counts_and_input_dims_gpu,
-                                                                   context));
+                                                                   GetComputeStream(context)));
 
   ORT_RETURN_IF_ERROR(ScatterNDImpl(
       Stream(context),
@@ -136,7 +181,7 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
   const auto& updates_shape = updates_tensor->Shape();
 
   // Validate input shapes
-  ORT_RETURN_IF_ERROR(onnxruntime::ScatterND::ValidateShapes(input_shape, indices_shape, updates_shape));
+  ORT_RETURN_IF_ERROR(SCATTER_ND_VALIDATE_SHAPES(input_shape, indices_shape, updates_shape));
 
   auto* output_tensor = context->Output(0, input_shape);
 
@@ -159,10 +204,10 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
   auto last_index_dimension = indices_shape[indices_shape.NumDimensions() - 1];
   ElementCountsAndInputDimsSpanOrGpu element_counts_and_input_dims;
   CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this);
-  ORT_RETURN_IF_ERROR(InitiliazeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
+  ORT_RETURN_IF_ERROR(InitializeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
                                                                    element_counts_and_input_dims,
                                                                    element_counts_and_input_dims_gpu,
-                                                                   context));
+                                                                   GetComputeStream(context)));
 
   switch (reduction_) {
     case ScatterNDReduction::None: {

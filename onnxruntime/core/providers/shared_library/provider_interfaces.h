@@ -1004,9 +1004,6 @@ struct ProviderHost {
 
   virtual bool Utils__HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) = 0;
 
-  virtual Status Utils__ValidateExternalDataPath(const std::filesystem::path& base_path,
-                                                 const std::filesystem::path& location) = 0;
-
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -1296,6 +1293,7 @@ struct ProviderHost {
   virtual const UInt2x4* Tensor__Data_UInt2x4(const Tensor* p) = 0;
 
   virtual gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) = 0;
+  virtual gsl::span<const int32_t> Tensor__DataAsSpan_int32(const Tensor* p) = 0;
 
   virtual void* Allocator__AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) = 0;
 

@@ -63,29 +63,29 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       int8_t zp = 0;
       int8_t dummy_data = 1;
-      dummy_zp_proto.set_raw_data(&zp, 1);
-      dummy_data_proto.set_raw_data(&dummy_data, 1);
+      utils::SetRawDataInTensorProto(dummy_zp_proto, &zp, 1);
+      utils::SetRawDataInTensorProto(dummy_data_proto, &dummy_data, 1);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       uint8_t zp = 0;
       uint8_t dummy_data = 1;
-      dummy_zp_proto.set_raw_data(&zp, 1);
-      dummy_data_proto.set_raw_data(&dummy_data, 1);
+      utils::SetRawDataInTensorProto(dummy_zp_proto, &zp, 1);
+      utils::SetRawDataInTensorProto(dummy_data_proto, &dummy_data, 1);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       int16_t zp = 0;
       int16_t dummy_data = 1;
-      dummy_zp_proto.set_raw_data(&zp, 2);
-      dummy_data_proto.set_raw_data(&dummy_data, 2);
+      utils::SetRawDataInTensorProto(dummy_zp_proto, &zp, 2);
+      utils::SetRawDataInTensorProto(dummy_data_proto, &dummy_data, 2);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
       uint16_t zp = 0;
       uint16_t dummy_data = 1;
-      dummy_zp_proto.set_raw_data(&zp, 2);
-      dummy_data_proto.set_raw_data(&dummy_data, 2);
+      utils::SetRawDataInTensorProto(dummy_zp_proto, &zp, 2);
+      utils::SetRawDataInTensorProto(dummy_data_proto, &dummy_data, 2);
       break;
     }
     default:
@@ -110,7 +110,7 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
   switch (initializer.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       float* where_const_scalar = initializer.data<float>();
-      dummy_scale_proto.set_raw_data(where_const_scalar, sizeof(float));
+      utils::SetRawDataInTensorProto(dummy_scale_proto, where_const_scalar, sizeof(float));
       break;
     }
     default:
@@ -134,6 +134,7 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
           "DeQuantizeLinear from WhereDummyDq GraphTransformer",
           {&dummy_data_arg, &dummy_scale_arg, &dummy_zp_arg},
           {&dummy_dq_arg},
+          node,
           nullptr,
           dq_node->Domain());
 
