@@ -75,7 +75,7 @@ jobs:
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
@@ -286,12 +286,12 @@ jobs:
       - name: Run tests (onnxruntime_webgpu_external_dawn_test)
         run: onnxruntime_webgpu_external_dawn_test.exe
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\RelWithDebInfo
 
       - name: Run tests (onnxruntime_webgpu_external_dawn_test) - no_proc_table
         run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\RelWithDebInfo
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: [
@@ -346,7 +346,7 @@ jobs:
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
