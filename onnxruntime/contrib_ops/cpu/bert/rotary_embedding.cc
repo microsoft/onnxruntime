@@ -166,6 +166,7 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_block_offset, max_head_offset, "max_block_offset", max_block_offset));
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(max_sequence_length - 1, 0), half_rotary_emb_dim,
                                           "max_cache_offset", max_cache_offset));
+  static_cast<void>(max_cache_offset);
 
   // The cost is calculated as:
   //   - head_size * sizeof(T) for reading input
