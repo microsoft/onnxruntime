@@ -925,7 +925,8 @@ TEST(MatMulNBits, InvalidGIdx_OutOfRange) {
   test.AddOutput<float>("Y", {M, N}, y_data);
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
+            kOpenVINOExecutionProvider});
 }
 
 // Test that negative g_idx values are rejected.
@@ -965,7 +966,8 @@ TEST(MatMulNBits, InvalidGIdx_Negative) {
   test.AddOutput<float>("Y", {M, N}, y_data);
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
+            kOpenVINOExecutionProvider});
 }
 #endif  // NDEBUG
 
