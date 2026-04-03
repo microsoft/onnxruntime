@@ -39,7 +39,7 @@ onnx.save(model, "model_annotated.onnx")
 
 Olive provides built-in support for adding layer annotations during ONNX conversion via the `CaptureLayerAnnotations` pass (added in [PR #2361](https://github.com/microsoft/Olive/pull/2361)). You supply a `layer_annotations` dictionary where each **key** is the annotation string to write into `layer_ann`, and each **value** is a list of node-name substrings. During ONNX export, every node whose name contains one of the substrings receives the corresponding `layer_ann` metadata property. If multiple substrings match, the first one in iteration order wins.
 
-Models that typically originate in MS Foundry have a standard naming schema. Nodes in such a model have recurring patterns (e.g. `embed_tokens`, `self_attn`, `mlp`, `norm`) that can be used to identify layering and annotate accordingly.
+Many exported transformer models use consistent node naming patterns. For example, node names often include recurring substrings such as `embed_tokens`, `self_attn`, `mlp`, or `norm`. Because `CaptureLayerAnnotations` matches node-name substrings, these patterns can be used to group related nodes into logical layers and write the corresponding `layer_ann` values during export. Adjust the substrings to match the naming conventions in your own model.
 
 #### Step 1 — Create the workflow config file
 
@@ -150,7 +150,7 @@ Nodes that do not match any rule fall through to the normal EP capability-based 
 
 ## Capacity-Aware Partitioning (implemented for CUDA)
 
-When running models on a CUDA GPU with limited memory, you can set a memory budget so ONNX Runtime stops assigning nodes to the CUDA EP once the estimated memory consumption reaches the limit. Remaining nodes are then eligible for assignment by the subsequent EPs in the session's provider list (often CPU, but not necessarily).
+When running models on a CUDA GPU with limited memory, you can set a memory budget so ONNX Runtime stops assigning nodes to the CUDA EP once the estimated memory consumption reaches the limit. Nodes are considered in topological order and assignment halts at the first node that would exceed the budget — ONNX Runtime does not search ahead for smaller nodes that might still fit. Remaining nodes are then eligible for assignment by the subsequent EPs in the session's provider list (often CPU, but not necessarily).
 
 ### Step 1: Collect Memory Statistics (Profiling Run)
 
@@ -216,7 +216,7 @@ session = ort.InferenceSession("model.onnx", opts,
                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 ```
 
-ONNX Runtime processes nodes in priority order, accumulating estimated memory. When the cumulative cost exceeds the budget, remaining nodes are not assigned to the CUDA EP and are eligible for assignment by the subsequent EPs in the session's provider list.
+ONNX Runtime processes nodes in topological order, accumulating estimated memory. When the cumulative cost exceeds the budget, assignment to the CUDA EP halts immediately — remaining nodes are not considered even if they would individually fit within the budget. Those nodes are eligible for assignment by the subsequent EPs in the session's provider list.
 
 ### Ad-Hoc Mode (No Stats File)
 
