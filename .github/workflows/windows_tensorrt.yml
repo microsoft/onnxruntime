@@ -86,7 +86,7 @@ jobs:
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ runner.temp }}\build\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
@@ -252,7 +252,7 @@ jobs:
       - name: Install ONNX Runtime Wheel
         uses: ./.github/actions/install-onnxruntime-wheel
         with:
-          whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\dist
+          whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\dist
 
       - name: Run Tests
         working-directory: ${{ runner.temp }}

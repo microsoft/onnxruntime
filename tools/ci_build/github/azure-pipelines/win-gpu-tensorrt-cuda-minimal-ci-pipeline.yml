@@ -88,4 +88,4 @@ jobs:
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\setup.py'
       arguments: 'bdist_wheel'
-      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo'

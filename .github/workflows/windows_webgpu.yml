@@ -75,7 +75,7 @@ jobs:
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
@@ -140,17 +140,17 @@ jobs:
           $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
           .\onnxruntime_test_all.exe 2> .\onnxruntime_test_stderr.log
           .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\RelWithDebInfo
 
       - name: Check log file
         shell: cmd
         run: |
-          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
+          dir ${{ github.workspace }}\RelWithDebInfo\onnxruntime_test_stderr.log
 
       - name: Validate shader keys
         uses: ./.github/actions/webgpu-validate-shader-key
         with:
-          log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
+          log_file_path: ${{ github.workspace }}\RelWithDebInfo\onnxruntime_test_stderr.log
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
@@ -305,12 +305,12 @@ jobs:
       - name: Run tests (onnxruntime_webgpu_external_dawn_test)
         run: onnxruntime_webgpu_external_dawn_test.exe
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\RelWithDebInfo
 
       - name: Run tests (onnxruntime_webgpu_external_dawn_test) - no_proc_table
         run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\RelWithDebInfo
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: [
@@ -365,7 +365,7 @@ jobs:
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg

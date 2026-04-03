@@ -57,7 +57,7 @@ Install the python tools built in onnxruntime
 cd work_dir
 python -m venv ort_env
 ort_env\Scripts\activate
-python -m pip install <path-to-built-folder>\RelWithDebInfo\RelWithDebInfo\dist\<name-of-the-wheel>.whl
+python -m pip install <path-to-built-folder>\RelWithDebInfo\dist\<name-of-the-wheel>.whl
 
 # The following command yields model_quant.onnx under the same directory "resnet18-v1-7"
 python -m onnxruntime.quantization.static_quantize_runner -i resnet18-v1-7\model.onnx -o resnet18-v1-7\model_quant.onnx

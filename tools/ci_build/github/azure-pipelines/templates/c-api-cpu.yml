@@ -371,14 +371,14 @@ stages:
     - task: CopyFiles@2
       displayName: 'Copy native nuget package to: $(Build.ArtifactStagingDirectory)'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         Contents: '*.nupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: CopyFiles@2
       displayName: 'Copy native nuget symbols package to: $(Build.ArtifactStagingDirectory)'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         Contents: '*.snupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 

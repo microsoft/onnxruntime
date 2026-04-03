@@ -58,7 +58,7 @@ jobs:
         shell: cmd
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ github.workspace }}\build\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
