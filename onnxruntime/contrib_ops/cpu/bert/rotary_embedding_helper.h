@@ -129,7 +129,17 @@ Status CheckInputs(const T* input,
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[1], "cache_width", cache_width));
     ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "head_size", head_size));
   } else {
+    if (!transposed && hidden_size % num_heads != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: hidden_size=", hidden_size,
+                             " must be divisible by num_heads=", num_heads,
+                             " for rank-3 input");
+    }
     head_size = static_cast<int>(hidden_size / num_heads);
+    if (!transposed && batch_size > 0 && sequence_length > 0 && hidden_size > 0 && head_size <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: head_size must be greater than 0 for non-empty rank-3 input");
+    }
   }
   if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
@@ -140,11 +150,16 @@ Status CheckInputs(const T* input,
 
   // Check position_ids input shapes
   if (!onnxruntime::IsScalarOr1ElementVector(position_ids)) {
-    if (batch_size != static_cast<int>(position_ids_dims[0])) {
+    int position_ids_batch = 0;
+    int position_ids_sequence = 0;
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(position_ids_dims[0], "position_ids_dim0", position_ids_batch));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(position_ids_dims[1], "position_ids_dim1", position_ids_sequence));
+
+    if (batch_size != position_ids_batch) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 0 should be of size ",
                              "batch_size, got ", position_ids_dims[0]);
     }
-    if (sequence_length != static_cast<int>(position_ids_dims[1])) {
+    if (sequence_length != position_ids_sequence) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 1 should be of size ",
                              "sequence_length, got ", position_ids_dims[1]);
     }
@@ -163,7 +178,24 @@ Status CheckInputs(const T* input,
                            "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
   }
 
-  num_heads = num_heads > 0 ? num_heads : static_cast<int>(hidden_size / head_size);
+  if (num_heads <= 0) {
+    if (head_size == 0) {
+      if (batch_size == 0 || sequence_length == 0 || hidden_size == 0) {
+        num_heads = 0;
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "RotaryEmbedding: head_size must be greater than 0 when inferring num_heads");
+      }
+    } else {
+      if (hidden_size % head_size != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "RotaryEmbedding: hidden_size=", hidden_size,
+                               " must be divisible by inferred head_size=", head_size,
+                               " when inferring num_heads");
+      }
+      num_heads = static_cast<int>(hidden_size / head_size);
+    }
+  }
   // Calculate stride values
   int head_stride;
   int seq_stride;

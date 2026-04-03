@@ -108,7 +108,17 @@ Status CheckInputs(const T* input,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "RotaryEmbedding: num_heads must be greater than 0 for rank-3 input");
     }
+    if (hidden_size % num_heads != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: hidden_size=", hidden_size,
+                             " must be divisible by num_heads=", num_heads,
+                             " for rank-3 input");
+    }
     head_size = hidden_size / num_heads;
+    if (batch_size > 0 && sequence_length > 0 && hidden_size > 0 && head_size <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: head_size must be greater than 0 for non-empty rank-3 input");
+    }
   }
 
   int position_ids_format = 0;
@@ -179,12 +189,17 @@ Status CheckInputs(const T* input,
                              "head_size");
     }
 
+    int position_ids_batch = 0;
+    int position_ids_sequence = 0;
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(position_ids_dims[0], "position_ids_dim0", position_ids_batch));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(position_ids_dims[1], "position_ids_dim1", position_ids_sequence));
+
     // Check position_ids input shapes
-    if (batch_size != static_cast<int>(position_ids_dims[0])) {
+    if (batch_size != position_ids_batch) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 0 should be of size ",
                              "batch_size, got ", position_ids_dims[0]);
     }
-    if (sequence_length != static_cast<int>(position_ids_dims[1])) {
+    if (sequence_length != position_ids_sequence) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 1 should be of size ",
                              "sequence_length, got ", position_ids_dims[1]);
     }
@@ -202,7 +217,24 @@ Status CheckInputs(const T* input,
     ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported");
   }
 
-  num_heads = num_heads > 0 ? num_heads : static_cast<int>(hidden_size / head_size);
+  if (num_heads <= 0) {
+    if (head_size == 0) {
+      if (batch_size == 0 || sequence_length == 0 || hidden_size == 0) {
+        num_heads = 0;
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "RotaryEmbedding: head_size must be greater than 0 when inferring num_heads");
+      }
+    } else {
+      if (hidden_size % head_size != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "RotaryEmbedding: hidden_size=", hidden_size,
+                               " must be divisible by inferred head_size=", head_size,
+                               " when inferring num_heads");
+      }
+      num_heads = static_cast<int>(hidden_size / head_size);
+    }
+  }
   // Calculate stride values
   int head_stride;
   int seq_stride;

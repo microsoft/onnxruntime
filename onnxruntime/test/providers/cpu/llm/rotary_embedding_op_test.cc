@@ -1261,5 +1261,22 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsHiddenSizeOverflow) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "hidden_size overflows int32", {}, nullptr, &execution_providers);
 }
 
+TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsRank3HiddenSizeNotDivisibleByNumHeads) {
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {1, 1, 5}, {0.f, 0.f, 0.f, 0.f, 0.f});
+  test.AddInput<float>("cos_cache", {1, 1, 1}, {1.0f});
+  test.AddInput<float>("sin_cache", {1, 1, 1}, {0.0f});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("output", {1, 1, 5}, {0.f, 0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "hidden_size=5 must be divisible by num_heads=2 for rank-3 input", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
