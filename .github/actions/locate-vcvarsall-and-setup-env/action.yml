@@ -20,15 +20,15 @@ runs:
     uses: microsoft/onnxruntime-github-actions/build/setup-build-tools@dev/sanaahamel/download-ninja
     with:
       ccache-version: 4.13.1
-      ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
+      ccache-hash: fe678d8e82f35e1d5f13c7bcd86447c08b67b0831dec8c772ef1257090a0f51678e296bb6d3ea38433f472d0fded52da96445cbc6fa8f945ecf94351d2c149d8
       cmake-version: '3.31.6'
       cmake-hash: '0f1584e8666cf4a65ec514bd02afe281caabf1d45d2c963f3151c41484f457386aa03273ab25776a670be02725354ce0b46f3a5121857416da37366342a833a0'
       ninja-version: 1.13.0
-      ninja-hash: 55d3d891e8fc6c8ad7f92e172125319896761e57c5125944613d9bbfa5b9374387e9fc1468ad5bcb31464f43fb1c455ea251343942595f42955dc67090aa12ee
+      ninja-hash: cffea62711b5a89ec494b48ae5e8df32f24cab0e642363ac20cc250c7d7f75ad43258f8d3721c68b23413e401d42630945c534ff95355cfe664e5da1d36569bf
       vcpkg-version: '2025.08.27'
       vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
       add-cmake-to-path: 'true'
-      disable-terrapin: 'true' # ccache isn't on terrapin yet
+      disable-terrapin: 'true' # ccache isn't on terrapin
 
   - name: Verify vcpkg setup
     shell: pwsh # Use powershell to easily access env var
