@@ -154,8 +154,8 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
 
       // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
       const std::ptrdiff_t position_id = (position_ids_format == 0)
-                     ? static_cast<std::ptrdiff_t>(position_ids[0]) + s
-                     : position_ids[static_cast<std::ptrdiff_t>(b) * sequence_length + s];
+                                             ? static_cast<std::ptrdiff_t>(position_ids[0]) + s
+                                             : position_ids[static_cast<std::ptrdiff_t>(b) * sequence_length + s];
       std::ptrdiff_t cache_offset = 0;
       ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(position_id, half_rotary_emb_dim, "cache_offset", cache_offset));
       const T* cos_data = cos_cache + cache_offset;
