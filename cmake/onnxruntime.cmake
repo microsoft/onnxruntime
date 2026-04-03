@@ -268,6 +268,11 @@ if (onnxruntime_USE_EXTENSIONS)
   )
 endif()
 
+if(WIN32)
+  # required if we're delay loading anything
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES delayimp.lib)
+endif()
+
 # If you are linking a new library, please add it to the list onnxruntime_INTERNAL_LIBRARIES or onnxruntime_EXTERNAL_LIBRARIES,
 # Please do not add a library directly to the target_link_libraries command
 if (onnxruntime_BUILD_SHARED_LIB)
@@ -284,7 +289,6 @@ endif()
 
 if(WIN32)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
-  target_link_libraries(onnxruntime PRIVATE delayimp.lib) # required if we're delay loading anything
 endif()
 
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
