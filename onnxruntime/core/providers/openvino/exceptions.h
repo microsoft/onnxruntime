@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstdlib>
 #include <exception>
 #include <regex>
 #include <string>
@@ -69,7 +70,8 @@ struct ovep_exception : public std::exception {
     std::regex error_code_pattern("code 0x([0-9a-fA-F]+)");
     std::smatch matches;
     if (std::regex_search(ov_exception_string, matches, error_code_pattern)) {
-      std::from_chars(&(*matches[1].first), &(*matches[1].second), error_code, 16);
+      std::string hex_str(matches[1].first, matches[1].second);
+      error_code = static_cast<uint32_t>(std::strtoul(hex_str.c_str(), nullptr, 16));
     }
     return error_code;
   }
