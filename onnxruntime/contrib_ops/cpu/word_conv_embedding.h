@@ -23,9 +23,10 @@ class WordConvEmbedding final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  void CharEmbeddingLookup(
+  Status CharEmbeddingLookup(
       const int* seq_ptr,
       const float* char_embedding_weight_p,
+      size_t num_chars,
       size_t seq_len,
       size_t word_len,
       size_t char_embedding_size,
