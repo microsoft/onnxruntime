@@ -159,18 +159,22 @@ session = ort.InferenceSession("model_annotated.onnx", opts,
                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 ```
 
-#### Multi-GPU Example
+#### Targeting a Specific GPU
 
-On a machine with multiple GPUs, use `gpu:<index>` to target specific devices:
+On a machine with multiple GPUs, use `gpu:<index>` to direct annotations to a particular device:
 
 ```python
 opts.add_session_config_entry(
     "session.layer_assignment_settings",
-    "gpu:0(encoder); gpu:1(decoder); cpu(=postprocess)"
+    "gpu:1(encoder, decoder); cpu(=postprocess)"
 )
 ```
 
+> **Note:** ONNX Runtime currently allows only one instance of a given EP type per session, so you cannot split annotations across multiple GPUs in a single session. The `gpu:<index>` designator selects *which* GPU the single registered EP targets.
+
 Nodes that do not match any rule fall through to the normal EP capability-based assignment.
+
+> **Unmatched device designators:** If a device designator in the settings does not match any EP registered in the session, ONNX Runtime logs a warning and skips that rule. Nodes covered by the skipped rule are not pre-assigned and fall through to the normal capability-based partitioning.
 
 > **Note — Annotations vs. actual placement:** An annotation expresses a *preference*, not a guarantee. If the target EP does not have a registered kernel for a node (for example, a particular data-type / opset-version combination is not implemented in the CUDA EP), that node will not be placed on the requested device. Instead it falls through to the next EP in the provider list that can handle it.
 
