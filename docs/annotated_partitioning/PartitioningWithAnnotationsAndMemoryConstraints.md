@@ -124,7 +124,20 @@ Use the session option `session.layer_assignment_settings` to tell ONNX Runtime 
 device1(annotation1, annotation2, ...); device2(=annotation3, annotation4, ...)
 ```
 
-- `device`: a recognized device designator such as `cpu`, `gpu`, or `npu`, matched against the execution providers registered in the session.
+- `device`: a recognized device designator, matched against the execution providers registered in the session. The supported designators are:
+
+| Device Designator | Meaning | Examples of EPs That May Bind |
+|:------------------|:--------|:-----------------------------|
+| `cpu` | Any CPU device | CPUExecutionProvider |
+| `gpu` | Anything discovered and designated as `OrtHardwareDeviceType_GPU` | CUDA EP, ROCm EP, DirectML EP running on discrete or integrated GPUs |
+| `cuda` | NVIDIA CUDA GPU. A device that is `OrtHardwareDeviceType_GPU` and NVIDIA is a vendor. Same as `gpu:nvidia`. | CUDAExecutionProvider |
+| `dml` | DirectX-compatible GPU | DMLExecutionProvider |
+| `npu` | Neural processing unit | Qualcomm QNN EP, Intel NPU EP |
+| `fpga` | FPGA-backed accelerators | Custom plugin EPs |
+| `accelerator` | Catch-all for any non-CPU device | Any vendor EP |
+| `gpu:<vendor>` | Vendor specialization | `gpu:nvidia`, `gpu:amd`, `gpu:intel` |
+| `gpu:<index>` | Specific device index | GPU 0, GPU 1 |
+
 - `annotation`: string to match against the `layer_ann` value on each node.
 - `=` prefix: denotes an exact match. Without `=`, the annotation is treated as a prefix match (any node whose `layer_ann` starts with the string will match).
 - Prefix rules have higher priority than exact-match rules. Within the same match type, priority is left-to-right.
@@ -146,7 +159,20 @@ session = ort.InferenceSession("model_annotated.onnx", opts,
                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 ```
 
+#### Multi-GPU Example
+
+On a machine with multiple GPUs, use `gpu:<index>` to target specific devices:
+
+```python
+opts.add_session_config_entry(
+    "session.layer_assignment_settings",
+    "gpu:0(encoder); gpu:1(decoder); cpu(=postprocess)"
+)
+```
+
 Nodes that do not match any rule fall through to the normal EP capability-based assignment.
+
+> **Note — Annotations vs. actual placement:** An annotation expresses a *preference*, not a guarantee. If the target EP does not have a registered kernel for a node (for example, a particular data-type / opset-version combination is not implemented in the CUDA EP), that node will not be placed on the requested device. Instead it falls through to the next EP in the provider list that can handle it.
 
 ## Capacity-Aware Partitioning (implemented for CUDA)
 
@@ -173,7 +199,12 @@ session = ort.InferenceSession("model.onnx", opts,
 
 def make_concrete_shape(shape, default_dim=1):
     """ORT input shapes may contain symbolic dims or None (e.g. batch size).
-    Replace those with a small concrete value for profiling."""
+    Replace those with a small concrete value for profiling.
+
+    For the most accurate memory statistics, use the largest input shapes
+    your production workload will encounter.  For example, if your service
+    runs with a maximum batch size of 8, pass default_dim=8 so the profiled
+    allocations reflect that peak usage."""
     return tuple(
         dim if isinstance(dim, int) and dim > 0 else default_dim
         for dim in shape
@@ -196,6 +227,8 @@ In this example, `node_memory_stats.csv` is a relative path. Relative paths are 
 
 Multiple `session.run()` calls update the stats with the maximum values observed per node.
 
+> **What if the GPU cannot hold the entire model?**  The profiling run itself requires the model to fit in GPU memory because the CUDA EP must execute each node to record its actual allocations. If the model exceeds GPU capacity during profiling, reduce the input dimensions (e.g., use a smaller batch size) so that the run completes. The resulting per-node statistics will still be representative of relative node costs and can be used to set the memory budget for subsequent production sessions.
+
 ### Step 2: Partition with a Memory Budget
 
 In a subsequent session, provide the memory limit and the stats file to enable capacity-aware partitioning.
@@ -217,6 +250,8 @@ session = ort.InferenceSession("model.onnx", opts,
 ```
 
 ONNX Runtime processes nodes in topological order, accumulating estimated memory. When the cumulative cost exceeds the budget, assignment to the CUDA EP halts immediately — remaining nodes are not considered even if they would individually fit within the budget. Those nodes are eligible for assignment by the subsequent EPs in the session's provider list.
+
+Because assignment follows topological order, groups of nodes that you would prefer to offload (for example, MoE expert blocks) may appear at arbitrary positions in the graph. If you want specific node groups to have the lowest priority for device placement, combine the memory budget with layer annotations: annotate the nodes you want to offload to CPU explicitly, and let the capacity-aware partitioner handle the rest.
 
 ### Ad-Hoc Mode (No Stats File)
 
