@@ -99,6 +99,11 @@ class OrtStreamAdapter {
 
 namespace onnxruntime {
 inline constexpr const char* kCudaPluginExecutionProvider = "CudaPluginExecutionProvider";
+
+// Forward declaration of GetEnvironmentVar for plugin builds on Windows.
+// Defined in provider_api_shims.cc; mirrors the provider_api.h declaration
+// which is a no-op when BUILD_CUDA_EP_AS_PLUGIN is set.
+std::string GetEnvironmentVar(const std::string& var_name);
 }
 
 namespace onnxruntime {
