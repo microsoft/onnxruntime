@@ -1,4 +1,4 @@
-# Graph Partitioning
+# Graph Partitioning with Annotations and Memory Constraints
 
 ONNX Runtime automatically partitions a model graph across the execution providers (EPs) registered with a session. This page describes the advanced partitioning features introduced for controlling how nodes are assigned to devices and how GPU memory consumption is managed during partitioning.
 
@@ -7,7 +7,7 @@ ONNX Runtime automatically partitions a model graph across the execution provide
 Large models may exceed the memory capacity of a single accelerator (e.g., a CUDA GPU). These features allow you to:
 1.	Annotate model layers so that specific parts of the model are directed to specific devices (CPU, GPU, NPU).
 2.	Collect per-node memory statistics during a profiling run.
-3.	Set a memory budget for an EP so that ONNX Runtime only places nodes on the accelerator until the budget is exhausted, spilling the rest to CPU.
+3.	Set a memory budget for an EP so that ONNX Runtime only places nodes on the accelerator until the budget is exhausted; remaining nodes are then eligible for assignment by the subsequent EPs in the session's provider list (often CPU, but not necessarily).
 
 Together, these form a two-phase workflow: profile the model once to collect memory data, then partition it in production using that data and a memory limit.
 
@@ -26,8 +26,10 @@ import onnx
 model = onnx.load("model.onnx")
 for node in model.graph.node:
     # Assign a layer annotation based on your own logic
-    entry = node.metadata_props.add()
-    entry.key = "layer_ann"
+    entry = next((prop for prop in node.metadata_props if prop.key == "layer_ann"), None)
+    if entry is None:
+        entry = node.metadata_props.add()
+        entry.key = "layer_ann"
     entry.value = "encoder_layer_0"  # your annotation string
 
 onnx.save(model, "model_annotated.onnx")
@@ -72,8 +74,8 @@ Save the following as `annotate_model.json`:
 ```
 
 The `layer_annotations` dictionary maps annotation names to node-name substring patterns:
-- Any node whose name contains `"embed_tokens"`  annotated as `"embedding_layer"`
-- Any node whose name contains `"self_attn"`, `"q_proj"`, etc.  annotated as `"attention_layer"`
+- Any node whose name contains `"embed_tokens"` → annotated as `"embedding_layer"`
+- Any node whose name contains `"self_attn"`, `"q_proj"`, etc. → annotated as `"attention_layer"`
 - And so on for `"mlp_layer"` and `"norm_layer"`.
 
 You can also use `ModelBuilder` instead of `OnnxConversion` — both paths apply the annotations automatically:
@@ -84,8 +86,6 @@ You can also use `ModelBuilder` instead of `OnnxConversion` — both paths apply
       "precision": "int4"
     }
 ```
-
-`olive run --config annotate_model.json`
 
 #### Step 2 — Run the workflow
 
@@ -118,7 +118,7 @@ The annotated model is now ready for use with the ORT session options described 
 
 ### Configuring Layer Assignment at Runtime
 
-Use the session option session.layer_assignment_settings to tell ONNX Runtime how to map annotations to devices.
+Use the session option `session.layer_assignment_settings` to tell ONNX Runtime how to map annotations to devices.
 
 `device1(annotation1, annotation2, ...); device2(=annotation3, annotation4, ...)`
 
@@ -148,7 +148,7 @@ Nodes that do not match any rule fall through to the normal EP capability-based 
 
 ## Capacity-Aware Partitioning (implemented for CUDA)
 
-When running models on a CUDA GPU with limited memory, you can set a memory budget so ONNX Runtime stops assigning nodes to the CUDA EP once the estimated memory consumption reaches the limit. Remaining nodes fall back to CPU.
+When running models on a CUDA GPU with limited memory, you can set a memory budget so ONNX Runtime stops assigning nodes to the CUDA EP once the estimated memory consumption reaches the limit. Remaining nodes are then eligible for assignment by the subsequent EPs in the session's provider list (often CPU, but not necessarily).
 
 ### Step 1: Collect Memory Statistics (Profiling Run)
 
@@ -169,13 +169,28 @@ opts.add_session_config_entry(
 session = ort.InferenceSession("model.onnx", opts,
                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 
-# Run inference at least once to collect statistics
-input_data = {inp.name: np.zeros(inp.shape, dtype=np.float32) for inp in session.get_inputs()}
+def make_concrete_shape(shape, default_dim=1):
+    """ORT input shapes may contain symbolic dims or None (e.g. batch size).
+    Replace those with a small concrete value for profiling."""
+    return tuple(
+        dim if isinstance(dim, int) and dim > 0 else default_dim
+        for dim in shape
+    )
+
+# Run inference at least once to collect statistics.
+# For models with dynamic inputs, prefer real sample inputs or model-appropriate
+# concrete shapes instead of relying on the declared ORT input shape directly.
+input_data = {
+    inp.name: np.zeros(make_concrete_shape(inp.shape), dtype=np.float32)
+    for inp in session.get_inputs()
+}
 session.run(None, input_data)
 ```
 
-This produces a CSV file (node_memory_stats.csv in the same directory as the model) with columns:
+This produces a CSV file with columns:
 `#name,input_sizes,initializers_sizes,total_dynamic_sizes,total_temp_allocations`
+
+In this example, `node_memory_stats.csv` is a relative path. Relative paths are resolved against the model's directory when the model was loaded from a filesystem path. If you provide an absolute path, that path is used as-is. If the model was not loaded from a filesystem path (for example, it was loaded from bytes), the output file is written relative to the current working directory.
 
 Multiple Run() calls update the stats with the maximum values observed per node.
 
@@ -199,7 +214,7 @@ session = ort.InferenceSession("model.onnx", opts,
                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 ```
 
-ONNX Runtime processes nodes in priority order, accumulating estimated memory. When the cumulative cost exceeds the budget, remaining nodes are not assigned to the CUDA EP and fall back to CPU.
+ONNX Runtime processes nodes in priority order, accumulating estimated memory. When the cumulative cost exceeds the budget, remaining nodes are not assigned to the CUDA EP and are eligible for assignment by the subsequent EPs in the session's provider list.
 
 ### Ad-Hoc Mode (No Stats File)
 
@@ -216,7 +231,7 @@ opts.add_session_config_entry(
 ```
 
 ### Setting Format Summary
-The value of session.resource_cuda_partitioning_settings is a comma-separated pair:
+The value of `session.resource_cuda_partitioning_settings` is a comma-separated pair:
 
 |Format|Meaning|
 |:------|:-------|
@@ -225,7 +240,7 @@ The value of session.resource_cuda_partitioning_settings is a comma-separated pa
 |`,<stats_file>`|	Stats only (no explicit limit)|
 |`,`| Neither (EP attempts auto-detection)|
 
-The stats file is resolved relative to the model file's directory.
+The stats file path follows the same resolution rules described above: relative paths are resolved against the model's directory, absolute paths are used as-is.
 
 ## Combining Both Features
 Layer annotations and capacity-aware partitioning can be used together. When both are configured:
