@@ -701,11 +701,12 @@ const char* ORT_API_CALL ExampleEp::GetCompiledModelCompatibilityInfoImpl(OrtEp*
   // - EP name
   // - EP version (from factory)
   // - ORT API version
+  // - Hardware Architecture (It's used for model package test)
   //
   // In a real EP, this might include driver versions, hardware IDs, etc.
   // The string format is EP-defined and should be parseable by ValidateCompiledModelCompatibilityInfo.
   ep->compatibility_info_ = ep->name_ + ";version=" + ep->factory_.GetEpVersionString() + ";ort_api_version=" +
-                            std::to_string(ORT_API_VERSION);
+                            std::to_string(ORT_API_VERSION) + ";hardware_architecture=arch1";
 
   IGNORE_ORTSTATUS(ep->ort_api.Logger_LogMessage(&ep->logger_,
                                                  OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
