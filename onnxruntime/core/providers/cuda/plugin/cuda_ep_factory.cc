@@ -105,7 +105,8 @@ std::string GetProviderOptionPrefix(std::string_view provider_name) {
 
 void LogWarning(const OrtApi& ort_api, const OrtLogger& logger, const char* file, int line,
                 const char* function, const char* msg) {
-  OrtStatus* st = ort_api.Logger_LogMessage(&logger, ORT_LOGGING_LEVEL_WARNING, msg, file, line, function);
+  ORT_UNUSED_PARAMETER(file);
+  OrtStatus* st = ort_api.Logger_LogMessage(&logger, ORT_LOGGING_LEVEL_WARNING, msg, L"cuda_ep_factory.cc", line, function);
   if (st != nullptr) {
     ort_api.ReleaseStatus(st);
   }
@@ -317,7 +318,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
                             ". Using default value.";
 
     OrtStatus* st = factory->ort_api_.Logger_LogMessage(
-        logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), "cuda_ep_factory.cc", __LINE__, "CudaEpFactory");
+        logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), L"cuda_ep_factory.cc", __LINE__, "CudaEpFactory");
     if (st != nullptr) {
       factory->ort_api_.ReleaseStatus(st);
     }
