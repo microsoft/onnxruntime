@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <limits>
 #include "gtest/gtest.h"
 #include "core/providers/cpu/llm/rotary_embedding.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -1225,16 +1226,18 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_CUDA_Passthrough) {
 }
 
 TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsTotalElementsOverflow) {
+  constexpr int kMaxInt = std::numeric_limits<int>::max();
+
   rotary_embedding_helper::RotaryParameters parameters{};
-  parameters.batch_size = 1;
-  parameters.sequence_length = 65536;
-  parameters.num_heads = 32768;
+  parameters.batch_size = kMaxInt;
+  parameters.sequence_length = kMaxInt;
+  parameters.num_heads = 3;
   parameters.head_size = 4;
   parameters.head_stride = 4;
   parameters.seq_stride = 8;
   parameters.batch_stride = 8;
   parameters.position_ids_format = 0;
-  parameters.max_sequence_length = 65536;
+  parameters.max_sequence_length = kMaxInt;
   parameters.rotary_embedding_dim = 4;
 
   const int64_t position_ids[] = {0};

@@ -94,9 +94,11 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
                                                             : narrow<ptrdiff_t>(input_shape[1]);
 
   const size_t expected_coefficients_size = SafeInt<size_t>(num_targets_) * SafeInt<size_t>(num_features);
-  ORT_RETURN_IF_NOT(coefficients_.size() == expected_coefficients_size,
-                    "LinearRegressor: coefficients length (", coefficients_.size(),
-                    ") must equal targets (", num_targets_, ") * features (", num_features, ")");
+  if (coefficients_.size() != expected_coefficients_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearRegressor: coefficients length (", coefficients_.size(),
+                           ") must equal targets (", num_targets_, ") * features (", num_features, ")");
+  }
 
   Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();

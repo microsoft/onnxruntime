@@ -27,6 +27,16 @@ inline Status CheckedMulToPtrdiff(int lhs, int rhs, const char* name, std::ptrdi
   return Status::OK();
 }
 
+inline Status CheckedMulToPtrdiff(std::ptrdiff_t lhs, int rhs, const char* name, std::ptrdiff_t& output) {
+  ORT_RETURN_IF(lhs < 0 || rhs < 0, "RotaryEmbedding: ", name, " must be non-negative");
+  if (lhs != 0 && static_cast<std::ptrdiff_t>(rhs) > std::numeric_limits<std::ptrdiff_t>::max() / lhs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
+  }
+
+  output = lhs * rhs;
+  return Status::OK();
+}
+
 inline Status CheckedMulToPtrdiff(int lhs, int rhs, int third, const char* name, std::ptrdiff_t& output) {
   std::ptrdiff_t intermediate = 0;
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(lhs, rhs, name, intermediate));
@@ -62,8 +72,12 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
   const int64_t rotary_embedding_dim_attr = info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0);
   const int64_t num_heads_attr = info.GetAttrOrDefault<int64_t>("num_heads", 0);
-  ORT_ENFORCE(rotary_embedding_dim_attr >= 0 && rotary_embedding_dim_attr <= std::numeric_limits<int>::max());
-  ORT_ENFORCE(num_heads_attr >= 0 && num_heads_attr <= std::numeric_limits<int>::max());
+  ORT_ENFORCE(rotary_embedding_dim_attr >= 0 && rotary_embedding_dim_attr <= std::numeric_limits<int>::max(),
+              "rotary_embedding_dim must be in range [0, ", std::numeric_limits<int>::max(),
+              "]. Actual value: ", rotary_embedding_dim_attr);
+  ORT_ENFORCE(num_heads_attr >= 0 && num_heads_attr <= std::numeric_limits<int>::max(),
+              "num_heads must be in range [0, ", std::numeric_limits<int>::max(),
+              "]. Actual value: ", num_heads_attr);
   rotary_embedding_dim = static_cast<int>(rotary_embedding_dim_attr);
   num_heads = static_cast<int>(num_heads_attr);
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
@@ -139,10 +153,11 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       T* output_data = output + block_offset;
 
       // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
-      const int position_id = (position_ids_format == 0)
-                                  ? static_cast<int>(position_ids[0]) + s
-                                  : static_cast<int>(position_ids[b * sequence_length + s]);
-      const int cache_offset = position_id * half_rotary_emb_dim;
+      const std::ptrdiff_t position_id = (position_ids_format == 0)
+                     ? static_cast<std::ptrdiff_t>(position_ids[0]) + s
+                     : position_ids[static_cast<std::ptrdiff_t>(b) * sequence_length + s];
+      std::ptrdiff_t cache_offset = 0;
+      ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(position_id, half_rotary_emb_dim, "cache_offset", cache_offset));
       const T* cos_data = cos_cache + cache_offset;
       const T* sin_data = sin_cache + cache_offset;
 
