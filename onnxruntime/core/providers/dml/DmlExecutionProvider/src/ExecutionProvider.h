@@ -356,9 +356,9 @@ namespace Dml
             return m_impl->ReplayGraph(graph_annotation_id);
         }
 
-        GraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override
+        onnxruntime::GraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override
         {
-            return GraphCaptureNodeAssignmentPolicy::AllowCpuForShapes;
+            return onnxruntime::GraphCaptureNodeAssignmentPolicy::AllowCpuForShapes;
         }
 
     private:
