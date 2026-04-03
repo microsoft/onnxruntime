@@ -29,6 +29,7 @@ import {
 import { getInstance } from './wasm-factory';
 import { allocWasmString, checkLastError } from './wasm-utils';
 import { loadFile } from './wasm-utils-load-file';
+import { initTelemetry } from './telemetry.js';
 
 // #region Initializations
 
@@ -91,6 +92,11 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
  * @param env passed in the environment config object.
  */
 export const initRuntime = async (env: Env): Promise<void> => {
+  // Initialize telemetry bridge BEFORE ORT init, because _OrtInit() fires
+  // LogProcessInfo() during environment creation and we need the JS callback
+  // registered to receive it.
+  initTelemetry(getInstance());
+
   // init ORT
   initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 };

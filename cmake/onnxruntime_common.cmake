@@ -55,6 +55,14 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
+    # WASM telemetry uses EM_JS to bridge C++ events to JavaScript
+    if (onnxruntime_USE_TELEMETRY AND CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/wasm/telemetry.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/wasm/telemetry.cc"
+        )
+    endif()
+
     # logging files
     if (onnxruntime_USE_SYSLOG)
         list(APPEND onnxruntime_common_src_patterns
@@ -139,7 +147,11 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
-  set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  if(WIN32)
+    set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_compile_definitions(onnxruntime_common PRIVATE USE_WASM_TELEMETRY)
+  endif()
 endif()
 if (onnxruntime_USE_MIMALLOC)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)

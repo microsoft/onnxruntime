@@ -243,6 +243,37 @@ export declare namespace Env {
      */
     validateInputContent?: boolean;
   }
+
+  export interface TelemetryFlags {
+    /**
+     * Set or get whether telemetry is enabled.
+     *
+     * When enabled, ONNX Runtime sends usage and performance telemetry to Microsoft via the 1DS SDK.
+     * No personally identifiable information (PII) is collected.
+     *
+     * Telemetry can also be excluded at build time using the `onnxruntime_USE_TELEMETRY` CMake flag.
+     *
+     * @defaultValue `true`
+     */
+    enabled?: boolean;
+
+    /**
+     * Set or get an observer callback that is invoked for every telemetry event.
+     *
+     * This allows consumers to "listen in" on telemetry events without implementing their own transport.
+     * The callback receives the event name and a plain object containing the event properties.
+     *
+     * @example
+     * ```js
+     * ort.env.telemetry.onEvent = (eventName, eventData) => {
+     *   console.log(`[ORT Telemetry] ${eventName}:`, eventData);
+     * };
+     * ```
+     *
+     * @defaultValue `undefined`
+     */
+    onEvent?: (eventName: string, eventData: Record<string, unknown>) => void;
+  }
 }
 
 export interface Env {
@@ -292,6 +323,11 @@ export interface Env {
    * Represent a set of flags for WebGPU
    */
   readonly webgpu: Env.WebGpuFlags;
+
+  /**
+   * Represent a set of flags for Telemetry
+   */
+  readonly telemetry: Env.TelemetryFlags;
 
   [name: string]: unknown;
 }
