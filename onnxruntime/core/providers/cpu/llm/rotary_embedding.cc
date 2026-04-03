@@ -160,8 +160,8 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       // Identify the index of batch, sequence, and head (specific range) in the input/output tensor
       // for read/write
       const std::ptrdiff_t block_offset = static_cast<std::ptrdiff_t>(b) * batch_stride +
-                  static_cast<std::ptrdiff_t>(s) * seq_stride +
-                  static_cast<std::ptrdiff_t>(n) * head_stride;
+                                          static_cast<std::ptrdiff_t>(s) * seq_stride +
+                                          static_cast<std::ptrdiff_t>(n) * head_stride;
       const T* input_data = input + block_offset;
       T* output_data = output + block_offset;
 
