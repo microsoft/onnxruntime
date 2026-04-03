@@ -12,6 +12,7 @@ export const env: Env = {
   wasm: {} as Env.WebAssemblyFlags,
   webgl: {} as Env.WebGLFlags,
   webgpu: {} as Env.WebGpuFlags,
+  telemetry: { enabled: true } as Env.TelemetryFlags,
   versions: { common: version },
 
   set logLevel(value: LogLevelType) {

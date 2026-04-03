@@ -16,6 +16,10 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
+#ifdef USE_WASM_TELEMETRY
+#include "core/platform/wasm/telemetry.h"
+#endif
+
 #include <assert.h>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -613,7 +617,11 @@ class PosixEnv : public Env {
   }
 
  private:
+#ifdef USE_WASM_TELEMETRY
+  WasmTelemetry telemetry_provider_;
+#else
   Telemetry telemetry_provider_;
+#endif
 #ifdef ORT_USE_CPUINFO
   PosixEnv() {
     cpuinfo_available_ = cpuinfo_initialize();

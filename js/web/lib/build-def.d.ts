@@ -39,6 +39,10 @@ interface BuildDefinitions {
    */
   readonly DISABLE_WASM_PROXY: boolean;
   /**
+   * defines whether to disable telemetry in the build.
+   */
+  readonly DISABLE_TELEMETRY: boolean;
+  /**
    * defines whether to enable JSPI (JavaScript Plugin Interface) support in the build.
    */
   readonly ENABLE_JSPI: boolean;

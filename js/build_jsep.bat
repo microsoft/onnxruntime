@@ -76,6 +76,7 @@ call %ROOT%build.bat^
  --enable_wasm_threads^
  --use_jsep^
  --use_webnn^
+ --cmake_extra_defines onnxruntime_USE_TELEMETRY=ON^
  --build_dir %BUILD_DIR%^
  --include_ops_by_config %ROOT%onnxruntime\wasm\reduced_types.config^
  --enable_reduced_operator_type_support
