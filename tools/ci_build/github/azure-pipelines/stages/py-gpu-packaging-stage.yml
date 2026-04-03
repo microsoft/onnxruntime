@@ -60,7 +60,17 @@ parameters:
 
 - name: docker_base_image
   type: string
-  displayName: 'Linux docker base image'
+  displayName: 'Linux x86_64 docker base image'
+
+- name: docker_base_image_aarch64
+  type: string
+  displayName: 'Linux aarch64 docker base image'
+  default: ''
+
+- name: AArch64LinuxPythonConfigurations
+  type: object
+  displayName: 'aarch64 Linux Python build configurations'
+  default: []
 
 stages:
     # Use separated cudnn folder for CUDA 13.0 on Windows.
@@ -102,11 +112,30 @@ stages:
           ${{ if eq(config.python_version, '3.12') }}:
             build_intermediates_artifact_name: linux_gpu_wheel_x86_64
 
+    # Linux aarch64: one parallel stage per Python version
+    - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
+      - template: py-linux-gpu-stage.yml
+        parameters:
+          stage_name: Linux_py_GPU_Wheels_aarch64_${{ replace(config.python_version, '.', '_') }}
+          arch: 'aarch64'
+          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          cuda_version: ${{ parameters.cuda_version }}
+          docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
+          python_version: ${{ config.python_version }}
+          docker_python_exe_path: ${{ config.docker_python_exe_path }}
+          wheel_artifact_name: onnxruntime_gpu_aarch64_${{ replace(config.python_version, '.', '_') }}
+          ${{ if eq(config.python_version, '3.12') }}:
+            build_intermediates_artifact_name: linux_gpu_wheel_aarch64
+
     # Merge per-version Linux wheel artifacts into a single combined artifact for downstream consumers
     - stage: Linux_py_GPU_Wheels_Merge_Artifacts
       dependsOn:
       - ${{ each config in parameters.LinuxPythonConfigurations }}:
         - Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
+      - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
+        - Linux_py_GPU_Wheels_aarch64_${{ replace(config.python_version, '.', '_') }}
       jobs:
       - job: Linux_py_GPU_Wheels_Merge_Artifacts
         workspace:
@@ -129,4 +158,11 @@ stages:
             displayName: 'Download wheel - Python ${{ config.python_version }}'
             inputs:
               artifact: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
+              targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
+
+        - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download wheel - aarch64 Python ${{ config.python_version }}'
+            inputs:
+              artifact: onnxruntime_gpu_aarch64_${{ replace(config.python_version, '.', '_') }}
               targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
