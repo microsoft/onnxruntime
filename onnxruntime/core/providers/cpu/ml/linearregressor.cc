@@ -89,7 +89,9 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
 
   // Coefficients are treated as a [num_targets, num_features] matrix.
   // Validate size to prevent out-of-bounds reads in the GEMM backend.
-  if (coefficients_.size() != static_cast<size_t>(num_targets_) * static_cast<size_t>(num_features)) {
+  // Use SafeInt for overflow-safe multiplication.
+  if (num_targets_ < 0 ||
+      coefficients_.size() != SafeInt<size_t>(num_targets_) * static_cast<size_t>(num_features)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "LinearRegressor: coefficients attribute size (", coefficients_.size(),
                            ") does not match targets (", num_targets_,
