@@ -575,6 +575,15 @@ def add_client_package_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_threadpool_callback_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for per-session thread pool work callbacks."""
+    parser.add_argument(
+        "--enable_session_threadpool_callbacks",
+        action="store_true",
+        help="Enable per-session thread pool work callbacks.",
+    )
+
+
 def add_python_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Python bindings."""
     parser.add_argument("--enable_pybind", action="store_true", help="Enable Python bindings.")
@@ -905,6 +914,7 @@ def parse_arguments() -> argparse.Namespace:
     add_extension_args(parser)
     add_size_reduction_args(parser)
     add_client_package_args(parser)
+    add_threadpool_callback_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)
@@ -937,6 +947,10 @@ def parse_arguments() -> argparse.Namespace:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
     if args.android_ndk_path:
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
+
+    # Treat --build_wasm_static_lib as implying --build_wasm
+    if args.build_wasm_static_lib:
+        args.build_wasm = True
 
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:

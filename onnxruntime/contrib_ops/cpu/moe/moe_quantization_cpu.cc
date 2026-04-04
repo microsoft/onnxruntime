@@ -578,10 +578,10 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
 }
 
 template <typename T>
-Status QMoECPU<T>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
-                                                int input_idx,
-                                                /*out*/ bool& used_shared_buffers) {
+Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                             gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                             int input_idx,
+                                             /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
   if (expert_weight_bits_ != 4) {
@@ -622,6 +622,8 @@ template <typename T>
 QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
       MoEBaseCPU(op_kernel_info) {
+  ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,
+              "CPU QMoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 4 or 8.");
@@ -660,6 +662,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const auto* fc1_zero_points = context->Input<Tensor>(11);
   const auto* fc2_zero_points = context->Input<Tensor>(12);
   const auto* fc3_zero_points = context->Input<Tensor>(13);
+  const auto* router_weights = context->Input<Tensor>(14);
 
   const TensorShape* fc1_shape_ptr = packed_fc1_ ? &fc1_shape_ : (fc1_experts_weights ? &fc1_experts_weights->Shape() : nullptr);
   const TensorShape* fc2_shape_ptr = packed_fc2_ ? &fc2_shape_ : (fc2_experts_weights ? &fc2_experts_weights->Shape() : nullptr);
@@ -708,6 +711,28 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     router_logits_float = reinterpret_cast<const float*>(router_probs->Data<T>());
   }
 
+  // Handle optional router_weights input for separate selection/aggregation tensors
+  const bool has_router_weights = (router_weights != nullptr);
+  IAllocatorUniquePtr<float> router_weights_float_buffer;
+  const float* router_weights_float = nullptr;
+  if (has_router_weights) {
+    const auto& rw_shape = router_weights->Shape();
+    if (rw_shape.NumDimensions() != 2 || rw_shape[0] != num_tokens || rw_shape[1] != num_experts) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'router_weights' is expected to have shape (",
+                             num_tokens, ", ", num_experts, "), got ", rw_shape);
+    }
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      router_weights_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * num_experts));
+      router_weights_float = router_weights_float_buffer.get();
+      MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_weights->Data<T>()),
+                                   const_cast<float*>(router_weights_float),
+                                   static_cast<size_t>(num_tokens * num_experts));
+    } else {
+      router_weights_float = reinterpret_cast<const float*>(router_weights->Data<T>());
+    }
+  }
+
   auto route_expert_ptr = IAllocator::MakeUniquePtr<int>(allocator, static_cast<size_t>(num_tokens * k_));
   int* route_expert = route_expert_ptr.get();
   auto route_scale_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * k_));
@@ -743,22 +768,58 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_),
                         sorted_logits.end(), std::greater<>());
 
-      float max_logit = sorted_logits[0].first;
+      if (has_router_weights) {
+        // When router_weights is provided, use it for aggregation weights instead of softmax of router_probs.
+        // Gather weights from router_weights at the selected expert indices.
+        // Note: top_k_exp is reused here as a scratch buffer for the gathered weights.
+        const float* weights_row = router_weights_float + i * num_experts;
+        if (normalize_routing_weights_) {
+          float weight_sum = 0.0f;
+          for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+            int64_t expert_idx = sorted_logits[j].second;
+            top_k_exp[j] = weights_row[expert_idx];
+            weight_sum += top_k_exp[j];
+          }
+          const float inv_weight_sum = (weight_sum == 0.0f) ? 0.0f : (1.0f / weight_sum);
+          for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+            int64_t expert_idx = sorted_logits[j].second;
+            int64_t route_idx = i * k_ + narrow<int64_t>(j);
+            route_expert[route_idx] = narrow<int>(expert_idx);
+            route_scale[route_idx] = top_k_exp[j] * inv_weight_sum;
+            if (route_scale[route_idx] > 1e-8f) {
+              local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+            }
+          }
+        } else {
+          for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+            int64_t expert_idx = sorted_logits[j].second;
+            int64_t route_idx = i * k_ + narrow<int64_t>(j);
+            route_expert[route_idx] = narrow<int>(expert_idx);
+            route_scale[route_idx] = weights_row[expert_idx];
+            if (route_scale[route_idx] > 1e-8f) {
+              local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+            }
+          }
+        }
+      } else {
+        // Default path: compute softmax weights from router_probs for aggregation.
+        float max_logit = sorted_logits[0].first;
 
-      float sum_exp = 0.0f;
-      for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
-        top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
-        sum_exp += top_k_exp[j];
-      }
+        float sum_exp = 0.0f;
+        for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+          top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
+          sum_exp += top_k_exp[j];
+        }
 
-      const float inv_sum = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
-      for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
-        int64_t expert_idx = sorted_logits[j].second;
-        int64_t route_idx = i * k_ + narrow<int64_t>(j);
-        route_expert[route_idx] = narrow<int>(expert_idx);
-        route_scale[route_idx] = top_k_exp[j] * inv_sum;
-        if (route_scale[route_idx] > 1e-8f) {  // Use small threshold to avoid zero weights
-          local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+        const float inv_sum = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
+        for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+          int64_t expert_idx = sorted_logits[j].second;
+          int64_t route_idx = i * k_ + narrow<int64_t>(j);
+          route_expert[route_idx] = narrow<int>(expert_idx);
+          route_scale[route_idx] = top_k_exp[j] * inv_sum;
+          if (route_scale[route_idx] > 1e-8f) {  // Use small threshold to avoid zero weights
+            local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+          }
         }
       }
     }
@@ -1516,11 +1577,11 @@ template QMoECPU<float>::QMoECPU(const OpKernelInfo& op_kernel_info);
 
 template Status QMoECPU<float>::Compute(OpKernelContext* context) const;
 template Status QMoECPU<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
-template Status QMoECPU<float>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
+template Status QMoECPU<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 template QMoECPU<MLFloat16>::QMoECPU(const OpKernelInfo& op_kernel_info);
 template Status QMoECPU<MLFloat16>::Compute(OpKernelContext* context) const;
 template Status QMoECPU<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
-template Status QMoECPU<MLFloat16>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
+template Status QMoECPU<MLFloat16>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 
 // Kernel Registration
 ONNX_OPERATOR_TYPED_KERNEL_EX(

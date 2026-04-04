@@ -6,7 +6,6 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cpu/math/einsum_utils/einsum_typed_compute_processor.h"
 #include "einsum_utils/einsum_auxiliary_ops.h"
 
@@ -19,7 +18,6 @@ class Einsum final : public CudaKernel {
     ORT_ENFORCE(info.GetAttr<std::string>("equation", &equation_).IsOK(),
                 "Missing 'equation' attribute");
     einsum_equation_preprocessor_ = std::make_unique<EinsumEquationPreprocessor>(equation_);
-    cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -27,7 +25,6 @@ class Einsum final : public CudaKernel {
  private:
   std::string equation_;
   std::unique_ptr<EinsumEquationPreprocessor> einsum_equation_preprocessor_;
-  const CUDAExecutionProvider* cuda_ep_;
 };
 
 }  // namespace cuda

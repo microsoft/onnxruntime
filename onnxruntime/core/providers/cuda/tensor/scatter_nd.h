@@ -7,7 +7,9 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/tensor/scatter_nd_kind.h"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cpu/tensor/scatter_nd.h"
+#endif
 
 namespace onnxruntime {
 namespace cuda {
