@@ -33,8 +33,9 @@ namespace {
 constexpr int kMaxParallelImgs = 32;
 
 // ceil(numer / denom) for numer >= 0, denom > 0 (integer, no floating point).
+// Avoid (numer + denom - 1) / denom: numer near INT_MAX overflows signed int (UB in C++).
 inline int CeilDiv(int numer, int denom) {
-  return (numer + denom - 1) / denom;
+  return numer / denom + (numer % denom != 0 ? 1 : 0);
 }
 
 // Chooses DeformConv batch chunk size k (images per outer-loop iteration) given batch N and
