@@ -448,6 +448,9 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterElements);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterElements);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 7, 13, LSTM);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, LSTM);
+
 std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool enable_int64) {
   auto kernel_registry = std::make_unique<KernelRegistry>();
 
@@ -802,6 +805,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 15, ScatterElements)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterElements)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterElements)>,
+
+      // RNN operators
+      KERNEL_CREATE_INFO_VERSIONED(7, 13, LSTM),
+      KERNEL_CREATE_INFO(14, LSTM),
   };
 
   for (auto& function_table_entry : function_table) {
