@@ -50,28 +50,28 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
     vector_count_ += narrow<ptrdiff_t>(vectors_per_class_[i]);
   }
 
+  ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0, "One of classlabels_strings, classlabels_ints is required.");
+
   using_strings_ = false;
   if (classlabels_strings_.size() > 0) {
     using_strings_ = true;
     class_count_ = classlabels_strings_.size();
-  } else if (classlabels_ints_.size() > 0) {
-    class_count_ = classlabels_ints_.size();
   } else {
-    class_count_ = 1;
+    class_count_ = classlabels_ints_.size();
   }
+
+  ORT_ENFORCE(proba_.size() == probb_.size(), "proba and probb must have the same size.");
+  ORT_ENFORCE(coefficients_.size() > 0, "coefficients are empty.");
 
   if (vector_count_ > 0) {
     feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
     mode_ = SVM_TYPE::SVM_SVC;
+    ORT_ENFORCE(vectors_per_class_.size() == class_count_, "Mismatch between class_labels and vector_per_class dimensions.");
   } else {
     feature_count_ = coefficients_.size() / class_count_;  // liblinear mode
     mode_ = SVM_TYPE::SVM_LINEAR;
     set_kernel_type(KERNEL::LINEAR);
   }
-
-  ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0);
-  ORT_ENFORCE(proba_.size() == probb_.size());
-  ORT_ENFORCE(coefficients_.size() > 0);
 
   // Validate attribute array sizes against the declared dimensions to prevent
   // out-of-bounds reads from crafted models.
@@ -233,7 +233,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   }
 
   int write_additional_scores = -1;
-  int64_t num_scores_per_batch = class_count_;
+  size_t num_scores_per_batch = class_count_;
 
   if (mode_ == SVM_TYPE::SVM_SVC && !have_proba) {
     num_scores_per_batch = num_classifiers;
@@ -303,39 +303,39 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
       // e.g. AB combines with BA.
       // If A has 3 support vectors and B has 2, there's a 3x2 block for AB and a 2x3 block for BA to combine
 
-      auto cur_kernels = kernels_span.subspan(n * SafeInt<size_t>(vector_count_), onnxruntime::narrow<size_t>(vector_count_));
-      auto cur_scores = classifier_scores.subspan(n * SafeInt<size_t>(num_slots_per_iteration), onnxruntime::narrow<size_t>(num_classifiers));
-      auto cur_votes = votes_span.subspan(n * SafeInt<size_t>(class_count_), onnxruntime::narrow<size_t>(class_count_));
+      auto cur_kernels = kernels_span.subspan(n * SafeInt<size_t>(vector_count_), vector_count_);
+      auto cur_scores = classifier_scores.subspan(n * SafeInt<size_t>(num_slots_per_iteration), num_classifiers);
+      auto cur_votes = votes_span.subspan(n * SafeInt<size_t>(class_count_), class_count_);
       auto scores_iter = cur_scores.begin();
 
       size_t classifier_idx = 0;
-      for (int64_t i = 0; i < class_count_ - 1; i++) {
-        int64_t start_index_i = starting_vector_[onnxruntime::narrow<size_t>(i)];  // start of support vectors for class i
-        int64_t class_i_support_count = vectors_per_class_[onnxruntime::narrow<size_t>(i)];
-        int64_t i_coeff_row_offset = vector_count_ * i;
+      for (size_t i = 0; i < class_count_ - 1; i++) {
+        size_t start_index_i = starting_vector_[i];  // start of support vectors for class i
+        size_t class_i_support_count = vectors_per_class_[i];
+        size_t i_coeff_row_offset = vector_count_ * i;
 
-        for (int64_t j = i + 1; j < class_count_; j++) {
-          int64_t start_index_j = starting_vector_[onnxruntime::narrow<size_t>(j)];  // start of support vectors for class j
-          int64_t class_j_support_count = vectors_per_class_[onnxruntime::narrow<size_t>(j)];
-          int64_t j_coeff_row_offset = vector_count_ * (j - 1);
+        for (size_t j = i + 1; j < class_count_; j++) {
+          size_t start_index_j = starting_vector_[j];  // start of support vectors for class j
+          size_t class_j_support_count = vectors_per_class_[j];
+          size_t j_coeff_row_offset = vector_count_ * (j - 1);
 
           double sum = 0;
 
           const float* val1 = &(coefficients_[j_coeff_row_offset + SafeInt<size_t>(start_index_i)]);
-          const float* val2 = &(cur_kernels[onnxruntime::narrow<size_t>(start_index_i)]);
-          for (int64_t m = 0; m < class_i_support_count; ++m, ++val1, ++val2)
+          const float* val2 = &(cur_kernels[start_index_i]);
+          for (size_t m = 0; m < class_i_support_count; ++m, ++val1, ++val2)
             sum += *val1 * *val2;
 
           val1 = &(coefficients_[i_coeff_row_offset + SafeInt<size_t>(start_index_j)]);
           val2 = &(cur_kernels[onnxruntime::narrow<size_t>(start_index_j)]);
 
-          for (int64_t m = 0; m < class_j_support_count; ++m, ++val1, ++val2)
+          for (size_t m = 0; m < class_j_support_count; ++m, ++val1, ++val2)
             sum += *val1 * *val2;
 
           sum += rho_[classifier_idx++];
 
           *scores_iter++ = static_cast<float>(sum);
-          ++(cur_votes[onnxruntime::narrow<size_t>(sum > 0 ? i : j)]);
+          ++(cur_votes[sum > 0 ? i : j]);
         }
       }
     }
@@ -346,23 +346,23 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                          &classifier_scores_data, num_classifiers, &votes_data, &Y,
                          num_scores_per_batch, write_additional_scores](ptrdiff_t idx) {
     int n = SafeInt<int32_t>(idx);  // convert to a usable sized type
-    auto cur_scores = final_scores.subspan(n * SafeInt<size_t>(final_scores_per_batch), onnxruntime::narrow<size_t>(final_scores_per_batch));
+    auto cur_scores = final_scores.subspan(n * SafeInt<size_t>(final_scores_per_batch), final_scores_per_batch);
 
     if (mode_ == SVM_TYPE::SVM_SVC && have_proba) {
-      auto probsp2 = gsl::make_span<float>(probsp2_data.data() + (n * class_count_squared), onnxruntime::narrow<size_t>(class_count_squared));
+      auto probsp2 = gsl::make_span<float>(probsp2_data.data() + (n * class_count_squared), class_count_squared);
 
       float* classifier_scores = classifier_scores_data.data() + (n * num_classifiers);
 
       size_t index = 0;
-      for (int64_t i = 0; i < class_count_ - 1; ++i) {
-        int64_t p1 = i * class_count_ + i + 1;
-        int64_t p2 = (i + 1) * class_count_ + i;
-        for (int64_t j = i + 1; j < class_count_; ++j, ++index) {
+      for (size_t i = 0; i < class_count_ - 1; ++i) {
+        size_t p1 = i * class_count_ + i + 1;
+        size_t p2 = (i + 1) * class_count_ + i;
+        for (size_t j = i + 1; j < class_count_; ++j, ++index) {
           float val1 = sigmoid_probability(classifier_scores[index], proba_[index], probb_[index]);
           float val2 = std::max(val1, 1.0e-7f);
           val2 = std::min(val2, 1 - 1.0e-7f);
-          probsp2[onnxruntime::narrow<size_t>(p1)] = val2;
-          probsp2[onnxruntime::narrow<size_t>(p2)] = 1 - val2;
+          probsp2[p1] = val2;
+          probsp2[p2] = 1 - val2;
           ++p1;
           p2 += class_count_;
         }
