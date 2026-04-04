@@ -5,6 +5,8 @@
 #include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
 
+#include <limits>
+
 namespace onnxruntime {
 namespace ml {
 
@@ -89,7 +91,21 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
 
   // Coefficients are treated as a [num_targets, num_features] matrix.
   // Validate size to prevent out-of-bounds reads in the GEMM backend.
-  if (coefficients_.size() != static_cast<size_t>(num_targets_) * static_cast<size_t>(num_features)) {
+  if (num_targets_ < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearRegressor: targets attribute must be non-negative, got ", num_targets_);
+  }
+
+  const auto targets = static_cast<size_t>(num_targets_);
+  const auto features = static_cast<size_t>(num_features);
+  // Non-throwing overflow check: targets * features would overflow if features > max / targets.
+  if (targets != 0 && features > std::numeric_limits<size_t>::max() / targets) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearRegressor: coefficients size overflow for targets (", num_targets_,
+                           ") * input features (", num_features, ")");
+  }
+
+  if (coefficients_.size() != targets * features) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "LinearRegressor: coefficients attribute size (", coefficients_.size(),
                            ") does not match targets (", num_targets_,
