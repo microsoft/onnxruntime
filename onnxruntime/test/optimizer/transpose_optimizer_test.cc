@@ -11,7 +11,9 @@
 
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph.h"
+#include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
 #include "core/optimizer/transpose_optimization/optimizer_api.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
@@ -4681,6 +4683,105 @@ TEST(TransposeOptimizerTests, QnnResizeOpset11) {
   // And the post-Resize Transpose should have been pushed all the way to the end
   GraphViewer viewer(graph);
   EXPECT_EQ(graph.GetNode(viewer.GetNodesInTopologicalOrder().back())->OpType(), "Transpose");
+}
+
+TEST(TransposeOptimizerTests, TransformLayoutForEPInfersConvRankFromAttributesWhenInputRankMissing) {
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 11;
+  domain_to_version[kMSDomain] = 1;
+  domain_to_version[kMSInternalNHWCDomain] = 11;
+
+  Model model("TransposeOptimizerTests.TransformLayoutForEPInfersConvRankFromAttributesWhenInputRankMissing",
+              false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input_arg = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{});
+  auto* weight_arg = builder.MakeInitializer<float>({4, 3, 3, 3}, std::vector<float>(4 * 3 * 3 * 3, 0.5f));
+  auto* output_arg = builder.MakeOutput();
+
+  Node& conv_node = builder.AddNode("Conv", {input_arg, weight_arg}, {output_arg});
+  conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  conv_node.SetExecutionProviderType(internal_testing_ep::kInternalTestingExecutionProvider);
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const std::unordered_set<std::string> supported_ops{"Conv"};
+  InternalTestingEP ep(supported_ops, std::unordered_set<std::string>{}, DataLayout::NHWC);
+
+  bool modified = false;
+  ASSERT_STATUS_OK(layout_transformation::TransformLayoutForEP(
+      graph, modified, ep, TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {}));
+  ASSERT_TRUE(modified);
+  ASSERT_TRUE(graph.GraphResolveNeeded());
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 2) << "Conv with inferred rank should be wrapped by 2 Transpose nodes.";
+
+  int nhwc_conv_count = 0;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      ++nhwc_conv_count;
+      EXPECT_EQ(node.Domain(), kMSInternalNHWCDomain)
+          << "Conv should be converted to the internal NHWC domain when rank is inferred from attributes.";
+    }
+  }
+
+  EXPECT_EQ(nhwc_conv_count, 1);
+}
+
+TEST(TransposeOptimizerTests, TransformLayoutForEPSkipsResizeWhenInputRankIsOne) {
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 11;
+  domain_to_version[kMSDomain] = 1;
+  domain_to_version[kMSInternalNHWCDomain] = 11;
+
+  Model model("TransposeOptimizerTests.TransformLayoutForEPSkipsResizeWhenInputRankIsOne",
+              false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input_arg = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{5}});
+  auto* roi_arg = builder.MakeInitializer<float>({0}, {});
+  auto* scales_arg = builder.MakeInitializer<float>({1}, {2.0f});
+  auto* output_arg = builder.MakeOutput();
+
+  Node& resize_node = builder.AddNode("Resize", {input_arg, roi_arg, scales_arg}, {output_arg});
+  resize_node.SetExecutionProviderType(internal_testing_ep::kInternalTestingExecutionProvider);
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const std::unordered_set<std::string> empty_set;
+  InternalTestingEP ep(empty_set, empty_set, DataLayout::NHWC);
+
+  bool modified = false;
+  ASSERT_STATUS_OK(layout_transformation::TransformLayoutForEP(
+      graph, modified, ep, TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {}));
+  EXPECT_FALSE(modified);
+  EXPECT_FALSE(graph.GraphResolveNeeded());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 0) << "Rank-1 Resize should not be wrapped with Transpose nodes.";
+
+  int resize_count = 0;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Resize") {
+      ++resize_count;
+      EXPECT_TRUE(node.Domain().empty()) << "Rank-1 Resize should remain in the ONNX domain.";
+    }
+  }
+
+  EXPECT_EQ(resize_count, 1);
 }
 
 // model where layout transform results in transposing a non-const input that is broadcast.

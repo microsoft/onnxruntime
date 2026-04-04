@@ -14,6 +14,58 @@ using namespace onnx_transpose_optimization;
 namespace onnxruntime {
 namespace layout_transformation {
 namespace {
+std::optional<size_t> GetRankFromAttributeLength(const api::NodeRef& node, std::string_view attr_name,
+                                                 size_t divisor = 1) {
+  if (auto attr = node.GetAttributeInts(attr_name); attr.has_value() && !attr->empty() && attr->size() % divisor == 0) {
+    return attr->size() / divisor;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<size_t> TryInferLayoutRank(const api::GraphRef& graph, const api::NodeRef& node) {
+  const auto inputs = node.Inputs();
+  if (inputs.empty() || inputs[0].empty()) {
+    return std::nullopt;
+  }
+
+  const auto input_value_info = graph.GetValueInfo(inputs[0]);
+  if (auto rank = input_value_info->ShapeRank(); rank.has_value()) {
+    return *rank >= 2 ? rank : std::nullopt;
+  }
+
+  const auto try_infer_from_attrs = [&](std::initializer_list<std::pair<std::string_view, size_t>> attrs)
+      -> std::optional<size_t> {
+    for (const auto& [attr_name, divisor] : attrs) {
+      if (auto rank = GetRankFromAttributeLength(node, attr_name, divisor); rank.has_value()) {
+        return rank;
+      }
+    }
+
+    return std::nullopt;
+  };
+
+  if (node.IsOp("Conv") || node.IsOp("ConvInteger") || node.IsOp("QLinearConv") ||
+      node.IsOp("ConvTranspose") || node.IsOp("FusedConv", kMSDomain)) {
+    if (auto spatial_rank = try_infer_from_attrs({{"kernel_shape", 1}, {"strides", 1}, {"dilations", 1},
+                                                  {"output_padding", 1}, {"output_shape", 1}, {"pads", 2}});
+        spatial_rank.has_value()) {
+      return *spatial_rank + 2;
+    }
+  }
+
+  if (node.IsOp("AveragePool") || node.IsOp("LpPool") || node.IsOp("MaxPool") || node.IsOp("MaxUnpool") ||
+      node.IsOp("QLinearAveragePool", kMSDomain)) {
+    if (auto spatial_rank = try_infer_from_attrs({{"kernel_shape", 1}, {"strides", 1}, {"dilations", 1},
+                                                  {"pads", 2}});
+        spatial_rank.has_value()) {
+      return *spatial_rank + 2;
+    }
+  }
+
+  return std::nullopt;
+}
+
 // Cost check for aggressively pushing the Transpose nodes involved in the layout transformation further out.
 CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
                                              const std::vector<int64_t>& perm,
@@ -122,22 +174,19 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         continue;
       }
 
-      // Skip if unknown rank
-      auto shape = api_graph->GetValueInfo(node->Inputs()[0])->Shape();
-      if (!shape.has_value()) {
+      const auto rank = TryInferLayoutRank(*api_graph, *node);
+      if (!rank.has_value()) {
         continue;
       }
 
       // Convert to channels last
-      size_t rank = shape->size();
-
       bool has_channel_last_attr = node->GetAttributeInt("channels_last").has_value() ? true : false;
       if (has_channel_last_attr) {
         node->SetAttributeInt("channels_last", 1);
       }
 
-      auto input_perm = onnx_transpose_optimization::ChannelFirstToLastPerm(rank);
-      auto output_perm = onnx_transpose_optimization::ChannelLastToFirstPerm(rank);
+      auto input_perm = onnx_transpose_optimization::ChannelFirstToLastPerm(*rank);
+      auto output_perm = onnx_transpose_optimization::ChannelLastToFirstPerm(*rank);
 
       // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation
       // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout
