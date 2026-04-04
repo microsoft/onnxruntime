@@ -60,5 +60,5 @@ static_assert(!IsOrtVersionValid("1.0.01", 0));   // leading zero in patch
 
 TEST(CApiTest, VersionIsValid) {
   // Runtime sanity check — the version string returned by the API is the expected one.
-  EXPECT_STREQ(Ort::GetVersionString(), ORT_VERSION);
+  EXPECT_STREQ(Ort::GetVersionString().c_str(), ORT_VERSION);
 }
