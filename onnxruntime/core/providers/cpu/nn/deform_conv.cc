@@ -96,6 +96,7 @@ inline CpuDeformConvExecutionDims ComputeCpuDeformConvExecutionDims(const Deform
   // of BilinearSamplePlanBlocks. Storage is row-major: row r starts at offset r * padded_spatial_count in
   // "logical pixels"; block index = that offset / kPlanAoSoALanes. Only indices [0, output_image_size) are
   // read when filling im2col; the padded tail slots in the last block are never read (FillColRow uses output_size).
+  // [IMPORTANT] Plan buffer is not zero-filled; tail lanes in the last block stay uninitialized (FillColRow uses tail_count only).
   const int64_t padded_spatial_count = (common_dims.output_image_size + kPlanAoSoALanes - 1) /
                                        kPlanAoSoALanes * kPlanAoSoALanes;
   const size_t blocks_per_row = static_cast<size_t>(padded_spatial_count) / kPlanAoSoALanes;
@@ -168,6 +169,7 @@ inline CpuDeformConvStrides ComputeCpuDeformConvStrides(const DeformConvParams& 
 namespace sampling_plan_internal {
 
 // One AoSoA "macro-cell": 8 output pixels x 4 bilinear corners. See kPlanAoSoALanes and PlanStoreSample.
+// [IMPORTANT] Last-block tail lanes may be uninitialized; keep in sync with padded_spatial_count / FillColRow tail_count.
 template <typename T>
 struct alignas(64) BilinearSamplePlanBlock {
   int32_t idx[4][kPlanAoSoALanes];
@@ -444,6 +446,7 @@ void FillColRowFromSamplingPlanImpl(
     }
   }
 
+  // [IMPORTANT] Last partial block: only lanes [0, tail_count) are valid; do not SIMD-load all 8 without init/zero.
   if (tail_count > 0) {
     const auto& block = plan_blocks[block_count];
 #if defined(_OPENMP)
