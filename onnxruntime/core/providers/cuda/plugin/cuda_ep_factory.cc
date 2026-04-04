@@ -289,18 +289,29 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   {
     // Resolve the CUDA ordinal from ep_metadata (set during GetSupportedDevicesImpl).
     int cuda_ordinal = -1;
-    if (ep_metadata && ep_metadata[0]) {
+    if (!ep_metadata || !ep_metadata[0]) {
+      return factory->ort_api_.CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          "CUDA EP factory requires ep_metadata with a 'cuda_device_id' entry. "
+          "Ensure GetSupportedDevices has been called and its ep_metadata is forwarded.");
+    }
+
+    {
       const char* ordinal_str = factory->ort_api_.GetKeyValue(ep_metadata[0], "cuda_device_id");
-      if (ordinal_str) {
-        char* end = nullptr;
-        long parsed = std::strtol(ordinal_str, &end, 10);
-        if (end == ordinal_str || *end != '\0' || parsed < 0 || parsed > std::numeric_limits<int>::max()) {
-          return factory->ort_api_.CreateStatus(
-              ORT_INVALID_ARGUMENT,
-              (std::string("Invalid cuda_device_id in ep_metadata: '") + ordinal_str + "'").c_str());
-        }
-        cuda_ordinal = static_cast<int>(parsed);
+      if (!ordinal_str) {
+        return factory->ort_api_.CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            "Missing 'cuda_device_id' in ep_metadata. "
+            "Ensure GetSupportedDevices has been called and its ep_metadata is forwarded.");
       }
+      char* end = nullptr;
+      long parsed = std::strtol(ordinal_str, &end, 10);
+      if (end == ordinal_str || *end != '\0' || parsed < 0 || parsed > std::numeric_limits<int>::max()) {
+        return factory->ort_api_.CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            (std::string("Invalid cuda_device_id in ep_metadata: '") + ordinal_str + "'").c_str());
+      }
+      cuda_ordinal = static_cast<int>(parsed);
     }
 
     std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
@@ -521,7 +532,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
       AllocatorUniquePtr raw_allocator(
           new CudaDeviceAllocator(memory_info, req_device_id),
           [](OrtAllocator* p) { delete static_cast<CudaDeviceAllocator*>(p); });
-      entry->device_arena_using_defaults = (allocator_options == nullptr);
       status = CudaArenaAllocator::Create(CudaAllocatorKind::kDevice, memory_info,
                                           std::move(raw_allocator), allocator_options,
                                           factory.ort_api_, factory.default_logger_,

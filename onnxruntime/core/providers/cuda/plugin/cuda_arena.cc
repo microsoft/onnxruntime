@@ -21,6 +21,8 @@ limitations under the License.
 #include <cassert>
 #include <map>
 
+#include "core/common/narrow.h"
+
 namespace onnxruntime {
 namespace cuda_plugin {
 
@@ -251,6 +253,23 @@ void* ArenaImpl::Reserve(size_t size) {
     return nullptr;
 
   std::lock_guard<std::mutex> lock(lock_);
+
+  // Check remaining budget before allocating.
+  // Use narrow<> to catch truncation (int64_t -> size_t), then avoid overflow
+  // by comparing size against the remaining budget rather than summing.
+  size_t allocated = 0;
+  try {
+    allocated = onnxruntime::narrow<size_t>(stats_.total_allocated_bytes);
+  } catch (const std::exception& ex) {
+    CUDA_ARENA_LOG(ERROR, "Reserve: total_allocated_bytes (" << stats_.total_allocated_bytes
+                                                             << ") cannot be converted to size_t: " << ex.what());
+    return nullptr;
+  }
+  if (allocated > config_.max_mem || size > config_.max_mem - allocated) {
+    CUDA_ARENA_LOG(WARNING, "Reserve of " << size << " bytes would exceed arena max_mem ("
+                                          << config_.max_mem << "). Returning nullptr.");
+    return nullptr;
+  }
 
   CUDA_ARENA_LOG(INFO, "Reserving memory in ArenaImpl for " << allocator_name_ << " size: " << size);
 

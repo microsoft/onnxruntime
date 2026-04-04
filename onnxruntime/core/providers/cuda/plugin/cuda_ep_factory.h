@@ -107,7 +107,6 @@ class CudaEpFactory : public OrtEpFactory {
     std::unique_ptr<CudaArenaAllocator> pinned_arena;
     int num_device_arena_users = 0;
     int num_pinned_arena_users = 0;
-    bool device_arena_using_defaults = true;
   };
 
   struct HardwareDeviceKey {

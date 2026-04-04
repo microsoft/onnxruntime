@@ -175,7 +175,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   // Extract session-level arena options (ep.<ep_name>.arena.* keys) when the factory
   // supports allocator creation with options. Only the factory path (not OrtEp::CreateAllocator)
   // accepts allocator_options, so skip the scan when the factory path won't be used.
-  if (ep_factory_.CreateAllocator) {
+  if (ep_factory_.CreateAllocator && !ort_ep_->CreateAllocator) {
     const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
     const std::string arena_prefix = ep_prefix + "arena.";
     for (const auto& [key, value] : session_options.value.config_options.GetConfigOptionsMap()) {
