@@ -560,7 +560,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 
   ORT_TRY {
     // create the EpInfo which loads the library if required
-    std::unique_ptr<EpInfo> ep_info = nullptr;
+    std::shared_ptr<EpInfo> ep_info = nullptr;
     ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
 
     // add the pointers to the OrtEpDevice instances to our global list
@@ -573,12 +573,12 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       // to blow away any custom allocators previously added by the user.
       if (ed->device_memory_info != nullptr) {
         ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->device_memory_info, OrtDeviceAllocator, nullptr,
-                                                      nullptr, /*replace_existing*/ false));
+                                                      nullptr, /*replace_existing*/ false, ep_info));
       }
 
       if (ed->host_accessible_memory_info != nullptr) {
         ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->host_accessible_memory_info, OrtDeviceAllocator,
-                                                      nullptr, nullptr, /*replace_existing*/ false));
+                                                      nullptr, nullptr, /*replace_existing*/ false, ep_info));
       }
     }
 
@@ -804,8 +804,22 @@ Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device,
   }
 
   std::lock_guard<std::mutex> lock{mutex_};
+
+  // Find the EpInfo that owns this factory so the allocator's deleter can prevent
+  // the EP library from being unloaded while allocator wrappers still exist.
+  std::shared_ptr<EpInfo> ep_info;
+  for (const auto& [name, info] : ep_libraries_) {
+    for (auto* f : info->factories) {
+      if (f == ep_device.ep_factory) {
+        ep_info = info;
+        break;
+      }
+    }
+    if (ep_info) break;
+  }
+
   return CreateSharedAllocatorImpl(ep_device, *memory_info, allocator_type, allocator_options, allocator_out,
-                                   /*replace_existing*/ true);
+                                   /*replace_existing*/ true, ep_info);
 }
 
 Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
@@ -813,7 +827,8 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                                               OrtAllocatorType allocator_type,
                                               const OrtKeyValuePairs* allocator_options,
                                               OrtAllocator** allocator_out,
-                                              bool replace_existing) {
+                                              bool replace_existing,
+                                              std::shared_ptr<EpInfo> ep_info) {
   // NOTE: memory_info is guaranteed to come from the OrtEpDevice when this is called
 
   if (allocator_type == OrtAllocatorType::OrtArenaAllocator) {
@@ -855,9 +870,18 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                            "EP library should be opaque to ORT");
   }
 
+  // Capture ep_info (shared_ptr) to prevent the EP library from being unloaded
+  // while this allocator wrapper exists. The OrtAllocatorUniquePtr may outlive the
+  // Environment if a session or tensor holds a shared_ptr<IAllocator>. Without this,
+  // ~EpInfo() would call EpLibrary::Unload() (destroying factories and dlclose-ing
+  // the .so) while the allocator deleter still needs to call ReleaseAllocator.
+  //
+  // If ep_info is null (e.g., allocator not from a registered EP library), fall back
+  // to capturing the factory pointer by value.
+  auto* ep_factory = ep_device.ep_factory;
   auto ort_allocator = OrtAllocatorUniquePtr(allocator,
-                                             [&ep_device](OrtAllocator* allocator) {
-                                               ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
+                                             [ep_factory, ep_info](OrtAllocator* allocator) {
+                                               ep_factory->ReleaseAllocator(ep_factory, allocator);
                                              });
 
   shared_ort_allocators_.insert(allocator);
@@ -884,13 +908,13 @@ Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDevi
   return status;
 }
 
-Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
+Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::shared_ptr<EpInfo>& out,
                                    const std::vector<EpFactoryInternal*>& internal_factories) {
   if (!library_in) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EpLibrary was null");
   }
 
-  out.reset(new EpInfo());  // can't use make_unique with private ctor
+  out.reset(new EpInfo());  // can't use make_shared with private ctor
   EpInfo& instance = *out;
   instance.library = std::move(library_in);
   instance.internal_factories = internal_factories;
