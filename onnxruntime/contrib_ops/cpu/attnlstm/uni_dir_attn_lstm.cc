@@ -9,6 +9,8 @@
 
 #include "uni_dir_attn_lstm.h"
 
+#include "core/common/safeint.h"
+
 #include <thread>
 
 #ifdef _MSC_VER
@@ -96,39 +98,56 @@ UniDirectionalAttnLstm<T>::UniDirectionalAttnLstm(AllocatorPtr allocator,
 
 template <typename T>
 void UniDirectionalAttnLstm<T>::AllocateBuffers() {
+  const auto checked_size = [](int value) {
+    return static_cast<size_t>(SafeInt<size_t>(value));
+  };
+
+  const auto checked_mul = [](size_t lhs, size_t rhs) {
+    return static_cast<size_t>(SafeInt<size_t>(lhs) * rhs);
+  };
+
+  const size_t hidden_size = checked_size(hidden_size_);
+  const size_t batch_size = checked_size(batch_size_);
+  const size_t seq_length = checked_size(seq_length_);
+  const size_t input_size = checked_size(input_size_);
+  const size_t batch_hidden_size = checked_mul(batch_size, hidden_size);
+  const size_t output_iofc_size = checked_mul(checked_mul(hidden_size, 4), checked_mul(batch_size, seq_length));
+
   // allocate and fill with 0's.
   constexpr bool fill = true;
-  hidden0_ = Allocate(allocator_, hidden_size_, hidden0_ptr_, fill);
-  internal_memory_prev_ = Allocate(allocator_, hidden_size_, internal_memory_prev_ptr_, fill);
-  internal_memory_cur_ = Allocate(allocator_, hidden_size_, internal_memory_cur_ptr_, fill);
-  batched_hidden0_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_hidden0_ptr_, fill);
+  hidden0_ = Allocate(allocator_, hidden_size, hidden0_ptr_, fill);
+  internal_memory_prev_ = Allocate(allocator_, hidden_size, internal_memory_prev_ptr_, fill);
+  internal_memory_cur_ = Allocate(allocator_, hidden_size, internal_memory_cur_ptr_, fill);
+  batched_hidden0_ = Allocate(allocator_, batch_hidden_size, batched_hidden0_ptr_, fill);
 
-  batched_internal_memory_prev_ = Allocate(allocator_, batch_size_ * hidden_size_,
+  batched_internal_memory_prev_ = Allocate(allocator_, batch_hidden_size,
                                            batched_internal_memory_prev_ptr_, fill);
-  batched_internal_memory_cur_ = Allocate(allocator_, batch_size_ * hidden_size_,
+  batched_internal_memory_cur_ = Allocate(allocator_, batch_hidden_size,
                                           batched_internal_memory_cur_ptr_, fill);
-  batched_internal_memory_clipped_ = Allocate(allocator_, batch_size_ * hidden_size_,
+  batched_internal_memory_clipped_ = Allocate(allocator_, batch_hidden_size,
                                               batched_internal_memory_clipped_ptr_, fill);
 
-  output_iofc_ = Allocate(allocator_, hidden_size_ * 4 * batch_size_ * seq_length_, output_iofc_ptr_, fill);
+  output_iofc_ = Allocate(allocator_, output_iofc_size, output_iofc_ptr_, fill);
 
   if (use_bias_) {
-    bias_WRi_ = Allocate(allocator_, hidden_size_, bias_WRi_ptr_);
-    bias_WRf_ = Allocate(allocator_, hidden_size_, bias_WRf_ptr_);
-    bias_WRo_ = Allocate(allocator_, hidden_size_, bias_WRo_ptr_);
-    bias_WRc_ = Allocate(allocator_, hidden_size_, bias_WRc_ptr_);
+    bias_WRi_ = Allocate(allocator_, hidden_size, bias_WRi_ptr_);
+    bias_WRf_ = Allocate(allocator_, hidden_size, bias_WRf_ptr_);
+    bias_WRo_ = Allocate(allocator_, hidden_size, bias_WRo_ptr_);
+    bias_WRc_ = Allocate(allocator_, hidden_size, bias_WRc_ptr_);
   }
 
   if (direction_ == kReverse) {
-    inputs_reverse_ = Allocate(allocator_, seq_length_ * batch_size_ * input_size_, inputs_reverse_ptr_);
-    outputs_reverse_ = Allocate(allocator_, seq_length_ * batch_size_ * hidden_size_, outputs_reverse_ptr_);
+    const size_t reversed_input_size = checked_mul(checked_mul(seq_length, batch_size), input_size);
+    const size_t reversed_output_size = checked_mul(checked_mul(seq_length, batch_size), hidden_size);
+    inputs_reverse_ = Allocate(allocator_, reversed_input_size, inputs_reverse_ptr_);
+    outputs_reverse_ = Allocate(allocator_, reversed_output_size, outputs_reverse_ptr_);
   }
 
 #if !defined(LSTM_NO_PEEPHOLE_COPY)
   if (use_peepholes_) {
-    peephole_i_ = Allocate(allocator_, hidden_size_, peephole_i_ptr_);
-    peephole_f_ = Allocate(allocator_, hidden_size_, peephole_f_ptr_);
-    peephole_o_ = Allocate(allocator_, hidden_size_, peephole_o_ptr_);
+    peephole_i_ = Allocate(allocator_, hidden_size, peephole_i_ptr_);
+    peephole_f_ = Allocate(allocator_, hidden_size, peephole_f_ptr_);
+    peephole_o_ = Allocate(allocator_, hidden_size, peephole_o_ptr_);
   }
 #endif
 }
