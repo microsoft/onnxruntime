@@ -9,6 +9,7 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/status.h"
 #include "core/framework/tensor.h"
 #endif
 
@@ -18,32 +19,49 @@ namespace onnxruntime {
 Returns whether `axis` is in range [-`tensor_rank`, `tensor_rank`).
 **/
 constexpr inline bool IsAxisInRange(int64_t axis, int64_t tensor_rank) {
+  ORT_ENFORCE(tensor_rank >= 0, "tensor_rank (", tensor_rank, ") must not be negative.");
   return axis >= -tensor_rank && axis <= tensor_rank - 1;
 }
 
 /**
 Handle a potentially negative axis. Enforces negative axis is valid.
-@param axis Axis to convert from negative to positive if needed.
+@param axis Axis to convert from negative to non-negative if needed.
 @param tensor_rank Rank of tensor axis applies to. Tensor::Shape()::NumDimensions().
-@returns non-negative axis.
+@param[out] resolved_axis Non-negative axis corresponding to `axis`.
+@returns Status indicating success.
+*/
+inline Status HandleNegativeAxis(int64_t axis, int64_t tensor_rank, int64_t& resolved_axis) {
+  ORT_RETURN_IF_NOT(IsAxisInRange(axis, tensor_rank),
+                    "axis ", axis, " is not in valid range [-", tensor_rank, ",", tensor_rank - 1, "]");
+  resolved_axis = axis < 0 ? axis + tensor_rank : axis;
+  return Status::OK();
+}
+
+/**
+Handle a potentially negative axis. Enforces negative axis is valid.
+@param axis Axis to convert from negative to non-negative if needed.
+@param tensor_rank Rank of tensor axis applies to. Tensor::Shape()::NumDimensions().
+@returns Non-negative axis corresponding to `axis`.
 */
 inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
-  ORT_ENFORCE(IsAxisInRange(axis, tensor_rank), "axis ", axis,
-              " is not in valid range [-", tensor_rank, ",", tensor_rank - 1, "]");
-  // Handle negative axis
-  return axis < 0 ? axis + tensor_rank : axis;
+  int64_t resolved_axis;
+  ORT_THROW_IF_ERROR(HandleNegativeAxis(axis, tensor_rank, resolved_axis));
+  return resolved_axis;
+}
+
+/**
+Returns true if given tensor shape represents a scalar or 1D tensor of size 1
+**/
+inline bool IsScalarOr1ElementVector(const TensorShape& shape) {
+  return shape.NumDimensions() == 0 || (shape.NumDimensions() == 1 && shape.Size() == 1);
 }
 
 /**
 Returns true if given tensor is a scalar or 1D tensor of size 1
 **/
 inline bool IsScalarOr1ElementVector(const Tensor* input) {
-  if (input->Shape().NumDimensions() == 0 ||
-      (input->Shape().NumDimensions() == 1 && input->Shape().Size() == 1)) {
-    return true;
-  } else {
-    return false;
-  }
+  ORT_ENFORCE(input != nullptr);
+  return IsScalarOr1ElementVector(input->Shape());
 }
 
 /**
