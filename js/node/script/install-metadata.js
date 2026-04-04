@@ -10,7 +10,7 @@ const metadata = {
   requirements: {
     'win32/x64': [],
     'win32/arm64': [],
-    'linux/x64': ['cuda12'],
+    'linux/x64': ['cuda12', 'cuda13'],
     'linux/arm64': [],
     'darwin/x64': [],
     'darwin/arm64': [],
@@ -31,6 +31,20 @@ const metadata = {
         path: 'runtimes/linux-x64/native/libonnxruntime_providers_tensorrt.so',
       },
     },
+    'linux/x64:cuda13': {
+      './libonnxruntime_providers_cuda.so': {
+        package: 'nuget:linux/x64:cuda13',
+        path: 'runtimes/linux-x64/native/libonnxruntime_providers_cuda.so',
+      },
+      './libonnxruntime_providers_shared.so': {
+        package: 'nuget:linux/x64:cuda13',
+        path: 'runtimes/linux-x64/native/libonnxruntime_providers_shared.so',
+      },
+      './libonnxruntime_providers_tensorrt.so': {
+        package: 'nuget:linux/x64:cuda13',
+        path: 'runtimes/linux-x64/native/libonnxruntime_providers_tensorrt.so',
+      },
+    },
   },
   // Each package defines a list of package metadata. The first available package will be used.
   packages: {
@@ -39,6 +53,14 @@ const metadata = {
       versions: metadataVersions.nuget,
     },
     'nuget:linux/x64:cuda12': {
+      name: 'Microsoft.ML.OnnxRuntime.Gpu.Linux',
+      versions: metadataVersions.nuget,
+    },
+    'nuget:win32/x64:cuda13': {
+      name: 'Microsoft.ML.OnnxRuntime.Gpu.Windows',
+      versions: metadataVersions.nuget,
+    },
+    'nuget:linux/x64:cuda13': {
       name: 'Microsoft.ML.OnnxRuntime.Gpu.Linux',
       versions: metadataVersions.nuget,
     },
