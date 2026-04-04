@@ -2028,6 +2028,23 @@ typedef enum OrtEpDataLayout {
 } OrtEpDataLayout;
 
 /**
+ * \brief Node assignment policies for graph capture validation.
+ *
+ * When graph capture is enabled, ORT validates that nodes are assigned to EPs in a way that is
+ * compatible with graph capture. An EP can specify which validation policy ORT should apply.
+ *
+ * \since Version 1.26.
+ */
+typedef enum OrtGraphCaptureNodeAssignmentPolicy {
+  /** All nodes in the main graph must be assigned to this EP. No CPU fallback is allowed. */
+  OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP = 0,
+
+  /** Compute nodes must be on this EP. CPU nodes are allowed for shape computation as long as
+   *  no memory copy nodes exist. */
+  OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES = 1,
+} OrtGraphCaptureNodeAssignmentPolicy;
+
+/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
@@ -2346,6 +2363,87 @@ struct OrtEp {
    */
   ORT_API2_STATUS(CreateProfiler, _In_ OrtEp* this_ptr,
                   _Outptr_result_maybenull_ OrtEpProfilerImpl** profiler);
+
+  /** \brief Indicate whether the graph capturing mode (e.g., CUDA graph) is enabled for the provider.
+   *
+   * Graph capture allows an EP to record a sequence of GPU operations during an initial run and replay
+   * them on subsequent runs, bypassing per-kernel CPU launch overhead.
+   *
+   * Applications enable graph capture via EP-specific provider options (e.g., `enable_cuda_graph=1`
+   * for the CUDA EP). The EP should return true from this function when that option is set.
+   *
+   * **ORT calling convention:**
+   * During session initialization, ORT calls this function on each EP. If true, ORT validates the
+   * graph (no control flow nodes, node assignments compatible with GetGraphCaptureNodeAssignmentPolicy),
+   * then caches this EP for graph capture.
+   *
+   * During the first user call to `Session::Run()`, ORT performs N warm-up runs for memory
+   * allocation followed by 1 run to capture the graph. Each warm-up run invokes
+   * `OnRunStart` → normal execution → `OnRunEnd`. The EP should use these callbacks to track
+   * warm-up runs and begin/end capture when ready. ORT automatically re-runs within the same
+   * `Session::Run()` call until `IsGraphCaptured()` returns true, so users only call
+   * `Session::Run()` once. On subsequent calls, if `IsGraphCaptured()` returns true, ORT skips
+   * normal execution and calls `ReplayGraph()` directly.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \return true if graph capture mode is enabled, false otherwise.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes graph capture is not enabled.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(bool, IsGraphCaptureEnabled, _In_ const OrtEp* this_ptr);
+
+  /** \brief Indicate whether a graph has been captured and instantiated.
+   *
+   * ORT calls this before each `Session::Run()`. If true, ORT calls `ReplayGraph()` instead of
+   * normal execution. After a run where this returns false, ORT automatically retries until it
+   * returns true (handling warm-up runs transparently).
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph_annotation_id Identifies which captured graph to query. Defaults to 0.
+   *            Applications may set `gpu_graph_id` in run options to capture multiple graphs
+   *            (e.g., for different input shapes) keyed by different IDs. A value of -1 means
+   *            graph capture/replay should be skipped for this run.
+   * \return true if the graph has been captured, false otherwise.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes no graph has been captured.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(bool, IsGraphCaptured, _In_ const OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Run the instantiated (captured) graph.
+   *
+   * Called by ORT instead of normal execution when `IsGraphCaptured()` returns true.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph_annotation_id Identifies which captured graph to replay. A value of -1 means
+   *            graph replay should be skipped for this run.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT returns a default OK status.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(ReplayGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Get the node assignment validation policy for graph capture.
+   *
+   * When graph capture is enabled, ORT validates that nodes are assigned to EPs in a way that is
+   * compatible with graph capture. This function tells ORT which validation policy to apply.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \return The node assignment policy for graph capture.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT uses
+   *       OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP (strictest validation).
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(OrtGraphCaptureNodeAssignmentPolicy, GetGraphCaptureNodeAssignmentPolicy,
+            _In_ const OrtEp* this_ptr);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
