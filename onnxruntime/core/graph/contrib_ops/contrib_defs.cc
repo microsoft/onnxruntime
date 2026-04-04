@@ -1406,7 +1406,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("activation_type", "Activation function to use. Choose from relu, relu2, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
         .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
@@ -1459,7 +1459,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
+              "Activation function to use. Choose from relu, relu2, gelu, silu, swiglu and identity. Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",
