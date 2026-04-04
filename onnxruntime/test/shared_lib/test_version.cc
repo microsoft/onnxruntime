@@ -15,17 +15,17 @@ static_assert(ParseUint("0") == 0u);
 static_assert(ParseUint("1") == 1u);
 static_assert(ParseUint("25") == 25u);
 static_assert(ParseUint("123") == 123u);
-static_assert(ParseUint("4294967295") == 4294967295u);   // UINT32_MAX
-static_assert(ParseUint("4294967296") == std::nullopt);  // UINT32_MAX + 1 overflows
-static_assert(ParseUint("") == std::nullopt);            // empty
-static_assert(ParseUint("01") == std::nullopt);          // leading zero
-static_assert(ParseUint("00") == std::nullopt);          // leading zero
-static_assert(ParseUint("abc") == std::nullopt);         // non-digit
-static_assert(ParseUint("1a") == std::nullopt);          // trailing non-digit
-static_assert(ParseUint("-1") == std::nullopt);          // negative sign
-static_assert(ParseUint("1.0") == std::nullopt);         // contains dot
-static_assert(ParseUint("0").has_value());
-static_assert(!ParseUint("").has_value());
+static_assert(ParseUint("4294967295") == 4294967295u);  // UINT32_MAX
+static_assert(!(ParseUint("4294967296").has_value));    // UINT32_MAX + 1 overflows
+static_assert(!(ParseUint("").has_value));              // empty
+static_assert(!(ParseUint("01").has_value));            // leading zero
+static_assert(!(ParseUint("00").has_value));            // leading zero
+static_assert(!(ParseUint("abc").has_value));           // non-digit
+static_assert(!(ParseUint("1a").has_value));            // trailing non-digit
+static_assert(!(ParseUint("-1").has_value));            // negative sign
+static_assert(!(ParseUint("1.0").has_value));           // contains dot
+static_assert(ParseUint("0").has_value);
+static_assert(!ParseUint("").has_value);
 
 // Compile-time tests for IsOrtVersionValid (default expected_api_version = ORT_API_VERSION)
 static_assert(IsOrtVersionValid(ORT_VERSION));  // current version must be valid
