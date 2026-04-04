@@ -42,6 +42,9 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, co
     }
     int32_t data_type = initializer->data_type();
     Initializer ratio(graph, *initializer, graph.ModelPath());
+    if (ratio.size() == 0) {
+      return false;
+    }
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         if (*ratio.data<float>() > 0.f) {

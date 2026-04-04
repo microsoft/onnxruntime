@@ -481,7 +481,11 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (tensor_proto != nullptr &&
         tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
-      layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      if (initializer.size() > 0) {
+        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      } else {
+        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+      }
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
@@ -726,7 +730,11 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         graph_utils::GetConstantInitializer(graph, add_node.MutableInputDefs()[1]->Name());
     if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
-      layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      if (initializer.size() > 0) {
+        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      } else {
+        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+      }
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
