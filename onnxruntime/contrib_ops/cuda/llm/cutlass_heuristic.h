@@ -19,6 +19,8 @@
 // cute/tensor.hpp contains CuTe/CUTLASS 3.x templates that are incompatible with
 // MSVC when compiled as plain C++ (.cc files). Guard it so it is only parsed by
 // NVCC (which defines __CUDACC__) inside .cu translation units.
+#include <vector>
+
 #ifdef __CUDACC__
 #include "cute/tensor.hpp"
 #endif

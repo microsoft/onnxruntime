@@ -9,9 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using onnxruntime::OpKernelContext;
-using onnxruntime::OpKernelInfo;
-using onnxruntime::cuda::CudaKernel;
+using namespace onnxruntime::cuda;
 class UnfoldTensor final : public CudaKernel {
  public:
   UnfoldTensor(const OpKernelInfo& info) : CudaKernel(info) {
