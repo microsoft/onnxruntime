@@ -66,12 +66,6 @@ inline bool TryGetCurrentCudaDevice(int& device_id) noexcept {
   return cudaGetDevice(&device_id) == cudaSuccess;
 }
 
-inline void RestoreCudaDeviceIfNeeded(bool restore_prev_device, int prev_device) noexcept {
-  if (restore_prev_device) {
-    static_cast<void>(cudaSetDevice(prev_device));
-  }
-}
-
 // Throwing variant for use in constructors and non-OrtStatus contexts.
 // Analogous to CUDA_CALL_THROW in the non-plugin build.
 #ifndef PL_CUDA_CALL_THROW

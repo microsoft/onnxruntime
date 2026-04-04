@@ -267,18 +267,38 @@ CudaSyncNotification::CudaSyncNotification(CudaSyncStream& stream)
   // Create a CUDA event for synchronization (disable timing for performance)
   int prev_device = -1;
   const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+  const auto restore_prev_device_status = [&]() {
+    if (!restore_prev_device) {
+      return Ort::Status{};
+    }
+
+    return StatusFromCudaError(cudaSetDevice(prev_device));
+  };
   try {
     PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
     PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
-  } catch (...) {
+  } catch (const std::exception& ex) {
     if (event_ != nullptr) {
       cudaEventDestroy(event_);
       event_ = nullptr;
     }
-    RestoreCudaDeviceIfNeeded(restore_prev_device, prev_device);
+    Ort::Status restore_status = restore_prev_device_status();
+    if (!restore_status.IsOK()) {
+      // Surface both failures instead of silently dropping the restore error
+      // or masking the original constructor failure.
+      throw std::runtime_error(
+          "CudaSyncNotification construction failed: " + std::string(ex.what()) +
+          ". Additionally, failed to restore previous CUDA device " +
+          std::to_string(prev_device) + ": " + restore_status.GetErrorMessage());
+    }
     throw;
   }
-  RestoreCudaDeviceIfNeeded(restore_prev_device, prev_device);
+  Ort::Status restore_status = restore_prev_device_status();
+  if (!restore_status.IsOK()) {
+    throw std::runtime_error(
+        "Failed to restore previous CUDA device " + std::to_string(prev_device) +
+        " after creating CUDA sync notification: " + restore_status.GetErrorMessage());
+  }
 }
 
 CudaSyncNotification::~CudaSyncNotification() {
