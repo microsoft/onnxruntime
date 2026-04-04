@@ -1217,10 +1217,13 @@ class OrtValue:
         arr = self.numpy()
 
         if copy is not None:
-            # numpy >= 2.0 supports the copy kwarg in np.array / np.asarray
+            # numpy >= 2.0 added the copy kwarg to np.asarray;
+            # np.array has always accepted it but with weaker semantics pre-2.0.
             arr = np.array(arr, dtype=dtype, copy=copy)
         elif dtype is not None:
-            arr = np.array(arr, dtype=dtype)
+            # np.asarray avoids a copy when the dtype already matches,
+            # preserving memory sharing with the underlying OrtValue.
+            arr = np.asarray(arr, dtype=dtype)
 
         return arr
 

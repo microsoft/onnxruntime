@@ -1480,14 +1480,20 @@ class TestInferenceSession(unittest.TestCase):
         numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
         ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
 
-        # np.asarray should work via __array__
+        # np.asarray should work via __array__ and share memory (zero-copy)
         result = np.asarray(ortvalue)
         np.testing.assert_equal(numpy_arr, result)
         self.assertEqual(result.dtype, np.float32)
+        self.assertEqual(ortvalue.data_ptr(), result.ctypes.data)
 
         # np.array should also work
         result2 = np.array(ortvalue)
         np.testing.assert_equal(numpy_arr, result2)
+
+        # same dtype should still share memory (no unnecessary copy)
+        result_same = np.asarray(ortvalue, dtype=np.float32)
+        np.testing.assert_equal(numpy_arr, result_same)
+        self.assertEqual(ortvalue.data_ptr(), result_same.ctypes.data)
 
         # dtype conversion via __array__
         result_f64 = np.asarray(ortvalue, dtype=np.float64)
