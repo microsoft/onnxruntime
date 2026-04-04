@@ -86,7 +86,8 @@ struct ArenaConfig {
   int64_t max_power_of_two_extend_bytes;
 
   bool IsValid() const {
-    return initial_chunk_size_bytes > 0 &&
+    return max_mem > 0 &&
+           initial_chunk_size_bytes > 0 &&
            max_dead_bytes_per_chunk > 0 &&
            initial_growth_chunk_size_bytes > 0 &&
            max_power_of_two_extend_bytes > 0;
@@ -126,7 +127,9 @@ struct ArenaConfig {
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxMem); value) {
-      config.max_mem = static_cast<size_t>(std::stoull(std::string(value)));
+      size_t parsed = static_cast<size_t>(std::stoull(std::string(value)));
+      // Treat 0 as unlimited — avoids arithmetic issues and silent allocation failures.
+      config.max_mem = (parsed == 0) ? std::numeric_limits<size_t>::max() : parsed;
     }
 
     return config;

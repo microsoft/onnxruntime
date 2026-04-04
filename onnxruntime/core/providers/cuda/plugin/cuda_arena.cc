@@ -123,6 +123,11 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
     if (config_.arena_extend_strategy == ArenaExtendStrategy::kNextPowerOfTwo) {
       bool increased_allocation = false;
       while (bytes > curr_region_allocation_bytes_) {
+        if (curr_region_allocation_bytes_ > std::numeric_limits<size_t>::max() / 2) {
+          // Cannot double without overflow — cap at max.
+          curr_region_allocation_bytes_ = std::numeric_limits<size_t>::max();
+          break;
+        }
         curr_region_allocation_bytes_ *= 2;
         increased_allocation = true;
       }
@@ -131,7 +136,7 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
 
       if (!increased_allocation) {
         if (config_.arena_extend_strategy == ArenaExtendStrategy::kNextPowerOfTwo &&
-            static_cast<int64_t>(curr_region_allocation_bytes_) * 2 < config_.max_power_of_two_extend_bytes) {
+            curr_region_allocation_bytes_ < static_cast<size_t>(config_.max_power_of_two_extend_bytes) / 2) {
           curr_region_allocation_bytes_ *= 2;
         } else {
           curr_region_allocation_bytes_ = config_.max_power_of_two_extend_bytes;

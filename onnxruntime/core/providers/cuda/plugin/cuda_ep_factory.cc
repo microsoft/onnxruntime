@@ -154,6 +154,13 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
     return status;
   };
 
+  // Query CUDA device count once upfront so we can validate assigned ordinals.
+  int cuda_device_count = 0;
+  cudaError_t cuda_err = cudaGetDeviceCount(&cuda_device_count);
+  if (cuda_err != cudaSuccess) {
+    cuda_device_count = 0;  // no CUDA devices available
+  }
+
   int cuda_device_index = 0;
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
     const OrtHardwareDevice& device = *hw_devices[i];
@@ -172,6 +179,13 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       // mapping from the filtered hardware-device list instead of relying on the
       // ORT hardware device id, which is not guaranteed to be a CUDA ordinal.
       int current_device_id = cuda_device_index++;
+
+      // Validate the assigned ordinal is within the range of CUDA-visible devices.
+      // If hardware enumeration reports GPUs not visible to CUDA (e.g. due to
+      // CUDA_VISIBLE_DEVICES), skip them to avoid failures in allocator/stream creation.
+      if (current_device_id >= cuda_device_count) {
+        continue;
+      }
       const auto device_key = CudaEpFactory::MakeDeviceKey(factory->ort_api_, device, current_device_id);
       DeviceCacheEntry* cache_entry = nullptr;
       {
@@ -206,9 +220,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       factory->ort_api_.AddKeyValuePair(ep_options, "device_id", std::to_string(current_device_id).c_str());
 
       // Get CUDA device properties for metadata
-      int cuda_device_count = 0;
-      cudaError_t err = cudaGetDeviceCount(&cuda_device_count);
-      if (err == cudaSuccess && cuda_device_count > 0 && current_device_id < cuda_device_count) {
+      {
         cudaDeviceProp prop;
         if (cudaGetDeviceProperties(&prop, current_device_id) == cudaSuccess) {
           factory->ort_api_.AddKeyValuePair(ep_metadata, "cuda_device_name", prop.name);
