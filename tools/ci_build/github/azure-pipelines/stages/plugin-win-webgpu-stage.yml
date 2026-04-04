@@ -169,10 +169,18 @@ stages:
           $dxcZipPath = "$(Build.BinariesDirectory)\dxc.zip"
           $dxcExtractPath = "$(Build.BinariesDirectory)\dxc_extracted"
           $targetArch = "${{ parameters.arch }}"
+          $expectedHash = "70B1913A1BFCE4A3E1A5311D16246F4ECDF3A3E613ABEC8AA529E57668426F85"
 
           # Download the DXC package
           Write-Host "Downloading DXC release from $dxcZipUrl"
           Invoke-WebRequest -Uri $dxcZipUrl -OutFile $dxcZipPath
+
+          # Verify integrity of downloaded file
+          $actualHash = (Get-FileHash -Path $dxcZipPath -Algorithm SHA256).Hash
+          if ($actualHash -ne $expectedHash) {
+            throw "DXC zip hash mismatch! Expected: $expectedHash, Got: $actualHash. The download may be corrupted or tampered with."
+          }
+          Write-Host "DXC zip hash verified: $actualHash"
 
           # Create extraction directory
           if (-not (Test-Path $dxcExtractPath)) {

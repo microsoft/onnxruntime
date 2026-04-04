@@ -40,10 +40,10 @@ steps:
           universal_version = original_ver
 
       elif package_version == "RC":
-          # TODO: implement RC versioning
-          version_string = "{}-rc".format(original_ver)
-          universal_version = version_string
-          print("##vso[task.logissue type=warning]RC versioning is not yet fully implemented.")
+          # RC versioning is not yet implemented. Fail the build to prevent publishing
+          # an ambiguous version without an RC number.
+          print("##vso[task.logissue type=error]RC versioning is not yet implemented. Use 'dev' or 'release' instead.")
+          sys.exit(1)
 
       elif package_version == "dev":
           try:
