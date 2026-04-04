@@ -278,7 +278,11 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
 
   for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
     OrtHardwareDevice gpu_device{};
-    ORT_RETURN_IF_ERROR(GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device));
+    auto drm_status = GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device);
+    if (!drm_status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "Skipping DRM device at " << gpu_sysfs_path_info.path << ": " << drm_status.ErrorMessage();
+      continue;
+    }
     gpu_devices.emplace_back(std::move(gpu_device));
   }
 
