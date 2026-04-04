@@ -99,6 +99,9 @@ inline void ApiInit(const OrtApiBase* ort_api_base) {
 
     const OrtEpApi* ep_api = ort_api->GetEpApi();
     const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
+    if (!ep_api || !model_editor_api) {
+      throw std::runtime_error("Failed to initialize EP API: GetEpApi or GetModelEditorApi returned null.");
+    }
 
     // Manual init for the C++ API
     Ort::InitApi(ort_api);
@@ -114,6 +117,9 @@ inline void ApiInit(const OrtApiBase* ort_api_base) {
 /// This function should be called after ApiInit() to get the actual API version.
 /// </summary>
 inline uint32_t CurrentOrtApiVersion() {
+  if (!detail::g_api_ptrs.has_value()) {
+    throw std::logic_error("onnxruntime::ep::CurrentOrtApiVersion() called before ApiInit().");
+  }
   return detail::g_current_ort_api_version;
 }
 

@@ -157,7 +157,7 @@ struct OpKernelContext {
     // TODO(fs-eire): Implement GetUseDeterministicCompute().
     // if (CurrentOrtApiVersion() >= 25) {
     //   return /* TBD: wait for GetUseDeterministicCompute to be added in ORT API v25 */;
-    // else {
+    // } else {
     return false;
     // }
   }

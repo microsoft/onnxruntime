@@ -70,6 +70,16 @@ stages:
           --update --skip_submodule_sync --build --parallel
       displayName: 'Build WebGPU Plugin'
 
+    - script: |
+        set -e
+        plugin_path="$(Build.SourcesDirectory)/build/${{ parameters.cmake_build_type }}/libonnxruntime_providers_webgpu.dylib"
+        if [ ! -f "$plugin_path" ]; then
+          echo "Error: Expected plugin binary not found at '$plugin_path'. Failing build to avoid publishing an invalid package."
+          exit 1
+        fi
+        echo "Verified plugin binary exists at: $plugin_path"
+      displayName: 'Verify plugin binary exists'
+
     - task: CopyFiles@2
       displayName: 'Copy plugin binaries to staging directory'
       inputs:

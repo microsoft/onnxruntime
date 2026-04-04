@@ -206,6 +206,15 @@ stages:
           DoEsrp: true
           Pattern: '*.dll'
 
+      - powershell: |
+          $pluginPath = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_webgpu.dll"
+          if (-not (Test-Path $pluginPath)) {
+            Write-Error "Expected plugin binary not found at '$pluginPath'. Failing build to avoid publishing an invalid package."
+            exit 1
+          }
+          Write-Host "Verified plugin binary exists at: $pluginPath"
+        displayName: 'Verify plugin binary exists'
+
       - task: CopyFiles@2
         displayName: 'Copy plugin binaries to staging directory'
         inputs:
