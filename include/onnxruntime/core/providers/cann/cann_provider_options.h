@@ -16,7 +16,7 @@ struct OrtCANNProviderOptions {
   int enable_cann_graph;                                   // Flag indicating if prioritizing the use of
                                                            // CANN's graph-running capabilities
   int enable_cann_subgraph;                                // Flag indicating whether to generate subgraph
-                                                           // automaticly
+                                                           // automatically
   int dump_graphs;                                         // Flag indicating if dumping graphs
   int dump_om_model;                                       // Flag indicating if dumping om model
   std::string precision_mode_v2;                           // Operator Precision Mode
