@@ -527,7 +527,14 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
   }
 
   OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
-    return impl_->ResetChunksUsingStream(stream_impl);
+    try {
+      return impl_->ResetChunksUsingStream(stream_impl);
+    } catch (const std::exception& ex) {
+      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    } catch (...) {
+      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                        "CudaArenaAllocator::ResetChunksUsingStream failed with an unknown exception.");
+    }
   }
 
  private:

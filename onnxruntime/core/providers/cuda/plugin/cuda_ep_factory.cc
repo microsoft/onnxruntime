@@ -517,6 +517,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
   }
 
   if (name != nullptr && strcmp(name, "Cuda") == 0) {
+    // The returned pointer is safe to use after the cache mutex is released because
+    // device_cache_ is std::unordered_map (node-based) and entries are never erased.
     DeviceCacheEntry* entry = factory.FindDeviceCacheEntryByOrdinal(req_device_id);
     if (!entry) {
       return factory.ort_api_.CreateStatus(
@@ -545,6 +547,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
 
   if (name != nullptr && strcmp(name, "CudaPinned") == 0) {
     // Pinned memory is CPU-side; find the cache entry for the device it's associated with.
+    // Pointer stability: same guarantee as the Cuda branch above.
     DeviceCacheEntry* entry = factory.FindDeviceCacheEntryByOrdinal(req_device_id);
     if (!entry) {
       // Fallback: if no device cache entry (shouldn't normally happen), create raw allocator.
@@ -671,6 +674,7 @@ CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinal(in
 }
 
 CudaArenaAllocator* CudaEpFactory::GetDeviceArenaForDevice(int device_id) {
+  // Pointer stability: std::unordered_map is node-based; entries are never erased.
   DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
   if (!entry) return nullptr;
   std::lock_guard<std::mutex> lock{entry->arena_mutex};
