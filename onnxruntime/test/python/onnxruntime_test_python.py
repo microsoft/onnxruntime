@@ -9,6 +9,7 @@ import os
 import pathlib
 import platform
 import queue
+import subprocess
 import sys
 import threading
 import unittest
@@ -111,6 +112,30 @@ class TestInferenceSession(unittest.TestCase):
     def test_get_build_info(self):
         self.assertIsNot(onnxrt.get_build_info(), None)
         self.assertIn("Build Info", onnxrt.get_build_info())
+
+    def test_get_default_logger_severity(self):
+        # Default severity should be WARNING (2) when ORT_LOGGING_LEVEL is not set.
+        severity = onnxrt.get_default_logger_severity()
+        self.assertIsInstance(severity, int)
+        self.assertGreaterEqual(severity, 0)
+        self.assertLessEqual(severity, 4)
+
+    def test_ort_logging_level_env_var(self):
+        # Verify that ORT_LOGGING_LEVEL is honored on import by running a subprocess.
+        for level in [0, 1, 2, 3, 4]:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import onnxruntime as ort; print(ort.get_default_logger_severity())",
+                ],
+                capture_output=True,
+                check=False,
+                text=True,
+                env={**os.environ, "ORT_LOGGING_LEVEL": str(level)},
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertEqual(result.stdout.strip(), str(level), msg=f"Expected severity {level}, got {result.stdout.strip()}")
 
     def test_model_serialization(self):
         try:
