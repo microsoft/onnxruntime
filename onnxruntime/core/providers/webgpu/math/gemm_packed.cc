@@ -113,8 +113,8 @@ Status ApplyGemmPacked(const Tensor* a,
     const SplitKConfig& split_k_config = context.GetSplitKConfig();
     // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
     const bool output_is_vec4 = output_components == 4;
-    // The parameter `is_channel_last` is not used for GEMM.
-    const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, /*is_gemm*/ true, /*is_channels_last*/ true, M, N, K);
+    // We need to use `true` as `is_channels_last` to meet the requirement in `UseSplitK`.
+    const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, M, N, K);
     if (need_split_k) {
       const Tensor* bias = nullptr;
       uint32_t output_components_in_fill_bias_program = 4;
