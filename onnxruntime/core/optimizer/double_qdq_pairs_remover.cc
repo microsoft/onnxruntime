@@ -47,6 +47,9 @@ template <typename T>
 static void ApplyNewInputValue(Graph& graph, Node& node, QDQ::InputIndex index, T value) {
   const auto* input_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[index]->Name());
   Initializer input_init{graph, *input_tensor, graph.ModelPath()};
+  if (input_init.size() == 0) {
+    return;
+  }
   ONNX_NAMESPACE::TensorProto new_input_tensor;
   input_init.data<T>()[0] = value;
   input_init.ToProto(new_input_tensor);
@@ -90,6 +93,10 @@ static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, cons
     return false;
   }
 
+  if (zero_point_init_1.size() == 0 || zero_point_init_2.size() == 0 ||
+      scale_init_1.size() == 0 || scale_init_2.size() == 0) {
+    return false;
+  }
   T zero_point_1 = zero_point_init_1.data<T>()[0];
   T zero_point_2 = zero_point_init_2.data<T>()[0];
   const float scale_1 = scale_init_1.data<float>()[0];
