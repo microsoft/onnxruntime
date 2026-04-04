@@ -34,6 +34,17 @@
 #define ORT_CPU_RESTRICT
 #endif
 
+// Hint the inner lane loop for SIMD / vectorization (OpenMP simd, Clang loop, or GCC ivdep); empty otherwise.
+#if defined(_OPENMP)
+#define ORT_CPU_SIMD_INNER_LOOP _Pragma("omp simd")
+#elif defined(__clang__)
+#define ORT_CPU_SIMD_INNER_LOOP _Pragma("clang loop vectorize(enable)")
+#elif defined(__GNUC__)
+#define ORT_CPU_SIMD_INNER_LOOP _Pragma("GCC ivdep")
+#else
+#define ORT_CPU_SIMD_INNER_LOOP
+#endif
+
 namespace onnxruntime {
 
 namespace {
@@ -178,9 +189,9 @@ struct alignas(64) BilinearSamplePlanBlock {
 
 template <typename T>
 struct DeformableIm2colContext {
-  const T* data_im = nullptr;
-  const T* data_offset = nullptr;
-  const T* data_mask = nullptr;
+  const T* ORT_CPU_RESTRICT data_im = nullptr;
+  const T* ORT_CPU_RESTRICT data_offset = nullptr;
+  const T* ORT_CPU_RESTRICT data_mask = nullptr;
   int height = 0;
   int width = 0;
   int64_t kernel_h = 0;
@@ -192,16 +203,16 @@ struct DeformableIm2colContext {
   int64_t height_col = 0;
   int64_t width_col = 0;
   int64_t padded_spatial_count = 0;
-  const size_t* kernel_offset_base_delta = nullptr;
-  const T* kernel_base_h = nullptr;
-  const T* kernel_base_w = nullptr;
-  BilinearSamplePlanBlock<T>* sampling_plan_blocks = nullptr;
-  T* data_col = nullptr;
+  const size_t* ORT_CPU_RESTRICT kernel_offset_base_delta = nullptr;
+  const T* ORT_CPU_RESTRICT kernel_base_h = nullptr;
+  const T* ORT_CPU_RESTRICT kernel_base_w = nullptr;
+  BilinearSamplePlanBlock<T>* ORT_CPU_RESTRICT sampling_plan_blocks = nullptr;
+  T* ORT_CPU_RESTRICT data_col = nullptr;
   concurrency::ThreadPool* thread_pool = nullptr;
 };
 
 template <typename T>
-ORT_FORCEINLINE void PlanStoreSample(BilinearSamplePlanBlock<T>* blocks, int64_t pidx,
+ORT_FORCEINLINE void PlanStoreSample(BilinearSamplePlanBlock<T>* ORT_CPU_RESTRICT blocks, int64_t pidx,
                                      int32_t idx00, int32_t idx01, int32_t idx10, int32_t idx11,
                                      T w00, T w01, T w10, T w11) {
   // Scatter one output pixel into lane `pidx % 8` across the four corners. AoSoA vs AoS: here `w[k][0..7]`
@@ -336,7 +347,7 @@ ORT_FORCEINLINE void BilinearPlanOneSample(
 
 template <typename T>
 void BuildAllBilinearSamplingPlansImpl(
-    const T* data_offset,
+    const T* ORT_CPU_RESTRICT data_offset,
     int height,
     int width,
     int64_t stride_h,
@@ -346,10 +357,10 @@ void BuildAllBilinearSamplingPlansImpl(
     int64_t padded_spatial_count,
     int64_t width_col,
     int64_t kernel_size,
-    const size_t* kernel_offset_base_delta,
-    const T* kernel_base_h,
-    const T* kernel_base_w,
-    BilinearSamplePlanBlock<T>* sampling_plan_blocks,
+    const size_t* ORT_CPU_RESTRICT kernel_offset_base_delta,
+    const T* ORT_CPU_RESTRICT kernel_base_h,
+    const T* ORT_CPU_RESTRICT kernel_base_w,
+    BilinearSamplePlanBlock<T>* ORT_CPU_RESTRICT sampling_plan_blocks,
     concurrency::ThreadPool* thread_pool) {
   const int64_t plan_rows = offset_groups * kernel_size;
   ORT_ENFORCE(kernel_offset_base_delta != nullptr, "kernel_offset_base_delta must not be null.");
@@ -384,10 +395,10 @@ void BuildAllBilinearSamplingPlansImpl(
         while (task < end_task) {
           const size_t kernel_idx_sz = static_cast<size_t>(kernel_idx);
           const size_t offset_base = offset_grp_base + kernel_offset_base_delta[kernel_idx_sz];
-          const T* ptr_offset_h = data_offset + offset_base * output_size;
-          const T* ptr_offset_w = data_offset + (offset_base + 1) * output_size;
+          const T* ORT_CPU_RESTRICT ptr_offset_h = data_offset + offset_base * output_size;
+          const T* ORT_CPU_RESTRICT ptr_offset_w = data_offset + (offset_base + 1) * output_size;
           const size_t plan_row_base = static_cast<size_t>(row) * static_cast<size_t>(padded_spatial_count);
-          BilinearSamplePlanBlock<T>* row_plan = sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
+          BilinearSamplePlanBlock<T>* ORT_CPU_RESTRICT row_plan = sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
 
           // Output pixel index: local_idx = h_col * width_col + w_col (row-major flatten of [0, out_h) x [0, out_w)).
           const int64_t h_col = local_idx / width_col;
@@ -426,14 +437,7 @@ void FillColRowFromSamplingPlanImpl(
   for (int64_t b = 0; b < block_count; ++b) {
     const auto& block = plan_blocks[b];
     // Inner lane loop: 8 pixels; for float, compilers often SIMD this (commonly a few× faster than scalar, ISA/optimizer dependent).
-#if defined(_OPENMP)
-#pragma omp simd
-#elif defined(__clang__)
-#pragma clang loop vectorize(enable)
-#elif defined(__GNUC__)
-#pragma GCC ivdep
-#endif
-    for (int lane = 0; lane < kPlanAoSoALanes; ++lane) {
+    ORT_CPU_SIMD_INNER_LOOP for (int lane = 0; lane < kPlanAoSoALanes; ++lane) {
       T val = block.w[0][lane] * im_ptr[block.idx[0][lane]] +
               block.w[1][lane] * im_ptr[block.idx[1][lane]] +
               block.w[2][lane] * im_ptr[block.idx[2][lane]] +
@@ -449,14 +453,7 @@ void FillColRowFromSamplingPlanImpl(
   // [IMPORTANT] Last partial block: only lanes [0, tail_count) are valid; do not SIMD-load all 8 without init/zero.
   if (tail_count > 0) {
     const auto& block = plan_blocks[block_count];
-#if defined(_OPENMP)
-#pragma omp simd
-#elif defined(__clang__)
-#pragma clang loop vectorize(enable)
-#elif defined(__GNUC__)
-#pragma GCC ivdep
-#endif
-    for (int lane = 0; lane < tail_count; ++lane) {
+    ORT_CPU_SIMD_INNER_LOOP for (int lane = 0; lane < tail_count; ++lane) {
       T val = block.w[0][lane] * im_ptr[block.idx[0][lane]] +
               block.w[1][lane] * im_ptr[block.idx[1][lane]] +
               block.w[2][lane] * im_ptr[block.idx[2][lane]] +
@@ -513,11 +510,11 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
           // `col_ptr`: Points to the start of the current row in the output `col_buffer`.
           // Shape of col_buffer is [C * kH * kW, out_h * out_w].
           // Row-major flatten over (channel, kernel_y, kernel_x): idx = c_im * (kH*kW) + i * kW + j.
-          T* col_ptr = ctx.data_col + static_cast<int64_t>(idx) * output_size;
+          T* ORT_CPU_RESTRICT col_ptr = ctx.data_col + static_cast<int64_t>(idx) * output_size;
 
           // `im_ptr`: Points to the start of the current channel `c_im` in the input image.
           // Shape of input image is [C, H, W].
-          const T* im_ptr = ctx.data_im + c_im * static_cast<int64_t>(ctx.height) * ctx.width;
+          const T* ORT_CPU_RESTRICT im_ptr = ctx.data_im + c_im * static_cast<int64_t>(ctx.height) * ctx.width;
 
           // `row`: Identifies which pre-computed sampling plan to use.
           // The sampling plan is shared across channels that belong to the same `offset_grp`.
@@ -527,9 +524,9 @@ void DeformableIm2colPlanned(const DeformableIm2colContext<T>& ctx) {
           // `row_plan`: Points to the start of the AoSoA blocks for this specific `row`.
           // Since each block holds `kPlanAoSoALanes` elements, we divide the padded base index by it.
           const size_t plan_row_base = static_cast<size_t>(row) * static_cast<size_t>(ctx.padded_spatial_count);
-          const BilinearSamplePlanBlock<T>* row_plan = ctx.sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
+          const BilinearSamplePlanBlock<T>* ORT_CPU_RESTRICT row_plan = ctx.sampling_plan_blocks + (plan_row_base / kPlanAoSoALanes);
 
-          const T* ptr_mask = nullptr;
+          const T* ORT_CPU_RESTRICT ptr_mask = nullptr;
           size_t mask_row_base = 0;
           if constexpr (UseMask) {
             // If DeformConv v2 (with modulation mask), fetch the mask pointer.
@@ -586,7 +583,7 @@ void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT 
         [&](ptrdiff_t first, ptrdiff_t last) {
           for (ptrdiff_t m = first; m < last; ++m) {
             const size_t m_sz = static_cast<size_t>(m);
-            T* y_row = y_data + m_sz * output_image_size_elements;
+            T* ORT_CPU_RESTRICT y_row = y_data + m_sz * output_image_size_elements;
             DeformConvCpuAddBiasToRow<T>(y_row, bias_data, static_cast<int64_t>(m), spatial_len);
           }
         });
@@ -613,7 +610,7 @@ void DeformConvCpuAddBias(T* ORT_CPU_RESTRICT y_data, const T* ORT_CPU_RESTRICT 
 
           // Pointer arithmetic formula: Y_row_ptr = y_data + (n * y_batch_stride) + (m * output_image_size)
           // Mathematical operation: Y[n, m, spatial_idx] += B[m] for all spatial_idx in [0, output_image_size).
-          T* y_row = y_data + n_sz * y_batch_stride + m_sz * output_image_size_elements;
+          T* ORT_CPU_RESTRICT y_row = y_data + n_sz * y_batch_stride + m_sz * output_image_size_elements;
           DeformConvCpuAddBiasToRow<T>(y_row, bias_data, m, spatial_len);
 
           // For subsequent tasks, we simply increment `m` and wrap around to increment `n`.
@@ -733,12 +730,12 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   auto plan_blocks = IAllocator::MakeUniquePtr<sampling_plan_internal::BilinearSamplePlanBlock<T>>(alloc, SafeInt<size_t>(block_count));
 
-  const T* Xdata = X->Data<T>();
-  const T* Wdata = W->Data<T>();
-  const T* offset_data = offset->Data<T>();
-  const T* mask_data = use_mask ? mask->Data<T>() : nullptr;
-  T* Ydata = Y->MutableData<T>();
-  const T* Bdata = (B != nullptr) ? B->Data<T>() : nullptr;
+  const T* ORT_CPU_RESTRICT Xdata = X->Data<T>();
+  const T* ORT_CPU_RESTRICT Wdata = W->Data<T>();
+  const T* ORT_CPU_RESTRICT offset_data = offset->Data<T>();
+  const T* ORT_CPU_RESTRICT mask_data = use_mask ? mask->Data<T>() : nullptr;
+  T* ORT_CPU_RESTRICT Ydata = Y->MutableData<T>();
+  const T* ORT_CPU_RESTRICT Bdata = (B != nullptr) ? B->Data<T>() : nullptr;
 
   // --- Phase 2: Core Computation (Im2Col + GEMM) ---
   // Process each image in the batch sequentially to save peak memory.
@@ -748,10 +745,10 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
     // 2.1) Deformable Im2Col for image n.
     // Gather deformed samples into col buffer for GEMM.
-    const T* X_curr = Xdata + n_idx * x_batch_stride;
-    const T* offset_curr = offset_data + n_idx * offset_batch_stride;
-    const T* mask_curr = use_mask ? (mask_data + n_idx * mask_batch_stride) : nullptr;
-    T* col_buffer_ptr = col_buffer.get();
+    const T* ORT_CPU_RESTRICT X_curr = Xdata + n_idx * x_batch_stride;
+    const T* ORT_CPU_RESTRICT offset_curr = offset_data + n_idx * offset_batch_stride;
+    const T* ORT_CPU_RESTRICT mask_curr = use_mask ? (mask_data + n_idx * mask_batch_stride) : nullptr;
+    T* ORT_CPU_RESTRICT col_buffer_ptr = col_buffer.get();
 
     sampling_plan_internal::DeformableIm2colContext<T> im2col_ctx{
         X_curr, offset_curr, mask_curr,
@@ -780,13 +777,13 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
     for (int64_t g = 0; g < group; ++g) {
       const size_t g_idx = static_cast<size_t>(g);
       // Weight for group g: shape [M/group, C/group, kH, kW], row-major.
-      const T* weight_g = Wdata + g_idx * w_group_stride;
+      const T* ORT_CPU_RESTRICT weight_g = Wdata + g_idx * w_group_stride;
 
       // Col rows for group g: layout [C*kH*kW, out_h*out_w], group g spans rows [g*kernel_dim, (g+1)*kernel_dim).
-      const T* col_g = col_buffer_ptr + g_idx * col_group_stride;
+      const T* ORT_CPU_RESTRICT col_g = col_buffer_ptr + g_idx * col_group_stride;
 
       // Output slice for group g: [n, g*M/group:(g+1)*M/group, out_h, out_w].
-      T* Y_g = Ydata + n_idx * y_batch_stride + g_idx * y_group_stride;
+      T* ORT_CPU_RESTRICT Y_g = Ydata + n_idx * y_batch_stride + g_idx * y_group_stride;
 
       // GEMM: C = alpha * A * B + beta * C with alpha=1, beta=0  =>  Y_g = W_g * Col_g.
       // Dimensions: A is (M_g, K), B is (K, N_out), C is (M_g, N_out), where M_g=M/group, K=kernel_dim, N_out=output_image_size.

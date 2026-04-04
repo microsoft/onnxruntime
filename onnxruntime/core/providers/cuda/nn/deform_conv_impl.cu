@@ -70,11 +70,11 @@ inline bool ProductExceedsInt32Max(std::initializer_list<int64_t> factors) {
 
 // __ldg has no overload for BFloat16*; use 16-bit load + FromBits. Other types use __ldg directly.
 template <typename T>
-__device__ __inline__ T DeformConvLdg(const T* p) {
+__device__ __inline__ T DeformConvLdg(const T* __restrict__ p) {
   return __ldg(p);
 }
 template <>
-__device__ __inline__ BFloat16 DeformConvLdg<BFloat16>(const BFloat16* p) {
+__device__ __inline__ BFloat16 DeformConvLdg<BFloat16>(const BFloat16* __restrict__ p) {
   return BFloat16::FromBits(__ldg(reinterpret_cast<const uint16_t*>(p)));
 }
 
@@ -87,7 +87,7 @@ template <typename T>
 struct DeformConvBilinearTraits {
   using ComputeT = T;
 
-  __device__ static __inline__ ComputeT Load(const T* p) {
+  __device__ static __inline__ ComputeT Load(const T* __restrict__ p) {
     return __ldg(p);
   }
 
@@ -104,7 +104,7 @@ template <>
 struct DeformConvBilinearTraits<half> {
   using ComputeT = float;
 
-  __device__ static __inline__ ComputeT Load(const half* p) {
+  __device__ static __inline__ ComputeT Load(const half* __restrict__ p) {
     return __half2float(__ldg(p));
   }
 
@@ -121,7 +121,7 @@ template <>
 struct DeformConvBilinearTraits<BFloat16> {
   using ComputeT = float;
 
-  __device__ static __inline__ ComputeT Load(const BFloat16* p) {
+  __device__ static __inline__ ComputeT Load(const BFloat16* __restrict__ p) {
     return static_cast<float>(DeformConvLdg(p));
   }
 
@@ -154,7 +154,7 @@ struct DeformConvBilinearTraits<BFloat16> {
 // Offsets are often spatially smooth, so nearby threads still tend to exhibit similar validity patterns.
 template <typename T>
 __device__ __inline__ T BilinearInterpolate(
-    const T* in,
+    const T* __restrict__ in,
     int height,
     int width,
     typename DeformConvBilinearTraits<T>::ComputeT h,
@@ -298,7 +298,7 @@ __global__ void DeformableIm2ColKernel(
     const IndexT channel_hw = static_cast<IndexT>(channel_hw_i64);
     const IndexT batch_input_stride = static_cast<IndexT>(batch_input_stride_i64);
     const IndexT input_base = out_b * batch_input_stride + in_c * channel_hw;
-    const T* input_ptr = input + static_cast<int64_t>(input_base);
+    const T* __restrict__ input_ptr = input + static_cast<int64_t>(input_base);
 
     // 2. Spatial index in the output feature map.
     const IndexT spatial_idx = static_cast<IndexT>(out_y * out_w + out_x);
@@ -310,10 +310,10 @@ __global__ void DeformableIm2ColKernel(
     const IndexT ng = out_b * offset_group_idx + offset_grp;
     const IndexT offset_group_block_size = static_cast<IndexT>(offset_group_block_size_i64);
     const IndexT offset_base = ng * offset_group_block_size + spatial_idx;
-    const T* offset_ptr_base = offset + static_cast<int64_t>(offset_base);
+    const T* __restrict__ offset_ptr_base = offset + static_cast<int64_t>(offset_base);
 
     // 4. Mask: same as offset but kH*kW planes: mask_base = ng * (kH*kW*out_h*out_w) + spatial_idx.
-    const T* mask_ptr_base = nullptr;
+    const T* __restrict__ mask_ptr_base = nullptr;
     if constexpr (UseMask) {
       const IndexT mask_group_block_size = static_cast<IndexT>(mask_group_block_size_i64);
       const IndexT mask_base = ng * mask_group_block_size + spatial_idx;
@@ -325,7 +325,7 @@ __global__ void DeformableIm2ColKernel(
     //    Element (r, c_col) at col_buffer[r * col_stride + c_col].
     const IndexT c_col = out_b * out_size + spatial_idx;
     const IndexT row_base = static_cast<IndexT>((in_c * h_dim) * w_dim);
-    T* data_col_ptr_base =
+    T* __restrict__ data_col_ptr_base =
         data_col + static_cast<int64_t>(row_base) * col_stride_i64 + static_cast<int64_t>(c_col);
 
     // 6. Undilated top-left of the kernel anchor for this output pixel: base_* = out_* * stride_* - pad_*.
@@ -334,8 +334,9 @@ __global__ void DeformableIm2ColKernel(
     const CoordT base_w_im = static_cast<CoordT>(out_x * stride_w - pad_w);
 
     // Per (output location, channel): one sample from offset/mask tensors and bilinear input.
-    auto process_kernel_point = [&](const T* offset_h_ptr, const T* offset_w_ptr, const T* mask_ptr, T* data_col_ptr,
-                                    CoordT h_base, CoordT w_base) {
+    auto process_kernel_point = [&](const T* __restrict__ offset_h_ptr, const T* __restrict__ offset_w_ptr,
+                                    const T* __restrict__ mask_ptr, T* __restrict__ data_col_ptr, CoordT h_base,
+                                    CoordT w_base) {
       T mask_val = static_cast<T>(1);
       if constexpr (UseMask) {
         mask_val = DeformConvLdg(mask_ptr);
@@ -361,13 +362,13 @@ __global__ void DeformableIm2ColKernel(
     auto run_deform_row = [&](IndexT row_kernel_base, CoordT h_base, IndexT row_width) {
       CoordT w_base = base_w_im;
       const IndexT offset_elem_offset = static_cast<IndexT>(2 * row_kernel_base) * out_size;
-      const T* offset_h_ptr = offset_ptr_base + offset_elem_offset;
-      const T* offset_w_ptr = offset_h_ptr + out_size;
-      const T* mask_ptr = nullptr;
+      const T* __restrict__ offset_h_ptr = offset_ptr_base + offset_elem_offset;
+      const T* __restrict__ offset_w_ptr = offset_h_ptr + out_size;
+      const T* __restrict__ mask_ptr = nullptr;
       if constexpr (UseMask) {
         mask_ptr = mask_ptr_base + row_kernel_base * out_size;
       }
-      T* data_col_ptr = data_col_ptr_base + row_kernel_base * col_stride;
+      T* __restrict__ data_col_ptr = data_col_ptr_base + row_kernel_base * col_stride;
 
       auto step_kernel_point = [&]() {
         process_kernel_point(offset_h_ptr, offset_w_ptr, mask_ptr, data_col_ptr, h_base, w_base);
@@ -424,8 +425,8 @@ __global__ void DeformableIm2ColKernel(
 // Bias add: Y[n,m,oh,ow] += B[m]. Y linear row-major NCHW: idx = n*(M*HW) + m*HW + (oh*W+ow).
 template <typename T, typename IndexT>
 __global__ void DeformConvAddBiasKernel(
-    T* Y,
-    const T* B,
+    T* __restrict__ Y,
+    const T* __restrict__ B,
     DivMod<IndexT> spatial_div,  // For dividing by (H * W)
     DivMod<IndexT> channel_div,  // For dividing by M (channel count)
     IndexT total_elements) {
@@ -449,7 +450,8 @@ __global__ void DeformConvAddBiasKernel(
 // 2D launch: blockIdx.y -> batch_channel_idx in [0, N*M), threadIdx -> pixel_idx in [0, out_h*out_w).
 // Indexing: Y[batch_channel_idx * spatial_size + pixel_idx]. Pick IndexT from Needs64BitIndex like the 1D kernel.
 template <typename T, typename IndexT>
-__global__ void DeformConvAddBias2DKernel(T* Y, const T* B, IndexT spatial_size, int32_t channels) {
+__global__ void DeformConvAddBias2DKernel(T* __restrict__ Y, const T* __restrict__ B, IndexT spatial_size,
+                                          int32_t channels) {
   // blockIdx.y maps to batch_channel_idx (N * M)
   const IndexT batch_channel_idx = static_cast<IndexT>(blockIdx.y);
   const IndexT channel_idx = batch_channel_idx % static_cast<IndexT>(channels);
