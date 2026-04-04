@@ -360,8 +360,8 @@ __global__ void DeformableIm2ColKernel(
     const IndexT offset_pair_stride = static_cast<IndexT>(2) * out_size;
     auto run_deform_row = [&](IndexT row_kernel_base, CoordT h_base, IndexT row_width) {
       CoordT w_base = base_w_im;
-      const IndexT offset_byte_offset = static_cast<IndexT>(2 * row_kernel_base) * out_size;
-      const T* offset_h_ptr = offset_ptr_base + offset_byte_offset;
+      const IndexT offset_elem_offset = static_cast<IndexT>(2 * row_kernel_base) * out_size;
+      const T* offset_h_ptr = offset_ptr_base + offset_elem_offset;
       const T* offset_w_ptr = offset_h_ptr + out_size;
       const T* mask_ptr = nullptr;
       if constexpr (UseMask) {
