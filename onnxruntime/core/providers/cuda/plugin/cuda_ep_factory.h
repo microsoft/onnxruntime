@@ -6,6 +6,7 @@
 #include "cuda_plugin_utils.h"
 #include "cuda_allocator_plugin.h"
 #include "cuda_arena.h"
+#include "cuda_mempool_allocator_plugin.h"
 #include "cuda_data_transfer_plugin.h"
 #include "cuda_stream_plugin.h"
 
@@ -105,8 +106,10 @@ class CudaEpFactory : public OrtEpFactory {
     std::mutex arena_mutex;
     std::unique_ptr<CudaArenaAllocator> device_arena;
     std::unique_ptr<CudaArenaAllocator> pinned_arena;
+    std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
     int num_device_arena_users = 0;
     int num_pinned_arena_users = 0;
+    int num_mempool_users = 0;
   };
 
   struct HardwareDeviceKey {

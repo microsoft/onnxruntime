@@ -540,7 +540,27 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
               .c_str());
     }
 
+    // Check if the caller requested CUDA native mempool instead of the BFC arena.
+    bool use_mempool = false;
+    if (allocator_options) {
+      const char* v = factory.ort_api_.GetKeyValue(
+          allocator_options, CudaMempoolOrtAllocator::ConfigKeyNames::UseCudaMempool);
+      use_mempool = (v != nullptr && std::string(v) == "1");
+    }
+
     std::lock_guard<std::mutex> lock{entry->arena_mutex};
+
+    if (use_mempool) {
+      if (!entry->mempool_allocator) {
+        status = CudaMempoolOrtAllocator::Create(memory_info, allocator_options,
+                                                 factory.ort_api_, factory.default_logger_,
+                                                 entry->mempool_allocator);
+        if (status != nullptr) return status;
+      }
+      ++entry->num_mempool_users;
+      *allocator = entry->mempool_allocator.get();
+      return nullptr;
+    }
 
     if (!entry->device_arena) {
       AllocatorUniquePtr raw_allocator(
@@ -609,6 +629,10 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
       }
       if (allocator == entry.pinned_arena.get()) {
         if (--entry.num_pinned_arena_users == 0) entry.pinned_arena.reset();
+        return;
+      }
+      if (allocator == entry.mempool_allocator.get()) {
+        if (--entry.num_mempool_users == 0) entry.mempool_allocator.reset();
         return;
       }
     }
