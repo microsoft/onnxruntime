@@ -1209,6 +1209,125 @@ class OrtValue:
         """
         self._ortvalue.update_inplace(np_arr)
 
+    @classmethod
+    def from_dlpack(cls, data, /, *, is_bool_tensor: bool = False) -> OrtValue:
+        """
+        Create an OrtValue from an object implementing the DLPack protocol or from a DLPack capsule.
+
+        This method supports:
+        - Objects implementing ``__dlpack__`` (e.g., ``torch.Tensor``, ``numpy.ndarray``).
+          The ``__dlpack__`` method is called automatically to obtain the DLPack capsule.
+        - Raw DLPack capsules (``PyCapsule`` objects) obtained from ``to_dlpack()`` or similar.
+
+        :param data: A tensor-like object implementing ``__dlpack__`` / ``__dlpack_device__``,
+            or a raw DLPack PyCapsule.
+        :param is_bool_tensor: When ``True``, treat uint8 DLPack tensors as boolean.
+            Needed because DLPack's ``kDLUInt`` with 8 bits is used for both ``uint8``
+            and ``bool`` types. Defaults to ``False``.
+        :return: An :class:`OrtValue` wrapping the shared tensor data.
+
+        Example::
+
+            import torch, onnxruntime as ort
+
+            t = torch.randn(3, 4)
+            ort_val = ort.OrtValue.from_dlpack(t)
+
+        .. note::
+            Data is shared, not copied. The source object must outlive the
+            returned :class:`OrtValue`.
+        """
+        if not hasattr(C.OrtValue, "from_dlpack"):
+            raise NotImplementedError("DLPack is not enabled in this build of ONNX Runtime.")
+
+        if hasattr(data, "__dlpack__"):
+            capsule = data.__dlpack__()
+        else:
+            capsule = data
+
+        return cls(C.OrtValue.from_dlpack(capsule, is_bool_tensor))
+
+    def __dlpack__(self, /, *, stream: int | None = None) -> object:
+        """
+        Export this tensor as a DLPack capsule (part of the DLPack protocol).
+
+        Enables zero-copy tensor sharing with frameworks that support DLPack, e.g.::
+
+            import torch
+            t = torch.from_dlpack(ort_value)
+
+        :param stream: An optional stream identifier for synchronization on GPU devices.
+            Currently unused; included for protocol conformance.
+        :return: A ``PyCapsule`` wrapping a ``DLManagedTensor``.
+        :raises NotImplementedError: If DLPack is not enabled in this build.
+        """
+        if not hasattr(self._ortvalue, "__dlpack__"):
+            raise NotImplementedError("DLPack is not enabled in this build of ONNX Runtime.")
+        return self._ortvalue.__dlpack__(stream=stream)
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """
+        Return the device type and device id for this tensor (part of the DLPack protocol).
+
+        :return: A tuple ``(device_type, device_id)`` where ``device_type`` is a
+            ``DLDeviceType`` enum value (1 = CPU, 2 = CUDA, …).
+        :raises NotImplementedError: If DLPack is not enabled in this build.
+        """
+        if not hasattr(self._ortvalue, "__dlpack_device__"):
+            raise NotImplementedError("DLPack is not enabled in this build of ONNX Runtime.")
+        return self._ortvalue.__dlpack_device__()
+
+    def __array__(self, dtype=None, /, *, copy: bool | None = None) -> np.ndarray:
+        """
+        Support the numpy ``__array__`` protocol for seamless conversion.
+
+        Enables::
+
+            import numpy as np, onnxruntime as ort
+            arr = np.asarray(ort_value)
+            arr = np.array(ort_value, dtype=np.float64)
+
+        :param dtype: Optional target dtype. If ``None`` the dtype of the
+            underlying tensor is used.
+        :param copy: Controls copy behavior. If ``False`` and a copy would be required
+            (e.g. for a dtype cast or non-CPU data), a ``ValueError`` is raised.
+            If ``True``, a fresh copy is always returned. ``None`` (default) copies
+            only when necessary.
+        :return: A :class:`numpy.ndarray` backed by (or copied from) this tensor's data.
+        :raises ValueError: If ``copy=False`` and a copy would be required.
+        """
+        import numpy  # noqa: PLC0415 -- runtime import; numpy is a required dependency
+
+        if not self.is_tensor():
+            raise TypeError("Only tensor-type OrtValues can be converted to numpy arrays.")
+
+        if self.device_name() != "cpu":
+            if copy is False:
+                raise ValueError(
+                    "Cannot return a zero-copy numpy array from a non-CPU OrtValue. "
+                    "Use copy=True or copy=None to allow copying."
+                )
+            # For non-CPU tensors, use DLPack → numpy when available, otherwise raise
+            raise ValueError("Cannot convert a non-CPU OrtValue to numpy directly. Move the data to CPU first.")
+
+        arr = self._ortvalue.numpy()
+
+        if dtype is not None:
+            target_dtype = numpy.dtype(dtype)
+            if arr.dtype != target_dtype:
+                if copy is False:
+                    raise ValueError(
+                        f"Cannot return a zero-copy numpy array: dtype cast required "
+                        f"from {arr.dtype} to {target_dtype}."
+                    )
+                arr = arr.astype(target_dtype)
+                return arr
+
+        if copy:
+            arr = arr.copy()
+
+        return arr
+
 
 def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
     """
