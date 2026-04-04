@@ -405,7 +405,10 @@ TEST(GatherNDOpTest, GatherND_valid_index_zero) {
   test.AddInput<int64_t>("indices", {1}, {0});
   test.AddOutput<int32_t>("output", {}, {10});
 
-  test.Run();
+  // Restrict to CPU — other EPs may not support this 1D configuration.
+  std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cpu_only_ep;
+  cpu_only_ep.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_only_ep);
 }
 
 }  // namespace test
