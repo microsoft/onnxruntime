@@ -1295,11 +1295,6 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
   max_spill_fill_buffer_size = 0;
   // spill fill starts from 2.28
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)
-  bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
-                nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
-                nullptr == qnn_sys_interface_.systemContextFree;
-  ORT_RETURN_IF(result, "Failed to get valid function pointer.");
-
   auto sys_ctx_handle = GetSystemContextHandle();
 
   uint32_t graph_count = 0;
@@ -1351,11 +1346,6 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                                          std::string node_name,
                                                          QnnModelLookupTable& qnn_models,
                                                          int64_t max_spill_fill_size) {
-  bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
-                nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
-                nullptr == qnn_sys_interface_.systemContextFree;
-  ORT_RETURN_IF(result, "Failed to get valid function pointer.");
-
   void* bin_buffer = nullptr;
   bool use_file_mapping = file_mapped_weights_enabled_;
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
@@ -2339,6 +2329,11 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
 }
 
 std::unique_ptr<void, std::function<void(void*)>> QnnBackendManager::GetSystemContextHandle() {
+  if (nullptr == qnn_sys_interface_.systemContextCreate || nullptr == qnn_sys_interface_.systemContextFree) {
+    LOGS(*logger_, ERROR) << "Failed to get valid function pointers for system context handle creation and destruction.";
+    return nullptr;
+  }
+
   QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
   if (QNN_SUCCESS != rt) {
@@ -2347,7 +2342,11 @@ std::unique_ptr<void, std::function<void(void*)>> QnnBackendManager::GetSystemCo
   }
 
   auto sys_ctx_handle_deleter = [&qnn_sys_interface = qnn_sys_interface_](void* handle) {
-    qnn_sys_interface.systemContextFree(reinterpret_cast<QnnSystemContext_Handle_t>(handle));
+    if (qnn_sys_interface.systemContextFree) {
+      qnn_sys_interface.systemContextFree(reinterpret_cast<QnnSystemContext_Handle_t>(handle));
+    } else {
+      LOGS_DEFAULT(ERROR) << "qnn_sys_interface.systemContextFree is null. Unable to free system context handle";
+    }
   };
 
   std::unique_ptr<void, std::function<void(void*)>> sys_ctx_handle_uptr(sys_ctx_handle, sys_ctx_handle_deleter);
@@ -2362,6 +2361,8 @@ Status QnnBackendManager::GetGraphInfoAndBinVersion(QnnSystemContext_Handle_t sy
 #endif
                                                     uint32_t& graph_count,
                                                     QnnSystemContext_GraphInfo_t** graphs_info) {
+  bool result = nullptr == qnn_sys_interface_.systemContextGetBinaryInfo;
+  ORT_RETURN_IF(result, "Failed to get valid function pointer to retrieve binary info from context binary.");
   ORT_RETURN_IF(sys_ctx_handle == nullptr, "System context handle is null.");
 
   // The lifetime of binary_info's contents is tied to the lifetime of
