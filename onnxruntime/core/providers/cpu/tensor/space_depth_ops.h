@@ -3,7 +3,9 @@
 
 #pragma once
 
-#if !defined(SHARED_PROVIDER) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include <string>
+
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
 

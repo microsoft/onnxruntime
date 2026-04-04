@@ -76,22 +76,26 @@ struct OpKernelInfo {
 
   AllocatorPtr GetAllocator(OrtMemType mem_type) const {
     const auto* ort_ep = cache_->ort_ep_;
-    ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
+    if (ort_ep == nullptr) {
+      // Match core OpKernelInfo::GetAllocator behavior: no allocator available.
+      return nullptr;
+    }
 
     AllocatorPtr allocator;
     const auto* ep = static_cast<const Ep*>(ort_ep);
+    Status status;
 
     if (mem_type == OrtMemTypeDefault) {
-      ORT_THROW_IF_ERROR(ep->GetTempSpaceAllocator(&allocator));
-      return allocator;
+      status = ep->GetTempSpaceAllocator(&allocator);
+    } else if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput || mem_type == OrtMemTypeCPU) {
+      status = ep->GetTempSpaceCPUAllocator(&allocator);
+    } else {
+      // Unsupported or unknown memory type: indicate absence of allocator.
+      return nullptr;
     }
 
-    if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput || mem_type == OrtMemTypeCPU) {
-      ORT_THROW_IF_ERROR(ep->GetTempSpaceCPUAllocator(&allocator));
-      return allocator;
-    }
-
-    ORT_THROW("Unsupported OrtMemType in adapter::OpKernelInfo::GetAllocator: ", static_cast<int>(mem_type));
+    ORT_THROW_IF_ERROR(status);
+    return allocator;
   }
 
   Node node() const noexcept {
