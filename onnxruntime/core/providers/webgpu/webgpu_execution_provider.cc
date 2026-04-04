@@ -91,7 +91,7 @@ ONNX_OPERATOR_KERNEL_EX(
   BuildKernelCreateInfo<                          \
       class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, Start, type, Op)>
 
-static const BuildKernelCreateInfoFn function_table[] = {
+static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] = {
     BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
@@ -447,7 +447,7 @@ static const BuildKernelCreateInfoFn function_table[] = {
 std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool enable_int64) {
   auto kernel_registry = std::make_unique<KernelRegistry>();
 
-  for (auto& function_table_entry : function_table) {
+  for (auto& function_table_entry : build_kernel_create_info_function_table) {
     KernelCreateInfo info = function_table_entry();
     if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
       ORT_THROW_IF_ERROR(kernel_registry->Register(std::move(info)));

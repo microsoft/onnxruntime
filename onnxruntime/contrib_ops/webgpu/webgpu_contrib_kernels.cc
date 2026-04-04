@@ -16,7 +16,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-static const BuildKernelCreateInfoFn function_table[] = {
+static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] = {
     BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, Attention)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, BiasAdd)>,
@@ -40,7 +40,7 @@ static const BuildKernelCreateInfoFn function_table[] = {
 
 Status RegisterWebGpuContribKernels(KernelRegistry& kernel_registry, bool enable_graph_capture) {
 
-  for (auto& function_table_entry : function_table) {
+  for (auto& function_table_entry : build_kernel_create_info_function_table) {
     KernelCreateInfo info = function_table_entry();
     if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
       ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
