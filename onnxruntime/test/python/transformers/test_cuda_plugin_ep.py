@@ -1904,8 +1904,13 @@ class TestCudaPluginEP(unittest.TestCase):
             io_binding.bind_cpu_input("B", b)
             io_binding.bind_output("Y", "cuda", cuda_device_id)
 
+            # Exercise the EP Sync callback explicitly. run_with_iobinding()
+            # alone does not call SynchronizeInputs().
+            io_binding.synchronize_inputs()
             sess.run_with_iobinding(io_binding)
 
+            # No explicit synchronize_outputs() is needed here because
+            # copy_outputs_to_cpu() performs the blocking device-to-host copy.
             result = io_binding.copy_outputs_to_cpu()[0]
             np.testing.assert_allclose(result, a + b, rtol=1e-3, atol=1e-3)
         finally:
@@ -1940,8 +1945,13 @@ class TestCudaPluginEP(unittest.TestCase):
             io_binding.bind_cpu_input("B", b)
             io_binding.bind_output("Y", "cuda", cuda_device_id)
 
+            # Exercise the EP Sync callback explicitly. run_with_iobinding()
+            # alone does not call SynchronizeInputs().
+            io_binding.synchronize_inputs()
             sess.run_with_iobinding(io_binding)
 
+            # No explicit synchronize_outputs() is needed here because
+            # copy_outputs_to_cpu() performs the blocking device-to-host copy.
             result = io_binding.copy_outputs_to_cpu()[0]
             np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
         finally:

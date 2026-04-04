@@ -295,6 +295,13 @@ CudaSyncNotification::CudaSyncNotification(CudaSyncStream& stream)
   }
   Ort::Status restore_status = restore_prev_device_status();
   if (!restore_status.IsOK()) {
+    if (event_ != nullptr) {
+      // The constructor can still throw after event creation if restoring the
+      // caller's previous device fails, so clean up here instead of relying on
+      // the destructor of a not-fully-constructed object.
+      cudaEventDestroy(event_);
+      event_ = nullptr;
+    }
     throw std::runtime_error(
         "Failed to restore previous CUDA device " + std::to_string(prev_device) +
         " after creating CUDA sync notification: " + restore_status.GetErrorMessage());
