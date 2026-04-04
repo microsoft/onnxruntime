@@ -1475,6 +1475,78 @@ class TestInferenceSession(unittest.TestCase):
                 ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack_python_protocol(self):
+        """Test __dlpack__ and __dlpack_device__ on the Python OrtValue wrapper."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # __dlpack__ should return a PyCapsule (same as C layer)
+        capsule = ortvalue.__dlpack__()
+        self.assertIsNotNone(capsule)
+
+        # __dlpack_device__ should return (1, 0) for CPU
+        device = ortvalue.__dlpack_device__()
+        self.assertEqual((1, 0), device)
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_python(self):
+        """Test OrtValue.from_dlpack on the Python wrapper with numpy arrays."""
+        numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+        # numpy arrays support __dlpack__ since numpy 1.22
+        ortvalue = onnxrt.OrtValue.from_dlpack(numpy_arr)
+        self.assertTrue(ortvalue.is_tensor())
+        np.testing.assert_equal(numpy_arr, ortvalue.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack_roundtrip(self):
+        """Test OrtValue -> dlpack -> OrtValue roundtrip via Python protocol."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+        ort1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # Roundtrip: OrtValue -> from_dlpack(OrtValue) -> OrtValue
+        ort2 = onnxrt.OrtValue.from_dlpack(ort1)
+        np.testing.assert_equal(ort1.numpy(), ort2.numpy())
+
+    def test_ort_value_array_protocol(self):
+        """Test __array__ protocol: np.array(ort_value) should work."""
+        numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # np.array() should invoke __array__ and return equal data
+        result = np.array(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+        self.assertEqual(result.dtype, np.float32)
+
+    def test_ort_value_array_protocol_dtype_cast(self):
+        """Test __array__ protocol with explicit dtype conversion."""
+        numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # Request a different dtype
+        result = np.array(ortvalue, dtype=np.float64)
+        np.testing.assert_allclose(numpy_arr, result)
+        self.assertEqual(result.dtype, np.float64)
+
+    def test_ort_value_array_protocol_int(self):
+        """Test __array__ protocol with integer tensors."""
+        numpy_arr = np.array([10, 20, 30], dtype=np.int64)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        result = np.array(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+        self.assertEqual(result.dtype, np.int64)
+
+    def test_ort_value_array_protocol_bool(self):
+        """Test __array__ protocol with boolean tensors."""
+        numpy_arr = np.array([True, False, True], dtype=np.bool_)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        result = np.array(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+        self.assertEqual(result.dtype, np.bool_)
+
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         shape = [9, 9]

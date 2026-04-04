@@ -1199,6 +1199,64 @@ class OrtValue:
         """
         return self._ortvalue.numpy()
 
+    def __array__(self, dtype=None, copy=None):
+        """
+        Implements the numpy ``__array__`` protocol so that ``np.array(ort_value)``
+        works without an explicit ``.numpy()`` call.
+
+        :param dtype: Optional numpy dtype to cast the result to.
+        :param copy: Optional bool (numpy >= 2.0). Accepted for compatibility but
+            not enforced; a copy may or may not be made.
+        :returns: A numpy array with the contents of this OrtValue.
+        """
+        arr = self.numpy()
+        if dtype is not None:
+            arr = arr.astype(dtype, copy=False)
+        return arr
+
+    def __dlpack__(self, *, stream=None):
+        """
+        Returns a DLPack PyCapsule representing the tensor data.
+
+        Part of the ``__dlpack__`` protocol (:pep:`3118`), enabling zero-copy
+        interop with frameworks that support DLPack (PyTorch, JAX, CuPy, etc.)
+        via ``from_dlpack(ort_value)``.
+
+        :param stream: Optional stream for cross-device synchronization (unused
+            for CPU tensors).
+        :returns: A PyCapsule wrapping a ``DLManagedTensor``.
+        """
+        return self._ortvalue.__dlpack__(stream=stream)
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """
+        Returns the device type and device id as a 2-tuple of ints.
+
+        Part of the ``__dlpack__`` protocol. Consumers call this before
+        ``__dlpack__`` to decide on stream synchronization.
+
+        :returns: ``(device_type, device_id)`` tuple. ``device_type`` follows
+            the DLPack enum (1 = CPU, 2 = CUDA, etc.).
+        """
+        return self._ortvalue.__dlpack_device__()
+
+    @classmethod
+    def from_dlpack(cls, source) -> OrtValue:
+        """
+        Create an OrtValue from any object that implements the ``__dlpack__``
+        protocol (numpy arrays, PyTorch tensors, CuPy arrays, etc.).
+
+        This is a zero-copy operation when possible — the resulting OrtValue
+        shares the memory of the source tensor.
+
+        :param source: Any object that exposes ``__dlpack__()`` and
+            ``__dlpack_device__()``.
+        :returns: An :class:`OrtValue` wrapping the source tensor's data.
+        """
+        capsule = source.__dlpack__()
+        is_bool = C.is_dlpack_uint8_tensor(capsule)
+        return cls(C.OrtValue.from_dlpack(capsule, is_bool))
+
     def update_inplace(self, np_arr) -> None:
         """
         Update the OrtValue in place with a new Numpy array. The numpy contents
