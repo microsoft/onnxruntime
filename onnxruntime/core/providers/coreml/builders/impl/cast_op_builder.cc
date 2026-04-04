@@ -77,13 +77,16 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
 
 bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
+  // ML Program supports Cast on all inputs including graph inputs with no preceding nodes.
+  // This is important for models like BERT where Cast is applied directly to graph inputs
+  // (e.g., casting attention_mask from INT64 to FLOAT).
+  if (input_params.create_mlprogram) {
+    return true;
+  }
+
   if (node.GetInputEdgesCount() == 0) {
     LOGS(logger, VERBOSE) << "Cast has no preceding nodes.";
     return false;
-  }
-
-  if (input_params.create_mlprogram) {
-    return true;
   }
 
   const auto& prec_node = node.InputEdgesBegin()->GetNode();
@@ -132,19 +135,23 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
   }
 
   if (input_params.create_mlprogram) {
-    if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
-         input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-         input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-         input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) &&
-        (output_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
-         output_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-         output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-         output_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+    // ML Program Cast supports INT32, INT64, FLOAT, FLOAT16, and BOOL types.
+    // BOOL support is important for models like BERT that cast boolean attention masks.
+    const auto is_supported_type = [](int32_t type) {
+      return type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
+             type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
+             type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+             type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+             type == ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+    };
+
+    if (is_supported_type(input_type) && is_supported_type(output_type)) {
       return true;
     } else {
       LOGS(logger, VERBOSE) << "[" << node.OpType()
                             << "] Input type: [" << input_type
-                            << "] is not supported.";
+                            << "] and/or output type: [" << output_type
+                            << "] is not supported for ML Program Cast.";
       return false;
     }
   }
