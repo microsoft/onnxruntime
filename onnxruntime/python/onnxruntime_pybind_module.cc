@@ -141,6 +141,24 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
+  m.def(
+      "get_usable_providers", []() -> std::vector<std::string> { return GetUsableExecutionProviderNames(); },
+      "Return list of Execution Providers that are usable at runtime. "
+      "Unlike get_available_providers() which reports compile-time availability, "
+      "this function checks that each provider's shared library file exists on disk. "
+      "The check is lightweight (filesystem existence only, no library loading). "
+      "The order of elements represents the default priority order of Execution Providers "
+      "from highest to lowest. "
+      "Note: In minimal builds, this behaves the same as get_available_providers().");
+  m.def(
+      "is_provider_usable", [](const std::string& provider_name) -> bool { return IsExecutionProviderUsable(provider_name); },
+      "Check whether a specific Execution Provider is usable at runtime. "
+      "Returns True if the provider is compiled in AND its shared library file "
+      "exists on disk (for shared-library providers) or is statically linked. "
+      "Returns False if the provider is not available or its library is missing. "
+      "This check is lightweight (no library loading or hardware initialization). "
+      "Note: In minimal builds, returns True for any compiled-in provider.",
+      py::arg("provider_name"));
 
   m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
   m.def("get_build_info", []() -> std::string { return ORT_BUILD_INFO; });

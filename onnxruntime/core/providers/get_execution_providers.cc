@@ -6,7 +6,13 @@
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 
+#include <algorithm>
 #include <string_view>
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/platform/env.h"
+#include <filesystem>
+#endif
 
 namespace onnxruntime {
 
@@ -14,10 +20,19 @@ namespace {
 struct ProviderInfo {
   std::string_view name;
   bool available;
+  // Shared library base name (without prefix/extension), or nullptr for
+  // statically linked providers. This is the single source of truth for
+  // mapping provider names to their library filenames.
+  const char* library_base_name;
 };
 
 // all providers ordered by default priority from highest to lowest
 // kCpuExecutionProvider should always be last
+//
+// library_base_name: the base name of the shared library for this provider,
+// e.g. "onnxruntime_providers_cuda" -> onnxruntime_providers_cuda.dll (Win)
+//      or libonnxruntime_providers_cuda.so (Linux).
+// nullptr means the provider is statically linked (no shared library to check).
 constexpr ProviderInfo kProvidersInPriorityOrder[] =
     {
         {
@@ -27,6 +42,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            "onnxruntime_providers_nv_tensorrt_rtx",
         },
         {
             kTensorrtExecutionProvider,
@@ -35,6 +51,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            "onnxruntime_providers_tensorrt",
         },
         {
             kCudaExecutionProvider,
@@ -43,6 +60,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            "onnxruntime_providers_cuda",
         },
         {
             kMIGraphXExecutionProvider,
@@ -51,6 +69,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            "onnxruntime_providers_migraphx",
         },
         {
             kOpenVINOExecutionProvider,
@@ -59,6 +78,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            "onnxruntime_providers_openvino",
         },
         {
             kDnnlExecutionProvider,
@@ -67,6 +87,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            "onnxruntime_providers_dnnl",
         },
         {
             kVitisAIExecutionProvider,
@@ -75,6 +96,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            "onnxruntime_providers_vitisai",
         },
         {
             kQnnExecutionProvider,
@@ -82,6 +104,11 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             true,
 #else
             false,
+#endif
+#if defined(BUILD_QNN_EP_STATIC_LIB) && BUILD_QNN_EP_STATIC_LIB
+            nullptr,  // QNN is statically linked in this build
+#else
+            "onnxruntime_providers_qnn",
 #endif
         },
         {
@@ -91,6 +118,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kVSINPUExecutionProvider,
@@ -99,6 +127,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kJsExecutionProvider,
@@ -107,6 +136,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kCoreMLExecutionProvider,
@@ -115,6 +145,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kAclExecutionProvider,
@@ -123,6 +154,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kDmlExecutionProvider,
@@ -131,6 +163,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kRknpuExecutionProvider,
@@ -139,6 +172,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kWebNNExecutionProvider,
@@ -147,6 +181,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kWebGpuExecutionProvider,
@@ -155,6 +190,11 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            // When USE_WEBGPU is defined with ORT_USE_EP_API_ADAPTERS, WebGPU is
+            // loaded via the plugin EP system, not via the provider bridge. We mark
+            // it as nullptr (statically linked) here; the plugin EP adapter handles
+            // its own loading. If WebGPU is built without adapters, it's static.
+            nullptr,
         },
         {
             kXnnpackExecutionProvider,
@@ -163,6 +203,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
         {
             kCannExecutionProvider,
@@ -171,6 +212,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            "onnxruntime_providers_cann",
         },
         {
             kAzureExecutionProvider,
@@ -179,11 +221,52 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #else
             false,
 #endif
+            nullptr,
         },
-        {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last
+        {kCpuExecutionProvider, true, nullptr},  // CPU is always last, always static
 };
 
 constexpr size_t kAllExecutionProvidersCount = sizeof(kProvidersInPriorityOrder) / sizeof(ProviderInfo);
+
+#if !defined(ORT_MINIMAL_BUILD)
+// Check whether the shared library file for a provider exists on disk.
+// This does NOT load the library — it only checks file existence using
+// std::filesystem, so there are no side effects (no memory footprint
+// increase, no hardware initialization, no error logs).
+bool DoesProviderLibraryExist(const char* library_base_name) {
+  if (library_base_name == nullptr) {
+    // Statically linked — always present
+    return true;
+  }
+
+  // Build the expected library filename using the same convention as
+  // ProviderLibrary in provider_bridge_ort.cc:
+  //   GetRuntimePath() + LIBRARY_PREFIX + base_name + LIBRARY_EXTENSION
+#ifdef _WIN32
+  std::string lib_filename = std::string(library_base_name) + ".dll";
+#elif defined(__APPLE__)
+  std::string lib_filename = std::string("lib") + library_base_name + ".dylib";
+#else
+  std::string lib_filename = std::string("lib") + library_base_name + ".so";
+#endif
+
+  std::filesystem::path full_path(Env::Default().GetRuntimePath());
+  full_path /= lib_filename;
+
+  std::error_code ec;
+  return std::filesystem::exists(full_path, ec) && !ec;
+}
+#endif  // !ORT_MINIMAL_BUILD
+
+// Find the ProviderInfo entry for a given provider name
+const ProviderInfo* FindProviderInfo(const std::string& provider_name) {
+  for (const auto& provider : kProvidersInPriorityOrder) {
+    if (provider.name == provider_name) {
+      return &provider;
+    }
+  }
+  return nullptr;
+}
 
 }  // namespace
 
@@ -214,6 +297,37 @@ const std::vector<std::string>& GetAvailableExecutionProviderNames() {
   }();
 
   return available_execution_providers;
+}
+
+bool IsExecutionProviderUsable(const std::string& provider_name) {
+  const auto* info = FindProviderInfo(provider_name);
+  if (info == nullptr || !info->available) {
+    return false;
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  return DoesProviderLibraryExist(info->library_base_name);
+#else
+  // In minimal builds, shared-library providers are not used.
+  // If compiled in, it is usable.
+  return true;
+#endif
+}
+
+std::vector<std::string> GetUsableExecutionProviderNames() {
+  std::vector<std::string> usable{};
+  for (const auto& provider : kProvidersInPriorityOrder) {
+    if (!provider.available) {
+      continue;
+    }
+#if !defined(ORT_MINIMAL_BUILD)
+    if (!DoesProviderLibraryExist(provider.library_base_name)) {
+      continue;
+    }
+#endif
+    usable.push_back(std::string(provider.name));
+  }
+  return usable;
 }
 
 }  // namespace onnxruntime
