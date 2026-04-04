@@ -455,8 +455,7 @@ __global__ void DeformConvAddBias2DKernel(T* Y, const T* B, IndexT spatial_size,
   const IndexT channel_idx = batch_channel_idx % static_cast<IndexT>(channels);
   T bias_val = DeformConvLdg(B + channel_idx);
 
-  const IndexT pixel_idx =
-      static_cast<IndexT>(blockIdx.x) * static_cast<IndexT>(blockDim.x) + static_cast<IndexT>(threadIdx.x);
+  const IndexT pixel_idx = static_cast<IndexT>(blockIdx.x) * static_cast<IndexT>(blockDim.x) + static_cast<IndexT>(threadIdx.x);
   if (pixel_idx < spatial_size) {
     Y[batch_channel_idx * spatial_size + pixel_idx] += bias_val;
   }
@@ -476,9 +475,12 @@ Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, i
   const bool use_64bit = Needs64BitIndex(total, out_size, M);
 
   // Fast 2D launch path: map blockIdx.y to (N*M) to avoid per-thread DivMod in bias add.
-  // Keep this path only when max_grid_y is reasonably large (>32); very small y-dimension limits
-  // provide too little parallelism in y and often don't justify the extra path/launch logic.
-  if (max_grid_y > 32 && batch_channels <= static_cast<int64_t>(max_grid_y)) {
+  // Use it only when the device allows enough grid rows: below ~32 blocks in y, the extra
+  // parallelism (warps scheduled across blockIdx.y) is often too small to outweigh maintaining
+  // a second launch + kernel variant; the threshold is a heuristic—revisit if future GPUs change
+  // occupancy sweet spots or typical batch×channel counts.
+  constexpr int kMinGridYForBias2DPath = 32;
+  if (max_grid_y > kMinGridYForBias2DPath && batch_channels <= static_cast<int64_t>(max_grid_y)) {
     dim3 block(kDeformConvThreadsPerBlock);
     dim3 grid(static_cast<unsigned int>(GetGridSize(static_cast<size_t>(out_size), block.x)),
               static_cast<unsigned int>(batch_channels));
@@ -486,8 +488,7 @@ Status DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, i
     if (use_64bit) {
       DeformConvAddBias2DKernel<T, int64_t><<<grid, block, 0, stream>>>(Y, B, out_size, m_i32);
     } else {
-      DeformConvAddBias2DKernel<T, int32_t><<<grid, block, 0, stream>>>(
-          Y, B, static_cast<int32_t>(out_size), m_i32);
+      DeformConvAddBias2DKernel<T, int32_t><<<grid, block, 0, stream>>>(Y, B, static_cast<int32_t>(out_size), m_i32);
     }
     return CUDA_CALL(cudaGetLastError());
   }
