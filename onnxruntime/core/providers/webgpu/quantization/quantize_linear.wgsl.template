@@ -1,0 +1,15 @@
+#param has_zero_point
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+
+// hello this is a test!
+#if has_zero_point
+#else
+#endif
+
+$MAIN {
+    guardAgainstOutOfBoundsWorkgroupSizes(uniforms.y_size);
+
+    // some trivial test code...
+    y[0] = y_type_t(0);
+}

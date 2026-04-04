@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "core/util/math.h"
-#include "core/providers/webgpu/quantization/quantize_linear.h"
+#include "core/providers/webgpu/quantization/dequantize_linear.h"
 #include "core/framework/int4.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
