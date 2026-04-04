@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
 
+#include <algorithm>
 #include <limits>
 
 #include "core/mlas/inc/mlas.h"

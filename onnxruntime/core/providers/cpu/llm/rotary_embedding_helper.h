@@ -3,39 +3,16 @@
 
 #pragma once
 
-#include <limits>
-
 #include "core/common/common.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/llm/rotary_embedding_int32_utils.h"
 
 namespace onnxruntime {
 namespace rotary_embedding_helper {
 
 namespace detail {
-
-inline Status NarrowNonNegativeToInt32(int64_t value, const char* name, int& output) {
-  if (value < 0 || value > std::numeric_limits<int>::max()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "RotaryEmbedding: ", name, "=", value, " is out of range for int32");
-  }
-  output = static_cast<int>(value);
-  return Status::OK();
-}
-
-inline Status CheckedMulToInt32(int lhs, int rhs, const char* name, int& output) {
-  if (lhs < 0 || rhs < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "RotaryEmbedding: ", name, " must be non-negative");
-  }
-  if (lhs != 0 && rhs > std::numeric_limits<int>::max() / lhs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "RotaryEmbedding: ", name, " overflows int32");
-  }
-
-  output = lhs * rhs;
-  return Status::OK();
-}
-
+using onnxruntime::rotary_embedding_int32_utils::CheckedMulToInt32;
+using onnxruntime::rotary_embedding_int32_utils::NarrowNonNegativeToInt32;
 }  // namespace detail
 
 // Parameters deduced from node attributes and inputs/outputs.
