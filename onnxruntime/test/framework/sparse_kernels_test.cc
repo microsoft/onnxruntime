@@ -655,11 +655,19 @@ static void CreateTensorWithExternalData(
     const std::vector<T>& test_data,
     std::basic_string<ORTCHAR_T>& filename,
     TensorProto& tensor_proto) {
+  size_t size_in_bytes = test_data.size() * sizeof(T);
+  std::vector<unsigned char> le_data;
+  le_data.resize(size_in_bytes);
+
+  auto src_span = gsl::make_span(test_data.data(), test_data.size());
+  auto dst_span = gsl::make_span(le_data.data(), le_data.size());
+
+  ASSERT_STATUS_OK(onnxruntime::utils::WriteLittleEndian(src_span, dst_span));
+
   // Create external data
   FILE* fp;
   CreateTestFile(fp, filename);
-  size_t size_in_bytes = test_data.size() * sizeof(T);
-  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
+  ASSERT_EQ(size_in_bytes, fwrite(le_data.data(), 1, size_in_bytes, fp));
   ASSERT_EQ(0, fclose(fp));
 
   // set the tensor_proto to reference this external data
@@ -851,8 +859,13 @@ int64_t ActualSize(const TensorProto& actual) {
 }
 
 template <typename T>
-static void RawDataChecker(gsl::span<const T> expected, const TensorProto& actual) {
+static void RawDataChecker(gsl::span<const T> expected, TensorProto actual) {
   int64_t actual_size = ActualSize(actual);
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+  }
 
   const T* raw_data = reinterpret_cast<const T*>(actual.raw_data().data());
   auto actual_span = gsl::make_span<const T>(raw_data, actual_size);
@@ -861,8 +874,13 @@ static void RawDataChecker(gsl::span<const T> expected, const TensorProto& actua
 }
 
 template <>
-void RawDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat, const TensorProto& actual) {
+void RawDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat, TensorProto actual) {
   int64_t actual_size = ActualSize(actual);
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+  }
 
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
   const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.raw_data().data());
@@ -872,8 +890,13 @@ void RawDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat, const
 }
 
 template <>
-void RawDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat, const TensorProto& actual) {
+void RawDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat, TensorProto actual) {
   int64_t actual_size = ActualSize(actual);
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+  }
 
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
   const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.raw_data().data());
@@ -1072,7 +1095,14 @@ static void RawSparseDataChecker(gsl::span<const T> expected_values,
                                  const SparseTensorProto& actual) {
   const int64_t actual_size = ActualSize(actual);
 
-  const T* raw_data = reinterpret_cast<const T*>(actual.values().raw_data().data());
+  auto actual_values = actual.values();
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+  }
+
+  const T* raw_data = reinterpret_cast<const T*>(actual_values.raw_data().data());
   auto actual_span = gsl::make_span<const T>(raw_data, actual_size);
 
   ASSERT_THAT(actual_span, testing::ContainerEq(expected_values));
@@ -1086,9 +1116,16 @@ void RawSparseDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat,
                                     const SparseTensorProto& actual) {
   const int64_t actual_size = ActualSize(actual);
 
+  auto actual_values = actual.values();
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+  }
+
   static_assert(sizeof(uint16_t) == sizeof(BFloat16), "Expecting equal sizes");
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
-  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.values().raw_data().data());
+  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual_values.raw_data().data());
   auto actual_span = gsl::make_span<const uint16_t>(raw_data, actual_size);
 
   ASSERT_THAT(actual_span, testing::ContainerEq(expected));
@@ -1101,9 +1138,16 @@ void RawSparseDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat,
                                      const SparseTensorProto& actual) {
   const int64_t actual_size = ActualSize(actual);
 
+  auto actual_values = actual.values();
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+  }
+
   static_assert(sizeof(uint16_t) == sizeof(MLFloat16), "Expecting equal sizes");
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
-  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.values().raw_data().data());
+  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual_values.raw_data().data());
   auto actual_span = gsl::make_span<const uint16_t>(raw_data, actual_size);
 
   ASSERT_THAT(actual_span, testing::ContainerEq(expected));
@@ -1903,7 +1947,7 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   if constexpr (std::is_same_v<I, int8_t>) {
     indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
     if (raw_data_indices) {
-      indices_tensor->set_raw_data(indices.data(), indices.size() * sizeof(I));
+      onnxruntime::utils::SetRawDataInTensorProto(*indices_tensor, indices.data(), indices.size() * sizeof(I));
     } else {
       for (auto idx : indices) {
         indices_tensor->add_int32_data(static_cast<int32_t>(idx));  // indices are stored in int32_data for types < int32
@@ -1912,7 +1956,7 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   } else if constexpr (std::is_same_v<I, int16_t>) {
     indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT16);
     if (raw_data_indices) {
-      indices_tensor->set_raw_data(indices.data(), indices.size() * sizeof(I));
+      onnxruntime::utils::SetRawDataInTensorProto(*indices_tensor, indices.data(), indices.size() * sizeof(I));
     } else {
       for (auto idx : indices) {
         indices_tensor->add_int32_data(static_cast<int32_t>(idx));
@@ -1921,7 +1965,7 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   } else if constexpr (std::is_same_v<I, int32_t>) {
     indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
     if (raw_data_indices) {
-      indices_tensor->set_raw_data(indices.data(), indices.size() * sizeof(I));
+      onnxruntime::utils::SetRawDataInTensorProto(*indices_tensor, indices.data(), indices.size() * sizeof(I));
     } else {
       for (auto idx : indices) {
         indices_tensor->add_int32_data(idx);
@@ -1930,7 +1974,7 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   } else if constexpr (std::is_same_v<I, int64_t>) {
     indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     if (raw_data_indices) {
-      indices_tensor->set_raw_data(indices.data(), indices.size() * sizeof(I));
+      onnxruntime::utils::SetRawDataInTensorProto(*indices_tensor, indices.data(), indices.size() * sizeof(I));
     } else {
       for (auto idx : indices) {
         indices_tensor->add_int64_data(idx);
@@ -2236,7 +2280,7 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch_Ra
 
   // 1 float is 4 bytes. We provide 4 bytes, but claim 2 elements (8 bytes needed).
   float raw_val = 1.0f;
-  val->set_raw_data(&raw_val, sizeof(float));
+  onnxruntime::utils::SetRawDataInTensorProto(*val, &raw_val, sizeof(float));
 
   auto* ind = sparse.mutable_indices();
   ind->add_dims(2);

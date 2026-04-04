@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <memory>
 #include <string>
 #include <sstream>
@@ -39,7 +40,7 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "u32",        // Uint4x8
     "u32",        // Int4x8
 };
-constexpr static const auto STORAGE_TYPE = details::_to_std_array(STORAGE_TYPE_ARRAY);
+constexpr static const auto STORAGE_TYPE = std::to_array(STORAGE_TYPE_ARRAY);
 
 constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "f32",         // Float32
@@ -66,7 +67,7 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "u32",         // Uint4x8
     "u32",         // Int4x8
 };
-constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
+constexpr static const auto VALUE_TYPE = std::to_array(VALUE_TYPE_ARRAY);
 
 constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "f32",   // Float32
@@ -93,7 +94,7 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "u32",   // Uint4x8
     "i32",   // Int4x8
 };
-constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
+constexpr static const auto ELEMENT_TYPE = std::to_array(ELEMENT_TYPE_ARRAY);
 
 constexpr static const uint32_t BYTES_ARRAY[] = {
     4,   // Float32
@@ -120,7 +121,7 @@ constexpr static const uint32_t BYTES_ARRAY[] = {
     4,   // Uint4x8 (packed in u32)
     4,   // Int4x8 (packed in u32)
 };
-constexpr static const auto BYTES = details::_to_std_array(BYTES_ARRAY);
+constexpr static const auto BYTES = std::to_array(BYTES_ARRAY);
 
 inline std::string GetIndicesType(int rank) {
   return rank < 2 ? "u32"

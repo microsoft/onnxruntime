@@ -877,6 +877,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
+    MlasConvAlgorithmDepthwiseMultiplierGreaterThan1,
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
     MlasConvAlgorithmDepthwise,
 #endif
@@ -1108,6 +1109,30 @@ MlasMaximumPool(
 void
 MLASCALL
 MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+//
+// Note: The Input and Output buffers for MlasComputeGeluErf must not overlap.
+// In-place operation (e.g., passing the same buffer for both parameters) is unsupported.
+//
+void
+MLASCALL
+MlasComputeGeluErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+//
+// Note: The Input and Output buffers for MlasComputeSilu must not overlap.
+// In-place operation (e.g., passing the same buffer for both parameters) is unsupported.
+//
+void
+MLASCALL
+MlasComputeSilu(
     const float* Input,
     float* Output,
     size_t N
