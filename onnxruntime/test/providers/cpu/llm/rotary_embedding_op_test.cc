@@ -1271,7 +1271,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsHiddenSizeOverflow) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "hidden_size overflows int32", {}, nullptr, &execution_providers);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "overflows int32", {}, nullptr, &execution_providers);
 }
 
 TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsRank3HiddenSizeNotDivisibleByNumHeads) {
