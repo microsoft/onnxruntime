@@ -1288,7 +1288,11 @@ class OrtValue:
         if isinstance(data, OrtValue):
             is_bool = data.data_type() == "tensor(bool)"
         elif hasattr(data, "dtype"):
-            is_bool = str(data.dtype) in ("bool", "torch.bool")
+            dtype_obj = data.dtype
+            # Use .name when available (numpy, cupy, tensorflow all expose it).
+            # Fall back to str() for frameworks that don't (e.g. PyTorch).
+            dtype_name = getattr(dtype_obj, "name", str(dtype_obj))
+            is_bool = dtype_name in ("bool", "bool_", "torch.bool")
 
         # If the input supports the __dlpack__ protocol, call it to get the capsule.
         if hasattr(data, "__dlpack__"):
