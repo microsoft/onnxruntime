@@ -55,6 +55,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -4830,6 +4831,9 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
 }
 
 ORT_API(const char*, OrtApis::GetVersionString) {
+  static_assert(onnxruntime::version_check::IsOrtVersionValid(ORT_VERSION),
+                "ORT_VERSION must be in the format '1.Y.Z' where Y and Z are non-negative integers without leading "
+                "zeros, and Y must equal ORT_API_VERSION");
   return ORT_VERSION;
 }
 
