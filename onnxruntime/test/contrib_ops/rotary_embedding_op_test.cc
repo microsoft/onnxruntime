@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <limits>
 #include "gtest/gtest.h"
+#include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -948,6 +950,73 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_OOB_CUDA_Passthroug
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 #endif
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsTotalElementsOverflow) {
+  constexpr int kMaxInt = std::numeric_limits<int>::max();
+
+  contrib::rotary_embedding_helper::RotaryParameters parameters{};
+  if (std::numeric_limits<std::ptrdiff_t>::max() <= std::numeric_limits<int>::max()) {
+    // On narrow ptrdiff_t platforms, kMaxInt * kMaxInt would overflow earlier when validating
+    // the position_ids element count. Use floor(sqrt(INT_MAX)) for batch and sequence so that
+    // batch_size * sequence_length still fits, then rely on num_heads to trigger the later
+    // total_elements overflow path this regression is targeting.
+    parameters.batch_size = 46340;
+    parameters.sequence_length = 46340;
+    parameters.num_heads = 2;
+    parameters.max_sequence_length = 46340;
+  } else {
+    // On wide ptrdiff_t platforms, batch_size * sequence_length still fits in ptrdiff_t, so use
+    // the largest int dimensions directly and let the extra num_heads factor overflow total_elements.
+    parameters.batch_size = kMaxInt;
+    parameters.sequence_length = kMaxInt;
+    parameters.num_heads = 3;
+    parameters.max_sequence_length = kMaxInt;
+  }
+  parameters.head_size = 4;
+  parameters.head_stride = 4;
+  parameters.seq_stride = 8;
+  parameters.batch_stride = 8;
+  parameters.position_ids_format = 0;
+  parameters.rotary_embedding_dim = 4;
+
+  const int64_t position_ids[] = {0};
+  Status status = contrib::RunRotaryEmbedding<float>(nullptr, parameters, nullptr, position_ids, nullptr, nullptr, nullptr, false);
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_NE(status.ErrorMessage().find("total_elements overflows ptrdiff_t"), std::string::npos);
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsHiddenSizeOverflow) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {0, 32768, 1, 65536}, {});
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 32768}, std::vector<float>(32768, 1.0f));
+  test.AddInput<float>("sin_cache", {1, 32768}, std::vector<float>(32768, 0.0f));
+  test.AddOutput<float>("output", {0, 32768, 1, 65536}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "overflows int32", {}, nullptr, &execution_providers);
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank3HiddenSizeNotDivisibleByNumHeads) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("rotary_embedding_dim", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {1, 1, 5}, {0.f, 0.f, 0.f, 0.f, 0.f});
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 1}, {1.0f});
+  test.AddInput<float>("sin_cache", {1, 1}, {0.0f});
+  test.AddOutput<float>("output", {1, 1, 5}, {0.f, 0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "hidden_size=5 must be divisible by num_heads=2 for rank-3 input", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

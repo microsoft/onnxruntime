@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -85,5 +87,36 @@ INSTANTIATE_TEST_SUITE_P(
                     LinearRegressorParam("SOFTMAX_ZERO", {3.442477e-14f, 1.f, 1.670142e-05f, 1.f, 1.0f, 0.f}, 2)
 
                         ));
+
+TEST(MLOpTest, LinearRegressorUndersizedCoefficients) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{1.f});  // needs 2
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "LinearRegressor: coefficients length (1) must equal targets (1) * features (2)");
+}
+
+TEST(MLOpTest, LinearRegressorOversizedTargets) {
+  if (std::numeric_limits<int64_t>::max() <= std::numeric_limits<std::ptrdiff_t>::max()) {
+    GTEST_SKIP() << "No int64_t value exceeds ptrdiff_t on this platform.";
+  }
+
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", std::numeric_limits<int64_t>::max());
+  test.AddAttribute("coefficients", std::vector<float>{1.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {1, 1}, {1.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "targets must be in range [1,");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
