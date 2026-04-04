@@ -6,6 +6,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
@@ -234,6 +235,114 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
 }
 
 #ifndef DISABLE_CONTRIB_OPS
+
+TEST(NchwcOptimizerTests, DisableNchwcLayoutTransformationSessionOption) {
+  // Ignore the test if NCHWc is not supported by the platform.
+  if (MlasNchwcGetBlockSize() <= 1) {
+    return;
+  }
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 13;
+  Model model("nchwc_disable", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+
+  NchwcTestHelper helper(model.MainGraph());
+  {
+    auto* input_arg = helper.MakeInput<float>({1, 32, 112, 112});
+    auto* output_arg = helper.MakeOutput();
+    auto& conv_node = helper.AddConvNode(input_arg, output_arg, {64, 32, 3, 3});
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  }
+
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level3;
+  session_options.session_logid = "NchwcOptimizerDisableTests";
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableNchwcLayoutTransformation, "1"));
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto op_to_count = CountOpsInGraph(session.GetGraph());
+  // No NCHWc Conv or Reorder nodes should be present in the graph.
+  EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+  // Regular NCHW Conv node should continue to remain in the graph.
+  EXPECT_EQ(op_to_count["Conv"], 1);
+}
+
+TEST(NchwcOptimizerTests, UseNchwLayoutForLargeConvSessionOption) {
+  // Ignore the test if NCHWc is not supported by the platform.
+  if (MlasNchwcGetBlockSize() <= 1) {
+    return;
+  }
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 13;
+  Model model("nchwc_large_conv", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+
+  NchwcTestHelper helper(model.MainGraph());
+  {
+    // Large Conv candidate for NCHW fallback threshold:
+    // kernel >= 7x7, input channels >= 64, output channels >= 32.
+    auto* input_arg = helper.MakeInput<float>({1, 64, 32, 32});
+    auto* output_arg = helper.MakeOutput();
+    auto& conv_node = helper.AddConvNode(input_arg, output_arg, {64, 64, 7, 7});
+    conv_node.AddAttribute("pads", std::vector<int64_t>{3, 3, 3, 3});
+    conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  }
+
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  auto run_and_count_ops = [&](bool use_nchw_layout_for_large_conv,
+                               std::map<std::string, int>& op_to_count) {
+    SessionOptions session_options;
+    session_options.graph_optimization_level = TransformerLevel::Level3;
+    session_options.session_logid = "NchwcOptimizerLargeConvTests";
+    if (use_nchw_layout_for_large_conv) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsUseNchwLayoutForLargeConv, "1"));
+    }
+
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    op_to_count = CountOpsInGraph(session.GetGraph());
+  };
+
+  // By default, the large convolution is transformed to NCHWc.
+  std::map<std::string, int> default_counts;
+  run_and_count_ops(false, default_counts);
+  // NCHWc Conv and Reorder nodes should be present in the graph.
+  EXPECT_EQ(default_counts["com.microsoft.nchwc.Conv"], 1);
+  EXPECT_EQ(default_counts["com.microsoft.nchwc.ReorderInput"], 1);
+  EXPECT_EQ(default_counts["com.microsoft.nchwc.ReorderOutput"], 1);
+  // No regular NCHW Conv node should remain in the graph.
+  EXPECT_EQ(default_counts["Conv"], 0);
+
+  // With the session option enabled, keep the large convolution in NCHW.
+  std::map<std::string, int> nchw_counts;
+  run_and_count_ops(true, nchw_counts);
+  // No NCHWc Conv or Reorder nodes should be present in the graph.
+  EXPECT_EQ(nchw_counts["com.microsoft.nchwc.Conv"], 0);
+  EXPECT_EQ(nchw_counts["com.microsoft.nchwc.ReorderInput"], 0);
+  EXPECT_EQ(nchw_counts["com.microsoft.nchwc.ReorderOutput"], 0);
+  // Regular NCHW Conv node should continue to remain in the graph.
+  EXPECT_EQ(nchw_counts["Conv"], 1);
+}
 
 TEST(NchwcOptimizerTests, ConvNchw) {
   auto test_case = [&](const std::string& activation_op_type) {

@@ -1351,6 +1351,12 @@ Return Value:
 
     MLAS_THREADED_ROUTINE* ThreadedRoutine;
 
+    // TODO(hasesh): Consider adding more implementations for Conv (for example, Im2Col + GEMM)
+    // to work with NCHWc data layout that provides better performance for large kernel sizes
+    // on some platforms.
+    // The current "direct" convolution implementations are bottlenecked by memory bandwidth for
+    // large kernel sizes on some platforms and lead to poor performance.
+    // See https://github.com/microsoft/onnxruntime/issues/26992 for more details.
     if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
         if (WorkBlock.KernelShape[0] == 1 && WorkBlock.KernelShape[1] == 1 &&
             WorkBlock.Padding[0] == 0 && WorkBlock.Padding[1] == 0 &&
