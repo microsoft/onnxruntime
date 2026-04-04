@@ -91,7 +91,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   // err_index == 0 to mean "no error" creates a collision when a zero-sized
   // dimension makes index 0 invalid — the error goes undetected.
   std::atomic<bool> has_invalid_index{false};
-  int64_t err_index = 0;
+  std::atomic<int64_t> err_index{0};
   p.element_bytes = bytes_per_value;
   p.element_count_per_slice = slice_size;
   p.bytes_per_slice = p.element_bytes * p.element_count_per_slice;
@@ -111,7 +111,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
       const auto lower_limit = -upper_limit;
       if (index < lower_limit || index >= upper_limit) {
         has_invalid_index.store(true, std::memory_order_relaxed);
-        err_index = index;
+        err_index.store(index, std::memory_order_relaxed);
         break;
       }
       if (index < 0) index += upper_limit;
@@ -132,7 +132,8 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
 
   return !has_invalid_index.load(std::memory_order_relaxed)
              ? Status::OK()
-             : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
+             : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ",
+                              err_index.load(std::memory_order_relaxed));
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape&,
