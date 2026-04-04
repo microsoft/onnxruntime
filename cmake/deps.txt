@@ -61,3 +61,5 @@ kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.
 # this entry will be updated to use refs/tags/<version> instead of the raw commit hash.
 kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8d32f81ffeeb6d4885a29cc35d2b0da87.zip;5e855730a2d69057a569f43dd7532db3b2d2a05c
 duktape;https://github.com/svaarala/duktape/releases/download/v2.7.0/duktape-2.7.0.tar.xz;8200c8e417dbab7adcc12c4dbdef7651cfc55794
+# cpp_client_telemetry (1DS SDK) for cross-platform telemetry on non-Windows platforms
+cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.40.1.zip;ee2ded25e539f64052c9d8635bef4ea62c30e014
