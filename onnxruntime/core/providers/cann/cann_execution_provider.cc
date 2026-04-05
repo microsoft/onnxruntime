@@ -1333,6 +1333,21 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
     }
     names_[node_name] = index2name;
 
+    // Extract original shapes from model definition (contains -1 for dynamic dims)
+    std::unordered_map<size_t, std::vector<int64_t>> original_shapes;
+    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
+      const auto* shape_proto = input_defs[i]->Shape();
+      if (shape_proto) {
+        std::vector<int64_t> shape;
+        for (int j = 0; j < shape_proto->dim_size(); j++) {
+          const auto& dim = shape_proto->dim(j);
+          shape.push_back(dim.has_dim_value() ? dim.dim_value() : -1);
+        }
+        original_shapes[i] = shape;
+      }
+    }
+    original_shapes_[node_name] = original_shapes;
+
     std::string string_model;
     auto model = cann::CreateModel(graph_body_viewer, *GetLogger());
     auto model_proto = model->ToProto();
@@ -1365,15 +1380,30 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       CannFuncState* cann_state = reinterpret_cast<CannFuncState*>(state);
       std::string& string_model = models_[cann_state->node_name];
       std::unordered_map<size_t, std::string>& index2name = names_[cann_state->node_name];
+      auto& orig_shapes = original_shapes_[cann_state->node_name];
 
-      std::string input_shape = [&ctx, &index2name]() -> std::string {
+      bool is_dynamic = !info_.dynamic_batch_size.empty() ||
+                        !info_.dynamic_image_size.empty() ||
+                        !info_.dynamic_dims.empty();
+
+      // Build input_shape string from original model shapes.
+      // For static models: original shape == runtime shape (all concrete values).
+      // For dynamic models: original shape contains -1 for dynamic dims, which is
+      // exactly what aclgrphBuildModel's INPUT_SHAPE option requires.
+      std::string input_shape = [&ctx, &index2name, &orig_shapes]() -> std::string {
         std::string res;
         for (size_t i = 0; i < ctx.GetInputCount(); i++) {
-          auto&& shape = ctx.GetInput(i).GetTensorTypeAndShapeInfo().GetShape();
-
           std::string s = index2name[i] + ":";
-          for (auto& d : shape) {
-            s += std::to_string(d) + ",";
+          if (orig_shapes.count(i)) {
+            for (auto& d : orig_shapes[i]) {
+              s += std::to_string(d) + ",";
+            }
+          } else {
+            // Fallback: use runtime shape if original shape is unavailable
+            auto&& shape = ctx.GetInput(i).GetTensorTypeAndShapeInfo().GetShape();
+            for (auto& d : shape) {
+              s += std::to_string(d) + ",";
+            }
           }
           s[s.length() - 1] = ';';
           res += s;
@@ -1414,12 +1444,31 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
 
       CannModelPreparation prepare(modelID);
 
+      // Get dynamic tensor index (hidden input added by CANN for dynamic shape models)
+      size_t dynamic_input_index = SIZE_MAX;
+      if (is_dynamic) {
+        aclError idx_ret = aclmdlGetInputIndexByName(prepare.modelDesc_, ACL_DYNAMIC_TENSOR_NAME, &dynamic_input_index);
+        if (idx_ret != ACL_SUCCESS) {
+          dynamic_input_index = SIZE_MAX;
+        }
+      }
+
+      void* dynamic_input_mem = nullptr;
       ORT_TRY {
+        size_t user_input_idx = 0;
         for (size_t i = 0; i < aclmdlGetNumInputs(prepare.modelDesc_); i++) {
-          auto input = ctx.GetInput(i);
-          CANN_MODEL_PREPARE_INPUTBUFFER(prepare,
-                                         const_cast<void*>(input.GetTensorRawData()),
-                                         aclmdlGetInputSizeByIndex(prepare.modelDesc_, i));
+          if (i == dynamic_input_index) {
+            // Hidden input for dynamic shape - allocate device memory
+            size_t hidden_size = aclmdlGetInputSizeByIndex(prepare.modelDesc_, i);
+            CANN_CALL_THROW(aclrtMalloc(&dynamic_input_mem, hidden_size, ACL_MEM_MALLOC_NORMAL_ONLY));
+            CANN_MODEL_PREPARE_INPUTBUFFER(prepare, dynamic_input_mem, hidden_size);
+          } else {
+            auto input = ctx.GetInput(user_input_idx);
+            CANN_MODEL_PREPARE_INPUTBUFFER(prepare,
+                                           const_cast<void*>(input.GetTensorRawData()),
+                                           aclmdlGetInputSizeByIndex(prepare.modelDesc_, i));
+            user_input_idx++;
+          }
         }
 
         for (size_t i = 0; i < aclmdlGetNumOutputs(prepare.modelDesc_); i++) {
@@ -1439,7 +1488,43 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         }
       }
       ORT_CATCH(const std::exception& e) {
+        if (dynamic_input_mem) aclrtFree(dynamic_input_mem);
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
+      }
+
+      // Set dynamic dimensions for this inference run
+      if (is_dynamic && dynamic_input_index != SIZE_MAX) {
+        if (!info_.dynamic_batch_size.empty()) {
+          // Get actual batch size from first input's dim[0]
+          auto runtime_shape = ctx.GetInput(0).GetTensorTypeAndShapeInfo().GetShape();
+          uint64_t batchSize = static_cast<uint64_t>(runtime_shape[0]);
+          CANN_RETURN_IF_ERROR(aclmdlSetDynamicBatchSize(modelID, prepare.inputSet_, dynamic_input_index, batchSize));
+        } else if (!info_.dynamic_image_size.empty()) {
+          // Get actual H, W from first input
+          auto runtime_shape = ctx.GetInput(0).GetTensorTypeAndShapeInfo().GetShape();
+          uint64_t height, width;
+          if (info_.input_format == "NHWC") {
+            height = static_cast<uint64_t>(runtime_shape[1]);
+            width = static_cast<uint64_t>(runtime_shape[2]);
+          } else {
+            // Default NCHW: H=dim[2], W=dim[3]
+            height = static_cast<uint64_t>(runtime_shape[2]);
+            width = static_cast<uint64_t>(runtime_shape[3]);
+          }
+          CANN_RETURN_IF_ERROR(aclmdlSetDynamicHWSize(modelID, prepare.inputSet_, dynamic_input_index, height, width));
+        } else if (!info_.dynamic_dims.empty()) {
+          // Concatenate all dimensions from all inputs
+          aclmdlIODims currentDims;
+          size_t dimIdx = 0;
+          for (size_t i = 0; i < ctx.GetInputCount(); i++) {
+            auto runtime_shape = ctx.GetInput(i).GetTensorTypeAndShapeInfo().GetShape();
+            for (size_t j = 0; j < runtime_shape.size(); j++) {
+              currentDims.dims[dimIdx++] = runtime_shape[j];
+            }
+          }
+          currentDims.dimCount = dimIdx;
+          CANN_RETURN_IF_ERROR(aclmdlSetInputDynamicDims(modelID, prepare.inputSet_, dynamic_input_index, &currentDims));
+        }
       }
 
       aclrtStream stream = static_cast<aclrtStream>(ctx.GetGPUComputeStream());
@@ -1465,6 +1550,11 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       } else {
         CANN_RETURN_IF_ERROR(aclmdlExecuteAsync(modelID, prepare.inputSet_, prepare.outputSet_, stream));
       }
+
+      if (dynamic_input_mem) {
+        aclrtFree(dynamic_input_mem);
+      }
+
       return Status::OK();
     };
 
