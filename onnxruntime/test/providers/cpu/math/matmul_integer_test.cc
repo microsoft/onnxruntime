@@ -504,5 +504,35 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
 }
 #endif
 
+// Regression test: inputs with mismatched K dimensions must fail
+// instead of causing an out-of-bounds read in the MLAS backend.
+TEST(MatmulIntegerOpTest, MatMulInteger_DimensionMismatch) {
+  OpTester test("MatMulInteger", 10);
+  // A is [1,5] (K=5), B is [1,1] (K=1) — K dimensions don't match.
+  test.AddInput<uint8_t>("T1", {1, 5}, {11, 7, 3, 10, 6});
+  test.AddInput<uint8_t>("T2", {1, 1}, {1});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {1, 1}, {0});
+
+  // Restrict to CPU — other EPs may not support this configuration.
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_only;
+  cpu_only.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "MatMul dimension mismatch",
+           {}, nullptr, &cpu_only);
+}
+
+// Valid 2D dot product: K dimensions match.
+TEST(MatmulIntegerOpTest, MatMulInteger_SmallValid) {
+  OpTester test("MatMulInteger", 10);
+  // A=[1,2], B=[2,1] => [1,1] with value 2*4 + 3*5 = 23
+  test.AddInput<uint8_t>("T1", {1, 2}, {2, 3});
+  test.AddInput<uint8_t>("T2", {2, 1}, {4, 5});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {1, 1}, {23});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
