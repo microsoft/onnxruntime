@@ -166,7 +166,7 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
     }
     attr_ep_cache_context->set_s(engine_data_str);
   } else {
-    std::string engine_cache_filename = std::filesystem::path(engine_cache_path).filename().string();
+    std::string engine_cache_filename = PathToUTF8String(std::filesystem::path(engine_cache_path).filename().native());
     attr_ep_cache_context->set_s(engine_cache_filename);
     std::fstream engine_cache_file(engine_cache_path, std::ios::binary | std::ios::out);
     if (engine_cache_file.is_open()) {
@@ -188,7 +188,7 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
 
   attr_onnx_filename->set_name(ONNX_MODEL_FILENAME);
   attr_onnx_filename->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_onnx_filename->set_s(std::filesystem::path(onnx_model_path).filename().string());
+  attr_onnx_filename->set_s(PathToUTF8String(std::filesystem::path(onnx_model_path).filename().native()));
 
   attr_sdk_version->set_name(SDK_VERSION);
   attr_sdk_version->set_type(onnx::AttributeProto_AttributeType_STRING);

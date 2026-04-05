@@ -108,7 +108,7 @@ template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateExpandVersionedKernelInfo(bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
-  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Expand>(info);
     return Status::OK();
   };
@@ -129,7 +129,7 @@ template <int SinceVersion>
 KernelCreateInfo CreateExpandKernelInfo(bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
-  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Expand>(info);
     return Status::OK();
   };
