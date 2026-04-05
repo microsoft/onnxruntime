@@ -5,7 +5,7 @@
 
 #include "core/common/narrow.h"
 
-#ifndef SHARED_PROVIDER
+#if !defined(SHARED_PROVIDER) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #endif

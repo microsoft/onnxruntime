@@ -5,7 +5,7 @@
 
 #include <string>
 
-#ifndef SHARED_PROVIDER
+#if !defined(SHARED_PROVIDER) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "core/framework/op_kernel.h"
 #endif
 
