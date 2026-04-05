@@ -67,6 +67,8 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t batch_count,
                                        uint32_t N,
                                        uint32_t K,
+                                       uint32_t nbits,
+                                       bool is_fp16,
                                        int32_t& config_index);
 
 }  // namespace webgpu
