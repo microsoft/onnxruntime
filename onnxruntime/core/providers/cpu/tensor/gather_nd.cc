@@ -133,7 +133,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   return !has_invalid_index.load(std::memory_order_relaxed)
              ? Status::OK()
              : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ",
-                              err_index.load(std::memory_order_relaxed));
+                               err_index.load(std::memory_order_relaxed));
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape&,
