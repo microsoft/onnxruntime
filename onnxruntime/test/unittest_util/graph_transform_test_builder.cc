@@ -158,7 +158,10 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
 
   // Serialize the model to a string.
   std::string model_data;
-  model.ToProto().SerializeToString(&model_data);
+  bool success = model.ToProto().SerializeToString(&model_data);
+  if (!success) {
+    throw std::runtime_error("Failed to serialize model");
+  }
   std::shared_ptr<IExecutionProvider> ep_shared = ep ? std::move(ep) : nullptr;
 
   auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches,
