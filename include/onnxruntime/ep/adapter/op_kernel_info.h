@@ -74,28 +74,11 @@ struct OpKernelInfo {
     return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
 
+  // Delegates to the core OpKernelInfo::GetAllocator so the adapter returns
+  // exactly the same allocator the framework would provide for each OrtMemType.
   AllocatorPtr GetAllocator(OrtMemType mem_type) const {
-    const auto* ort_ep = cache_->ort_ep_;
-    if (ort_ep == nullptr) {
-      // Match core OpKernelInfo::GetAllocator behavior: no allocator available.
-      return nullptr;
-    }
-
-    AllocatorPtr allocator;
-    const auto* ep = static_cast<const Ep*>(ort_ep);
-    Status status;
-
-    if (mem_type == OrtMemTypeDefault) {
-      status = ep->GetTempSpaceAllocator(&allocator);
-    } else if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput || mem_type == OrtMemTypeCPU) {
-      status = ep->GetTempSpaceCPUAllocator(&allocator);
-    } else {
-      // Unsupported or unknown memory type: indicate absence of allocator.
-      return nullptr;
-    }
-
-    ORT_THROW_IF_ERROR(status);
-    return allocator;
+    const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(cache_->kernel_info_);
+    return core_kernel_info->GetAllocator(mem_type);
   }
 
   Node node() const noexcept {

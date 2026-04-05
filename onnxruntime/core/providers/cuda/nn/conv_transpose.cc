@@ -2,6 +2,7 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#include <string>
 #include <utility>
 
 #include "conv_transpose.h"
