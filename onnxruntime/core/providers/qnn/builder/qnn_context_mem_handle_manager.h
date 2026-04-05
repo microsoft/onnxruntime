@@ -7,6 +7,8 @@
 #include <memory>
 #include <mutex>
 
+#include <gsl/gsl>
+
 #include "QnnInterface.h"
 
 #include "core/providers/qnn/ort_api.h"
@@ -25,10 +27,21 @@ class QnnContextMemHandleManager {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnContextMemHandleManager);
 
-  // Gets an existing QNN mem handle or registers a new one.
-  // `qnn_mem_handle` is set to the QNN mem handle and `did_register` is true if `qnn_mem_handle` was newly registered.
-  Status GetOrRegister(void* shared_memory_address, const Qnn_Tensor_t& qnn_tensor,
-                       Qnn_MemHandle_t& qnn_mem_handle, bool& did_register);
+  struct MemRegInput {
+    void* shared_memory_address;
+    const Qnn_Tensor_t* qnn_tensor;
+  };
+
+  struct MemRegResult {
+    Qnn_MemHandle_t mem_handle;
+    bool did_register;
+  };
+
+  // Gets existing QNN mem handles or registers new ones in a single batched memRegister call.
+  // `inputs` and `results` must have the same size.
+  // For each input, if a mem handle already exists for the shared memory address, the cached handle is returned.
+  // Otherwise, a new mem handle is registered. All new registrations are batched into a single memRegister call.
+  Status BatchGetOrRegister(gsl::span<const MemRegInput> inputs, gsl::span<MemRegResult> results);
 
   Status Unregister(void* shared_memory_address);
 
