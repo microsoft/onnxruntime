@@ -44,6 +44,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
+#include "core/session/ep_cache_versioning.h"
 #include "core/session/provider_bridge_library.h"
 #include "core/session/provider_bridge_ort.h"
 #include "core/util/math.h"
@@ -2237,6 +2238,23 @@ std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
 }
+
+namespace {
+
+// Register cache path option keys for EPs that currently participate in generic cache versioning.
+// These registrations live in provider-specific bridge code so that knowledge of the option keys
+// stays close to the EPs themselves.
+const bool kRegisterEpCachePathOptions = []() {
+  onnxruntime::RegisterEpCachePathOptions("MIGraphX", {"migraphx_model_cache_dir"});
+  onnxruntime::RegisterEpCachePathOptions("NvTensorRtRtx", {"nv_runtime_cache_path"});
+  // TensorRT is not wired through the generic AppendExecutionProvider path, but tests exercise
+  // versioning with the canonical TensorRT provider name.
+  onnxruntime::RegisterEpCachePathOptions("TensorRT",
+                                          {"trt_engine_cache_path", "trt_timing_cache_path"});
+  return true;
+}();
+
+}  // namespace
 
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* options) {
   const auto provider_options{s_library_migraphx.Get().GetProviderOptions(options)};
