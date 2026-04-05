@@ -214,6 +214,7 @@ endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   add_library(onnxruntime INTERFACE)
+  target_include_directories(onnxruntime INTERFACE "$<BUILD_INTERFACE:${ONNXRUNTIME_ROOT}>" "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 endif()
 
 set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
