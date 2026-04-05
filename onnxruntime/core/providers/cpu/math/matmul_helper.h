@@ -170,7 +170,7 @@ class MatMulComputeHelper {
         ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1, "M_ == 1 && N_ == 1 was false");
         // Both inputs are 1D vectors: left(K) dot right(K) => scalar.
         // Validate K dimensions match to prevent out-of-bounds reads.
-        ORT_RETURN_IF_NOT(K_ == static_cast<ptrdiff_t>(right_shape[0]),
+        ORT_RETURN_IF_NOT(K_ == right_shape[0],
                           "MatMul dimension mismatch");
       } else {
         if (left_num_dims == 1) {
