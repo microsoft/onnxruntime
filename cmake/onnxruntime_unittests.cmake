@@ -509,6 +509,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
 
+  if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    file(GLOB onnxruntime_test_providers_cuda_plugin_src CONFIGURE_DEPENDS
+      "${TEST_SRC_DIR}/providers/cuda/plugin/*.cc"
+    )
+    list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
+  endif()
+
   if (onnxruntime_USE_CUDA_NHWC_OPS AND CUDNN_MAJOR_VERSION GREATER 8)
     file(GLOB onnxruntime_test_providers_cuda_nhwc_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/providers/cuda/nhwc/*.cc"
