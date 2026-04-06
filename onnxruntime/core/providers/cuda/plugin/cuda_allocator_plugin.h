@@ -60,17 +60,15 @@ struct AllocatorStats {
   int64_t bytes_limit = 0;
 
   void ToKeyValuePairs(const OrtApi& api, OrtKeyValuePairs* kvps) const {
-    if (num_allocs > 0 || bytes_limit != 0) {
-      api.AddKeyValuePair(kvps, "Limit", std::to_string(bytes_limit).c_str());
-      api.AddKeyValuePair(kvps, "InUse", std::to_string(bytes_in_use).c_str());
-      api.AddKeyValuePair(kvps, "TotalAllocated", std::to_string(total_allocated_bytes).c_str());
-      api.AddKeyValuePair(kvps, "MaxInUse", std::to_string(max_bytes_in_use).c_str());
-      api.AddKeyValuePair(kvps, "NumAllocs", std::to_string(num_allocs).c_str());
-      api.AddKeyValuePair(kvps, "NumReserves", std::to_string(num_reserves).c_str());
-      api.AddKeyValuePair(kvps, "NumArenaExtensions", std::to_string(num_arena_extensions).c_str());
-      api.AddKeyValuePair(kvps, "NumArenaShrinkages", std::to_string(num_arena_shrinkages).c_str());
-      api.AddKeyValuePair(kvps, "MaxAllocSize", std::to_string(max_alloc_size).c_str());
-    }
+    api.AddKeyValuePair(kvps, "Limit", std::to_string(bytes_limit).c_str());
+    api.AddKeyValuePair(kvps, "InUse", std::to_string(bytes_in_use).c_str());
+    api.AddKeyValuePair(kvps, "TotalAllocated", std::to_string(total_allocated_bytes).c_str());
+    api.AddKeyValuePair(kvps, "MaxInUse", std::to_string(max_bytes_in_use).c_str());
+    api.AddKeyValuePair(kvps, "NumAllocs", std::to_string(num_allocs).c_str());
+    api.AddKeyValuePair(kvps, "NumReserves", std::to_string(num_reserves).c_str());
+    api.AddKeyValuePair(kvps, "NumArenaExtensions", std::to_string(num_arena_extensions).c_str());
+    api.AddKeyValuePair(kvps, "NumArenaShrinkages", std::to_string(num_arena_shrinkages).c_str());
+    api.AddKeyValuePair(kvps, "MaxAllocSize", std::to_string(max_alloc_size).c_str());
   }
 
   std::string DebugString() const {

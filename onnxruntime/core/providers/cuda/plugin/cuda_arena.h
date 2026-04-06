@@ -156,10 +156,17 @@ struct ArenaConfig {
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxMem); value) {
+      const std::string sval(value);
       ORT_TRY {
-        size_t parsed = static_cast<size_t>(std::stoull(std::string(value)));
-        // Treat 0 as unlimited — avoids arithmetic issues and silent allocation failures.
-        config.max_mem = (parsed == 0) ? std::numeric_limits<size_t>::max() : parsed;
+        // std::stoull silently wraps negative values via strtoull.
+        // Reject leading '-' explicitly so that e.g. "-100" doesn't become a huge budget.
+        if (!sval.empty() && sval[0] == '-') {
+          config.max_mem = 0;  // will fail IsValid()
+        } else {
+          size_t parsed = static_cast<size_t>(std::stoull(sval));
+          // Treat 0 as unlimited — avoids arithmetic issues and silent allocation failures.
+          config.max_mem = (parsed == 0) ? std::numeric_limits<size_t>::max() : parsed;
+        }
       }
       ORT_CATCH(const std::exception&) {
         ORT_HANDLE_EXCEPTION([&]() {
@@ -352,12 +359,12 @@ class ArenaImpl {
       std::swap(handles_, other.handles_);
     }
 
-    int IndexFor(const void* p) const {
+    size_t IndexFor(const void* p) const {
       std::uintptr_t p_int = reinterpret_cast<std::uintptr_t>(p);
       std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(ptr_);
       CUDA_ARENA_ENFORCE(p_int >= base_int, "AllocationRegion::IndexFor");
       CUDA_ARENA_ENFORCE(p_int < base_int + memory_size_, "AllocationRegion::IndexFor");
-      return static_cast<int>(((p_int - base_int) >> kMinAllocationBits));
+      return static_cast<size_t>((p_int - base_int) >> kMinAllocationBits);
     }
 
     void* ptr_ = nullptr;

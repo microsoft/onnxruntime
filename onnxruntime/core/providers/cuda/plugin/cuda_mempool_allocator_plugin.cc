@@ -162,6 +162,8 @@ CudaMempoolOrtAllocator::~CudaMempoolOrtAllocator() {
   ORT_IGNORE_RETURN_VALUE(cudaDeviceSynchronize());
 
   if (pool_) {
+    // Destructor always trims to 0 — the pool is about to be destroyed.
+    // bytes_to_keep_on_shrink_ is for the explicit Shrink() path, not teardown.
     ORT_IGNORE_RETURN_VALUE(cudaMemPoolTrimTo(pool_, 0));
     ORT_IGNORE_RETURN_VALUE(cudaMemPoolDestroy(pool_));
     pool_ = nullptr;

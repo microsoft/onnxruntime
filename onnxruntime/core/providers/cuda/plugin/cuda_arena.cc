@@ -136,8 +136,7 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
       extend_bytes = std::min(static_cast<size_t>(curr_region_allocation_bytes_), available_bytes);
 
       if (!increased_allocation) {
-        if (config_.arena_extend_strategy == ArenaExtendStrategy::kNextPowerOfTwo &&
-            curr_region_allocation_bytes_ < static_cast<size_t>(config_.max_power_of_two_extend_bytes) / 2) {
+        if (curr_region_allocation_bytes_ < static_cast<size_t>(config_.max_power_of_two_extend_bytes) / 2) {
           curr_region_allocation_bytes_ *= 2;
         } else {
           curr_region_allocation_bytes_ = config_.max_power_of_two_extend_bytes;
