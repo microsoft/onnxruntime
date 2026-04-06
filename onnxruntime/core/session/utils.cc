@@ -105,15 +105,52 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
   return Status::OK();
 }
 
+Status PrintAvailableAndSelectedEpInfos(const Environment& env, std::vector<VariantSelectionEpInfo>& ep_infos) {
+  const auto& execution_devices = env.GetOrtEpDevices();
+
+  std::string available_eps_info = "Available EPs and devices:\n";
+  if (execution_devices.empty()) {
+    available_eps_info += "  (none)\n";
+  } else {
+    for (const auto* ep_device : execution_devices) {
+      if (ep_device == nullptr) {
+        continue;
+      }
+
+      available_eps_info += "  " + ep_device->ToString() + "\n";
+    }
+  }
+
+  std::string selected_eps_info = "Selected EPs:\n";
+  if (ep_infos.empty()) {
+    selected_eps_info += "  (none)\n";
+  } else {
+    for (const auto& ep_info : ep_infos) {
+      selected_eps_info += "  EP: " + ep_info.ep_name + "\n";
+      const auto& selected_ep_devices = ep_info.ep_devices;
+      for (const auto* selected_ep_device : selected_ep_devices) {
+        if (selected_ep_device == nullptr) {
+          continue;
+        }
+        selected_eps_info += "    " + selected_ep_device->ToString() + "\n";
+      }
+    }
+  }
+
+  LOGS_DEFAULT(INFO) << available_eps_info;
+  LOGS_DEFAULT(INFO) << selected_eps_info;
+  return Status::OK();
+}
+
 // Gets EP info needed for model package workflow to select suitable model.
 //
 // For simplicity, there are some constraints in this initial implementation:
 // - Only one EP is supported, skip ORT CPU EP.
 // - All devices should be supported by the same EP
 //
-Status GetSelectionEpInfo(const OrtSessionOptions* session_options,
-                          std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
-                          std::vector<SelectionEpInfo>& ep_infos) {
+Status GetVariantSelectionEpInfo(const OrtSessionOptions* session_options,
+                                 std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
+                                 std::vector<VariantSelectionEpInfo>& ep_infos) {
   if (provider_list.empty()) {
     return Status::OK();
   }
@@ -134,7 +171,7 @@ Status GetSelectionEpInfo(const OrtSessionOptions* session_options,
     return Status::OK();
   }
 
-  ep_infos.push_back(SelectionEpInfo{});
+  ep_infos.push_back(VariantSelectionEpInfo{});
   auto& ep_info = ep_infos.back();
 
   // Add ep name to ep_info
@@ -457,23 +494,26 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       }
 
       // Build EP info from finalized providers.
-      std::vector<SelectionEpInfo> ep_infos;
+      std::vector<VariantSelectionEpInfo> ep_infos;
+      ORT_API_RETURN_IF_STATUS_NOT_OK(GetVariantSelectionEpInfo(options_to_use, provider_list, ep_infos));
 
-      ORT_API_RETURN_IF_STATUS_NOT_OK(GetSelectionEpInfo(options_to_use, provider_list, ep_infos));
+      ORT_API_RETURN_IF_STATUS_NOT_OK(PrintAvailableAndSelectedEpInfos(env, ep_infos));
 
       if (ep_infos.empty()) {
         return OrtApis::CreateStatus(ORT_FAIL,
-                                     "No execution providers were provided or selected for model variant selection. "
-                                     "Try specifying the model file path instead of a model package, or check the "
-                                     "EP selection policy and provider factories.");
+                                     "No execution providers were provided or selected. "
+                                     "Check the EP selection policy or explicitly specify EPs.");
       }
 
-      // Select a model variant based on EP info and component metadata and get its path.
+      // Select the most suitable model variant based on EP info and model constraints.
       ModelPackageContext model_package_context(package_root);
+      ModelVariantSelector model_variant_selector;
+      std::optional<std::filesystem::path> selected_model_variant_path;
 
-      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.SelectModelVariant(ep_infos));
-      if (model_package_context.GetSelectedModelVariantPath().has_value()) {
-        selected_model_path = *model_package_context.GetSelectedModelVariantPath();
+      ORT_API_RETURN_IF_STATUS_NOT_OK(model_variant_selector.SelectVariant(model_package_context, ep_infos, selected_model_variant_path));
+
+      if (selected_model_variant_path.has_value()) {
+        selected_model_path = *selected_model_variant_path;
         model_path_to_use = selected_model_path.c_str();
       } else {
         return OrtApis::CreateStatus(ORT_FAIL,

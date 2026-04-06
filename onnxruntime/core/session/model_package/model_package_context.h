@@ -25,7 +25,7 @@ struct ModelVariantInfo {
   std::filesystem::path model_path{};
 };
 
-struct SelectionEpInfo {
+struct VariantSelectionEpInfo {
   std::string ep_name{};
   OrtEpFactory* ep_factory{nullptr};
   std::vector<const OrtEpDevice*> ep_devices{};
@@ -34,35 +34,31 @@ struct SelectionEpInfo {
   ProviderOptions ep_options{};
 };
 
+class ModelPackageContext {
+ public:
+  ModelPackageContext(const std::filesystem::path& package_root);
+
+  const std::vector<ModelVariantInfo>& GetModelVariantInfos() const noexcept {
+    return model_variant_infos_;
+  }
+
+ private:
+  std::vector<ModelVariantInfo> model_variant_infos_;
+};
+
 class ModelVariantSelector {
  public:
   ModelVariantSelector() = default;
 
   // Select model variants that match the provided EP/device info. If multiple
   // variants match, the one with the highest variant score is chosen.
-  Status SelectVariant(gsl::span<ModelVariantInfo> variants,
-                       gsl::span<SelectionEpInfo> ep_infos,
+  Status SelectVariant(const ModelPackageContext& context,
+                       gsl::span<VariantSelectionEpInfo> ep_infos,
                        std::optional<std::filesystem::path>& selected_variant_path) const;
 
  private:
   // Compute a score for a variant
   int CalculateVariantScore(const ModelVariantInfo& variant) const;
-};
-
-class ModelPackageContext {
- public:
-  ModelPackageContext(const std::filesystem::path& package_root);
-
-  // Select the most suitable model variant
-  Status SelectModelVariant(gsl::span<SelectionEpInfo> ep_infos);
-
-  std::optional<std::filesystem::path> GetSelectedModelVariantPath() const {
-    return selected_model_variant_path_;
-  }
-
- private:
-  std::vector<ModelVariantInfo> model_variant_infos_;
-  std::optional<std::filesystem::path> selected_model_variant_path_;
 };
 
 }  // namespace onnxruntime

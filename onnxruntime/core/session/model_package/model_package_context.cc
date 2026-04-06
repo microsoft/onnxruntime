@@ -59,9 +59,7 @@ const OrtHardwareDevice* FindMatchingHardwareDevice(std::string_view device_cons
 
 bool MatchesDeviceTypeProviderOption(std::string_view provider_option_key,
                                      std::string_view provider_option_value,
-                                     std::string_view device_constraint,
-                                     gsl::span<const OrtHardwareDevice* const> hardware_devices,
-                                     std::vector<const OrtHardwareDevice*>& constraint_devices) {
+                                     std::string_view device_constraint) {
   if (device_constraint.empty()) {
     return true;
   }
@@ -76,21 +74,13 @@ bool MatchesDeviceTypeProviderOption(std::string_view provider_option_key,
   //
   // TODO: In the future, we can consider standardizing the key for device type in provider options and make it more generic for all EPs to use.
   if (key_lower == "device_type" || key_lower == "backend_type") {
-    bool match = ToLower(provider_option_value).find(ToLower(device_constraint)) != std::string::npos;
-
-    if (!match) {
-      return false;  // provider option value does not match device constraint
-    }
-
-    // Get the matched device according to the device constraint.
-    const auto* matched_device = FindMatchingHardwareDevice(device_constraint, hardware_devices);
-    constraint_devices = {matched_device};
+    return ToLower(provider_option_value).find(ToLower(device_constraint)) != std::string::npos;
   }
 
   return true;
 }
 
-Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
+Status ValidateCompiledModelCompatibilityInfo(const VariantSelectionEpInfo& ep_info,
                                               const std::string& compatibility_info,
                                               std::vector<const OrtHardwareDevice*>& constraint_devices,
                                               OrtCompiledModelCompatibility* compiled_model_compatibility) {
@@ -115,7 +105,7 @@ Status ValidateCompiledModelCompatibilityInfo(const SelectionEpInfo& ep_info,
   return Status::OK();
 }
 
-bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
+bool MatchesVariant(ModelVariantInfo& variant, const VariantSelectionEpInfo& ep_info) {
   LOGS_DEFAULT(INFO) << "Checking model variant with EP constraint '" << variant.ep
                      << "', device constraint '" << variant.device
                      << "' and compatibility info constraint '" << variant.compatibility_info
@@ -132,8 +122,7 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
                         }();
 
   // 1) Check EP constraint
-  if (variant.ep.empty() ||
-      (!variant.ep.empty() && variant.ep != ep_info.ep_name)) {
+  if (!variant.ep.empty() && variant.ep != ep_info.ep_name) {
     LOGS_DEFAULT(INFO) << "Variant EP constraint '" << variant.ep << "' does not match EP name '"
                        << ep_info.ep_name << "'. Skip this variant.";
     return false;
@@ -142,8 +131,8 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
   // 2) Check device constraint
   bool device_ok = variant.device.empty();
 
-  // For some provider-bridge EPs, they may not implement OrtEpFactory::GetSupportedDevices, therefore ORT
-  // won't have the supported device information for those EPs and ep_info.hardware_devices will be empty.
+  // For EPs that don't implement the OrtEpFactory interface, ep_info.hardware_devices will be empty and ORT won't
+  // have the supported device information for those EPs.
   // In that case, we will skip the device constraint validation for those EPs.
   if (ep_info.hardware_devices.empty()) {
     device_ok = true;
@@ -167,14 +156,17 @@ bool MatchesVariant(ModelVariantInfo& variant, const SelectionEpInfo& ep_info) {
     return false;
   }
 
+  // Additional check for provider-bridge EPs only.
   // If provider option contains key related to device type, then the value must match the device constraint if any.
   // Gets the target device if matched.
-  for (const auto& [key, value] : ep_info.ep_options) {
-    if (!MatchesDeviceTypeProviderOption(key, value, variant.device, ep_info.hardware_devices, constraint_devices)) {
-      LOGS_DEFAULT(INFO) << "Provider option '" << key << "' with value '" << value
-                         << "' does not match device constraint '" << variant.device
-                         << "'. Skip this variant.";
-      return false;
+  if (ep_info.hardware_devices.empty()) {
+    for (const auto& [key, value] : ep_info.ep_options) {
+      if (!MatchesDeviceTypeProviderOption(key, value, variant.device)) {
+        LOGS_DEFAULT(INFO) << "Provider option '" << key << "' with value '" << value
+                           << "' does not match device constraint '" << variant.device
+                           << "'. Skip this variant.";
+        return false;
+      }
     }
   }
 
@@ -244,39 +236,48 @@ int ModelVariantSelector::CalculateVariantScore(const ModelVariantInfo& variant)
   return score;
 }
 
-Status ModelVariantSelector::SelectVariant(gsl::span<ModelVariantInfo> variants,
-                                           gsl::span<SelectionEpInfo> ep_infos,
+Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
+                                           gsl::span<VariantSelectionEpInfo> ep_infos,
                                            std::optional<std::filesystem::path>& selected_variant_path) const {
   selected_variant_path.reset();
+
+  // explicit local copy as this function will be modifying the variant info
+  // (e.g. setting compatibility validation result) during the selection process.
+  std::vector<ModelVariantInfo> variants = context.GetModelVariantInfos();
 
   if (variants.empty()) {
     return Status::OK();
   }
 
-  // There is a constraint for this initial implementation:
-  // - Only one SelectionEpInfo in `ep_infos` is supported
+  // Only one SelectionEpInfo in `ep_infos` is supported for now.
+  if (ep_infos.empty()) {
+    return Status::OK();
+  }
+  if (ep_infos.size() > 1) {
+    LOGS_DEFAULT(WARNING) << "Multiple EP info provided for model variant selection, but only the first one with ep name '"
+                          << ep_infos[0].ep_name << "' will be used.";
+  }
+  const auto& ep_info = ep_infos[0];
 
   std::unordered_set<size_t> candidate_indices_set;
 
-  // 1) Check unconstrained variants (ep/device/arch all empty).
+  // 1) Check unconstrained variants.
   for (size_t i = 0, end = variants.size(); i < end; ++i) {
     const auto& c = variants[i];
-    if (c.ep.empty() && c.device.empty() && c.architecture.empty()) {
+    if (c.ep.empty() && c.device.empty() && c.architecture.empty() && c.compatibility_info.empty()) {
       candidate_indices_set.insert(i);
     }
   }
 
-  // 2) Check all variants that match any EP/device selection.
+  // 2) Check all variants that match the EP info.
   for (size_t i = 0, end = variants.size(); i < end; ++i) {
     if (candidate_indices_set.count(i) > 0) {
       continue;
     }
     auto& c = variants[i];
-    for (const auto& ep_info : ep_infos) {
-      if (MatchesVariant(c, ep_info)) {
-        candidate_indices_set.insert(i);
-        break;
-      }
+    if (MatchesVariant(c, ep_info)) {
+      candidate_indices_set.insert(i);
+      break;
     }
   }
 
@@ -329,11 +330,6 @@ Status ModelVariantSelector::SelectVariant(gsl::span<ModelVariantInfo> variants,
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
   ORT_THROW_IF_ERROR(parser.ParseVariantsFromRoot(package_root, model_variant_infos_));
-}
-
-Status ModelPackageContext::SelectModelVariant(gsl::span<SelectionEpInfo> ep_infos) {
-  ModelVariantSelector selector;
-  return selector.SelectVariant(model_variant_infos_, ep_infos, selected_model_variant_path_);
 }
 
 }  // namespace onnxruntime
