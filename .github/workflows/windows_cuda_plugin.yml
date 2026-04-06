@@ -68,7 +68,24 @@ jobs:
       - name: Build ONNX Runtime with CUDA Plugin EP
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config Release --build_dir build --skip_submodule_sync --parallel --nvcc_threads 1 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --skip_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --update --build --config Release `
+            --build_dir build `
+            --skip_submodule_sync `
+            --parallel `
+            --nvcc_threads 1 `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --build_shared_lib `
+            --build_wheel `
+            --use_cuda `
+            --cuda_home="$env:RUNNER_TEMP\v12.8" `
+            --skip_tests `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
+            --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

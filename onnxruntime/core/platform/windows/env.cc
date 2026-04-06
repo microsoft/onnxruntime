@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "core/platform/windows/env.h"
 
+#include "core/platform/env_var.h"
+
 #include <iostream>
 #include <fstream>
 #include <optional>
@@ -820,33 +822,7 @@ const Telemetry& WindowsEnv::GetTelemetryProvider() const {
 
 // \brief returns a value for the queried variable name (var_name)
 std::string WindowsEnv::GetEnvironmentVar(const std::string& var_name) const {
-  // Why getenv() should be avoided on Windows:
-  // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/getenv-wgetenv
-  // Instead use the Win32 API: GetEnvironmentVariableA()
-
-  // Max limit of an environment variable on Windows including the null-terminating character
-  constexpr DWORD kBufferSize = 32767;
-
-  // Create buffer to hold the result
-  std::string buffer(kBufferSize, '\0');
-
-  // The last argument is the size of the buffer pointed to by the lpBuffer parameter, including the null-terminating character, in characters.
-  // If the function succeeds, the return value is the number of characters stored in the buffer pointed to by lpBuffer, not including the terminating null character.
-  // Therefore, If the function succeeds, kBufferSize should be larger than char_count.
-  auto char_count = GetEnvironmentVariableA(var_name.c_str(), buffer.data(), kBufferSize);
-
-  if (kBufferSize > char_count) {
-    buffer.resize(char_count);
-    return buffer;
-  }
-
-  // Else either the call was failed, or the buffer wasn't large enough.
-  // TODO: Understand the reason for failure by calling GetLastError().
-  // If it is due to the specified environment variable being found in the environment block,
-  // GetLastError() returns ERROR_ENVVAR_NOT_FOUND.
-  // For now, we assume that the environment variable is not found.
-
-  return std::string();
+  return detail::GetEnvironmentVar(var_name);
 }
 
 /*

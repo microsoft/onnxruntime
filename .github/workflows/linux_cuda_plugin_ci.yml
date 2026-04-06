@@ -28,7 +28,16 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
       docker_image_repo: onnxruntimecuda12manylinuxbuild
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --parallel --nvcc_threads 1 --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON'
+      extra_build_flags: >-
+        --use_binskim_compliant_compile_flags
+        --build_wheel
+        --parallel
+        --nvcc_threads 1
+        --cuda_version=12.8
+        --cuda_home=/usr/local/cuda-12.8
+        --cudnn_home=/usr/local/cuda-12.8
+        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
       upload_build_output: true
