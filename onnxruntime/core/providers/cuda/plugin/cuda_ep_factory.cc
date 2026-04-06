@@ -618,20 +618,24 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
   if (!allocator) return;
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
 
-  // Check if allocator is a shared arena (pointer identity match).
+  // Check if allocator is a shared arena or mempool (pointer identity match).
+  // Lock ordering: device_cache_mutex_ must always be acquired BEFORE any entry.arena_mutex.
   {
     std::lock_guard<std::mutex> cache_lock(factory->device_cache_mutex_);
     for (auto& [key, entry] : factory->device_cache_) {
       std::lock_guard<std::mutex> lock{entry.arena_mutex};
       if (allocator == entry.device_arena.get()) {
+        assert(entry.num_device_arena_users > 0 && "Refcount underflow in ReleaseAllocatorImpl (device_arena)");
         if (--entry.num_device_arena_users == 0) entry.device_arena.reset();
         return;
       }
       if (allocator == entry.pinned_arena.get()) {
+        assert(entry.num_pinned_arena_users > 0 && "Refcount underflow in ReleaseAllocatorImpl (pinned_arena)");
         if (--entry.num_pinned_arena_users == 0) entry.pinned_arena.reset();
         return;
       }
       if (allocator == entry.mempool_allocator.get()) {
+        assert(entry.num_mempool_users > 0 && "Refcount underflow in ReleaseAllocatorImpl (mempool)");
         if (--entry.num_mempool_users == 0) entry.mempool_allocator.reset();
         return;
       }
@@ -704,6 +708,9 @@ CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinalLoc
   return &cache_it->second;
 }
 
+// IMPORTANT: Entries are never erased from device_cache_ after insertion.
+// This guarantees pointer stability for DeviceCacheEntry* returned by
+// FindDeviceCacheEntryByOrdinal() after the lock is released.
 CudaEpFactory::DeviceCacheEntry* CudaEpFactory::FindDeviceCacheEntryByOrdinal(int cuda_ordinal) {
   std::lock_guard<std::mutex> lock(device_cache_mutex_);
   return FindDeviceCacheEntryByOrdinalLocked(cuda_ordinal);

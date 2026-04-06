@@ -174,7 +174,12 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
   PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream->cuda_stream_));
 
   // Reset arena chunk-to-stream assignments for this device's arena.
-  auto* arena = stream->factory_.GetDeviceArenaForDevice(stream->device_id_);
+  // Cache the arena pointer to avoid double-mutex-lock (device_cache_mutex_ + arena_mutex)
+  // on every session run end.
+  if (!stream->cached_device_arena_.has_value()) {
+    stream->cached_device_arena_ = stream->factory_.GetDeviceArenaForDevice(stream->device_id_);
+  }
+  CudaArenaAllocator* arena = *stream->cached_device_arena_;
   if (arena) {
     OrtStatus* arena_status = arena->ResetChunksUsingStream(this_ptr);
     if (arena_status != nullptr) {

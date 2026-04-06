@@ -183,6 +183,16 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
 
   CUDA_ARENA_LOG(INFO, "Extended allocation by " << bytes << " bytes.");
 
+  // Guard against leaking mem_addr if any operation below throws (e.g. vector reallocation
+  // inside AddAllocationRegion). On success we set mem_addr to nullptr to dismiss the guard.
+  struct AllocGuard {
+    OrtAllocator* alloc;
+    void*& addr;
+    ~AllocGuard() {
+      if (addr) alloc->Free(alloc, addr);
+    }
+  } alloc_guard{device_allocator_.get(), mem_addr};
+
   stats_.total_allocated_bytes += bytes;
   CUDA_ARENA_LOG(INFO, "Total allocated bytes: " << stats_.total_allocated_bytes);
   CUDA_ARENA_LOG(INFO, "Allocated memory at " << mem_addr << " to "
@@ -203,6 +213,9 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
   region_manager_.set_handle(c->ptr, h);
 
   InsertFreeChunkIntoBin(h);
+
+  // All operations completed successfully — dismiss the guard.
+  mem_addr = nullptr;
 
   return nullptr;
 }

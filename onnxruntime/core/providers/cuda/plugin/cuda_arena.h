@@ -111,19 +111,35 @@ struct ArenaConfig {
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialChunkSizeBytes); value) {
-      config.initial_chunk_size_bytes = std::stoi(std::string(value));
+      try {
+        config.initial_chunk_size_bytes = std::stoi(std::string(value));
+      } catch (const std::exception&) {
+        config.initial_chunk_size_bytes = -1;  // will fail IsValid()
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxDeadBytesPerChunk); value) {
-      config.max_dead_bytes_per_chunk = std::stoi(std::string(value));
+      try {
+        config.max_dead_bytes_per_chunk = std::stoi(std::string(value));
+      } catch (const std::exception&) {
+        config.max_dead_bytes_per_chunk = -1;  // will fail IsValid()
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialGrowthChunkSizeBytes); value) {
-      config.initial_growth_chunk_size_bytes = std::stoi(std::string(value));
+      try {
+        config.initial_growth_chunk_size_bytes = std::stoi(std::string(value));
+      } catch (const std::exception&) {
+        config.initial_growth_chunk_size_bytes = -1;  // will fail IsValid()
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxPowerOfTwoExtendBytes); value) {
-      config.max_power_of_two_extend_bytes = std::stoll(value);
+      try {
+        config.max_power_of_two_extend_bytes = std::stoll(value);
+      } catch (const std::exception&) {
+        config.max_power_of_two_extend_bytes = -1;  // will fail IsValid()
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxMem); value) {
@@ -379,13 +395,9 @@ class ArenaImpl {
     const AllocationRegion* RegionFor(const void* p) const {
       auto entry = std::upper_bound(regions_.begin(), regions_.end(), p, &Comparator);
 
-      if (entry != regions_.end()) {
-        return &(*entry);
-      }
-
       CUDA_ARENA_ENFORCE(entry != regions_.end(),
                          "RegionManager::RegionFor Could not find Region for: " << p);
-      return nullptr;
+      return &(*entry);
     }
 
    private:

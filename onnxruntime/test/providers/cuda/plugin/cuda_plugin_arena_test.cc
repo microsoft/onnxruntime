@@ -303,6 +303,7 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_StatsTrackBytesInUse) {
 }
 
 // Verify arena can be replaced via CreateSharedAllocator with custom config.
+// Restores the default allocator at the end to avoid affecting shuffled test ordering.
 TEST_F(CudaPluginArenaTest, DeviceAllocator_ReplaceWithCustomConfig) {
   auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
   auto allocator = ort_env->GetSharedAllocator(device_memory_info);
@@ -325,7 +326,121 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_ReplaceWithCustomConfig) {
   int64_t total_allocated = GetStatInt(stats, "TotalAllocated");
   EXPECT_EQ(total_allocated, 25600);
 
-  ort_env->ReleaseSharedAllocator(cuda_device_, OrtDeviceMemoryType_DEFAULT);
+  // Restore the default shared allocator so subsequent tests (under --gtest_shuffle)
+  // can call GetSharedAllocator without hitting an empty slot.
+  ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
+}
+
+// --- Negative / defensive tests ---
+
+TEST_F(CudaPluginArenaTest, DeviceAllocator_FreeNullptrIsSafe) {
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+  ASSERT_NE(allocator, nullptr);
+
+  // Free(nullptr) should be a no-op; must not crash.
+  allocator.Free(nullptr);
+}
+
+TEST_F(CudaPluginArenaTest, DeviceAllocator_InvalidConfigIsRejected) {
+  // Providing a non-numeric value for a numeric arena config key should
+  // result in an invalid ArenaConfig (IsValid() == false) which causes
+  // CreateSharedAllocator to return an error.
+  Ort::KeyValuePairs bad_options;
+  bad_options.Add("arena.initial_chunk_size_bytes", "not_a_number");
+
+  try {
+    auto bad_alloc = ort_env->CreateSharedAllocator(
+        cuda_device_, OrtDeviceMemoryType_DEFAULT,
+        OrtDeviceAllocator,
+        bad_options);
+    // If we get here, the allocator was created — that's wrong.
+    // Clean up and fail.
+    ort_env->CreateSharedAllocator(
+        cuda_device_, OrtDeviceMemoryType_DEFAULT,
+        OrtDeviceAllocator, {});
+    FAIL() << "Expected CreateSharedAllocator to reject invalid config.";
+  } catch (const Ort::Exception&) {
+    // Expected: invalid config should produce an error.
+  }
+
+  // Restore the default shared allocator.
+  ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
+}
+
+TEST_F(CudaPluginArenaTest, DeviceAllocator_NegativeConfigIsRejected) {
+  // Negative values for arena config should fail validation.
+  Ort::KeyValuePairs bad_options;
+  bad_options.Add("arena.initial_chunk_size_bytes", "-100");
+
+  try {
+    auto bad_alloc = ort_env->CreateSharedAllocator(
+        cuda_device_, OrtDeviceMemoryType_DEFAULT,
+        OrtDeviceAllocator,
+        bad_options);
+    ort_env->CreateSharedAllocator(
+        cuda_device_, OrtDeviceMemoryType_DEFAULT,
+        OrtDeviceAllocator, {});
+    FAIL() << "Expected CreateSharedAllocator to reject negative config value.";
+  } catch (const Ort::Exception&) {
+    // Expected
+  }
+
+  ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
+}
+
+TEST_F(CudaPluginArenaTest, DeviceAllocator_MaxMemZeroTreatedAsUnlimited) {
+  // arena.max_mem=0 should be treated as unlimited (SIZE_MAX).
+  // The arena should create successfully and allow allocations.
+  Ort::KeyValuePairs options;
+  options.Add("arena.max_mem", "0");
+
+  auto allocator = ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator,
+      options);
+  ASSERT_NE(allocator, nullptr);
+
+  void* p = allocator.Alloc(1024);
+  ASSERT_NE(p, nullptr);
+  allocator.Free(p);
+
+  // Restore default.
+  ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
+}
+
+TEST_F(CudaPluginArenaTest, DeviceAllocator_ReserveRespectsBudget) {
+  // Set a small max_mem budget and verify Reserve returns nullptr
+  // when allocation would exceed it.
+  Ort::KeyValuePairs options;
+  options.Add("arena.max_mem", "65536");
+  options.Add("arena.initial_chunk_size_bytes", "4096");
+
+  auto allocator = ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator,
+      options);
+  ASSERT_NE(allocator, nullptr);
+
+  // Reserve more than the budget should return nullptr.
+  // Call through the C function pointer since Ort::Allocator doesn't wrap Reserve.
+  OrtAllocator* raw = allocator;
+  ASSERT_NE(raw->Reserve, nullptr);
+  void* p = raw->Reserve(raw, 128 * 1024);
+  EXPECT_EQ(p, nullptr);
+
+  // Restore default.
+  ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
 }
 
 }  // namespace test

@@ -11,13 +11,15 @@
 
 #include "cuda_plugin_utils.h"
 
-#include <vector>
-#include <unordered_map>
 #include <mutex>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace cuda_plugin {
 
+class CudaArenaAllocator;
 class CudaSyncNotification;
 class CudaEpFactory;
 
@@ -61,6 +63,12 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   cublasHandle_t cublas_handle_ = nullptr;
   cudnnHandle_t cudnn_handle_ = nullptr;
   cublasLtHandle_t cublas_lt_handle_ = nullptr;
+
+  // Cached pointer to the device arena for this device_id_.
+  // Set lazily on first OnSessionRunEnd; stable once set (entries are never erased
+  // from factory.device_cache_ and the arena persists while it has users).
+  // nullopt = not yet looked up; nullptr = looked up but no arena exists.
+  std::optional<CudaArenaAllocator*> cached_device_arena_;
 
   // CPU buffers whose deallocation is deferred to OnSessionRunEnd.
   // Pinned memory must remain valid until all async device operations that
