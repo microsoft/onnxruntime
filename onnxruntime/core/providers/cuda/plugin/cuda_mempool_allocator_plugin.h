@@ -90,7 +90,7 @@ class CudaMempoolOrtAllocator final : public CudaAllocatorBase {
   size_t bytes_to_keep_on_shrink_;
 
   // Bookkeeping (guarded by mutex_)
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   InlinedHashMap<void*, AllocationRecord> alloc_map_;
   InlinedHashMap<cudaStream_t, InlinedHashSet<void*>> stream_map_;
 

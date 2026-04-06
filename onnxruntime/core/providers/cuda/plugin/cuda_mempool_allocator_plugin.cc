@@ -39,18 +39,27 @@ OrtStatus* CudaMempoolOrtAllocator::Create(const OrtMemoryInfo* memory_info,
     auto parse_uint64 = [&](const char* key, uint64_t& out_val) -> OrtStatus* {
       const char* v = api.GetKeyValue(options, key);
       if (!v) return nullptr;
+      const std::string sval(v);
+      // std::stoull silently wraps negative values via strtoull.
+      // Reject leading '-' so e.g. "-1" doesn't become a huge value.
+      if (!sval.empty() && sval[0] == '-') {
+        return api.CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            (std::string("Negative value for ") + key + ": '" + v + "'").c_str());
+      }
+      OrtStatus* parse_status = nullptr;
       ORT_TRY {
-        out_val = std::stoull(std::string(v));
+        out_val = std::stoull(sval);
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
-          return api.CreateStatus(
+          parse_status = api.CreateStatus(
               ORT_INVALID_ARGUMENT,
               (std::string("Invalid value for ") + key + ": '" + v + "' — " + ex.what())
                   .c_str());
         });
       }
-      return nullptr;
+      return parse_status;
     };
 
     OrtStatus* st = parse_uint64(ConfigKeyNames::PoolReleaseThreshold, pool_release_threshold);
@@ -319,13 +328,19 @@ OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::GetStatsImpl(
 
     AllocatorStats stats{};
     {
-      std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(self.mutex_));
+      std::lock_guard<std::mutex> lock(self.mutex_);
       stats.num_allocs = static_cast<int64_t>(self.num_allocs_);
-      stats.total_allocated_bytes = static_cast<int64_t>(self.total_allocated_);
       stats.bytes_in_use = static_cast<int64_t>(self.in_use_bytes_);
       stats.max_bytes_in_use = static_cast<int64_t>(self.max_bytes_in_use_);
       stats.max_alloc_size = static_cast<int64_t>(self.max_alloc_size_);
       stats.num_arena_shrinkages = static_cast<int64_t>(self.num_arena_shrinkages_);
+    }
+
+    // TotalAllocated reflects memory currently reserved by the pool (held from the
+    // driver), matching BFC arena semantics where it tracks region memory in use.
+    size_t reserved = 0;
+    if (cudaMemPoolGetAttribute(self.pool_, cudaMemPoolAttrReservedMemCurrent, &reserved) == cudaSuccess) {
+      stats.total_allocated_bytes = static_cast<int64_t>(reserved);
     }
 
     stats.ToKeyValuePairs(self.ort_api_, kvps);

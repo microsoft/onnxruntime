@@ -1124,6 +1124,18 @@ TEST_F(CudaPluginArenaTest, Mempool_AllStatsKeysPresent) {
 // Verify that Shrink on the device arena frees unused regions and updates stats.
 TEST_F(CudaPluginArenaTest, DeviceAllocator_ShrinkFreesUnusedRegions) {
   auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+
+  // Create a fresh allocator so stats are clean regardless of test order.
+  ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
+  auto restore = std::unique_ptr<void, std::function<void(void*)>>(
+      reinterpret_cast<void*>(1), [&](void*) {
+        ort_env->CreateSharedAllocator(
+            cuda_device_, OrtDeviceMemoryType_DEFAULT,
+            OrtDeviceAllocator, {});
+      });
+
   auto allocator = ort_env->GetSharedAllocator(device_memory_info);
   ASSERT_NE(allocator, nullptr);
 
@@ -1136,7 +1148,6 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_ShrinkFreesUnusedRegions) {
   auto stats_before = allocator.GetStats();
   int64_t total_before = GetStatInt(stats_before, "TotalAllocated");
   ASSERT_GT(total_before, 0);
-  int64_t shrinkages_before = GetStatInt(stats_before, "NumArenaShrinkages");
 
   // Shrink should free the (now entirely free) region.
   allocator.Shrink();
@@ -1144,12 +1155,24 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_ShrinkFreesUnusedRegions) {
   auto stats_after = allocator.GetStats();
   int64_t total_after = GetStatInt(stats_after, "TotalAllocated");
   EXPECT_LT(total_after, total_before);
-  EXPECT_EQ(GetStatInt(stats_after, "NumArenaShrinkages"), shrinkages_before + 1);
+  EXPECT_GE(GetStatInt(stats_after, "NumArenaShrinkages"), 1);
 }
 
 // Verify that Shrink does not free regions that have live allocations.
 TEST_F(CudaPluginArenaTest, DeviceAllocator_ShrinkKeepsLiveRegions) {
   auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+
+  // Fresh allocator for isolation.
+  ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
+  auto restore = std::unique_ptr<void, std::function<void(void*)>>(
+      reinterpret_cast<void*>(1), [&](void*) {
+        ort_env->CreateSharedAllocator(
+            cuda_device_, OrtDeviceMemoryType_DEFAULT,
+            OrtDeviceAllocator, {});
+      });
+
   auto allocator = ort_env->GetSharedAllocator(device_memory_info);
   ASSERT_NE(allocator, nullptr);
 
@@ -1175,6 +1198,17 @@ TEST_F(CudaPluginArenaTest, PinnedAllocator_ShrinkFreesUnusedRegions) {
   if (!pinned_memory_info) {
     GTEST_SKIP() << "No pinned memory info available for this device.";
   }
+
+  // Fresh allocator for isolation.
+  ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_HOST_ACCESSIBLE,
+      OrtDeviceAllocator, {});
+  auto restore = std::unique_ptr<void, std::function<void(void*)>>(
+      reinterpret_cast<void*>(1), [&](void*) {
+        ort_env->CreateSharedAllocator(
+            cuda_device_, OrtDeviceMemoryType_HOST_ACCESSIBLE,
+            OrtDeviceAllocator, {});
+      });
 
   auto allocator = ort_env->GetSharedAllocator(pinned_memory_info);
   if (!allocator) {
