@@ -1209,6 +1209,77 @@ class OrtValue:
         """
         self._ortvalue.update_inplace(np_arr)
 
+    def __dlpack__(self, *, stream: Any = None) -> Any:
+        """Return a DLPack capsule representing the tensor (DLPack protocol).
+
+        This enables zero-copy interop with frameworks that support DLPack, e.g.::
+
+            torch.from_dlpack(ort_value)
+            np.from_dlpack(ort_value)
+
+        :param stream: An optional stream/queue for synchronization. Currently unused.
+        :return: A PyCapsule with a ``DLManagedTensor``.
+        :raises AttributeError: If DLPack is not enabled in this build.
+        """
+        return self._ortvalue.__dlpack__(stream=stream)
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the device type and device id (DLPack protocol).
+
+        :return: A tuple ``(device_type, device_id)`` following DLPack conventions.
+        :raises AttributeError: If DLPack is not enabled in this build.
+        """
+        return self._ortvalue.__dlpack_device__()
+
+    @classmethod
+    def from_dlpack(cls, data: Any) -> OrtValue:
+        """Create an OrtValue from a DLPack-compatible object.
+
+        Accepts either a raw DLPack capsule or any object implementing
+        the ``__dlpack__`` protocol (e.g. PyTorch tensors, NumPy arrays,
+        JAX arrays, or other OrtValues).
+
+        Example::
+
+            ort_val = OrtValue.from_dlpack(torch_tensor)
+            ort_val = OrtValue.from_dlpack(numpy_array)
+            ort_val = OrtValue.from_dlpack(other_ort_value)
+
+        :param data: A DLPack capsule or any object with a ``__dlpack__`` method.
+        :return: A new :class:`OrtValue` wrapping the tensor data (zero-copy when possible).
+        :raises TypeError: If *data* does not support the DLPack protocol.
+        :raises AttributeError: If DLPack is not enabled in this build.
+        """
+        if hasattr(data, "__dlpack__"):
+            capsule = data.__dlpack__()
+        else:
+            capsule = data
+        is_bool = C.is_dlpack_uint8_tensor(capsule)
+        return cls(C.OrtValue.from_dlpack(capsule, is_bool))
+
+    def __array__(self, dtype: Any = None, copy: bool | None = None) -> np.ndarray:
+        """Support ``numpy.array(ort_value)`` and ``numpy.asarray(ort_value)``.
+
+        Implements the ``__array__`` protocol so that OrtValue integrates
+        seamlessly with NumPy operations::
+
+            arr = numpy.array(ort_value)
+            arr = numpy.asarray(ort_value)
+
+        :param dtype: Optional NumPy dtype to cast to.
+        :param copy: Optional flag. If ``False``, a copy is never forced when
+            the data already resides on CPU. ``True`` always copies. ``None``
+            (default) copies only when necessary.
+        :return: A NumPy ndarray with the tensor data.
+        """
+        result = self._ortvalue.numpy()
+
+        if dtype is not None:
+            result = result.astype(dtype, copy=copy if copy is not None else True)
+        elif copy:
+            result = result.copy()
+        return result
+
 
 def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
     """

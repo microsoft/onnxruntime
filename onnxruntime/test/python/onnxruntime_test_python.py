@@ -1475,6 +1475,116 @@ class TestInferenceSession(unittest.TestCase):
                 ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ortvalue_dlpack_protocol(self):
+        """Test that the Python OrtValue wrapper exposes __dlpack__ and __dlpack_device__."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # __dlpack_device__ returns (device_type, device_id) tuple
+        device = ortvalue.__dlpack_device__()
+        self.assertIsInstance(device, tuple)
+        self.assertEqual(len(device), 2)
+        # kDLCPU == 1
+        self.assertEqual(device[0], 1)
+        self.assertEqual(device[1], 0)
+
+        # __dlpack__ returns a PyCapsule
+        capsule = ortvalue.__dlpack__()
+        self.assertIsNotNone(capsule)
+
+        # The capsule can be consumed to create a new OrtValue (zero-copy)
+        ortvalue2 = C.OrtValue.from_dlpack(capsule, False)
+        np.testing.assert_equal(numpy_arr, ortvalue2.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ortvalue_from_dlpack_protocol(self):
+        """Test OrtValue.from_dlpack() accepting objects with __dlpack__ method."""
+        numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # from_dlpack with another OrtValue (has __dlpack__)
+        ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
+        self.assertIsInstance(ortvalue_dst, onnxrt.OrtValue)
+        np.testing.assert_equal(numpy_arr, ortvalue_dst.numpy())
+        # Zero-copy: same data pointer
+        self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ortvalue_from_dlpack_numpy(self):
+        """Test OrtValue.from_dlpack() with a numpy array (numpy >= 1.22 supports __dlpack__)."""
+        numpy_arr = np.array([[10, 20], [30, 40]], dtype=np.int32)
+        if not hasattr(numpy_arr, "__dlpack__"):
+            self.skipTest("numpy version does not support __dlpack__")
+
+        ortvalue = onnxrt.OrtValue.from_dlpack(numpy_arr)
+        self.assertIsInstance(ortvalue, onnxrt.OrtValue)
+        np.testing.assert_equal(numpy_arr, ortvalue.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ortvalue_from_dlpack_raw_capsule(self):
+        """Test OrtValue.from_dlpack() with a raw DLPack capsule (no __dlpack__)."""
+        numpy_arr = np.array([5.0, 6.0], dtype=np.float32)
+        ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+        # Get a raw capsule via the C binding
+        raw_capsule = ortvalue_src._ortvalue.to_dlpack()
+
+        ortvalue_dst = onnxrt.OrtValue.from_dlpack(raw_capsule)
+        self.assertIsInstance(ortvalue_dst, onnxrt.OrtValue)
+        np.testing.assert_equal(numpy_arr, ortvalue_dst.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ortvalue_numpy_from_dlpack(self):
+        """Test that np.from_dlpack(ort_value) works via the __dlpack__ protocol."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        if not hasattr(np, "from_dlpack"):
+            self.skipTest("numpy version does not support np.from_dlpack")
+
+        result = np.from_dlpack(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+
+    def test_ortvalue_array_protocol(self):
+        """Test that numpy.array(ort_value) works via __array__."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        result = np.array(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+        self.assertEqual(result.dtype, np.float32)
+
+    def test_ortvalue_array_protocol_dtype(self):
+        """Test __array__ with dtype conversion."""
+        numpy_arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        result = np.array(ortvalue, dtype=np.float64)
+        np.testing.assert_allclose(numpy_arr.astype(np.float64), result)
+        self.assertEqual(result.dtype, np.float64)
+
+    def test_ortvalue_asarray_protocol(self):
+        """Test that numpy.asarray(ort_value) works via __array__."""
+        numpy_arr = np.array([10, 20, 30], dtype=np.int64)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        result = np.asarray(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+        self.assertEqual(result.dtype, np.int64)
+
+    def test_ortvalue_dlpack_roundtrip(self):
+        """Test full round-trip: numpy -> OrtValue -> dlpack -> OrtValue -> numpy."""
+        if not hasattr(C.OrtValue, "from_dlpack"):
+            self.skipTest("dlpack not enabled in this build")
+
+        for dtype in [np.float32, np.float64, np.int32, np.int64]:
+            with self.subTest(dtype=dtype):
+                original = np.array([1, 2, 3, 4], dtype=dtype)
+                ov1 = onnxrt.OrtValue.ortvalue_from_numpy(original)
+                ov2 = onnxrt.OrtValue.from_dlpack(ov1)
+                result = np.array(ov2)
+                np.testing.assert_equal(original, result)
+
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         shape = [9, 9]
