@@ -4,31 +4,32 @@
 // Test graph capture/replay for the WebGPU plugin EP using only public C/C++ APIs.
 // Requires a build with USE_WEBGPU and ORT_USE_EP_API_ADAPTERS (plugin EP path).
 
-#include <string>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "core/session/onnxruntime_cxx_api.h"
 
+#include "test/util/include/api_asserts.h"
+
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
-namespace {
+
+#if defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
 
 // Find the WebGPU EP device from the environment. Returns nullptr if not found.
-Ort::ConstEpDevice FindWebGpuEpDevice() {
+static Ort::ConstEpDevice FindWebGpuEpDevice() {
   auto ep_devices = ort_env->GetEpDevices();
   for (const auto& device : ep_devices) {
-    if (std::string(device.EpName()) == "WebGpuExecutionProvider") {
+    if (std::string_view(device.EpName()) == "WebGpuExecutionProvider") {
       return device;
     }
   }
   return Ort::ConstEpDevice(nullptr);
 }
-
-}  // namespace
 
 // Test that the graph capture/replay path works end-to-end for the WebGPU plugin EP.
 //
@@ -37,9 +38,7 @@ Ort::ConstEpDevice FindWebGpuEpDevice() {
 // exercises the replay path with different input values.
 TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
   auto webgpu_device = FindWebGpuEpDevice();
-  if (!webgpu_device) {
-    GTEST_SKIP() << "WebGPU EP not available";
-  }
+  ASSERT_NE(webgpu_device, nullptr) << "Expected a valid OrtEpDevice for the webgpu plugin EP";
 
   // Create session with graph capture enabled
   Ort::SessionOptions session_options;
@@ -51,6 +50,8 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
 
   // Get GPU allocator from the session using the EP device's memory info
   Ort::ConstMemoryInfo gpu_mem_info = webgpu_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  ASSERT_NE(gpu_mem_info, nullptr) << "Expected webgpu plugin EP's OrtEpDevice to return a valid OrtMemoryInfo";
+
   auto gpu_allocator = ort_env->GetSharedAllocator(gpu_mem_info);
   ASSERT_NE(gpu_allocator, nullptr) << "Expected webgpu plugin EP to have a shared allocator";
 
@@ -61,13 +62,10 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
 
   // Helper to copy a single tensor using the C API (the C++ wrapper takes vector<Value>
   // which is inconvenient since Value is move-only).
-  auto copy_tensor = [](const Ort::Value& src, Ort::Value& dst) {
+  auto copy_tensor = [](const Ort::Value& src, Ort::Value& dst) -> Ort::Status {
     const OrtValue* src_ptr = src;
     OrtValue* dst_ptr = dst;
-    Ort::Status status(Ort::GetApi().CopyTensors(*ort_env, &src_ptr, &dst_ptr, nullptr, 1));
-    if (!status.IsOK()) {
-      ORT_CXX_API_THROW(status.GetErrorMessage(), ORT_FAIL);
-    }
+    return ort_env->CopyTensors(&src_ptr, &dst_ptr, nullptr, 1);
   };
 
   Ort::MemoryInfo cpu_mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -80,7 +78,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
     std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     Ort::Value cpu_input = Ort::Value::CreateTensor<float>(
         cpu_mem_info, input_data.data(), input_data.size(), shape.data(), shape.size());
-    copy_tensor(cpu_input, gpu_input);
+    ASSERT_ORTSTATUS_OK(copy_tensor(cpu_input, gpu_input));
   }
 
   // Bind inputs and outputs
@@ -97,7 +95,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
   {
     Ort::AllocatorWithDefaultOptions cpu_allocator;
     Ort::Value cpu_output = Ort::Value::CreateTensor<float>(cpu_allocator, shape.data(), shape.size());
-    copy_tensor(gpu_output, cpu_output);
+    ASSERT_ORTSTATUS_OK(copy_tensor(gpu_output, cpu_output));
 
     const float* output_data = cpu_output.GetTensorData<float>();
     std::vector<float> expected = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
@@ -113,7 +111,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
     std::vector<float> input_data_2 = {2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
     Ort::Value cpu_input_2 = Ort::Value::CreateTensor<float>(
         cpu_mem_info, input_data_2.data(), input_data_2.size(), shape.data(), shape.size());
-    copy_tensor(cpu_input_2, gpu_input);
+    ASSERT_ORTSTATUS_OK(copy_tensor(cpu_input_2, gpu_input));
   }
 
   session.Run(run_options, io_binding);
@@ -123,7 +121,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
   {
     Ort::AllocatorWithDefaultOptions cpu_allocator;
     Ort::Value cpu_output = Ort::Value::CreateTensor<float>(cpu_allocator, shape.data(), shape.size());
-    copy_tensor(gpu_output, cpu_output);
+    ASSERT_ORTSTATUS_OK(copy_tensor(gpu_output, cpu_output));
 
     const float* output_data = cpu_output.GetTensorData<float>();
     std::vector<float> expected = {4.0f, 9.0f, 16.0f, 25.0f, 36.0f, 49.0f};
@@ -132,6 +130,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
     }
   }
 }
+#endif  // defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
 
 }  // namespace test
 }  // namespace onnxruntime
