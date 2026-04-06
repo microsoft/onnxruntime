@@ -40,7 +40,21 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
   const auto sequence_length = onnxruntime::narrow<uint32_t>(input_shape[input_shape.NumDimensions() - 2]);
   const auto hidden_size = batch_stride / sequence_length;
   const auto half_rotary_embedding_dim = onnxruntime::narrow<uint32_t>(cos_cache->Shape()[cos_cache->Shape().NumDimensions() - 1]);
-  const auto head_size = rotary_embedding_dim_ == 0 ? half_rotary_embedding_dim * 2 : hidden_size / num_heads_;
+
+  // Compute head_size: when rotary_embedding_dim is not set, head_size = rotary_dim (= 2 * half).
+  // When rotary_embedding_dim is set, derive head_size from the 4D input shape or num_heads attribute.
+  uint32_t head_size;
+  if (rotary_embedding_dim_ == 0) {
+    head_size = half_rotary_embedding_dim * 2;
+  } else if (input_shape.NumDimensions() == 4) {
+    // 4D input: [batch, num_heads, seq, head_size]
+    head_size = onnxruntime::narrow<uint32_t>(input_shape[3]);
+  } else {
+    ORT_ENFORCE(num_heads_ > 0,
+                "Attribute 'num_heads' must be provided when 'rotary_embedding_dim' is specified "
+                "and input is not rank-4 (batch, num_heads, sequence, head).");
+    head_size = hidden_size / num_heads_;
+  }
 
   const TensorShape global_shape({batch_size,
                                   sequence_length,

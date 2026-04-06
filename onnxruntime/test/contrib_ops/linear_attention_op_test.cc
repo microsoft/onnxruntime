@@ -138,14 +138,14 @@ void LinearAttentionGQAReference(
     int batch_size, int q_num_heads, int kv_num_heads, int n_k_heads,
     int seq_length, int head_dim_k, int head_dim_v,
     float scale,
-    const std::vector<float>& query,           // (B, q_num_heads, T, dk)
-    const std::vector<float>& key,             // (B, n_k_heads, T, dk)
-    const std::vector<float>& value,           // (B, kv_num_heads, T, dv)
-    const std::vector<float>* initial_state,   // (B, kv_num_heads, dk, dv)
-    const std::vector<float>* decay,           // (B, kv_num_heads, T[, dk])
-    const std::vector<float>* beta,            // (B, kv_num_heads, T)
-    std::vector<float>& output,                // (B, kv_num_heads, T, dv)
-    std::vector<float>& final_state) {         // (B, kv_num_heads, dk, dv)
+    const std::vector<float>& query,          // (B, q_num_heads, T, dk)
+    const std::vector<float>& key,            // (B, n_k_heads, T, dk)
+    const std::vector<float>& value,          // (B, kv_num_heads, T, dv)
+    const std::vector<float>* initial_state,  // (B, kv_num_heads, dk, dv)
+    const std::vector<float>* decay,          // (B, kv_num_heads, T[, dk])
+    const std::vector<float>* beta,           // (B, kv_num_heads, T)
+    std::vector<float>& output,               // (B, kv_num_heads, T, dv)
+    std::vector<float>& final_state) {        // (B, kv_num_heads, dk, dv)
   int bht_kv = batch_size * kv_num_heads * seq_length;
   bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht_kv);
   int kv_per_k_head = kv_num_heads / n_k_heads;
