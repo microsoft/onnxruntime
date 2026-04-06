@@ -3032,6 +3032,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
+                 /*graph_capture_depth=*/0);
+}
+
+Status InferenceSession::RunImpl(const RunOptions& run_options,
+                                 gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
+                                 gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
+                                 const std::vector<OrtDevice>* p_fetches_device_info,
+                                 int graph_capture_depth) {
   // Ignore run-level profiling request if session-level profiling is already enabled.
   std::optional<profiling::Profiler> run_profiler;
   if (run_options.enable_profiling && session_profiler_.IsEnabled()) {
@@ -3307,11 +3316,19 @@ Status InferenceSession::Run(const RunOptions& run_options,
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
+    if (graph_capture_depth >= kMaxGraphCaptureWarmupRuns) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Graph capture did not complete after ", kMaxGraphCaptureWarmupRuns,
+                             " warm-up runs for ", cached_execution_provider_for_graph_replay_.Type(),
+                             ". The execution provider may not support ORT-managed graph capture/replay.");
+    }
+
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     // Disable run-level profiling for internal runs used for memory allocation or graph capture
     RunOptions recursive_run_options{run_options};
     recursive_run_options.enable_profiling = false;
-    ORT_RETURN_IF_ERROR(Run(recursive_run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+    ORT_RETURN_IF_ERROR(RunImpl(recursive_run_options, feed_names, feeds, output_names, p_fetches,
+                                p_fetches_device_info, graph_capture_depth + 1));
   }
 
   // Log runtime error telemetry if the return value is not OK

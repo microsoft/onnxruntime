@@ -767,6 +767,19 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  // Maximum number of warm-up runs allowed during graph capture. Because warm-up runs are called
+  // recursively, this limit protects against stack overflow from buggy EPs that never transition IsGraphCaptured()
+  // to true. EPs (e.g., CUDA) typically need at most 2 warm-up runs.
+  static constexpr int kMaxGraphCaptureWarmupRuns = 8;
+
+  // Internal implementation of Run() with graph capture recursion depth tracking.
+  [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                                       gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
+                                       std::vector<OrtValue>* p_fetches,
+                                       const std::vector<OrtDevice>* p_fetches_device_info,
+                                       int graph_capture_depth);
+
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
