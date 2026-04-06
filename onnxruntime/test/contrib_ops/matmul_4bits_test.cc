@@ -881,8 +881,7 @@ TEST(MatMulNBits, Basic_M10_N128_K512) {
 #endif
 
 // Test that out-of-range g_idx values are rejected with INVALID_ARGUMENT.
-// Skip in debug builds to avoid hitting CUDA_KERNEL_ASSERT which corrupts the CUDA device context.
-#ifdef NDEBUG
+// CUDA EP is excluded from these tests, so no risk of hitting CUDA_KERNEL_ASSERT.
 TEST(MatMulNBits, InvalidGIdx_OutOfRange) {
   constexpr int64_t M = 2, N = 4, K = 32, block_size = 16;
   constexpr int64_t k_blocks = (K + block_size - 1) / block_size;  // 2
@@ -969,7 +968,6 @@ TEST(MatMulNBits, InvalidGIdx_Negative) {
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
             kOpenVINOExecutionProvider});
 }
-#endif  // NDEBUG
 
 }  // namespace test
 }  // namespace onnxruntime
