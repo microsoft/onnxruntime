@@ -90,6 +90,8 @@ jobs:
       - name: Build and Test
         shell: pwsh
         run: |
+          ccache --zero-stats
+
           python.exe "${env:GITHUB_WORKSPACE}\tools\ci_build\build.py" `
             --build_csharp `
             --build_dir "${env:GITHUB_WORKSPACE}\build" `
@@ -115,6 +117,10 @@ jobs:
         env:
           ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
           DocUpdateNeeded: 'false'
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
 
       - name: Run onnxruntime_provider_test with example_plugin_ep
         shell: pwsh
