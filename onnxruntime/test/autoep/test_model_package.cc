@@ -101,7 +101,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
       "model_1": {
         "model_variants": {
           "variant_1" : {
-             "file": "mul_1.onnx",
+             "model_file": "mul_1.onnx",
              "constraints": {
                "ep": "example_ep",
                "device": "cpu",
@@ -109,7 +109,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
              }
           },
           "variant_2" : {
-            "file": "mul_16.onnx",
+            "model_file": "mul_16.onnx",
             "constraints": {
               "ep": "example_ep",
               "device": "npu",
@@ -187,7 +187,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
       "model_component_name": "model_1",
       "model_variants": {
         "variant_1": {
-          "file": "mul_1.onnx",
+          "model_file": "mul_1.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "cpu",
@@ -195,7 +195,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
           }
         },
         "variant_2": {
-          "file": "mul_16.onnx",
+          "model_file": "mul_16.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "npu",
@@ -270,7 +270,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
       "model_component_name": "model_1",
       "model_variants": {
         "variant_1": {
-          "file": "mul_1.onnx",
+          "model_file": "mul_1.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "cpu",
@@ -278,7 +278,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
           }
         },
         "variant_2": {
-          "file": "mul_16.onnx",
+          "model_file": "mul_16.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "npu",
@@ -350,7 +350,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
       "model_component_name": "model_1",
       "model_variants": {
         "variant_1": {
-          "file": "mul_1.onnx",
+          "model_file": "mul_1.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "cpu",
@@ -358,7 +358,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
           }
         },
         "variant_2": {
-          "file": "mul_16.onnx",
+          "model_file": "mul_16.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "npu",
@@ -451,7 +451,7 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
       "model_component_name": "model_1",
       "model_variants": {
         "variant_2": {
-          "file": "mul_16.onnx",
+          "model_file": "mul_16.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "cpu",
@@ -460,7 +460,7 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
           }
         },
         "variant_1": {
-          "file": "plugin_ep_compat_test.onnx",
+          "model_file": "plugin_ep_compat_test.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "cpu",
@@ -582,7 +582,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
     CreateManifestJson(package_root, manifest_json);
   };
 
-  // Subcase 1: "file" points to a directory containing exactly one .onnx file.
+  // Subcase 1: "model_file" points to a directory containing exactly one .onnx file.
   {
     std::filesystem::remove_all(package_root, ec);
     constexpr std::string_view manifest_json = R"({
@@ -591,7 +591,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
         "model_1": {
           "model_variants": {
             "variant_dir": {
-              "file": "subdir",
+              "model_file": "subdir",
               "constraints": {}
             }
           }
@@ -614,7 +614,7 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
     EXPECT_EQ(variants[0].model_path.filename().string(), "only.onnx");
   }
 
-  // Subcase 2: No "file" field; discover the single .onnx in the variant directory.
+  // Subcase 2: No "model_file" field; discover the single .onnx in the variant directory.
   {
     std::filesystem::remove_all(package_root, ec);
     constexpr std::string_view manifest_json = R"({
@@ -700,7 +700,7 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
     "component_model_name": "model_1",
     "model_variants": {
       "variant_1": {
-        "file": "mul_1.onnx",
+        "model_file": "mul_1.onnx",
         "constraints": {
           "ep": "example_ep",
           "device": "cpu",
@@ -708,7 +708,7 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
         }
       },
       "variant_2": {
-        "file": "mul_16.onnx",
+        "model_file": "mul_16.onnx",
         "constraints": {
           "ep": "example_ep",
           "device": "npu",
@@ -756,7 +756,7 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
     "component_model_name": "model_1",
     "model_variants": {
       "variant_1": {
-        "file": "mul_1.onnx",
+        "model_file": "mul_1.onnx",
         "constraints": {
           "ep": "example_ep",
           "device": "cpu",
