@@ -11,6 +11,7 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 
+#include "core/graph/constants.h"
 #include "test/util/include/api_asserts.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -24,7 +25,7 @@ namespace test {
 static Ort::ConstEpDevice FindWebGpuEpDevice() {
   auto ep_devices = ort_env->GetEpDevices();
   for (const auto& device : ep_devices) {
-    if (std::string_view(device.EpName()) == "WebGpuExecutionProvider") {
+    if (std::string_view(device.EpName()) == onnxruntime::kWebGpuExecutionProvider) {
       return device;
     }
   }
