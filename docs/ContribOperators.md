@@ -959,7 +959,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
@@ -2813,7 +2813,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Key vectors with 3D packed shape (B, T, H_kv * d_k). Should be L2-normalized for delta/gated_delta modes.</dd>
 <dt><tt>value</tt> : T</dt>
 <dd>Value vectors with 3D packed shape (B, T, H_kv * d_v).</dd>
-<dt><tt>past_state</tt> (optional) : T</dt>
+<dt><tt>past_state</tt> (optional) : S</dt>
 <dd>Recurrent state from previous step with shape (B, H_kv, d_k, d_v). Always 4D. If not provided, defaults to zeros.</dd>
 <dt><tt>decay</tt> (optional) : T</dt>
 <dd>Exponential decay gate in log-space. 3D packed shape: (B, T, H_kv * d_k) for per-key-dimension decay (GLA/RWKV-6), or (B, T, H_kv) for per-head scalar decay (DeltaNet/RetNet). Required for 'gated' and 'gated_delta' modes.</dd>
@@ -2825,16 +2825,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). In standard GQA (H_q >= H_kv), each query head produces an independent d_v output. In inverse GQA (H_kv > H_q), query/key heads are expanded to match H_kv internally. The output head count is always max(H_q, H_kv).</dd>
-<dt><tt>present_state</tt> : T</dt>
+<dd>Attention output with 3D packed shape (B, T, H_q * d_v).</dd>
+<dt><tt>present_state</tt> : S</dt>
 <dd>Updated recurrent state with shape (B, H_kv, d_k, d_v). Always 4D.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>S</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain state types to float tensors.</dd>
 </dl>
 
 

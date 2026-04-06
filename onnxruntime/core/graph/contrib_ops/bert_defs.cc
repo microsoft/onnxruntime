@@ -2280,52 +2280,34 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Contains the last (k-1) values from the virtual input along the causal axis.",
                 "T")
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)"},
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
-          // Validate ndim == 1 (only supported value)
-          auto* ndim_attr = ctx.getAttribute("ndim");
-          int64_t ndim = (ndim_attr && ndim_attr->has_i()) ? ndim_attr->i() : 1;
-          if (ndim != 1) {
-            fail_shape_inference("CausalConvWithState: only ndim=1 is currently supported, got ", ndim);
-          }
-
-          // Validate input rank: expect 3 for ndim=1 → (batch, channels, length)
-          if (hasInputShape(ctx, 0)) {
-            auto& input_shape = getInputShape(ctx, 0);
-            if (input_shape.dim_size() != 3) {
-              fail_shape_inference(
-                  "CausalConvWithState: input must be rank 3 (batch, channels, length) for ndim=1, got rank ",
-                  input_shape.dim_size());
-            }
-          }
-
-          // Validate weight rank: expect 3 for ndim=1 → (channels, 1, kernel_size)
-          if (hasInputShape(ctx, 1)) {
-            auto& weight_shape = getInputShape(ctx, 1);
-            if (weight_shape.dim_size() != 3) {
-              fail_shape_inference(
-                  "CausalConvWithState: weight must be rank 3 (channels, 1, kernel_size) for ndim=1, got rank ",
-                  weight_shape.dim_size());
-            }
-          }
-
-          // Output 0: same shape as input (batch_size, channels, length)
+          // Output 0: same shape as input (batch_size, channels, ...)
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
-          // Output 1: (batch_size, channels, kernel_size - 1)
+          // Output 1: state shape is (batch_size, channels, [non-causal spatial dims...], k_last - 1)
+          // For ndim=1: (B, C, k_1-1)
+          // For ndim=2: (B, C, input_H, k_2-1)
+          // For ndim=3: (B, C, input_D, input_H, k_3-1)
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
+            int64_t ndim = getAttribute(ctx, "ndim", 1);
             TensorShapeProto state_shape;
             *state_shape.add_dim() = input_shape.dim(0);  // batch_size
             *state_shape.add_dim() = input_shape.dim(1);  // channels
-            // kernel_size - 1 (last weight dimension)
-            if (weight_shape.dim(2).has_dim_value()) {
-              state_shape.add_dim()->set_dim_value(weight_shape.dim(2).dim_value() - 1);
+            // Copy non-causal spatial dims from input (dims 2 .. 2+ndim-2)
+            for (int64_t i = 0; i < ndim - 1; ++i) {
+              *state_shape.add_dim() = input_shape.dim(static_cast<int>(2 + i));
+            }
+            // Causal (last) spatial dim: kernel_size - 1
+            int last_kernel_dim = weight_shape.dim_size() - 1;
+            if (weight_shape.dim(last_kernel_dim).has_dim_value()) {
+              state_shape.add_dim()->set_dim_value(weight_shape.dim(last_kernel_dim).dim_value() - 1);
             } else {
               state_shape.add_dim();  // unknown
             }
@@ -2394,7 +2376,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_state",
                "Recurrent state from previous step with shape (B, H_kv, d_k, d_v). "
                "Always 4D. If not provided, defaults to zeros.",
-               "T",
+               "S",
                OpSchema::Optional)
         .Input(4,
                "decay",
@@ -2413,18 +2395,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). "
-                "In standard GQA (H_q >= H_kv), each query head produces an independent d_v output. "
-                "In inverse GQA (H_kv > H_q), query/key heads are expanded to match H_kv internally. "
-                "The output head count is always max(H_q, H_kv).",
+                "Attention output with 3D packed shape (B, T, H_q * d_v).",
                 "T")
         .Output(1,
                 "present_state",
                 "Updated recurrent state with shape (B, H_kv, d_k, d_v). Always 4D.",
-                "T")
+                "S")
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)"},
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
+        .TypeConstraint("S",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain state types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
@@ -2435,23 +2417,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           int64_t q_num_heads = (q_num_heads_attr && q_num_heads_attr->has_i()) ? q_num_heads_attr->i() : 0;
           int64_t kv_num_heads = (kv_num_heads_attr && kv_num_heads_attr->has_i()) ? kv_num_heads_attr->i() : 0;
 
-          // Output 0: (B, T, max(H_q, H_kv) * d_v) — 3D packed
+          // Output 0: (B, T, H_q * d_v) — 3D packed
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && q_num_heads > 0 && kv_num_heads > 0) {
             auto& query_shape = getInputShape(ctx, 0);
             auto& value_shape = getInputShape(ctx, 2);
             TensorShapeProto output_shape;
             *output_shape.add_dim() = query_shape.dim(0);  // B
             *output_shape.add_dim() = query_shape.dim(1);  // T
-            // max(H_q, H_kv) * d_v: d_v = value.dim(2) / kv_num_heads
+            // H_q * d_v: d_v = value.dim(2) / kv_num_heads, then H_q * d_v
             if (value_shape.dim(2).has_dim_value()) {
-              int64_t value_hidden = value_shape.dim(2).dim_value();
-              if (value_hidden % kv_num_heads != 0) {
-                fail_shape_inference(
-                    "LinearAttention: value last dim (", value_hidden,
-                    ") must be divisible by kv_num_heads (", kv_num_heads, ")");
-              }
-              int64_t d_v = value_hidden / kv_num_heads;
-              output_shape.add_dim()->set_dim_value(std::max(q_num_heads, kv_num_heads) * d_v);
+              int64_t d_v = value_shape.dim(2).dim_value() / kv_num_heads;
+              output_shape.add_dim()->set_dim_value(kv_num_heads * d_v);
             } else {
               output_shape.add_dim();  // unknown
             }
@@ -2467,25 +2443,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             state_shape.add_dim()->set_dim_value(kv_num_heads);  // H_kv
             // d_k = query.dim(2) / q_num_heads
             if (query_shape.dim(2).has_dim_value()) {
-              int64_t query_hidden = query_shape.dim(2).dim_value();
-              if (query_hidden % q_num_heads != 0) {
-                fail_shape_inference(
-                    "LinearAttention: query last dim (", query_hidden,
-                    ") must be divisible by q_num_heads (", q_num_heads, ")");
-              }
-              state_shape.add_dim()->set_dim_value(query_hidden / q_num_heads);
+              state_shape.add_dim()->set_dim_value(query_shape.dim(2).dim_value() / q_num_heads);
             } else {
               state_shape.add_dim();
             }
             // d_v = value.dim(2) / kv_num_heads
             if (value_shape.dim(2).has_dim_value()) {
-              int64_t value_hidden = value_shape.dim(2).dim_value();
-              if (value_hidden % kv_num_heads != 0) {
-                fail_shape_inference(
-                    "LinearAttention: value last dim (", value_hidden,
-                    ") must be divisible by kv_num_heads (", kv_num_heads, ")");
-              }
-              state_shape.add_dim()->set_dim_value(value_hidden / kv_num_heads);
+              state_shape.add_dim()->set_dim_value(value_shape.dim(2).dim_value() / kv_num_heads);
             } else {
               state_shape.add_dim();
             }
