@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "ep_profiling.h"
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <optional>

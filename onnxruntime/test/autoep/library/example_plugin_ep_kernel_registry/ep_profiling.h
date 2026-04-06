@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <optional>
