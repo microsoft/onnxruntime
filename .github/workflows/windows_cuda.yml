@@ -112,10 +112,13 @@ jobs:
         working-directory: ${{ runner.temp }}
         shell: pwsh
         run: |
+          ccache --zero-stats
+
           npm install -g typescript
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
+
           # Execute the build process
           python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
             --build `
@@ -157,6 +160,10 @@ jobs:
           Remove-Item -Path "$outputDir\CMakeFiles" -Recurse -Force -ErrorAction SilentlyContinue
           # Remove intermediate object files as in the original script
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6

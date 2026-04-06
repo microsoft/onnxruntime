@@ -42,6 +42,8 @@ jobs:
       - name: Build and Test (Combined)
         shell: pwsh
         run: |
+          ccache --zero-stats
+
           echo ${env:PATH}
           python -m pip install -r "${env:GITHUB_WORKSPACE}\tools\ci_build\github\windows\python\requirements.txt"
           python "${env:GITHUB_WORKSPACE}\tools\ci_build\build.py" `
@@ -55,3 +57,10 @@ jobs:
             --use_cache `
             --use_vcpkg `
             --use_vcpkg_ms_internal_asset_cache
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv

@@ -166,6 +166,8 @@ jobs:
           build_cfg: ${{ env.BuildConfig }}
         working-directory: ${{ runner.temp }}
         run: |
+          ccache --zero-stats
+
           python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
             --build `
             --build_dir build `
@@ -176,6 +178,13 @@ jobs:
             --use_binskim_compliant_compile_flags `
             --use_cache `
             --use_openvino CPU
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
 
       - name: Run unit tests
         shell: pwsh

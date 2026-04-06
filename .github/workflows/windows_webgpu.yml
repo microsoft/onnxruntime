@@ -289,6 +289,8 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
+          ccache --zero-stats
+
           python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
             --build `
             --build_dir ${env:GITHUB_WORKSPACE} `
@@ -301,6 +303,10 @@ jobs:
             --use_cache `
             --use_external_dawn `
             --use_webgpu
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
 
       - name: Run tests (onnxruntime_webgpu_external_dawn_test)
         run: onnxruntime_webgpu_external_dawn_test.exe
