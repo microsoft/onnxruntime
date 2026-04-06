@@ -163,21 +163,24 @@ static bool HasMemcpyNodes(const Graph& graph) {
 }
 
 static bool AreAllComputeNodesAssignedToEpOrCpu(const Graph& graph, ProviderType provider) {
+  bool has_node_on_provider = false;
+
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
-    // Empty node provider means CPU EP
-    if (!node_provider.empty() &&
-        node_provider != provider &&
-        node_provider != kCpuExecutionProvider) {
+    if (node_provider == provider) {
+      has_node_on_provider = true;
+    } else if (!node_provider.empty() &&
+               node_provider != kCpuExecutionProvider) {
       return false;
     }
   }
 
+  // Require at least one node on the target EP, and no Memcpy nodes.
   // We allow CPU EPs to show up in the EP list as long as there is no Memcpy
   // involved as shape subgraphs will be forced onto CPU and these will not have
   // Memcpy nodes involved.
-  return !HasMemcpyNodes(graph);
+  return has_node_on_provider && !HasMemcpyNodes(graph);
 }
 
 static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
