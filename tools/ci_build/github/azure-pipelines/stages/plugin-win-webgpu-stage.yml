@@ -191,9 +191,9 @@ stages:
           Write-Host "Extracting DXC package to $dxcExtractPath"
           Expand-Archive -Path $dxcZipPath -DestinationPath $dxcExtractPath -Force
 
-          # Copy the necessary DLLs to the target directory
+          # Copy the necessary DLLs to the build output directory so they get ESRP-signed
           $sourcePath = Join-Path $dxcExtractPath "bin\$targetArch"
-          $targetPath = "$(Build.ArtifactStagingDirectory)\bin"
+          $targetPath = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}"
 
           if (-not (Test-Path $targetPath)) {
             New-Item -Path $targetPath -ItemType Directory -Force
@@ -230,6 +230,8 @@ stages:
           Contents: |
             onnxruntime_providers_webgpu.dll
             onnxruntime_providers_webgpu.pdb
+            dxil.dll
+            dxcompiler.dll
           TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
 
       - script: |
