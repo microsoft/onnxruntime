@@ -166,5 +166,47 @@ TEST(MLOpTest, LinearClassifierMulticlassInt32Input) {
 TEST(MLOpTest, LinearClassifierMulticlassDoubleInput) {
   LinearClassifierMulticlass<double>();
 }
+
+// Regression test: coefficients size doesn't match class_count * num_features.
+TEST(MLOpTest, LinearClassifierInvalidCoefficientsSizeFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  // 3 intercepts => class_count = 3, input has 2 features => expects 6 coefficients.
+  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f};
+  std::vector<int64_t> classes = {1, 2, 3};
+  std::vector<float> intercepts = {-3.91601811f, 0.42575697f, 0.13731251f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "LinearClassifier: coefficients length (3) is less than classes (3) * features (2)");
+}
+
+// Regression test: coefficients not divisible by class_count.
+TEST(MLOpTest, LinearClassifierCoefficientsSizeNotDivisibleByClassCountFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  // 3 intercepts => class_count = 3, but 5 coefficients is not divisible by 3.
+  std::vector<float> coefficients = {1.f, 2.f, 3.f, 4.f, 5.f};
+  std::vector<int64_t> classes = {1, 2, 3};
+  std::vector<float> intercepts = {0.1f, 0.2f, 0.3f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "coefficients size (5) must be a multiple of the number of classes (3)");
+}
 }  // namespace test
 }  // namespace onnxruntime
