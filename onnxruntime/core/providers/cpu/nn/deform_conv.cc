@@ -730,6 +730,9 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   auto plan_blocks = IAllocator::MakeUniquePtr<sampling_plan_internal::BilinearSamplePlanBlock<T>>(alloc, SafeInt<size_t>(block_count));
 
+  // Aliasing contract for this optimized path:
+  // - input tensors may alias each other (read-only is fine),
+  // - output Y must not overlap any input tensor (DeformConv is not an in-place kernel).
   const T* ORT_CPU_RESTRICT Xdata = X->Data<T>();
   const T* ORT_CPU_RESTRICT Wdata = W->Data<T>();
   const T* ORT_CPU_RESTRICT offset_data = offset->Data<T>();

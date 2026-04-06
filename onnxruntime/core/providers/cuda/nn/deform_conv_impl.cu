@@ -248,6 +248,9 @@ __global__ void DeformableIm2ColKernel(
     DivMod<IndexT> parallel_imgs_div,
     DivMod<IndexT> channel_per_offset_grp_div,
     T* __restrict__ data_col) {
+  // Aliasing contract for this kernel:
+  // - input/offset/mask are read-only and may alias each other,
+  // - data_col is write-only and must not overlap any input buffer.
   constexpr bool is_fixed = (kH >= 0 && kW >= 0);
   const int64_t h_dim_i64 = is_fixed ? kH : weight_h;
   const int64_t w_dim_i64 = is_fixed ? kW : weight_w;
