@@ -21,6 +21,7 @@ limitations under the License.
 #include <cassert>
 #include <map>
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/narrow.h"
 
 namespace onnxruntime {
@@ -382,6 +383,74 @@ OrtStatus* ArenaImpl::GetStats(OrtKeyValuePairs** stats) {
 
   api_.CreateKeyValuePairs(stats);
   stats_.ToKeyValuePairs(api_, *stats);
+
+  return nullptr;
+}
+
+OrtStatus* ArenaImpl::Shrink() {
+  std::lock_guard<std::mutex> lock(lock_);
+
+  // Snapshot region pointers/sizes before mutation — we will modify the
+  // region list while iterating.  Matches in-tree BFCArena::Shrink().
+  const auto num_regions = region_manager_.regions().size();
+  InlinedVector<void*> region_ptrs;
+  InlinedVector<size_t> region_sizes;
+  region_ptrs.reserve(num_regions);
+  region_sizes.reserve(num_regions);
+
+  for (const auto& region : region_manager_.regions()) {
+    region_ptrs.push_back(region.ptr());
+    region_sizes.push_back(region.memory_size());
+  }
+
+  // For each region, check if every chunk is free. If so, deallocate the region.
+  size_t i = 0;
+  for (void* region_ptr : region_ptrs) {
+    bool deallocate_region = true;
+    ChunkHandle region_begin_chunk = region_manager_.get_handle(region_ptr);
+    ChunkHandle h = region_begin_chunk;
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->in_use()) {
+        // at-least one used chunk found in the allocation region -
+        // so we cannot deallocate it
+        deallocate_region = false;
+        break;
+      }
+      h = c->next;
+    }
+
+    if (deallocate_region) {
+      auto shrink_size = region_sizes[i];
+      stats_.num_arena_shrinkages += 1;
+      stats_.total_allocated_bytes -= static_cast<int64_t>(shrink_size);
+
+      CUDA_ARENA_LOG(VERBOSE, allocator_name_ << " ArenaImpl shrunk by "
+                                              << shrink_size << " bytes. "
+                                              << "Total allocated is now " << stats_.total_allocated_bytes);
+
+      h = region_begin_chunk;
+      ChunkHandle temp = region_begin_chunk;
+      while (h != kInvalidChunkHandle) {
+        const Chunk* c = ChunkFromHandle(h);
+        temp = c->next;
+        RemoveFreeChunkFromBin(h);
+        DeleteChunk(h);
+        h = temp;
+      }
+
+      device_allocator_->Free(device_allocator_.get(), region_ptr);
+      region_manager_.RemoveAllocationRegion(region_ptr);
+      stats_.num_arena_extensions--;
+    }
+
+    ++i;
+  }
+
+  // Reset growth so the arena can grow fresh if needed later.
+  // Matches BFCArena which resets to initial_growth_chunk_size_bytes_.
+  curr_region_allocation_bytes_ = RoundedBytes(
+      static_cast<size_t>(config_.initial_growth_chunk_size_bytes));
 
   return nullptr;
 }

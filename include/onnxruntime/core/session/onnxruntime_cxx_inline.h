@@ -261,6 +261,13 @@ inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
   ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
   return KeyValuePairs(out);
 }
+
+template <typename T>
+inline void AllocatorImpl<T>::Shrink() {
+  if (this->p_->Shrink) {
+    ThrowOnError(this->p_->Shrink(this->p_));
+  }
+}
 }  // namespace detail
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {

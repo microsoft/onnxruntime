@@ -66,6 +66,7 @@ class CudaMempoolOrtAllocator final : public CudaAllocatorBase {
   static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_) noexcept;
   static OrtStatus* ORT_API_CALL GetStatsImpl(const OrtAllocator* this_,
                                               OrtKeyValuePairs** out) noexcept;
+  static OrtStatus* ORT_API_CALL ShrinkImpl(OrtAllocator* this_) noexcept;
 
   /// Allocate size bytes on the given CUDA stream.
   void* AllocInternal(size_t size, cudaStream_t stream);
@@ -99,6 +100,7 @@ class CudaMempoolOrtAllocator final : public CudaAllocatorBase {
   size_t max_bytes_in_use_ = 0;
   size_t num_allocs_ = 0;
   size_t max_alloc_size_ = 0;
+  size_t num_arena_shrinkages_ = 0;
 };
 
 }  // namespace cuda_plugin

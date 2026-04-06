@@ -1058,6 +1058,12 @@ struct AllocatorImpl : Base<T> {
    * \return A pointer to a KeyValuePairs object that will be filled with the allocator statistics.
    */
   KeyValuePairs GetStats() const;
+
+  /** \brief Release unused memory held by the allocator.
+   *
+   * Calls the optional Shrink function pointer if available; does nothing otherwise.
+   */
+  void Shrink();
 };
 }  // namespace detail
 

@@ -232,6 +232,10 @@ class ArenaImpl {
   // Allocate memory directly. Used for initializers so they don't affect arena growth patterns.
   void* Reserve(size_t size);
 
+  // Release unused memory. Frees all allocation regions where every chunk is free.
+  // Resets growth to initial_growth_chunk_size_bytes_.
+  OrtStatus* Shrink();
+
   OrtStatus* GetStats(OrtKeyValuePairs** stats);
 
   size_t RequestedSize(const void* ptr);
@@ -564,6 +568,7 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
     Free = FreeImpl;
     Info = InfoImpl;
     GetStats = GetStatsImpl;
+    Shrink = ShrinkImpl;
     // Stream-aware only for device arena, not pinned
     AllocOnStream = (kind == CudaAllocatorKind::kDevice) ? AllocOnStreamImpl : nullptr;
   }
@@ -650,6 +655,23 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
     ORT_CATCH(...) {
       return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
                                         "CudaArenaAllocator::GetStats failed with an unknown exception.");
+    }
+    return nullptr;  // required for ORT_NO_EXCEPTIONS
+  }
+
+  static OrtStatus* ORT_API_CALL ShrinkImpl(OrtAllocator* this_) noexcept {
+    ORT_TRY {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      return arena.impl_->Shrink();
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH(...) {
+      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                        "CudaArenaAllocator::Shrink failed with an unknown exception.");
     }
     return nullptr;  // required for ORT_NO_EXCEPTIONS
   }

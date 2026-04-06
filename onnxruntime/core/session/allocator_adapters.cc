@@ -64,6 +64,9 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
       return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->AllocOnStream(size, stream);
     };
   }
+
+  // Shrink is not forwarded through the generic adapter — only plugin allocators implement it directly.
+  OrtAllocator::Shrink = nullptr;
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {

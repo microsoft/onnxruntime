@@ -146,6 +146,7 @@ CudaMempoolOrtAllocator::CudaMempoolOrtAllocator(const OrtMemoryInfo* memory_inf
   Reserve = ReserveImpl;
   Info = InfoImpl;
   GetStats = GetStatsImpl;
+  Shrink = ShrinkImpl;
 }
 
 CudaMempoolOrtAllocator::~CudaMempoolOrtAllocator() {
@@ -324,6 +325,7 @@ OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::GetStatsImpl(
       stats.bytes_in_use = static_cast<int64_t>(self.in_use_bytes_);
       stats.max_bytes_in_use = static_cast<int64_t>(self.max_bytes_in_use_);
       stats.max_alloc_size = static_cast<int64_t>(self.max_alloc_size_);
+      stats.num_arena_shrinkages = static_cast<int64_t>(self.num_arena_shrinkages_);
     }
 
     stats.ToKeyValuePairs(self.ort_api_, kvps);
@@ -338,6 +340,51 @@ OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::GetStatsImpl(
   ORT_CATCH(...) {
     return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
                                       "CudaMempoolOrtAllocator::GetStats failed.");
+  }
+  return nullptr;  // required for ORT_NO_EXCEPTIONS
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::ShrinkImpl(OrtAllocator* this_) noexcept {
+  ORT_TRY {
+    auto& self = *static_cast<CudaMempoolOrtAllocator*>(this_);
+
+    cudaError_t err = cudaMemPoolTrimTo(self.pool_, self.bytes_to_keep_on_shrink_);
+    if (err != cudaSuccess) {
+      std::string msg = std::string("cudaMemPoolTrimTo failed: ") +
+                        cudaGetErrorName(err) + ": " + cudaGetErrorString(err);
+      return Ort::GetApi().CreateStatus(ORT_EP_FAIL, msg.c_str());
+    }
+
+    {
+      std::ostringstream oss;
+
+      size_t reserved_size = 0;
+      if (cudaMemPoolGetAttribute(self.pool_, cudaMemPoolAttrReservedMemCurrent,
+                                  &reserved_size) == cudaSuccess) {
+        oss << "CudaMempoolOrtAllocator::Shrink: reserved size after trim: "
+            << reserved_size << " bytes.";
+      } else {
+        oss << "CudaMempoolOrtAllocator::Shrink: pool trimmed; unable to query reserved size.";
+      }
+      LogMessage(self.ort_api_, self.logger_, ORT_LOGGING_LEVEL_INFO, oss.str().c_str());
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(self.mutex_);
+      ++self.num_arena_shrinkages_;
+    }
+
+    return nullptr;
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                      "CudaMempoolOrtAllocator::Shrink failed.");
   }
   return nullptr;  // required for ORT_NO_EXCEPTIONS
 }
