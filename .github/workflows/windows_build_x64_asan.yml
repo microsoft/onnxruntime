@@ -86,6 +86,10 @@ jobs:
           python $buildPy "@$optsFile" --update --build
           if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
 
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
+
       - name: Test
         shell: pwsh
         run: |

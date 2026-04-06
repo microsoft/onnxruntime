@@ -97,6 +97,8 @@ jobs:
         shell: pwsh
         working-directory: ${{ runner.temp }}
         run: |
+          ccache --zero-stats
+
           python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
             --build_csharp `
             --build_dir build `
@@ -117,6 +119,10 @@ jobs:
             exit $lastExitCode
           }
           Remove-Item "${env:GITHUB_WORKSPACE}\RelWithDebInfo" -Include "*.obj" -Recurse
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
