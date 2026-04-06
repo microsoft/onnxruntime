@@ -70,7 +70,7 @@ Schema:
     - `model_variants` (object, optional): Map of variant names to variant descriptors.
       - `<variant_name>` (object, required if present):
         - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT-GenAI"`). If omitted, ORT will treat it as an ONNX model by default.
-        - `file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `file` is omitted, ORT will discover the ONNX model file within that directory.
+        - `model_file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `model_file` is omitted, ORT will discover the ONNX model file within that directory.
         - `constraints` (object, required):
           - `ep` (string, required (except base model)): Execution provider name (e.g., `"TensorrtExecutionProvider"`, `"QNNExecutionProvider"`, `"OpenVINOExecutionProvider"`).
           - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
@@ -136,7 +136,7 @@ Schema:
 - `model_variants` (object, required): Map of variant names to variant descriptors.
   - `<variant_name>` (object, required):
     - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT-GenAI"`). If omitted, ORT will treat it as an ONNX model by default.
-    - `file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `file` is omitted, ORT will discover the ONNX model file within that directory.
+    - `model_file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `model_file` is omitted, ORT will discover the ONNX model file within that directory.
     - `constraints` (object, required):
       - `ep` (string, required (except base model)): Execution provider name.
       - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.

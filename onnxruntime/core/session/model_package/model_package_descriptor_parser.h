@@ -18,13 +18,13 @@ static constexpr const char* kComponentModelsKey = "component_models";
 static constexpr const char* kComponentModelMetadataFileName = "metadata.json";
 static constexpr const char* kModelVariantsKey = "model_variants";
 static constexpr const char* kVariantNameKey = "variant_name";
-static constexpr const char* kFileKey = "file";
+static constexpr const char* kModelTypeKey = "model_type";
+static constexpr const char* kModelFileKey = "model_file";
 static constexpr const char* kConstraintsKey = "constraints";
 static constexpr const char* kEpKey = "ep";
 static constexpr const char* kDeviceKey = "device";
 static constexpr const char* kArchitectureKey = "architecture";
 static constexpr const char* kEpCompatibilityInfoKey = "ep_compatibility_info";
-static constexpr const char* kSdkVersionKey = "sdk_version";
 
 class ModelPackageDescriptorParser {
  public:
@@ -32,8 +32,6 @@ class ModelPackageDescriptorParser {
 
   Status ParseVariantsFromRoot(const std::filesystem::path& package_root,
                                /*out*/ std::vector<ModelVariantInfo>& components) const;
-
-  Status ParseModelVariantConstraints(const json& constraints, ModelVariantInfo& variant) const;
 
  private:
   Status ParseVariantsFromComponent(const std::string& component_model_name,
