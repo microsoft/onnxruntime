@@ -7,8 +7,9 @@ include(external/helper_functions.cmake)
 
 file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
 foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
-  # Lines start with "#" are comments
-  if(NOT ONNXRUNTIME_DEP MATCHES "^#")
+  # Lines start with "#" are comments, so skip them.
+  # cpp_client_telemetry is only needed for telemetry on non-Windows platforms, so skip if telemetry is not enabled or it's Windows platform.
+  if((NOT ONNXRUNTIME_DEP MATCHES "^#") AND ((NOT ONNXRUNTIME_DEP MATCHES "^cpp_client_telemetry") OR (onnxruntime_USE_TELEMETRY AND NOT WIN32)))
     # The first column is name
     list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
     # The second column is URL
@@ -893,6 +894,71 @@ endif()
 if(onnxruntime_USE_SNPE)
   include(external/find_snpe.cmake)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
+endif()
+
+# 1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms
+if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+  set(BUILD_UNIT_TESTS_SAVED "${BUILD_UNIT_TESTS}")
+  set(BUILD_FUNC_TESTS_SAVED "${BUILD_FUNC_TESTS}")
+  set(BUILD_SAMPLES_SAVED "${BUILD_SAMPLES}")
+  set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
+  set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
+  set(BUILD_SAMPLES OFF CACHE BOOL "Disable 1DS SDK samples" FORCE)
+
+  onnxruntime_fetchcontent_declare(
+    cpp_client_telemetry
+    URL ${DEP_URL_cpp_client_telemetry}
+    URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
+    EXCLUDE_FROM_ALL
+  )
+  onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+
+  # cpp_client_telemetry's CMakeLists.txt uses include_directories(${CMAKE_SOURCE_DIR}) to find
+  # its bundled nlohmann/, sqlite/, and zlib/ headers. When built via FetchContent, CMAKE_SOURCE_DIR
+  # points to ORT's root instead. Fix by adding the actual source dir as an include path.
+  if(TARGET mat)
+    target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR})
+    # Also add subdirectories for bundled headers (sqlite3.h, zlib.h) that are included without path prefix
+    target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR}/sqlite)
+    target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR}/zlib)
+    # ORT enables -ffast-math globally, which conflicts with std::numeric_limits<double>::infinity()
+    # in the 1DS SDK's bundled nlohmann/json.hpp. Re-enable finite math to fix.
+    # Also suppress warnings in the 1DS SDK code that are treated as errors.
+    target_compile_options(mat PRIVATE
+      -fno-finite-math-only
+      -Wno-unused-const-variable
+      $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
+      $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
+    )
+  endif()
+
+  # The 1DS SDK creates GLOBAL imported targets 'z' and 'sqlite3' without setting IMPORTED_LOCATION,
+  # which causes link errors on cross-compile. For Android, the 1DS cmake now builds from bundled source.
+  # For other platforms, resolve the imported targets if possible.
+  if(NOT ANDROID)
+    if(TARGET z)
+      get_target_property(_z_loc z IMPORTED_LOCATION)
+      if(NOT _z_loc OR _z_loc STREQUAL "_z_loc-NOTFOUND")
+        find_package(ZLIB QUIET)
+        if(ZLIB_FOUND)
+          set_target_properties(z PROPERTIES IMPORTED_LOCATION "${ZLIB_LIBRARIES}")
+        endif()
+      endif()
+    endif()
+    if(TARGET sqlite3)
+      get_target_property(_sqlite3_loc sqlite3 IMPORTED_LOCATION)
+      if(NOT _sqlite3_loc OR _sqlite3_loc STREQUAL "_sqlite3_loc-NOTFOUND")
+        find_library(_sqlite3_lib sqlite3)
+        if(_sqlite3_lib)
+          set_target_properties(sqlite3 PROPERTIES IMPORTED_LOCATION "${_sqlite3_lib}")
+        endif()
+      endif()
+    endif()
+  endif()
+
+  set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
+  set(BUILD_FUNC_TESTS "${BUILD_FUNC_TESTS_SAVED}" CACHE BOOL "" FORCE)
+  set(BUILD_SAMPLES "${BUILD_SAMPLES_SAVED}" CACHE BOOL "" FORCE)
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)

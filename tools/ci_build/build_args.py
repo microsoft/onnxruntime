@@ -429,7 +429,6 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Must be >=14.40")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
-    parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
     parser.add_argument("--caller_framework", type=str, help="Name of the framework calling ONNX Runtime.")
 
     # Cross-compilation targets hosted on Windows
@@ -852,6 +851,10 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         "--enable_generic_interface",
         action="store_true",
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
+    )
+    # Telemetry arguments (cross-platform)
+    parser.add_argument(
+        "--use_telemetry", action="store_true", help="Enable telemetry (ETW on Windows, 1DS on other platforms)."
     )
 
 
