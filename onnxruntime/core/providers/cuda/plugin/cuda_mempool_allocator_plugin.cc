@@ -36,15 +36,30 @@ OrtStatus* CudaMempoolOrtAllocator::Create(const OrtMemoryInfo* memory_info,
   size_t bytes_to_keep_on_shrink = 0;
 
   if (options) {
-    const char* value = nullptr;
+    auto parse_uint64 = [&](const char* key, uint64_t& out_val) -> OrtStatus* {
+      const char* v = api.GetKeyValue(options, key);
+      if (!v) return nullptr;
+      ORT_TRY {
+        out_val = std::stoull(std::string(v));
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          return api.CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              (std::string("Invalid value for ") + key + ": '" + v + "' — " + ex.what())
+                  .c_str());
+        });
+      }
+      return nullptr;
+    };
 
-    if ((value = api.GetKeyValue(options, ConfigKeyNames::PoolReleaseThreshold)) != nullptr) {
-      pool_release_threshold = std::stoull(std::string(value));
-    }
+    OrtStatus* st = parse_uint64(ConfigKeyNames::PoolReleaseThreshold, pool_release_threshold);
+    if (st) return st;
 
-    if ((value = api.GetKeyValue(options, ConfigKeyNames::BytesToKeepOnShrink)) != nullptr) {
-      bytes_to_keep_on_shrink = static_cast<size_t>(std::stoull(std::string(value)));
-    }
+    uint64_t keep_val = 0;
+    st = parse_uint64(ConfigKeyNames::BytesToKeepOnShrink, keep_val);
+    if (st) return st;
+    bytes_to_keep_on_shrink = static_cast<size_t>(keep_val);
   }
 
   // Get device id from memory_info

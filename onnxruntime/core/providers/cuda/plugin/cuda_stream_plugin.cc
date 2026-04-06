@@ -173,13 +173,11 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
   // all async copies using those buffers have completed.
   PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream->cuda_stream_));
 
-  // Reset arena chunk-to-stream assignments for this device's arena.
-  // Cache the arena pointer to avoid double-mutex-lock (device_cache_mutex_ + arena_mutex)
-  // on every session run end.
-  if (!stream->cached_device_arena_.has_value()) {
-    stream->cached_device_arena_ = stream->factory_.GetDeviceArenaForDevice(stream->device_id_);
-  }
-  CudaArenaAllocator* arena = *stream->cached_device_arena_;
+  // Reset arena chunk-to-stream assignments for this device's current arena.
+  // Re-query the arena on each session run end because the shared allocator for
+  // a device may be replaced at runtime (via CreateSharedAllocator with
+  // replace_existing=true), which can invalidate any previously cached pointer.
+  CudaArenaAllocator* arena = stream->factory_.GetDeviceArenaForDevice(stream->device_id_);
   if (arena) {
     OrtStatus* arena_status = arena->ResetChunksUsingStream(this_ptr);
     if (arena_status != nullptr) {
