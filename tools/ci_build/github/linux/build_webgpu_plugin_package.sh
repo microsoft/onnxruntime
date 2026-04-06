@@ -27,6 +27,7 @@ docker run --rm \
     --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
+    -e SYSTEM_COLLECTIONURI \
     "$DOCKER_IMAGE" \
     /bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
         --build_dir /build \
