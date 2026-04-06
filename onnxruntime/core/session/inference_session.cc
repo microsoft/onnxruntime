@@ -2662,6 +2662,28 @@ common::Status InferenceSession::Initialize() {
         graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
         model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
 
+    // Set disable flags from session config to use during Run().
+    disable_input_validation_ =
+        session_options_.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsConfigDisableInputValidation, "0") == "1";
+    disable_output_validation_ =
+        session_options_.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsConfigDisableOutputValidation, "0") == "1";
+
+    // Warn if input/output validation has been disabled for this session
+    if (disable_input_validation_) {
+      LOGS(*session_logger_, WARNING)
+          << "Input validation is disabled for this session via session config option '"
+          << kOrtSessionOptionsConfigDisableInputValidation << "'. "
+          << "Ensure all inputs are compatible with the model to avoid undefined behavior.";
+    }
+    if (disable_output_validation_) {
+      LOGS(*session_logger_, WARNING)
+          << "Output validation is disabled for this session via session config option '"
+          << kOrtSessionOptionsConfigDisableOutputValidation << "'. "
+          << "Ensure all outputs are compatible with the model to avoid undefined behavior.";
+    }
+
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
 
@@ -3147,8 +3169,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+      if (!disable_input_validation_) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+      }
+
+      if (!disable_output_validation_) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+      }
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =

@@ -481,3 +481,26 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // - "0": disable. (default)
 // - "1": enable.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// Set to '1' to disable all input tensor validation during Run().
+// This skips all checks on input names, types, and shapes for every Run() call in this session.
+// This can be useful when using execution providers that supply inputs with types or shapes
+// that differ from the model's declared inputs (e.g., custom EPs that perform dynamic
+// transformations before execution).
+// WARNING: Disabling input validation may lead to undefined behavior or crashes if the
+// inputs are genuinely incompatible with the model.
+// "0": input validation is enabled (default).
+// "1": input validation is disabled.
+static const char* const kOrtSessionOptionsConfigDisableInputValidation =
+    "session.disable_input_validation";
+
+// Set to '1' to disable all output tensor validation during Run().
+// This skips all checks on output names, types, and shapes for every Run() call in this session.
+// This can be useful when using execution providers that produce outputs with types or shapes
+// that differ from the model's declared outputs.
+// WARNING: Disabling output validation may lead to undefined behavior or crashes if the
+// outputs are genuinely incompatible with the model.
+// "0": output validation is enabled (default).
+// "1": output validation is disabled.
+static const char* const kOrtSessionOptionsConfigDisableOutputValidation =
+    "session.disable_output_validation";
