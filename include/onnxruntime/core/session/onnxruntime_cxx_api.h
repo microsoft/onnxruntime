@@ -1382,9 +1382,9 @@ struct Env : detail::Base<OrtEnv> {
                      const std::vector<Value>& dst_tensors,
                      OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
 
-  ///< Wraps OrtApi::CopyTensors
-  Status CopyTensors(const OrtValue* const* src_tensors, OrtValue* const* dst_tensors,
-                     OrtSyncStream* stream, size_t num_tensors) const;
+  /// Wraps OrtApi::CopyTensors
+  /// Copies only one src tensor to another dst tensor.
+  Status CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const;
 
   /// \brief Wraps OrtApi::SetPerSessionThreadPoolCallbacks
   /// Stores work callbacks on the Env for per-session thread pools.

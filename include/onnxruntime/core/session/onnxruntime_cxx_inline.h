@@ -1033,9 +1033,8 @@ inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
   return Status(status);
 }
 
-inline Status Env::CopyTensors(const OrtValue* const* src_tensors, OrtValue* const* dst_tensors,
-                               OrtSyncStream* stream, size_t num_tensors) const {
-  OrtStatus* status = GetApi().CopyTensors(p_, src_tensors, dst_tensors, stream, num_tensors);
+inline Status Env::CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const {
+  OrtStatus* status = GetApi().CopyTensors(p_, &src_tensor, &dst_tensor, stream, 1);
   return Status(status);
 }
 

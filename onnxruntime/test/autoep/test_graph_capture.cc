@@ -6,6 +6,7 @@
 
 #include <gsl/gsl>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -71,14 +72,6 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
     Ort::Value gpu_input = Ort::Value::CreateTensor<float>(gpu_allocator, shape.data(), shape.size());
     Ort::Value gpu_output = Ort::Value::CreateTensor<float>(gpu_allocator, shape.data(), shape.size());
 
-    // Helper to copy a single tensor using the C API (the C++ wrapper takes vector<Value>
-    // which is inconvenient since Value is move-only).
-    auto copy_tensor = [](const Ort::Value& src, Ort::Value& dst) -> Ort::Status {
-      const OrtValue* src_ptr = src;
-      OrtValue* dst_ptr = dst;
-      return ort_env->CopyTensors(&src_ptr, &dst_ptr, nullptr, 1);
-    };
-
     Ort::MemoryInfo cpu_mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
     // --- First run: warm-up + captured run ---
@@ -89,7 +82,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
       std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
       Ort::Value cpu_input = Ort::Value::CreateTensor<float>(
           cpu_mem_info, input_data.data(), input_data.size(), shape.data(), shape.size());
-      ASSERT_ORTSTATUS_OK(copy_tensor(cpu_input, gpu_input));
+      ASSERT_ORTSTATUS_OK(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
     }
 
     // Bind inputs and outputs
@@ -106,7 +99,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
     {
       Ort::AllocatorWithDefaultOptions cpu_allocator;
       Ort::Value cpu_output = Ort::Value::CreateTensor<float>(cpu_allocator, shape.data(), shape.size());
-      ASSERT_ORTSTATUS_OK(copy_tensor(gpu_output, cpu_output));
+      ASSERT_ORTSTATUS_OK(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
 
       const float* output_data = cpu_output.GetTensorData<float>();
       std::vector<float> expected = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
@@ -122,7 +115,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
       std::vector<float> input_data_2 = {2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
       Ort::Value cpu_input_2 = Ort::Value::CreateTensor<float>(
           cpu_mem_info, input_data_2.data(), input_data_2.size(), shape.data(), shape.size());
-      ASSERT_ORTSTATUS_OK(copy_tensor(cpu_input_2, gpu_input));
+      ASSERT_ORTSTATUS_OK(ort_env->CopyTensor(cpu_input_2, gpu_input, nullptr));
     }
 
     session.Run(run_options, io_binding);
@@ -132,7 +125,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
     {
       Ort::AllocatorWithDefaultOptions cpu_allocator;
       Ort::Value cpu_output = Ort::Value::CreateTensor<float>(cpu_allocator, shape.data(), shape.size());
-      ASSERT_ORTSTATUS_OK(copy_tensor(gpu_output, cpu_output));
+      ASSERT_ORTSTATUS_OK(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
 
       const float* output_data = cpu_output.GetTensorData<float>();
       std::vector<float> expected = {2.0f, 6.0f, 12.0f, 20.0f, 30.0f, 42.0f};
