@@ -1048,6 +1048,7 @@ struct AllocatorImpl : Base<T> {
   using B::B;
 
   void* Alloc(size_t size);
+  void* Reserve(size_t size);
   MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
   ConstMemoryInfo GetInfo() const;

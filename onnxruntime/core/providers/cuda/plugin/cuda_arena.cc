@@ -111,9 +111,10 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
 
   auto safe_alloc = [this](size_t alloc_bytes) {
     void* new_mem = nullptr;
-    try {
+    ORT_TRY {
       new_mem = device_allocator_->Alloc(device_allocator_.get(), alloc_bytes);
-    } catch (const std::bad_alloc&) {
+    }
+    ORT_CATCH(const std::bad_alloc&) {
     }
     return new_mem;
   };
@@ -276,11 +277,14 @@ void* ArenaImpl::Reserve(size_t size) {
   // Use narrow<> to catch truncation (int64_t -> size_t), then avoid overflow
   // by comparing size against the remaining budget rather than summing.
   size_t allocated = 0;
-  try {
+  ORT_TRY {
     allocated = onnxruntime::narrow<size_t>(stats_.total_allocated_bytes);
-  } catch (const std::exception& ex) {
-    CUDA_ARENA_LOG(ERROR, "Reserve: total_allocated_bytes (" << stats_.total_allocated_bytes
-                                                             << ") cannot be converted to size_t: " << ex.what());
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      CUDA_ARENA_LOG(ERROR, "Reserve: total_allocated_bytes (" << stats_.total_allocated_bytes
+                                                               << ") cannot be converted to size_t: " << ex.what());
+    });
     return nullptr;
   }
   if (allocated > config_.max_mem || size > config_.max_mem - allocated) {

@@ -7,6 +7,8 @@
 #include <sstream>
 #include <string>
 
+#include "core/common/common.h"
+
 namespace onnxruntime {
 namespace cuda_plugin {
 
@@ -155,11 +157,13 @@ void* CudaMempoolOrtAllocator::AllocInternal(size_t size, cudaStream_t stream) {
   void* p = nullptr;
   cudaError_t err = cudaMallocFromPoolAsync(&p, size, pool_, stream);
   if (err != cudaSuccess) {
-    std::ostringstream oss;
-    oss << "CudaMempoolOrtAllocator: cudaMallocFromPoolAsync failed: "
-        << cudaGetErrorName(err) << ": " << cudaGetErrorString(err)
-        << ", size=" << size;
-    throw std::runtime_error(oss.str());
+    if (err == cudaErrorMemoryAllocation) {
+      // Out of memory — return nullptr so the caller can handle it gracefully.
+      return nullptr;
+    }
+    ORT_THROW("CudaMempoolOrtAllocator: cudaMallocFromPoolAsync failed: ",
+              cudaGetErrorName(err), ": ", cudaGetErrorString(err),
+              ", size=", size);
   }
 
   {
@@ -190,38 +194,48 @@ void CudaMempoolOrtAllocator::SyncAllKnownStreams() noexcept {
 
 // --- OrtAllocator C callbacks ---
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 4702)  // unreachable code — required for ORT_NO_EXCEPTIONS builds
+#endif
+
 /*static*/
 void* ORT_API_CALL CudaMempoolOrtAllocator::AllocImpl(OrtAllocator* this_, size_t size) noexcept {
   if (size == 0) return nullptr;
-  try {
+  ORT_TRY {
     auto& self = *static_cast<CudaMempoolOrtAllocator*>(this_);
     constexpr cudaStream_t kDefaultStream = static_cast<cudaStream_t>(0);
-    void* p = self.AllocInternal(size, kDefaultStream);
-    // Synchronize the default stream so the returned pointer is immediately usable.
-    ORT_IGNORE_RETURN_VALUE(cudaStreamSynchronize(kDefaultStream));
-    return p;
-  } catch (...) {
+    // The legacy default stream (NULL / 0) implicitly synchronizes with all
+    // other work on the device, so the pointer returned by
+    // cudaMallocFromPoolAsync is usable by any subsequent default-stream
+    // operation without an explicit cudaStreamSynchronize.
+    return self.AllocInternal(size, kDefaultStream);
+  }
+  ORT_CATCH(...) {
     return nullptr;
   }
+  return nullptr;
 }
 
 /*static*/
 void* ORT_API_CALL CudaMempoolOrtAllocator::AllocOnStreamImpl(OrtAllocator* this_, size_t size,
                                                               OrtSyncStream* stream) noexcept {
   if (size == 0) return nullptr;
-  try {
+  ORT_TRY {
     auto& self = *static_cast<CudaMempoolOrtAllocator*>(this_);
     cudaStream_t s = self.ResolveCudaStream(stream);
     return self.AllocInternal(size, s);
-  } catch (...) {
+  }
+  ORT_CATCH(...) {
     return nullptr;
   }
+  return nullptr;
 }
 
 /*static*/
 void ORT_API_CALL CudaMempoolOrtAllocator::FreeImpl(OrtAllocator* this_, void* p) noexcept {
   if (!p) return;
-  try {
+  ORT_TRY {
     auto& self = *static_cast<CudaMempoolOrtAllocator*>(this_);
 
     cudaStream_t s = static_cast<cudaStream_t>(0);
@@ -257,7 +271,8 @@ void ORT_API_CALL CudaMempoolOrtAllocator::FreeImpl(OrtAllocator* this_, void* p
       LogMessage(self.ort_api_, self.logger_, ORT_LOGGING_LEVEL_WARNING,
                  "CudaMempoolOrtAllocator::Free: cudaFreeAsync failed.");
     }
-  } catch (...) {
+  }
+  ORT_CATCH(...) {
     // Swallow: exceptions must not propagate across C ABI boundary.
   }
 }
@@ -278,7 +293,7 @@ const OrtMemoryInfo* ORT_API_CALL CudaMempoolOrtAllocator::InfoImpl(
 /*static*/
 OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::GetStatsImpl(
     const OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
-  try {
+  ORT_TRY {
     const auto& self = *static_cast<const CudaMempoolOrtAllocator*>(this_);
 
     OrtKeyValuePairs* kvps = nullptr;
@@ -297,13 +312,22 @@ OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::GetStatsImpl(
     stats.ToKeyValuePairs(self.ort_api_, kvps);
     *out = kvps;
     return nullptr;
-  } catch (const std::exception& ex) {
-    return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
-  } catch (...) {
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+  ORT_CATCH(...) {
     return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
                                       "CudaMempoolOrtAllocator::GetStats failed.");
   }
+  return nullptr;  // required for ORT_NO_EXCEPTIONS
 }
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 }  // namespace cuda_plugin
 }  // namespace onnxruntime

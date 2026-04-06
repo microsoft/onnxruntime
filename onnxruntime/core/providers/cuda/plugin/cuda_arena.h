@@ -27,13 +27,14 @@ limitations under the License.
 #include <mutex>
 #include <set>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "cuda_allocator_plugin.h"
+
+#include "core/common/common.h"
 
 #if defined(PLATFORM_WINDOWS) || defined(_WIN32)
 #include <intrin.h>
@@ -111,41 +112,60 @@ struct ArenaConfig {
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialChunkSizeBytes); value) {
-      try {
+      ORT_TRY {
         config.initial_chunk_size_bytes = std::stoi(std::string(value));
-      } catch (const std::exception&) {
-        config.initial_chunk_size_bytes = -1;  // will fail IsValid()
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.initial_chunk_size_bytes = -1;  // will fail IsValid()
+        });
       }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxDeadBytesPerChunk); value) {
-      try {
+      ORT_TRY {
         config.max_dead_bytes_per_chunk = std::stoi(std::string(value));
-      } catch (const std::exception&) {
-        config.max_dead_bytes_per_chunk = -1;  // will fail IsValid()
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.max_dead_bytes_per_chunk = -1;  // will fail IsValid()
+        });
       }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialGrowthChunkSizeBytes); value) {
-      try {
+      ORT_TRY {
         config.initial_growth_chunk_size_bytes = std::stoi(std::string(value));
-      } catch (const std::exception&) {
-        config.initial_growth_chunk_size_bytes = -1;  // will fail IsValid()
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.initial_growth_chunk_size_bytes = -1;  // will fail IsValid()
+        });
       }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxPowerOfTwoExtendBytes); value) {
-      try {
+      ORT_TRY {
         config.max_power_of_two_extend_bytes = std::stoll(value);
-      } catch (const std::exception&) {
-        config.max_power_of_two_extend_bytes = -1;  // will fail IsValid()
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.max_power_of_two_extend_bytes = -1;  // will fail IsValid()
+        });
       }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxMem); value) {
-      size_t parsed = static_cast<size_t>(std::stoull(std::string(value)));
-      // Treat 0 as unlimited — avoids arithmetic issues and silent allocation failures.
-      config.max_mem = (parsed == 0) ? std::numeric_limits<size_t>::max() : parsed;
+      ORT_TRY {
+        size_t parsed = static_cast<size_t>(std::stoull(std::string(value)));
+        // Treat 0 as unlimited — avoids arithmetic issues and silent allocation failures.
+        config.max_mem = (parsed == 0) ? std::numeric_limits<size_t>::max() : parsed;
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.max_mem = 0;  // will fail IsValid()
+        });
+      }
     }
 
     return config;
@@ -154,14 +174,14 @@ struct ArenaConfig {
 
 // Macros used by ArenaImpl (adapted from plugin_ep_utils.h for CUDA plugin namespace).
 
-#define CUDA_ARENA_ENFORCE(condition, ...)                \
-  do {                                                    \
-    if (!(condition)) {                                   \
-      std::ostringstream oss;                             \
-      oss << "CUDA_ARENA_ENFORCE failed: " << #condition; \
-      oss << " " << __VA_ARGS__;                          \
-      throw std::runtime_error(oss.str());                \
-    }                                                     \
+#define CUDA_ARENA_ENFORCE(condition, ...)               \
+  do {                                                   \
+    if (!(condition)) {                                  \
+      std::ostringstream oss;                            \
+      oss << "CUDA_ARENA_ENFORCE failed: " << #condition \
+          << " " << __VA_ARGS__;                         \
+      ORT_THROW(oss.str());                              \
+    }                                                    \
   } while (false)
 
 #define CUDA_ARENA_LOG(level, ...)                                                                         \
@@ -542,49 +562,65 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
   }
 
   OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
-    try {
+    ORT_TRY {
       return impl_->ResetChunksUsingStream(stream_impl);
-    } catch (const std::exception& ex) {
-      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
-    } catch (...) {
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH(...) {
       return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
                                         "CudaArenaAllocator::ResetChunksUsingStream failed with an unknown exception.");
     }
+    return nullptr;  // required for ORT_NO_EXCEPTIONS
   }
 
  private:
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 4702)  // unreachable code — required for ORT_NO_EXCEPTIONS builds
+#endif
   static void* ORT_API_CALL AllocImpl(OrtAllocator* this_, size_t size) noexcept {
-    try {
+    ORT_TRY {
       auto& arena = *static_cast<CudaArenaAllocator*>(this_);
       return arena.impl_->Alloc(size);
-    } catch (...) {
+    }
+    ORT_CATCH(...) {
       return nullptr;
     }
+    return nullptr;
   }
 
   static void* ORT_API_CALL AllocOnStreamImpl(OrtAllocator* this_, size_t size, OrtSyncStream* stream) noexcept {
-    try {
+    ORT_TRY {
       auto& arena = *static_cast<CudaArenaAllocator*>(this_);
       return arena.impl_->AllocOnStream(size, stream);
-    } catch (...) {
+    }
+    ORT_CATCH(...) {
       return nullptr;
     }
+    return nullptr;
   }
 
   static void* ORT_API_CALL ReserveImpl(OrtAllocator* this_, size_t size) noexcept {
-    try {
+    ORT_TRY {
       auto& arena = *static_cast<CudaArenaAllocator*>(this_);
       return arena.impl_->Reserve(size);
-    } catch (...) {
+    }
+    ORT_CATCH(...) {
       return nullptr;
     }
+    return nullptr;
   }
 
   static void ORT_API_CALL FreeImpl(OrtAllocator* this_, void* p) noexcept {
-    try {
+    ORT_TRY {
       auto& arena = *static_cast<CudaArenaAllocator*>(this_);
       arena.impl_->Free(p);
-    } catch (...) {
+    }
+    ORT_CATCH(...) {
       // Swallow: exceptions must not propagate across C ABI boundary.
     }
   }
@@ -595,16 +631,24 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
   }
 
   static OrtStatus* ORT_API_CALL GetStatsImpl(const OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
-    try {
+    ORT_TRY {
       const auto& arena = *static_cast<const CudaArenaAllocator*>(this_);
       return arena.impl_->GetStats(out);
-    } catch (const std::exception& ex) {
-      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
-    } catch (...) {
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH(...) {
       return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
                                         "CudaArenaAllocator::GetStats failed with an unknown exception.");
     }
+    return nullptr;  // required for ORT_NO_EXCEPTIONS
   }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
   std::unique_ptr<ArenaImpl> impl_;
 };

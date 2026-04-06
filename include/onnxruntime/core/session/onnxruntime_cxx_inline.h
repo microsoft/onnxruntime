@@ -225,6 +225,17 @@ inline void* AllocatorImpl<T>::Alloc(size_t size) {
 }
 
 template <typename T>
+inline void* AllocatorImpl<T>::Reserve(size_t size) {
+  if (this->p_->Reserve) {
+    return this->p_->Reserve(this->p_, size);
+  }
+  // Fallback: allocators without Reserve behave like Alloc.
+  void* out;
+  ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));
+  return out;
+}
+
+template <typename T>
 inline MemoryAllocation AllocatorImpl<T>::GetAllocation(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));

@@ -405,10 +405,11 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
         continue;
       }
 
-      try {
+      ORT_TRY {
         value = std::stoi(*raw_value);
         return;
-      } catch (const std::exception&) {
+      }
+      ORT_CATCH(const std::exception&) {
       }
 
       const auto normalized = ToUpper(*raw_value);
@@ -437,7 +438,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
         continue;
       }
 
-      try {
+      ORT_TRY {
         int parsed = std::stoi(*raw_value);
         if (parsed < 0) {
           log_invalid_session_config(key, "a non-negative integer");
@@ -446,7 +447,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
 
         value = parsed;
         return;
-      } catch (const std::exception&) {
+      }
+      ORT_CATCH(const std::exception&) {
       }
 
       log_invalid_session_config(key, "a non-negative integer");
