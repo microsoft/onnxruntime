@@ -10,6 +10,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/testdata/deform_conv_test_data.inc"
 #include "test/unittest_util/conversion.h"
+#include <type_traits>
 
 #if defined(USE_CUDA)
 #include "test/common/cuda_op_test_utils.h"
@@ -111,14 +112,6 @@ void RunDeformConvTest(const DeformConvTestParams& params,
                             params.stride[1] +
                         1;
 
-  OpTester test("DeformConv", opset);
-  test.AddAttribute("kernel_shape", params.kernel_shape);
-  test.AddAttribute("strides", params.stride);
-  test.AddAttribute("pads", params.pad);
-  test.AddAttribute("dilations", params.dilation);
-  test.AddAttribute("group", params.n_weight_grps);
-  test.AddAttribute("offset_group", params.n_offset_grps);
-
   const std::vector<int64_t> X_shape = {params.batch_sz, params.n_in_channels, params.in_h, params.in_w};
   const std::vector<int64_t> W_shape = {params.n_out_channels, params.n_in_channels / params.n_weight_grps, kH, kW};
   const std::vector<int64_t> offset_shape = {params.batch_sz, params.n_offset_grps * 2 * kH * kW, out_h, out_w};
@@ -129,27 +122,58 @@ void RunDeformConvTest(const DeformConvTestParams& params,
   auto offset_t = DeformConvTestTraits<T>::Convert(offset);
   auto expected_Y_t = DeformConvTestTraits<T>::Convert(expected_Y);
 
-  test.AddInput<T>("X", X_shape, X_t);
-  test.AddInput<T>("W", W_shape, W_t);
-  test.AddInput<T>("offset", offset_shape, offset_t);
-  if (omit_bias) {
-    test.AddOptionalInputEdge<T>();
-  } else {
-    auto B_t = DeformConvTestTraits<T>::Convert(B);
-    test.AddInput<T>("B", {params.n_out_channels}, B_t);
-  }
-  if (mask != nullptr) {
-    const std::vector<int64_t> mask_shape = {params.batch_sz, params.n_offset_grps * kH * kW, out_h, out_w};
-    test.AddInput<T>("mask", mask_shape, DeformConvTestTraits<T>::Convert(*mask));
-  } else {
-    test.AddOptionalInputEdge<T>();
-  }
-
   const float rtol_f = static_cast<float>(rtol);
   const float atol_f = static_cast<float>(atol);
-  test.AddOutput<T>("Y", Y_shape, expected_Y_t, false, rtol_f, atol_f);
+  auto run_once = [&](bool force_cuda) {
+    OpTester test("DeformConv", opset);
+    test.AddAttribute("kernel_shape", params.kernel_shape);
+    test.AddAttribute("strides", params.stride);
+    test.AddAttribute("pads", params.pad);
+    test.AddAttribute("dilations", params.dilation);
+    test.AddAttribute("group", params.n_weight_grps);
+    test.AddAttribute("offset_group", params.n_offset_grps);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", DeformConvTestTraits<T>::ExcludedProviders());
+    test.AddInput<T>("X", X_shape, X_t);
+    test.AddInput<T>("W", W_shape, W_t);
+    test.AddInput<T>("offset", offset_shape, offset_t);
+    if (omit_bias) {
+      test.AddOptionalInputEdge<T>();
+    } else {
+      auto B_t = DeformConvTestTraits<T>::Convert(B);
+      test.AddInput<T>("B", {params.n_out_channels}, B_t);
+    }
+    if (mask != nullptr) {
+      const std::vector<int64_t> mask_shape = {params.batch_sz, params.n_offset_grps * kH * kW, out_h, out_w};
+      test.AddInput<T>("mask", mask_shape, DeformConvTestTraits<T>::Convert(*mask));
+    } else {
+      test.AddOptionalInputEdge<T>();
+    }
+    test.AddOutput<T>("Y", Y_shape, expected_Y_t, false, rtol_f, atol_f);
+
+    if (!force_cuda) {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", DeformConvTestTraits<T>::ExcludedProviders());
+      return;
+    }
+
+#if defined(USE_CUDA)
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (cuda_ep) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.emplace_back(std::move(cuda_ep));
+      test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+    }
+#endif
+  };
+
+  // Keep existing behavior first (typically CPU for float/double, CUDA for half/bfloat16).
+  run_once(false);
+
+#if defined(USE_CUDA)
+  // For types supported by both CPU and CUDA, additionally force a CUDA-only run.
+  if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+    run_once(true);
+  }
+#endif
 }
 
 // MinimalBilinear test: 1x1 kernel, 2x2 input, one output position with fractional offset (bilinear).
@@ -889,6 +913,47 @@ TEST(DeformConvTest, PrimeBatchSizeSeven) {
   std::vector<float> expected_Y(y_size, 0.04f);
 
   RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// CUDA chunking regression guard:
+// - Keep bytes_per_image tiny so target_parallel_imgs hits kMaxParallelImgs(32) on all CUDA devices.
+// - N=993 -> balanced chunk size k=32 and final tail chunk size 1 (after many 32-sized chunks).
+// - group=2 exercises cur_parallel==1 grouped GEMM path where per-group col stride must use cur_out_size.
+TEST(DeformConvTest, ChunkTailOneWithGroups) {
+  const int64_t N = 993;
+  DeformConvTestParams p = {};
+  p.batch_sz = N;
+  p.n_in_channels = 2;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 2;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 1};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 1;
+  p.in_w = 1;
+
+  // X shape [N, 2, 1, 1]. Make each batch element distinct so stale reads are unlikely to pass by chance.
+  std::vector<float> X(static_cast<size_t>(N * p.n_in_channels), 0.f);
+  for (int64_t n = 0; n < N; ++n) {
+    X[static_cast<size_t>(n * 2)] = static_cast<float>(n + 1);         // group 0 input
+    X[static_cast<size_t>(n * 2 + 1)] = static_cast<float>(1000 + n);  // group 1 input
+  }
+
+  // W shape [2, 1, 1, 1]: identity mapping per group.
+  std::vector<float> W = {1.f, 1.f};
+  // offset shape [N, 2, 1, 1] for k=1, offset_group=1. Zero offset => regular sampling.
+  std::vector<float> offset(static_cast<size_t>(N * 2), 0.f);
+
+  // Expected Y shape [N, 2, 1, 1].
+  std::vector<float> expected_Y(static_cast<size_t>(N * p.n_out_channels), 0.f);
+  for (int64_t n = 0; n < N; ++n) {
+    expected_Y[static_cast<size_t>(n * 2)] = static_cast<float>(n + 1);
+    expected_Y[static_cast<size_t>(n * 2 + 1)] = static_cast<float>(1000 + n);
+  }
+
+  RunDeformConvTest<float>(p, X, W, offset, {} /* B unused */, nullptr, expected_Y, 19, 1e-5f, 1e-5f, true);
 }
 
 // 7x7 kernel with 9x9 input -> 3x3 output: exercises compile-time kH=kW=7 CUDA im2col specialization.

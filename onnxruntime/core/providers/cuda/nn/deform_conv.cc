@@ -234,7 +234,9 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     // directly into NCHW Y (strideC = M * output_image_size), avoiding a temp buffer + scatter kernel.
 
     if (cur_parallel == 1) {
-      const int64_t stride_col = kernel_dim * col_stride;
+      // col_buffer is packed per iteration with the current chunk width (cur_out_size).
+      // Using outer-scope col_stride (based on n_parallel_imgs) breaks one-image tail chunks when group > 1.
+      const int64_t stride_col = kernel_dim * cur_out_size;
       const int64_t stride_weight = (M / group) * kernel_dim;
       const int64_t stride_y = (M / group) * output_image_size;
       CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
