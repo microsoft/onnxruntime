@@ -277,7 +277,6 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
     auto& c = variants[i];
     if (MatchesVariant(c, ep_info)) {
       candidate_indices_set.insert(i);
-      break;
     }
   }
 

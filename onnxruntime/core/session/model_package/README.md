@@ -102,7 +102,7 @@ Notes:
             "model_variants": {
                 <variant_1>: {
                     "model_type": "onnx",
-                    "file": "model_ctx.onnx",
+                    "model_file": "model_ctx.onnx",
                     "constraints": {
                         "ep": "TensorrtExecutionProvider",
                         "ep_compatibility_info": "device=gpu,npu;cuda_driver_version_support=..."
@@ -110,7 +110,7 @@ Notes:
                 },
                 <variant_2>: {
                     "model_type": "onnx",
-                    "file": "model_ctx.onnx",
+                    "model_file": "model_ctx.onnx",
                     "constraints": {
                         "ep": "OpenVINOExecutionProvider",
                         "device": "cpu",
@@ -150,7 +150,7 @@ Schema:
     "model_variants": {
         <variant_1>: {
             "model_type": "onnx",
-            "file": "model_ctx.onnx",
+            "model_file": "model_ctx.onnx",
             "constraints": {
                 "ep": "TensorrtExecutionProvider",
                 "ep_compatibility_info": "device=gpu,npu;cuda_driver_version_support=..."
@@ -158,7 +158,7 @@ Schema:
         },
         <variant_2>: {
             "model_type": "onnx",
-            "file": "model_ctx.onnx",
+            "model_file": "model_ctx.onnx",
              "constraints": {
                  "ep": "OpenVINOExecutionProvider",
                  "device": "cpu",

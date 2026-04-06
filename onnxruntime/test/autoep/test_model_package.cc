@@ -727,15 +727,29 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_EQ(variants.size(), 2u);
 
-  EXPECT_EQ(variants[0].model_path.filename().string(), "mul_1.onnx");
-  EXPECT_EQ(variants[0].ep, "example_ep");
-  EXPECT_EQ(variants[0].device, "cpu");
-  EXPECT_EQ(variants[0].architecture, "arch1");
+  bool found_mul_1 = false;
+  bool found_mul_16 = false;
 
-  EXPECT_EQ(variants[1].model_path.filename().string(), "mul_16.onnx");
-  EXPECT_EQ(variants[1].ep, "example_ep");
-  EXPECT_EQ(variants[1].device, "npu");
-  EXPECT_EQ(variants[1].architecture, "arch2");
+  for (const auto& variant : variants) {
+    const auto file_name = variant.model_path.filename().string();
+
+    if (file_name == "mul_1.onnx") {
+      found_mul_1 = true;
+      EXPECT_EQ(variant.ep, "example_ep");
+      EXPECT_EQ(variant.device, "cpu");
+      EXPECT_EQ(variant.architecture, "arch1");
+    } else if (file_name == "mul_16.onnx") {
+      found_mul_16 = true;
+      EXPECT_EQ(variant.ep, "example_ep");
+      EXPECT_EQ(variant.device, "npu");
+      EXPECT_EQ(variant.architecture, "arch2");
+    } else {
+      FAIL() << "Unexpected model variant file: " << file_name;
+    }
+  }
+
+  EXPECT_TRUE(found_mul_1);
+  EXPECT_TRUE(found_mul_16);
 
   std::filesystem::remove_all(package_root, ec);
 }
