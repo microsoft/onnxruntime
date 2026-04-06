@@ -18,7 +18,7 @@ class Attention final : public CudaKernel {
   Status RunFlashAttention(
       OpKernelContext* context,
       const Tensor* Q, const Tensor* K, const Tensor* V,
-      const Tensor* attn_mask, const Tensor* past_key, const Tensor* past_value,
+      const Tensor* past_key, const Tensor* past_value,
       const Tensor* nonpad_kv_seqlen,
       Tensor* Y, Tensor* present_key, Tensor* present_value,
       const attention_helper::AttentionParameters& parameters) const;
