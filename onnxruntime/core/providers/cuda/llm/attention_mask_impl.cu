@@ -7,144 +7,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-// CUDA kernel to convert boolean attention mask to sequence lengths.
-// Also validates that the mask follows right-padding convention.
-//
-// The kernel processes one batch per thread.
-// For each batch, it finds the first False in the mask row, which indicates
-// where padding starts. The sequence length is the index of first False.
-//
-// Validation:
-// - All-false masks are valid (represents fully masked / zero-length sequence)
-// - After the first False, all remaining elements must be False (contiguous padding)
-// - CUDA_KERNEL_ASSERT fires in debug builds if mask is non-contiguous
-// - In release builds, non-contiguous masks produce safe output: seqlens_k is the
-//   count of leading True values (up to first False), ignoring later True values
-//
-// Handle broadcasting:
-// - 2D mask (q_seq_len, total_seq_len): broadcasts over batch; uses first query position (row 0)
-// - 3D mask (num_heads, q_seq_len, total_seq_len): broadcasts to [1, num_heads, q_seq, total_seq]
-//   No per-batch variation; uses first head, first q position for all batches
-// - 4D mask (B, H, q_seq_len, total_seq_len): we look at first head, first q position
-__global__ void ConvertMaskToSeqlensKernel(
-    const bool* __restrict__ attn_mask,
-    int* __restrict__ seqlens_k,
-    const int batch_size,
-    const int total_seq_len,
-    const int mask_dims,
-    const int64_t mask_dim0,
-    const int64_t mask_dim1,
-    const int64_t mask_dim2,
-    const int seqlen_offset) {
-  int batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
-  if (batch_idx >= batch_size) {
-    return;
-  }
-
-  // Calculate the starting offset for this batch's mask row
-  // We need to figure out which row of the mask to use based on broadcasting rules
-  const bool* mask_row = nullptr;
-
-  if (mask_dims == 2) {
-    // Shape: (q_seq_len, total_seq_len) per ONNX spec. Broadcasts over batch.
-    // Use first query position (row 0) for sequence length determination.
-    // For 2D masks [q_seq, total_seq], only used in decode path where q_seq=1,
-    // so row 0 is always correct. Flash excludes 2D bool masks for prompt.
-    mask_row = attn_mask;
-  } else if (mask_dims == 3) {
-    // Shape: (num_heads, q_seq_len, total_seq_len)
-    // This broadcasts to [1, num_heads, q_seq, total_seq] - same mask for all batches
-    // We look at first head (h_idx = 0) and first q position (q_idx = 0)
-    int h_idx = 0;  // First head
-    int q_idx = 0;  // First query position
-    // Stride: q_seq_len * total_seq_len per head
-    int64_t head_stride = mask_dim1 * total_seq_len;  // mask_dim1 = q_seq_len
-    int64_t q_stride = total_seq_len;
-    // Same mask row for all batches since 3D has no batch dimension
-    mask_row = attn_mask + h_idx * head_stride + q_idx * q_stride;
-  } else {
-    // 4D: Shape (B, H, q_seq_len, total_seq_len)
-    // B could be batch_size or 1 (broadcast)
-    // H could be num_heads or 1 (broadcast)
-    // We look at first head (h_idx = 0) and first q position (q_idx = 0)
-    int effective_batch = (mask_dim0 == 1) ? 0 : batch_idx;
-    int h_idx = 0;  // First head
-    int q_idx = 0;  // First query position
-    // Strides
-    int64_t batch_stride = mask_dim1 * mask_dim2 * total_seq_len;
-    int64_t head_stride = mask_dim2 * total_seq_len;
-    int64_t q_stride = total_seq_len;
-    mask_row = attn_mask + effective_batch * batch_stride + h_idx * head_stride + q_idx * q_stride;
-  }
-
-  // Find the first False (where padding starts)
-  // All elements before first False must be True, all after must be False (right-padding convention)
-  int seq_len;
-  if (!mask_row[0]) {
-    // Entire row is padding (all-false mask)
-    seq_len = 0;
-  } else {
-    seq_len = total_seq_len;  // Default: all True (no padding)
-    bool found_first_false = false;
-
-    for (int i = 1; i < total_seq_len; ++i) {
-      bool current = mask_row[i];
-
-      if (!found_first_false && !current) {
-        // Found first False - this is where padding starts
-        seq_len = i;
-        found_first_false = true;
-      } else if (found_first_false && current) {
-        // Found True after False - mask is not contiguous (invalid)
-        CUDA_KERNEL_ASSERT(false);  // mask must be contiguous (no True after False)
-        break;                      // Safe: seq_len already reflects leading-True count
-      }
-    }
-  }
-
-  // seqlens_k output: seq_len + seqlen_offset
-  // Decode with past (seqlen_offset=-kv_seq_len): pre-append cache count
-  // Prompt/MEA (seqlen_offset=0): actual token count
-  // Clamp to 0: all-false mask (seq_len=0) with negative decode offset
-  // would produce negative seqlens_k, which is undefined in Flash kernels.
-  seqlens_k[batch_idx] = max(0, seq_len + seqlen_offset);
-}
-
-// Convert boolean mask to sequence lengths with a configurable offset.
-// seqlens_k[b] = num_true_tokens + seqlen_offset
-Status LaunchConvertMaskToFlashSeqlensK(
-    const bool* attn_mask_bool,
-    int* seqlens_k,
-    int batch_size,
-    int total_seq_len,
-    int mask_dims,
-    int64_t mask_dim0,
-    int64_t mask_dim1,
-    int64_t mask_dim2,
-    cudaStream_t stream,
-    int max_threads_per_block,
-    int seqlen_offset) {
-  if (batch_size == 0 || total_seq_len == 0) {
-    return Status::OK();
-  }
-
-  int threads = std::min(batch_size, max_threads_per_block);
-  int blocks = (batch_size + threads - 1) / threads;
-
-  ConvertMaskToSeqlensKernel<<<blocks, threads, 0, stream>>>(
-      attn_mask_bool,
-      seqlens_k,
-      batch_size,
-      total_seq_len,
-      mask_dims,
-      mask_dim0,
-      mask_dim1,
-      mask_dim2,
-      seqlen_offset);
-
-  return CUDA_CALL(cudaGetLastError());
-}
-
 template <typename T>
 __global__ void ConvertBoolMaskToAttentionBiasKernel(
     const bool* __restrict__ attn_mask,
@@ -327,6 +189,58 @@ Status LaunchAddBiasInPlace(
 template Status LaunchAddBiasInPlace<float>(float*, const float*, int64_t, int64_t, cudaStream_t, int);
 template Status LaunchAddBiasInPlace<__half>(__half*, const __half*, int64_t, int64_t, cudaStream_t, int);
 template Status LaunchAddBiasInPlace<__nv_bfloat16>(__nv_bfloat16*, const __nv_bfloat16*, int64_t, int64_t, cudaStream_t, int);
+
+// Zero output elements for batches where seqlens_k == 0 (fully masked).
+// CUTLASS MEA epilogue computes 1/s_prime where s_prime=0 → NaN for fully-masked
+// batches. The unfused path produces uniform softmax weights (finite mask_filter_value,
+// not -inf) so output is valid but non-zero; we still zero for Flash parity.
+// Flash handles this natively with an early-exit for empty sequences.
+template <typename T>
+__global__ void ZeroOutputForFullyMaskedBatchesKernel(
+    T* __restrict__ output,
+    const int* __restrict__ seqlens_k,
+    const int batch_size,
+    const int64_t elements_per_batch) {
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  int64_t total = static_cast<int64_t>(batch_size) * elements_per_batch;
+  for (; idx < total; idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    int b = static_cast<int>(idx / elements_per_batch);
+    if (seqlens_k[b] == 0) {
+      output[idx] = T(0.0f);
+    }
+  }
+}
+
+template <typename T>
+Status LaunchZeroOutputForFullyMaskedBatches(
+    T* output,
+    const int* seqlens_k,
+    int batch_size,
+    int64_t elements_per_batch,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  int64_t total = static_cast<int64_t>(batch_size) * elements_per_batch;
+  if (total == 0) {
+    return Status::OK();
+  }
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), total));
+  int64_t blocks = (total + threads - 1) / threads;
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  ZeroOutputForFullyMaskedBatchesKernel<T><<<grid_size, threads, 0, stream>>>(
+      output, seqlens_k, batch_size, elements_per_batch);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchZeroOutputForFullyMaskedBatches<float>(
+    float*, const int*, int, int64_t, cudaStream_t, int);
+template Status LaunchZeroOutputForFullyMaskedBatches<__half>(
+    __half*, const int*, int, int64_t, cudaStream_t, int);
+template Status LaunchZeroOutputForFullyMaskedBatches<__nv_bfloat16>(
+    __nv_bfloat16*, const int*, int, int64_t, cudaStream_t, int);
 
 // Simple kernel to fill an int32 buffer with a constant value on device.
 // Used for CUDA-graph-capturable seqlens_k initialization (no host memory).

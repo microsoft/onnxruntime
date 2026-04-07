@@ -15,6 +15,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.BitmaskBiasDropout">com.microsoft.BitmaskBiasDropout</a>
   * <a href="#com.microsoft.BitmaskDropout">com.microsoft.BitmaskDropout</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
+  * <a href="#com.microsoft.CausalConvWithState">com.microsoft.CausalConvWithState</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
@@ -49,6 +50,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GroupQueryAttention">com.microsoft.GroupQueryAttention</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
+  * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
@@ -897,6 +899,68 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double)</dt>
 <dd>Constrains input to only numeric types.</dd>
+</dl>
+
+
+### <a name="com.microsoft.CausalConvWithState"></a><a name="com.microsoft.causalconvwithstate">**com.microsoft.CausalConvWithState**</a>
+
+  Stateful causal depthwise convolution, generalized to N spatial dimensions.
+  
+  Used by Gated DeltaNet (Qwen3.5) and Mamba (Jamba, FalconMamba) as a preprocessing step.
+  Replaces the 3-op pattern (Concat + Conv + Slice) with a single fused operation.
+  
+  The convolution is causal (looks only at current and past positions along the last
+  spatial dimension) and depthwise (each channel is convolved independently with its own kernel).
+  
+  Input layout is channels-first: (batch_size, channels, ...).
+  Weight layout: (channels, 1, k_1, ...) for depthwise convolution.
+  The carry state stores the last (k-1) positions along the causal axis for incremental decode.
+  
+  The ndim attribute generalizes the op to 1D, 2D, or 3D spatial dimensions. Causality is
+  enforced on the last spatial dimension only.
+  
+  The optional activation attribute supports fused SiLU/Swish activation.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>ndim</tt> : int</dt>
+<dd>Spatial dimensionality: 1, 2, or 3. Default is 1.</dd>
+</dl>
+
+#### Inputs (2 - 4)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (batch_size, channels, ...). Channels-first layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W).</dd>
+<dt><tt>weight</tt> : T</dt>
+<dd>Depthwise convolution kernel with shape (channels, 1, k_1, ...). Spatial kernel sizes: (k_1, ..., k_ndim).</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional per-channel bias with shape (channels).</dd>
+<dt><tt>past_state</tt> (optional) : T</dt>
+<dd>Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1). If not provided, padding is zero.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Convolution output with same shape as input.</dd>
+<dt><tt>present_state</tt> : T</dt>
+<dd>Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1). Contains the last (k-1) values from the virtual input along the causal axis.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
 
@@ -2700,6 +2764,79 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.LinearAttention"></a><a name="com.microsoft.linearattention">**com.microsoft.LinearAttention**</a>
+
+  Unified linear attention operator for autoregressive decoding (T=1) and prefill (T>1).
+  
+  All inputs use 3D packed format [B, T, H*D]; q_num_heads and kv_num_heads are always
+  required. The op internally unpacks to 4D for computation.
+  
+  The update_rule attribute selects the recurrence type:
+  - "linear": S_t = S_{t-1} + k_t ⊗ v_t; o_t = scale * q_t^T S_t
+  - "gated": S_t = exp(g_t) * S_{t-1} + k_t ⊗ v_t; o_t = scale * q_t^T S_t
+  - "delta": S_t = S_{t-1} + β_t * k_t ⊗ (v_t - S_{t-1}^T k_t); o_t = scale * q_t^T S_t
+  - "gated_delta": S_t = exp(g_t) * S_{t-1} + β_t * k_t ⊗ (v_t - exp(g_t) * S_{t-1}^T k_t); o_t = scale * q_t^T S_t
+  
+  where g_t is the decay (in log-space), β_t is the update rate, and ⊗ denotes outer product.
+  
+  Semantics: Equivalent to running the recurrent update sequentially for each token,
+  but may be implemented using chunk-parallel algorithms for GPU efficiency.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>chunk_size</tt> : int</dt>
+<dd>Chunk size for the chunk-parallel WY decomposition during prefill (T>1). Tuning hint; does not affect output correctness.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of key/value heads. Always required.</dd>
+<dt><tt>q_num_heads</tt> : int (required)</dt>
+<dd>Number of query heads. Always required.</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Output scaling factor. When 0.0 (default), derives d_k = query.shape[-1] / q_num_heads and uses 1/sqrt(d_k). Set explicitly to override.</dd>
+<dt><tt>update_rule</tt> : string</dt>
+<dd>The update rule for the linear attention recurrence. One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
+</dl>
+
+#### Inputs (3 - 6)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query vectors with 3D packed shape (B, T, H_q * d_k). Heads are packed into the last dimension.</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Key vectors with 3D packed shape (B, T, H_kv * d_k). Should be L2-normalized for delta/gated_delta modes.</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Value vectors with 3D packed shape (B, T, H_kv * d_v).</dd>
+<dt><tt>past_state</tt> (optional) : S</dt>
+<dd>Recurrent state from previous step with shape (B, H_kv, d_k, d_v). Always 4D. If not provided, defaults to zeros.</dd>
+<dt><tt>decay</tt> (optional) : T</dt>
+<dd>Exponential decay gate in log-space. 3D packed shape: (B, T, H_kv * d_k) for per-key-dimension decay (GLA/RWKV-6), or (B, T, H_kv) for per-head scalar decay (DeltaNet/RetNet). Required for 'gated' and 'gated_delta' modes.</dd>
+<dt><tt>beta</tt> (optional) : T</dt>
+<dd>Update rate (sigmoid output). 3D packed shape: (B, T, H_kv) or (B, T, 1). Required for 'delta' and 'gated_delta' modes.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Attention output with 3D packed shape (B, T, H_q * d_v).</dd>
+<dt><tt>present_state</tt> : S</dt>
+<dd>Updated recurrent state with shape (B, H_kv, d_k, d_v). Always 4D.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>S</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain state types to float tensors.</dd>
 </dl>
 
 

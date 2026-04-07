@@ -143,9 +143,21 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--std c++20>"
     "$<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr;-Xcudafe;--diag_suppress=550>"
     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=2810>"
-    "$<$<COMPILE_LANGUAGE:CXX>:-include;${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
-    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
 )
+
+# Force-include adapter headers for CXX files.
+# MSVC uses /FI; GCC/Clang use -include.
+if (MSVC)
+    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:/FI \"${REPO_ROOT}/include/onnxruntime/ep/adapters.h\">"
+        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:/FI \"${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h\">"
+    )
+else()
+    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
+        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
+    )
+endif()
 
 if (MSVC)
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE

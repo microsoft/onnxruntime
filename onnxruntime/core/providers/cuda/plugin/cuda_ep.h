@@ -55,6 +55,12 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
       OrtEp* this_ptr, const char* domain, const char* op_type,
       OrtEpDataLayout target_data_layout, int* should_convert) noexcept;
 
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(
+      OrtEp* this_ptr, const OrtMemoryDevice* memory_device,
+      OrtSyncStreamImpl** stream) noexcept;
+
+  static OrtStatus* ORT_API_CALL SyncImpl(OrtEp* this_ptr) noexcept;
+
   CudaEpFactory& factory_;
   std::string name_;
   Config config_;
