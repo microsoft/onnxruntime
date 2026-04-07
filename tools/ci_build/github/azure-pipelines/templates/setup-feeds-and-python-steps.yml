@@ -21,7 +21,7 @@ parameters:
 steps:
 - task: MavenAuthenticate@0
   inputs:
-    artifactFeeds: ${{ parameters.artifactFeeds }}
+    artifactsFeeds: ${{ parameters.artifactFeeds }}
 
 - task: PipAuthenticate@1
   displayName: 'Pip Authenticate'
