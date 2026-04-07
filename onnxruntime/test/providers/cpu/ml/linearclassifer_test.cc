@@ -126,6 +126,20 @@ TEST(MLOpTest, LinearClassifierBinaryWithLabels) {
   test.Run();
 }
 
+TEST(MLOpTest, LinearClassifierInvalidCoefficientsSize) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f, 0.f});
+  test.AddAttribute("classlabels_ints", std::vector<int64_t>{0, 1});
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients size");
+}
+
 template <typename T>
 void LinearClassifierMulticlass() {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);

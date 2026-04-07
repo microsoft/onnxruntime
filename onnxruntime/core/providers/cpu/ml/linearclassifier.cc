@@ -151,6 +151,9 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
   ptrdiff_t num_features = input_shape.NumDimensions() == 1 ? narrow<ptrdiff_t>(
                                                                   input_shape[0])
                                                             : narrow<ptrdiff_t>(input_shape[1]);
+  ORT_RETURN_IF_NOT(coefficients_.size() == static_cast<size_t>(class_count_) * static_cast<size_t>(num_features),
+                    "coefficients size (", coefficients_.size(), ") must equal class_count (", class_count_,
+                    ") * num_features (", num_features, ")");
 
   // Validate coefficients are large enough to prevent OOB read in GEMM.
   const size_t expected_coefficients_size = SafeInt<size_t>(class_count_) * SafeInt<size_t>(num_features);

@@ -193,7 +193,22 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                                   gsl::span<const float> x_data, const TensorShape& x_shape) const {
   concurrency::ThreadPool* threadpool = ctx.GetOperatorThreadPool();
 
-  const auto num_batches = SafeInt<int32_t>(x_shape.NumDimensions() == 1 ? 1 : x_shape[0]);
+  const auto input_rank = x_shape.NumDimensions();
+  ORT_RETURN_IF_NOT(input_rank > 0 && input_rank <= 2, "Input shape must have 1 or 2 dimensions. Dims=", input_rank);
+
+  const auto num_batches = SafeInt<int32_t>(input_rank == 1 ? 1 : x_shape[0]);
+  const ptrdiff_t num_features = input_rank == 1 ? narrow<ptrdiff_t>(x_shape[0])
+                                                 : narrow<ptrdiff_t>(x_shape[1]);
+  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0, "Invalid argument");
+  if (mode_ == SVM_TYPE::SVM_LINEAR) {
+    ORT_RETURN_IF_NOT(coefficients_.size() == static_cast<size_t>(class_count_) * static_cast<size_t>(num_features),
+                      "coefficients size (", coefficients_.size(), ") must equal class_count (", class_count_,
+                      ") * num_features (", num_features, ")");
+  } else {
+    ORT_RETURN_IF_NOT(support_vectors_.size() == static_cast<size_t>(vector_count_) * static_cast<size_t>(num_features),
+                      "support_vectors size (", support_vectors_.size(), ") must equal vector_count (", vector_count_,
+                      ") * num_features (", num_features, ")");
+  }
 
   // Total number of classifiers comparing pairs between the classes
   // e.g. if you have A, B C and D classes, the number of classifiers to compare between each pair is 6

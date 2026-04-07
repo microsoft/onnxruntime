@@ -33,9 +33,9 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
   if (vector_count_ > 0) {
     // Validate attribute array sizes against declared dimensions to prevent
     // out-of-bounds reads from crafted models.
-    ORT_ENFORCE(coefficients_.size() >= static_cast<size_t>(vector_count_),
+    ORT_ENFORCE(coefficients_.size() == static_cast<size_t>(vector_count_),
                 "SVMRegressor: coefficients size (", coefficients_.size(),
-                ") must be >= n_supports (", vector_count_, ")");
+                ") must equal n_supports (", vector_count_, ")");
     ORT_ENFORCE(!support_vectors_.empty(),
                 "SVMRegressor: support_vectors must not be empty when n_supports > 0");
     ORT_ENFORCE(support_vectors_.size() % static_cast<size_t>(vector_count_) == 0,
@@ -56,8 +56,12 @@ template <typename T>
 Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
 
-  ptrdiff_t num_features = X->Shape().NumDimensions() == 1 ? narrow<ptrdiff_t>(X->Shape()[0]) : narrow<ptrdiff_t>(X->Shape()[1]);
-  ptrdiff_t num_batches = X->Shape().NumDimensions() == 1 ? 1 : narrow<ptrdiff_t>(X->Shape()[0]);
+  const auto& x_shape = X->Shape();
+  const auto input_rank = x_shape.NumDimensions();
+  ORT_RETURN_IF_NOT(input_rank > 0 && input_rank <= 2, "Input shape must have 1 or 2 dimensions. Dims=", input_rank);
+
+  ptrdiff_t num_features = input_rank == 1 ? narrow<ptrdiff_t>(x_shape[0]) : narrow<ptrdiff_t>(x_shape[1]);
+  ptrdiff_t num_batches = input_rank == 1 ? 1 : narrow<ptrdiff_t>(x_shape[0]);
   ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0, "Invalid argument");
 
   // X: [num_batches, feature_count_] where features could be coefficients or support vectors
