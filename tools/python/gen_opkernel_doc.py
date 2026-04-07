@@ -58,7 +58,42 @@ def expand_providers(provider_filter: [str]):
     return providers
 
 
-def main(output_path: pathlib.Path, provider_filter: [str]):
+def load_plugin_ep_kernel_defs(plugin_eps):
+    """Register plugin EP libraries and return their kernel defs.
+
+    Args:
+        plugin_eps: list of "name:path" strings, e.g.
+            ["CudaPluginExecutionProvider:/path/to/lib.so"]
+
+    Returns:
+        list of KernelDef objects from the plugin EPs.
+    """
+    if not plugin_eps:
+        return []
+
+    import onnxruntime as ort  # noqa: PLC0415
+
+    defs = []
+    for spec in plugin_eps:
+        if ":" not in spec:
+            print(f"Warning: invalid --plugin-ep spec '{spec}' (expected NAME:PATH), skipping")
+            continue
+        ep_name, lib_path = spec.split(":", 1)
+        try:
+            ort.register_execution_provider_library(ep_name, lib_path)
+        except Exception as e:
+            if "already registered" not in str(e).lower():
+                print(f"Warning: failed to register plugin EP '{ep_name}': {e}")
+                continue
+        try:
+            defs.extend(rtpy.get_registered_ep_kernel_defs(ep_name))
+        except Exception as e:
+            print(f"Warning: failed to get kernel defs for plugin EP '{ep_name}': {e}")
+
+    return defs
+
+
+def main(output_path: pathlib.Path, provider_filter: [str], plugin_eps=None):
     providers = expand_providers(provider_filter)
 
     with open(output_path, "w", newline="", encoding="utf-8") as fout:
@@ -104,6 +139,13 @@ def main(output_path: pathlib.Path, provider_filter: [str]):
 
         index = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
         for op in rtpy.get_all_opkernel_def():
+            domain = op.domain
+            if not domain:
+                domain = "ai.onnx"
+            index[op.provider][domain][op.op_name].append(op)
+
+        # Include kernel defs from plugin EPs
+        for op in load_plugin_ep_kernel_defs(plugin_eps):
             domain = op.domain
             if not domain:
                 domain = "ai.onnx"
@@ -167,6 +209,14 @@ if __name__ == "__main__":
         "e.g. `--providers cpu cuda` will match CPUExecutionProvider and CUDAExecutionProvider.",
     )
     parser.add_argument(
+        "--plugin-ep",
+        nargs="+",
+        dest="plugin_eps",
+        help="Register plugin EP libraries and include their kernels. "
+        "Each entry is NAME:PATH, e.g. "
+        "'CudaPluginExecutionProvider:/path/to/libonnxruntime_providers_cuda_plugin.so'.",
+    )
+    parser.add_argument(
         "--output_path",
         help="output markdown file path",
         type=pathlib.Path,
@@ -175,4 +225,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(args.output_path, args.providers)
+    main(args.output_path, args.providers, args.plugin_eps)

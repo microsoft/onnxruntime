@@ -47,7 +47,9 @@ class MatMul<float> final : public OpKernel {
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                   int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
   Status Compute(OpKernelContext* context) const override;

@@ -605,7 +605,7 @@ void ApplyReshapeTransposeFusions(
         graph.GenerateNodeName("DQFusedMatMulNBits"),
         "MatMulNBits",
         "Fused from DQ+Reshape+Transpose+MatMul",
-        mnb_inputs, mnb_outputs, &mnb_attrs, kMSDomain);
+        mnb_inputs, mnb_outputs, *mm_node, &mnb_attrs, kMSDomain);
     mnb_node.SetExecutionProviderType(mm_node->GetExecutionProviderType());
 
     graph_utils::RemoveNodeOutputEdges(graph, *graph.GetNode(match.matmul_idx));
@@ -784,7 +784,7 @@ void ApplyDirectDQFusions(
         graph.GenerateNodeName("DirectDQFusedMatMulNBits"),
         "MatMulNBits",
         "Fused from direct DQ(axis=0)+MatMul",
-        mnb_inputs, mnb_outputs, &mnb_attrs, kMSDomain);
+        mnb_inputs, mnb_outputs, *mm_node, &mnb_attrs, kMSDomain);
     mnb_node.SetExecutionProviderType(mm_node->GetExecutionProviderType());
 
     graph_utils::RemoveNodeOutputEdges(graph, *graph.GetNode(match.matmul_idx));
