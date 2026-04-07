@@ -28,6 +28,7 @@ struct VariantConstraintsSchema {
 struct VariantSchema {
   std::optional<std::string> model_type;
   std::optional<std::string> model_file;
+  std::optional<std::string> model_id;
   std::optional<VariantConstraintsSchema> constraints;
 };
 
@@ -57,6 +58,7 @@ void from_json(const json& j, VariantConstraintsSchema& c) {
 void from_json(const json& j, VariantSchema& v) {
   if (j.contains(kModelTypeKey) && j[kModelTypeKey].is_string()) v.model_type = j[kModelTypeKey].get<std::string>();
   if (j.contains(kModelFileKey) && j[kModelFileKey].is_string()) v.model_file = j[kModelFileKey].get<std::string>();
+  if (j.contains(kModelIdKey) && j[kModelIdKey].is_string()) v.model_id = j[kModelIdKey].get<std::string>();
   if (j.contains(kConstraintsKey) && j[kConstraintsKey].is_object()) {
     v.constraints = j[kConstraintsKey].get<VariantConstraintsSchema>();
   }
@@ -120,12 +122,32 @@ void ApplyVariantConstraints(const VariantConstraintsSchema& c, ModelVariantInfo
   if (c.ep_compatibility_info.has_value()) variant.compatibility_info = *c.ep_compatibility_info;
 }
 
+std::string SanitizeModelIdForPath(std::string model_id) {
+  for (char& ch : model_id) {
+    switch (ch) {
+      case '<':
+      case '>':
+      case ':':
+      case '"':
+      case '/':
+      case '\\':
+      case '|':
+      case '?':
+      case '*':
+        ch = '_';
+        break;
+      default:
+        break;
+    }
+  }
+  return model_id;
+}
+
 }  // namespace
 
 // The package_root could be either a component model root (contains metadata.json) or a model package root (contains
 // manifest.json). The parsing logic will first check for metadata.json to see if it's a component model root, and if
-// not found, it will look for manifest.json to treat it as a model package root. This allows flexibility in how the
-// model package is structured.
+// not found, it will look for manifest.json to treat it as a model package root.
 //
 // This function parses information from manifest.json and/or metadata.json for the model variants from the same
 // component model, producing a unified list of ModelVariantInfo.
@@ -347,7 +369,8 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
 
     if (discovered_components.empty()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "manifest.json missing \"component_models\" and no component model folders with metadata.json were found under ",
+                             "manifest.json missing \"component_models\" and no component model "
+                             "folders with metadata.json were found under ",
                              models_dir.string());
     }
 
@@ -358,8 +381,9 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
 
   if (components_ref.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json should contain exactly one model component field or "
-                           "the models directory should contain exactly one component model.");
+                           "Because the path is a model package root, there must be "
+                           "exactly one component model. Found ",
+                           components_ref.size(), " component models. ");
   }
 
   for (const auto& item : components_ref.items()) {
@@ -481,7 +505,12 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
     }
 
     ModelVariantInfo variant{};
-    const std::filesystem::path model_dir = component_model_root / variant_name;
+
+    std::filesystem::path model_dir = component_model_root / variant_name;
+    if (chosen_variant->model_id.has_value() && !chosen_variant->model_id->empty()) {
+      model_dir = component_model_root / SanitizeModelIdForPath(*chosen_variant->model_id);
+    }
+
     std::filesystem::path resolved_model_path;
 
     if (chosen_variant->model_file.has_value()) {

@@ -20,6 +20,7 @@ static constexpr const char* kModelVariantsKey = "model_variants";
 static constexpr const char* kVariantNameKey = "variant_name";
 static constexpr const char* kModelTypeKey = "model_type";
 static constexpr const char* kModelFileKey = "model_file";
+static constexpr const char* kModelIdKey = "model_id";
 static constexpr const char* kConstraintsKey = "constraints";
 static constexpr const char* kEpKey = "ep";
 static constexpr const char* kDeviceKey = "device";
