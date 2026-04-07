@@ -351,13 +351,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     ORT_RETURN_IF_ERROR(status);
 
     // Step 6: Fused FinalMix — accumulate all k expert results weighted by router_values
+    // Dispatch across hidden_size (not k) to avoid race: each thread accumulates all k experts.
+    const uint32_t mix_wg_size = 256;
     FusedFinalMix1TokenProgram final_mix;
     final_mix
         .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::Type}})
         .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
         .AddInputs({{&indirect_experts, ProgramTensorMetadataDependency::Type}})
         .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
-        .SetDispatchGroupSize(k)
+        .SetWorkgroupSize(mix_wg_size)
+        .SetDispatchGroupSize((hidden_size + mix_wg_size - 1) / mix_wg_size)
         .AddUniformVariables({hidden_size, k});
     ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
 

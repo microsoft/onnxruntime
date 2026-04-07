@@ -10,17 +10,15 @@
 // uniform: hidden_size, k
 
 $MAIN {
-    let expert_row = workgroup_idx;  // 0..k-1
-    if (expert_row >= uniforms.k) {
+    let out_idx = workgroup_idx * workgroup_size_x + local_idx;
+    if (out_idx >= uniforms.hidden_size) {
         return;
     }
-    let expert_idx = indirect_experts[expert_row];
-    let router_value = router_values[expert_idx];
-    let steps = uniforms.hidden_size / workgroup_size_x;
-    let offset = local_idx * steps;
-    let fc2_base = expert_row * uniforms.hidden_size;
-    for (var i = 0u; i < steps; i++) {
-        let weight = fc2_outputs[fc2_base + offset + i];
-        output[offset + i] += router_value * weight;
+    var acc = output_element_t(0);
+    for (var i = 0u; i < uniforms.k; i++) {
+        let expert_idx = indirect_experts[i];
+        let router_value = router_values[expert_idx];
+        acc += router_value * fc2_outputs[i * uniforms.hidden_size + out_idx];
     }
+    output[out_idx] = acc;
 } // MAIN
