@@ -398,6 +398,11 @@ stages:
     - checkout: self
       submodules: false
 
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
+
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '3.12'

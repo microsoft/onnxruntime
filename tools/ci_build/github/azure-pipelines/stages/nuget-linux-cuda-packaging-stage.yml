@@ -31,6 +31,10 @@ stages:
       value: ${{ parameters.CudaVersion }}
     steps:
     - template: ../templates/set-version-number-variables-step.yml
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
     - task: UsePythonVersion@0
       displayName: Use Python 3.12
       inputs:
@@ -90,6 +94,10 @@ stages:
     - checkout: self
       clean: true
       submodules: recursive
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
     - task: UsePythonVersion@0
       displayName: Use Python 3.12
       inputs:
