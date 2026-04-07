@@ -12,6 +12,11 @@ steps:
       SecretsFilter: "java-pgp-pwd,java-pgp-key"
       RunAsPreJob: false
 
+  - task: PipAuthenticate@1
+    displayName: 'Pip Authenticate'
+    inputs:
+      artifactFeeds: 'Lotus'
+
   - task: UsePythonVersion@0
     displayName: "Use Python 3.12"
     inputs:

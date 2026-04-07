@@ -37,6 +37,11 @@ jobs:
   steps:
   - checkout: none
 
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'PublicPackages/ORT-Nightly'
+
   - task: UsePythonVersion@0
     displayName: 'Use Python'
     inputs:

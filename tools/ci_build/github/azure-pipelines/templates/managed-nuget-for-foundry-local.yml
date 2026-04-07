@@ -37,6 +37,11 @@ stages:
     steps:
     - template: set-version-number-variables-step.yml
 
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
+
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:

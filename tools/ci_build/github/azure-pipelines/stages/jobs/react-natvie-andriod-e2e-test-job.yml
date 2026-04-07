@@ -23,6 +23,11 @@ jobs:
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
   timeoutInMinutes: 90
   steps:
+  - task: PipAuthenticate@1
+    displayName: 'Pip Authenticate'
+    inputs:
+      artifactFeeds: 'Lotus'
+
   - task: UsePythonVersion@0
     displayName: Use python 3.12
     inputs:

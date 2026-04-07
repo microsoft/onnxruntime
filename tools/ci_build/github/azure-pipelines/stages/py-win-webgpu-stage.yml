@@ -155,16 +155,16 @@ stages:
           clean: true
           submodules: none
 
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
         - task: UsePythonVersion@0
           inputs:
             versionSpec: ${{ parameters.PYTHON_VERSION }}
             addToPath: true
             architecture: 'x64'
-
-        - task: PipAuthenticate@1
-          displayName: 'Pip Authenticate'
-          inputs:
-            artifactFeeds: 'Lotus'
 
         - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
           env:
