@@ -129,7 +129,9 @@ TEST(MatMulBnb4, RejectsUndersizedBQuantTensor) {
   test.AddInput<float>("absmax", {2}, std::vector<float>(2, 1.0f));
   test.AddOutput<float>("Y", {1, 2}, std::vector<float>(2, 0.0f));
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "b_quant tensor size");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "b_quant tensor size", {}, nullptr, &execution_providers);
 }
 
 TEST(MatMulBnb4, RejectsUndersizedAbsmaxTensor) {
@@ -150,7 +152,9 @@ TEST(MatMulBnb4, RejectsUndersizedAbsmaxTensor) {
   test.AddInput<float>("absmax", {1}, std::vector<float>(1, 1.0f));  // too small
   test.AddOutput<float>("Y", {1, N}, std::vector<float>(N, 0.0f));
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "absmax tensor size");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "absmax tensor size", {}, nullptr, &execution_providers);
 }
 
 TEST(MatMulBnb4, DISABLED_Float32) {
