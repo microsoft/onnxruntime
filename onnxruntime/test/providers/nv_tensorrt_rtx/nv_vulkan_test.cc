@@ -277,8 +277,9 @@ void init_vulkan_interop(VkResources& resources) {
     props.pNext = &id_props;
     resources.loader.vkGetPhysicalDeviceProperties2(p, &props);
     if (props.properties.vendorID == 0x10DE) {
-      std::memcpy(&dev.props, &props, sizeof(props));
+      dev.props = props.properties;
       std::memcpy(&dev.id_props, &id_props, sizeof(id_props));
+      dev.id_props.pNext = nullptr;  // pNext pointed to a stack-local pci_props; clear to avoid dangling pointer
 
       for (const auto& d : ep_devices) {
         if (d.Device().VendorId() == props.properties.vendorID && d.Device().DeviceId() == props.properties.deviceID) {

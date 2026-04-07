@@ -1571,7 +1571,13 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
         LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] InitGraphicsInterop: Can't enable CUDA in Graphics (CiG) for Vulkan without onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data";
         return nullptr;
       }
-      uint64_t nv_blob_ptr = std::stoull(nv_blob_ptr_str);
+      uint64_t nv_blob_ptr = 0;
+      try {
+        nv_blob_ptr = std::stoull(nv_blob_ptr_str);
+      } catch (...) {
+        return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
+                                         "[NvTensorRTRTX EP] Invalid value for kExternalComputeQueueDataParamNV_data: must be a valid unsigned integer pointer");
+      }
       if (nv_blob_ptr == 0) {
         return onnxruntime::CreateStatus(ORT_EP_FAIL,
                                          "[NvTensorRTRTX EP] Could not parse provided values for onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data or onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data_len");
