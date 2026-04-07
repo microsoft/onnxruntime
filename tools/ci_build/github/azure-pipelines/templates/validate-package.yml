@@ -9,10 +9,7 @@ parameters:
   workingDirectory: "$(Build.BinariesDirectory)"
 
 steps:
-    - task: UsePythonVersion@0
-      displayName: 'Use Python'
-      inputs:
-        versionSpec: 3.12
+    - template: setup-pip-and-python-steps.yml
 
     - task: PythonScript@0
       displayName: 'Validate Package'
