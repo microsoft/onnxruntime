@@ -40,7 +40,7 @@ cd build\Windows\Release
 .\onnxruntime_provider_test.exe --gtest_filter="*TestName*"
 ```
 
-You can also run all tests via the build script:
+You can also run all tests via the build script (assumes a prior successful build):
 
 ```bash
 ./build.sh --config Release --test
