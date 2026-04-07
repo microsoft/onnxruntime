@@ -82,7 +82,7 @@ Status Split::ComputeInternal(ComputeContext& context) const {
 
   split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
   // Compute split_sizes from the 'split' input tensor.
-  if (split_sizes_.size() == 0 && context.InputCount() > 1) {
+  if (split_sizes_.empty() && context.InputCount() > 1) {
     const Tensor* split_tensor = context.Input<Tensor>(1);
     // Check if split_tensor is valid.
     if (split_tensor != nullptr) {
