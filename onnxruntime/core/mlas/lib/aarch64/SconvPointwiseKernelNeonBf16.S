@@ -9,7 +9,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the pointwise (1x1) NCHWc convolution on AArch64 
+    This module implements the pointwise (1x1) NCHWc convolution on AArch64
     using BF16 matrix multiply accumulate instructions.
 
     The kernel consumes FP32 input and filter operands, but casts them to BF16
@@ -19,7 +19,7 @@ Abstract:
 
 #include "asmmacro.h"
 
-#if defined(__aarch64__) && defined(__ARM_FEATURE_BF16)
+#if defined(__aarch64__)
 
         .text
         .arch_extension bf16
