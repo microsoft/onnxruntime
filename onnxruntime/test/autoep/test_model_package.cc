@@ -798,5 +798,57 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
 
   std::filesystem::remove_all(component_root, ec);
 }
+
+TEST(ModelPackageTest, ParseVariantsFromRoot_UsesModelIdForModelDirectory) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_model_id_dir_test";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+
+  // Variant name intentionally does not match the model_id-derived directory name.
+  // model_id = "phi4-cpu:1" should map to directory "phi4-cpu_1".
+  constexpr std::string_view manifest_json = R"({
+    "model_name": "test_model",
+    "component_models": {
+      "model_1": {
+        "model_variants": {
+          "catalog_variant": {
+            "model_id": "phi4-cpu:1",
+            "model_file": "model.onnx",
+            "constraints": {
+              "ep": "example_ep",
+              "device": "cpu",
+              "architecture": "arch1"
+            }
+          }
+        }
+      }
+    }
+  })";
+
+  CreateManifestJson(package_root, manifest_json);
+
+  // Create the model under model_id-derived directory: models/model_1/phi4-cpu_1/model.onnx
+  const auto model_dir = package_root / "models" / "model_1" / "phi4-cpu_1";
+  std::filesystem::create_directories(model_dir);
+  std::filesystem::copy_file("testdata/mul_1.onnx",
+                             model_dir / "model.onnx",
+                             std::filesystem::copy_options::overwrite_existing,
+                             ec);
+
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
+  std::vector<ModelVariantInfo> variants;
+  auto status = parser.ParseVariantsFromRoot(package_root, variants);
+
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_EQ(variants.size(), 1u);
+
+  EXPECT_EQ(variants[0].model_path.filename().string(), "model.onnx");
+  EXPECT_EQ(variants[0].model_path.parent_path().filename().string(), "phi4-cpu_1");
+  EXPECT_EQ(variants[0].ep, "example_ep");
+  EXPECT_EQ(variants[0].device, "cpu");
+  EXPECT_EQ(variants[0].architecture, "arch1");
+
+  std::filesystem::remove_all(package_root, ec);
+}
 }  // namespace test
 }  // namespace onnxruntime
