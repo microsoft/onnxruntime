@@ -9,7 +9,7 @@ redirect_from: /docs/reference/execution-providers/TensorRTRTX-ExecutionProvider
 # NVIDIA TensorRT RTX Execution Provider
 {: .no_toc }
 
-> **⚠️ Deprecation Notice:** The built-in TensorRT RTX Execution Provider in the ONNX Runtime repository is deprecated. We strongly recommend using the standalone EP ABI plugin instead. The open-source TensorRT RTX EP ABI is available at [NVIDIA/TensorRt-RTX-EP-ABI](https://github.com/NVIDIA/TensorRt-RTX-EP-ABI). Instructions for using the standalone EP ABI are included in the [Usage](#usage) section below. All execution provider options supported by the built-in EP are fully supported by the EP ABI plugin.
+> **⚠️ Deprecation Notice:** The built-in TensorRT RTX Execution Provider in the ONNX Runtime repository is deprecated. We strongly recommend using the standalone EP ABI plugin instead. The open-source TensorRT RTX EP ABI is available at [NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI). Instructions for using the standalone EP ABI are included in the [Usage](#usage) section below. All execution provider options supported by the built-in EP are fully supported by the EP ABI plugin.
 
 The NVIDIA TensorRT-RTX Execution Provider (EP) is an inference deployment solution designed specifically for NVIDIA RTX GPUs. It is optimized for client-centric use cases.. 
 
@@ -37,7 +37,7 @@ Currently, TensorRT RTX EP can be built from the source code. Support for instal
 
 **Standalone EP ABI Plugin (Recommended)**
 
-To build the standalone TensorRT RTX EP ABI plugin, please refer to the build instructions in the [TensorRT RTX EP ABI repository](https://github.com/NVIDIA/TensorRt-RTX-EP-ABI#build-from-source).
+To build the standalone TensorRT RTX EP ABI plugin, please refer to the build instructions in the [TensorRT RTX EP ABI repository](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI#build-from-source).
 
 **Built-in EP (Deprecated)**
 
@@ -101,41 +101,6 @@ Register the TensorRT RTX  EP by specifying it in the providers argument when cr
 ```python
 import onnxruntime as ort
 session = ort.InferenceSession(model_path, providers=['NvTensorRtRtxExecutionProvider'])
-```
-
-**Using the EP ABI (Standalone Plugin)**
-
-If you are using the TensorRT RTX EP as a standalone plugin via the EP ABI, register the EP plugin library, discover the EP device, and add it to session options:
-
-```python
-import onnxruntime as ort
-
-# 1. Register the EP plugin DLL
-ort.register_execution_provider_library(
-    "NvTensorRTRTXExecutionProvider",
-    "onnxruntime_providers_nv_tensorrt_rtx.dll")
-
-# 2. Discover the TensorRT RTX EP device
-ep_devices = ort.get_ep_devices()
-trt_device = None
-for ep_device in ep_devices:
-    if ep_device.ep_name == "NvTensorRTRTXExecutionProvider":
-        trt_device = ep_device
-        break
-
-# 3. Add EP device to session options with provider options
-session_options = ort.SessionOptions()
-session_options.add_provider_for_devices(
-    [trt_device],
-    {"enable_cuda_graph": "1", "nv_runtime_cache_path": "./cache"})
-
-# 4. Create session and run inference
-session = ort.InferenceSession("model.onnx", sess_options=session_options)
-result = session.run([], {"input": input_data})
-
-# 5. Cleanup: delete session before unregistering
-del session
-ort.unregister_execution_provider_library("NvTensorRTRTXExecutionProvider")
 ```
 
 ## Features
