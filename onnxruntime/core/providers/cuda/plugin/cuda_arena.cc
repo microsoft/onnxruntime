@@ -390,6 +390,11 @@ OrtStatus* ArenaImpl::GetStats(OrtKeyValuePairs** stats) {
 OrtStatus* ArenaImpl::Shrink() {
   std::lock_guard<std::mutex> lock(lock_);
 
+  // Note: Reserved memory (via Reserve()) is allocated directly through the device
+  // allocator and stored in reserved_chunks_, bypassing the region/chunk system.
+  // Shrink() intentionally does NOT free reserved memory because it is used for
+  // model initializers that must remain valid for the session lifetime.
+
   // Snapshot region pointers/sizes before mutation — we will modify the
   // region list while iterating.  Matches in-tree BFCArena::Shrink().
   const auto num_regions = region_manager_.regions().size();

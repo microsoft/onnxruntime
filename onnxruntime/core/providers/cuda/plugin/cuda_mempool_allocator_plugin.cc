@@ -168,7 +168,11 @@ CudaMempoolOrtAllocator::~CudaMempoolOrtAllocator() {
   alloc_map_.clear();
   stream_map_.clear();
 
-  // Safety barrier
+  // Safety barrier: SyncAllKnownStreams() only synchronizes streams tracked in
+  // stream_map_. If any allocation was made visible to a stream not tracked here
+  // (e.g., via cudaMemPoolExportPointer or external code passing the pointer to
+  // another stream), those operations would not be captured. cudaDeviceSynchronize()
+  // ensures all such untracked work completes before we trim/destroy the pool.
   ORT_IGNORE_RETURN_VALUE(cudaDeviceSynchronize());
 
   if (pool_) {
@@ -198,7 +202,6 @@ void* CudaMempoolOrtAllocator::AllocInternal(size_t size, cudaStream_t stream) {
     alloc_map_.emplace(p, AllocationRecord{size, stream});
     stream_map_[stream].insert(p);
 
-    total_allocated_ += size;
     in_use_bytes_ += size;
     max_bytes_in_use_ = std::max(max_bytes_in_use_, in_use_bytes_);
     max_alloc_size_ = std::max(max_alloc_size_, size);

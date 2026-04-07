@@ -213,13 +213,6 @@ struct ArenaConfig {
 // Adapted from the example plugin EP arena (ep_arena.h/cc).
 class ArenaImpl {
  public:
-  static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
-  static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
-  static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
-  static const int DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES = 2 * 1024 * 1024;
-  static const int64_t DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES = 1024 * 1024 * 1024;  // 1GB
-  static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
-
   ArenaImpl(AllocatorUniquePtr allocator, const ArenaConfig& config, const OrtApi& api,
             const OrtLogger& logger);
 

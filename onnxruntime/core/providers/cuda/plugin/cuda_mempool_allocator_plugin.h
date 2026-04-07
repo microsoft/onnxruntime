@@ -95,7 +95,6 @@ class CudaMempoolOrtAllocator final : public CudaAllocatorBase {
   InlinedHashMap<cudaStream_t, InlinedHashSet<void*>> stream_map_;
 
   // Stats (guarded by mutex_)
-  size_t total_allocated_ = 0;
   size_t in_use_bytes_ = 0;
   size_t max_bytes_in_use_ = 0;
   size_t num_allocs_ = 0;

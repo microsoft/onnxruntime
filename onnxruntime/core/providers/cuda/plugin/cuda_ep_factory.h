@@ -37,6 +37,11 @@ class CudaEpFactory : public OrtEpFactory {
   /// Get the device arena allocator for the given CUDA ordinal, or nullptr if none.
   CudaArenaAllocator* GetDeviceArenaForDevice(int device_id);
 
+  /// Reset arena chunk-to-stream assignments for a device while holding the arena lock.
+  /// This avoids the use-after-free risk of calling GetDeviceArenaForDevice() and then
+  /// using the raw pointer after the arena_mutex is released.
+  OrtStatus* ResetDeviceArenaChunksUsingStream(int device_id, const OrtSyncStreamImpl* stream_impl);
+
   /// Get or create the shared kernel registry for this factory.
   /// Lazily created on first call; subsequent calls return the cached instance.
   /// Thread-safe: protected by registry_mutex_.

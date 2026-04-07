@@ -627,17 +627,32 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
     for (auto& [key, entry] : factory->device_cache_) {
       std::lock_guard<std::mutex> lock{entry.arena_mutex};
       if (allocator == entry.device_arena.get()) {
-        assert(entry.num_device_arena_users > 0 && "Refcount underflow in ReleaseAllocatorImpl (device_arena)");
+        if (entry.num_device_arena_users <= 0) {
+          LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__,
+                     "CudaEpFactory::ReleaseAllocatorImpl",
+                     "Refcount underflow in ReleaseAllocatorImpl (device_arena). Ignoring release.");
+          return;
+        }
         if (--entry.num_device_arena_users == 0) entry.device_arena.reset();
         return;
       }
       if (allocator == entry.pinned_arena.get()) {
-        assert(entry.num_pinned_arena_users > 0 && "Refcount underflow in ReleaseAllocatorImpl (pinned_arena)");
+        if (entry.num_pinned_arena_users <= 0) {
+          LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__,
+                     "CudaEpFactory::ReleaseAllocatorImpl",
+                     "Refcount underflow in ReleaseAllocatorImpl (pinned_arena). Ignoring release.");
+          return;
+        }
         if (--entry.num_pinned_arena_users == 0) entry.pinned_arena.reset();
         return;
       }
       if (allocator == entry.mempool_allocator.get()) {
-        assert(entry.num_mempool_users > 0 && "Refcount underflow in ReleaseAllocatorImpl (mempool)");
+        if (entry.num_mempool_users <= 0) {
+          LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__,
+                     "CudaEpFactory::ReleaseAllocatorImpl",
+                     "Refcount underflow in ReleaseAllocatorImpl (mempool). Ignoring release.");
+          return;
+        }
         if (--entry.num_mempool_users == 0) entry.mempool_allocator.reset();
         return;
       }
@@ -724,6 +739,15 @@ CudaArenaAllocator* CudaEpFactory::GetDeviceArenaForDevice(int device_id) {
   if (!entry) return nullptr;
   std::lock_guard<std::mutex> lock{entry->arena_mutex};
   return entry->device_arena.get();
+}
+
+OrtStatus* CudaEpFactory::ResetDeviceArenaChunksUsingStream(int device_id,
+                                                            const OrtSyncStreamImpl* stream_impl) {
+  DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+  if (!entry) return nullptr;
+  std::lock_guard<std::mutex> lock{entry->arena_mutex};
+  if (!entry->device_arena) return nullptr;
+  return entry->device_arena->ResetChunksUsingStream(stream_impl);
 }
 
 }  // namespace cuda_plugin
