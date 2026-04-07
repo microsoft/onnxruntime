@@ -22,7 +22,7 @@
 
 namespace onnxruntime {
 class DataTransferManager;
-struct IExecutionProvider;
+class IExecutionProvider;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
