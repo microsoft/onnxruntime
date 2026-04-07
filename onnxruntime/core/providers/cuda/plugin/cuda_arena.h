@@ -88,6 +88,7 @@ struct ArenaConfig {
 
   bool IsValid() const {
     return max_mem > 0 &&
+           (arena_extend_strategy == kNextPowerOfTwo || arena_extend_strategy == kSameAsRequested) &&
            initial_chunk_size_bytes > 0 &&
            max_dead_bytes_per_chunk > 0 &&
            initial_growth_chunk_size_bytes > 0 &&
@@ -108,12 +109,24 @@ struct ArenaConfig {
     const char* value = nullptr;
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::ArenaExtendStrategy); value) {
-      config.arena_extend_strategy = std::string(value) == "1" ? kSameAsRequested : kNextPowerOfTwo;
+      const std::string sval(value);
+      if (sval == "0") {
+        config.arena_extend_strategy = kNextPowerOfTwo;
+      } else if (sval == "1") {
+        config.arena_extend_strategy = kSameAsRequested;
+      } else {
+        config.arena_extend_strategy = static_cast<ArenaExtendStrategy>(-2);  // invalid — will fail IsValid()
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialChunkSizeBytes); value) {
       ORT_TRY {
-        config.initial_chunk_size_bytes = std::stoi(std::string(value));
+        int64_t parsed = std::stoll(std::string(value));
+        if (parsed <= 0 || parsed > std::numeric_limits<int>::max()) {
+          config.initial_chunk_size_bytes = -1;  // will fail IsValid()
+        } else {
+          config.initial_chunk_size_bytes = static_cast<int>(parsed);
+        }
       }
       ORT_CATCH(const std::exception&) {
         ORT_HANDLE_EXCEPTION([&]() {
@@ -124,7 +137,12 @@ struct ArenaConfig {
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxDeadBytesPerChunk); value) {
       ORT_TRY {
-        config.max_dead_bytes_per_chunk = std::stoi(std::string(value));
+        int64_t parsed = std::stoll(std::string(value));
+        if (parsed <= 0 || parsed > std::numeric_limits<int>::max()) {
+          config.max_dead_bytes_per_chunk = -1;  // will fail IsValid()
+        } else {
+          config.max_dead_bytes_per_chunk = static_cast<int>(parsed);
+        }
       }
       ORT_CATCH(const std::exception&) {
         ORT_HANDLE_EXCEPTION([&]() {
@@ -135,7 +153,12 @@ struct ArenaConfig {
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialGrowthChunkSizeBytes); value) {
       ORT_TRY {
-        config.initial_growth_chunk_size_bytes = std::stoi(std::string(value));
+        int64_t parsed = std::stoll(std::string(value));
+        if (parsed <= 0 || parsed > std::numeric_limits<int>::max()) {
+          config.initial_growth_chunk_size_bytes = -1;  // will fail IsValid()
+        } else {
+          config.initial_growth_chunk_size_bytes = static_cast<int>(parsed);
+        }
       }
       ORT_CATCH(const std::exception&) {
         ORT_HANDLE_EXCEPTION([&]() {
@@ -571,9 +594,11 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
       return impl_->ResetChunksUsingStream(stream_impl);
     }
     ORT_CATCH(const std::exception& ex) {
+      OrtStatus* err = nullptr;
       ORT_HANDLE_EXCEPTION([&]() {
-        return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+        err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
       });
+      return err;
     }
     ORT_CATCH(...) {
       return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
@@ -641,9 +666,11 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
       return arena.impl_->GetStats(out);
     }
     ORT_CATCH(const std::exception& ex) {
+      OrtStatus* err = nullptr;
       ORT_HANDLE_EXCEPTION([&]() {
-        return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+        err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
       });
+      return err;
     }
     ORT_CATCH(...) {
       return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
@@ -658,9 +685,11 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
       return arena.impl_->Shrink();
     }
     ORT_CATCH(const std::exception& ex) {
+      OrtStatus* err = nullptr;
       ORT_HANDLE_EXCEPTION([&]() {
-        return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+        err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
       });
+      return err;
     }
     ORT_CATCH(...) {
       return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,

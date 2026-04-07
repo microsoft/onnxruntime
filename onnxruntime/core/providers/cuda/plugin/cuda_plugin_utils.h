@@ -86,16 +86,20 @@
 #define EXCEPTION_TO_STATUS_END                   \
   }                                               \
   ORT_CATCH(const Ort::Exception& ex) {           \
+    OrtStatus* _ort_ex_st = nullptr;              \
     ORT_HANDLE_EXCEPTION([&]() {                  \
       Ort::Status status(ex);                     \
-      return status.release();                    \
+      _ort_ex_st = status.release();              \
     });                                           \
+    return _ort_ex_st;                            \
   }                                               \
   ORT_CATCH(const std::exception& ex) {           \
+    OrtStatus* _std_ex_st = nullptr;              \
     ORT_HANDLE_EXCEPTION([&]() {                  \
       Ort::Status status(ex.what(), ORT_EP_FAIL); \
-      return status.release();                    \
+      _std_ex_st = status.release();              \
     });                                           \
+    return _std_ex_st;                            \
   }                                               \
   EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_END       \
   return nullptr;

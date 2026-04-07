@@ -200,13 +200,14 @@ void* CudaMempoolOrtAllocator::AllocInternal(size_t size, cudaStream_t stream) {
   void* p = nullptr;
   cudaError_t err = cudaMallocFromPoolAsync(&p, size, pool_, stream);
   if (err != cudaSuccess) {
-    if (err == cudaErrorMemoryAllocation) {
-      // Out of memory — return nullptr so the caller can handle it gracefully.
-      return nullptr;
-    }
-    ORT_THROW("CudaMempoolOrtAllocator: cudaMallocFromPoolAsync failed: ",
-              cudaGetErrorName(err), ": ", cudaGetErrorString(err),
-              ", size=", size);
+    // Return nullptr for all CUDA errors — ORT_THROW would abort() under
+    // ORT_NO_EXCEPTIONS, and exceptions must not propagate across the C ABI
+    // boundary from the noexcept Alloc/AllocOnStream callbacks.
+    std::string msg = std::string("CudaMempoolOrtAllocator: cudaMallocFromPoolAsync failed: ") +
+                      cudaGetErrorName(err) + ": " + cudaGetErrorString(err) +
+                      ", size=" + std::to_string(size);
+    LogMessage(ort_api_, logger_, ORT_LOGGING_LEVEL_ERROR, msg.c_str());
+    return nullptr;
   }
 
   {
@@ -369,9 +370,11 @@ OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::GetStatsImpl(
     return nullptr;
   }
   ORT_CATCH(const std::exception& ex) {
+    OrtStatus* err = nullptr;
     ORT_HANDLE_EXCEPTION([&]() {
-      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
     });
+    return err;
   }
   ORT_CATCH(...) {
     return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
@@ -414,9 +417,11 @@ OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::ShrinkImpl(OrtAllocator* this_)
     return nullptr;
   }
   ORT_CATCH(const std::exception& ex) {
+    OrtStatus* err = nullptr;
     ORT_HANDLE_EXCEPTION([&]() {
-      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
     });
+    return err;
   }
   ORT_CATCH(...) {
     return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,

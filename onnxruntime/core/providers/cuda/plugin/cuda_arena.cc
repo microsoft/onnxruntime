@@ -137,10 +137,13 @@ OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
       extend_bytes = std::min(static_cast<size_t>(curr_region_allocation_bytes_), available_bytes);
 
       if (!increased_allocation) {
-        if (curr_region_allocation_bytes_ < static_cast<size_t>(config_.max_power_of_two_extend_bytes) / 2) {
+        // Use overflow-safe comparison: double only when the current value
+        // is less than half the cap, so the result cannot exceed the cap.
+        const size_t max_extend = static_cast<size_t>(config_.max_power_of_two_extend_bytes);
+        if (curr_region_allocation_bytes_ < max_extend / 2) {
           curr_region_allocation_bytes_ *= 2;
         } else {
-          curr_region_allocation_bytes_ = config_.max_power_of_two_extend_bytes;
+          curr_region_allocation_bytes_ = max_extend;
         }
       }
     } else if (config_.arena_extend_strategy == ArenaExtendStrategy::kSameAsRequested) {
@@ -527,6 +530,14 @@ void ArenaImpl::SplitChunk(ChunkHandle h, size_t num_bytes) {
   Chunk* new_chunk = ChunkFromHandle(h_new_chunk);
   new_chunk->stream = c->stream;
   new_chunk->stream_sync_id = c->stream_sync_id;
+
+  // Track the remainder chunk's stream assignment so ResetChunksUsingStream
+  // can clear it later. Without this, the free remainder retains a stale
+  // stream pointer after the stream is released — risking use-after-free
+  // in GetSyncIdForLastWaitOnSyncStream.
+  if (new_chunk->stream) {
+    stream_to_chunks_[new_chunk->stream].insert(h_new_chunk);
+  }
 
   new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
   region_manager_.set_handle(new_chunk->ptr, h_new_chunk);

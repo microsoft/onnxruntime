@@ -722,7 +722,17 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
         [this](OrtAllocator* allocator) {
           ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
         });
-    allocators.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator)));
+
+    // Use the arena wrapper when the allocator supports Shrink(), matching
+    // the logic in Environment::CreateSharedAllocatorImpl. This ensures
+    // per-session plugin arenas are visible to ShrinkMemoryArenas.
+    AllocatorPtr alloc_ptr;
+    if (ort_allocator->version >= 25 && ort_allocator->Shrink != nullptr) {
+      alloc_ptr = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
+    } else {
+      alloc_ptr = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+    }
+    allocators.push_back(std::move(alloc_ptr));
   }
 
   return allocators;

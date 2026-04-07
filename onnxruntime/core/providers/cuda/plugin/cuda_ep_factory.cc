@@ -573,6 +573,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
                                           factory.ort_api_, factory.default_logger_,
                                           entry->device_arena);
       if (status != nullptr) return status;
+    } else if (allocator_options) {
+      LogWarning(factory.ort_api_, factory.default_logger_, ORT_FILE, __LINE__, __FUNCTION__,
+                 "CUDA device arena already exists; session arena options are ignored.");
     }
     ++entry->num_device_arena_users;
     *allocator = entry->device_arena.get();
@@ -601,6 +604,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
                                           factory.ort_api_, factory.default_logger_,
                                           entry->pinned_arena);
       if (status != nullptr) return status;
+    } else if (allocator_options) {
+      LogWarning(factory.ort_api_, factory.default_logger_, ORT_FILE, __LINE__, __FUNCTION__,
+                 "CUDA pinned arena already exists; session arena options are ignored.");
     }
     ++entry->num_pinned_arena_users;
     *allocator = entry->pinned_arena.get();
