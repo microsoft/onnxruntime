@@ -72,7 +72,10 @@ RegisterExecutionProviderLibrary()
   → CreateSharedAllocatorImpl(ep_device, memory_info, OrtDeviceAllocator, nullptr, ...)
     → ep_factory->CreateAllocator(factory, &mem_info, /*options=*/ nullptr, &alloc)
       → [factory creates ArenaAllocator wrapping raw allocator]
-    → IAllocatorImplWrappingOrtAllocator(alloc)
+    → if alloc->version >= 25 && alloc->Shrink != nullptr:
+        IArenaImplWrappingOrtAllocator(alloc)   // wraps as IArena (see Section 5.4)
+      else:
+        IAllocatorImplWrappingOrtAllocator(alloc)
     → shared_allocators_.push_back(wrapped)
 ```
 
@@ -84,7 +87,10 @@ SessionState constructor
       → OrtEp::CreateAllocator(ep, &mem_info, &alloc)   [if set]
         OR ep_factory.CreateAllocator(&factory, &mem_info, /*options=*/ nullptr, &alloc)
         → [factory returns same shared ArenaAllocator]
-      → IAllocatorImplWrappingOrtAllocator(alloc)
+      → if alloc->Shrink != nullptr:
+          IArenaImplWrappingOrtAllocator(alloc)
+        else:
+          IAllocatorImplWrappingOrtAllocator(alloc)
     → session allocator maps
 ```
 
@@ -638,9 +644,77 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 
 | File | Change |
 |------|--------|
-| `environment.cc` | `RegisterExecutionProviderLibrary`: construct prefix `"ep_factory." + factory->GetName(factory) + "."` (case-sensitive, with null-guard), obtain config snapshot via `GetConfigEntries()`, extract matching `arena.*` keys, strip prefix, build `OrtKeyValuePairs` with bare `arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` instead of `nullptr` (see Section 3.6 for casing convention). |
-| `ep_plugin_provider_interfaces.h` | Add `std::optional<OrtKeyValuePairs> session_arena_options_` member to `PluginExecutionProvider` to store session-level arena config extracted at construction time. |
-| `ep_plugin_provider_interfaces.cc` | **(a)** In `PluginExecutionProvider` constructor: gated on `ep_factory_.CreateAllocator != nullptr` — construct EP prefix via `GetProviderOptionPrefix(ep->GetName(ep.get()))`, scan `session_options.value.config_options` for keys matching `<prefix>arena.*`, strip the EP prefix, and store as bare `"arena.*"` keys in `session_arena_options_`. The EP-name prefix naturally scopes extraction to the current EP. **(b)** In `CreatePreferredAllocators()`: if `session_arena_options_` has a value, pass it as `allocator_options` to `ep_factory_.CreateAllocator()` instead of `nullptr`. |
+| `allocator.h` | Added `virtual IArena* AsArena()` (const and non-const, returning `nullptr`) to `IAllocator`. Overridden in `IArena` to return `this`. This eliminates the RTTI dependency in `SafeArenaCast()`, which now delegates to `allocator->AsArena()`. |
+| `allocator.cc` | Simplified `SafeArenaCast()` to `return allocator ? allocator->AsArena() : nullptr;` — no `dynamic_cast`, no `#ifdef ORT_NO_RTTI`. |
+| `allocator_adapters.h` | Added `IArenaImplWrappingOrtAllocator` — wraps an `OrtAllocator*` that implements `Shrink()` as an `IArena`. See Section 5.4. |
+| `allocator_adapters.cc` | Implemented `IArenaImplWrappingOrtAllocator` methods (Alloc, Free, Reserve, IsStreamAware, AllocOnStream, GetStats, Shrink). Added `GetStatsFromOrtAllocator()` helper using safe `TryParseStringWithClassicLocale` parsing. Added `kOrtAllocatorShrinkMinVersion = 25`. |
+| `environment.cc` | **`CreateSharedAllocator`**: When the plugin allocator's `version >= 25` and `Shrink != nullptr`, wraps it as `IArenaImplWrappingOrtAllocator` (IArena) instead of `IAllocatorImplWrappingOrtAllocator` (IAllocator). This makes plugin arenas discoverable by session-level arena management such as `ShrinkMemoryArenas`. |
+| `inference_session.cc` | **`ValidateAndParseShrinkArenaString`** and **`ShrinkMemoryArenas`**: simplified to use `allocator->AsArena()` directly, which now also discovers plugin arenas wrapped via `IArenaImplWrappingOrtAllocator`. |
+| `device_stream_collection.cc` | `ReleaseSingleStreamBuffers`: simplified to use `allocator->AsArena()` directly (removed `alloc_type == OrtArenaAllocator` check). |
+| Future: `environment.cc` | `RegisterExecutionProviderLibrary`: construct prefix `"ep_factory." + factory->GetName(factory) + "."` (case-sensitive, with null-guard), obtain config snapshot via `GetConfigEntries()`, extract matching `arena.*` keys, strip prefix, build `OrtKeyValuePairs` with bare `arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` instead of `nullptr` (see Section 3.6 for casing convention). |
+| Future: `ep_plugin_provider_interfaces.h` | Add `std::optional<OrtKeyValuePairs> session_arena_options_` member to `PluginExecutionProvider` to store session-level arena config extracted at construction time. |
+| Future: `ep_plugin_provider_interfaces.cc` | **(a)** In `PluginExecutionProvider` constructor: gated on `ep_factory_.CreateAllocator != nullptr` — construct EP prefix via `GetProviderOptionPrefix(ep->GetName(ep.get()))`, scan `session_options.value.config_options` for keys matching `<prefix>arena.*`, strip the EP prefix, and store as bare `"arena.*"` keys in `session_arena_options_`. The EP-name prefix naturally scopes extraction to the current EP. **(b)** In `CreatePreferredAllocators()`: if `session_arena_options_` has a value, pass it as `allocator_options` to `ep_factory_.CreateAllocator()` instead of `nullptr`. |
+
+### 5.4 Shrink and ORT Core Arena Integration
+
+The in-tree CUDA EP's `BFCArena` / `StreamAwareBFCArena` directly implements the `IArena` interface inside ORT core. ORT session-level code — `InferenceSession::ShrinkMemoryArenas()`, `DeviceStreamCollection::ReleaseSingleStreamBuffers()`, `ValidateAndParseShrinkArenaString()` — discovers arenas via `IArena::SafeArenaCast()` and calls `Shrink()` or `ReleaseStreamBuffers()` on them. Plugin EP allocators are returned as `OrtAllocator*` (a C struct), which ORT core wraps in a C++ `IAllocator` adapter. Without additional work, plugin arenas are invisible to these session-level arena management paths.
+
+This PR introduces two complementary mechanisms to bridge the gap:
+
+#### 5.4.1 `IArenaImplWrappingOrtAllocator` — Plugin Arena as IArena
+
+`IArenaImplWrappingOrtAllocator` (in `allocator_adapters.h/.cc`) wraps an `OrtAllocator*` whose `Shrink` function pointer is non-null, exposing it through the standard `IArena` C++ interface:
+
+| IArena method | How it maps to OrtAllocator |
+|---|---|
+| `Alloc(size)` | `ort_allocator_->Alloc(ort_allocator_, size)` |
+| `Free(p)` | `ort_allocator_->Free(ort_allocator_, p)` |
+| `Reserve(size)` | `ort_allocator_->Reserve(ort_allocator_, size)` (version ≥ 18) |
+| `IsStreamAware()` | `ort_allocator_->AllocOnStream != nullptr` (version ≥ 23) |
+| `AllocOnStream(size, stream)` | `ort_allocator_->AllocOnStream(ort_allocator_, size, stream->GetRawHandle())` |
+| `GetStats(stats)` | Calls `ort_allocator_->GetStats` (version ≥ 23), parses the returned `OrtKeyValuePairs` into `AllocatorStats` using safe `TryParseStringWithClassicLocale` |
+| **`Shrink()`** | `ort_allocator_->Shrink(ort_allocator_)` → converts returned `OrtStatus*` to `Status` (version ≥ 25) |
+| `ReleaseStreamBuffers(stream)` | **No-op** — plugin EPs handle stream buffer cleanup internally via `OrtSyncStreamImpl::OnSessionRunEnd` → `ResetChunksUsingStream()` |
+
+The version gate `kOrtAllocatorShrinkMinVersion = 25` ensures the `Shrink` field is only accessed on allocators that declare support for it.
+
+#### 5.4.2 `AsArena()` Virtual Method — RTTI-Free Arena Discovery
+
+`IAllocator` now declares `virtual IArena* AsArena()` (both const and non-const), returning `nullptr` by default. `IArena` overrides this to return `this`. `SafeArenaCast()` delegates to `AsArena()`, removing the previous dependency on `dynamic_cast` (or unsafe `static_cast` in `ORT_NO_RTTI` builds).
+
+Because `IArenaImplWrappingOrtAllocator` inherits from `IArena`, its `AsArena()` automatically returns a non-null pointer, making plugin arenas discoverable by all existing arena-aware code paths without any RTTI.
+
+#### 5.4.3 How Plugin Arenas Participate in `ShrinkMemoryArenas`
+
+The end-to-end flow for shrinking plugin arenas:
+
+```
+User calls OrtApi::ShrinkMemoryArenas(session, "arena_name:0")
+  → InferenceSession::ShrinkMemoryArenas()
+    → iterates session allocators
+      → allocator->AsArena()   // non-null for IArenaImplWrappingOrtAllocator
+      → arena->Shrink()
+        → IArenaImplWrappingOrtAllocator::Shrink()
+          → ort_allocator_->Shrink(ort_allocator_)  // crosses into plugin DLL
+            → CudaArenaAllocator::ShrinkImpl()
+              → ArenaImpl::Shrink()  // releases free regions back to CUDA
+```
+
+For `CudaMempoolOrtAllocator`, the same path calls `cudaMemPoolTrimTo()` with the configured `bytes_to_keep_on_shrink`.
+
+#### 5.4.4 Selection Logic in `Environment::CreateSharedAllocator`
+
+`Environment::CreateSharedAllocator` inspects the `OrtAllocator*` returned by the plugin factory:
+
+```cpp
+if (allocator->version >= 25 && allocator->Shrink != nullptr) {
+  shared_allocator = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
+} else {
+  shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+}
+```
+
+Plugin allocators that do not implement `Shrink` (e.g., read-only allocators) continue to be wrapped as plain `IAllocator`. The selection is automatic — no user-facing configuration is needed.
 
 ---
 
