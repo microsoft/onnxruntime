@@ -226,13 +226,12 @@ inline void* AllocatorImpl<T>::Alloc(size_t size) {
 
 template <typename T>
 inline void* AllocatorImpl<T>::Reserve(size_t size) {
-  if (this->p_->Reserve) {
+  // Reserve was added in version 18. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 18 && this->p_->Reserve) {
     return this->p_->Reserve(this->p_, size);
   }
-  // Fallback: allocators without Reserve behave like Alloc.
-  void* out;
-  ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));
-  return out;
+  return nullptr;
 }
 
 template <typename T>
@@ -264,7 +263,9 @@ inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
 
 template <typename T>
 inline void AllocatorImpl<T>::Shrink() {
-  if (this->p_->Shrink) {
+  // Shrink was added in version 25. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 25 && this->p_->Shrink) {
     ThrowOnError(this->p_->Shrink(this->p_));
   }
 }
