@@ -5,7 +5,7 @@
 #include "cuda_ep.h"
 #include "cuda_plugin_kernels.h"
 #include "core/common/string_utils.h"
-
+#include "core/session/onnxruntime_c_api.h"
 #include <algorithm>
 #include <cassert>
 #include <cctype>
