@@ -231,7 +231,10 @@ inline void* AllocatorImpl<T>::Reserve(size_t size) {
   if (this->p_->version >= 18 && this->p_->Reserve) {
     return this->p_->Reserve(this->p_, size);
   }
-  return nullptr;
+  // Fall back to Alloc() for allocators that don't implement Reserve,
+  // matching the ORT-core adapter behavior (IAllocatorImplWrappingOrtAllocator,
+  // IArenaImplWrappingOrtAllocator).
+  return this->p_->Alloc(this->p_, size);
 }
 
 template <typename T>

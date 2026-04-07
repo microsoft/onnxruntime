@@ -54,6 +54,7 @@ class CudaMempoolOrtAllocator final : public CudaAllocatorBase {
                           const OrtApi& api,
                           const OrtLogger& logger,
                           cudaMemPool_t pool,
+                          int device_id,
                           uint64_t pool_release_threshold,
                           size_t bytes_to_keep_on_shrink);
 
@@ -84,6 +85,7 @@ class CudaMempoolOrtAllocator final : public CudaAllocatorBase {
 
   const OrtApi& ort_api_;
   const OrtLogger& logger_;
+  int device_id_{0};  // CUDA ordinal for cudaSetDevice guards
 
   cudaMemPool_t pool_{nullptr};
   uint64_t pool_release_threshold_;

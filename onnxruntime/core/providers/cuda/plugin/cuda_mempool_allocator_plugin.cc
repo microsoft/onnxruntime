@@ -122,7 +122,7 @@ OrtStatus* CudaMempoolOrtAllocator::Create(const OrtMemoryInfo* memory_info,
   }
 
   out = std::unique_ptr<CudaMempoolOrtAllocator>(
-      new CudaMempoolOrtAllocator(memory_info, api, logger, pool,
+      new CudaMempoolOrtAllocator(memory_info, api, logger, pool, device_id,
                                   pool_release_threshold, bytes_to_keep_on_shrink));
 
   {
@@ -140,11 +140,13 @@ CudaMempoolOrtAllocator::CudaMempoolOrtAllocator(const OrtMemoryInfo* memory_inf
                                                  const OrtApi& api,
                                                  const OrtLogger& logger,
                                                  cudaMemPool_t pool,
+                                                 int device_id,
                                                  uint64_t pool_release_threshold,
                                                  size_t bytes_to_keep_on_shrink)
     : CudaAllocatorBase(CudaAllocatorKind::kDevice, memory_info),
       ort_api_(api),
       logger_(logger),
+      device_id_(device_id),
       pool_(pool),
       pool_release_threshold_(pool_release_threshold),
       bytes_to_keep_on_shrink_(bytes_to_keep_on_shrink) {
@@ -159,6 +161,12 @@ CudaMempoolOrtAllocator::CudaMempoolOrtAllocator(const OrtMemoryInfo* memory_inf
 }
 
 CudaMempoolOrtAllocator::~CudaMempoolOrtAllocator() {
+  // Ensure we target the correct GPU — cudaDeviceSynchronize() and the default
+  // stream are per-current-device, not per-pool.
+  int prev_device = -1;
+  const bool restore = cudaGetDevice(&prev_device) == cudaSuccess;
+  ORT_IGNORE_RETURN_VALUE(cudaSetDevice(device_id_));
+
   // Enqueue frees for any remaining allocations on their recorded streams.
   for (auto& [ptr, rec] : alloc_map_) {
     ORT_IGNORE_RETURN_VALUE(cudaFreeAsync(ptr, rec.stream));
@@ -181,6 +189,10 @@ CudaMempoolOrtAllocator::~CudaMempoolOrtAllocator() {
     ORT_IGNORE_RETURN_VALUE(cudaMemPoolTrimTo(pool_, 0));
     ORT_IGNORE_RETURN_VALUE(cudaMemPoolDestroy(pool_));
     pool_ = nullptr;
+  }
+
+  if (restore) {
+    ORT_IGNORE_RETURN_VALUE(cudaSetDevice(prev_device));
   }
 }
 
@@ -235,11 +247,17 @@ void* ORT_API_CALL CudaMempoolOrtAllocator::AllocImpl(OrtAllocator* this_, size_
   ORT_TRY {
     auto& self = *static_cast<CudaMempoolOrtAllocator*>(this_);
     constexpr cudaStream_t kDefaultStream = static_cast<cudaStream_t>(0);
-    // The legacy default stream (NULL / 0) implicitly synchronizes with all
-    // other work on the device, so the pointer returned by
-    // cudaMallocFromPoolAsync is usable by any subsequent default-stream
-    // operation without an explicit cudaStreamSynchronize.
-    return self.AllocInternal(size, kDefaultStream);
+    // The legacy default stream (NULL / 0) is per-current-device. Ensure we
+    // target the correct GPU so the allocation lands on the pool's device.
+    int prev_device = -1;
+    const bool restore = cudaGetDevice(&prev_device) == cudaSuccess;
+    if (cudaSetDevice(self.device_id_) != cudaSuccess) {
+      if (restore) cudaSetDevice(prev_device);
+      return nullptr;
+    }
+    void* p = self.AllocInternal(size, kDefaultStream);
+    if (restore) cudaSetDevice(prev_device);
+    return p;
   }
   ORT_CATCH(...) {
     return nullptr;
