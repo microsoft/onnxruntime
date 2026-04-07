@@ -216,6 +216,38 @@ void RunMinimalBilinearTest(int opset = 19, int min_cuda_arch = 0, bool omit_bia
                          DeformConvTestTraits<T>::DefaultRtol(), DeformConvTestTraits<T>::DefaultAtol(), false);
   }
 }
+
+void RunChunkTailGroupedIdentityTest(int64_t n, int64_t group1_base) {
+  DeformConvTestParams p = {};
+  p.batch_sz = n;
+  p.n_in_channels = 2;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 2;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 1};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 1;
+  p.in_w = 1;
+
+  std::vector<float> X(static_cast<size_t>(n * p.n_in_channels), 0.f);
+  for (int64_t i = 0; i < n; ++i) {
+    X[static_cast<size_t>(i * 2)] = static_cast<float>(i + 1);                // group 0 input
+    X[static_cast<size_t>(i * 2 + 1)] = static_cast<float>(group1_base + i);  // group 1 input
+  }
+
+  std::vector<float> W = {1.f, 1.f};  // identity mapping per group
+  std::vector<float> offset(static_cast<size_t>(n * 2), 0.f);
+
+  std::vector<float> expected_Y(static_cast<size_t>(n * p.n_out_channels), 0.f);
+  for (int64_t i = 0; i < n; ++i) {
+    expected_Y[static_cast<size_t>(i * 2)] = static_cast<float>(i + 1);
+    expected_Y[static_cast<size_t>(i * 2 + 1)] = static_cast<float>(group1_base + i);
+  }
+
+  RunDeformConvTest<float>(p, X, W, offset, {} /* B unused */, nullptr, expected_Y, 19, 1e-5f, 1e-5f, true);
+}
 }  // namespace
 
 // Minimal case: 1x1 kernel, 2x2 input, one output position with fractional offset (bilinear).
@@ -920,40 +952,15 @@ TEST(DeformConvTest, PrimeBatchSizeSeven) {
 // - N=993 -> balanced chunk size k=32 and final tail chunk size 1 (after many 32-sized chunks).
 // - group=2 exercises cur_parallel==1 grouped GEMM path where per-group col stride must use cur_out_size.
 TEST(DeformConvTest, ChunkTailOneWithGroups) {
-  const int64_t N = 993;
-  DeformConvTestParams p = {};
-  p.batch_sz = N;
-  p.n_in_channels = 2;
-  p.n_out_channels = 2;
-  p.n_weight_grps = 2;
-  p.n_offset_grps = 1;
-  p.kernel_shape = {1, 1};
-  p.stride = {1, 1};
-  p.pad = {0, 0, 0, 0};
-  p.dilation = {1, 1};
-  p.in_h = 1;
-  p.in_w = 1;
+  RunChunkTailGroupedIdentityTest(/*n=*/993, /*group1_base=*/1000);
+}
 
-  // X shape [N, 2, 1, 1]. Make each batch element distinct so stale reads are unlikely to pass by chance.
-  std::vector<float> X(static_cast<size_t>(N * p.n_in_channels), 0.f);
-  for (int64_t n = 0; n < N; ++n) {
-    X[static_cast<size_t>(n * 2)] = static_cast<float>(n + 1);         // group 0 input
-    X[static_cast<size_t>(n * 2 + 1)] = static_cast<float>(1000 + n);  // group 1 input
-  }
-
-  // W shape [2, 1, 1, 1]: identity mapping per group.
-  std::vector<float> W = {1.f, 1.f};
-  // offset shape [N, 2, 1, 1] for k=1, offset_group=1. Zero offset => regular sampling.
-  std::vector<float> offset(static_cast<size_t>(N * 2), 0.f);
-
-  // Expected Y shape [N, 2, 1, 1].
-  std::vector<float> expected_Y(static_cast<size_t>(N * p.n_out_channels), 0.f);
-  for (int64_t n = 0; n < N; ++n) {
-    expected_Y[static_cast<size_t>(n * 2)] = static_cast<float>(n + 1);
-    expected_Y[static_cast<size_t>(n * 2 + 1)] = static_cast<float>(1000 + n);
-  }
-
-  RunDeformConvTest<float>(p, X, W, offset, {} /* B unused */, nullptr, expected_Y, 19, 1e-5f, 1e-5f, true);
+// CUDA chunking regression guard for partial tail chunk:
+// - Keep bytes_per_image tiny so target_parallel_imgs hits kMaxParallelImgs(32) on all CUDA devices.
+// - N=33 -> balanced chunk size k=17 and final tail chunk size 16 (1 < cur_parallel < n_parallel_imgs).
+// - group=2 exercises grouped path where each group's col base must use current cur_out_size.
+TEST(DeformConvTest, ChunkTailPartialWithGroups) {
+  RunChunkTailGroupedIdentityTest(/*n=*/33, /*group1_base=*/2000);
 }
 
 // 7x7 kernel with 9x9 input -> 3x3 output: exercises compile-time kH=kW=7 CUDA im2col specialization.

@@ -266,7 +266,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
       const int64_t stride_c_y = M * output_image_size;
       for (int64_t g = 0; g < group; ++g) {
         const T* W_g = Wdata + g * (M / group) * kernel_dim;
-        const T* col_g = col_buffer.get() + g * kernel_dim * col_stride;
+        const T* col_g = col_buffer.get() + g * kernel_dim * cur_out_size;
         T* Y_g = Ydata + b * M * output_image_size + g * (M / group) * output_image_size;
 
         CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
