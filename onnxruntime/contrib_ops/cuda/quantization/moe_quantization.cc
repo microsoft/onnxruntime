@@ -57,12 +57,7 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
                                  const Tensor* fc2_scales,
                                  const Tensor* fc3_scales_optional,
                                  const cudaDeviceProp& device_prop) const {
-  auto stream = context->GetComputeStream();
-
   const int sm = device_prop.major * 10 + device_prop.minor;
-
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
   using CudaT = typename OrtToCudaType<T>::type;
 
@@ -81,14 +76,13 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * moe_params.num_rows * sizeof(int);
   size_t expert_for_source_row_size = k_ * moe_params.num_rows * sizeof(int);
 
-  IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, ws_size, false, stream);
-  IAllocatorUniquePtr<void> fc2_output = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
-  IAllocatorUniquePtr<void> expert_scales =
-      IAllocator::MakeUniquePtr<void>(allocator, expert_scales_size, false, stream);
+  IAllocatorUniquePtr<void> work_space = this->template GetScratchBuffer<void>(ws_size, this->GetComputeStream(context));
+  IAllocatorUniquePtr<void> fc2_output = this->template GetScratchBuffer<void>(fc2_output_size, this->GetComputeStream(context));
+  IAllocatorUniquePtr<void> expert_scales = this->template GetScratchBuffer<void>(expert_scales_size, this->GetComputeStream(context));
   IAllocatorUniquePtr<void> expanded_source_row_to_expanded_dest_row =
-      IAllocator::MakeUniquePtr<void>(allocator, expanded_source_row_to_expanded_dest_row_size, false, stream);
+      this->template GetScratchBuffer<void>(expanded_source_row_to_expanded_dest_row_size, this->GetComputeStream(context));
   IAllocatorUniquePtr<void> expert_for_source_row =
-      IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
+      this->template GetScratchBuffer<void>(expert_for_source_row_size, this->GetComputeStream(context));
 
   moe_runner.run_moe_fc(
       reinterpret_cast<const CudaT*>(input->template Data<T>()),
@@ -149,8 +143,11 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc1_zero_points = context->Input<Tensor>(11);
   const Tensor* fc2_zero_points = context->Input<Tensor>(12);
   const Tensor* fc3_zero_points = context->Input<Tensor>(13);
+  const Tensor* router_weights = context->Input<Tensor>(14);
   ORT_ENFORCE(fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr,
               "Zero points are not yet implemented on CUDA for QMoE.");
+  ORT_ENFORCE(router_weights == nullptr,
+              "Separate router_weights is not yet implemented on CUDA for QMoE.");
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
@@ -162,7 +159,7 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
       activation_type_ == ort_fastertransformer::ActivationType::SwiGLU,
       block_size_));
 
-#if defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // Mute "maybe used uninitialized" warning for MoEParameters.
 #endif
@@ -183,7 +180,7 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
                                          GetDeviceProp());
   }
 
-#if defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
 }

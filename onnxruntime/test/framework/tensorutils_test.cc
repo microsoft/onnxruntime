@@ -3,6 +3,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/prepacked_weights.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensorprotoutils.h"
@@ -13,6 +14,7 @@
 #include <cstdint>
 #include <limits>
 #include <fstream>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -249,26 +251,17 @@ std::vector<BFloat16> CreateValues<BFloat16>() {
 }
 
 template <typename T>
-void ConvertEndianessForVector(const std::vector<T>& test_data) {
-  const size_t element_size = sizeof(T);
-  const size_t num_elements = test_data.size();
-  char* bytes = reinterpret_cast<char*>(const_cast<T*>(test_data.data()));
-  for (size_t i = 0; i < num_elements; ++i) {
-    char* start_byte = bytes + i * element_size;
-    char* end_byte = start_byte + element_size - 1;
-    for (size_t count = 0; count < element_size / 2; ++count) {
-      std::swap(*start_byte++, *end_byte--);
-    }
-  }
-}
-
-template <typename T>
 void WriteDataToFile(FILE* fp, const std::vector<T>& test_data) {
-  if constexpr (endian::native != endian::little) {
-    ConvertEndianessForVector(test_data);
-  }
   size_t size_in_bytes = test_data.size() * sizeof(T);
-  ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
+
+  std::vector<unsigned char> data;
+  data.resize(size_in_bytes);
+
+  auto src_span = gsl::make_span(test_data.data(), test_data.size());
+  auto dst_span = gsl::make_span(data.data(), data.size());
+
+  ASSERT_STATUS_OK(onnxruntime::utils::WriteLittleEndian(src_span, dst_span));
+  ASSERT_EQ(size_in_bytes, fwrite(data.data(), 1, size_in_bytes, fp));
 }
 
 std::unique_ptr<bool[]> BoolDataFromVector(const std::vector<bool>& test_data) {
@@ -310,9 +303,6 @@ void UnpackAndValidate(const TensorProto& tensor_proto, const std::filesystem::p
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tensor_proto, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  if constexpr (endian::native != endian::little) {
-    ConvertEndianessForVector(val);
-  }
 
   // Validate data
   for (size_t i = 0; i < test_data.size(); i++) {
@@ -491,9 +481,7 @@ static void TestConstantNodeConversionWithExternalData(TensorProto_DataType type
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tp, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  if constexpr (endian::native != endian::little) {
-    ConvertEndianessForVector(val);
-  }
+
   for (size_t i = 0; i < test_data.size(); i++) {
     ASSERT_EQ(val[i], test_data[i]);
   }
@@ -519,43 +507,109 @@ class PathValidationTest : public ::testing::Test {
     // Clean up the temporary directory.
     std::filesystem::remove_all(base_dir_);
     std::filesystem::remove_all(outside_dir_);
+
+    for (const auto& other_dir : other_dirs_) {
+      std::filesystem::remove_all(other_dir);
+    }
+
+    for (const auto& other_file : other_files_) {
+      std::filesystem::remove(other_file);
+    }
+  }
+
+  // Create directory that will be removed during test teardown.
+  void CreateDirectories(std::filesystem::path dir) {
+    std::filesystem::create_directories(dir);
+    other_dirs_.push_back(std::move(dir));
+  }
+
+  // Create empty file that will be removed during test teardown.
+  void CreateEmptyFile(std::filesystem::path file_path) {
+    std::ofstream{file_path};
+    other_files_.push_back(std::move(file_path));
   }
 
   std::filesystem::path base_dir_;
   std::filesystem::path outside_dir_;
+  std::vector<std::filesystem::path> other_dirs_;
+  std::vector<std::filesystem::path> other_files_;
 };
 
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
-  // Valid relative path.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin"));
+  std::filesystem::path model_path = base_dir_ / "model.onnx";
+  std::filesystem::path cwd = std::filesystem::current_path();
+  const bool is_cwd_root = cwd == cwd.root_path();
 
-  // Empty location.
-  // Only validate it is not an absolute path.
-  ASSERT_TRUE(utils::ValidateExternalDataPath(base_dir_, "").IsOK());
+  // Create empty external data files that we'll need for testing.
+  CreateEmptyFile(base_dir_ / "data.bin");
+  CreateDirectories(base_dir_ / "sub");
+  CreateEmptyFile(base_dir_ / "sub" / "data.bin");
+  CreateEmptyFile(cwd / "data.bin");
+  CreateDirectories(cwd / "abc");
+  CreateEmptyFile(cwd / "abc" / "data.bin");
+  CreateEmptyFile(cwd / "data..bin");
+
+  // Valid relative path.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "data.bin"));
+
+  // Empty location not allowed.
+  {
+    Status status = utils::ValidateExternalDataPath(model_path, "");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Empty external data path"));
+  }
 
   // Path with ".." that escapes the base directory.
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "../data.bin").IsOK());
 
   // Absolute path.
+  {
+    Status status;
 #ifdef _WIN32
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "C:\\data.bin").IsOK());
-  ASSERT_FALSE(utils::ValidateExternalDataPath("", "C:\\data.bin").IsOK());
-#else
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "/data.bin").IsOK());
-  ASSERT_FALSE(utils::ValidateExternalDataPath("", "/data.bin").IsOK());
+    status = utils::ValidateExternalDataPath(model_path, "C:\\data.bin");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+
+    status = utils::ValidateExternalDataPath("", "C:\\data.bin");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
 #endif  // Absolute path.
 
-  // Windows vs Unix path separators.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "sub/data.bin"));
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "sub\\data.bin"));
+    // Paths starting from / should be rejected even on Windows.
+    status = utils::ValidateExternalDataPath(model_path, "/data.bin");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
 
-  // Base directory does not exist.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir", "data.bin"));
+    status = utils::ValidateExternalDataPath("", "/data.bin");
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+  }
+
+  // Windows vs Unix path separators.
+#ifdef _WIN32
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub\\data.bin"));
+#endif
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub/data.bin"));
+
+  // Model in a directory that does not exist.
+  ASSERT_FALSE(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin").IsOK());
+
+  // Model path is a bare filename (no directory component).
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("model.onnx", "data.bin"));
+  ASSERT_EQ(utils::ValidateExternalDataPath("model.onnx", "../data.bin").IsOK(), is_cwd_root);
+
+  // Model relative path checks.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./model.onnx", "data.bin"));
+  ASSERT_EQ(utils::ValidateExternalDataPath("./model.onnx", "../data.bin").IsOK(), is_cwd_root);
+#ifdef _WIN32
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\model.onnx", "data.bin"));
+  ASSERT_EQ(utils::ValidateExternalDataPath(".\\model.onnx", "../data.bin").IsOK(), is_cwd_root);
+#endif
+
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("./abc/model.onnx", "data.bin"));
+#ifdef _WIN32
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(".\\abc\\model.onnx", "data.bin"));
+#endif
 
   //
-  // Tests for an empty base directory.
-  // The base directory would be empty when 1) the session loads a model from bytes and 2) the application does not
+  // Tests for an empty model path (model loaded from bytes).
+  // The model path would be empty when 1) the session loads a model from bytes and 2) the application does not
   // set an external file folder path via the session config option
   // kOrtSessionOptionsModelExternalInitializersFileFolderPath.
   //
@@ -568,17 +622,18 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "data..bin"));
 
   // A path that would escape the current working directory is invalid.
-  ASSERT_FALSE(utils::ValidateExternalDataPath("", "../data.bin").IsOK());
+  ASSERT_EQ(utils::ValidateExternalDataPath("", "../data.bin").IsOK(), is_cwd_root);
 
   // A path that uses ".." but would not escape the current working directory should be fine.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "a/../data.bin"));
 
   // A path with multiple internal ".." that would escape current working direction should fail.
-  ASSERT_FALSE(utils::ValidateExternalDataPath("", "a/../../data.bin").IsOK());
+  ASSERT_EQ(utils::ValidateExternalDataPath("", "a/../../data.bin").IsOK(), is_cwd_root);
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
   // Symbolic link that points inside the base directory.
+  auto model_path = base_dir_ / "model.onnx";
   try {
     auto target = base_dir_ / "target.bin";
     std::ofstream{target};
@@ -588,11 +643,12 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
     GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
                  << e.what();
   }
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "link.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "link.bin"));
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   // Symbolic link that points outside the base directory.
+  auto model_path = base_dir_ / "model.onnx";
   auto outside_target = outside_dir_ / "outside.bin";
   try {
     {
@@ -603,7 +659,118 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   } catch (const std::exception& e) {
     GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: " << e.what();
   }
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "outside_link.bin").IsOK());
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkInside) {
+  // Test external data path validation when the model path is empty.
+  // Specifically tests that the following scenario is valid:
+  //   - A symbolic link within the current working directory pointing to a file still within CWD.
+  try {
+    std::filesystem::path cwd = std::filesystem::current_path();
+    std::filesystem::path sub_dir = cwd / "symlink_test_subdir";
+    CreateDirectories(sub_dir);
+
+    std::filesystem::path target = sub_dir / "target_inside.bin";
+    std::filesystem::path symlink = sub_dir / "link_inside.bin";
+    std::ofstream{target};
+    std::filesystem::create_symlink(target, symlink);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping test due to failure setting up directory and symlink files: "
+                 << e.what();
+  }
+
+  EXPECT_STATUS_OK(utils::ValidateExternalDataPath("", "./symlink_test_subdir/link_inside.bin"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOutside) {
+  // Test external data path validation when the model path is empty.
+  // Specifically tests that the following scenario is NOT valid:
+  //  - A symbolic link within the current working directory pointing to a file outside CWD.
+  try {
+    std::filesystem::path cwd = std::filesystem::current_path();
+    std::filesystem::path sub_dir = cwd / "symlink_test_subdir2";
+    CreateDirectories(sub_dir);
+
+    // Check if we can actually make a file outside of the current working directory (i.e., in a temp dir).
+    // This is only possible if the current working directory is NOT the same as the temp directory.
+    // Otherwise, we need to skip this test. This happens in Android CI.
+    auto [cwd_end, outside_end] = std::mismatch(cwd.begin(), cwd.end(), outside_dir_.begin(), outside_dir_.end());
+    if (cwd_end == cwd.end()) {
+      GTEST_SKIP() << "Skipping test that needs to create a symlink outside of the cwd because the cwd is the same as "
+                   << "the temp dir. cwd: " << cwd << " outside_dir_: " << outside_dir_;
+    }
+
+    std::filesystem::path outside_target = outside_dir_ / "outside_for_empty_basedir.bin";
+    std::filesystem::path symlink = sub_dir / "outside_link.bin";
+    std::ofstream{outside_target};
+    std::filesystem::create_symlink(outside_target, symlink);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping test due to failure setting up directory and symlink files: "
+                 << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath("", "./symlink_test_subdir2/outside_link.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
+}
+
+TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
+  // Case 1: Annotation exists
+  {
+    ONNX_NAMESPACE::NodeProto node_proto;
+    node_proto.set_name("test_node");
+    auto* prop = node_proto.add_metadata_props();
+    prop->set_key(utils::kNodeProtoLayerAnnotation);
+    prop->set_value("foo");
+
+    auto result = utils::GetNodeProtoLayeringAnnotation(node_proto);
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value(), "foo");
+  }
+
+  // Case 2: Annotation missing (empty metadata_props)
+  {
+    ONNX_NAMESPACE::NodeProto node_proto;
+    node_proto.set_name("test_node");
+
+    auto result = utils::GetNodeProtoLayeringAnnotation(node_proto);
+    EXPECT_FALSE(result.has_value());
+  }
+
+  // Case 3: Other metadata exists, but not the annotation
+  {
+    ONNX_NAMESPACE::NodeProto node_proto;
+    node_proto.set_name("test_node");
+    auto* prop = node_proto.add_metadata_props();
+    prop->set_key("some_other_key");
+    prop->set_value("some_value");
+
+    auto result = utils::GetNodeProtoLayeringAnnotation(node_proto);
+    EXPECT_FALSE(result.has_value());
+  }
+
+  // Case 4: Multiple metadata, including the annotation
+  {
+    ONNX_NAMESPACE::NodeProto node_proto;
+    node_proto.set_name("test_node");
+
+    auto* prop1 = node_proto.add_metadata_props();
+    prop1->set_key("some_other_key");
+    prop1->set_value("some_value");
+
+    auto* prop2 = node_proto.add_metadata_props();
+    prop2->set_key(utils::kNodeProtoLayerAnnotation);
+    prop2->set_value("bar");
+
+    auto* prop3 = node_proto.add_metadata_props();
+    prop3->set_key("yet_another_key");
+    prop3->set_value("baz");
+
+    auto result = utils::GetNodeProtoLayeringAnnotation(node_proto);
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value(), "bar");
+  }
 }
 
 // Tests for ValidateEmbeddedTensorProtoDataSizeAndShape and embedded initializer size limits

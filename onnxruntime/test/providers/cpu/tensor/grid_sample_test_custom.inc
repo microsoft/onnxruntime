@@ -37,7 +37,7 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_zeros_mixed_bound
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<TypeParam>("Y", Y_shape, Y_data);
-  RunTests(test, GetExecutionProviders(20));
+  RunTests(test, GetExecutionProviders());
 }
 
 TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_zeros_mixed_bounds_left_top) {
@@ -69,6 +69,5 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_zeros_mixed_bound
   test.AddAttribute("padding_mode", padding_mode);
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<TypeParam>("Y", Y_shape, Y_data);
-  RunTests(test, GetExecutionProviders(20));
+  RunTests(test, GetExecutionProviders());
 }
-

@@ -7,6 +7,18 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
+
+// When building the CUDA EP as a plugin (BUILD_CUDA_EP_AS_PLUGIN),
+// skip all SHARED_PROVIDER type redefinitions. The adapter header (ep/adapters.h)
+// provides its own facade types, and the SHARED_PROVIDER bridge would conflict.
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+
+// Plugin build: provider_api.h is a complete no-op. We do NOT define
+// SHARED_PROVIDER so that #ifndef SHARED_PROVIDER guards in framework
+// headers (op_kernel.h, etc.) remain active.
+
+#else  // !BUILD_CUDA_EP_AS_PLUGIN — normal SHARED_PROVIDER path
+
 #define SHARED_PROVIDER 1
 
 #ifdef _WIN32
@@ -307,7 +319,7 @@ constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 template <typename T>
-using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
 
 inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
 
@@ -418,7 +430,7 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt2x4>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2;
 }
 
-inline std::vector<std::unique_ptr<ComputeCapability>>
+inline std::vector<std::unique_ptr<ComputeCapability> >
 CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::unordered_set<const Node*>& supported_nodes,
                           const std::unordered_set<std::string>& stop_ops,
@@ -466,7 +478,7 @@ inline Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name)
 }  // namespace graph_utils
 
 namespace QDQ {
-inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+inline std::pair<std::vector<std::unique_ptr<NodeUnit> >, std::unordered_map<const Node*, const NodeUnit*> >
 GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) {
   return g_host->QDQ__GetAllNodeUnits(graph_viewer, logger);
 }
@@ -511,3 +523,5 @@ inline T* Initializer::data() {
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
+
+#endif  // !BUILD_CUDA_EP_AS_PLUGIN

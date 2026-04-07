@@ -80,6 +80,93 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   test.Run(expect_result, err_str, excluded_providers);
 }
 
+vector<float> ComputeDepthwiseMultiplier2Reference(const vector<float>& input,
+                                                   const vector<int64_t>& input_shape,
+                                                   const vector<float>& weights,
+                                                   const vector<int64_t>& weight_shape,
+                                                   const vector<float>& bias,
+                                                   const vector<int64_t>& output_shape,
+                                                   int64_t stride_h,
+                                                   int64_t stride_w,
+                                                   int64_t pad_h,
+                                                   int64_t pad_w) {
+  const int64_t batch = input_shape[0];
+  const int64_t channels = input_shape[1];
+  const int64_t input_h = input_shape[2];
+  const int64_t input_w = input_shape[3];
+  const int64_t output_channels = weight_shape[0];
+  const int64_t kernel_h = weight_shape[2];
+  const int64_t kernel_w = weight_shape[3];
+  const int64_t output_h = output_shape[2];
+  const int64_t output_w = output_shape[3];
+  const int64_t multiplier = output_channels / channels;
+
+  vector<float> output(static_cast<size_t>(batch * output_channels * output_h * output_w), 0.0f);
+
+  for (int64_t n = 0; n < batch; ++n) {
+    for (int64_t c = 0; c < channels; ++c) {
+      for (int64_t m = 0; m < multiplier; ++m) {
+        const int64_t out_c = c * multiplier + m;
+        for (int64_t oh = 0; oh < output_h; ++oh) {
+          for (int64_t ow = 0; ow < output_w; ++ow) {
+            float sum = bias[out_c];
+            for (int64_t kh = 0; kh < kernel_h; ++kh) {
+              const int64_t ih = oh * stride_h + kh - pad_h;
+              if (ih < 0 || ih >= input_h) {
+                continue;
+              }
+
+              for (int64_t kw = 0; kw < kernel_w; ++kw) {
+                const int64_t iw = ow * stride_w + kw - pad_w;
+                if (iw < 0 || iw >= input_w) {
+                  continue;
+                }
+
+                const size_t input_index = static_cast<size_t>(((n * channels + c) * input_h + ih) * input_w + iw);
+                const size_t weight_index = static_cast<size_t>(((out_c * kernel_h + kh) * kernel_w) + kw);
+                sum += input[input_index] * weights[weight_index];
+              }
+            }
+
+            const size_t output_index = static_cast<size_t>(((n * output_channels + out_c) * output_h + oh) * output_w + ow);
+            output[output_index] = sum;
+          }
+        }
+      }
+    }
+  }
+
+  return output;
+}
+
+void TestMobileClipDepthwiseMultiplier2(int64_t channels, int64_t input_hw) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      channels,                     // group
+      vector<int64_t>{7, 7},        // kernel_shape
+      vector<int64_t>{3, 3, 3, 3},  // pads
+      vector<int64_t>{2, 2},        // strides
+      {}                            // excluded EPs
+  };
+
+  RandomValueGenerator random{static_cast<int>(channels + input_hw)};
+
+  vector<int64_t> input_shape = {1, channels, input_hw, input_hw};
+  vector<int64_t> weight_shape = {channels * 2, 1, 7, 7};
+  vector<int64_t> bias_shape = {channels * 2};
+  vector<int64_t> output_shape = {1, channels * 2, input_hw / 2, input_hw / 2};
+
+  vector<float> input = random.Uniform<float>(input_shape, -1.0f, 1.0f);
+  vector<float> weights = random.Uniform<float>(weight_shape, -0.5f, 0.5f);
+  vector<float> bias = random.Uniform<float>(bias_shape, -0.25f, 0.25f);
+  vector<float> expected_output = ComputeDepthwiseMultiplier2Reference(input, input_shape, weights, weight_shape, bias,
+                                                                       output_shape, 2, 2, 3, 3);
+
+  TestConvOp(attrs, {input, weights, bias}, {input_shape, weight_shape, bias_shape},
+             expected_output, output_shape, true, 1e-4f, OpTester::ExpectResult::kExpectSuccess, "", 12);
+}
+
 }  // namespace
 
 // Conv
@@ -725,7 +812,7 @@ TEST(ConvTest, Conv3D_1) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<float> X = {-0.43337246775627136f, -0.48385289311408997f, -0.30954962968826294f,
@@ -762,7 +849,7 @@ TEST(ConvTest, Conv3D_2) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<float> X = {0.010772407054901123f, -0.43806642293930054f, 0.455391526222229f, -0.28657248616218567f,
@@ -805,7 +892,7 @@ TEST(ConvTest, Conv3D_Bias) {
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<float> X = {0.46796226501464844f, -0.4613912105560303f, 0.33512794971466064f, -0.4010460674762726f,
@@ -1196,6 +1283,18 @@ TEST(ConvTest, Depthwise2D_Bias_Group15) {
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_64x64) {
+  TestMobileClipDepthwiseMultiplier2(64, 64);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_128x32) {
+  TestMobileClipDepthwiseMultiplier2(128, 32);
+}
+
+TEST(ConvTest, MobileClipDepthwiseMultiplier2_256x16) {
+  TestMobileClipDepthwiseMultiplier2(256, 16);
 }
 
 TEST(ConvTest, ConvDimWithZero) {

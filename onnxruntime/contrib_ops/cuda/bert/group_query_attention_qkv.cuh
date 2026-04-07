@@ -14,6 +14,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 using namespace onnxruntime::cuda;
 

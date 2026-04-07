@@ -86,7 +86,8 @@ struct MatMulReplaceWithQLinear : public Action {
 // used together with DQMatMulNodeGroupSelector, which does the sanity check
 struct DQMatMulToMatMulNBitsAction : public ReplaceWithNew {
   DQMatMulToMatMulNBitsAction(int64_t accuracy_level,
-                              concurrency::ThreadPool* intra_op_thread_pool);
+                              concurrency::ThreadPool* intra_op_thread_pool,
+                              int64_t block_size_for_non_blockwise = 0);
 
  private:
   std::string OpType(const RuntimeState&) const override { return op_type_; }
@@ -105,20 +106,7 @@ struct DQMatMulToMatMulNBitsAction : public ReplaceWithNew {
   const std::string op_type_;
   const std::vector<NodeAndMoveInfo> value_moves_;
   concurrency::ThreadPool* intra_op_thread_pool_;
-};
-
-// Used together with DQCastMatMulToMatMulNBitsSelector.
-// Handles DQ -> Cast(fp16->fp32) -> MatMul fusion to MatMulNBits,
-// including optional Cast on input A and output type alignment.
-struct DQCastMatMulToMatMulNBitsAction : public Action {
-  DQCastMatMulToMatMulNBitsAction(int64_t accuracy_level,
-                                  concurrency::ThreadPool* intra_op_thread_pool);
-
-  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
-
- private:
-  int64_t accuracy_level_;
-  concurrency::ThreadPool* intra_op_thread_pool_;
+  const int64_t block_size_for_non_blockwise_;
 };
 
 struct GemmReplaceWithQuant : public Action {

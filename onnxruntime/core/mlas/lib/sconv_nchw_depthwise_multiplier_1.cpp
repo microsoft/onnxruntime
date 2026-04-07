@@ -6,17 +6,28 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sconv_nchw_kernel_neon.cpp
+    sconv_nchw_depthwise_multiplier_1.cpp
 
 Abstract:
 
-    This module implements the single precision NCHW convolution kernels for ARM NEON.
+    This module implements the single precision NCHW depthwise convolution
+    kernel entry point for the currently supported depth-multiplier-1 case.
+
+    At present, the implementation is intentionally narrow and only supports:
+
+      - 2D convolution
+      - input channels per group = 1
+      - output channels per group = 1
+      - kernel = 3x3
+      - stride = 1x1
+      - dilation = 1x1
+      - padding <= 1 on each side
 
 --*/
 
 
 #include "mlasi.h"
-#include <arm_neon.h>
+#include <cassert>
 
 MLAS_FORCEINLINE float DepthwiseSampleValue(
     const float* row,
@@ -50,7 +61,7 @@ MLAS_FORCEINLINE float DepthwiseAccumulateRowScalar(
 }
 
 MLAS_FORCEINLINE void DepthwiseAccumulateRowVector(
-    float32x4_t& acc,
+    MLAS_FLOAT32X4& acc,
     const float* row,
     size_t base,
     float w0,
@@ -63,9 +74,9 @@ MLAS_FORCEINLINE void DepthwiseAccumulateRowVector(
     }
 
     const float* r = row + base;
-    const float32x4_t c0 = MlasLoadFloat32x4(r);
-    const float32x4_t c1 = MlasLoadFloat32x4(r + 1);
-    const float32x4_t c2 = MlasLoadFloat32x4(r + 2);
+    const MLAS_FLOAT32X4 c0 = MlasLoadFloat32x4(r);
+    const MLAS_FLOAT32X4 c1 = MlasLoadFloat32x4(r + 1);
+    const MLAS_FLOAT32X4 c2 = MlasLoadFloat32x4(r + 2);
 
     acc = MlasMultiplyAddFloat32x4(c0, w0, acc);
     acc = MlasMultiplyAddFloat32x4(c1, w1, acc);
@@ -107,12 +118,31 @@ MLAS_FORCEINLINE float DepthwiseComputeEdge(
     return acc;
 }
 
-static void DepthwiseConv3x3Stride1PadLe1Neon(
+static
+void
+MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,
     float* Output
-)
+    )
+/*++
+
+Routine Description:
+
+    Computes one single-channel 3x3 depthwise convolution slice.
+
+Arguments:
+
+    Parameters - Supplies the prepared convolution parameters.
+
+    Input - Supplies one input channel slice in CHW layout.
+
+    Filter - Supplies one filter slice in FH x FW layout.
+
+    Output - Supplies one output channel slice in OH x OW layout.
+
+--*/
 {
     const size_t H = Parameters->InputShape[0];
     const size_t W = Parameters->InputShape[1];
@@ -185,14 +215,14 @@ static void DepthwiseConv3x3Stride1PadLe1Neon(
             }
 
             const size_t base = static_cast<size_t>(iw);
-            float32x4_t acc = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 acc = MlasZeroFloat32x4();
 
             DepthwiseAccumulateRowVector(acc, row0, base, w00, w01, w02);
             DepthwiseAccumulateRowVector(acc, row1, base, w10, w11, w12);
             DepthwiseAccumulateRowVector(acc, row2, base, w20, w21, w22);
 
             if (accumulate_output) {
-                const float32x4_t prev = MlasLoadFloat32x4(out_row + ow);
+                const MLAS_FLOAT32X4 prev = MlasLoadFloat32x4(out_row + ow);
                 acc = MlasMultiplyAddFloat32x4(prev, beta, acc);
             }
 
@@ -230,35 +260,6 @@ static void DepthwiseConv3x3Stride1PadLe1Neon(
     }
 }
 
-static
-void
-MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(
-    const MLAS_CONV_PARAMETERS* Parameters,
-    const float* Input,
-    const float* Filter,
-    float* Output
-    )
-/*++
-
-Routine Description:
-
-    This routine is an inner kernel to compute convolution on one channel input with one filter channel.
-
-Arguments:
-
-    Parameters - conv parameters calculated based on conv parameters like padding, strides, dilations, etc.
-
-    Input - input channel data start. Input is NCHW, so this pointer points to single H x W image data.
-
-    Filter - Whole filters are of F x CpG x FH x FW, this filter points to single FH x FW filter data.
-
-    Output - whole output are of N x F x OH x OW. This pointer points to single OH x OW output image data.
-
---*/
-{
-        DepthwiseConv3x3Stride1PadLe1Neon(Parameters, Input, Filter, Output);
-}
-
 void MlasConvDepthwiseFloat_CHW(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
@@ -270,28 +271,55 @@ void MlasConvDepthwiseFloat_CHW(
 
 Routine Description:
 
-    This routine is an inner kernel to compute depthwise convolution for one filter channel on one input channel.
+    Dispatches the currently supported depth-multiplier-1 implementation.
 
 Arguments:
 
-    Parameters - conv parameters calculated based on conv parameters like padding, strides, dilations, etc.
+    Parameters - Supplies the prepared convolution parameters. The following
+        constraints are required:
+          * Dimensions == 2
+          * InputChannels == 1
+          * FilterCount == 1
+          * KernelShape == {3, 3}
+          * StrideShape == {1, 1}
+          * DilationShape == {1, 1}
+          * Padding <= 1 on each side
 
-    Input - input channel data start. Input is NCHW, so this pointer point to single H x W image data.
+    Input - Supplies one batch/group input slice in CHW layout.
 
-    Filter - Whole filters are of F x CpG x FH x FW, this filter points to single FH x FW filter data.
+    Filter - Supplies one group filter block in OIHW layout. For this path,
+        only a single 3x3 filter is consumed.
 
-    Output - whole output are of N x F x OH x OW. This pointer point to single OH x OW output image data.
+    Output - Supplies one batch/group output slice in CHW layout.
 
-    Zeros - Point to working buffer where all 0.0f are filled.
+    Zeros - Supplies a zero-filled working buffer. This implementation does not
+        currently consume it.
 
 Note:
-    No checking here as it is inner loop. Logic in generating Parameters controls the check.
+    The routine asserts its narrow contract locally. Selection logic in
+    MlasConvPrepare() is expected to route only matching shapes here.
 
-    Currently only support 2d kernel 3x3 with strides=1, dilations=1, pads<=1.
-    Will add general case and more special case if needed later.
+    This is not a generic depthwise path. It currently supports only 2D
+    kernel 3x3, stride 1, dilation 1, and padding <= 1.
 
 --*/
 {
+    assert(Parameters->Dimensions == 2);
+    assert(Parameters->FilterCount == 1);
+    assert(Parameters->InputChannels == 1);
+    assert(Parameters->KernelShape[0] == 3);
+    assert(Parameters->KernelShape[1] == 3);
+    assert(Parameters->StrideShape[0] == 1);
+    assert(Parameters->StrideShape[1] == 1);
+    assert(Parameters->DilationShape[0] == 1);
+    assert(Parameters->DilationShape[1] == 1);
+    assert(Parameters->Padding[0] <= 1);
+    assert(Parameters->Padding[1] <= 1);
+    assert(Parameters->Padding[2] <= 1);
+    assert(Parameters->Padding[3] <= 1);
+
     MLAS_UNREFERENCED_PARAMETER(Zeros);
+
+    // Kernel dispatch
     MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(Parameters, Input, Filter, Output);
 }

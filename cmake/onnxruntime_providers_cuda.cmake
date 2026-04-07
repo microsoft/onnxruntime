@@ -20,6 +20,9 @@
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
     )
   endif()
+  # Exclude plugin directory if it was picked up by GLOB_RECURSE
+  list(FILTER onnxruntime_providers_cuda_cc_srcs EXCLUDE REGEX "core/providers/cuda/plugin/.*")
+
   # Remove pch files
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
@@ -43,6 +46,8 @@
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
         )
   endif()
+  # Exclude plugin directory if it was picked up by GLOB_RECURSE
+  list(FILTER onnxruntime_providers_cuda_cu_srcs EXCLUDE REGEX "core/providers/cuda/plugin/.*")
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
@@ -181,7 +186,9 @@
     endif()
 
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
+      if (NOT "${ORT_FLAG}" STREQUAL "-Wshorten-64-to-32")
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
+      endif()
     endforeach()
 
     # Note: The minimum required CUDA version is greater than 11.3.
@@ -222,6 +229,38 @@
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+      if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "IBMClang")
+        foreach(CLANG_WARNING
+          braced-scalar-init
+          defaulted-function-deleted
+          inconsistent-missing-override
+          instantiation-after-specialization
+          logical-op-parentheses
+          mismatched-tags
+          shorten-64-to-32
+          unneeded-internal-declaration
+          unknown-warning-option
+          unused-private-field
+          unused-variable)
+          target_compile_options(${target} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=${CLANG_WARNING}>")
+        endforeach()
+        if (CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "Clang" OR CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "IBMClang")
+          foreach(CLANG_WARNING
+            braced-scalar-init
+            defaulted-function-deleted
+            inconsistent-missing-override
+            instantiation-after-specialization
+            logical-op-parentheses
+            mismatched-tags
+            shorten-64-to-32
+            unneeded-internal-declaration
+            unknown-warning-option
+            unused-private-field
+            unused-variable)
+            target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=${CLANG_WARNING}>")
+          endforeach()
+        endif()
+      endif()
     else()
       #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
