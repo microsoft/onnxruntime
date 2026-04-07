@@ -84,6 +84,14 @@
     add_definitions("-DONNX_NAMESPACE=onnx")
     add_definitions("-DONNX_USE_LITE_PROTO=1")
 
+    # Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
+    if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
+      set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
+    endif()
+
+    # Set preprocessor definition for plugin EP version
+    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
+
     # Set preprocessor definitions used in onnxruntime_providers_webgpu.rc
     if(WIN32)
       set(WEBGPU_DLL_FILE_DESCRIPTION "ONNX Runtime WebGPU Provider")
