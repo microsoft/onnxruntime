@@ -46,6 +46,12 @@ jobs:
     clean: true
     submodules: none
 
+  # Authenticate to Lotus to pull pip in UsePythonVersion task
+  - task: PipAuthenticate@1
+    displayName: 'Pip Authenticate'
+    inputs:
+      artifactFeeds: 'Lotus'
+
   - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
     # Only need to install Python on x64 agents as Python is pre-installed on arm64 agents
     - task: UsePythonVersion@0
