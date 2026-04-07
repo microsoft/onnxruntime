@@ -20,7 +20,7 @@
 
 namespace onnxruntime {
 struct PrePackedWeights;
-struct TensorShape;
+class TensorShape;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
