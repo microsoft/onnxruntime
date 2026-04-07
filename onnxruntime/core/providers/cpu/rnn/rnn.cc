@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/rnn/rnn.h"
 
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
@@ -92,7 +93,7 @@ void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens
                        direction * batch_size * hidden_size +
                        batch * hidden_size;
     int64_t Y_h_offset = direction * batch_size * hidden_size + batch * hidden_size;
-    math::CopyVector<T, CPUMathUtil>(static_cast<int>(hidden_size), Y_buffer_data + y_offset,
+    math::CopyVector<T, CPUMathUtil>(onnxruntime::narrow<int>(hidden_size), Y_buffer_data + y_offset,
                                      Y_h->MutableData<T>() + Y_h_offset,
                                      &CPUMathUtil::Instance());
   }
@@ -188,9 +189,9 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
     math::Gemm<float>(
         CblasNoTrans,
         CblasTrans,
-        static_cast<int>(seq_length * batch_size),
-        static_cast<int>(hidden_size_),
-        static_cast<int>(input_size),
+        onnxruntime::narrow<int>(seq_length * batch_size),
+        onnxruntime::narrow<int>(hidden_size_),
+        onnxruntime::narrow<int>(input_size),
         1,
         X.Data<float>(),
         W.Data<float>() + direction * hidden_size_ * input_size,
@@ -224,9 +225,9 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
         math::Gemm<float>(
             CblasNoTrans,
             CblasTrans,
-            static_cast<int>(batch_size),
-            static_cast<int>(hidden_size_),
-            static_cast<int>(hidden_size_),
+            onnxruntime::narrow<int>(batch_size),
+            onnxruntime::narrow<int>(hidden_size_),
+            onnxruntime::narrow<int>(hidden_size_),
             1,
             h_prev,
             R.Data<float>() + direction * hidden_size_ * hidden_size_,
