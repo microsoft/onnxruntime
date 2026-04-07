@@ -182,15 +182,18 @@ __global__ void LinearAttentionRecurrentKernel(
       }
 
       if (needs_retrieval) {
+        // Store k in k_buf (not s_scratch) to avoid inter-warp race when
+        // d_k > 32: retrieval overwrites s_scratch[tid] while other warps
+        // may still be reading s_scratch[i] in the dot product loop.
         if (tid < d_k) {
-          s_scratch[tid] = kt_val;
+          k_buf[tid] = kt_val;
         }
         __syncthreads();
 
         if (tid < d_v) {
           float acc = 0.0f;
           for (int i = 0; i < d_k; ++i) {
-            acc += S_smem[i * d_v + tid] * s_scratch[i];
+            acc += S_smem[i * d_v + tid] * k_buf[i];
           }
           s_scratch[tid] = acc;
         }
