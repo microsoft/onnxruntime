@@ -66,6 +66,20 @@ def get_cuda_plugin_device_by_id(device_id: int):
     raise unittest.SkipTest(f"CUDA plugin EP device_id={device_id} is not available in this environment")
 
 
+def get_cuda_plugin_device_id(device):
+    device_id = device.ep_options.get("device_id")
+    if device_id is None:
+        device_id = device.ep_metadata.get("cuda_device_id")
+
+    if device_id is None:
+        raise unittest.SkipTest("CUDA plugin EP device metadata did not include a CUDA device_id")
+
+    try:
+        return int(device_id)
+    except (TypeError, ValueError) as exc:
+        raise unittest.SkipTest(f"CUDA plugin EP device metadata had non-integer device_id={device_id!r}") from exc
+
+
 def _create_session_options(session_config=None):
     sess_options = onnxrt.SessionOptions()
     if session_config:
@@ -1855,6 +1869,94 @@ class TestCudaPluginEP(unittest.TestCase):
             lambda f: np.maximum(f["X"], 0),
         )
         self.assertEqual(result, TEST_PASS, "Explicit MemcpyFromHost→Relu→MemcpyToHost roundtrip test failed")
+
+    # ---- IOBinding / Sync tests ----
+
+    def test_iobinding_add(self):
+        """Run a simple Add model using IOBinding to exercise the EP Sync path.
+
+        Binding CPU inputs forces ORT to stage host-to-device copies on the
+        plugin sync stream before kernel execution begins.
+        """
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_add_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], {})
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            a = np.random.rand(3, 2).astype(np.float32)
+            b = np.random.rand(3, 2).astype(np.float32)
+
+            io_binding = sess.io_binding()
+            io_binding.bind_cpu_input("A", a)
+            io_binding.bind_cpu_input("B", b)
+            io_binding.bind_output("Y", "cuda", cuda_device_id)
+
+            # Exercise the EP Sync callback explicitly. run_with_iobinding()
+            # alone does not call SynchronizeInputs().
+            io_binding.synchronize_inputs()
+            sess.run_with_iobinding(io_binding)
+
+            # No explicit synchronize_outputs() is needed here because
+            # copy_outputs_to_cpu() performs the blocking device-to-host copy.
+            result = io_binding.copy_outputs_to_cpu()[0]
+            np.testing.assert_allclose(result, a + b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_iobinding_matmul(self):
+        """Run a MatMul model using IOBinding to exercise the EP Sync path."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], {})
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+
+            io_binding = sess.io_binding()
+            io_binding.bind_cpu_input("A", a)
+            io_binding.bind_cpu_input("B", b)
+            io_binding.bind_output("Y", "cuda", cuda_device_id)
+
+            # Exercise the EP Sync callback explicitly. run_with_iobinding()
+            # alone does not call SynchronizeInputs().
+            io_binding.synchronize_inputs()
+            sess.run_with_iobinding(io_binding)
+
+            # No explicit synchronize_outputs() is needed here because
+            # copy_outputs_to_cpu() performs the blocking device-to-host copy.
+            result = io_binding.copy_outputs_to_cpu()[0]
+            np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
 
 
 if __name__ == "__main__":

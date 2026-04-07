@@ -84,7 +84,13 @@ CudaSyncStream::~CudaSyncStream() {
     //   2. UnregisterStream bumps the TLS generation counter, invalidating cached
     //      lookups in other threads.
     //   3. The stream is destroyed only after it is no longer discoverable.
-    UnregisterStream(cuda_stream_);
+    // Only unregister if the stream was actually registered (InitHandles
+    // succeeded fully). Otherwise we'd bump the global generation counter
+    // for a stream that was never in the map, causing unnecessary TLS
+    // invalidations in other threads.
+    if (registered_) {
+      UnregisterStream(cuda_stream_);
+    }
 
     auto destroy_result = cudaStreamDestroy(cuda_stream_);
     if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
@@ -103,20 +109,42 @@ CudaSyncStream::~CudaSyncStream() {
 }
 
 OrtStatus* CudaSyncStream::InitHandles() {
-  PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id_));
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
 
-  PL_CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
+  if (status.IsOK()) {
+    status = StatusFromCudaError(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasCreate(&cublas_handle_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
+  }
 
-  PL_CUBLAS_RETURN_IF_ERROR(cublasCreate(&cublas_handle_));
-  PL_CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas_handle_, cuda_stream_));
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
 
-  PL_CUDNN_RETURN_IF_ERROR(cudnnCreate(&cudnn_handle_));
-  PL_CUDNN_RETURN_IF_ERROR(cudnnSetStream(cudnn_handle_, cuda_stream_));
+  if (status.IsOK()) {
+    RegisterStream(cuda_stream_, this);
+    registered_ = true;
+  }
 
-  PL_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&cublas_lt_handle_));
-  RegisterStream(cuda_stream_, this);
-
-  return nullptr;
+  return status.release();
 }
 
 void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {
@@ -237,8 +265,47 @@ CudaSyncNotification::CudaSyncNotification(CudaSyncStream& stream)
   Release = ReleaseImpl;
 
   // Create a CUDA event for synchronization (disable timing for performance)
-  PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
-  PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+  const auto restore_prev_device_status = [&]() {
+    if (!restore_prev_device) {
+      return Ort::Status{};
+    }
+
+    return StatusFromCudaError(cudaSetDevice(prev_device));
+  };
+  try {
+    PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
+    PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
+  } catch (const std::exception& ex) {
+    if (event_ != nullptr) {
+      cudaEventDestroy(event_);
+      event_ = nullptr;
+    }
+    Ort::Status restore_status = restore_prev_device_status();
+    if (!restore_status.IsOK()) {
+      // Surface both failures instead of silently dropping the restore error
+      // or masking the original constructor failure.
+      throw std::runtime_error(
+          "CudaSyncNotification construction failed: " + std::string(ex.what()) +
+          ". Additionally, failed to restore previous CUDA device " +
+          std::to_string(prev_device) + ": " + restore_status.GetErrorMessage());
+    }
+    throw;
+  }
+  Ort::Status restore_status = restore_prev_device_status();
+  if (!restore_status.IsOK()) {
+    if (event_ != nullptr) {
+      // The constructor can still throw after event creation if restoring the
+      // caller's previous device fails, so clean up here instead of relying on
+      // the destructor of a not-fully-constructed object.
+      cudaEventDestroy(event_);
+      event_ = nullptr;
+    }
+    throw std::runtime_error(
+        "Failed to restore previous CUDA device " + std::to_string(prev_device) +
+        " after creating CUDA sync notification: " + restore_status.GetErrorMessage());
+  }
 }
 
 CudaSyncNotification::~CudaSyncNotification() {
