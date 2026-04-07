@@ -768,9 +768,9 @@ class InferenceSession {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
-  // Maximum number of warm-up runs allowed during graph capture. Because warm-up runs are called
-  // recursively, this limit protects against stack overflow from buggy EPs that never transition IsGraphCaptured()
-  // to true. EPs (e.g., CUDA) typically need at most 2 warm-up runs.
+  // Maximum number of warm-up runs allowed during graph capture.
+  // This prevents running an unbounded number of warm-up runs due to buggy EPs that never return true from
+  // IsGraphCaptured(). Note that EPs typically need at most 2 warm-up runs (e.g., CUDA EP).
   static constexpr int kMaxGraphCaptureWarmupRuns = 8;
 
   // Internal implementation of Run() with graph capture recursion depth tracking.

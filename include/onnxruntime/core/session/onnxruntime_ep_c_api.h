@@ -2366,11 +2366,12 @@ struct OrtEp {
 
   /** \brief Indicate whether the graph capturing mode (e.g., CUDA graph) is enabled for the provider.
    *
-   * Graph capture allows an EP to record a sequence of GPU operations during an initial run and replay
+   * Graph capture allows an EP to record a sequence of device (e.g., GPU) operations during an initial run and replay
    * them on subsequent runs, bypassing per-kernel CPU launch overhead.
    *
    * Applications enable graph capture via EP-specific provider options (e.g., `enable_cuda_graph=1`
-   * for the CUDA EP). The EP should return true from this function when that option is set.
+   * for the CUDA EP). An EP should return true from this function if it has been configured to enable
+   * graph capture/replay.
    *
    * **ORT calling convention:**
    * During session initialization, ORT calls this function on each EP. If true, ORT validates the
@@ -2381,7 +2382,7 @@ struct OrtEp {
    * allocation followed by 1 run to capture the graph. Each warm-up run invokes
    * `OnRunStart` → normal execution → `OnRunEnd`. The EP should use these callbacks to track
    * warm-up runs and begin/end capture when ready. ORT automatically re-runs within the same
-   * `Session::Run()` call until `IsGraphCaptured()` returns true, so users only call
+   * `Session::Run()` call until `IsGraphCaptured()` returns true (or a maximum of 8 times), so users only call
    * `Session::Run()` once. On subsequent calls, if `IsGraphCaptured()` returns true, ORT skips
    * normal execution and calls `ReplayGraph()` directly.
    *
