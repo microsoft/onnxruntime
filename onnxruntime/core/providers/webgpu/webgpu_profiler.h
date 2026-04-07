@@ -19,7 +19,7 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
   void EndProfiling(TimePoint, onnxruntime::profiling::Events&) override;
   void Start(uint64_t) override {
   }
-  void Stop(uint64_t) override {
+  void Stop(uint64_t, const profiling::EventRecord&) override {
   }
   inline bool Enabled() const { return enabled_; }
   // GPU events collected during session-level profiling.

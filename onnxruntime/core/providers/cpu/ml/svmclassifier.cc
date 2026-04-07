@@ -72,6 +72,40 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0);
   ORT_ENFORCE(proba_.size() == probb_.size());
   ORT_ENFORCE(coefficients_.size() > 0);
+
+  // Validate attribute array sizes against the declared dimensions to prevent
+  // out-of-bounds reads from crafted models.
+  if (mode_ == SVM_TYPE::SVM_SVC) {
+    // SVC mode: coefficients layout is [class_count - 1, vector_count]
+    const size_t expected_coefficients = static_cast<size_t>(class_count_ - 1) * static_cast<size_t>(vector_count_);
+    ORT_ENFORCE(coefficients_.size() >= expected_coefficients,
+                "coefficients attribute size (", coefficients_.size(),
+                ") is smaller than expected (", expected_coefficients,
+                ") for the given class_count and vector_count.");
+
+    // rho needs one entry per classifier pair: class_count * (class_count - 1) / 2
+    const size_t num_classifiers = static_cast<size_t>(class_count_) * static_cast<size_t>(class_count_ - 1) / 2;
+    ORT_ENFORCE(rho_.size() >= num_classifiers,
+                "rho attribute size (", rho_.size(),
+                ") is smaller than expected (", num_classifiers,
+                ") for the given number of classes.");
+
+    // prob_a and prob_b, when provided, need one entry per classifier pair
+    if (!proba_.empty()) {
+      ORT_ENFORCE(proba_.size() >= num_classifiers,
+                  "prob_a attribute size (", proba_.size(),
+                  ") is smaller than expected (", num_classifiers,
+                  ") for the given number of classes.");
+      ORT_ENFORCE(probb_.size() >= num_classifiers,
+                  "prob_b attribute size (", probb_.size(),
+                  ") is smaller than expected (", num_classifiers,
+                  ") for the given number of classes.");
+    }
+  } else {
+    // Linear mode: coefficients layout is [class_count, feature_count]
+    ORT_ENFORCE(rho_.size() >= 1, "rho attribute must have at least one entry.");
+  }
+
   weights_are_all_positive_ = std::all_of(coefficients_.cbegin(), coefficients_.cend(),
                                           [](float value) { return value >= 0.f; });
 }

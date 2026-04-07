@@ -9,6 +9,9 @@ ARG BUILD_USER=onnxruntimedev
 USER root
 WORKDIR /
 
+# FIXME: base image should already have ccache installed
+RUN if ! command -v ccache; then dnf install -y ccache; fi
+
 RUN dnf install -y --nodocs \
         wget \
         tar \

@@ -128,13 +128,9 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool single_scale_weights = (block_size == K * N);
   if (M < min_M_for_tile_optimization) {
-    uint32_t tile_size_k_vec = 16;
-    uint32_t tile_size_n = 32;
+    uint32_t tile_size_k_vec = 32;
+    uint32_t tile_size_n = 4;
 
-    if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-      tile_size_k_vec = 32;
-      tile_size_n = 4;
-    }
     const uint32_t b_components = (nbits == 2 ? kVec2Components : kVec4Components);
     DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights};
     uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;
