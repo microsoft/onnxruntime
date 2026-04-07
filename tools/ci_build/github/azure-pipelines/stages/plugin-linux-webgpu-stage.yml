@@ -56,6 +56,16 @@ stages:
           DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimewebgpuplugin
 
+      - script: |
+          set -e -x
+          docker run --rm \
+            --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
+            --volume "${BUILD_BINARIESDIRECTORY}:/build" \
+            onnxruntimewebgpuplugin \
+            python3 /onnxruntime_src/tools/ci_build/github/linux/diag_jinja2_env.py
+        workingDirectory: $(Build.SourcesDirectory)
+        displayName: '[DIAG] Python env inside Docker (pre-build)'
+
       - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_package.sh -i onnxruntimewebgpuplugin -c ${{ parameters.cmake_build_type }}
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build WebGPU Plugin'

@@ -55,6 +55,11 @@ stages:
 
     - script: |
         set -e -x
+        python3 $(Build.SourcesDirectory)/tools/ci_build/github/linux/diag_jinja2_env.py
+      displayName: '[DIAG] Python environment before build'
+
+    - script: |
+        set -e -x
         python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --build_dir $(Build.SourcesDirectory)/build \
@@ -69,6 +74,12 @@ stages:
           --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 onnxruntime_BUILD_UNIT_TESTS=ON $(PluginEpVersionDefine) \
           --update --skip_submodule_sync --build --parallel
       displayName: 'Build WebGPU Plugin'
+
+    - script: |
+        set -e -x
+        python3 $(Build.SourcesDirectory)/tools/ci_build/github/linux/diag_jinja2_env.py $(Build.SourcesDirectory)/build
+      displayName: '[DIAG] Inspect Dawn jinja2/markupsafe after build'
+      condition: always()
 
     - script: |
         set -e

@@ -29,19 +29,5 @@ docker run --rm \
     -e BUILD_BUILDNUMBER \
     -e SYSTEM_COLLECTIONURI \
     "$DOCKER_IMAGE" \
-    /bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-        --build_dir /build \
-        --config ${BUILD_CONFIG} \
-        --skip_submodule_sync \
-        --parallel \
-        --use_binskim_compliant_compile_flags \
-        --use_webgpu shared_lib \
-        --wgsl_template static \
-        --disable_rtti \
-        --enable_lto \
-        --enable_onnx_tests \
-        --use_vcpkg \
-        --use_vcpkg_ms_internal_asset_cache \
-        --update \
-        --build \
-        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON ${EXTRA_CMAKE_DEFINES}"
+    /bin/bash /onnxruntime_src/tools/ci_build/github/linux/build_webgpu_plugin_package_inner.sh \
+        "${BUILD_CONFIG}" "${EXTRA_CMAKE_DEFINES}"
