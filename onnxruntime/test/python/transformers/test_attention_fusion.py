@@ -666,6 +666,10 @@ class TestFusion(unittest.TestCase):
         self.assertIsNotNone(scale_attr)
         self.assertAlmostEqual(scale_attr.f, 100.0, places=5)
 
+        # Verify no Softmax remains (it should be absorbed into MHA)
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
     def test_dit_attention_fusion_custom_scale(self):
         """Test DiT attention fusion with standard 1/sqrt(d_k) scale."""
         head_dim = 64
@@ -691,6 +695,10 @@ class TestFusion(unittest.TestCase):
         scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
         self.assertIsNotNone(scale_attr)
         self.assertAlmostEqual(scale_attr.f, standard_scale, places=5)
+
+        # Verify no Softmax remains (it should be absorbed into MHA)
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
 
 
 if __name__ == "__main__":

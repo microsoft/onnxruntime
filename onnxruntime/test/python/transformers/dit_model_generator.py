@@ -116,11 +116,15 @@ def create_dit_attention(
         # Cast attention weights FP32 → FP16
         nodes.append(helper.make_node("Cast", ["attn_weights"], ["attn_weights_fp16"], "cast_to_fp16", to=10))
         attn_matmul_input = "attn_weights_fp16"
+        # Cast V to FP16 so MatMul inputs are type-consistent (both FP16)
+        nodes.append(helper.make_node("Cast", ["v_bnsh"], ["v_bnsh_fp16"], "cast_v_to_fp16", to=10))
+        v_matmul_input = "v_bnsh_fp16"
     else:
         attn_matmul_input = "attn_weights"
+        v_matmul_input = "v_bnsh"
 
     # Attention @ V: [B, N, S, S] @ [B, N, S, H] → [B, N, S, H]
-    nodes.append(helper.make_node("MatMul", [attn_matmul_input, "v_bnsh"], ["attn_out"], "attn_v_matmul"))
+    nodes.append(helper.make_node("MatMul", [attn_matmul_input, v_matmul_input], ["attn_out"], "attn_v_matmul"))
 
     # --- Output: Transpose(BNSH → BSNH) → Reshape(BSD) → output projection ---
     nodes.append(helper.make_node("Transpose", ["attn_out"], ["attn_transposed"], "attn_transpose", perm=[0, 2, 1, 3]))
