@@ -85,10 +85,26 @@ void ApplyActivationToBatches(const Tensor* sequence_lens, const T* h_prev, T* Y
 template <typename T>
 void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens,
                 int64_t num_directions, int direction, bool isReverse, int64_t batch_size, int64_t seq_length, int64_t hidden_size) {
+  if (seq_length == 0) {
+    // No sequence data was processed; zero out Y_h for this direction.
+    int64_t Y_h_direction_offset = direction * batch_size * hidden_size;
+    math::Set<T, CPUMathUtil>(SafeInt<size_t>(batch_size) * hidden_size, T{0},
+                              Y_h->MutableData<T>() + Y_h_direction_offset, &CPUMathUtil::Instance());
+    return;
+  }
+
   for (int batch = 0; batch < batch_size; batch++) {
     int64_t last_time_step = isReverse ? 0 : seq_length - 1;
-    if (nullptr != sequence_lens && !isReverse)
+    if (nullptr != sequence_lens && !isReverse) {
       last_time_step = sequence_lens->Data<int>()[batch] - 1;
+      if (last_time_step < 0) {
+        // sequence_lens[batch] == 0: no data was processed for this batch; zero out Y_h.
+        int64_t Y_h_offset = direction * batch_size * hidden_size + batch * hidden_size;
+        math::Set<T, CPUMathUtil>(onnxruntime::narrow<size_t>(hidden_size), T{0},
+                                  Y_h->MutableData<T>() + Y_h_offset, &CPUMathUtil::Instance());
+        continue;
+      }
+    }
     int64_t y_offset = last_time_step * num_directions * batch_size * hidden_size +
                        direction * batch_size * hidden_size +
                        batch * hidden_size;
@@ -189,7 +205,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
     math::Gemm<float>(
         CblasNoTrans,
         CblasTrans,
-        onnxruntime::narrow<int>(seq_length * batch_size),
+        onnxruntime::narrow<int>(SafeInt<int64_t>(seq_length) * batch_size),
         onnxruntime::narrow<int>(hidden_size_),
         onnxruntime::narrow<int>(input_size),
         1,
