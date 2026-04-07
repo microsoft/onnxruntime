@@ -37,14 +37,9 @@ jobs:
   steps:
   - checkout: none
 
-    - task: PipAuthenticate@1
-      displayName: 'Pip Authenticate'
-      inputs:
-        artifactFeeds: 'PublicPackages/ORT-Nightly'
-
-  - task: UsePythonVersion@0
-    displayName: 'Use Python'
-    inputs:
+  - template: setup-pip-and-python-steps.yml
+    parameters:
+      artifactFeeds: 'PublicPackages/ORT-Nightly'
       versionSpec: $(PythonVersion)
 
   - download: build   # pipeline resource identifier.

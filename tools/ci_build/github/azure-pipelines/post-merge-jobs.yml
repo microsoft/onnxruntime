@@ -398,16 +398,9 @@ stages:
     - checkout: self
       submodules: false
 
-    - task: PipAuthenticate@1
-      displayName: 'Pip Authenticate'
-      inputs:
-        artifactFeeds: 'Lotus'
-
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
-        architecture: x64
+    - template: templates/setup-pip-and-python-steps.yml
+      parameters:
+        architecture: 'x64'
 
     - task: CmdLine@2
       displayName: 'Run build_custom_android_package.py'

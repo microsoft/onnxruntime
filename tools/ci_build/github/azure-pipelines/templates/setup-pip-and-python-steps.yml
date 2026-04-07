@@ -1,0 +1,33 @@
+# Template to authenticate pip and set up Python.
+# Combines the common PipAuthenticate + UsePythonVersion pattern.
+
+parameters:
+- name: artifactFeeds
+  type: string
+  default: 'Lotus'
+
+- name: versionSpec
+  type: string
+  default: '3.12'
+
+- name: addToPath
+  type: boolean
+  default: true
+
+- name: architecture
+  type: string
+  default: ''
+
+steps:
+- task: PipAuthenticate@1
+  displayName: 'Pip Authenticate'
+  inputs:
+    artifactFeeds: ${{ parameters.artifactFeeds }}
+
+- task: UsePythonVersion@0
+  displayName: 'Use Python ${{ parameters.versionSpec }}'
+  inputs:
+    versionSpec: ${{ parameters.versionSpec }}
+    addToPath: ${{ parameters.addToPath }}
+    ${{ if ne(parameters.architecture, '') }}:
+      architecture: ${{ parameters.architecture }}

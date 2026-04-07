@@ -31,14 +31,7 @@ stages:
       value: ${{ parameters.CudaVersion }}
     steps:
     - template: ../templates/set-version-number-variables-step.yml
-    - task: PipAuthenticate@1
-      displayName: 'Pip Authenticate'
-      inputs:
-        artifactFeeds: 'Lotus'
-    - task: UsePythonVersion@0
-      displayName: Use Python 3.12
-      inputs:
-        versionSpec: 3.12
+    - template: ../templates/setup-pip-and-python-steps.yml
     - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile
@@ -94,14 +87,7 @@ stages:
     - checkout: self
       clean: true
       submodules: recursive
-    - task: PipAuthenticate@1
-      displayName: 'Pip Authenticate'
-      inputs:
-        artifactFeeds: 'Lotus'
-    - task: UsePythonVersion@0
-      displayName: Use Python 3.12
-      inputs:
-        versionSpec: 3.12
+    - template: ../templates/setup-pip-and-python-steps.yml
     - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile

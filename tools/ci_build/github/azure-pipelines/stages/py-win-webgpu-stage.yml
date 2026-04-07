@@ -155,15 +155,9 @@ stages:
           clean: true
           submodules: none
 
-        - task: PipAuthenticate@1
-          displayName: 'Pip Authenticate'
-          inputs:
-            artifactFeeds: 'Lotus'
-
-        - task: UsePythonVersion@0
-          inputs:
+        - template: ../templates/setup-pip-and-python-steps.yml
+          parameters:
             versionSpec: ${{ parameters.PYTHON_VERSION }}
-            addToPath: true
             architecture: 'x64'
 
         - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt

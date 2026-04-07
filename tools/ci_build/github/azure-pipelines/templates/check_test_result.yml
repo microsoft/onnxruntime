@@ -4,15 +4,9 @@ parameters:
 
 steps:
 
-  - task: PipAuthenticate@1
-    displayName: 'Pip Authenticate'
-    inputs:
-      artifactFeeds: 'Lotus'
-
-  - task: UsePythonVersion@0
-    inputs:
+  - template: setup-pip-and-python-steps.yml
+    parameters:
       versionSpec: '3.x'
-      addToPath: true
       architecture: 'x64'
 
   - task: PythonScript@0
