@@ -126,7 +126,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
         }
       });
 
-  if (const Tind* bad = invalid_index.load(); bad != nullptr) {
+  if (const Tind* bad = invalid_index.load(std::memory_order_relaxed); bad != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "invalid index found, index = ", static_cast<int64_t>(*bad));
   }
