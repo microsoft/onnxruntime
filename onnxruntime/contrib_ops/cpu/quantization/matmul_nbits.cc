@@ -135,7 +135,9 @@ class MatMulNBits final : public OpKernel {
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                   int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
@@ -557,7 +559,9 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 #endif  // end !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
 
 template <typename T1>
-Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
+Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                  gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                  int input_idx,
                                                   /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 

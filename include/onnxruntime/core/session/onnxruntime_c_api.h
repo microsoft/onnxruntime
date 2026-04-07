@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 25
+#define ORT_API_VERSION 26
 
 #ifdef __cplusplus
 extern "C" {
@@ -1035,15 +1035,15 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
 
 /** \brief External memory handle type for importing GPU resources.
  *
- * \todo Add OPAQUE_WIN32 for Windows Vulkan-specific memory handles
- * \todo Add POSIX file descriptor (OPAQUE_FD) for Linux Vulkan/CUDA/OpenCL interop
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR, non-dedicated allocation */
 } OrtExternalMemoryHandleType;
 
 /** \brief Descriptor for importing external memory.
@@ -1067,7 +1067,9 @@ typedef struct OrtExternalMemoryDescriptor {
  * \since Version 1.24.
  */
 typedef enum OrtExternalSemaphoreType {
-  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0,                     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+  ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32 = 1,     /**< Shared HANDLE from vkGetSemaphoreWin32HandleKHR of a VkSemaphore created as VK_SEMAPHORE_TYPE_TIMELINE */
+  ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD = 2, /**< File descriptor from vkGetSemaphoreFdKHR of a VkSemaphore created as VK_SEMAPHORE_TYPE_TIMELINE */
 } OrtExternalSemaphoreType;
 
 /** \brief Descriptor for importing external semaphores.
@@ -1134,14 +1136,16 @@ typedef struct OrtGraphicsInteropConfig {
    * works; streams use the default context.
    *
    * For D3D12: ID3D12CommandQueue*
-   * For Vulkan: VkQueue (cast to void*)
+   * For Vulkan: pass NULL
    */
   void* command_queue;
 
   /** \brief Additional API-specific options (optional).
    *
    * Can be used for future extensibility without changing the struct layout.
-   * For example, Vulkan-specific queue family index, or D3D12 fence sharing flags.
+   * For example, D3D12 fence sharing flags or provider-specific options like
+   * onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data
+   * for Vulkan interop for the NvTensorRTRTX provider.
    */
   const OrtKeyValuePairs* additional_options;
 } OrtGraphicsInteropConfig;

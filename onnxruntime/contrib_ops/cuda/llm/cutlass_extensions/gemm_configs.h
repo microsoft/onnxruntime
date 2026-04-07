@@ -28,7 +28,12 @@
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #endif
 
+// cute/tensor.hpp contains CuTe/CUTLASS 3.x templates that are incompatible with
+// MSVC when compiled as plain C++ (.cc files). Guard it so it is only parsed by
+// NVCC (which defines __CUDACC__) inside .cu translation units.
+#ifdef __CUDACC__
 #include "cute/tensor.hpp"
+#endif
 
 namespace onnxruntime::llm {
 namespace cutlass_extensions {
@@ -185,6 +190,9 @@ enum class TileShape {
   TileShape_128x256x128
 };
 
+// get_tile_shape() returns cute::Shape<...> literals, so it also requires
+// cute/tensor.hpp and must be restricted to NVCC compilation units.
+#ifdef __CUDACC__
 template <TileShape Shape_MNK>
 constexpr auto get_tile_shape() {
   using namespace cute;
@@ -212,6 +220,7 @@ constexpr auto get_tile_shape() {
     return cute::Shape<_128, _256, _128>{};
   }
 }
+#endif  // __CUDACC__
 
 #if 0
 static auto get_tile_shape_name(TileShape Shape_MNK) {
