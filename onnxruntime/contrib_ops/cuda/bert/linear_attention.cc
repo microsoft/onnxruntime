@@ -43,6 +43,7 @@ LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   int64_t chunk_size = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
+  // chunk_size_ reserved for future chunk-parallel prefill algorithm; not yet used.
   chunk_size_ = static_cast<int>(chunk_size);
 }
 

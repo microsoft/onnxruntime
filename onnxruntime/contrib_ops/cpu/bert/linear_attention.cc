@@ -17,6 +17,14 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
+// Note: Only float is registered for CPU. The op schema allows float16/bfloat16
+// for CUDA compatibility, but the CPU kernel computes in float32 internally.
+// MLFloat16 CPU support would require input/output conversion buffers
+// (MlasConvertHalfToFloatBuffer / MlasConvertFloatToHalfBuffer).
+//
+// MLAS usage: MlasGemm is used for retrieval (S^T @ k), state update (k ⊗ delta),
+// and query readout (S^T @ q) when d_k * d_v >= 4096. Smaller dimensions use
+// scalar loops to avoid MLAS overhead.
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LinearAttention,                                            \
@@ -50,6 +58,7 @@ LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : OpKernel(info) {
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   int64_t chunk_size = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
+  // chunk_size_ reserved for future chunk-parallel prefill algorithm; not yet used.
   chunk_size_ = static_cast<int>(chunk_size);
 }
 

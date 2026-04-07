@@ -726,7 +726,10 @@ Status LaunchLinearAttentionKernel(
   // Block: max(d_k, d_v) threads, rounded up to warp boundary
   int threads = ((std::max(d_k, d_v) + 31) / 32) * 32;
   if (threads > max_threads_per_block) {
-    threads = max_threads_per_block;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearAttention: max(d_k=", d_k, ", d_v=", d_v,
+                           ") exceeds max threads per block (", max_threads_per_block,
+                           "). Use a model with smaller head dimensions.");
   }
   const dim3 block(threads, 1, 1);
 

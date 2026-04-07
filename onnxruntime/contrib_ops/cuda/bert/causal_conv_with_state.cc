@@ -90,13 +90,9 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape state_shape({batch_size, channels, pad});
   Tensor* present_state_tensor = context->Output(1, state_shape);
 
-  // Initialize present_state: copy from past or zero
-  if (past_state_tensor == nullptr) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-        present_state_tensor->MutableData<T>(), 0,
-        static_cast<size_t>(batch_size) * channels * pad * sizeof(T),
-        Stream(context)));
-  }
+  // Note: no need to zero-initialize present_state — the kernel writes all
+  // positions unconditionally.  When past_state is null, the kernel uses
+  // zeros for the padding region internally.
   // Note: past_state pointer is passed to kernel; kernel reads it directly
 
   bool apply_silu = (activation_ == "silu" || activation_ == "swish");

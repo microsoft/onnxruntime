@@ -308,9 +308,15 @@ __global__ void CausalConvPrefillKernelBatched(
       }
       output[((int64_t)b * channels + c) * seq_len + l] = from_float<T>(sum);
     }
+  }
 
+  // Unconditional barrier — s_padded is read-only after the cooperative load,
+  // so this is safe even when c >= channels.  Hoisted out of the conditional
+  // to avoid divergent __syncthreads() (undefined behavior in CUDA).
+  __syncthreads();
+
+  if (c < channels) {
     // Save present state
-    __syncthreads();
     T* ps = present_state + (int64_t)b * channels * pad + (int64_t)c * pad;
     for (int i = local_tid; i < pad; i += threads_per_channel) {
       ps[i] = from_float<T>(s_padded[padded_len - pad + i]);

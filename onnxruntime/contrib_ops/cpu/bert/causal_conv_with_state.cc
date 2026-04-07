@@ -17,6 +17,14 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
+// Note: Only float is registered for CPU. The op schema allows float16/bfloat16
+// for CUDA compatibility, but the CPU kernel computes in float32 internally.
+// MLFloat16 CPU support would require input/output conversion buffers
+// (MlasConvertHalfToFloatBuffer / MlasConvertFloatToHalfBuffer).
+//
+// MLAS usage: No MLAS kernels are used currently. The depthwise causal conv
+// is implemented with scalar loops. Potential future optimization: use
+// MlasConv1D or vectorized MLAS routines for the 1D convolution.
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       CausalConvWithState,                                        \
