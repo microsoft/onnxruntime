@@ -395,6 +395,17 @@ Status LaunchCausalConvWithStateKernel(
       const dim3 block(total_threads, 1, 1);
       size_t smem_size = static_cast<size_t>(CPB) * (static_cast<size_t>(pad + seq_len) + kernel_size) * sizeof(float);
 
+      // Request extended shared memory if needed (default limit is 48 KB)
+      if (smem_size > 48 * 1024) {
+        cudaError_t attr_err = cudaFuncSetAttribute(
+            CausalConvPrefillKernelBatched<T, CPB>,
+            cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(smem_size));
+        if (attr_err != cudaSuccess) {
+          return CUDA_CALL(attr_err);
+        }
+      }
+
       CausalConvPrefillKernelBatched<T, CPB><<<grid, block, smem_size, stream>>>(
           input, weight, bias, past_state, output, present_state,
           seq_len, channels, kernel_size, apply_silu);
@@ -407,6 +418,17 @@ Status LaunchCausalConvWithStateKernel(
       const dim3 block(threads, 1, 1);
 
       size_t smem_size = (static_cast<size_t>(pad + seq_len) + kernel_size) * sizeof(float);
+
+      // Request extended shared memory if needed (default limit is 48 KB)
+      if (smem_size > 48 * 1024) {
+        cudaError_t attr_err = cudaFuncSetAttribute(
+            CausalConvPrefillKernel<T>,
+            cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(smem_size));
+        if (attr_err != cudaSuccess) {
+          return CUDA_CALL(attr_err);
+        }
+      }
 
       CausalConvPrefillKernel<T><<<grid, block, smem_size, stream>>>(
           input, weight, bias, past_state, output, present_state,

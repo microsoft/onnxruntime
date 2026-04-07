@@ -43,8 +43,11 @@ def _torch_linear_attention_reference(
     b = torch.from_numpy(beta) if beta is not None else None
 
     batch, seq_len, _ = query.shape
-    heads_per_group = q_num_heads // kv_num_heads
-    output = torch.empty((batch, seq_len, q_num_heads * d_v), dtype=torch.float32)
+    output_heads = max(q_num_heads, kv_num_heads)
+    output = torch.empty((batch, seq_len, output_heads * d_v), dtype=torch.float32)
+
+    # Detect per-key-dim decay from shape
+    decay_per_key_dim = g is not None and g.shape[-1] == kv_num_heads * d_k
 
     for bi in range(batch):
         for hk in range(kv_num_heads):
@@ -59,8 +62,12 @@ def _torch_linear_attention_reference(
 
                 elif update_rule == "gated":
                     # S_t = exp(g_t) * S_{t-1} + k_t ⊗ v_t
-                    exp_g = torch.exp(g[bi, t, hk])
-                    state = state * exp_g + torch.outer(kt, vt)
+                    if decay_per_key_dim:
+                        exp_g = torch.exp(g[bi, t, hk * d_k : (hk + 1) * d_k])  # [d_k]
+                        state = state * exp_g.unsqueeze(1) + torch.outer(kt, vt)
+                    else:
+                        exp_g = torch.exp(g[bi, t, hk])
+                        state = state * exp_g + torch.outer(kt, vt)
 
                 elif update_rule == "delta":
                     # S_t = S_{t-1} + β_t * k_t ⊗ (v_t - S_{t-1}^T k_t)
@@ -71,8 +78,12 @@ def _torch_linear_attention_reference(
 
                 elif update_rule == "gated_delta":
                     # S_t = exp(g_t) * S_{t-1} + β_t * k_t ⊗ (v_t - exp(g_t) * S_{t-1}^T k_t)
-                    exp_g = torch.exp(g[bi, t, hk])
-                    state = state * exp_g
+                    if decay_per_key_dim:
+                        exp_g = torch.exp(g[bi, t, hk * d_k : (hk + 1) * d_k])  # [d_k]
+                        state = state * exp_g.unsqueeze(1)
+                    else:
+                        exp_g = torch.exp(g[bi, t, hk])
+                        state = state * exp_g
                     retrieved = torch.matmul(kt, state)
                     bt = b[bi, t, 0]
                     delta = bt * (vt - retrieved)
@@ -81,11 +92,21 @@ def _torch_linear_attention_reference(
                 else:
                     raise ValueError(f"Unknown update_rule: {update_rule}")
 
-                for hg in range(heads_per_group):
-                    hq = hk * heads_per_group + hg
+                # Query readout: standard GQA or inverse GQA
+                if q_num_heads >= kv_num_heads:
+                    heads_per_group = q_num_heads // kv_num_heads
+                    for hg in range(heads_per_group):
+                        hq = hk * heads_per_group + hg
+                        qt = q[bi, t, hq * d_k : (hq + 1) * d_k]
+                        ot = scale * torch.matmul(qt, state)
+                        output[bi, t, hq * d_v : (hq + 1) * d_v] = ot
+                else:
+                    # Inverse GQA: multiple kv heads map to fewer q heads
+                    hq = hk * q_num_heads // kv_num_heads
                     qt = q[bi, t, hq * d_k : (hq + 1) * d_k]
                     ot = scale * torch.matmul(qt, state)
-                    output[bi, t, hq * d_v : (hq + 1) * d_v] = ot
+                    output[bi, t, hk * d_v : (hk + 1) * d_v] = ot
+
             s[bi, hk] = state
 
     return output.numpy(), s.numpy()
@@ -119,6 +140,7 @@ def _build_linear_attention_model(
     kv_num_heads: int,
     update_rule: str,
     scale: float,
+    decay_per_key_dim: bool = False,
 ) -> bytes:
     node = helper.make_node(
         "LinearAttention",
@@ -131,6 +153,9 @@ def _build_linear_attention_model(
         scale=scale,
     )
 
+    # Decay shape: [B, T, H_kv * d_k] for per-key-dim, [B, T, H_kv] for per-head
+    decay_shape = ["B", "T", "DH"] if decay_per_key_dim else ["B", "T", "H"]
+
     graph = helper.make_graph(
         [node],
         "LinearAttentionParity",
@@ -139,7 +164,7 @@ def _build_linear_attention_model(
             helper.make_tensor_value_info("key", TensorProto.FLOAT, ["B", "T", "KH"]),
             helper.make_tensor_value_info("value", TensorProto.FLOAT, ["B", "T", "VH"]),
             helper.make_tensor_value_info("past_state", TensorProto.FLOAT, ["B", "H", "DK", "DV"]),
-            helper.make_tensor_value_info("decay", TensorProto.FLOAT, ["B", "T", "H"]),
+            helper.make_tensor_value_info("decay", TensorProto.FLOAT, decay_shape),
             helper.make_tensor_value_info("beta", TensorProto.FLOAT, ["B", "T", 1]),
         ],
         [
@@ -200,7 +225,16 @@ def _build_causal_conv_model(activation: str) -> bytes:
 @unittest.skipUnless(_has_cuda_ep(), "CUDAExecutionProvider is required for parity tests")
 class TestLinearAttentionCausalConvPyTorchParity(unittest.TestCase):
     def _run_linear_attention_test(
-        self, update_rule, q_num_heads, kv_num_heads, d_k, d_v, batch, seq_lens, provider="CUDAExecutionProvider"
+        self,
+        update_rule,
+        q_num_heads,
+        kv_num_heads,
+        d_k,
+        d_v,
+        batch,
+        seq_lens,
+        provider="CUDAExecutionProvider",
+        decay_per_key_dim=False,
     ):
         rng = np.random.default_rng(0)
         scale = 1.0 / np.sqrt(float(d_k))
@@ -213,7 +247,10 @@ class TestLinearAttentionCausalConvPyTorchParity(unittest.TestCase):
             kv_num_heads=kv_num_heads,
             update_rule=update_rule,
             scale=scale,
+            decay_per_key_dim=decay_per_key_dim,
         )
+
+        decay_dim = kv_num_heads * d_k if decay_per_key_dim else kv_num_heads
 
         for seq_len in seq_lens:
             inputs = {
@@ -221,9 +258,9 @@ class TestLinearAttentionCausalConvPyTorchParity(unittest.TestCase):
                 "key": rng.standard_normal((batch, seq_len, kv_num_heads * d_k), dtype=np.float32),
                 "value": rng.standard_normal((batch, seq_len, kv_num_heads * d_v), dtype=np.float32),
                 "past_state": rng.standard_normal((batch, kv_num_heads, d_k, d_v), dtype=np.float32),
-                "decay": rng.standard_normal((batch, seq_len, kv_num_heads), dtype=np.float32)
+                "decay": rng.standard_normal((batch, seq_len, decay_dim), dtype=np.float32)
                 if needs_decay
-                else np.zeros((batch, seq_len, kv_num_heads), dtype=np.float32),
+                else np.zeros((batch, seq_len, decay_dim), dtype=np.float32),
                 "beta": rng.uniform(0.0, 1.0, size=(batch, seq_len, 1)).astype(np.float32)
                 if needs_beta
                 else np.zeros((batch, seq_len, 1), dtype=np.float32),
@@ -289,15 +326,28 @@ class TestLinearAttentionCausalConvPyTorchParity(unittest.TestCase):
         )
 
     def test_linear_attention_inverse_gqa(self):
-        """Inverse GQA: kv_num_heads > q_num_heads (e.g. Qwen3.5-9B has n_q=16, n_kv=16)."""
+        """Inverse GQA: kv_num_heads > q_num_heads — exercises the q_num_heads < kv_num_heads readout path."""
         self._run_linear_attention_test(
-            "gated_delta", q_num_heads=16, kv_num_heads=16, d_k=128, d_v=128, batch=1, seq_lens=(1, 3)
+            "gated_delta", q_num_heads=8, kv_num_heads=16, d_k=64, d_v=64, batch=1, seq_lens=(1, 3)
         )
 
     def test_linear_attention_d128(self):
         """d_k=d_v=128 — exercises the 128-thread fixed template path."""
         self._run_linear_attention_test(
             "gated_delta", q_num_heads=4, kv_num_heads=2, d_k=128, d_v=128, batch=2, seq_lens=(1, 5)
+        )
+
+    def test_linear_attention_per_key_dim_decay(self):
+        """Per-key-dim decay: decay shape [B, T, H_kv * d_k] — exercises per-row expf path."""
+        self._run_linear_attention_test(
+            "gated_delta",
+            q_num_heads=4,
+            kv_num_heads=2,
+            d_k=64,
+            d_v=64,
+            batch=2,
+            seq_lens=(1, 5),
+            decay_per_key_dim=True,
         )
 
     def test_causal_conv_with_state_pytorch_parity(self):
