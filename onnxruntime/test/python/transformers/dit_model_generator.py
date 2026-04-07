@@ -14,22 +14,19 @@ DiT models (F5-TTS, etc.) use an attention pattern where:
 """
 
 import numpy as np
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 
 
 def _float_tensor(name, shape, random=False):
-    total = 1
-    for d in shape:
-        total *= d
-    vals = [np.random.uniform(0, 1) for _ in range(total)] if random else [1.0] * total
-    return helper.make_tensor(name, TensorProto.FLOAT, shape, vals)
+    vals = np.random.uniform(0, 1, size=shape).astype(np.float32) if random else np.ones(shape, dtype=np.float32)
+    return numpy_helper.from_array(vals, name)
 
 
 def create_dit_attention(
     batch_size=2,
-    seq_len=16,
-    num_heads=16,
-    head_dim=64,
+    seq_len=4,
+    num_heads=4,
+    head_dim=8,
     scale=100.0,
     use_fp16_casts=False,
 ):
@@ -37,9 +34,9 @@ def create_dit_attention(
 
     The generated graph models the F5-TTS DiT attention pattern:
 
-        hidden_states → Q/K/V projections → Reshape → Transpose → (K pre-transpose)
-        → MatMul(Q, K^T) → [Cast FP16→FP32] → Mul(scale) → Softmax
-        → [Cast FP32→FP16] → MatMul(attn, V) → Transpose → Reshape → output_projection
+        hidden_states -> Q/K/V projections -> Reshape -> Transpose -> (K pre-transpose)
+        -> MatMul(Q, K^T) -> [Cast FP16->FP32] -> Mul(scale) -> Softmax
+        -> [Cast FP32->FP16] -> MatMul(attn, V) -> Transpose -> Reshape -> output_projection
 
     Args:
         batch_size: batch size (e.g., 2 for classifier-free guidance).
@@ -61,7 +58,7 @@ def create_dit_attention(
         helper.make_tensor_value_info("input_0", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
     ]
 
-    # --- Q projection: MatMul → Reshape(BSNH) → Transpose(BNSH) ---
+    # --- Q projection: MatMul -> Reshape(BSNH) -> Transpose(BNSH) ---
     nodes.append(helper.make_node("MatMul", ["input_0", "q_weight"], ["q_proj"], "q_matmul"))
     initializers.append(_float_tensor("q_weight", [hidden_size, hidden_size], random=True))
 
@@ -71,7 +68,7 @@ def create_dit_attention(
 
     nodes.append(helper.make_node("Transpose", ["q_reshaped"], ["q_bnsh"], "q_transpose", perm=[0, 2, 1, 3]))
 
-    # --- K projection: MatMul → Reshape(BSNH) → Transpose(BNSH) → Transpose(BNHS, pre-transpose) ---
+    # --- K projection: MatMul -> Reshape(BSNH) -> Transpose(BNSH) -> Transpose(BNHS, pre-transpose) ---
     nodes.append(helper.make_node("MatMul", ["input_0", "k_weight"], ["k_proj"], "k_matmul"))
     initializers.append(_float_tensor("k_weight", [hidden_size, hidden_size], random=True))
 
@@ -81,10 +78,10 @@ def create_dit_attention(
 
     nodes.append(helper.make_node("Transpose", ["k_reshaped"], ["k_bnsh"], "k_transpose", perm=[0, 2, 1, 3]))
 
-    # Pre-transpose K: BNSH → BNHS (this is the optimization done in DiT models)
+    # Pre-transpose K: BNSH -> BNHS (this is the optimization done in DiT models)
     nodes.append(helper.make_node("Transpose", ["k_bnsh"], ["k_bnhs"], "k_pre_transpose", perm=[0, 1, 3, 2]))
 
-    # --- V projection: MatMul → Reshape(BSNH) → Transpose(BNSH) ---
+    # --- V projection: MatMul -> Reshape(BSNH) -> Transpose(BNSH) ---
     nodes.append(helper.make_node("MatMul", ["input_0", "v_weight"], ["v_proj"], "v_matmul"))
     initializers.append(_float_tensor("v_weight", [hidden_size, hidden_size], random=True))
 
@@ -94,12 +91,12 @@ def create_dit_attention(
 
     nodes.append(helper.make_node("Transpose", ["v_reshaped"], ["v_bnsh"], "v_transpose", perm=[0, 2, 1, 3]))
 
-    # --- Attention: MatMul(Q, K^T) → [Cast] → Mul(scale) → Softmax → [Cast] → MatMul(attn, V) ---
-    # QK^T: [B, N, S, H] @ [B, N, H, S] → [B, N, S, S]
+    # --- Attention: MatMul(Q, K^T) -> [Cast] -> Mul(scale) -> Softmax -> [Cast] -> MatMul(attn, V) ---
+    # QK^T: [B, N, S, H] @ [B, N, H, S] -> [B, N, S, S]
     nodes.append(helper.make_node("MatMul", ["q_bnsh", "k_bnhs"], ["qk_scores"], "qk_matmul"))
 
     if use_fp16_casts:
-        # Cast QK scores FP16 → FP32 (simulating FP16 model needing FP32 Softmax)
+        # Cast QK scores FP16 -> FP32 (simulating FP16 model needing FP32 Softmax)
         nodes.append(helper.make_node("Cast", ["qk_scores"], ["qk_scores_fp32"], "cast_to_fp32", to=1))
         mul_input = "qk_scores_fp32"
     else:
@@ -113,7 +110,7 @@ def create_dit_attention(
     nodes.append(helper.make_node("Softmax", ["qk_scaled"], ["attn_weights"], "softmax", axis=-1))
 
     if use_fp16_casts:
-        # Cast attention weights FP32 → FP16
+        # Cast attention weights FP32 -> FP16
         nodes.append(helper.make_node("Cast", ["attn_weights"], ["attn_weights_fp16"], "cast_to_fp16", to=10))
         attn_matmul_input = "attn_weights_fp16"
         # Cast V to FP16 so MatMul inputs are type-consistent (both FP16)
@@ -123,18 +120,26 @@ def create_dit_attention(
         attn_matmul_input = "attn_weights"
         v_matmul_input = "v_bnsh"
 
-    # Attention @ V: [B, N, S, S] @ [B, N, S, H] → [B, N, S, H]
+    # Attention @ V: [B, N, S, S] @ [B, N, S, H] -> [B, N, S, H]
     nodes.append(helper.make_node("MatMul", [attn_matmul_input, v_matmul_input], ["attn_out"], "attn_v_matmul"))
 
-    # --- Output: Transpose(BNSH → BSNH) → Reshape(BSD) → output projection ---
+    # --- Output: Transpose(BNSH -> BSNH) -> Reshape(BSD) -> output projection ---
     nodes.append(helper.make_node("Transpose", ["attn_out"], ["attn_transposed"], "attn_transpose", perm=[0, 2, 1, 3]))
 
     out_shape = [batch_size, seq_len, hidden_size]
     nodes.append(helper.make_node("Reshape", ["attn_transposed", "out_shape"], ["attn_flat"], "attn_reshape"))
     initializers.append(helper.make_tensor("out_shape", TensorProto.INT64, [3], out_shape))
 
+    if use_fp16_casts:
+        # Cast attention output back to FP32 so the output projection MatMul
+        # has type-consistent inputs with FP32 o_weight.
+        nodes.append(helper.make_node("Cast", ["attn_flat"], ["attn_flat_fp32"], "cast_attn_flat_to_fp32", to=1))
+        o_matmul_input = "attn_flat_fp32"
+    else:
+        o_matmul_input = "attn_flat"
+
     # Output projection
-    nodes.append(helper.make_node("MatMul", ["attn_flat", "o_weight"], ["output_0"], "o_matmul"))
+    nodes.append(helper.make_node("MatMul", [o_matmul_input, "o_weight"], ["output_0"], "o_matmul"))
     initializers.append(_float_tensor("o_weight", [hidden_size, hidden_size], random=True))
 
     # --- Graph definition ---
@@ -156,9 +161,9 @@ def create_dit_attention(
 
 def create_dit_attention_no_k_transpose(
     batch_size=2,
-    seq_len=16,
-    num_heads=16,
-    head_dim=64,
+    seq_len=4,
+    num_heads=4,
+    head_dim=8,
     scale=100.0,
 ):
     """Create a DiT attention graph where K is directly in BNHS format (no explicit Transpose).
@@ -181,7 +186,7 @@ def create_dit_attention_no_k_transpose(
         helper.make_tensor_value_info("v_bnsh", TensorProto.FLOAT, [batch_size, num_heads, seq_len, head_dim]),
     ]
 
-    # QK^T: [B, N, S, H] @ [B, N, H, S] → [B, N, S, S]
+    # QK^T: [B, N, S, H] @ [B, N, H, S] -> [B, N, S, S]
     nodes.append(helper.make_node("MatMul", ["q_bnsh", "k_bnhs"], ["qk_scores"], "qk_matmul"))
 
     # Mul by scale

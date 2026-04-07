@@ -12,7 +12,7 @@ import numpy as np
 import onnx
 from bart_model_generator import create_bart_attention_sdpa
 from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
-from dit_model_generator import create_dit_attention
+from dit_model_generator import create_dit_attention, create_dit_attention_no_k_transpose
 from gpt2_model_generator import create_gpt2_attention, create_gpt2_attention_no_past
 from model_loader import get_test_data_path
 from onnx import numpy_helper
@@ -607,9 +607,9 @@ class TestFusion(unittest.TestCase):
         """Test DiT attention fusion for F5-TTS-style pattern (FP32, with K pre-transpose)."""
         model = create_dit_attention(
             batch_size=2,
-            seq_len=16,
-            num_heads=16,
-            head_dim=64,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
             scale=100.0,
             use_fp16_casts=False,
         )
@@ -626,7 +626,7 @@ class TestFusion(unittest.TestCase):
         # Verify num_heads attribute
         num_heads_attr = next((a for a in mha_nodes[0].attribute if a.name == "num_heads"), None)
         self.assertIsNotNone(num_heads_attr)
-        self.assertEqual(num_heads_attr.i, 16)
+        self.assertEqual(num_heads_attr.i, 4)
 
         # Verify scale attribute
         scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
@@ -641,9 +641,9 @@ class TestFusion(unittest.TestCase):
         """Test DiT attention fusion with FP16 Cast nodes around Softmax."""
         model = create_dit_attention(
             batch_size=2,
-            seq_len=16,
-            num_heads=16,
-            head_dim=64,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
             scale=100.0,
             use_fp16_casts=True,
         )
@@ -660,7 +660,7 @@ class TestFusion(unittest.TestCase):
         # Verify num_heads and scale
         num_heads_attr = next((a for a in mha_nodes[0].attribute if a.name == "num_heads"), None)
         self.assertIsNotNone(num_heads_attr)
-        self.assertEqual(num_heads_attr.i, 16)
+        self.assertEqual(num_heads_attr.i, 4)
 
         scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
         self.assertIsNotNone(scale_attr)
@@ -672,12 +672,12 @@ class TestFusion(unittest.TestCase):
 
     def test_dit_attention_fusion_custom_scale(self):
         """Test DiT attention fusion with standard 1/sqrt(d_k) scale."""
-        head_dim = 64
+        head_dim = 8
         standard_scale = 1.0 / (head_dim**0.5)
         model = create_dit_attention(
             batch_size=1,
-            seq_len=8,
-            num_heads=8,
+            seq_len=4,
+            num_heads=4,
             head_dim=head_dim,
             scale=standard_scale,
             use_fp16_casts=False,
@@ -699,6 +699,39 @@ class TestFusion(unittest.TestCase):
         # Verify no Softmax remains (it should be absorbed into MHA)
         softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
         self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+    def test_dit_attention_fusion_no_k_transpose(self):
+        """Test DiT attention fusion when K is natively BNHS (no explicit Transpose node)."""
+        model = create_dit_attention_no_k_transpose(
+            batch_size=2,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
+            scale=100.0,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention_no_k_transpose.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        # Verify scale attribute
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, 100.0, places=5)
+
+        # Verify no Softmax remains
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+        # Verify the fusion added a Transpose for K (BNHS -> BNSH)
+        transpose_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Transpose"]
+        has_bnhs_to_bnsh = any(OnnxModel.get_node_attribute(t, "perm") == [0, 1, 3, 2] for t in transpose_nodes)
+        self.assertTrue(has_bnhs_to_bnsh, "Fusion should add Transpose(BNHS->BNSH) for K")
 
 
 if __name__ == "__main__":

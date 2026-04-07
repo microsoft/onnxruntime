@@ -61,10 +61,19 @@ class FusionMultiHeadAttentionDiT(Fusion):
         Returns:
             int: the input index (0 or 1) of the data input, or None if ambiguous.
         """
+        is_scalar_constant = [False, False]
         for i in range(2):
             value = self.model.get_constant_value(mul_node.input[i])
-            if value is not None and isinstance(value, np.ndarray) and value.size == 1:
-                return 1 - i  # The other input is data
+            if value is not None:
+                if isinstance(value, np.ndarray):
+                    is_scalar_constant[i] = value.size == 1
+                elif isinstance(value, (int, float)):
+                    is_scalar_constant[i] = True
+
+        if is_scalar_constant[0] and not is_scalar_constant[1]:
+            return 1
+        if is_scalar_constant[1] and not is_scalar_constant[0]:
+            return 0
         return None
 
     def detect_num_heads(self, tensor_name: str, output_name_to_node: dict) -> int:
@@ -134,24 +143,36 @@ class FusionMultiHeadAttentionDiT(Fusion):
 
         return 0
 
-    def detect_num_heads_from_output(self, reshape_out: NodeProto, transpose_out: NodeProto) -> int:
-        """Try to detect num_heads from the output Reshape or Transpose shape info.
+    def detect_num_heads_from_input_shape(self, tensor_name: str) -> int:
+        """Try to detect num_heads from a BNSH tensor's shape in graph inputs or value_info.
 
-        The Transpose converts BNSH → BSNH. If we can find the shape of Q/K,
-        the N dimension gives us num_heads.
-
-        Falls back to trying value_info shape data.
+        For BNSH tensors, the N dimension (index 1) is num_heads.
         """
-        # Try to find shape info from the graph's value_info
-        transpose_input = transpose_out.input[0]
+        # Check graph inputs (e.g., when Q/K/V are direct graph inputs)
+        for inp in self.model.model.graph.input:
+            if inp.name == tensor_name:
+                shape = inp.type.tensor_type.shape
+                if shape and len(shape.dim) == 4:
+                    dim_n = shape.dim[1]
+                    if dim_n.dim_value > 0:
+                        return dim_n.dim_value
+
+        # Check value_info
         for vi in self.model.model.graph.value_info:
-            if vi.name == transpose_input:
+            if vi.name == tensor_name:
                 shape = vi.type.tensor_type.shape
                 if shape and len(shape.dim) == 4:
                     dim_n = shape.dim[1]
                     if dim_n.dim_value > 0:
                         return dim_n.dim_value
         return 0
+
+    def detect_num_heads_from_output(self, reshape_out: NodeProto, transpose_out: NodeProto) -> int:
+        """Try to detect num_heads from the output Transpose's input shape.
+
+        The Transpose converts BNSH -> BSNH. The N dimension gives us num_heads.
+        """
+        return self.detect_num_heads_from_input_shape(transpose_out.input[0])
 
     def reshape_to_3d(self, input_name: str, output_name: str) -> str:
         """Add a Reshape node to convert 4D BxSxNxH to 3D BxSxD.
@@ -254,6 +275,12 @@ class FusionMultiHeadAttentionDiT(Fusion):
 
         # Softmax output shall not be graph output.
         if self.model.find_graph_output(softmax.output[0]):
+            return
+
+        # MultiHeadAttention normalizes along the last axis. Only fuse when Softmax
+        # uses the last axis (default for opset 13+), otherwise semantics would change.
+        axis = OnnxModel.get_node_attribute(softmax, "axis")
+        if axis is not None and axis not in (-1, 3):
             return
 
         # ========================================================================
@@ -370,6 +397,11 @@ class FusionMultiHeadAttentionDiT(Fusion):
         if num_heads <= 0:
             # Try detecting from V path
             num_heads = self.detect_num_heads(v_bnsh, output_name_to_node)
+        if num_heads <= 0:
+            # Try detecting from graph input/value_info shapes (e.g., when Q/V are graph inputs)
+            num_heads = self.detect_num_heads_from_input_shape(q_bnsh)
+        if num_heads <= 0:
+            num_heads = self.detect_num_heads_from_input_shape(v_bnsh)
         if num_heads <= 0:
             # Try detecting from output shape info
             num_heads = self.detect_num_heads_from_output(reshape_out, transpose_out)
