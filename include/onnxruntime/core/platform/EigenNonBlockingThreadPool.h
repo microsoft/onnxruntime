@@ -1662,7 +1662,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
             if (((i + 1) % steal_interval == 0)) {
               w = Steal(StealAttemptKind::TRY_ONE);
               // Re-check deadline after steal attempt (which is more expensive)
-              if (!t && std::chrono::high_resolution_clock::now() >= spin_deadline) break;
+              if (!w && std::chrono::high_resolution_clock::now() >= spin_deadline) break;
             } else {
               w = q.PopFront();
             }
