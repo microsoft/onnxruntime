@@ -68,6 +68,9 @@ jobs:
     submodules: none
 
   - template: templates/setup-pip-and-python-steps.yml
+    parameters:
+      versionSpec: '3.12'
+      architecture: 'x64'
 
   - template: templates/get-docker-image-steps.yml
     parameters:
