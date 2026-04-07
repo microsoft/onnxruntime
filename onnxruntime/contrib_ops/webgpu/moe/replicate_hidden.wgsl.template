@@ -1,0 +1,23 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Replicate a single hidden_state row k times for fused MoE processing.
+// in: hidden_state [1, hidden_size] (as vec4)
+// out: replicated [k, hidden_size] (as vec4)
+// uniform: hidden_size_vec (hidden_size / 4), k
+
+$MAIN {
+    let row = workgroup_idx;
+    if (row >= uniforms.k) {
+        return;
+    }
+    let step = (uniforms.hidden_size_vec + workgroup_size_x - 1) / workgroup_size_x;
+    let offset = local_idx * step;
+    let dst_base = row * uniforms.hidden_size_vec;
+    for (var i = 0u; i < step; i++) {
+        let idx = offset + i;
+        if (idx < uniforms.hidden_size_vec) {
+            replicated[dst_base + idx] = hidden_state[idx];
+        }
+    }
+} // MAIN

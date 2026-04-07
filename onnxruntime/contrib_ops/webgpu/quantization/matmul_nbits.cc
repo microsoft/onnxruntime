@@ -103,6 +103,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                             WGSL_TEMPLATE_PARAMETER(per_row_weight_indirect, per_row_weight_indirect_),
                              WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
@@ -185,7 +186,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         onnxruntime::webgpu::ComputeContext& context,
                         Tensor* y,
                         const uint32_t weight_index,
-                        const Tensor* weight_index_indirect) {
+                        const Tensor* weight_index_indirect,
+                        bool per_row_weight_indirect) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -221,6 +223,9 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
   uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
 
+  // When per_row_weight_indirect is enabled (fused MoE), skip optimized paths that don't
+  // support per-row expert selection, and fall through to the default MatMulNBitsProgram.
+  if (!per_row_weight_indirect) {
 #if !defined(__wasm__)
   int32_t subgroup_matrix_config_index = -1;
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
@@ -300,6 +305,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
     return context.RunProgram(program);
   }
+  }  // if (!per_row_weight_indirect)
 
   constexpr uint32_t workgroup_size = 128;
   constexpr uint32_t tile_size = 8;
@@ -307,7 +313,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights};
+  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, per_row_weight_indirect};
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
   program
@@ -326,7 +332,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {num_N_tile},
                             {batch_count},
                             {weight_index}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect);
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, per_row_weight_indirect);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }

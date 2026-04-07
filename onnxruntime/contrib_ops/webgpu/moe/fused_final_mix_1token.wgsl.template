@@ -1,0 +1,26 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Fused FinalMix for 1-token MoE: processes all k experts in one dispatch.
+// Each workgroup handles one of the k expert results.
+// in: fc2_outputs [k, hidden_size] — concatenated fc2 results for all k experts
+// in: router_values [1, num_experts] — softmax weights per expert
+// in: indirect_experts [k] — which expert index each row corresponds to
+// out: output [1, hidden_size] — accumulated weighted output
+// uniform: hidden_size, k
+
+$MAIN {
+    let expert_row = workgroup_idx;  // 0..k-1
+    if (expert_row >= uniforms.k) {
+        return;
+    }
+    let expert_idx = indirect_experts[expert_row];
+    let router_value = router_values[expert_idx];
+    let steps = uniforms.hidden_size / workgroup_size_x;
+    let offset = local_idx * steps;
+    let fc2_base = expert_row * uniforms.hidden_size;
+    for (var i = 0u; i < steps; i++) {
+        let weight = fc2_outputs[fc2_base + offset + i];
+        output[offset + i] += router_value * weight;
+    }
+} // MAIN
