@@ -646,8 +646,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE ||
            handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP ||
            handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32;
-#elif __linux__
+#elif defined(__linux__)
     return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD;
+#else
+    (void)handle_type;
+    return false;
 #endif
   }
 
@@ -716,9 +719,16 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     CUDA_EXTERNAL_MEMORY_HANDLE_DESC ext_mem_desc = {};
     ext_mem_desc.type = cu_handle_type;
 #if defined(_WIN32)
+    // Vulkan and D3D12 exports both use Win32 handles on Windows.
     ext_mem_desc.handle.win32.handle = desc->native_handle;
 #else
-    ext_mem_desc.handle.fd = static_cast<int>(reinterpret_cast<intptr_t>((desc->native_handle)));
+    const auto fd_handle = reinterpret_cast<intptr_t>(desc->native_handle);
+    if (fd_handle < 0 || fd_handle > std::numeric_limits<int>::max()) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "Invalid external memory file descriptor for CUDA import");
+    }
+    const auto fd = static_cast<int>(fd_handle);
+    ext_mem_desc.handle.fd = fd;
 #endif
     ext_mem_desc.size = desc->size_bytes;
     ext_mem_desc.flags = is_dedicated ? CUDA_EXTERNAL_MEMORY_DEDICATED : 0;
@@ -844,8 +854,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     (void)this_ptr;
 #if defined(_WIN32)
     return type == ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE || type == ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32;
-#else
+#elif defined(__linux__)
     return type == ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD;
+#else
+    (void)type;
+    return false;
 #endif
   }
 
@@ -892,9 +905,16 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
         return impl.ort_api.CreateStatus(ORT_EP_FAIL, "Unexpected external memory handle type");
     }
 #if defined(_WIN32)
+    // Vulkan and D3D12 exports both use Win32 handles on Windows.
     ext_sem_desc.handle.win32.handle = desc->native_handle;
 #else
-    ext_sem_desc.handle.fd = static_cast<int>(reinterpret_cast<intptr_t>(desc->native_handle));
+    const auto fd_handle = reinterpret_cast<intptr_t>(desc->native_handle);
+    if (fd_handle < 0 || fd_handle > std::numeric_limits<int>::max()) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "Invalid external semaphore file descriptor for CUDA import");
+    }
+    const auto fd = static_cast<int>(fd_handle);
+    ext_sem_desc.handle.fd = fd;
 #endif
     ext_sem_desc.flags = 0;
 
