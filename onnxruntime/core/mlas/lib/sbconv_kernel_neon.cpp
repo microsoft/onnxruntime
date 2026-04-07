@@ -16,7 +16,7 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
 
 #include <algorithm>
 #include <cstddef>

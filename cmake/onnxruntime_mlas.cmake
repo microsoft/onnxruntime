@@ -490,8 +490,11 @@ else()
           endif()
           set(CMAKE_REQUIRED_FLAGS "${MLAS_OLD_REQUIRED_FLAGS}")
           unset(MLAS_OLD_REQUIRED_FLAGS)
-        elseif(HAS_ARM64_BFLOAT16)
-          set(MLAS_ARM64_BFLOAT16_COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+        else()
+          check_cxx_compiler_flag("-march=armv8.2-a+bf16" HAS_ARM64_BFLOAT16_MARCH)
+          if(HAS_ARM64_BFLOAT16_MARCH)
+            set(MLAS_ARM64_BFLOAT16_COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          endif()
         endif()
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDot.S
