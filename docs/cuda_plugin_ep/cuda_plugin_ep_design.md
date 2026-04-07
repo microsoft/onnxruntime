@@ -420,29 +420,28 @@ The NHWC rollout is effectively in a "runtime enabled, cleanup remaining" state:
 
 ### 5.4 CUDA Graph Support
 
-#### 5.4.1 How CUDA Graph Works in Bundled CUDA EP
+CUDA Graph capture/replay is now fully implemented for the plugin EP. The design closely mirrors the in-tree CUDA EP but uses the plugin's own graph manager and per-thread stream infrastructure. The detailed design document is in [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md).
 
-CUDA Graph capture/replay in ORT is a **cooperative protocol** between the ORT session framework and the execution provider. Understanding this protocol is critical for the plugin EP design.
+#### 5.4.1 Session-Framework Protocol
+
+CUDA Graph capture/replay in ORT is a **cooperative protocol** between the ORT session framework and the execution provider.
 
 **Session-level orchestration** (`inference_session.cc`):
 
-1. During session initialization, if an EP reports `IsGraphCaptureEnabled() == true` and all graph nodes are assigned to that EP (plus allowed CPU shape nodes), the session caches a pointer to the EP in `cached_execution_provider_for_graph_replay_`.
+1. During session initialization, if an EP reports `IsGraphCaptureEnabled() == true`, the session validates the graph (no control flow, node assignment compatible with `GetGraphCaptureNodeAssignmentPolicy()`), then caches the EP in `cached_execution_provider_for_graph_replay_`. The validation is now **policy-driven** — hard-coded EP name lists have been replaced by a `GetGraphCaptureNodeAssignmentPolicy()` callback:
 
-2. At `Run()` time, the session checks `cached_execution_provider_for_graph_replay_.IsGraphCaptured(annotation_id)`:
-   - **If captured**: The session **skips the entire kernel dispatch pipeline** — no `OnRunStart`, no executor, no `OnRunEnd` — and calls `ReplayGraph(annotation_id)` directly. This is the fast path.
-   - **If not yet captured**: The session runs the normal kernel dispatch pipeline (including `OnRunStart` → executor → `OnRunEnd`), which allows the EP to manage warm-up counting and trigger capture.
+   | Policy | Validation |
+   |--------|-----------|
+   | `ALL_NODES_ON_EP` | Every main-graph node must be assigned to this EP. |
+   | `ALLOW_CPU_FOR_SHAPES` | All compute nodes on this EP or CPU EP, no Memcpy nodes. |
 
-3. After each normal run, the session checks if graph capture is enabled but not yet captured, and **recursively calls `Run()`** to accumulate the required warm-up runs and trigger capture — so from the user's perspective, a single `Run()` call handles the entire warm-up + capture sequence.
+2. At `Run()` time, the session checks `IsGraphCaptured(annotation_id)`:
+   - **If captured**: Skips the entire kernel dispatch pipeline and calls `ReplayGraph(annotation_id)` directly (fast path).
+   - **If not yet captured**: Runs the normal kernel dispatch pipeline (including `OnRunStart` → executor → `OnRunEnd`).
 
-**EP-level capture** (`CUDAExecutionProvider`):
+3. After each normal run, the session recursively calls `RunImpl()` (bounded by `kMaxGraphCaptureWarmupRuns = 8`) until the graph is captured — so from the user's perspective, a single `Run()` call handles the entire warm-up + capture sequence.
 
-- `OnRunStart()`: If warm-up is complete and graph not yet captured, calls `cudaStreamBeginCapture()`.
-- `OnRunEnd()`: If capturing, calls `cudaStreamEndCapture()` + `cudaGraphInstantiate()` + first `Replay()` (since captured kernels don't execute on GPU during capture).
-- `IsGraphCaptureEnabled()`: Returns `true` if `enable_cuda_graph` provider option is set.
-- `IsGraphCaptured(annotation_id)`: Returns `true` if a graph has been captured for this annotation.
-- `ReplayGraph(annotation_id)`: Calls `cudaGraphLaunch()` for the stored `cudaGraphExec_t`.
-
-The key insight is that the **session-level replay bypass** (`ReplayGraph()` without kernel dispatch) is what makes CUDA Graph efficient. Without it, the EP can capture a graph but can never replay it efficiently — kernels would still be dispatched by the executor on every run.
+4. When graph capture is enabled, the session **does not recycle** `DeviceStreamCollection` objects into the session-wide pool after each run. This prevents a stream wrapper bound to one thread's graph stream from being reused by a later run on another thread.
 
 ```
 Session::Run()
@@ -455,90 +454,87 @@ Session::Run()
                               └──────── Session recurses if warmup needed ─┘
 ```
 
-#### 5.4.2 Current Plugin EP Behavior — API Gap
+#### 5.4.2 OrtEp C API Extensions (v1.26)
 
-The `OrtEp` C API (`onnxruntime_ep_c_api.h`) still does not include:
-- `IsGraphCaptureEnabled()`
-- `IsGraphCaptured(annotation_id)`
-- `ReplayGraph(annotation_id)`
+Four new optional callbacks in `OrtEp` (`onnxruntime_ep_c_api.h`):
 
-The current plugin EP does not implement CUDA graph callbacks at all: `CudaEp` sets `OnRunStart = nullptr` and `OnRunEnd = nullptr`, and the previously proposed graph-specific plugin files are not part of the branch. As a result, CUDA graph support is currently disabled rather than partially implemented.
+| Callback | Signature | Default (NULL) | Purpose |
+|----------|-----------|----------------|---------|
+| `IsGraphCaptureEnabled` | `bool(const OrtEp*)` | `false` | Report whether graph capture is enabled |
+| `IsGraphCaptured` | `bool(const OrtEp*, int graph_annotation_id)` | `false` | Check if a graph has been captured for a given annotation ID |
+| `ReplayGraph` | `OrtStatus*(OrtEp*, int graph_annotation_id)` | OK | Launch a previously captured graph |
+| `GetGraphCaptureNodeAssignmentPolicy` | `OrtGraphCaptureNodeAssignmentPolicy(const OrtEp*)` | `ALL_NODES_ON_EP` | Specify validation strictness for node assignment |
 
-#### 5.4.3 Current Branch Design
+These are supplemented by the existing `OnRunStart` / `OnRunEnd` lifecycle callbacks that drive the capture workflow.
 
-Given the API gap, the current branch uses the simplest correct design:
+The `PluginExecutionProvider` bridge (`ep_plugin_provider_interfaces.cc`) delegates to these callbacks with version gating (`ort_version_supported >= 26`), falling back to safe defaults for older plugins.
 
-> **The plugin EP does not manage CUDA graph capture/replay internally.** CUDA graph support remains deferred until the `OrtEp` C API grows the required session-cooperative callbacks.
+The `IExecutionProvider` base class also gained a `GetGraphCaptureNodeAssignmentPolicy()` virtual (default: `ALL_NODES_ON_EP`). All in-tree EPs with graph capture (CUDA, DML, JS, WebGPU) override to `ALLOW_CPU_FOR_SHAPES`.
 
-**Rationale:**
+#### 5.4.3 Plugin-Side Implementation
 
-1. The `OrtEp` C API has no `IsGraphCaptureEnabled`/`IsGraphCaptured`/`ReplayGraph` callbacks. Without these, the session cannot know that the EP supports graph capture, cannot bypass kernel dispatch for replay, and cannot trigger the recursive warm-up sequence.
+The plugin implements CUDA graph capture/replay with per-thread isolation:
 
-2. The plugin branch intentionally removed graph-specific implementation files instead of keeping an incomplete capture-only path.
+**New files:**
+- `cuda_graph_plugin.h` — `CudaGraphSet` (keyed `cudaGraphExec_t` storage) and `CudaGraphManager` (capture lifecycle orchestrator)
+- `cuda_graph_plugin.cc` — Implementation
 
-3. The session's graph validation logic (all nodes on one EP, no control flow) is also not triggered without `IsGraphCaptureEnabled()`.
+**Per-thread context** (`CudaEp::PerThreadContext`):
+- Each thread gets its own dedicated graph `cudaStream_t`, `CudaGraphManager`, and capture bookkeeping
+- Created lazily on first graph-enabled use via `GetPerThreadContext()`
+- Lifetime managed by a thread-local cache keyed by `CudaEp*`. The cache owns each `PerThreadContext`, so the graph stream and captured graph executables are released automatically when the thread exits. `CudaEp` tracks weak references to live thread-local cache maps so its destructor can erase this EP's cache entry from long-lived threads without keeping the contexts alive.
 
-**Recommended approach:**
+**Callback wiring in `CudaEp` constructor:**
+- `IsGraphCaptureEnabled` / `GetGraphCaptureNodeAssignmentPolicy` — always set
+- `IsGraphCaptured` / `ReplayGraph` — always set (return false / error when disabled)
+- `OnRunStart` / `OnRunEnd` — conditional on `enable_cuda_graph`
 
-| Option | Description | Effort | Status |
-|--------|------------|--------|--------|
-| **A. Extend the OrtEp C API** | Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph` to `OrtEp`. Update `PluginExecutionProvider` to delegate to these. | Medium — requires ORT core changes | Preferred long-term solution |
-| **B. Keep graph support disabled in the plugin EP** | Leave graph files and hooks out of the plugin build until Option A exists. | Small | Current branch behavior |
+**Stream management:**
+- `CreateSyncStreamForDeviceImpl` branches internally: when graph capture is enabled, uses `CudaSyncStream::InitHandlesWithExternalStream()` to wrap the current thread's graph stream (non-owned); otherwise creates an owned stream via `InitHandles()`
+- `CudaSyncStream` tracks `owns_stream_` and skips `cudaStreamDestroy` in the destructor for external streams
+- The same stream is used for warm-up, capture, and replay on each thread
 
-**Recommendation**: Keep Option B in place until Option A is available.
+**Capture flow:**
+- `OnRunStartImpl`: If warmup complete and not yet captured, records free GPU memory via `cudaMemGetInfo`, then calls `CaptureBegin` → `cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal)`
+- `OnRunEndImpl`: Calls `CaptureEnd` → `cudaStreamEndCapture` → `cudaGraphInstantiate`, then immediately replays (since captured kernels don't execute during capture). Compares post-capture free memory to detect allocations during capture (logged as warning). Honors `sync_stream` flag.
 
-#### 5.4.4 What Needs to Change in ORT Core (Option A)
+**Config options:**
 
-To enable full CUDA graph support for plugin EPs, the `OrtEp` struct needs three new optional callbacks:
+| Option Key | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `ep.cudapluginexecutionprovider.enable_cuda_graph` | bool | false | Enable CUDA graph capture/replay |
+| `ep.cudapluginexecutionprovider.min_num_runs_before_cuda_graph_capture` | int | 2 | Warmup runs before capture |
 
-```c
-// Proposed additions to OrtEp (onnxruntime_ep_c_api.h)
-struct OrtEp {
-  // ... existing fields ...
+Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supported.
 
-  /// Returns true if CUDA graph capture is enabled for this EP.
-  /// If nullptr, defaults to false.
-  ORT_API2_STATUS(IsGraphCaptureEnabled, _In_ const OrtEp* this_ptr, _Out_ bool* enabled);
+#### 5.4.4 Concurrent Run Support
 
-  /// Returns true if a graph has been captured for the given annotation ID.
-  /// If nullptr, defaults to false.
-  ORT_API2_STATUS(IsGraphCaptured, _In_ const OrtEp* this_ptr,
-                  _In_ int graph_annotation_id, _Out_ bool* captured);
+Concurrent `Session::Run()` is supported with CUDA graph enabled:
 
-  /// Replay a previously captured graph.
-  /// If nullptr, returns OK (no-op).
-  ORT_API2_STATUS(ReplayGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
-};
-```
-
-The `PluginExecutionProvider` bridge would then delegate these to the plugin:
-
-```cpp
-// In ep_plugin_provider_interfaces.cc
-bool PluginExecutionProvider::IsGraphCaptureEnabled() const {
-  if (ort_ep_->IsGraphCaptureEnabled == nullptr) return false;
-  bool enabled = false;
-  auto* status = ort_ep_->IsGraphCaptureEnabled(ort_ep_.get(), &enabled);
-  // handle status...
-  return enabled;
-}
-```
-
-This would plug into the existing `cached_execution_provider_for_graph_replay_` mechanism in `InferenceSession` with no other session-level changes needed.
+- `PerThreadContext` isolates graph streams, capture state, warm-up run counts, and memory watermarks per thread
+- Thread-local caches own each `PerThreadContext`, so exited threads release their graph streams and captured graph executables automatically
+- `IsConcurrentRunSupportedImpl` returns `true`
+- `CaptureBegin` uses `cudaStreamCaptureModeThreadLocal`, allowing overlapping capture scopes on different threads
+- ORT discards graph-capture stream collections instead of pooling them, preventing cross-thread stream reuse
+- New threads perform their own warm-up and capture before replaying
 
 #### 5.4.5 Current State
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `cuda_graph_plugin.h/.cc` | **Removed** | Not present in the current branch. |
-| `CudaEp::OnRunStart` / `OnRunEnd` | **Disabled** | `CudaEp` installs `nullptr` for both callbacks. |
-| Session-level replay bypass | **Unavailable** | `OrtEp` API still lacks `IsGraphCaptureEnabled`/`IsGraphCaptured`/`ReplayGraph`. |
-| Tests | Not included | The plugin test script has no CUDA graph stage. |
+| `OrtEp` C API | **Implemented** | Four graph capture callbacks added in v1.26 |
+| `PluginExecutionProvider` bridge | **Implemented** | Version-gated delegation with safe defaults |
+| `cuda_graph_plugin.h/.cc` | **Implemented** | `CudaGraphSet` + `CudaGraphManager` |
+| `CudaEp` graph callbacks | **Implemented** | Per-thread context, all six callbacks wired |
+| `CudaSyncStream` external stream | **Implemented** | `InitHandlesWithExternalStream()` + `owns_stream_` |
+| Session-level policy refactor | **Implemented** | Policy-driven validation, bounded recursion |
+| Framework `IExecutionProvider` | **Updated** | `GetGraphCaptureNodeAssignmentPolicy()` virtual added |
+| Unit tests | **Included** | Plugin bridge tests + WebGPU E2E test |
+| Python tests | **Included** | `test_cuda_plugin_ep.py` validates related kernel cleanups |
 
-**Action items:**
-1. Keep CUDA graph support disabled in the plugin build until the `OrtEp` C API grows the required replay hooks.
-2. Add `IsGraphCaptureEnabled`/`IsGraphCaptured`/`ReplayGraph` to the `OrtEp` C API.
-3. Reintroduce plugin-side graph management only after the public API is capable of session-cooperative replay.
+**Known limitations:**
+1. CUDA graph + arena integration needs validation after PR #27931 lands. The graph branch should rely on the arena-backed allocator path from that PR instead of adding graph-specific allocation handling.
+2. Multi-graph with dynamic shapes (via annotation IDs) is supported but not yet tested.
 
 ---
 
@@ -573,8 +569,8 @@ Section 7 reflects the current source exclusions in `cmake/onnxruntime_providers
 | `cuda_provider_interface.cc` | Not needed in plugin architecture |
 | `cuda_stream_handle.cc` | Replaced by `cuda_stream_plugin.cc` |
 | `cuda_execution_provider_info.cc` | Config parsed directly in `CudaEp::Config` |
-| `cuda_graph.cc` | CUDA graph support deferred (files removed pending OrtEp API extension) |
-| `cuda_mempool_arena.cc` | Plugin uses `cudaMalloc`/`cudaFree` directly |
+| `cuda_graph.cc` | Replaced by plugin-local `cuda_graph_plugin.h/.cc`, which implements graph capture/replay through the OrtEp graph callbacks |
+| `cuda_mempool_arena.cc` | Expected to be enabled by PR #27931 through `CudaMempoolOrtAllocator`; until that lands, the current branch still relies on the pre-arena plugin allocator path |
 | `cuda_common.cc` | Utility functions shimmed in `cuda_kernel_adapter.h` |
 | `cuda_nhwc_kernels.cc` | Replaced by `PluginKernelCollector` auto-registration |
 | `cuda_contrib_kernels.cc` | Replaced by `PluginKernelCollector` auto-registration |
@@ -902,90 +898,52 @@ include/onnxruntime/ep/
 
 ## 13. Future Work
 
-1. **Memory arena / allocator parity** — The plugin currently relies on direct `cudaMalloc`/`cudaFree` in `CudaDeviceAllocator` instead of an arena-backed allocator. Two complementary improvements are planned:
+1. **CUDA Graph integration with PR #27931 arena work** — Assume PR #27931 ("Implement/migrate Arena allocators to cuda plugin ep") lands on `main` first. That PR adds plugin-hosted arena allocation (`CudaArenaAllocator`/`ArenaImpl`), CUDA native mempool support (`CudaMempoolOrtAllocator`), allocator option plumbing, and tests. The graph branch should rebase on that work and make these integration updates:
 
-   **A. `CudaMempoolArena` (commit e6023b0c)**
-
-   The in-tree CUDA EP gained a native-CUDA-mempool allocator (`cuda_mempool_arena.h/.cc`) that uses `cudaMallocFromPoolAsync` / `cudaFreeAsync` on stream-ordered allocation paths, with a configurable `cudaMemPoolAttrReleaseThreshold` to return memory to the device as it becomes idle. Enabling this in the plugin requires:
-
-   1. **Make `CudaMempoolArena` compilable in the plugin build.** `cuda_mempool_arena.h` currently includes `cuda_stream_handle.h` and `provider_api.h` (both `SHARED_PROVIDER`-only). The only real dependency is resolving the stream framework pointer. When migrating for plugin use, this class can be refactored to accept a raw `cudaStream_t` directly (or an `OrtSyncStream*`), bypassing the internal `stream->GetHandle()` logic.
-
-   2. **Implement a thin `OrtAllocator` wrapper around `CudaMempoolArena`.** The plugin factory's `CreateAllocatorImpl` returns an `OrtAllocator*`, while `CudaMempoolArena` is an `IArena` / `IAllocator`. A new class (e.g., `CudaMempoolOrtAllocator`) should own a `CudaMempoolArena` instance and forward the `OrtAllocator` callbacks to it:
-
-      | `OrtAllocator` callback | Implementation |
-      |-------------------------|----------------|
-      | `Alloc(size)` | `arena_->Alloc(size)` (allocates on the legacy default stream) |
-      | `Free(ptr)` | `arena_->Free(ptr)` |
-      | `Reserve(size)` | `arena_->Reserve(size)` |
-      | `AllocOnStream(size, stream)` | `cudaStream_t cu_stream = (cudaStream_t)api->SyncStream_GetHandle(stream);` <br> `arena_->AllocWithCudaStream(size, cu_stream);` |
-      | `GetStats(kvps)` | Populate from `arena_->GetStats()` |
-      | `Info()` | Return the `OrtMemoryInfo*` used at construction |
-
-      The `OrtAllocator` C API already supports stream-aware allocation via the optional `AllocOnStream` callback (set on `OrtAllocator` when `version >= kOrtAllocatorAllocOnStreamMinVersion`). ORT core wraps every plugin `OrtAllocator` into `IAllocatorImplWrappingOrtAllocator` (`allocator_adapters.cc`), which dispatches to `AllocOnStream` when the wrapper reports `IsStreamAware() == true`. So there is **no additional plumbing needed in the adapter or framework** — the plugin allocator just needs to set `AllocOnStream` to a non-null function pointer to get full stream-ordered semantics.
-
-      **Important:** The `OrtMemoryInfo::alloc_type` returned by the wrapper must be `OrtDeviceAllocator`, **not** `OrtArenaAllocator`. Both `PluginExecutionProvider::CreatePreferredAllocators()` and `Environment::CreateSharedAllocatorImpl()` explicitly reject `OrtArenaAllocator` from plugin factories — the arena is expected to be opaque to ORT.
-
-   3. **Parse mempool options.** ORT can pass allocator configuration to the plugin factory through the `allocator_options` (`OrtKeyValuePairs*`) argument of `OrtEpFactory::CreateAllocator`. The relevant keys are defined in `OrtArenaCfg::Keys` (in `allocator.h`):
-      - `arena.use_cuda_mempool` — set to `"1"` to enable
-      - `arena.cuda_mempool_release_threshold` — bytes; `0` disables the threshold
-      - `arena.cuda_mempool_bytes_to_keep_on_shrink` — bytes retained after `Shrink()`
-
-      **How options reach the plugin factory — two paths:**
-
-      | Path | How it calls `CreateAllocator` | `allocator_options` |
-      |------|-------------------------------|---------------------|
-      | **Shared allocator** (`OrtApi::CreateSharedAllocator`) | `Environment::CreateSharedAllocatorImpl` → `ep_factory->CreateAllocator(factory, &mem_info, allocator_options, &alloc)` | Caller-provided `OrtKeyValuePairs*` — can carry arena keys |
-      | **Per-EP allocator** (`PluginExecutionProvider::CreatePreferredAllocators`) | `ep_factory.CreateAllocator(&ep_factory, memory_info, /*options*/ nullptr, &alloc)` | Always `nullptr` today |
-
-      The per-EP path currently passes `nullptr` for options. To support mempool configuration on this path, either:
-      - **(a)** Parse the arena keys from session options inside `CudaEp` / `CudaEpFactory` (similar to how `CudaEp::Config` already parses other provider options) and store them so `CreateAllocatorImpl` can read them without needing `allocator_options`.
-      - **(b)** Extend the ORT core per-EP allocator path to forward the config entries to `CreateAllocator` (requires an ORT core change).
-
-      Option (a) is self-contained within the plugin and does not require ORT core changes.
-
-   4. **Thread the factory logger.** `CudaMempoolArena` takes a `const logging::Logger*`. The plugin factory already owns a logger (`factory.default_logger_` / the `OrtLogger` passed at EP creation). Convert or wrap it and pass it to the arena constructor.
-
-   5. **Handle `ReleaseAllocatorImpl`.** The factory's `ReleaseAllocatorImpl` switch currently only knows about `CudaDeviceAllocator` and `CudaPinnedAllocator`. Add a third case (`kMempool` or similar) to correctly destroy the new wrapper and its owned `CudaMempoolArena`.
-
-   **B. BFC arena (longer term)**
-
-   If BFC-style arena behavior (`gpu_mem_limit`, `arena_extend_strategy`) is also needed, a similar `OrtAllocator`-wrapping approach would work for `BFCArena`, once its `SHARED_PROVIDER`-only dependencies are removed. The same `AllocOnStream` / `OrtDeviceAllocator` / option-parsing patterns apply.
+   - Keep graph capture on the normal plugin allocator path. Do not add graph-specific `cudaMalloc`/`cudaFree` handling. Default device allocations should use the plugin arena; `arena.use_cuda_mempool=1` should select the CUDA mempool wrapper.
+   - Preserve the current graph-stream flow: `CreateSyncStreamForDeviceImpl()` must wrap the current thread's graph stream via `CudaSyncStream::InitHandlesWithExternalStream()` so stream-aware arena allocation sees the same `cudaStream_t` used for warm-up, capture, and replay.
+   - Validate that `CudaSyncStream::OnSessionRunEndImpl()` still resets arena stream assignments for graph-enabled runs, even though ORT does not recycle graph-capture stream collections into the session pool.
+   - Keep the plugin allocator's `OrtMemoryInfo::alloc_type` as `OrtDeviceAllocator`; the arena remains opaque to ORT even when the plugin internally uses `CudaArenaAllocator` or `CudaMempoolOrtAllocator`.
+   - Make graph tests cover both default arena mode and `arena.use_cuda_mempool=1`. The warm-up count should be checked with the arena enabled so chunk creation and stream assignment happen before `cudaStreamBeginCapture`.
+   - Retain the `cudaMemGetInfo` warning as a last-line diagnostic after arena integration. It should become quiet in the expected path, but it remains useful for custom arena options, insufficient warm-up, or regressions that allocate during capture.
 
 2. **Profiling and observability** — The in-tree CUDA EP exposes an EP profiler, while the plugin shim currently does not surface equivalent profiling hooks. Future work should wire up `GetProfiler()` for the plugin path, integrate CUDA/NVTX/CUPTI-based tracing where appropriate, and make plugin execution visible in the same profiling flows users already rely on for the bundled CUDA EP.
 
-3. **Stream/adapter parity for framework-style `Stream*` consumers** — A number of excluded or recently re-included kernels still assume access to a richer framework `Stream*` object rather than only a raw `cudaStream_t` view. Extending the adapter path here would unblock additional LLM, FFT, quantization, diffusion, and other CUDA kernels.
+3. **Remaining stream/adapter parity for framework-style `Stream*` consumers** — Much of the broad `Stream*` gap has been addressed on `main`: the plugin adapter now provides an `OrtStreamAdapter` / `PluginStreamShim` path for framework-style `Stream*` call sites, FFT is included, and quantization/diffusion kernels are no longer excluded as a class. Remaining work is narrower:
 
-4. **Contrib LLM migration pass** — The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` remains excluded as a separate follow-up.
+   - Continue using `Stream(context)` / `GetOrtStream(context)` patterns for migrated kernels rather than adding raw-stream-only forks.
+   - Audit still-excluded directories that require more than a stream handle: `contrib_ops/cuda/llm/*`, `contrib_ops/cuda/transformers/*`, and `contrib_ops/cuda/collective/*`.
+   - For each re-inclusion pass, add or extend focused plugin tests before removing the CMake exclusion.
+
+4. **Contrib LLM migration pass** — Still open. The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` remains excluded in `cmake/onnxruntime_providers_cuda_plugin.cmake`. The remaining work is a dedicated contrib-LLM adapter pass: resolve any plugin build failures under `ORT_USE_EP_API_ADAPTERS`, keep the normal stream/scratch-buffer helpers, remove the `contrib_ops/cuda/llm/*` CMake filters, and add focused tests or parity-report coverage for the first re-included kernels.
 
 5. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc` so the plugin can recover runtime kernel selection and profiling-based tuning behavior.
 
 6. **TensorSeq and additional C API coverage** — Add enough sequence/tensor-sequence support to unblock `sequence_op.cc` (the last remaining TensorSeq-dependent file), and extend the ORT C API where needed for remaining framework-style attribute accessors such as string-array attributes used by RNN kernels. Note: `identity_op.cc` is now included in the plugin build — its TensorSeq code path is guarded by `#ifndef BUILD_CUDA_EP_AS_PLUGIN` and opset 14+ registrations use `AllFixedSizeTensorTypes()` (Tensor-only) instead of `AllFixedSizeTensorAndSequenceTensorTypes()`.
 
-7. **Remaining contrib exclusions** — The FFT (`fft_ops.cc`), crop (`crop.cc`), and dynamicslice (`dynamicslice.cc`) exclusions have been removed. These files now compile in the plugin build: FFT ops use `Stream(context)` (which works in both builds) and the `CUFFT_RETURN_IF_ERROR` macro was added to the adapter; crop and dynamicslice had no real framework blockers once tested. The plugin CMake now links `CUDA::cufft` for cuFFT symbol resolution. Remaining contrib exclusions are: `shrunken_gather.cc` (training), `transformers/*` (subgraph), `aten_ops/*` (ATen), `collective/*` (NCCL), and `llm/*` (contrib LLM pass).
+7. **Remaining contrib exclusions** — Remaining contrib exclusions are: `shrunken_gather.cc` (training), `transformers/*` (subgraph), `aten_ops/*` (ATen), `collective/*` (NCCL), and `llm/*` (contrib LLM pass).
 
-8. **CI integration and targeted benchmarking** — Add plugin build + test coverage to CI and include perf-oriented validation so allocator, profiling, and tunable-op regressions are caught early.
+8. **CI integration and targeted benchmarking** — Partially complete on `main`. Basic CUDA plugin build + `test_cuda_plugin_ep.py` coverage now exists in Linux and Windows plugin CI workflows. Remaining work is perf-oriented and feature-specific validation: add targeted benchmarks or perf gates for graph replay and allocator behavior, extend CI once profiling and tunable-op support land, and include allocator mode coverage after PR #27931's arena work is integrated.
 
-9. **NHWC cleanup and hardening** — Complete the follow-up work described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the allowlist, improve internal-domain diagnostics, and add stronger structural NHWC assertions.
+9. **NHWC cleanup and hardening** — Partially complete on `main`. Runtime NHWC callbacks, second-pass capability handling for pre-assigned NHWC nodes, cached provider-config access, and focused Conv/BatchNormalization/Pool tests are in place. Remaining work is the cleanup described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the conversion allowlist with the bundled CUDA EP, improve internal-domain kernel-miss diagnostics, and add stronger structural assertions that plugin-backed NHWC execution was actually selected.
 
-10. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure will be reintroduced once the API is extended.
-
-11. **OpSchema-validated kernel registration (PR #27713)** — PR #27713 adds `OrtEpApi` functions that let plugin EPs query ONNX operator schemas from ORT's global registry (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). Concrete follow-up work for the CUDA plugin EP:
+10. **OpSchema-validated kernel registration after PR #27713** — PR #27713 has landed on `main`, so the `OrtEpApi` and C++ wrappers for querying ONNX operator schemas are available (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). The remaining work is plugin-side adoption:
 
     **A. Registration-time validation pass**
 
-    Add a debug/diagnostic pass in `CreateCudaKernelRegistry()` that validates every registered kernel's type constraint names against the schema. This is the highest-value, lowest-risk change — it catches silent kernel-matching failures caused by constraint name drift without altering the registration flow. See [Section 11.6.1](#1161-validation-mode-recommended-first-step) for the implementation pattern.
+    Still open. Add a debug/diagnostic pass in `CreateCudaKernelRegistry()` that validates every registered kernel's type constraint names against the schema. This is the highest-value, lowest-risk change — it catches silent kernel-matching failures caused by constraint name drift without altering the registration flow. See [Section 11.6.1](#1161-validation-mode-recommended-first-step) for the implementation pattern.
 
     **B. NHWC internal-domain schema diagnostics**
 
-    Extend the validation pass to cover `com.ms.internal.nhwc`-domain registrations. When kernel lookup fails for a rewritten NHWC node, the diagnostic can now report exactly which constraint name was expected vs. what the kernel registered, directly addressing the diagnostic requirement in [Section 5.3.1.3](#5313-nhwc-design-requirements).
+    Still open. Extend the validation pass to cover `com.ms.internal.nhwc`-domain registrations. When kernel lookup fails for a rewritten NHWC node, the diagnostic can now report exactly which constraint name was expected vs. what the kernel registered, directly addressing the diagnostic requirement in [Section 5.3.1.3](#5313-nhwc-design-requirements).
 
     **C. Parity report enhancement**
 
-    Update `cuda_plugin_parity_report.py` to use the schema API (via a small C++ test harness or Python ONNX bindings) to flag type-constraint mismatches between the plugin's registered kernels and the ONNX schema, in addition to the existing op-coverage comparison.
+    Still open. Update `cuda_plugin_parity_report.py` to use the schema API (via a small C++ test harness or Python ONNX bindings) to flag type-constraint mismatches between the plugin's registered kernels and the ONNX schema, in addition to the existing op-coverage comparison.
 
     **D. Schema-driven `KernelDefBuilder` helpers (longer term)**
 
-    Create a `KernelDefBuilder` helper that auto-derives constraint names from the schema instead of requiring hard-coded strings. This reduces maintenance burden when new opset versions introduce constraint name changes, but is lower priority than the validation pass since all current constraint names are correct.
+    Still open and lower priority. Create a `KernelDefBuilder` helper that auto-derives constraint names from the schema instead of requiring hard-coded strings. This reduces maintenance burden when new opset versions introduce constraint name changes, but is lower priority than the validation pass since all current constraint names are correct.
 
     **E. Potential code locations for changes**
 
@@ -997,25 +955,25 @@ include/onnxruntime/ep/
     | `cuda_ep.cc` / `GetCapabilityImpl()` | (Optional) Add schema-based diagnostic when `EpGraphSupportInfo_LookUpKernel` returns nullptr |
     | `test_cuda_plugin_ep.py` | Add a validation stage that exercises schema-validated registration |
 
-12. **Resource accounting and annotation-based partitioning (PR #27595)** — ORT is acquiring two related features that affect how graph nodes are partitioned to EPs:
+11. **Resource accounting and annotation-based partitioning after PR #27595** — PR #27595 has landed on `main`, so ORT now has framework-side resource accounting and layering annotations. The remaining CUDA plugin work is to bridge those capabilities through the plugin EP API and plugin capability implementation.
 
     **A. Resource accounting**
 
     `IResourceAccountant` lets an EP declare a resource budget (e.g., available VRAM) and have the partitioner stop assigning nodes once that budget is exhausted. The framework passes an `IResourceAccountant*` to `IExecutionProvider::GetCapability()`; the in-tree CUDA EP uses it to compute per-node estimated VRAM cost from initializer sizes.
 
-    For plugin EPs, the `OrtEp::GetCapability` callback currently has no mechanism to receive or report resource usage — the `OrtEp` C API does not expose `IResourceAccountant`. Two design options:
+    For plugin EPs, the `OrtEp::GetCapability` callback still has no mechanism to receive or report resource usage. `PluginExecutionProvider::GetCapability()` receives an `IResourceAccountant*`, but it currently leaves that parameter unused before calling the `OrtEp::GetCapability` callback. Two design options remain:
 
-    - **Option A (preferred — ORT core change, completed in PR #27595):** Add an `OrtEp` analogue of the current `IResourceAccountant` flow. PR #27595 introduced `OrtEpGraphSupportInfo_RequestResourceForNode` and `OrtEpGraphSupportInfo_StopAssigningNodesDueToResourceExhaustion` to the C API. This is the implementation path moving forward.
+    - **Option A (preferred — ORT core change):** Add an `OrtEp` analogue of the current `IResourceAccountant` flow, such as resource-accounting helpers on `OrtEpGraphSupportInfo`. This would let the plugin request per-node resource budget during `CudaEp::GetCapabilityImpl()` without duplicating partitioner budget logic.
 
     - **Option B (plugin-side workaround):** Expose the VRAM threshold through a plugin-specific session option key. During `GetCapabilityImpl`, the plugin reads the threshold from the parsed config and performs its own initializer-size accounting using `OrtEp_GetNodeAttributes` / node-graph-view APIs already present in the `OrtEp` API surface. This avoids an ORT core change but duplicates budget-tracking logic.
 
     **B. Annotation-based layering**
 
-    PR #27595 also introduces `layering_annotations` — node-level `"layer_ann"` metadata that routes nodes to specific EPs or CPU during partitioning. The expected model is that plugin EPs participate through the same `GetCapability` flow and therefore observe whatever node set ORT presents after applying layering rules. In practice that should mean no plugin-specific changes are needed to respect annotations that exclude nodes from the plugin. However, the plugin design should avoid depending on undocumented filtering details in the `OrtGraph*` contract. If the plugin EP itself needs to *read* layering annotations for internal decisions, or if the API needs to make filtered-vs-unfiltered graph semantics explicit, that would require new `OrtEp` API surface.
+    PR #27595 also introduced `layering_annotations` — node-level `"layer_ann"` metadata that routes nodes to specific EPs or CPU during partitioning. The expected model is that plugin EPs participate through the same `GetCapability` flow and therefore observe whatever node set ORT presents after applying layering rules. In practice that should mean no plugin-specific changes are needed to respect annotations that exclude nodes from the plugin. However, the plugin design should avoid depending on undocumented filtering details in the `OrtGraph*` contract. If the plugin EP itself needs to *read* layering annotations for internal decisions, or if the API needs to make filtered-vs-unfiltered graph semantics explicit, that would require new `OrtEp` API surface.
 
     Current known limitations to keep in future work:
 
     - The `cuda(...)` device selector currently matches only the built-in `CUDAExecutionProvider`. It does not match the plugin EP name `CudaPluginExecutionProvider`, so layer assignment settings written against `cuda(...)` do not work with the CUDA plugin EP today.
     - The `gpu:<index>(...)` selector is currently matched using `OrtHardwareDevice::device_id`. That field is not a stable CUDA ordinal and is not guaranteed to uniquely identify one physical GPU, so index-based layer assignment is unreliable for the CUDA plugin EP, especially on hosts with multiple similar NVIDIA GPUs.
 
-    **Recommended action:** Combine with the recently added `OrtEpGraphSupportInfo_RequestResourceForNode` C API explicitly (completed in PR #27595 on the ORT core side) to correctly assign nodes within the budget in the plugin's `CudaEp::GetCapabilityImpl()` when layer assignments exist.
+    **Recommended action:** First add the plugin API bridge for resource accounting, then update `CudaEp::GetCapabilityImpl()` to request resource budget for candidate nodes when layer assignments exist. Until that bridge exists, the plugin can observe the filtered node set from ORT partitioning but cannot report resource consumption through the same `IResourceAccountant` flow as the in-tree CUDA EP.
