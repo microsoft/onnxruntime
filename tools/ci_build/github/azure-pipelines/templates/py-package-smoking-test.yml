@@ -39,7 +39,6 @@ jobs:
 
   - template: setup-pip-and-python-steps.yml
     parameters:
-      artifactFeeds: 'PublicPackages/ORT-Nightly'
       versionSpec: $(PythonVersion)
 
   - download: build   # pipeline resource identifier.
