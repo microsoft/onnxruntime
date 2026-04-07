@@ -223,13 +223,10 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
   uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
 
-  // When per_row_weight_indirect is enabled (fused MoE), skip optimized paths that don't
-  // support per-row expert selection, and fall through to the default MatMulNBitsProgram.
-  if (!per_row_weight_indirect) {
 #if !defined(__wasm__)
   int32_t subgroup_matrix_config_index = -1;
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
-  if (M >= kMinMForTileOptimization && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
+  if ((M >= kMinMForTileOptimization && !per_row_weight_indirect) && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
       CanApplySubgroupMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, subgroup_matrix_config_index)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index, weight_index_indirect);
   }
@@ -237,14 +234,15 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
   // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
-  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
+  if (((M >= kMinMForTileOptimization && !per_row_weight_indirect) || y->DataType() == DataTypeImpl::GetType<float>() || context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect);
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect, per_row_weight_indirect);
   }
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
-  const bool use_wide_tile_program = block_size == 32 &&
+  const bool use_wide_tile_program = !per_row_weight_indirect &&
+                                     block_size == 32 &&
                                      components_a == 4 &&
                                      components_b == 4 &&
                                      nbits != 2 &&
@@ -305,7 +303,6 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
     return context.RunProgram(program);
   }
-  }  // if (!per_row_weight_indirect)
 
   constexpr uint32_t workgroup_size = 128;
   constexpr uint32_t tile_size = 8;
