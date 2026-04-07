@@ -209,7 +209,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last_));
   const int64_t N = X->Shape()[0];
-  const int64_t C = X->Shape()[channels_last_ ? 3 : 1];
+  // If channels_last_ we should get the back dim for channels instead of [1]
+  const int64_t C = channels_last_ ? X->Shape().GetDims().back() : X->Shape()[1];
   const int64_t M = W->Shape()[0];
 
   TensorShapeVector kernel_shape;

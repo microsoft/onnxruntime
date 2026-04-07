@@ -155,7 +155,7 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
   auto& base_node = NodeFromApiNode(node);
 
   ORT_UNUSED_PARAMETER(graph);
-#if !defined(__aarch64__)
+#if !defined(MLAS_TARGET_ARM64)
   return false;
 #else
   if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME()) {

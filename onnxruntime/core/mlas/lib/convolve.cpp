@@ -1248,7 +1248,7 @@ Return Value:
 
 namespace {
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
 static constexpr size_t ComputeChannelsLastDilatedKernelSize(size_t dilation, size_t kernel) {
     return (dilation * kernel) - (dilation - 1);
 }
@@ -1278,7 +1278,7 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
     size_t FilterCount,
     float Beta)
 {
-#if !defined(USE_KLEIDIAI) || !defined(__aarch64__)
+#if !defined(USE_KLEIDIAI) || !defined(MLAS_TARGET_ARM64)
     MLAS_UNREFERENCED_PARAMETER(Dimensions);
     MLAS_UNREFERENCED_PARAMETER(BatchCount);
     MLAS_UNREFERENCED_PARAMETER(GroupCount);

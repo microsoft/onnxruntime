@@ -11,7 +11,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
-#if defined(USE_KLEIDIAI) && defined(__aarch64__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
 #include "core/mlas/lib/mlasi.h"
 #endif
 #include "core/graph/graph.h"
@@ -41,7 +41,7 @@ NodeArg* NhwcMakeInitializer(ModelTestBuilder& builder, const std::vector<int64_
                                     NhwcWeightsRange<T>::max_value);
 }
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
 static bool HasFloatNhwcFusedConvKernel() {
   auto* cpu_ep = TestCPUExecutionProvider();
   auto kernel_registry = cpu_ep->GetKernelRegistry();
@@ -75,7 +75,7 @@ static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_sha
                                            int64_t group = 1,
                                            bool has_sum_input = false,
                                            std::string_view auto_pad = "NOTSET") {
-#if defined(USE_KLEIDIAI) && defined(__aarch64__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
   if (!HasFloatNhwcFusedConvKernel() || !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
     return false;
   }
