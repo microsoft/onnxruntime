@@ -155,7 +155,7 @@ stages:
           clean: true
           submodules: none
 
-        - template: ../templates/setup-pip-and-python-steps.yml
+        - template: ../templates/setup-feeds-and-python-steps.yml
           parameters:
             versionSpec: ${{ parameters.PYTHON_VERSION }}
             architecture: 'x64'

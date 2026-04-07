@@ -348,7 +348,7 @@ stages:
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: true
 
-    - template: setup-pip-and-python-steps.yml
+    - template: setup-feeds-and-python-steps.yml
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

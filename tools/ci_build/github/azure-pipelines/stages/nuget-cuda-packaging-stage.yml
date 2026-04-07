@@ -72,7 +72,7 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: ../templates/setup-pip-and-python-steps.yml
+    - template: ../templates/setup-feeds-and-python-steps.yml
 
     - template: ../templates/set-version-number-variables-step.yml
 

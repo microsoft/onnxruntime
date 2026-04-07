@@ -12,7 +12,7 @@ steps:
       SecretsFilter: "java-pgp-pwd,java-pgp-key"
       RunAsPreJob: false
 
-  - template: setup-pip-and-python-steps.yml
+  - template: setup-feeds-and-python-steps.yml
 
   - task: PythonScript@0
     displayName: "Sign files: GnuPG, sha1, and md5"

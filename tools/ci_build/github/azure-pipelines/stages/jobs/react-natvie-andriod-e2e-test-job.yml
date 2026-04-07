@@ -23,7 +23,7 @@ jobs:
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
   timeoutInMinutes: 90
   steps:
-  - template: ../../templates/setup-pip-and-python-steps.yml
+  - template: ../../templates/setup-feeds-and-python-steps.yml
     parameters:
       architecture: 'x64'
 

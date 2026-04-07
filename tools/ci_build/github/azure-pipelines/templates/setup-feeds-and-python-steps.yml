@@ -19,6 +19,10 @@ parameters:
   default: ''
 
 steps:
+- task: MavenAuthenticate@0
+  inputs:
+    artifactFeeds: ${{ parameters.artifactFeeds }}
+
 - task: PipAuthenticate@1
   displayName: 'Pip Authenticate'
   inputs:

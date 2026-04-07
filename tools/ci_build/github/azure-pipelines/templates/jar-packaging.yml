@@ -15,7 +15,7 @@ steps:
 - checkout: self
   submodules: false
 
-- template: setup-pip-and-python-steps.yml
+- template: setup-feeds-and-python-steps.yml
   parameters:
     versionSpec: '3.13'
 

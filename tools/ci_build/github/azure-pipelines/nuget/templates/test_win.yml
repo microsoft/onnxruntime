@@ -37,7 +37,7 @@ stages:
       value: '-Dorg.gradle.daemon=false'
 
     steps:
-    - template: ../../templates/setup-pip-and-python-steps.yml
+    - template: ../../templates/setup-feeds-and-python-steps.yml
       parameters:
         architecture: 'x64'
 

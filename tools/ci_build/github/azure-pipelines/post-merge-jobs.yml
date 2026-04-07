@@ -398,7 +398,7 @@ stages:
     - checkout: self
       submodules: false
 
-    - template: templates/setup-pip-and-python-steps.yml
+    - template: templates/setup-feeds-and-python-steps.yml
       parameters:
         architecture: 'x64'
 
@@ -431,7 +431,7 @@ stages:
 
     steps:
 
-    - template: templates/setup-pip-and-python-steps.yml
+    - template: templates/setup-feeds-and-python-steps.yml
       parameters:
         versionSpec: "3.12"
         architecture: 'x64'

@@ -71,7 +71,7 @@ jobs:
      git submodule update --init --recursive
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodules'
-  - template: setup-pip-and-python-steps.yml
+  - template: setup-feeds-and-python-steps.yml
     parameters:
       architecture: $(buildArch)
   - task: NodeTool@0

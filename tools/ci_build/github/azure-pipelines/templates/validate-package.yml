@@ -9,7 +9,7 @@ parameters:
   workingDirectory: "$(Build.BinariesDirectory)"
 
 steps:
-    - template: setup-pip-and-python-steps.yml
+    - template: setup-feeds-and-python-steps.yml
 
     - task: PythonScript@0
       displayName: 'Validate Package'

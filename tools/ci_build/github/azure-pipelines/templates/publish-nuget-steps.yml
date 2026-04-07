@@ -30,7 +30,7 @@ stages:
     - checkout: self
       submodules: false
 
-    - template: setup-pip-and-python-steps.yml
+    - template: setup-feeds-and-python-steps.yml
 
     - template: set-version-number-variables-step.yml
 
