@@ -167,6 +167,22 @@ struct OrtVitisAIEpAPI {
       auto status = env.UnloadDynamicLibrary(handle_);
       vai_assert(status.IsOK(), status.ErrorMessage());
       handle_ = nullptr;
+      // set all function pointers to nullptr
+      // this is to avoid calling the function pointers after the library is unloaded
+      initialize_onnxruntime_vitisai_ep = nullptr;
+      compile_onnx_model_vitisai_ep_with_error_handling = nullptr;
+      compile_onnx_model_with_options = nullptr;
+      compile_onnx_model_vitisai_ep_v3 = nullptr;
+      compile_onnx_model_vitisai_ep_v4 = nullptr;
+      vaip_execution_provider_deletor = [](std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* p) noexcept { delete p; };
+      vaip_get_version = nullptr;
+      profiler_collect = nullptr;
+      get_compiled_model_compatibility_info = nullptr;
+      validate_compiled_model_compatibility_info = nullptr;
+      create_ep_context_nodes = nullptr;
+      vitisai_ep_on_run_start = nullptr;
+      vitisai_ep_set_ep_dynamic_options = nullptr;
+      deinitialize_onnxruntime_vitisai_ep = nullptr;
     }
   }
 
