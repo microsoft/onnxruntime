@@ -67,11 +67,7 @@ jobs:
     clean: true
     submodules: none
 
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.12'
-      addToPath: true
-      architecture: 'x64'
+  - template: templates/setup-pip-and-python-steps.yml
 
   - template: templates/get-docker-image-steps.yml
     parameters:
