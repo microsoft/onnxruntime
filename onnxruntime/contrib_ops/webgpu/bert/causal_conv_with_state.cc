@@ -127,6 +127,8 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
 
   uint32_t output_size = static_cast<uint32_t>(batch_size * channels * input_length);
 
+  program.CacheHint(has_bias, has_conv_state, kernel_size, static_cast<int>(activation_));
+
   program.AddInput({input, ProgramTensorMetadataDependency::Type})
       .AddInput({weight, ProgramTensorMetadataDependency::None});
 
