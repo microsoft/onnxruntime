@@ -2,6 +2,9 @@ import java.nio.file.Paths
 
 buildscript {
   repositories {
+    // Use `Lotus` if available; it is the official internal feed for ORT.
+		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+
     google()
     mavenCentral()
   }
@@ -170,6 +173,9 @@ android {
 }
 
 repositories {
+  // Use `Lotus` if available; it is the official internal feed for ORT.
+  maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+
   mavenCentral()
   google()
 

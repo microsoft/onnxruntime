@@ -1,3 +1,11 @@
+buildscript {
+	repositories {
+		// Use `Lotus` if available; it is the official internal feed for ORT.
+		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+		mavenCentral()
+	}
+}
+
 plugins {
 	id 'java-library'
 	id 'maven-publish'
@@ -8,6 +16,9 @@ plugins {
 
 allprojects {
 	repositories {
+		// Use `Lotus` if available; it is the official internal feed for ORT.
+		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+
 		mavenCentral()
 	}
 }

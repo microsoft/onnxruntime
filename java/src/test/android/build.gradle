@@ -3,6 +3,9 @@ buildscript {
 	ext.kotlin_version = '1.6.21'
 
 	repositories {
+		// Use `Lotus` if available; it is the official internal feed for ORT.
+		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+
 		google()
 		mavenCentral()
 	}
@@ -16,6 +19,9 @@ buildscript {
 
 allprojects {
 	repositories {
+		// Use `Lotus` if available; it is the official internal feed for ORT.
+		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+
 		google()
 		mavenCentral()
 		flatDir{dirs 'libs'}

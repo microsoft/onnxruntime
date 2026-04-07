@@ -63,6 +63,9 @@ def qnnDescription = 'ONNX Runtime is a performance-focused inference engine for
 
 buildscript {
 	repositories {
+		// Use `Lotus` if available; it is the official internal feed for ORT.
+		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+
 		google()
 		mavenCentral()
 	}
@@ -76,6 +79,9 @@ buildscript {
 
 allprojects {
 	repositories {
+		// Use `Lotus` if available; it is the official internal feed for ORT.
+		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+
 		google()
 		mavenCentral()
 	}
