@@ -316,7 +316,7 @@ TEST(MLOpTest, SVMClassifierInvalidInputFeatureCount) {
   test.AddOutput<int64_t>("Y", {1}, {1});
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid argument");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid input for SVMClassifier");
 }
 
 TEST(MLOpTest, SVMClassifierUndersizedRho) {

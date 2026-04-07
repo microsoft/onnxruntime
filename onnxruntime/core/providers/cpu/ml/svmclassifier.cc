@@ -199,13 +199,33 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   const auto num_batches = SafeInt<int32_t>(input_rank == 1 ? 1 : x_shape[0]);
   const ptrdiff_t num_features = input_rank == 1 ? narrow<ptrdiff_t>(x_shape[0])
                                                  : narrow<ptrdiff_t>(x_shape[1]);
-  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0, "Invalid argument");
+  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0,
+                    "Invalid input for SVMClassifier: expected feature_count=", feature_count_,
+                    ", actual num_features=", num_features,
+                    ", input_rank=", input_rank,
+                    ", num_batches=", num_batches);
   if (mode_ == SVM_TYPE::SVM_LINEAR) {
-    ORT_RETURN_IF_NOT(coefficients_.size() == static_cast<size_t>(class_count_) * static_cast<size_t>(num_features),
+    size_t expected_linear_size = 0;
+    try {
+      expected_linear_size = SafeInt<size_t>(class_count_) * SafeInt<size_t>(num_features);
+    } catch (...) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "class_count (", class_count_, ") * num_features (", num_features,
+                             ") overflows size_t");
+    }
+    ORT_RETURN_IF_NOT(coefficients_.size() == expected_linear_size,
                       "coefficients size (", coefficients_.size(), ") must equal class_count (", class_count_,
                       ") * num_features (", num_features, ")");
   } else {
-    ORT_RETURN_IF_NOT(support_vectors_.size() == static_cast<size_t>(vector_count_) * static_cast<size_t>(num_features),
+    size_t expected_sv_size = 0;
+    try {
+      expected_sv_size = SafeInt<size_t>(vector_count_) * SafeInt<size_t>(num_features);
+    } catch (...) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "vector_count (", vector_count_, ") * num_features (", num_features,
+                             ") overflows size_t");
+    }
+    ORT_RETURN_IF_NOT(support_vectors_.size() == expected_sv_size,
                       "support_vectors size (", support_vectors_.size(), ") must equal vector_count (", vector_count_,
                       ") * num_features (", num_features, ")");
   }
