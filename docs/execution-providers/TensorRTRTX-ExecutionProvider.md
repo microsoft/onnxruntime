@@ -111,36 +111,36 @@ CUDA Graph is a representation of a sequence of GPU operations, such as kernel l
 
 **Usage**
 
-CUDA Graph can be enabled by setting a provider option. By default, ONNX Runtime uses a graph annotation ID of 0 and starts capturing graphs. Users can control the annotation ID at runtime by setting the run option `gpu_graph_id`. If we have `gpu_graph_id` as \-1, it indicates that the graph will not be captured for that specific run.
+CUDA Graph is enabled by default. To completely disable CUDA Graph, you can set the `enable_cuda_graph` provider option to `False` (or `0`).
 
-**Python**
+**Python (Disabling CUDA Graph)**
 
 ```python
-trt_rtx_provider_options = {'enable_cuda_graph': True}
+trt_rtx_provider_options = {'enable_cuda_graph': False}
 providers = [('NvTensorRTRTXExecutionProvider', trt_rtx_provider_options)]
 session = ort.InferenceSession("model.onnx", providers=providers)
 ```
 
-**C/C++**
+**C/C++ (Disabling CUDA Graph)**
 ```cpp
 const auto& api = Ort::GetApi();
 Ort::SessionOptions session_options;
 const char* keys[]   = {onnxruntime::nv::provider_option_names::kCudaGraphEnable};
-const char* values[] = {"1"};
+const char* values[] = {"0"};
 OrtStatus* status = api.SessionOptionsAppendExecutionProvider(session_options, onnxruntime::kNvTensorRTRTXExecutionProvider, keys, values, 1);
 Ort::Session session(env, model_path, session_options);
 ```
 
-**ONNXRuntime Perf Test**
+**ONNXRuntime Perf Test (Disabling CUDA Graph)**
 
 *Using the EP ABI (Standalone Plugin):*
 ```sh
-onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -t 5 -i "enable_cuda_graph|1" "model.onnx"
+onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -t 5 -i "enable_cuda_graph|0" "model.onnx"
 ```
 
 *Using the Built-in EP (Deprecated):*
 ```sh
-onnxruntime_perf_test.exe -I -t 5 -e nvtensorrtrtx -i "enable_cuda_graph|1" "model.onnx"
+onnxruntime_perf_test.exe -I -t 5 -e nvtensorrtrtx -i "enable_cuda_graph|0" "model.onnx"
 ```
 
 **Effectively Using CUDA Graphs**
@@ -246,7 +246,7 @@ TensorRT RTX EP provides the following user configurable options with the [Execu
 | nv_max_shared_mem_size | `int` | Maximum TensorRT engine workspace (bytes) | 0 (auto) |
 | nv_dump_subgraphs | `bool` | Enable subgraph dumping for debugging | false |
 | nv_detailed_build_log | `bool` | Enable detailed build logging | false |
-| enable_cuda_graph | `bool` | Enable [CUDA graph](https://developer.nvidia.com/blog/cuda-graphs/) to reduce inference overhead. Helpful for smaller models | false |
+| enable_cuda_graph | `bool` | Enable [CUDA graph](https://developer.nvidia.com/blog/cuda-graphs/) to reduce inference overhead. Helpful for smaller models | true |
 | nv_profile_min_shapes | `str` | Comma-separated list of input tensor shapes for the minimum optimization profile. Format: `"input1:dim1xdim2x...,input2:dim1xdim2x..."` | "" (auto) |
 | nv_profile_max_shapes | `str` | Comma-separated list of input tensor shapes for the maximum optimization profile. Format: `"input1:dim1xdim2x...,input2:dim1xdim2x..."` | "" (auto) |
 | nv_profile_opt_shapes | `str` | Comma-separated list of input tensor shapes for the optimal optimization profile. Format: `"input1:dim1xdim2x...,input2:dim1xdim2x..."` | "" (auto) |
