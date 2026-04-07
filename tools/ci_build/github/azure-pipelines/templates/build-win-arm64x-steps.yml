@@ -7,6 +7,8 @@ parameters:
 steps:
 - task: PythonScript@0
   displayName: 'Build arm64 project for arm64x - generate the def & lib file for next build'
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
   inputs:
     scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
     arguments: >
@@ -18,6 +20,8 @@ steps:
 
 - task: PythonScript@0
   displayName: 'Build arm64ec project for arm64x - the real arm64x'
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
   inputs:
     scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
     arguments: >

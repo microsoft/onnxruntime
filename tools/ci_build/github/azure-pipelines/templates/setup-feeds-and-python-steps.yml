@@ -35,3 +35,16 @@ steps:
     addToPath: ${{ parameters.addToPath }}
     ${{ if ne(parameters.architecture, '') }}:
       architecture: ${{ parameters.architecture }}
+
+- pwsh: |
+    # Force everything to go through & authenticate using the main feed.
+    # This is enough for `mvn` but not for Gradle. Gradle requires explicit repo overrides.
+    # ASSUME: there is no `mirrors` section already present in the settings.xml.
+    # HACK: Does not escape `parameters.artifactFeeds`. Assumes pattern is [A-Za-z0-9]+.
+    # HACK: Assumes feed is a org-scoped feed in `aiinfra`.
+    (Get-Content ~/.m2/settings.xml) | `
+      %{ $_ -replace '</settings>', "<mirrors><mirror><id>${env:central_maven_feed_name}</id><name>1ES Feed Override</name><url>https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1</url><mirrorOf>*</mirrorOf></mirror></mirrors></settings>" } | `
+      Set-Content ~/.m2/settings.xml
+  displayName: 'Maven - mirror only via `${{ parameters.artifactFeeds }}`'
+  env:
+    central_maven_feed_name: ${{ parameters.artifactFeeds }}

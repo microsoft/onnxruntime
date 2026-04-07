@@ -10,7 +10,14 @@ buildscript {
     }
     repositories {
         // Use `Lotus` if available; it is the official internal feed for ORT.
-		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+        maven {
+            name "Lotus"
+            url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/Lotus/maven/v1")
+            credentials(PasswordCredentials) {
+                username "AzureDevOps"
+                password System.getenv("SYSTEM_ACCESSTOKEN") ?: ""
+            }
+        }
 
         google()
         mavenCentral()
@@ -28,7 +35,14 @@ buildscript {
 allprojects {
     repositories {
         // Use `Lotus` if available; it is the official internal feed for ORT.
-		maven { url = uri("https://pkgs.dev.azure.com/aiinfra/Lotus/_packaging/Lotus/maven/v1") }
+        maven {
+            name "Lotus"
+            url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/Lotus/maven/v1")
+            credentials(PasswordCredentials) {
+                username "AzureDevOps"
+                password System.getenv("SYSTEM_ACCESSTOKEN") ?: ""
+            }
+        }
 
         mavenLocal()
         maven {
