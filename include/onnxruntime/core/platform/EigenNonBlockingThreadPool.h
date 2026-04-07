@@ -1647,7 +1647,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // spinning, where the actual wall-clock duration depends heavily on
     // the pause instruction used (_mm_pause ~10-40 cycles vs _tpause ~1000 cycles).
     constexpr std::chrono::microseconds spin_duration{1000};  // 1ms
-    constexpr int steal_interval = 100;  // attempt steal every 100 iterations
+    constexpr int steal_interval = 100;                       // attempt steal every 100 iterations
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
