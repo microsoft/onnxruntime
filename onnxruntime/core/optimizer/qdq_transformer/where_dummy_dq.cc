@@ -47,10 +47,10 @@ bool WhereDummyDq::SatisfyCondition(const Graph& graph, const Node& node) const 
   // We require exactly one branch to be fed by a DQ and the other branch to be a scalar initializer
   // (represented as a NodeArg with rank 0 shape and no producer node).
   if (is_p1_dq && graph_utils::IsConstantInitializer(graph, where_inputs[2]->Name(), true)) {
-    return (where_inputs[2]->Shape()->dim_size() == 0);
+    return where_inputs[2]->HasTensorOrScalarShape() ? (where_inputs[2]->Shape()->dim_size() == 0) : false;
   }
   if (graph_utils::IsConstantInitializer(graph, where_inputs[1]->Name(), true) && is_p2_dq) {
-    return (where_inputs[1]->Shape()->dim_size() == 0);
+    return where_inputs[1]->HasTensorOrScalarShape() ? (where_inputs[1]->Shape()->dim_size() == 0) : false;
   }
 
   return false;
@@ -83,9 +83,20 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
   }
 
   const ONNX_NAMESPACE::TensorProto* dq_node_scale_proto = nullptr;
-  graph.GetInitializedTensor(dq_node->InputDefs()[1]->Name(), dq_node_scale_proto);
+  if (!graph.GetInitializedTensor(dq_node->InputDefs()[1]->Name(), dq_node_scale_proto) ||
+      dq_node_scale_proto == nullptr) {
+    LOGS(logger, WARNING) << "WhereDummyDq expects dq branch to have an initializer scale. "
+                          << "DQ: " << dq_node->Name();
+    return Status::OK();
+  };
+
   const ONNX_NAMESPACE::TensorProto* dq_node_zp_proto = nullptr;
-  graph.GetInitializedTensor(dq_node->InputDefs()[2]->Name(), dq_node_zp_proto);
+  if (!graph.GetInitializedTensor(dq_node->InputDefs()[2]->Name(), dq_node_zp_proto) ||
+      dq_node_zp_proto == nullptr) {
+    LOGS(logger, WARNING) << "WhereDummyDq expects dq branch to have an initializer zero point. "
+                          << "DQ: " << dq_node->Name();
+    return Status::OK();
+  };
 
   // Create initializers for the dummy DQ input triplet: (xq, scale, zero_point).
   // We choose values so that DeQuantizeLinear(dummy_xq, dummy_scale, dummy_zp) reconstructs
@@ -110,7 +121,13 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
 
   // Get original float input
   const ONNX_NAMESPACE::TensorProto* const_node_data_proto = nullptr;
-  graph.GetInitializedTensor(where_inputs[const_idx]->Name(), const_node_data_proto);
+  if (!graph.GetInitializedTensor(where_inputs[const_idx]->Name(), const_node_data_proto) ||
+      const_node_data_proto == nullptr) {
+    // The scalar branch is not backed by an initializer (e.g., it's a graph input). Skip transform.
+    LOGS(logger, WARNING) << "WhereDummyDq expects scalar branch to be an initializer. "
+                          << "DQ: " << dq_node->Name() << ", scalar(input): " << where_inputs[const_idx]->Name();
+    return Status::OK();
+  }
   Initializer initializer(graph, *const_node_data_proto, graph.ModelPath());
   if (dq_node_scale_proto->data_type() != const_node_data_proto->data_type()) {
     // WhereDummyDq fills the const value to the dummy DQ's scale
