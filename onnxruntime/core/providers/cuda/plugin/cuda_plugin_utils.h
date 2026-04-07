@@ -101,8 +101,7 @@
     });                                           \
     return _std_ex_st;                            \
   }                                               \
-  EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_END       \
-  return nullptr;
+  EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_END
 
 /// Stored API pointers accessible to all plugin components.
 struct CudaPluginApis {

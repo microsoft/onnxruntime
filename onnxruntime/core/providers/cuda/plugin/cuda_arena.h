@@ -590,35 +590,29 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
   }
 
   OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
+    OrtStatus* err = nullptr;
     ORT_TRY {
-      return impl_->ResetChunksUsingStream(stream_impl);
+      err = impl_->ResetChunksUsingStream(stream_impl);
     }
     ORT_CATCH(const std::exception& ex) {
-      OrtStatus* err = nullptr;
       ORT_HANDLE_EXCEPTION([&]() {
         err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
       });
-      return err;
     }
     ORT_CATCH(...) {
-      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
-                                        "CudaArenaAllocator::ResetChunksUsingStream failed with an unknown exception.");
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                       "CudaArenaAllocator::ResetChunksUsingStream failed with an unknown exception.");
     }
-    return nullptr;  // required for ORT_NO_EXCEPTIONS
+    return err;  // required for ORT_NO_EXCEPTIONS
   }
 
  private:
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-#pragma warning(disable : 4702)  // unreachable code — required for ORT_NO_EXCEPTIONS builds
-#endif
   static void* ORT_API_CALL AllocImpl(OrtAllocator* this_, size_t size) noexcept {
     ORT_TRY {
       auto& arena = *static_cast<CudaArenaAllocator*>(this_);
       return arena.impl_->Alloc(size);
     }
     ORT_CATCH(...) {
-      return nullptr;
     }
     return nullptr;
   }
@@ -629,7 +623,6 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
       return arena.impl_->AllocOnStream(size, stream);
     }
     ORT_CATCH(...) {
-      return nullptr;
     }
     return nullptr;
   }
@@ -640,7 +633,6 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
       return arena.impl_->Reserve(size);
     }
     ORT_CATCH(...) {
-      return nullptr;
     }
     return nullptr;
   }
@@ -661,45 +653,40 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
   }
 
   static OrtStatus* ORT_API_CALL GetStatsImpl(const OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
+    OrtStatus* err = nullptr;
     ORT_TRY {
       const auto& arena = *static_cast<const CudaArenaAllocator*>(this_);
-      return arena.impl_->GetStats(out);
+      err = arena.impl_->GetStats(out);
     }
     ORT_CATCH(const std::exception& ex) {
-      OrtStatus* err = nullptr;
       ORT_HANDLE_EXCEPTION([&]() {
         err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
       });
-      return err;
     }
     ORT_CATCH(...) {
-      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
-                                        "CudaArenaAllocator::GetStats failed with an unknown exception.");
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                       "CudaArenaAllocator::GetStats failed with an unknown exception.");
     }
-    return nullptr;  // required for ORT_NO_EXCEPTIONS
+    return err;
   }
 
   static OrtStatus* ORT_API_CALL ShrinkImpl(OrtAllocator* this_) noexcept {
+    OrtStatus* err = nullptr;
     ORT_TRY {
       auto& arena = *static_cast<CudaArenaAllocator*>(this_);
-      return arena.impl_->Shrink();
+      err = arena.impl_->Shrink();
     }
     ORT_CATCH(const std::exception& ex) {
-      OrtStatus* err = nullptr;
       ORT_HANDLE_EXCEPTION([&]() {
         err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
       });
-      return err;
     }
     ORT_CATCH(...) {
-      return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
-                                        "CudaArenaAllocator::Shrink failed with an unknown exception.");
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                       "CudaArenaAllocator::Shrink failed with an unknown exception.");
     }
-    return nullptr;  // required for ORT_NO_EXCEPTIONS
+    return err;
   }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
 
   std::unique_ptr<ArenaImpl> impl_;
 };
