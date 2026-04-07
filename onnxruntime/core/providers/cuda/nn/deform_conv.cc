@@ -92,18 +92,15 @@ size_t GetDeformConvEffectiveMaxTempBytes(size_t total_global_mem) {
 // The host loop still uses cur_parallel = min(k, N - b), so k need not divide N.
 //
 // Formulas:
-//   kernel_size = kH * kW
-//   output_image_size = out_h * out_w
+//   kernel_size / output_image_size come from validated common dims
 //   bytes_per_image = output_image_size * C * kernel_size * sizeof(T)
 //     (temp bytes per image: im2col col buffer only; GEMM writes directly to Y)
 //   max_parallel_imgs_mem = max(1, floor(effective_max_temp / bytes_per_image))
 //   target_parallel_imgs T = min(kMaxParallelImgs, max_parallel_imgs_mem)
 //   return GetDeformConvParallelChunkSize(N, T)
 template <typename T>
-int GetNParallelImgs(const DeformConvParams& params, size_t total_global_mem) {
+int GetNParallelImgs(const DeformConvParams& params, int64_t kernel_size, int64_t output_image_size, size_t total_global_mem) {
   const size_t effective_max_temp = GetDeformConvEffectiveMaxTempBytes(total_global_mem);
-  const int64_t kernel_size = params.kH * params.kW;
-  const int64_t output_image_size = params.out_h * params.out_w;
   const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * params.C * kernel_size * sizeof(T);
   const int max_parallel_imgs_mem = std::max(1, static_cast<int>(effective_max_temp / std::max(size_t(1), bytes_per_image)));
   const int target_parallel_imgs = std::min(kMaxParallelImgs, max_parallel_imgs_mem);
@@ -156,14 +153,13 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  const int n_parallel_imgs = GetNParallelImgs<T>(params, GetDeviceProp().totalGlobalMem);
-
   DeformConvCommonDims common_dims;
   ORT_RETURN_IF_ERROR(DeformConvValidateAndComputeCommonDims(params, common_dims));
   const int64_t kernel_size = common_dims.kernel_size;
   const int64_t output_image_size = common_dims.output_image_size;
   const int64_t input_image_size = common_dims.input_image_size;
   const int64_t kernel_dim = common_dims.kernel_dim;
+  const int n_parallel_imgs = GetNParallelImgs<T>(params, kernel_size, output_image_size, GetDeviceProp().totalGlobalMem);
 
   const int64_t col_stride = static_cast<int64_t>(n_parallel_imgs) * output_image_size;
   const int64_t col_buffer_size = (C * kernel_size) * col_stride;
