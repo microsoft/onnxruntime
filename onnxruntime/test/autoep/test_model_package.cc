@@ -594,9 +594,7 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
   // package_root is a model package directory (has manifest.json).
   constexpr std::string_view manifest_json = R"({
     "model_name": "test_model",
-    "component_models": {
-      "model_1": {}
-    }
+    "component_models": ["model_1"]
   })";
 
   CreateModelPackage(package_root, manifest_json,
@@ -705,28 +703,32 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_UsesModelIdForModelDirectory) {
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
 
-  // Variant name intentionally does not match the model_id-derived directory name.
-  // model_id = "phi4-cpu:1" should map to directory "phi4-cpu_1".
   constexpr std::string_view manifest_json = R"({
     "model_name": "test_model",
-    "component_models": {
-      "model_1": {
-        "model_variants": {
-          "catalog_variant": {
-            "model_id": "phi4-cpu:1",
-            "model_file": "model.onnx",
-            "constraints": {
-              "ep": "example_ep",
-              "device": "cpu",
-              "architecture": "arch1"
-            }
-          }
+    "model_version": "1.0",
+    "component_models": ["model_1"]
+  })";
+
+  CreateManifestJson(package_root, manifest_json);
+
+  // Variant name intentionally does not match the model_id-derived directory name.
+  // model_id = "phi4-cpu:1" should map to directory "phi4-cpu_1".
+  constexpr std::string_view metadata_json = R"({
+    "component_model_name": "model_1",
+    "model_variants": {
+      "catalog_variant": {
+        "model_id": "phi4-cpu:1",
+        "model_file": "model.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "cpu",
+          "architecture": "arch1"
         }
       }
     }
   })";
 
-  CreateManifestJson(package_root, manifest_json);
+  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
 
   // Create the model under model_id-derived directory: models/model_1/phi4-cpu_1/model.onnx
   const auto model_dir = package_root / "models" / "model_1" / "phi4-cpu_1";
