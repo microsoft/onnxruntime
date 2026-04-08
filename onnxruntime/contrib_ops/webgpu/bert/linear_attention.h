@@ -17,10 +17,11 @@ using onnxruntime::webgpu::ComputeContext;
 
 // Update rule enumeration
 enum class LinearAttentionUpdateRule {
-  Linear,      // S_t = S_{t-1} + k ⊗ v
-  Gated,       // S_t = exp(g) * S_{t-1} + k ⊗ v
-  Delta,       // S_t = S_{t-1} + β * k ⊗ (v - S^T k)
-  GatedDelta,  // S_t = exp(g) * S_{t-1} + β * k ⊗ (v - exp(g) * S^T k)
+  Invalid,
+  Linear,     // S_t = S_{t-1} + k ⊗ v
+  Gated,      // S_t = exp(g) * S_{t-1} + k ⊗ v
+  Delta,      // S_t = S_{t-1} + β * k ⊗ (v - S^T k)
+  GatedDelta  // S_t = exp(g) * S_{t-1} + β * k ⊗ (v - exp(g) * S^T k)
 };
 
 LinearAttentionUpdateRule ParseUpdateRule(const std::string& rule_str);
@@ -72,7 +73,7 @@ class LinearAttention : public WebGpuKernel {
   LinearAttention(const OpKernelInfo& info);
   Status ComputeInternal(ComputeContext& context) const override;
 
- protected:
+ private:
   LinearAttentionUpdateRule update_rule_;
   float scale_;
   int q_num_heads_;

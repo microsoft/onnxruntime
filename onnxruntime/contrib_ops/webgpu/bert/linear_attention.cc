@@ -23,7 +23,7 @@ LinearAttentionUpdateRule ParseUpdateRule(const std::string& rule_str) {
   } else if (rule_str == "gated_delta") {
     return LinearAttentionUpdateRule::GatedDelta;
   }
-  ORT_THROW("Unknown update rule: ", rule_str);
+  return LinearAttentionUpdateRule::Invalid;
 }
 
 // =============================================================================
@@ -56,6 +56,8 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     case LinearAttentionUpdateRule::GatedDelta:
       update_rule_int = 3;
       break;
+    case LinearAttentionUpdateRule::Invalid:
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid update rule");
   }
 
   // Add inputs
@@ -99,7 +101,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 LinearAttention::LinearAttention(const OpKernelInfo& info)
     : WebGpuKernel(info) {
-  std::string update_rule_str = info.GetAttrOrDefault<std::string>("update_rule", "gated_delta");
+  std::string update_rule_str = info.GetAttr<std::string>("update_rule");
   update_rule_ = ParseUpdateRule(update_rule_str);
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   q_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("q_num_heads"));
@@ -131,27 +133,35 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   const auto& q_shape = query->Shape();
   ORT_RETURN_IF(q_shape.NumDimensions() != 3, "query must be 3D (B, T, H_q*d_k)");
   const auto& k_shape = key->Shape();
+  ORT_RETURN_IF(k_shape.NumDimensions() != 3, "key must be 3D (B, T, H_k*d_k)");
+  const auto& v_shape = value->Shape();
+  ORT_RETURN_IF(v_shape.NumDimensions() != 3, "value must be 3D (B, T, H_v*d_v)");
 
-  const int batch_size = static_cast<int>(q_shape[0]);
-  const int seq_length = static_cast<int>(q_shape[1]);
-  const int q_packed_dim = static_cast<int>(q_shape[2]);
-  const int num_heads = kv_num_heads_;
-  const int head_dim_k = q_packed_dim / q_num_heads_;
-  const int n_k_heads = static_cast<int>(k_shape[2] / head_dim_k);
+  const int64_t batch_size = q_shape[0];
+  const int64_t seq_length = q_shape[1];
+  ORT_RETURN_IF(k_shape[0] != batch_size || k_shape[1] != seq_length,
+                "key batch/sequence dimensions must match query");
+  ORT_RETURN_IF(v_shape[0] != batch_size || v_shape[1] != seq_length,
+                "value batch/sequence dimensions must match query");
 
-  ORT_RETURN_IF(q_packed_dim != head_dim_k * q_num_heads_,
+  const int64_t q_packed_dim = q_shape[2];
+  ORT_RETURN_IF(q_num_heads_ <= 0 || q_packed_dim % q_num_heads_ != 0,
                 "query packed dim must be divisible by q_num_heads");
-
-  const int v_packed_dim = static_cast<int>(value->Shape()[2]);
-  const int head_dim_v = v_packed_dim / kv_num_heads_;
+  const int64_t head_dim_k = q_packed_dim / q_num_heads_;
+  const int64_t k_packed_dim = k_shape[2];
+  ORT_RETURN_IF(k_packed_dim % head_dim_k != 0,
+                "key packed dim must be divisible by query head dimension");
+  const int64_t n_k_heads = k_packed_dim / head_dim_k;
+  const int64_t v_packed_dim = v_shape[2];
+  const int64_t head_dim_v = v_packed_dim / kv_num_heads_;
   ORT_RETURN_IF(v_packed_dim != head_dim_v * kv_num_heads_,
                 "value packed dim must be divisible by kv_num_heads");
 
   // ==== GQA head mapping ====
   // Standard GQA: q_num_heads >= kv_num_heads, multiple Q heads per KV group.
-  // Inverse GQA: q_num_heads < kv_num_heads (e.g., Qwen3.5 9B: n_k=16, n_kv=32).
+  // Inverse GQA: q_num_heads < kv_num_heads (e.g., Qwen3.5 9B: n_q=16, n_kv=32).
   // Also n_k_heads may differ from both (K has its own head count).
-  int heads_per_group;  // Q heads per KV group (0 if inverse GQA)
+  int64_t heads_per_group;  // Q heads per KV group (0 if inverse GQA)
   if (q_num_heads_ >= kv_num_heads_) {
     ORT_RETURN_IF_NOT(q_num_heads_ % kv_num_heads_ == 0,
                       "q_num_heads must be divisible by kv_num_heads");
@@ -165,7 +175,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // K-to-KV head mapping: when n_k < kv_num_heads, multiple KV heads share one K head
   ORT_RETURN_IF_NOT(kv_num_heads_ % n_k_heads == 0,
                     "kv_num_heads must be divisible by n_k_heads");
-  int kv_per_k_head = kv_num_heads_ / n_k_heads;
+  int64_t kv_per_k_head = kv_num_heads_ / n_k_heads;
 
   // Validate update rule has required inputs
   bool needs_decay = (update_rule_ == LinearAttentionUpdateRule::Gated ||
@@ -188,7 +198,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   TensorShapeVector output_shape({batch_size, seq_length, kv_num_heads_ * head_dim_v});
   Tensor* output = context.Output(0, output_shape);
 
-  TensorShapeVector state_shape({batch_size, num_heads, head_dim_k, head_dim_v});
+  TensorShapeVector state_shape({batch_size, kv_num_heads_, head_dim_k, head_dim_v});
   Tensor* present_state = context.Output(1, state_shape);
 
   // Vectorization: when head_dim_v is divisible by 4, use vec4 to pack 4 dv values
@@ -201,17 +211,21 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   }
   const int head_dim_v_vectorized = head_dim_v / components;
 
-  // Workgroup size = head_dim_k (one thread per dk row)
-  // Ensure it's a power of 2 for tree reduction (round up)
+  constexpr uint32_t kMaxSupportedWorkgroupSize = 256;
+  ORT_RETURN_IF_NOT(head_dim_k <= static_cast<int64_t>(kMaxSupportedWorkgroupSize),
+                    "LinearAttention WebGPU kernel requires head_dim_k <= ",
+                    kMaxSupportedWorkgroupSize,
+                    ", got ",
+                    head_dim_k);
   uint32_t workgroup_size = 1;
   while (workgroup_size < static_cast<uint32_t>(head_dim_k)) {
     workgroup_size *= 2;
   }
   // Cap at GPU limits
-  workgroup_size = std::min(workgroup_size, static_cast<uint32_t>(256));
+  workgroup_size = std::min(workgroup_size, kMaxSupportedWorkgroupSize);
 
   const int num_dv_tiles = (head_dim_v_vectorized + tile_v - 1) / tile_v;
-  const uint32_t num_workgroups = batch_size * num_heads * num_dv_tiles;
+  const uint32_t num_workgroups = batch_size * kv_num_heads_ * num_dv_tiles;
 
   bool has_initial_state = past_state != nullptr;
   bool has_decay = decay != nullptr;
@@ -223,7 +237,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
     const auto& decay_shape = decay->Shape();
     // (B, T, H_kv) = 3D with last dim == num_heads
     int decay_last_dim = static_cast<int>(decay_shape[decay_shape.NumDimensions() - 1]);
-    if (decay_last_dim == num_heads) {
+    if (decay_last_dim == kv_num_heads_) {
       decay_broadcast_dk = true;
     }
   }
@@ -251,7 +265,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
       .CacheHint(std::to_string(static_cast<int>(update_rule_)),
                  has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v, components)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
-                            {static_cast<uint32_t>(num_heads)},
+                            {static_cast<uint32_t>(kv_num_heads_)},
                             {static_cast<uint32_t>(seq_length)},
                             {static_cast<uint32_t>(head_dim_k)},
                             {static_cast<uint32_t>(head_dim_v_vectorized)},

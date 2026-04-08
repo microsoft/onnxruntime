@@ -17,8 +17,9 @@ using onnxruntime::webgpu::ComputeContext;
 
 // Activation mode for CausalConvWithState
 enum class CausalConvActivation {
+  Invalid,
   None,
-  Silu,
+  Silu
 };
 
 CausalConvActivation ParseCausalConvActivation(const std::string& activation_str);
@@ -26,13 +27,11 @@ CausalConvActivation ParseCausalConvActivation(const std::string& activation_str
 // Program for CausalConvWithState
 class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgram> {
  public:
-  CausalConvWithStateProgram(CausalConvActivation activation, bool has_bias, bool has_conv_state,
-                             int kernel_size)
+  CausalConvWithStateProgram(CausalConvActivation activation, bool has_bias, bool has_conv_state)
       : Program{"CausalConvWithState"},
         activation_(activation),
         has_bias_(has_bias),
-        has_conv_state_(has_conv_state),
-        kernel_size_(kernel_size) {}
+        has_conv_state_(has_conv_state) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -48,7 +47,6 @@ class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgr
   CausalConvActivation activation_;
   bool has_bias_;
   bool has_conv_state_;
-  [[maybe_unused]] int kernel_size_;
 };
 
 // Kernel for CausalConvWithState
@@ -59,6 +57,7 @@ class CausalConvWithState final : public WebGpuKernel {
 
  private:
   CausalConvActivation activation_;
+  int64_t ndim_;
 };
 
 }  // namespace webgpu

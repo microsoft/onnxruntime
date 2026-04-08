@@ -19,7 +19,7 @@ CausalConvActivation ParseCausalConvActivation(const std::string& activation_str
   } else if (activation_str == "none" || activation_str.empty()) {
     return CausalConvActivation::None;
   }
-  ORT_THROW("Unknown activation for CausalConvWithState: ", activation_str);
+  return CausalConvActivation::Invalid;
 }
 
 // =============================================================================
@@ -39,6 +39,7 @@ CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
     : WebGpuKernel(info) {
   std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "none");
   activation_ = ParseCausalConvActivation(activation_str);
+  ORT_ENFORCE(info.GetAttr<int64_t>("ndim", &ndim_).IsOK(), "Attribute 'ndim' is required");
 }
 
 Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -67,9 +68,8 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   const Tensor* bias = context.Input(2);        // optional (D,)
   const Tensor* conv_state = context.Input(3);  // optional (B, D, K-1) — past_state
 
-  ORT_RETURN_IF(input == nullptr, "Input tensor must not be null");
-  ORT_RETURN_IF(weight == nullptr, "Weight tensor must not be null");
-
+  ORT_RETURN_IF(activation_ == CausalConvActivation::Invalid, "Invalid activation type");
+  ORT_RETURN_IF(ndim_ != 1, "Only 1D convolution is supported");
   const auto& input_shape = input->Shape();
   const auto& weight_shape = weight->Shape();
 
@@ -78,32 +78,28 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF(weight_shape.NumDimensions() != 3,
                 "Weight must be 3D (channels, 1, kernel_size)");
 
-  const int batch_size = static_cast<int>(input_shape[0]);
-  const int channels = static_cast<int>(input_shape[1]);
-  const int input_length = static_cast<int>(input_shape[2]);
-  const int kernel_size = static_cast<int>(weight_shape[2]);
-  const int state_length = kernel_size - 1;
+  const int64_t batch_size = input_shape[0];
+  const int64_t channels = input_shape[1];
+  const int64_t input_length = input_shape[2];
+  const int64_t kernel_size = weight_shape[2];
+  const int64_t state_length = kernel_size - 1;
 
-  ORT_RETURN_IF(static_cast<int>(weight_shape[0]) != channels,
-                "Weight first dim must match input channels");
-  ORT_RETURN_IF(static_cast<int>(weight_shape[1]) != 1,
-                "Weight second dim must be 1 for depthwise convolution");
+  ORT_RETURN_IF(weight_shape[0] != channels, "Weight first dim must match input channels");
+  ORT_RETURN_IF(weight_shape[1] != 1, "Weight second dim must be 1 for depthwise convolution");
 
   if (bias != nullptr) {
-    ORT_RETURN_IF(bias->Shape().NumDimensions() != 1,
-                  "Bias must be 1D");
-    ORT_RETURN_IF(static_cast<int>(bias->Shape()[0]) != channels,
-                  "Bias size must match channels");
+    ORT_RETURN_IF(bias->Shape().NumDimensions() != 1, "Bias must be 1D");
+    ORT_RETURN_IF(bias->Shape()[0] != channels, "Bias size must match channels");
   }
 
   if (conv_state != nullptr) {
     ORT_RETURN_IF(conv_state->Shape().NumDimensions() != 3,
                   "conv_state must be 3D (batch_size, channels, kernel_size - 1)");
-    ORT_RETURN_IF(static_cast<int>(conv_state->Shape()[0]) != batch_size,
+    ORT_RETURN_IF(conv_state->Shape()[0] != batch_size,
                   "conv_state batch_size must match input");
-    ORT_RETURN_IF(static_cast<int>(conv_state->Shape()[1]) != channels,
+    ORT_RETURN_IF(conv_state->Shape()[1] != channels,
                   "conv_state channels must match input");
-    ORT_RETURN_IF(static_cast<int>(conv_state->Shape()[2]) != state_length,
+    ORT_RETURN_IF(conv_state->Shape()[2] != state_length,
                   "conv_state last dim must be kernel_size - 1");
   }
 
@@ -118,12 +114,17 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   std::vector<int64_t> state_dims{batch_size, channels, state_length};
   Tensor* present_state = context.Output(1, TensorShape(state_dims));
 
-  if (input_length == 0) {
-    return Status::OK();
+  if (input_shape.Size() == 0) {
+    if (has_conv_state) {
+      ORT_RETURN_IF_ERROR(context.CopyTensor(*conv_state, *present_state));
+    } else {
+      context.FillZero(*present_state);
+      return Status::OK();
+    }
   }
 
   // Create and run the shader program
-  CausalConvWithStateProgram program{activation_, has_bias, has_conv_state, kernel_size};
+  CausalConvWithStateProgram program{activation_, has_bias, has_conv_state};
 
   uint32_t output_size = static_cast<uint32_t>(batch_size * channels * input_length);
 

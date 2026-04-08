@@ -167,6 +167,8 @@ $MAIN {
           let delta_j = beta_val * (v_val - retrieved);
           broadcast_buf[j] = delta_j;
           output[bt_offset * packed_dv + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((pre_out + delta_j * kq_dot) * uniforms.scale);
+        } else {
+          broadcast_buf[j] = vtype(0.0);
         }
       }
     }
