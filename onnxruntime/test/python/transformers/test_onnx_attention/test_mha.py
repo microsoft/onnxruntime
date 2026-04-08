@@ -1460,10 +1460,8 @@ class TestONNXAttentionMHA2DMaskBroadcast(unittest.TestCase):
         attn_mask[0, 4:] = False
         attn_mask[1, 6:] = False
 
-        # Zero out K/V at padded positions (use row 0's pattern since 2D mask broadcasts)
-        # For bool mask, the effective seqlen for all batches comes from row 0 (most restrictive)
-        # Actually for cross-attention with different masking per query, just zero out nothing
-        # The reference uses key_padding_mask for padding, or we can use attn_bias directly
+        # Build additive bias from the bool mask for the PyTorch reference.
+        # 2D mask broadcasts identically across batches and heads.
         mask_filter_value = torch.finfo(torch_type).min
         attn_bias_ref = torch.where(
             attn_mask.unsqueeze(0).unsqueeze(0).expand(config.batch_size, config.q_num_heads, -1, -1),
@@ -1490,6 +1488,13 @@ class TestONNXAttentionMHA2DMaskBroadcast(unittest.TestCase):
         out_np = out_ort.float().detach().cpu().numpy()
         out_ref_np = out_ref.float().detach().cpu().numpy()
         numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
+# NOTE: GQA fully-masked batch fix (ZeroOutputForFullyMaskedBatches) is validated by
+# C++ test Attention_NonPadKVSeqLen_AllMasked_FP16_GQA. Python graph-level test omitted
+# because the fix is a CUDA kernel in the MEA path — a CPU-only test cannot validate it,
+# and CUDA debug builds trigger kernel assertions for zero seqlens (pre-existing issue
+# with 4D mask alignment in attention_transpose.cu).
 
 
 if __name__ == "__main__":

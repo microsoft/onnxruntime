@@ -99,7 +99,12 @@ class OrtStreamAdapter {
 
 namespace onnxruntime {
 inline constexpr const char* kCudaPluginExecutionProvider = "CudaPluginExecutionProvider";
-}
+
+// Forward declaration of GetEnvironmentVar for plugin builds on Windows.
+// Defined in provider_api_shims.cc; mirrors the provider_api.h declaration
+// which is a no-op when BUILD_CUDA_EP_AS_PLUGIN is set.
+std::string GetEnvironmentVar(const std::string& var_name);
+}  // namespace onnxruntime
 
 namespace onnxruntime {
 namespace cuda {
@@ -963,9 +968,13 @@ class CudaKernel : public OpKernel {
     cudaError_t alloc_result = cudaSuccess;
     bool used_async_alloc = false;
     if (s) {
+      // Note: stream-ordered allocations (cudaMallocAsync/cudaFreeAsync) rely on CUDA Memory Pools,
+      // which are not supported on NVIDIA GPUs with Multi-Instance GPU (MIG) enabled.
+      // On such instances, this will return cudaErrorNotSupported.
       alloc_result = cudaMallocAsync(&p, sz, static_cast<cudaStream_t>(s));
       used_async_alloc = (alloc_result == cudaSuccess);
       if (!used_async_alloc && (alloc_result == cudaErrorNotSupported || alloc_result == cudaErrorInvalidValue)) {
+        cudaGetLastError();  // Clear the thread-local error state
         alloc_result = cudaMalloc(&p, sz);
       }
     } else {
@@ -984,10 +993,12 @@ class CudaKernel : public OpKernel {
         // the raw cudaStream_t handle is still valid.
         if (used_async_alloc && s &&
             cuda_plugin::CudaSyncStream::FromCudaStream(static_cast<cudaStream_t>(s)) != nullptr) {
+          // As noted above, cudaFreeAsync may also return cudaErrorNotSupported on MIG-enabled instances.
           cudaError_t free_result = cudaFreeAsync(ptr, static_cast<cudaStream_t>(s));
           if (free_result == cudaSuccess) {
             return;
           }
+          cudaGetLastError();  // Clear any error set by cudaFreeAsync
         }
 
         // Fall back to synchronous free if async free is unsupported or if the

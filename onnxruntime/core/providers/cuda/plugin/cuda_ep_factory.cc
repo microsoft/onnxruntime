@@ -5,7 +5,7 @@
 #include "cuda_ep.h"
 #include "cuda_plugin_kernels.h"
 #include "core/common/string_utils.h"
-
+#include "core/session/onnxruntime_c_api.h"
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -103,9 +103,8 @@ std::string GetProviderOptionPrefix(std::string_view provider_name) {
   return "ep." + onnxruntime::utils::GetLowercaseString(std::string{provider_name}) + ".";
 }
 
-void LogWarning(const OrtApi& ort_api, const OrtLogger& logger, const char* file, int line,
-                const char* function, const char* msg) {
-  OrtStatus* st = ort_api.Logger_LogMessage(&logger, ORT_LOGGING_LEVEL_WARNING, msg, file, line, function);
+void LogWarning(const OrtApi& ort_api, const OrtLogger& logger, int line, const char* function, const char* msg) {
+  OrtStatus* st = ort_api.Logger_LogMessage(&logger, ORT_LOGGING_LEVEL_WARNING, msg, ORT_FILE, line, function);
   if (st != nullptr) {
     ort_api.ReleaseStatus(st);
   }
@@ -317,7 +316,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
                             ". Using default value.";
 
     OrtStatus* st = factory->ort_api_.Logger_LogMessage(
-        logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), "cuda_ep_factory.cc", __LINE__, "CudaEpFactory");
+        logger, ORT_LOGGING_LEVEL_WARNING, msg.c_str(), ORT_FILE, __LINE__, "CudaEpFactory");
     if (st != nullptr) {
       factory->ort_api_.ReleaseStatus(st);
     }
@@ -504,7 +503,7 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
       delete static_cast<CudaPinnedAllocator*>(allocator);
       return;
     default:
-      LogWarning(factory->ort_api_, factory->default_logger_, __FILE__, __LINE__,
+      LogWarning(factory->ort_api_, factory->default_logger_, __LINE__,
                  "CudaEpFactory::ReleaseAllocatorImpl",
                  "ReleaseAllocatorImpl received an unknown CudaAllocatorKind. Leaking the allocator instance.");
       assert(false && "Unknown CudaAllocatorKind");

@@ -436,8 +436,8 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
   }
 
   bool used_shared_buffers = false;
-  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers_V2(shared_prepacked_buffers, shared_prepacked_buffer_sizes,
-                                                          input_idx, used_shared_buffers));
+  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers(shared_prepacked_buffers, shared_prepacked_buffer_sizes,
+                                                       input_idx, used_shared_buffers));
 
   // BUG CHECK: Ensure that the kernel used the provided shared buffers
   // Mostly a debug check to ensure that the kernel has an overridden implementation of the
