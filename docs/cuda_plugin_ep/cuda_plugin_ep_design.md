@@ -45,10 +45,12 @@ OrtEpFactory                     OrtEp
 CudaEpFactory                    adapter::Ep
   │                                ↑
   ├─ creates OrtEpDevice           CudaEp
-  ├─ creates CudaSyncStream        ├─ stores session-derived Config
-  ├─ caches kernel registry        └─ owns a real shim CUDAExecutionProvider via EpImpl()
-  ├─ caches stable OrtMemoryInfo objects
-  └─ maps OrtHardwareDevice* → CUDA ordinal
+  ├─ provides fallback             ├─ stores session-derived Config
+  │  CreateSyncStreamForDevice     ├─ implements OrtEp::CreateSyncStreamForDevice
+  ├─ caches kernel registry        │  for per-session CudaSyncStream creation
+  ├─ caches stable OrtMemoryInfo   ├─ synchronizes device (Sync)
+  └─ maps OrtHardwareDevice*       └─ owns a real shim CUDAExecutionProvider via EpImpl()
+       → CUDA ordinal
 
 Migrated CUDA kernels
   └─ use CudaKernel / cuda_kernel_adapter.h
@@ -59,7 +61,9 @@ Migrated CUDA kernels
 
 Key ownership relationships:
 - `CudaEpFactory` implements raw `OrtEpFactory` callbacks and owns shared factory-level state such as the kernel registry, cached `OrtMemoryInfo` instances, and the hardware-device to CUDA-ordinal map.
+- `CudaEpFactory` also implements the factory-level `OrtEpFactory::CreateSyncStreamForDevice` callback as a fallback path when the `OrtEp` callback is not used.
 - `CudaEp` inherits from `ep::adapter::Ep`, which itself derives from `OrtEp` and owns a framework-facing `IExecutionProvider` object.
+- `CudaEp` implements the `OrtEp::CreateSyncStreamForDevice` callback, which is the per-session stream-creation entry point used in preference to the factory callback.
 - The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a real shim object owned by `ep::adapter::Ep`. It is not the full in-tree CUDA EP, but it has its own object identity and stores plugin-specific members — including the wrapped `OrtEp*` and a provider-owned shared runtime-config object.
 - Runtime configuration needed by migrated kernels is stored on that shim provider and exposed to kernels as a cached `shared_ptr<CudaKernelAdapterRuntimeConfig>`, rather than through a separate global map keyed by the provider address.
 - `CudaSyncStream` owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, and `cublasLtHandle_t` for each sync stream created through the EP API.
@@ -213,7 +217,7 @@ The primary approach moves pure-computation helpers from CPU `.cc` files to head
 - `roialign.h` — `CheckROIAlignValidInput`, `RoiAlignBase` constructor (templatized on info type)
 - `upsamplebase.h` — `UpsampleBase::AdjustOutputSizeAsPolicy`
 - `crop.h` — `CropBase` constructor (templatized on info type)
-- `space_depth_ops.h` — `SpaceDepthBase` constructor (templatized on info type)
+- `space_depth_ops.h` — `SpaceDepthBase` constructor plus shared `ReadBlocksize`, `ReadIsDCR`, and dimension-validation helpers (templatized on info/context type where needed)
 - `clip.h` — Clip min/max attribute handling (removed `Clip_6Base` CPU dependency)
 - `cuda_common_type_helpers.h` — CUDA type conversion and handle error string helpers (moved from `cuda_common.cc`)
 
@@ -249,7 +253,8 @@ This allows the base class constructor to work with both the framework `OpKernel
 Some CPU base classes have heavy dependencies (protobuf, `UnpackTensor`) that make inlining impractical:
 
 - **`ConstantOfShapeBase`** — depends on `TensorProto` and `UnpackTensor`. The plugin path in `constant_of_shape.h` stays self-contained: it reuses `ConstantOfShapeCore` but fetches the `value` attribute through the ORT C++ API instead of depending on the full CPU base implementation.
-- **`UpsampleBase`** — partially addressed: `AdjustOutputSizeAsPolicy` moved to header (#27628). Still depends on `InputDefs()` and `OpKernelInfo::GetAllocator()` which are not in the adapter.
+
+`UpsampleBase` no longer belongs in this category: the adapter now exposes `OpKernelInfo::GetAllocator(OrtMemType)`, and the remaining shape-rank query already has an adapter-safe fallback when `Node::InputDefs()` is unavailable. That lets the CUDA `Upsample` antialias path reuse the same persistent device lookup-table initialization in both bundled and plugin builds instead of keeping a plugin-only scratch-buffer fallback.
 
 ---
 
@@ -259,9 +264,21 @@ Some CPU base classes have heavy dependencies (protobuf, `UnpackTensor`) that ma
 
 `CudaSyncStream` is the plugin's CUDA sync-stream implementation:
 - Owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, `cublasLtHandle_t`
-- Is created by `CudaEpFactory::CreateSyncStreamForDevice`
+- Can be created at two levels:
+  - **OrtEp-level** via `CudaEp::CreateSyncStreamForDeviceImpl` for per-session stream creation
+  - **OrtEpFactory-level** via `CudaEpFactory::CreateSyncStreamForDeviceImpl` as the fallback path
 - Registers itself in a global `cudaStream_t -> CudaSyncStream*` map so migrated kernels can recover per-stream handles from a raw CUDA stream
 - Defers host-buffer cleanup until `OnSessionRunEnd()` after the stream is synchronized
+
+#### 5.1.1 Device Synchronization (Sync API)
+
+`CudaEp` implements `OrtEp::Sync` to block until the configured CUDA device has completed all preceding work. ORT uses this path for scenarios such as `IOBinding`, where asynchronous input copies must finish before kernel execution begins.
+
+Implementation details:
+- `CudaEp::SyncImpl` temporarily switches to the EP's configured device via `cudaSetDevice(device_id)` and restores the caller's previous CUDA device before returning
+- It then issues `cudaDeviceSynchronize()` as a conservative device-wide barrier
+
+This is intentionally conservative and correct for the plugin EP's first sync integration. A narrower stream-scoped synchronization strategy can be considered later if profiling shows a need.
 
 ### 5.2 Handle Access Path
 
@@ -304,7 +321,7 @@ For stream bridging, the preferred helpers are:
 - `GetComputeStream(ctx)` when the kernel API already accepts the adapter's opaque stream pointer
 - `GetOrtStream(ctx)` when framework-style `Stream*` plumbing is still needed by shared helper code
 
-### 5.3.1 NHWC Layout-Transformation Support
+#### 5.3.1 NHWC Layout-Transformation Support
 
 The bundled CUDA EP's NHWC path is not just a kernel-registration feature. It is a coordinated contract between provider configuration, ORT's layout transformer, kernel registration, adapter/provider access, and graph partitioning. On the current branch, the CUDA plugin EP now supports this path when NHWC is compiled in and the session requests `prefer_nhwc`.
 
@@ -557,7 +574,7 @@ Section 7 reflects the current source exclusions in `cmake/onnxruntime_providers
 | `cuda_stream_handle.cc` | Replaced by `cuda_stream_plugin.cc` |
 | `cuda_execution_provider_info.cc` | Config parsed directly in `CudaEp::Config` |
 | `cuda_graph.cc` | CUDA graph support deferred (files removed pending OrtEp API extension) |
-| `cuda_mempool_arena.cc` | Plugin uses `cudaMalloc`/`cudaFree` directly |
+| `cuda_mempool_arena.cc` | Replaced by plugin-native `cuda_mempool_allocator_plugin.h/.cc` (uses CUDA mempool directly behind `OrtAllocator`) |
 | `cuda_common.cc` | Utility functions shimmed in `cuda_kernel_adapter.h` |
 | `cuda_nhwc_kernels.cc` | Replaced by `PluginKernelCollector` auto-registration |
 | `cuda_contrib_kernels.cc` | Replaced by `PluginKernelCollector` auto-registration |
@@ -603,7 +620,7 @@ The branch still contains a small set of plugin guards in both infrastructure an
 - `generator/constant_of_shape.h` still needs a plugin-specific path because `ConstantOfShapeBase` depends on framework-only tensor-attribute helpers.
 - Tunable kernels such as `math/matmul.cc` still gate framework-only registration paths.
 - `tensor/identity_op.h` guards the `TensorSeq` code path and `context->InputType()` call with `#ifndef BUILD_CUDA_EP_AS_PLUGIN` — the plugin build handles only the `Tensor` path. `identity_op.cc` uses conditional macros (`IDENTITY_V_TYPES` / `IDENTITY_V_TYPES_IRv9`) so opset 14+ registrations use `AllFixedSizeTensorTypes()` in the plugin build. Additionally, old Dropout opset 7–9 and 10–11 kernel registrations were moved from `identity_op.cc` to `nn/dropout.cc` so that each op's registrations live in that op's own source file.
-- A few tensor kernels (`pad.cc`, `tile.cc`, `unsqueeze.cc`, `upsample.*`, `space_depth_ops.h`, `scatter_nd.*`) still contain localized plugin guards where adapter and framework paths have not fully converged.
+- A few tensor kernels (`pad.cc`, `tile.cc`, `unsqueeze.cc`) still contain localized plugin guards where adapter and framework paths have not fully converged. Recent cleanup removed the plugin-only branches from `upsample.*`, `space_depth_ops.h`, and `scatter_nd.*` by moving reusable logic into shared adapter-safe helpers and by adding allocator access to `ep::adapter::OpKernelInfo`.
 
 The broad trend remains positive: most operator-level plugin conditionals were removed by moving reusable CPU/helper logic into shared headers and by centralizing stream bridging in `CudaKernel` helpers.
 
@@ -690,6 +707,7 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 | Identity | Identity opset 13 and opset 25 — re-enabled op with `TensorSeq` path guarded |
 | Crop | Crop (opset 1) — previously excluded contrib op, now re-enabled |
 | Memcpy | Explicit `MemcpyFromHost` and `MemcpyToHost` standalone tests to ensure copy ops are dispatched |
+| IOBinding / Sync | IOBinding-based tests (Add, MatMul) that bind CPU inputs and CUDA outputs to exercise `OrtEp::Sync` and `OrtEp::CreateSyncStreamForDevice` |
 | Key-ops probe | Session-based probing that all key ops are assigned to `CudaPluginExecutionProvider` |
 
 ### 10.2 Running Tests
@@ -842,23 +860,54 @@ This is a quality-of-life improvement rather than a required change — the exis
 
 ---
 
-## 12. File Layout
+## 12. Memory Arena Integration
+
+The CUDA plugin EP now includes a full BFC-style arena (`CudaArenaAllocator` / `ArenaImpl`) and a CUDA native mempool allocator (`CudaMempoolOrtAllocator`), both residing inside the plugin library. The detailed design — factory lifecycle, per-device cache, stream integration, arena config flow, and the `CudaMempoolArena` migration — is documented in [arena_allocator_migration_design.md](arena_allocator_migration_design.md).
+
+**ORT core integration:** Plugin arenas implement `OrtAllocator::Shrink` (added in ORT API version 25). When ORT core detects a non-null `Shrink` function pointer on the returned `OrtAllocator*`, it wraps the allocator as `IArenaImplWrappingOrtAllocator` (an `IArena`). This makes the plugin arena visible to session-level arena management — `InferenceSession::ShrinkMemoryArenas()`, `ValidateAndParseShrinkArenaString()`, `DeviceStreamCollection::ReleaseSingleStreamBuffers()` — through the standard `IArena::SafeArenaCast()` / `AsArena()` virtual method, without requiring RTTI.
+
+**Key files introduced:**
+
+| File | Purpose |
+|------|---------|
+| `plugin/cuda_arena.h` | `ArenaConfig`, `ArenaImpl` (BFC arena), `CudaArenaAllocator` (`OrtAllocator` wrapper) |
+| `plugin/cuda_arena.cc` | Arena implementation: bins, chunks, regions, stream-aware alloc, `Shrink()`, `GetStats()` |
+| `plugin/cuda_mempool_allocator_plugin.h` | `CudaMempoolOrtAllocator` — wraps CUDA native mempool behind `OrtAllocator` |
+| `plugin/cuda_mempool_allocator_plugin.cc` | Mempool implementation: `cudaMallocFromPoolAsync`/`cudaFreeAsync`, pool lifecycle, `Shrink()` via `cudaMemPoolTrimTo` |
+| `core/session/allocator_adapters.h` | `IArenaImplWrappingOrtAllocator` — wraps plugin `OrtAllocator*` with `Shrink` as `IArena` |
+| `core/session/allocator_adapters.cc` | Adapter implementation; `GetStatsFromOrtAllocator()` helper; `kOrtAllocatorShrinkMinVersion` |
+
+---
+
+## 13. File Layout
 
 ```
 onnxruntime/core/providers/cuda/plugin/
 ├── cuda_kernel_adapter.h        # CudaKernel base, macros, CPU shims (force-included)
-├── cuda_ep.h / .cc              # CudaEp : OrtEp implementation
-├── cuda_ep_factory.h / .cc      # CudaEpFactory : OrtEpFactory
+├── cuda_ep.h / .cc              # CudaEp : OrtEp implementation (GetCapability, Sync, CreateSyncStreamForDevice)
+├── cuda_ep_factory.h / .cc      # CudaEpFactory : OrtEpFactory (arena lifecycle, per-device cache)
 ├── cuda_plugin_ep.cc            # DLL entry points (CreateEpFactories/ReleaseEpFactory)
 ├── cuda_plugin_ep_symbols.def   # Windows DLL export definitions
 ├── cuda_plugin_kernels.h / .cu  # Kernel registry creation
-├── cuda_stream_plugin.h / .cc   # CudaSyncStream (handles, notifications)
-├── cuda_allocator_plugin.h / .cc    # Device/pinned allocators
+├── cuda_stream_plugin.h / .cc   # CudaSyncStream (handles, notifications, arena chunk reset)
+├── cuda_allocator_plugin.h / .cc    # Device/pinned raw allocators (CudaAllocatorBase hierarchy)
+├── cuda_arena.h / .cc           # BFC arena (ArenaConfig, ArenaImpl, CudaArenaAllocator)
+├── cuda_mempool_allocator_plugin.h / .cc  # CUDA native mempool allocator (CudaMempoolOrtAllocator)
 ├── cuda_data_transfer_plugin.h / .cc # GPU↔CPU data transfer
 ├── cuda_memcpy_plugin.cc        # MemcpyFromHost/MemcpyToHost standalone kernels
 ├── cuda_controlflow_plugin.h / .cc / .cu  # If/Loop/Scan wrappers
 ├── cuda_plugin_utils.h          # Common macros, error handling
 └── provider_api_shims.cc        # Reimplemented utility functions
+
+onnxruntime/core/session/
+├── allocator_adapters.h / .cc   # OrtAllocator↔IAllocator/IArena bidirectional adapters
+│                                # (IAllocatorImplWrappingOrtAllocator, IArenaImplWrappingOrtAllocator,
+│                                #  OrtAllocatorImplWrappingIAllocator)
+└── ...
+
+include/onnxruntime/core/framework/
+├── allocator.h                  # IAllocator (AsArena virtual), IArena (Shrink, SafeArenaCast)
+└── ...
 
 include/onnxruntime/ep/
 ├── README.md                    # EP adapter layer overview
@@ -882,76 +931,27 @@ include/onnxruntime/ep/
 
 ---
 
-## 13. Future Work
+## 14. Future Work
 
-1. **Memory arena / allocator parity** — The plugin currently relies on direct `cudaMalloc`/`cudaFree` in `CudaDeviceAllocator` instead of an arena-backed allocator. Two complementary improvements are planned:
+1. **Profiling and observability** — The in-tree CUDA EP exposes an EP profiler, while the plugin shim currently does not surface equivalent profiling hooks. Future work should wire up `GetProfiler()` for the plugin path, integrate CUDA/NVTX/CUPTI-based tracing where appropriate, and make plugin execution visible in the same profiling flows users already rely on for the bundled CUDA EP.
 
-   **A. `CudaMempoolArena` (commit e6023b0c)**
+2. **Stream/adapter parity for framework-style `Stream*` consumers** — A number of excluded or recently re-included kernels still assume access to a richer framework `Stream*` object rather than only a raw `cudaStream_t` view. Extending the adapter path here would unblock additional LLM, FFT, quantization, diffusion, and other CUDA kernels.
 
-   The in-tree CUDA EP gained a native-CUDA-mempool allocator (`cuda_mempool_arena.h/.cc`) that uses `cudaMallocFromPoolAsync` / `cudaFreeAsync` on stream-ordered allocation paths, with a configurable `cudaMemPoolAttrReleaseThreshold` to return memory to the device as it becomes idle. Enabling this in the plugin requires:
+3. **Contrib LLM migration pass** — The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` remains excluded as a separate follow-up.
 
-   1. **Make `CudaMempoolArena` compilable in the plugin build.** `cuda_mempool_arena.h` currently includes `cuda_stream_handle.h` and `provider_api.h` (both `SHARED_PROVIDER`-only). The only real dependency is resolving the stream framework pointer. When migrating for plugin use, this class can be refactored to accept a raw `cudaStream_t` directly (or an `OrtSyncStream*`), bypassing the internal `stream->GetHandle()` logic.
+4. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc` so the plugin can recover runtime kernel selection and profiling-based tuning behavior.
 
-   2. **Implement a thin `OrtAllocator` wrapper around `CudaMempoolArena`.** The plugin factory's `CreateAllocatorImpl` returns an `OrtAllocator*`, while `CudaMempoolArena` is an `IArena` / `IAllocator`. A new class (e.g., `CudaMempoolOrtAllocator`) should own a `CudaMempoolArena` instance and forward the `OrtAllocator` callbacks to it:
+5. **TensorSeq and additional C API coverage** — Add enough sequence/tensor-sequence support to unblock `sequence_op.cc` (the last remaining TensorSeq-dependent file), and extend the ORT C API where needed for remaining framework-style attribute accessors such as string-array attributes used by RNN kernels. Note: `identity_op.cc` is now included in the plugin build — its TensorSeq code path is guarded by `#ifndef BUILD_CUDA_EP_AS_PLUGIN` and opset 14+ registrations use `AllFixedSizeTensorTypes()` (Tensor-only) instead of `AllFixedSizeTensorAndSequenceTensorTypes()`.
 
-      | `OrtAllocator` callback | Implementation |
-      |-------------------------|----------------|
-      | `Alloc(size)` | `arena_->Alloc(size)` (allocates on the legacy default stream) |
-      | `Free(ptr)` | `arena_->Free(ptr)` |
-      | `Reserve(size)` | `arena_->Reserve(size)` |
-      | `AllocOnStream(size, stream)` | `cudaStream_t cu_stream = (cudaStream_t)api->SyncStream_GetHandle(stream);` <br> `arena_->AllocWithCudaStream(size, cu_stream);` |
-      | `GetStats(kvps)` | Populate from `arena_->GetStats()` |
-      | `Info()` | Return the `OrtMemoryInfo*` used at construction |
+6. **Remaining contrib exclusions** — The FFT (`fft_ops.cc`), crop (`crop.cc`), and dynamicslice (`dynamicslice.cc`) exclusions have been removed. These files now compile in the plugin build: FFT ops use `Stream(context)` (which works in both builds) and the `CUFFT_RETURN_IF_ERROR` macro was added to the adapter; crop and dynamicslice had no real framework blockers once tested. The plugin CMake now links `CUDA::cufft` for cuFFT symbol resolution. Remaining contrib exclusions are: `shrunken_gather.cc` (training), `transformers/*` (subgraph), `aten_ops/*` (ATen), `collective/*` (NCCL), and `llm/*` (contrib LLM pass).
 
-      The `OrtAllocator` C API already supports stream-aware allocation via the optional `AllocOnStream` callback (set on `OrtAllocator` when `version >= kOrtAllocatorAllocOnStreamMinVersion`). ORT core wraps every plugin `OrtAllocator` into `IAllocatorImplWrappingOrtAllocator` (`allocator_adapters.cc`), which dispatches to `AllocOnStream` when the wrapper reports `IsStreamAware() == true`. So there is **no additional plumbing needed in the adapter or framework** — the plugin allocator just needs to set `AllocOnStream` to a non-null function pointer to get full stream-ordered semantics.
+7. **CI integration and targeted benchmarking** — Add plugin build + test coverage to CI and include perf-oriented validation so allocator, profiling, and tunable-op regressions are caught early.
 
-      **Important:** The `OrtMemoryInfo::alloc_type` returned by the wrapper must be `OrtDeviceAllocator`, **not** `OrtArenaAllocator`. Both `PluginExecutionProvider::CreatePreferredAllocators()` and `Environment::CreateSharedAllocatorImpl()` explicitly reject `OrtArenaAllocator` from plugin factories — the arena is expected to be opaque to ORT.
+8. **NHWC cleanup and hardening** — Complete the follow-up work described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the allowlist, improve internal-domain diagnostics, and add stronger structural NHWC assertions.
 
-   3. **Parse mempool options.** ORT can pass allocator configuration to the plugin factory through the `allocator_options` (`OrtKeyValuePairs*`) argument of `OrtEpFactory::CreateAllocator`. The relevant keys are defined in `OrtArenaCfg::Keys` (in `allocator.h`):
-      - `arena.use_cuda_mempool` — set to `"1"` to enable
-      - `arena.cuda_mempool_release_threshold` — bytes; `0` disables the threshold
-      - `arena.cuda_mempool_bytes_to_keep_on_shrink` — bytes retained after `Shrink()`
+9. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure will be reintroduced once the API is extended.
 
-      **How options reach the plugin factory — two paths:**
-
-      | Path | How it calls `CreateAllocator` | `allocator_options` |
-      |------|-------------------------------|---------------------|
-      | **Shared allocator** (`OrtApi::CreateSharedAllocator`) | `Environment::CreateSharedAllocatorImpl` → `ep_factory->CreateAllocator(factory, &mem_info, allocator_options, &alloc)` | Caller-provided `OrtKeyValuePairs*` — can carry arena keys |
-      | **Per-EP allocator** (`PluginExecutionProvider::CreatePreferredAllocators`) | `ep_factory.CreateAllocator(&ep_factory, memory_info, /*options*/ nullptr, &alloc)` | Always `nullptr` today |
-
-      The per-EP path currently passes `nullptr` for options. To support mempool configuration on this path, either:
-      - **(a)** Parse the arena keys from session options inside `CudaEp` / `CudaEpFactory` (similar to how `CudaEp::Config` already parses other provider options) and store them so `CreateAllocatorImpl` can read them without needing `allocator_options`.
-      - **(b)** Extend the ORT core per-EP allocator path to forward the config entries to `CreateAllocator` (requires an ORT core change).
-
-      Option (a) is self-contained within the plugin and does not require ORT core changes.
-
-   4. **Thread the factory logger.** `CudaMempoolArena` takes a `const logging::Logger*`. The plugin factory already owns a logger (`factory.default_logger_` / the `OrtLogger` passed at EP creation). Convert or wrap it and pass it to the arena constructor.
-
-   5. **Handle `ReleaseAllocatorImpl`.** The factory's `ReleaseAllocatorImpl` switch currently only knows about `CudaDeviceAllocator` and `CudaPinnedAllocator`. Add a third case (`kMempool` or similar) to correctly destroy the new wrapper and its owned `CudaMempoolArena`.
-
-   **B. BFC arena (longer term)**
-
-   If BFC-style arena behavior (`gpu_mem_limit`, `arena_extend_strategy`) is also needed, a similar `OrtAllocator`-wrapping approach would work for `BFCArena`, once its `SHARED_PROVIDER`-only dependencies are removed. The same `AllocOnStream` / `OrtDeviceAllocator` / option-parsing patterns apply.
-
-2. **Profiling and observability** — The in-tree CUDA EP exposes an EP profiler, while the plugin shim currently does not surface equivalent profiling hooks. Future work should wire up `GetProfiler()` for the plugin path, integrate CUDA/NVTX/CUPTI-based tracing where appropriate, and make plugin execution visible in the same profiling flows users already rely on for the bundled CUDA EP.
-
-3. **Stream/adapter parity for framework-style `Stream*` consumers** — A number of excluded or recently re-included kernels still assume access to a richer framework `Stream*` object rather than only a raw `cudaStream_t` view. Extending the adapter path here would unblock additional LLM, FFT, quantization, diffusion, and other CUDA kernels.
-
-4. **Contrib LLM migration pass** — The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` remains excluded as a separate follow-up.
-
-5. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc` so the plugin can recover runtime kernel selection and profiling-based tuning behavior.
-
-6. **TensorSeq and additional C API coverage** — Add enough sequence/tensor-sequence support to unblock `sequence_op.cc` (the last remaining TensorSeq-dependent file), and extend the ORT C API where needed for remaining framework-style attribute accessors such as string-array attributes used by RNN kernels. Note: `identity_op.cc` is now included in the plugin build — its TensorSeq code path is guarded by `#ifndef BUILD_CUDA_EP_AS_PLUGIN` and opset 14+ registrations use `AllFixedSizeTensorTypes()` (Tensor-only) instead of `AllFixedSizeTensorAndSequenceTensorTypes()`.
-
-7. **Remaining contrib exclusions** — The FFT (`fft_ops.cc`), crop (`crop.cc`), and dynamicslice (`dynamicslice.cc`) exclusions have been removed. These files now compile in the plugin build: FFT ops use `Stream(context)` (which works in both builds) and the `CUFFT_RETURN_IF_ERROR` macro was added to the adapter; crop and dynamicslice had no real framework blockers once tested. The plugin CMake now links `CUDA::cufft` for cuFFT symbol resolution. Remaining contrib exclusions are: `shrunken_gather.cc` (training), `transformers/*` (subgraph), `aten_ops/*` (ATen), `collective/*` (NCCL), and `llm/*` (contrib LLM pass).
-
-8. **CI integration and targeted benchmarking** — Add plugin build + test coverage to CI and include perf-oriented validation so allocator, profiling, and tunable-op regressions are caught early.
-
-9. **NHWC cleanup and hardening** — Complete the follow-up work described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the allowlist, improve internal-domain diagnostics, and add stronger structural NHWC assertions.
-
-10. **CUDA Graph API for plugin EPs** — Add `IsGraphCaptureEnabled`, `IsGraphCaptured`, and `ReplayGraph` callbacks to the `OrtEp` C API (see [Section 5.4.4](#544-what-needs-to-change-in-ort-core-option-a)). This is required for efficient CUDA graph replay in the plugin EP. The capture/replay infrastructure will be reintroduced once the API is extended.
-
-11. **OpSchema-validated kernel registration (PR #27713)** — PR #27713 adds `OrtEpApi` functions that let plugin EPs query ONNX operator schemas from ORT's global registry (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). Concrete follow-up work for the CUDA plugin EP:
+10. **OpSchema-validated kernel registration (PR #27713)** — PR #27713 adds `OrtEpApi` functions that let plugin EPs query ONNX operator schemas from ORT's global registry (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). Concrete follow-up work for the CUDA plugin EP:
 
     **A. Registration-time validation pass**
 
@@ -979,7 +979,7 @@ include/onnxruntime/ep/
     | `cuda_ep.cc` / `GetCapabilityImpl()` | (Optional) Add schema-based diagnostic when `EpGraphSupportInfo_LookUpKernel` returns nullptr |
     | `test_cuda_plugin_ep.py` | Add a validation stage that exercises schema-validated registration |
 
-12. **Resource accounting and annotation-based partitioning (PR #27595)** — ORT is acquiring two related features that affect how graph nodes are partitioned to EPs:
+11. **Resource accounting and annotation-based partitioning (PR #27595)** — ORT is acquiring two related features that affect how graph nodes are partitioned to EPs:
 
     **A. Resource accounting**
 

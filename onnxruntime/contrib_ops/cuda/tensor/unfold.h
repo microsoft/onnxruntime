@@ -9,7 +9,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+using onnxruntime::OpKernelContext;
+using onnxruntime::OpKernelInfo;
+#endif
+using onnxruntime::cuda::CudaKernel;
 class UnfoldTensor final : public CudaKernel {
  public:
   UnfoldTensor(const OpKernelInfo& info) : CudaKernel(info) {
