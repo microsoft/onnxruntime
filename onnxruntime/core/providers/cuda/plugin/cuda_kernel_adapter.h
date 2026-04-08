@@ -21,6 +21,7 @@
 #include "core/common/float8.h"
 #include "core/framework/float4.h"
 #include "core/framework/allocator.h"
+#include "core/framework/stream_handles.h"
 #include "core/framework/tensor_shape.h"
 #include "core/util/math.h"
 #include <gsl/gsl>

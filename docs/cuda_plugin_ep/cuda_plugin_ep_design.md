@@ -270,7 +270,7 @@ Some CPU base classes have heavy dependencies (protobuf, `UnpackTensor`) that ma
 - Registers itself in a global `cudaStream_t -> CudaSyncStream*` map so migrated kernels can recover per-stream handles from a raw CUDA stream
 - Defers host-buffer cleanup until `OnSessionRunEnd()` after the stream is synchronized
 
-### 5.1.1 Device Synchronization (Sync API)
+#### 5.1.1 Device Synchronization (Sync API)
 
 `CudaEp` implements `OrtEp::Sync` to block until the configured CUDA device has completed all preceding work. ORT uses this path for scenarios such as `IOBinding`, where asynchronous input copies must finish before kernel execution begins.
 
@@ -321,7 +321,7 @@ For stream bridging, the preferred helpers are:
 - `GetComputeStream(ctx)` when the kernel API already accepts the adapter's opaque stream pointer
 - `GetOrtStream(ctx)` when framework-style `Stream*` plumbing is still needed by shared helper code
 
-### 5.3.1 NHWC Layout-Transformation Support
+#### 5.3.1 NHWC Layout-Transformation Support
 
 The bundled CUDA EP's NHWC path is not just a kernel-registration feature. It is a coordinated contract between provider configuration, ORT's layout transformer, kernel registration, adapter/provider access, and graph partitioning. On the current branch, the CUDA plugin EP now supports this path when NHWC is compiled in and the session requests `prefer_nhwc`.
 
@@ -570,7 +570,7 @@ Section 7 reflects the current source exclusions in `cmake/onnxruntime_providers
 | `cuda_stream_handle.cc` | Replaced by `cuda_stream_plugin.cc` |
 | `cuda_execution_provider_info.cc` | Config parsed directly in `CudaEp::Config` |
 | `cuda_graph.cc` | Replaced by plugin-local `cuda_graph_plugin.h/.cc`, which implements graph capture/replay through the OrtEp graph callbacks |
-| `cuda_mempool_arena.cc` | Expected to be enabled by PR #27931 through `CudaMempoolOrtAllocator`; until that lands, the current branch still relies on the pre-arena plugin allocator path |
+| `cuda_mempool_arena.cc` | Replaced by plugin-native `cuda_mempool_allocator_plugin.h/.cc` (uses CUDA mempool directly behind `OrtAllocator`) |
 | `cuda_common.cc` | Utility functions shimmed in `cuda_kernel_adapter.h` |
 | `cuda_nhwc_kernels.cc` | Replaced by `PluginKernelCollector` auto-registration |
 | `cuda_contrib_kernels.cc` | Replaced by `PluginKernelCollector` auto-registration |
@@ -856,23 +856,54 @@ This is a quality-of-life improvement rather than a required change — the exis
 
 ---
 
-## 12. File Layout
+## 12. Memory Arena Integration
+
+The CUDA plugin EP now includes a full BFC-style arena (`CudaArenaAllocator` / `ArenaImpl`) and a CUDA native mempool allocator (`CudaMempoolOrtAllocator`), both residing inside the plugin library. The detailed design — factory lifecycle, per-device cache, stream integration, arena config flow, and the `CudaMempoolArena` migration — is documented in [arena_allocator_migration_design.md](arena_allocator_migration_design.md).
+
+**ORT core integration:** Plugin arenas implement `OrtAllocator::Shrink` (added in ORT API version 25). When ORT core detects a non-null `Shrink` function pointer on the returned `OrtAllocator*`, it wraps the allocator as `IArenaImplWrappingOrtAllocator` (an `IArena`). This makes the plugin arena visible to session-level arena management — `InferenceSession::ShrinkMemoryArenas()`, `ValidateAndParseShrinkArenaString()`, `DeviceStreamCollection::ReleaseSingleStreamBuffers()` — through the standard `IArena::SafeArenaCast()` / `AsArena()` virtual method, without requiring RTTI.
+
+**Key files introduced:**
+
+| File | Purpose |
+|------|---------|
+| `plugin/cuda_arena.h` | `ArenaConfig`, `ArenaImpl` (BFC arena), `CudaArenaAllocator` (`OrtAllocator` wrapper) |
+| `plugin/cuda_arena.cc` | Arena implementation: bins, chunks, regions, stream-aware alloc, `Shrink()`, `GetStats()` |
+| `plugin/cuda_mempool_allocator_plugin.h` | `CudaMempoolOrtAllocator` — wraps CUDA native mempool behind `OrtAllocator` |
+| `plugin/cuda_mempool_allocator_plugin.cc` | Mempool implementation: `cudaMallocFromPoolAsync`/`cudaFreeAsync`, pool lifecycle, `Shrink()` via `cudaMemPoolTrimTo` |
+| `core/session/allocator_adapters.h` | `IArenaImplWrappingOrtAllocator` — wraps plugin `OrtAllocator*` with `Shrink` as `IArena` |
+| `core/session/allocator_adapters.cc` | Adapter implementation; `GetStatsFromOrtAllocator()` helper; `kOrtAllocatorShrinkMinVersion` |
+
+---
+
+## 13. File Layout
 
 ```
 onnxruntime/core/providers/cuda/plugin/
 ├── cuda_kernel_adapter.h        # CudaKernel base, macros, CPU shims (force-included)
 ├── cuda_ep.h / .cc              # CudaEp : OrtEp implementation (GetCapability, Sync, CreateSyncStreamForDevice)
-├── cuda_ep_factory.h / .cc      # CudaEpFactory : OrtEpFactory
+├── cuda_ep_factory.h / .cc      # CudaEpFactory : OrtEpFactory (arena lifecycle, per-device cache)
 ├── cuda_plugin_ep.cc            # DLL entry points (CreateEpFactories/ReleaseEpFactory)
 ├── cuda_plugin_ep_symbols.def   # Windows DLL export definitions
 ├── cuda_plugin_kernels.h / .cu  # Kernel registry creation
-├── cuda_stream_plugin.h / .cc   # CudaSyncStream (handles, notifications)
-├── cuda_allocator_plugin.h / .cc    # Device/pinned allocators
+├── cuda_stream_plugin.h / .cc   # CudaSyncStream (handles, notifications, arena chunk reset)
+├── cuda_allocator_plugin.h / .cc    # Device/pinned raw allocators (CudaAllocatorBase hierarchy)
+├── cuda_arena.h / .cc           # BFC arena (ArenaConfig, ArenaImpl, CudaArenaAllocator)
+├── cuda_mempool_allocator_plugin.h / .cc  # CUDA native mempool allocator (CudaMempoolOrtAllocator)
 ├── cuda_data_transfer_plugin.h / .cc # GPU↔CPU data transfer
 ├── cuda_memcpy_plugin.cc        # MemcpyFromHost/MemcpyToHost standalone kernels
 ├── cuda_controlflow_plugin.h / .cc / .cu  # If/Loop/Scan wrappers
 ├── cuda_plugin_utils.h          # Common macros, error handling
 └── provider_api_shims.cc        # Reimplemented utility functions
+
+onnxruntime/core/session/
+├── allocator_adapters.h / .cc   # OrtAllocator↔IAllocator/IArena bidirectional adapters
+│                                # (IAllocatorImplWrappingOrtAllocator, IArenaImplWrappingOrtAllocator,
+│                                #  OrtAllocatorImplWrappingIAllocator)
+└── ...
+
+include/onnxruntime/core/framework/
+├── allocator.h                  # IAllocator (AsArena virtual), IArena (Shrink, SafeArenaCast)
+└── ...
 
 include/onnxruntime/ep/
 ├── README.md                    # EP adapter layer overview
@@ -896,9 +927,9 @@ include/onnxruntime/ep/
 
 ---
 
-## 13. Future Work
+## 14. Future Work
 
-1. **CUDA Graph integration with PR #27931 arena work** — Assume PR #27931 ("Implement/migrate Arena allocators to cuda plugin ep") lands on `main` first. That PR adds plugin-hosted arena allocation (`CudaArenaAllocator`/`ArenaImpl`), CUDA native mempool support (`CudaMempoolOrtAllocator`), allocator option plumbing, and tests. The graph branch should rebase on that work and make these integration updates:
+1. **CUDA Graph integration with PR #27931 arena work** —  The graph branch should rebase on that work and make these integration updates:
 
    - Keep graph capture on the normal plugin allocator path. Do not add graph-specific `cudaMalloc`/`cudaFree` handling. Default device allocations should use the plugin arena; `arena.use_cuda_mempool=1` should select the CUDA mempool wrapper.
    - Preserve the current graph-stream flow: `CreateSyncStreamForDeviceImpl()` must wrap the current thread's graph stream via `CudaSyncStream::InitHandlesWithExternalStream()` so stream-aware arena allocation sees the same `cudaStream_t` used for warm-up, capture, and replay.

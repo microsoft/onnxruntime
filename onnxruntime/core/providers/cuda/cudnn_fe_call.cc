@@ -3,7 +3,12 @@
 
 #include "core/providers/cuda/shared_inc/cudnn_fe_call.h"
 #include "core/providers/shared_library/provider_api.h"
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+#include "ep/adapters.h"
+#include "plugin/provider_api_shims.h"
+#else
 #include <core/platform/env.h>
+#endif
 #if !defined(__CUDACC__) && !defined(USE_CUDA_MINIMAL)
 #include <cudnn_frontend.h>
 #endif

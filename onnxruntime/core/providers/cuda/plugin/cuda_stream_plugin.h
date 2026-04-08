@@ -11,9 +11,9 @@
 
 #include "cuda_plugin_utils.h"
 
-#include <vector>
-#include <unordered_map>
 #include <mutex>
+#include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace cuda_plugin {
