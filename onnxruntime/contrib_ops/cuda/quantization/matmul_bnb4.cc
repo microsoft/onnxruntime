@@ -54,9 +54,15 @@ Status MatMulBnb4<T>::ComputeInternal(OpKernelContext* ctx) const {
   const uint8_t* b_quant_data = b_quant->Data<uint8_t>();
   const auto* absmax_data = absmax->Data<T>();
 
+  // Overflow-safe computation of expected tensor sizes.
+  // K_, N_, block_size_ are validated > 0 in the constructor.
+  if (K_ > std::numeric_limits<int64_t>::max() / N_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Overflow computing K * N for K=", K_, ", N=", N_, ".");
+  }
   const int64_t numel = K_ * N_;
-  const int64_t expected_b_quant_size = (numel + 1) / 2;
-  const int64_t expected_absmax_size = (numel + block_size_ - 1) / block_size_;
+  const int64_t expected_b_quant_size = numel / 2 + (numel & 1);
+  const int64_t expected_absmax_size = numel / block_size_ + (numel % block_size_ != 0 ? 1 : 0);
 
   if (b_quant->Shape().Size() < expected_b_quant_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
