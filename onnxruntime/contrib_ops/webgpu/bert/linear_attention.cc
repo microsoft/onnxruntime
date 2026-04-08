@@ -207,9 +207,9 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   const int components = (head_dim_v % 4 == 0 && head_dim_v >= 4) ? 4 : 1;
   int tile_v = (components == 4) ? 1 : 4;
   if (components == 1 && head_dim_v <= 4) {
-    tile_v = head_dim_v;
+    tile_v = onnxruntime::narrow<int>(head_dim_v);
   }
-  const int head_dim_v_vectorized = head_dim_v / components;
+  const int head_dim_v_vectorized = onnxruntime::narrow<int>(head_dim_v) / components;
 
   constexpr uint32_t kMaxSupportedWorkgroupSize = 256;
   ORT_RETURN_IF_NOT(head_dim_k <= static_cast<int64_t>(kMaxSupportedWorkgroupSize),
@@ -225,7 +225,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   workgroup_size = std::min(workgroup_size, kMaxSupportedWorkgroupSize);
 
   const int num_dv_tiles = (head_dim_v_vectorized + tile_v - 1) / tile_v;
-  const uint32_t num_workgroups = batch_size * kv_num_heads_ * num_dv_tiles;
+  const uint32_t num_workgroups = onnxruntime::narrow<uint32_t>(batch_size * kv_num_heads_ * num_dv_tiles);
 
   bool has_initial_state = past_state != nullptr;
   bool has_decay = decay != nullptr;
