@@ -465,11 +465,11 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
   mapped_data = staging_buffer.GetMappedRange();
   memcpy(mapped_data, src, size);
-  // Zero padding bytes beyond the actual data to prevent copying garbage
-  // into the destination buffer when copy_size > size.
-  if (copy_size > size) {
-    memset(static_cast<uint8_t*>(mapped_data) + size, 0, copy_size - size);
-  }
+  // NOTE: When copy_size != size (due to 4-byte alignment requirement of CopyBufferToBuffer),
+  // the trailing bytes [size, copy_size) in the staging buffer contain uninitialized data.
+  // This dirty data gets copied into the destination buffer and may cause problems.
+  // A possible solution is to use CopyBufferToBuffer for the aligned portion and a compute
+  // shader to write the non-aligned remainder.
   staging_buffer.Unmap();
 
   auto& command_encoder = context_.GetCommandEncoder();
