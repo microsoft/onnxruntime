@@ -3872,12 +3872,12 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
       ++iter;
     }
 
-    // Shrink if it is a BFCArena allocator
-    // Iterate through the registered allocators as we could have multiple allocators for the device+type
-    // if they differ by vendor_id.
+    // Shrink if it is an arena allocator.
+    // Both in-tree arenas (BFCArena) and plugin EP arenas (IArenaImplWrappingOrtAllocator)
+    // inherit IArena, so AsArena() returns non-null for both.
     for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
       if (device.Type() == device_type && device.MemType() == memory_type && device.Id() == device_id) {
-        if (allocator_ptr->Info().alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+        if (allocator_ptr->AsArena() != nullptr) {
           arenas_to_shrink.push_back(allocator_ptr);
           break;
         }
@@ -3896,7 +3896,13 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<IArena*>(alloc.get())->Shrink();
+    auto* arena = alloc->AsArena();
+    if (!arena) {
+      LOGS(*session_logger_, WARNING) << "Allocator is not an IArena, skipping Shrink: " << alloc->Info().ToString();
+      continue;
+    }
+
+    auto status = arena->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()
