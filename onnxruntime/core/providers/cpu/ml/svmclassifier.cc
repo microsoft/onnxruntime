@@ -312,7 +312,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
       size_t classifier_idx = 0;
       for (size_t i = 0; i < class_count_ - 1; i++) {
         size_t start_index_i = starting_vector_[i];  // start of support vectors for class i
-        size_t class_i_support_count = vectors_per_class_[i];
+        size_t class_i_support_count = onnxruntime::narrow<size_t>(vectors_per_class_[i]);
         size_t i_coeff_row_offset = vector_count_ * i;
 
         for (size_t j = i + 1; j < class_count_; j++) {
