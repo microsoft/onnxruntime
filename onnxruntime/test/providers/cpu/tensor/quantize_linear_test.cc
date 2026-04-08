@@ -7,9 +7,28 @@
 #include "test/util/include/default_providers.h"
 #include "core/framework/int4.h"
 #include "core/framework/int2.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
+
+#ifdef USE_CUDA
+static void RunQuantizeLinearOp25CudaOnly(OpTester& test) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  SessionOptions so;
+  auto status = so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(cuda_ep));
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
+
 // scalar zero & scale with uint8
 TEST(DequantizeLinearOpTest, Uint8) {
   OpTester test("DequantizeLinear", 10);
@@ -792,6 +811,53 @@ TEST(QuantizeLinearOpTest, UInt4) {
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+
+#ifdef USE_CUDA
+TEST(QuantizeLinearOpTest, Opset25_Uint8_Cuda) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{6};
+  test.AddInput<float>("x", dims, {0, 2, 3, 1000, -254, -1000});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {128});
+  test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
+
+  RunQuantizeLinearOp25CudaOnly(test);
+}
+
+TEST(QuantizeLinearOpMLFloat16Test, Opset25_PerAxisInt8_Cuda) {
+  constexpr int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    GTEST_SKIP() << "CUDA compute capability " << min_cuda_architecture << " or higher is required.";
+  }
+
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<MLFloat16>("x", dims,
+                           {MLFloat16(-4.0f), MLFloat16(-2.0f), MLFloat16(0.0f), MLFloat16(2.0f),
+                            MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(8.0f), MLFloat16(10.0f)});
+  test.AddInput<MLFloat16>("y_scale", {4},
+                           {MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(4.0f), MLFloat16(4.0f)});
+  test.AddInput<int8_t>("y_zero_point", {4}, {0, 0, 0, 0});
+  test.AddOutput<int8_t>("y", dims, {-2, -1, 0, 0, 2, 3, 2, 2});
+
+  RunQuantizeLinearOp25CudaOnly(test);
+}
+
+TEST(QuantizeLinearOpTest, Opset25_BlockedUInt4_Cuda) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<float>("x", dims, {0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f});
+  test.AddInput<float>("y_scale", {2, 2}, {2.0f, 2.0f, 2.0f, 2.0f});
+  test.AddInput<UInt4x2>("y_zero_point", {2, 2}, {UInt4x2(0, 0), UInt4x2(0, 0)});
+  test.AddOutput<UInt4x2>("y", dims,
+                          {UInt4x2(0, 1), UInt4x2(2, 3), UInt4x2(4, 5), UInt4x2(6, 7)});
+
+  RunQuantizeLinearOp25CudaOnly(test);
+}
+#endif  // USE_CUDA
 
 template <bool Signed>
 static void GetExpectedInt4Quant(const float* input, Int4x2Base<Signed>* output, size_t num_elems, float scale,
