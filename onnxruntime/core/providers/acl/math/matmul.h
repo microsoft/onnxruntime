@@ -34,6 +34,7 @@ class MatMul : public OpKernel {
                  bool& is_packed, PrePackedWeights*) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>&,
+                                   gsl::span<const size_t>,
                                    int, bool&) override;
 
   Status Compute(OpKernelContext* context) const override;

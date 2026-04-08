@@ -49,6 +49,8 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   GetKernelRegistry = GetKernelRegistryImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
+  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  Sync = SyncImpl;
   OnRunStart = nullptr;
   OnRunEnd = nullptr;
 
@@ -239,6 +241,67 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
   *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   return nullptr;
 #endif
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
+    OrtEp* this_ptr, const OrtMemoryDevice* memory_device,
+    OrtSyncStreamImpl** stream) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  const OrtEpApi& ep_api = ep->factory_.GetEpApi();
+
+  auto mem_type = ep_api.MemoryDevice_GetMemoryType(memory_device);
+  if (mem_type != OrtDeviceMemoryType_DEFAULT) {
+    std::string error = "Invalid OrtMemoryDevice. Expected OrtDeviceMemoryType_DEFAULT(0). Got ";
+    error += std::to_string(mem_type);
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
+  }
+
+  int device_id = ep_api.MemoryDevice_GetDeviceId(memory_device);
+  if (device_id != ep->config_.device_id) {
+    std::string error = "Invalid OrtMemoryDevice. Expected CUDA device ordinal ";
+    error += std::to_string(ep->config_.device_id);
+    error += " for this EP instance. Got ";
+    error += std::to_string(device_id);
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
+  }
+
+  auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
+
+  RETURN_IF_ERROR(cuda_stream->InitHandles());
+
+  *stream = cuda_stream.release();
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::SyncImpl(OrtEp* this_ptr) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(ep->config_.device_id));
+  if (status.IsOK()) {
+    status = StatusFromCudaError(cudaDeviceSynchronize());
+  }
+
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
+
+  return status.release();
+
+  EXCEPTION_TO_STATUS_END
 }
 
 }  // namespace cuda_plugin
