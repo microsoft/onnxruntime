@@ -79,7 +79,6 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
-                             WGSL_TEMPLATE_PARAMETER(per_row_weight_indirect, per_row_weight_indirect_),
                              WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
@@ -105,8 +104,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y,
                                   const uint32_t weight_index,
-                                  const Tensor* weight_index_indirect,
-                                  bool per_row_weight_indirect) {
+                                  const Tensor* weight_index_indirect) {
   constexpr uint32_t kVec4Components = 4;
   constexpr uint32_t kVec2Components = 2;
   constexpr uint32_t kU32Components = 4;
@@ -131,13 +129,13 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index != 0 || has_weight_idx_indirect;
   const bool single_scale_weights = (block_size == K * N);
-  if (per_row_weight_indirect || dispatch_M < min_M_for_tile_optimization) {
+  if (has_weight_idx_indirect || dispatch_M < min_M_for_tile_optimization) {
     uint32_t tile_size_k_vec = 32;
     uint32_t tile_size_n = 4;
 
     const uint32_t b_components = (nbits == 2 ? kVec2Components : kVec4Components);
     const bool broadcast_a = dispatch_M > M;
-    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, per_row_weight_indirect, broadcast_a};
+    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, broadcast_a};
     uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(batch_count * dispatch_M * num_N_tile);
@@ -147,7 +145,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({batch_count, dispatch_M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col, weight_index})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
-        .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, per_row_weight_indirect, broadcast_a);
+        .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, broadcast_a);
     if (has_zero_points) {
       mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
     }

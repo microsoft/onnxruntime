@@ -11,7 +11,6 @@
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
-#param per_row_weight_indirect
 
 #use .getByOffset .setByOffset
 
@@ -83,10 +82,8 @@ $MAIN {
 
 #if has_bias
 #if has_weight_idx
-#if per_row_weight_indirect
+#if has_weight_idx_indirect
     let actual_weight_idx_bias = weight_index_indirect[a_global];
-#elif has_weight_idx_indirect
-    let actual_weight_idx_bias = weight_index_indirect[uniforms.weight_idx];
 #else
     let actual_weight_idx_bias = uniforms.weight_idx;
 #endif
@@ -117,10 +114,8 @@ $MAIN {
 #if single_scale_weights
     let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #if has_weight_idx
-#if per_row_weight_indirect
+#if has_weight_idx_indirect
     let own_scale_b = scales_b.getByOffset(weight_index_indirect[a_global]);
-#elif has_weight_idx_indirect
-    let own_scale_b = scales_b.getByOffset(weight_index_indirect[uniforms.weight_idx]);
 #else
     let own_scale_b = scales_b.getByOffset(uniforms.weight_idx);
 #endif
@@ -149,10 +144,8 @@ $MAIN {
             if (b_global < uniforms.N && k_offset < uniforms.K32)
             {
 #if has_weight_idx
-#if per_row_weight_indirect
+#if has_weight_idx_indirect
                 let actual_weight_idx = weight_index_indirect[a_global];
-#elif has_weight_idx_indirect
-                let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
 #else
                 let actual_weight_idx = uniforms.weight_idx;
 #endif

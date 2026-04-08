@@ -15,7 +15,6 @@
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
-#param per_row_weight_indirect
 
 #use .getByOffset .setByOffset
 
@@ -37,13 +36,10 @@ fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 
 $MAIN {
   let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
+  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
 #if has_weight_idx
-#if per_row_weight_indirect
-  // Per-row expert selection for fused MoE: each M-row uses a different expert's weights.
-  let pre_a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
-  let actual_weight_idx = weight_index_indirect[pre_a_global];
-#elif has_weight_idx_indirect
-  let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#if has_weight_idx_indirect
+  let actual_weight_idx = weight_index_indirect[a_global];
 #else
   let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -61,7 +57,6 @@ $MAIN {
 #if has_bias
   let b_bias_offset = actual_weight_idx * uniforms.N;
 #endif
-  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
   let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
 
   // When broadcast_a_row is true, A has only 1 row but M=k for dispatch.

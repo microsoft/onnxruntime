@@ -59,18 +59,16 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
   DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits,
                                bool has_zero_points, bool has_bias,
                                bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
-                               bool per_row_weight_indirect = false,
                                bool broadcast_a_row = false) : Program{"DP4AMatMulNBitsSmallMProgram"},
-                                                                       tile_size_k_vec_(tile_size_k_vec),
-                                                                       tile_size_(tile_size),
-                                                                       nbits_(nbits),
-                                                                       has_bias_(has_bias),
-                                                                       has_zero_points_(has_zero_points),
-                                                                       has_weight_idx_(has_weight_idx),
-                                                                       has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                                       single_scale_weights_(single_scale_weights),
-                                                                      per_row_weight_indirect_(per_row_weight_indirect),
-                                                                      broadcast_a_row_(broadcast_a_row) {}
+                                                               tile_size_k_vec_(tile_size_k_vec),
+                                                               tile_size_(tile_size),
+                                                               nbits_(nbits),
+                                                               has_bias_(has_bias),
+                                                               has_zero_points_(has_zero_points),
+                                                               has_weight_idx_(has_weight_idx),
+                                                               has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                               single_scale_weights_(single_scale_weights),
+                                                               broadcast_a_row_(broadcast_a_row) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
@@ -93,7 +91,6 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
   bool has_weight_idx_;
   bool has_weight_idx_indirect_;
   bool single_scale_weights_;
-  bool per_row_weight_indirect_;
   bool broadcast_a_row_;
 };
 
@@ -111,8 +108,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y,
                                   const uint32_t weight_index,
-                                  const Tensor* weight_index_indirect = nullptr,
-                                  bool per_row_weight_indirect = false);
+                                  const Tensor* weight_index_indirect = nullptr);
 
 bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    uint64_t accuracy_level,

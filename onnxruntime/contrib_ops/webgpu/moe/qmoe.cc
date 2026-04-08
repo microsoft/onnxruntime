@@ -245,7 +245,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   if (moe_params.num_rows == 1) {
     // Fused MoE path for 1 token: instead of looping k times with separate dispatches,
     // run a single batched MatMulNBits with M=k where each row uses a different expert's
-    // weights via per_row_weight_indirect mode. A's single row is broadcast to all k rows.
+    // weights via weight_index_indirect. A's single row is broadcast to all k rows.
     // This reduces dispatches from 1 + k*4 = 17 to 5 (gate + fc1 + swiglu + fc2 + mix).
 
     const uint32_t k = static_cast<uint32_t>(k_);
@@ -273,7 +273,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
     status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
                               K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
-                              &fc1_outputs, 0, &indirect_experts, /*per_row_weight_indirect=*/true, /*override_M=*/k);
+                              &fc1_outputs, 0, &indirect_experts, /*override_M=*/k);
     ORT_RETURN_IF_ERROR(status);
 
     // Step 3: SwiGLU on all k rows at once
@@ -302,7 +302,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
     status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
                               K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
-                              &fc2_outputs, 0, &indirect_experts, /*per_row_weight_indirect=*/true, /*override_M=*/0);
+                              &fc2_outputs, 0, &indirect_experts, /*override_M=*/0);
     ORT_RETURN_IF_ERROR(status);
 
     // Step 5: Fused FinalMix — accumulate all k expert results weighted by router_values
