@@ -13,24 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Portions Copyright (c) Microsoft Corporation
+// Adapted from onnxruntime/test/autoep/library/example_plugin_ep/ep_arena.h
+// for the CUDA plugin EP arena allocator.
 
 #pragma once
+
+#include <algorithm>
 #include <array>
+#include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <set>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#define ORT_API_MANUAL_INIT
-#include "onnxruntime_cxx_api.h"
-#undef ORT_API_MANUAL_INIT
+#include "cuda_allocator_plugin.h"
 
-#include "ep_allocator.h"
-#include "../plugin_ep_utils.h"
+#include "core/common/common.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_WINDOWS) || defined(_WIN32)
 #include <intrin.h>
 #endif
+
+namespace onnxruntime {
+namespace cuda_plugin {
+
+// Type-erasing unique_ptr for raw OrtAllocator ownership.
+// The factory creates the raw allocator with a deleter that knows the concrete type.
+using AllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
 
 enum ArenaExtendStrategy {
   kDefault = -1,
@@ -38,7 +53,7 @@ enum ArenaExtendStrategy {
   kSameAsRequested = 1,
 };
 
-// copied from onnxruntime::OrtArenaCfg so the values and config key names match
+// Copied from onnxruntime::OrtArenaCfg so the values and config key names match.
 struct ArenaConfig {
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
@@ -71,14 +86,15 @@ struct ArenaConfig {
   int initial_growth_chunk_size_bytes;
   int64_t max_power_of_two_extend_bytes;
 
-  bool IsValid() {
-    return initial_chunk_size_bytes > 0 &&
+  bool IsValid() const {
+    return max_mem > 0 &&
+           (arena_extend_strategy == kNextPowerOfTwo || arena_extend_strategy == kSameAsRequested) &&
+           initial_chunk_size_bytes > 0 &&
            max_dead_bytes_per_chunk > 0 &&
            initial_growth_chunk_size_bytes > 0 &&
            max_power_of_two_extend_bytes > 0;
   }
 
-  // config key names that we parse in FromKeyValuePairs
   struct ConfigKeyNames {
     static constexpr const char* ArenaExtendStrategy = "arena.extend_strategy";
     static constexpr const char* InitialChunkSizeBytes = "arena.initial_chunk_size_bytes";
@@ -93,48 +109,133 @@ struct ArenaConfig {
     const char* value = nullptr;
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::ArenaExtendStrategy); value) {
-      config.arena_extend_strategy = std::string(value) == "1" ? kSameAsRequested : kNextPowerOfTwo;
+      const std::string sval(value);
+      if (sval == "0") {
+        config.arena_extend_strategy = kNextPowerOfTwo;
+      } else if (sval == "1") {
+        config.arena_extend_strategy = kSameAsRequested;
+      } else {
+        config.arena_extend_strategy = static_cast<ArenaExtendStrategy>(-2);  // invalid — will fail IsValid()
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialChunkSizeBytes); value) {
-      config.initial_chunk_size_bytes = std::stoi(std::string(value));
+      ORT_TRY {
+        int64_t parsed = std::stoll(std::string(value));
+        if (parsed <= 0 || parsed > std::numeric_limits<int>::max()) {
+          config.initial_chunk_size_bytes = -1;  // will fail IsValid()
+        } else {
+          config.initial_chunk_size_bytes = static_cast<int>(parsed);
+        }
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.initial_chunk_size_bytes = -1;  // will fail IsValid()
+        });
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxDeadBytesPerChunk); value) {
-      config.max_dead_bytes_per_chunk = std::stoi(std::string(value));
+      ORT_TRY {
+        int64_t parsed = std::stoll(std::string(value));
+        if (parsed <= 0 || parsed > std::numeric_limits<int>::max()) {
+          config.max_dead_bytes_per_chunk = -1;  // will fail IsValid()
+        } else {
+          config.max_dead_bytes_per_chunk = static_cast<int>(parsed);
+        }
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.max_dead_bytes_per_chunk = -1;  // will fail IsValid()
+        });
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::InitialGrowthChunkSizeBytes); value) {
-      config.initial_growth_chunk_size_bytes = std::stoi(std::string(value));
+      ORT_TRY {
+        int64_t parsed = std::stoll(std::string(value));
+        if (parsed <= 0 || parsed > std::numeric_limits<int>::max()) {
+          config.initial_growth_chunk_size_bytes = -1;  // will fail IsValid()
+        } else {
+          config.initial_growth_chunk_size_bytes = static_cast<int>(parsed);
+        }
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.initial_growth_chunk_size_bytes = -1;  // will fail IsValid()
+        });
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxPowerOfTwoExtendBytes); value) {
-      config.max_power_of_two_extend_bytes = std::stoll(value);
+      ORT_TRY {
+        config.max_power_of_two_extend_bytes = std::stoll(value);
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.max_power_of_two_extend_bytes = -1;  // will fail IsValid()
+        });
+      }
     }
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::MaxMem); value) {
-      config.max_mem = static_cast<size_t>(std::stoull(std::string(value)));
+      const std::string sval(value);
+      ORT_TRY {
+        // std::stoull silently wraps negative values via strtoull.
+        // Reject leading '-' explicitly so that e.g. "-100" doesn't become a huge budget.
+        if (!sval.empty() && sval[0] == '-') {
+          config.max_mem = 0;  // will fail IsValid()
+        } else {
+          size_t parsed = static_cast<size_t>(std::stoull(sval));
+          // Treat 0 as unlimited — avoids arithmetic issues and silent allocation failures.
+          config.max_mem = (parsed == 0) ? std::numeric_limits<size_t>::max() : parsed;
+        }
+      }
+      ORT_CATCH(const std::exception&) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          config.max_mem = 0;  // will fail IsValid()
+        });
+      }
     }
 
     return config;
   }
 };
 
+// Macros used by ArenaImpl (adapted from plugin_ep_utils.h for CUDA plugin namespace).
+
+#define CUDA_ARENA_ENFORCE(condition, ...)               \
+  do {                                                   \
+    if (!(condition)) {                                  \
+      std::ostringstream oss;                            \
+      oss << "CUDA_ARENA_ENFORCE failed: " << #condition \
+          << " " << __VA_ARGS__;                         \
+      ORT_THROW(oss.str());                              \
+    }                                                    \
+  } while (false)
+
+#define CUDA_ARENA_LOG(level, ...)                                                                         \
+  do {                                                                                                     \
+    std::ostringstream ss;                                                                                 \
+    ss << __VA_ARGS__;                                                                                     \
+    OrtStatus* _log_status = api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), \
+                                                    ORT_FILE, __LINE__, __FUNCTION__);                     \
+    if (_log_status) api_.ReleaseStatus(_log_status);                                                      \
+  } while (false)
+
+#define CUDA_ARENA_RETURN_ERROR(code, ...)            \
+  do {                                                \
+    std::ostringstream ss;                            \
+    ss << __VA_ARGS__;                                \
+    return api_.CreateStatus(code, ss.str().c_str()); \
+  } while (false)
+
 // A memory allocator that implements a 'best-fit with coalescing' algorithm.
 // This is essentially a very simple version of Doug Lea's malloc (dlmalloc).
 //
-// The goal of this allocator is to support defragmentation via coalescing.
-// One assumption we make is that the process using this allocator owns pretty much all of the memory, and that nearly
-// all requests to allocate memory go through this interface.
+// Adapted from the example plugin EP arena (ep_arena.h/cc).
 class ArenaImpl {
  public:
-  static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
-  static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
-  static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
-  static const int DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES = 2 * 1024 * 1024;
-  static const int64_t DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES = 1024 * 1024 * 1024;  // 1GB
-  static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
-
   ArenaImpl(AllocatorUniquePtr allocator, const ArenaConfig& config, const OrtApi& api,
             const OrtLogger& logger);
 
@@ -144,8 +245,12 @@ class ArenaImpl {
   void* AllocOnStream(size_t size, OrtSyncStream* stream);
   void Free(void* p);
 
-  // allocate memory directly. this is used for initializers so they don't affect the arena growth patterns
+  // Allocate memory directly. Used for initializers so they don't affect arena growth patterns.
   void* Reserve(size_t size);
+
+  // Release unused memory. Frees all allocation regions where every chunk is free.
+  // Resets growth to initial_growth_chunk_size_bytes_.
+  OrtStatus* Shrink();
 
   OrtStatus* GetStats(OrtKeyValuePairs** stats);
 
@@ -153,21 +258,13 @@ class ArenaImpl {
   size_t AllocatedSize(const void* ptr);
 
   // Un-assign chunks that are currently assigned to the stream.
-  //
-  // This should be called from OrtSyncStreamImpl::OnSessionRunEnd.
-  // A stream is used in one session at a time. When called from OnSessionRunEnd we know that the stream is done and
-  // will not be performing any more operations on the data.
-  //
-  // We don't have a better way to know when it's safe to re-use a chunk in another stream given the actual memory
-  // usage is asynchronous on the GPU side, and the code assigning memory is running on CPU prior to that.
+  // Called from OrtSyncStreamImpl::OnSessionRunEnd.
   OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl);
 
  private:
   void* AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bool dump_log_on_failure);
   void DeallocateRawInternal(void* ptr);
 
-  // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
-  // kInvalidChunkHandle means an invalid chunk
   using ChunkHandle = size_t;
   static const size_t kInvalidChunkHandle = static_cast<size_t>(-1);
 
@@ -175,46 +272,15 @@ class ArenaImpl {
   static const int kInvalidBinNum = -1;
   static const int kNumBins = 21;
 
-  // Chunks point to memory.  Their prev/next pointers form a
-  // doubly-linked list of addresses sorted by base address that
-  // must be contiguous.  Chunks contain information about whether
-  // they are in use or whether they are free, and contain a pointer
-  // to the bin they are in.
   struct Chunk {
-    size_t size = 0;  // Full size of buffer.
-
-    // We sometimes give chunks that are larger than needed to reduce
-    // fragmentation.  requested_size keeps track of what the client
-    // actually wanted so we can understand whether our splitting
-    // strategy is efficient.
+    size_t size = 0;
     size_t requested_size = 0;
-
-    // allocation_id is set to -1 when the chunk is not in use. It is assigned a
-    // value greater than zero before the chunk is returned from
-    // AllocateRaw, and this value is unique among values assigned by
-    // the parent allocator.
     int64_t allocation_id = -1;
-    void* ptr = nullptr;  // pointer to granted subbuffer.
-
-    // If not kInvalidChunkHandle, the memory referred to by 'prev' is directly
-    // preceding the memory used by this chunk.  E.g., It should start
-    // at 'ptr - prev->size'
+    void* ptr = nullptr;
     ChunkHandle prev = kInvalidChunkHandle;
-
-    // If not kInvalidChunkHandle, the memory referred to by 'next' is directly
-    // following the memory used by this chunk.  E.g., It should be at
-    // 'ptr + next->size'
     ChunkHandle next = kInvalidChunkHandle;
-
-    // What bin are we in?
     BinNum bin_num = kInvalidBinNum;
-
     OrtSyncStream* stream = nullptr;
-    // Current sync id of `stream` when it was assigned the Chunk.
-    // If the chunk is assigned to a stream and is free, and another Stream wants to use it, that Stream must have
-    // synchronized with `stream` at a sync id > to stream_sync_id.
-    // stream_sync_id is set when the chunk is first assigned to `stream`.
-    // The sync id is incremented at the start of sync, so any chunk with a previous sync id is safe to re-assign.
     uint64_t stream_sync_id = 0;
 
     bool in_use() const { return allocation_id != -1; }
@@ -226,7 +292,6 @@ class ArenaImpl {
         Chunk* p = a->ChunkFromHandle(prev);
         ss << ", prev: " << p->DebugString(a, false);
       }
-
       if (recurse && next != ArenaImpl::kInvalidChunkHandle) {
         Chunk* n = a->ChunkFromHandle(next);
         ss << ", next: " << n->DebugString(a, false);
@@ -235,18 +300,14 @@ class ArenaImpl {
     }
   };
 
-  // A Bin is a collection of similar-sized free chunks.
   struct Bin {
-    // All chunks in this bin have >= bin_size memory.
     size_t bin_size = 0;
 
     struct ChunkComparator {
       explicit ChunkComparator(ArenaImpl* allocator)
           : allocator_(allocator) {}
 
-      // Sort first by size and then use pointer address as a tie breaker.
-      bool operator()(const ChunkHandle ha,
-                      const ChunkHandle hb) const {
+      bool operator()(const ChunkHandle ha, const ChunkHandle hb) const {
         const Chunk* a = allocator_->ChunkFromHandle(ha);
         const Chunk* b = allocator_->ChunkFromHandle(hb);
         if (a->size != b->size) {
@@ -256,12 +317,10 @@ class ArenaImpl {
       }
 
      private:
-      ArenaImpl* allocator_;  // The parent allocator
+      ArenaImpl* allocator_;
     };
 
     typedef std::set<ChunkHandle, ChunkComparator> FreeChunkSet;
-    // List of free chunks within the bin, sorted by chunk size.
-    // Chunk * not owned.
     FreeChunkSet free_chunks;
     Bin(ArenaImpl* allocator, size_t bs)
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
@@ -270,10 +329,6 @@ class ArenaImpl {
   static const size_t kMinAllocationBits = 8;
   static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
 
-  // AllocationRegion maps pointers to ChunkHandles for a single
-  // contiguous memory region.
-  //
-  // This class is thread-compatible.
   class AllocationRegion {
    public:
     AllocationRegion(void* ptr, size_t memory_size, int64_t id)
@@ -281,8 +336,7 @@ class ArenaImpl {
           memory_size_(memory_size),
           end_ptr_(static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)),
           id_(id) {
-      EP_ENFORCE(0 == memory_size % kMinAllocationSize, __FUNCTION__);
-
+      CUDA_ARENA_ENFORCE(0 == memory_size % kMinAllocationSize, __FUNCTION__);
       const size_t n_handles = (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
       handles_ = std::make_unique<ChunkHandle[]>(n_handles);
       for (size_t i = 0; i < n_handles; i++) {
@@ -325,49 +379,37 @@ class ArenaImpl {
       std::swap(handles_, other.handles_);
     }
 
-    int IndexFor(const void* p) const {
+    size_t IndexFor(const void* p) const {
       std::uintptr_t p_int = reinterpret_cast<std::uintptr_t>(p);
       std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(ptr_);
-      EP_ENFORCE(p_int >= base_int, "AllocationRegion::IndexFor");
-      EP_ENFORCE(p_int < base_int + memory_size_, "AllocationRegion::IndexFor");
-      return static_cast<int>(((p_int - base_int) >> kMinAllocationBits));
+      CUDA_ARENA_ENFORCE(p_int >= base_int, "AllocationRegion::IndexFor");
+      CUDA_ARENA_ENFORCE(p_int < base_int + memory_size_, "AllocationRegion::IndexFor");
+      return static_cast<size_t>((p_int - base_int) >> kMinAllocationBits);
     }
 
-    // metadata about the allocation region.
     void* ptr_ = nullptr;
     size_t memory_size_ = 0;
     void* end_ptr_ = nullptr;
-    // A unique identifier for this allocation region
-    // (May be used by the client to track which allocation region was allocated first, second, and so on)
     int64_t id_ = -1;
-
-    // Array of size "memory_size / kMinAllocationSize".  It is
-    // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
-    // for the memory allocation represented by "p"
     std::unique_ptr<ChunkHandle[]> handles_;
 
     AllocationRegion& operator=(const AllocationRegion&) = delete;
   };
 
-  // RegionManager aggregates one or more "AllocationRegions" and provides
-  // a layer of indirection from pointers to the underlying ChunkHandle,
-  // allowing allocation across multiple discontiguous memory regions.
-  //
-  // This class is thread-compatible.
   class RegionManager {
    public:
     RegionManager() = default;
     ~RegionManager() = default;
 
     void AddAllocationRegion(void* ptr, size_t memory_size, int64_t id) {
-      // Insert sorted by end_ptr
       auto entry = std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
       regions_.insert(entry, AllocationRegion(ptr, memory_size, id));
     }
 
     void RemoveAllocationRegion(void* ptr) {
       auto entry = std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
-      EP_ENFORCE(entry != regions_.end(), "RegionManager::RemoveAllocationRegion Could not find Region for: " << ptr);
+      CUDA_ARENA_ENFORCE(entry != regions_.end(),
+                         "RegionManager::RemoveAllocationRegion Could not find Region for: " << ptr);
       regions_.erase(entry);
     }
 
@@ -378,6 +420,7 @@ class ArenaImpl {
     void set_handle(const void* p, ChunkHandle h) {
       return MutableRegionFor(p)->set_handle(p, h);
     }
+
     void erase(const void* p) { return MutableRegionFor(p)->erase(p); }
 
     const std::vector<AllocationRegion>& regions() const { return regions_; }
@@ -399,69 +442,36 @@ class ArenaImpl {
     const AllocationRegion* RegionFor(const void* p) const {
       auto entry = std::upper_bound(regions_.begin(), regions_.end(), p, &Comparator);
 
-      if (entry != regions_.end()) {
-        return &(*entry);
-      }
-
-      EP_ENFORCE(entry != regions_.end(), "RegionManager::RegionFor Could not find Region for: " << p);
-      return nullptr;
+      CUDA_ARENA_ENFORCE(entry != regions_.end(),
+                         "RegionManager::RegionFor Could not find Region for: " << p);
+      return &(*entry);
     }
 
    private:
     std::vector<AllocationRegion> regions_;
   };
 
-  // Returns 'bytes' rounded up to the next highest kMinAllocationSize.
   size_t RoundedBytes(size_t bytes);
-
-  // Try to add a new memory region that can satisfy an allocation of
-  // 'rounded_bytes' bytes.
   OrtStatus* Extend(size_t rounded_bytes);
-
-  // Returns an underlying allocated chunk of size
-  // 'rounded_bytes'.
-  ArenaImpl::Chunk* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes, OrtSyncStream* stream);
-
-  // Splits the chunk specified by 'h' into two chunks, one at least
-  // of size 'num_bytes'.
+  Chunk* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes, OrtSyncStream* stream);
   void SplitChunk(ChunkHandle h, size_t num_bytes);
-
-  // Merges the two chunk handles.  Requires that the chunks are
-  // contiguous in their allocation.
   void Merge(ChunkHandle h, ChunkHandle h2);
-
-  // Frees the memory represented by 'h', coalescing the chunk if
-  // possible.
   void FreeAndMaybeCoalesce(ChunkHandle h);
-
-  ArenaImpl::ChunkHandle Coalesce(ChunkHandle h);
-
-  // Adds the chunk 'h' to the proper free bin.
+  ChunkHandle Coalesce(ChunkHandle h);
   void InsertFreeChunkIntoBin(ChunkHandle h);
-
-  // Removes the free chunk pointed to by 'c' from the set free_chunks.
   void RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
                                   const Bin::FreeChunkSet::iterator& c);
-
-  // Removes a free chunk from the bin.
   void RemoveFreeChunkFromBin(ChunkHandle h);
-
-  ArenaImpl::Chunk* SplitFreeChunkFromBin(ArenaImpl::Bin::FreeChunkSet* free_chunks,
-                                          const ArenaImpl::Bin::FreeChunkSet::iterator& citer,
-                                          size_t rounded_bytes,
-                                          size_t num_bytes);
-
-  // Removes the chunk metadata represented by 'h'.
+  Chunk* SplitFreeChunkFromBin(Bin::FreeChunkSet* free_chunks,
+                               const Bin::FreeChunkSet::iterator& citer,
+                               size_t rounded_bytes,
+                               size_t num_bytes);
   void DeleteChunk(ChunkHandle h);
-
   void DumpMemoryLog(size_t num_bytes);
-
   ChunkHandle AllocateChunk();
   void DeallocateChunk(ChunkHandle h);
-
   Chunk* ChunkFromHandle(ChunkHandle h);
 
-  // Information about a Bin that is useful for debugging.
   struct BinDebugInfo {
     size_t total_bytes_in_use = 0;
     size_t total_bytes_in_bin = 0;
@@ -470,7 +480,6 @@ class ArenaImpl {
     size_t total_chunks_in_bin = 0;
   };
 
-  // Computes and returns a BinDebugInfo for each Bin.
   std::array<BinDebugInfo, kNumBins> GetBinDebugInfo();
 
   int Log2FloorNonZeroSlow(uint64_t n) {
@@ -482,11 +491,10 @@ class ArenaImpl {
     return r - 1;
   }
 
-  // Returns floor(log2(n)).
   int Log2FloorNonZero(uint64_t n) {
 #if defined(__GNUC__)
     return 63 ^ __builtin_clzll(n);
-#elif defined(PLATFORM_WINDOWS)
+#elif defined(PLATFORM_WINDOWS) || defined(_WIN32)
     unsigned long index;
 #if defined(_WIN64)
     _BitScanReverse64(&index, n);
@@ -505,7 +513,6 @@ class ArenaImpl {
 #endif
   }
 
-  // Map from bin size to Bin
   Bin* BinFromIndex(BinNum index) {
     return reinterpret_cast<Bin*>(&(bins_space_[index * sizeof(Bin)]));
   }
@@ -535,20 +542,13 @@ class ArenaImpl {
   RegionManager region_manager_;
   size_t curr_region_allocation_bytes_;
 
-  // Counter containing the next unique identifier to assign to a newly-created chunk.
   int64_t next_allocation_id_;
 
   std::vector<Chunk> chunks_;
-  ChunkHandle free_chunks_list_;  // Pointer to head of linked list of free Chunks
+  ChunkHandle free_chunks_list_;
   std::unordered_map<void*, size_t> reserved_chunks_;
 
-  // chunks being used by a stream
   std::unordered_map<const OrtSyncStream*, std::set<ChunkHandle>> stream_to_chunks_;
-
-  // map to connect the OrtSyncStreamImpl the EP library creates to the OrtSyncStream that ORT uses.
-  // we don't know that it's safe to re-use a chunk until the stream is done with, which is via the call to
-  // OrtSyncStreamImpl::OnSessionRunEnd. the allocations see OrtSyncStream, so we need to connect things up to
-  // un-assign chunks when StreamImpl::OnSessionRunEnd is called.
   std::unordered_map<const OrtSyncStreamImpl*, const OrtSyncStream*> impl_to_stream_;
 
   AllocatorStats stats_{};
@@ -563,71 +563,133 @@ class ArenaImpl {
   ArenaImpl& operator=(ArenaImpl&&) = delete;
 };
 
-struct ArenaAllocator : BaseAllocator {
-  static OrtStatus* CreateOrtArenaAllocator(AllocatorUniquePtr allocator,
-                                            const OrtKeyValuePairs* options,
-                                            const OrtApi& api,
-                                            const OrtLogger& logger,
-                                            std::unique_ptr<ArenaAllocator>& arena_allocator) {
-    ArenaConfig config = options ? ArenaConfig::FromKeyValuePairs(api, *options) : ArenaConfig{};
-    const OrtMemoryInfo* mem_info = allocator->Info(allocator.get());
-    auto impl = std::make_unique<ArenaImpl>(std::move(allocator), config, api, logger);
+// CudaArenaAllocator wraps ArenaImpl and presents an OrtAllocator interface.
+// Inherits from CudaAllocatorBase for uniform allocator handling.
+class CudaArenaAllocator final : public CudaAllocatorBase {
+ public:
+  static OrtStatus* Create(CudaAllocatorKind kind,
+                           const OrtMemoryInfo* memory_info,
+                           AllocatorUniquePtr raw_allocator,
+                           const OrtKeyValuePairs* options,
+                           const OrtApi& api,
+                           const OrtLogger& logger,
+                           std::unique_ptr<CudaArenaAllocator>& out);
 
-    arena_allocator = std::make_unique<ArenaAllocator>(std::move(impl), *mem_info);
-
-    return nullptr;
-  }
-
-  ArenaAllocator(std::unique_ptr<ArenaImpl> implementation, const OrtMemoryInfo& memory_info)
-      : impl_{std::move(implementation)},
-        memory_info_{memory_info} {
+  CudaArenaAllocator(CudaAllocatorKind kind, const OrtMemoryInfo* memory_info,
+                     std::unique_ptr<ArenaImpl> impl)
+      : CudaAllocatorBase(kind, memory_info), impl_(std::move(impl)) {
     version = ORT_API_VERSION;
     Alloc = AllocImpl;
     Reserve = ReserveImpl;
     Free = FreeImpl;
     Info = InfoImpl;
     GetStats = GetStatsImpl;
-    AllocOnStream = AllocOnStreamImpl;
-    Shrink = nullptr;
+    Shrink = ShrinkImpl;
+    // Stream-aware only for device arena, not pinned
+    AllocOnStream = (kind == CudaAllocatorKind::kDevice) ? AllocOnStreamImpl : nullptr;
   }
 
-  // remove the OrtSyncStream* from any chunks that were using the stream
   OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
-    impl_->ResetChunksUsingStream(stream_impl);
+    OrtStatus* err = nullptr;
+    ORT_TRY {
+      err = impl_->ResetChunksUsingStream(stream_impl);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH(...) {
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                       "CudaArenaAllocator::ResetChunksUsingStream failed with an unknown exception.");
+    }
+    return err;  // required for ORT_NO_EXCEPTIONS
+  }
+
+ private:
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* this_, size_t size) noexcept {
+    ORT_TRY {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      return arena.impl_->Alloc(size);
+    }
+    ORT_CATCH(...) {
+    }
     return nullptr;
   }
 
-  static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
-    auto& arena = *static_cast<ArenaAllocator*>(this_);
-    return arena.impl_->Alloc(size);
+  static void* ORT_API_CALL AllocOnStreamImpl(OrtAllocator* this_, size_t size, OrtSyncStream* stream) noexcept {
+    ORT_TRY {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      return arena.impl_->AllocOnStream(size, stream);
+    }
+    ORT_CATCH(...) {
+    }
+    return nullptr;
   }
 
-  static void* ORT_API_CALL AllocOnStreamImpl(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
-    auto& arena = *static_cast<ArenaAllocator*>(this_);
-    return arena.impl_->AllocOnStream(size, stream);
+  static void* ORT_API_CALL ReserveImpl(OrtAllocator* this_, size_t size) noexcept {
+    ORT_TRY {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      return arena.impl_->Reserve(size);
+    }
+    ORT_CATCH(...) {
+    }
+    return nullptr;
   }
 
-  static void* ORT_API_CALL ReserveImpl(struct OrtAllocator* this_, size_t size) {
-    auto& arena = *static_cast<ArenaAllocator*>(this_);
-    return arena.impl_->Reserve(size);
+  static void ORT_API_CALL FreeImpl(OrtAllocator* this_, void* p) noexcept {
+    ORT_TRY {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      arena.impl_->Free(p);
+    }
+    ORT_CATCH(...) {
+      // Swallow: exceptions must not propagate across C ABI boundary.
+    }
   }
 
-  static void ORT_API_CALL FreeImpl(struct OrtAllocator* this_, void* p) {
-    auto& arena = *static_cast<ArenaAllocator*>(this_);
-    arena.impl_->Free(p);
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_) noexcept {
+    const auto& arena = *static_cast<const CudaArenaAllocator*>(this_);
+    return arena.GetMemoryInfo();
   }
 
-  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const struct OrtAllocator* this_) {
-    const auto& arena = *static_cast<const ArenaAllocator*>(this_);
-    return &arena.memory_info_;
+  static OrtStatus* ORT_API_CALL GetStatsImpl(const OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
+    OrtStatus* err = nullptr;
+    ORT_TRY {
+      const auto& arena = *static_cast<const CudaArenaAllocator*>(this_);
+      err = arena.impl_->GetStats(out);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH(...) {
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                       "CudaArenaAllocator::GetStats failed with an unknown exception.");
+    }
+    return err;
   }
 
-  static OrtStatus* ORT_API_CALL GetStatsImpl(const struct OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
-    const auto& arena = *static_cast<const ArenaAllocator*>(this_);
-    return arena.impl_->GetStats(out);
-  };
+  static OrtStatus* ORT_API_CALL ShrinkImpl(OrtAllocator* this_) noexcept {
+    OrtStatus* err = nullptr;
+    ORT_TRY {
+      auto& arena = *static_cast<CudaArenaAllocator*>(this_);
+      err = arena.impl_->Shrink();
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH(...) {
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                       "CudaArenaAllocator::Shrink failed with an unknown exception.");
+    }
+    return err;
+  }
 
- private:
   std::unique_ptr<ArenaImpl> impl_;
-  const OrtMemoryInfo& memory_info_;
 };
+
+}  // namespace cuda_plugin
+}  // namespace onnxruntime

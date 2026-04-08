@@ -17,6 +17,7 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
@@ -170,6 +171,23 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       ep_devices_(ep_devices.begin(), ep_devices.end()),
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+
+  // Extract session-level arena options (ep.<ep_name>.arena.* keys) when the factory
+  // supports allocator creation with options. Only the factory path (not OrtEp::CreateAllocator)
+  // accepts allocator_options, so skip the scan when the factory path won't be used.
+  if (ep_factory_.CreateAllocator && !ort_ep_->CreateAllocator) {
+    const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
+    const std::string arena_prefix = ep_prefix + "arena.";
+    for (const auto& [key, value] : session_options.value.config_options.GetConfigOptionsMap()) {
+      if (key.compare(0, arena_prefix.size(), arena_prefix) == 0) {
+        // Build OrtKeyValuePairs on first match; store bare "arena.*" keys.
+        if (!session_arena_options_) {
+          session_arena_options_.emplace();
+        }
+        session_arena_options_->Add(key.substr(ep_prefix.size()).c_str(), value.c_str());
+      }
+    }
+  }
 
   for (const auto* ep_device : ep_devices_) {
     if (ep_device->device_memory_info != nullptr) {
@@ -672,6 +690,8 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> allocators;
   allocators.reserve(allocator_mem_infos_.size());
 
+  const OrtKeyValuePairs* allocator_options = session_arena_options_ ? &*session_arena_options_ : nullptr;
+
   for (const auto* memory_info : allocator_mem_infos_) {
     OrtAllocator* ort_allocator_ptr = nullptr;
 
@@ -682,7 +702,7 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
     // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
     OrtStatus* ort_status = ort_ep_->CreateAllocator
                                 ? ort_ep_->CreateAllocator(ort_ep_.get(), memory_info, &ort_allocator_ptr)
-                                : ep_factory_.CreateAllocator(&ep_factory_, memory_info, /*options*/ nullptr,
+                                : ep_factory_.CreateAllocator(&ep_factory_, memory_info, allocator_options,
                                                               &ort_allocator_ptr);
 
     // throw or log? start with throw
@@ -702,7 +722,17 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
         [this](OrtAllocator* allocator) {
           ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
         });
-    allocators.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator)));
+
+    // Use the arena wrapper when the allocator supports Shrink(), matching
+    // the logic in Environment::CreateSharedAllocatorImpl. This ensures
+    // per-session plugin arenas are visible to ShrinkMemoryArenas.
+    AllocatorPtr alloc_ptr;
+    if (ort_allocator->version >= 25 && ort_allocator->Shrink != nullptr) {
+      alloc_ptr = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
+    } else {
+      alloc_ptr = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+    }
+    allocators.push_back(std::move(alloc_ptr));
   }
 
   return allocators;
