@@ -60,6 +60,7 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
     class_count_ = classlabels_ints_.size();
   }
 
+  ORT_ENFORCE(class_count_ < 65536, "The number of class ", class_count_, " is beyond what this kernel supports (65535).");
   ORT_ENFORCE(proba_.size() == probb_.size(), "proba and probb must have the same size.");
   ORT_ENFORCE(coefficients_.size() > 0, "coefficients are empty.");
 
@@ -198,11 +199,11 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   // Total number of classifiers comparing pairs between the classes
   // e.g. if you have A, B C and D classes, the number of classifiers to compare between each pair is 6
   //      with AB, AC, AD, BC, BD and CD
-  const int64_t num_classifiers = class_count_ * (class_count_ - 1) / 2;  // == (class_count_-1)!
-  const int64_t class_count_squared = class_count_ * class_count_;
+  const size_t num_classifiers = class_count_ * (class_count_ - 1) / 2;  // == (class_count_-1)!
+  const size_t class_count_squared = class_count_ * class_count_;
   const bool have_proba = proba_.size() > 0;
 
-  int64_t final_scores_per_batch = class_count_;
+  size_t final_scores_per_batch = class_count_;
   if (mode_ == SVM_TYPE::SVM_SVC && !have_proba) {
     if (class_count_ > 2)
       final_scores_per_batch = num_classifiers;
@@ -218,7 +219,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
 
   // both outputs are required so can't be nullptr
   Tensor& Y = *ctx.Output(0, {num_batches});
-  Tensor& Z = *ctx.Output(1, {num_batches, final_scores_per_batch});
+  Tensor& Z = *ctx.Output(1, {num_batches, static_cast<int64_t>(final_scores_per_batch)});
 
   auto final_scores = Z.MutableDataAsSpan<float>();
 
@@ -346,7 +347,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                          &classifier_scores_data, num_classifiers, &votes_data, &Y,
                          num_scores_per_batch, write_additional_scores](ptrdiff_t idx) {
     int n = SafeInt<int32_t>(idx);  // convert to a usable sized type
-    auto cur_scores = final_scores.subspan(n * SafeInt<size_t>(final_scores_per_batch), final_scores_per_batch);
+    auto cur_scores = final_scores.subspan(n * SafeInt<int32_t>(final_scores_per_batch), final_scores_per_batch);
 
     if (mode_ == SVM_TYPE::SVM_SVC && have_proba) {
       auto probsp2 = gsl::make_span<float>(probsp2_data.data() + (n * class_count_squared), class_count_squared);
