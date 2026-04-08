@@ -249,7 +249,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     // This reduces dispatches from 1 + k*4 = 17 to 5 (gate + fc1 + swiglu + fc2 + mix).
 
     const uint32_t k = static_cast<uint32_t>(k_);
-    TensorShape gate_value_shape({1, num_experts});
+    const uint32_t num_tokens = 1;
+    TensorShape gate_value_shape({num_tokens, num_experts});
     TensorShape indirect_experts_shape({k});
 
     Tensor router_values = context.CreateGPUTensor(dtype, gate_value_shape);
@@ -262,8 +263,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
         .AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&indirect_experts, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(num_experts)
-        .SetDispatchGroupSize(1)
-        .AddUniformVariables({static_cast<uint32_t>(1), num_experts})
+        .SetDispatchGroupSize(num_tokens)
+        .AddUniformVariables({num_tokens, num_experts})
         .CacheHint(k_, is_fp16 ? "fp16" : "fp32");
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
