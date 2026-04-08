@@ -32,10 +32,6 @@ struct VariantSchema {
   std::optional<VariantConstraintsSchema> constraints;
 };
 
-struct ComponentSchema {
-  std::unordered_map<std::string, VariantSchema> model_variants;
-};
-
 struct ManifestSchema {
   std::string model_name;
   std::optional<std::string> model_version;
@@ -62,12 +58,6 @@ void from_json(const json& j, VariantSchema& v) {
   if (j.contains(kModelIdKey) && j[kModelIdKey].is_string()) v.model_id = j[kModelIdKey].get<std::string>();
   if (j.contains(kConstraintsKey) && j[kConstraintsKey].is_object()) {
     v.constraints = j[kConstraintsKey].get<VariantConstraintsSchema>();
-  }
-}
-
-void from_json(const json& j, ComponentSchema& c) {
-  if (j.contains(kModelVariantsKey) && j[kModelVariantsKey].is_object()) {
-    c.model_variants = j[kModelVariantsKey].get<std::unordered_map<std::string, VariantSchema>>();
   }
 }
 
