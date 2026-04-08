@@ -328,7 +328,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
                   ? static_cast<ThresholdType>(attributes.target_class_weights[i])
                   : attributes.target_class_weights_as_tensor[i];
     ORT_ENFORCE(w.i >= 0 && w.i < n_targets_or_classes_,
-                "target_ids[", i, "]=", w.i, " not in the expected range [0, ", n_targets_or_classes_ - 1, "]");
+                "target_class_ids[", i, "]=", w.i, " not in the expected range [0, ", n_targets_or_classes_ - 1, "]");
     if (leaf.truenode_or_weight.weight_data.n_weights == 0) {
       leaf.truenode_or_weight.weight_data.weight = static_cast<int32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
