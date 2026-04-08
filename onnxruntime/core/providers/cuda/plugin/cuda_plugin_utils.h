@@ -30,6 +30,42 @@
   } while (0)
 #endif
 
+inline Ort::Status StatusFromCudaError(cudaError_t cuda_err) {
+  if (cuda_err == cudaSuccess) {
+    return Ort::Status{};
+  }
+
+  return Ort::Status{
+      (std::string("CUDA error: ") + cudaGetErrorName(cuda_err) + ": " +
+       cudaGetErrorString(cuda_err))
+          .c_str(),
+      ORT_EP_FAIL};
+}
+
+inline Ort::Status StatusFromCublasError(cublasStatus_t cublas_err) {
+  if (cublas_err == CUBLAS_STATUS_SUCCESS) {
+    return Ort::Status{};
+  }
+
+  return Ort::Status{
+      (std::string("cuBLAS error: ") + cublasGetStatusString(cublas_err)).c_str(),
+      ORT_EP_FAIL};
+}
+
+inline Ort::Status StatusFromCudnnError(cudnnStatus_t cudnn_err) {
+  if (cudnn_err == CUDNN_STATUS_SUCCESS) {
+    return Ort::Status{};
+  }
+
+  return Ort::Status{
+      (std::string("cuDNN error: ") + cudnnGetErrorString(cudnn_err)).c_str(),
+      ORT_EP_FAIL};
+}
+
+inline bool TryGetCurrentCudaDevice(int& device_id) noexcept {
+  return cudaGetDevice(&device_id) == cudaSuccess;
+}
+
 // Throwing variant for use in constructors and non-OrtStatus contexts.
 // Analogous to CUDA_CALL_THROW in the non-plugin build.
 #ifndef PL_CUDA_CALL_THROW
@@ -45,16 +81,16 @@
 #endif
 
 #ifndef PL_CUBLAS_RETURN_IF_ERROR
-#define PL_CUBLAS_RETURN_IF_ERROR(cublas_call_expr)       \
-  do {                                                    \
-    cublasStatus_t _cublas_err = (cublas_call_expr);      \
-    if (_cublas_err != CUBLAS_STATUS_SUCCESS) {           \
-      return Ort::GetApi().CreateStatus(                  \
-          ORT_EP_FAIL,                                    \
-          (std::string("cuBLAS error: ") +                \
-           std::to_string(static_cast<int>(_cublas_err))) \
-              .c_str());                                  \
-    }                                                     \
+#define PL_CUBLAS_RETURN_IF_ERROR(cublas_call_expr)  \
+  do {                                               \
+    cublasStatus_t _cublas_err = (cublas_call_expr); \
+    if (_cublas_err != CUBLAS_STATUS_SUCCESS) {      \
+      return Ort::GetApi().CreateStatus(             \
+          ORT_EP_FAIL,                               \
+          (std::string("cuBLAS error: ") +           \
+           cublasGetStatusString(_cublas_err))       \
+              .c_str());                             \
+    }                                                \
   } while (0)
 #endif
 
