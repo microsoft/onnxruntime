@@ -135,7 +135,7 @@ Ort::Session session(env, model_path, session_options);
 
 *Using the EP ABI (Standalone Plugin):*
 ```sh
-onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -t 5 -i "enable_cuda_graph|0" "model.onnx"
+onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -t 5 --plugin_ep_options "enable_cuda_graph|0"  "model.onnx"
 ```
 
 *Using the Built-in EP (Deprecated):*
