@@ -300,6 +300,9 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   ORT_ENFORCE(attributes.target_class_ids.size() == limit,
               "target_class_ids size (", attributes.target_class_ids.size(),
               ") must match target_class_nodeids size (", limit, ")");
+  ORT_ENFORCE(attributes.target_class_treeids.size() == limit,
+              "target_class_treeids size (", attributes.target_class_treeids.size(),
+              ") must match target_class_nodeids size (", limit, ")");
   ORT_ENFORCE(attributes.target_class_weights_as_tensor.empty() ||
                   attributes.target_class_weights_as_tensor.size() == limit,
               "target_class_weights_as_tensor size (", attributes.target_class_weights_as_tensor.size(),
@@ -463,9 +466,12 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
 
   TreeNodeElement<ThresholdType> node;
   node.flags = Convert_NODE_MODE_ONNX_to_ORT(cmodes[i]);
+  if (node.flags != NODE_MODE_ORT::LEAF) {
+    ORT_ENFORCE(nodes_featureids[i] >= 0 && nodes_featureids[i] <= std::numeric_limits<int>::max(),
+                "nodes_featureids[", i, "]=", nodes_featureids[i],
+                " must be in [0, ", std::numeric_limits<int>::max(), "] for non-leaf nodes.");
+  }
   node.feature_id = static_cast<int>(node.flags == NODE_MODE_ORT::LEAF ? -1 : nodes_featureids[i]);
-  ORT_ENFORCE(node.flags == NODE_MODE_ORT::LEAF || node.feature_id >= 0,
-              "nodes_featureids[", i, "]=", node.feature_id, " cannot be negative if the node is not a leaf.");
   if (node.feature_id > max_feature_id_) {
     max_feature_id_ = node.feature_id;
   }
@@ -631,7 +637,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
         }
         for (j = 0; j < static_cast<size_t>(n_trees_); ++j) {
           for (i = batch; i < batch_end; ++i) {
-            agg.ProcessTreeNodePrediction1(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data_end));
+            agg.ProcessTreeNodePrediction1(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data + (i + 1) * stride));
           }
         }
         for (i = batch; i < batch_end; ++i) {
@@ -648,7 +654,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
-            [this, &agg, &scores, num_threads, x_data, x_data_end, N, begin_n, end_n, stride](ptrdiff_t batch_num) {
+            [this, &agg, &scores, num_threads, x_data, N, begin_n, end_n, stride](ptrdiff_t batch_num) {
               auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, onnxruntime::narrow<size_t>(this->n_trees_));
               for (int64_t i = begin_n; i < end_n; ++i) {
                 scores[batch_num * SafeInt<ptrdiff_t>(N) + i] = {0, 0};
@@ -656,7 +662,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               for (auto j = work.start; j < work.end; ++j) {
                 for (int64_t i = begin_n; i < end_n; ++i) {
                   agg.ProcessTreeNodePrediction1(scores[batch_num * SafeInt<ptrdiff_t>(N) + i],
-                                                 *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data_end));
+                                                 *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data + (i + 1) * stride));
                 }
               }
             });
@@ -679,10 +685,10 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       concurrency::ThreadPool::TryBatchParallelFor(
           ttp,
           SafeInt<int32_t>(N),
-          [this, &agg, x_data, x_data_end, z_data, stride, label_data](ptrdiff_t i) {
+          [this, &agg, x_data, z_data, stride, label_data](ptrdiff_t i) {
             ScoreValue<ThresholdType> score = {0, 0};
             for (size_t j = 0; j < static_cast<size_t>(n_trees_); ++j) {
-              agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data_end));
+              agg.ProcessTreeNodePrediction1(score, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data + (i + 1) * stride));
             }
 
             agg.FinalizeScores1(z_data + i, score,
@@ -731,7 +737,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
         }
         for (j = 0, limit = roots_.size(); j < limit; ++j) {
           for (i = batch; i < batch_end; ++i) {
-            agg.ProcessTreeNodePrediction(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data_end), weights_);
+            agg.ProcessTreeNodePrediction(scores[SafeInt<ptrdiff_t>(i - batch)], *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data + (i + 1) * stride), weights_);
           }
         }
         for (i = batch; i < batch_end; ++i) {
@@ -749,7 +755,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
-            [this, &agg, &scores, num_threads, x_data, x_data_end, N, stride, begin_n, end_n](ptrdiff_t batch_num) {
+            [this, &agg, &scores, num_threads, x_data, N, stride, begin_n, end_n](ptrdiff_t batch_num) {
               auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, onnxruntime::narrow<size_t>(this->n_trees_));
               for (int64_t i = begin_n; i < end_n; ++i) {
                 scores[batch_num * SafeInt<ptrdiff_t>(N) + i].resize(onnxruntime::narrow<size_t>(n_targets_or_classes_), {0, 0});
@@ -757,7 +763,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
               for (auto j = work.start; j < work.end; ++j) {
                 for (int64_t i = begin_n; i < end_n; ++i) {
                   agg.ProcessTreeNodePrediction(scores[batch_num * SafeInt<ptrdiff_t>(N) + i],
-                                                *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data_end), weights_);
+                                                *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data + (i + 1) * stride), weights_);
                 }
               }
             });
@@ -781,7 +787,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
       concurrency::ThreadPool::TrySimpleParallelFor(
           ttp,
           num_threads,
-          [this, &agg, num_threads, x_data, x_data_end, z_data, label_data, N, stride](ptrdiff_t batch_num) {
+          [this, &agg, num_threads, x_data, z_data, label_data, N, stride](ptrdiff_t batch_num) {
             size_t j, limit;
             InlinedVector<ScoreValue<ThresholdType>> scores(onnxruntime::narrow<size_t>(n_targets_or_classes_));
             auto work = concurrency::ThreadPool::PartitionWork(batch_num, onnxruntime::narrow<ptrdiff_t>(num_threads), onnxruntime::narrow<ptrdiff_t>(N));
@@ -789,7 +795,7 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
             for (auto i = work.start; i < work.end; ++i) {
               std::fill(scores.begin(), scores.end(), ScoreValue<ThresholdType>({0, 0}));
               for (j = 0, limit = roots_.size(); j < limit; ++j) {
-                agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data_end), weights_);
+                agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride, x_data + (i + 1) * stride), weights_);
               }
 
               agg.FinalizeScores(scores,

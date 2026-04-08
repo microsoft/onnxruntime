@@ -955,7 +955,7 @@ TEST(MLOpTest, TreeEnsembleRegressorNegativeFeatureId) {
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "nodes_featureids[0]=-1 cannot be negative if the node is not a leaf");
+           "nodes_featureids[0]=-1 must be in [0,");
 }
 
 TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
