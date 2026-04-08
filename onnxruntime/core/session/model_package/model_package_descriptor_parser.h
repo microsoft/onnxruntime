@@ -14,6 +14,7 @@ namespace onnxruntime {
 //
 static constexpr const char* kModelPackageManifestFileName = "manifest.json";
 static constexpr const char* kModelNameKey = "model_name";
+static constexpr const char* kModelVersionKey = "model_version";
 static constexpr const char* kComponentModelsKey = "component_models";
 static constexpr const char* kComponentModelMetadataFileName = "metadata.json";
 static constexpr const char* kModelVariantsKey = "model_variants";
@@ -37,7 +38,6 @@ class ModelPackageDescriptorParser {
  private:
   Status ParseVariantsFromComponent(const std::string& component_model_name,
                                     const std::filesystem::path& component_model_root,
-                                    const json* manifest_variants_obj,
                                     const json* metadata_variants_obj,
                                     /*in,out*/ std::vector<ModelVariantInfo>& variants) const;
 

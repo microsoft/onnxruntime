@@ -19,8 +19,6 @@ This document describes the model package directory layout and the JSON files us
 - Model Variant
   - A ‘model variant’ is a single ONNX or ORT format model.
 
-
-
 ## Directory layout
 
 ````
@@ -65,65 +63,21 @@ Purpose: Provides the overall package identity and (optionally) lists component 
 
 Schema:
 - `model_name` (string, required): Logical package name.
-- `component_models` (object, optional): Map of component model names to their descriptors.
-  - `<component_model_name>` (object, required if present):
-    - `model_variants` (object, optional): Map of variant names to variant descriptors.
-      - `<variant_name>` (object, required if present):
-        - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT-GenAI"`). If omitted, ORT will treat it as an ONNX model by default.
-        - `model_file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `model_file` is omitted, ORT will discover the ONNX model file within that directory.
-        - `constraints` (object, required):
-          - `ep` (string, required (except base model)): Execution provider name (e.g., `"TensorrtExecutionProvider"`, `"QNNExecutionProvider"`, `"OpenVINOExecutionProvider"`).
-          - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
-          - `architecture` (string, optional): Hardware architecture hint; interpreted by the EP if needed.
-          - `ep_compatibility_info` (string, optional): EP-specific compatibility string (as produced by `OrtEp::GetCompiledModelCompatibilityInfo()`); validated by the EP when selecting a variant. **The compatibility value returned by the EP is critical—ORT uses it to rank and choose the model variant.**
-
-Notes:
-- `component_models` may be omitted. In that case, ORT will discover component models and rely on each component model’s `metadata.json` to enumerate variants.
-- If `component_models` is present but a given component omits `model_variants`, its variants must be defined in that component’s `metadata.json`.
-- All file paths are relative to the component model’s directory unless stated otherwise.
-- Only one component model is allowed in the package for now.
+- `model_version` (string, optional): Version of the model package.
+- `component_models` (array of strings, optional): List of component model names. If this field is omitted, ONNX Runtime will discover component models by enumerating subdirectories under `models/`. If present, the names listed here must match the subdirectory names under `models/`.
 
 ### `manifest.json` examples
 
-**Minimal with no component list (metadata.json drives discovery):**
-```json
-{
-    "model_name":  <logical_model_name>
-}
-```
-
-
-**Multiple variants with differing constraints:**
 ```json
 {
     "model_name":  <logical_model_name>,
-    "component_models": {
-        <model_name_1>: {
-            "model_variants": {
-                <variant_1>: {
-                    "model_type": "onnx",
-                    "model_file": "model_ctx.onnx",
-                    "constraints": {
-                        "ep": "TensorrtExecutionProvider",
-                        "ep_compatibility_info": "device=gpu,npu;cuda_driver_version_support=..."
-                    }
-                },
-                <variant_2>: {
-                    "model_type": "onnx",
-                    "model_file": "model_ctx.onnx",
-                    "constraints": {
-                        "ep": "OpenVINOExecutionProvider",
-                        "device": "cpu",
-                        "ep_compatibility_info": "device=cpu;hardware_architecture=panther_lake;..."
-                    }
-                }
-            }
-        },
-        <model_name_2>: { … }
-    }
+    "model_version": "1.0",
+    "component_models": [
+        <component_model_name_1>,
+        <component_model_name_2>
+    ]
 }
 ```
-
 
 ## `metadata.json` (required per component model)
 
@@ -135,12 +89,13 @@ Schema:
 - `component_model_name` (string, required): Name of the component model.
 - `model_variants` (object, required): Map of variant names to variant descriptors.
   - `<variant_name>` (object, required):
-    - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT-GenAI"`). If omitted, ORT will treat it as an ONNX model by default.
-    - `model_file` (string, optional): Path relative to the component model directory. Can point to an ONNX model file or a directory. If it is a directory, or if `model_file` is omitted, ORT will discover the ONNX model file within that directory.
+    - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT"`). If omitted, ORT will treat it as an ONNX model by default.
+    - `model_file` (string, optional): Path relative to the model variant directory. Can point to an ONNX model file or a directory. If it is a directory, or if `model_file` is omitted, ORT will discover the ONNX model file within that directory.
+    - `model_id` (string, optional): Unique identifier for the model variant. It should match a catalog value if the model comes from a catalog. If `model_id` is present, the model will be in the <component_model_name>/`model_id`/ directory.
     - `constraints` (object, required):
-      - `ep` (string, required (except base model)): Execution provider name.
+      - `ep` (string, required (except base model)): Execution provider name (e.g., `"TensorrtExecutionProvider"`, `"QNNExecutionProvider"`, `"OpenVINOExecutionProvider"`).
       - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
-      - `architecture` (string, optional): Hardware architecture hint.
+      - `architecture` (string, optional): Hardware architecture hint; interpreted by the EP if needed.
       - `ep_compatibility_info` (string, optional): EP-specific compatibility string (as produced by `OrtEp::GetCompiledModelCompatibilityInfo()`); validated by the EP when selecting a variant. **The compatibility value returned by the EP is critical—ORT uses it to rank and choose the model variant.**
 
 ### `metadata.json` example
@@ -172,7 +127,7 @@ Schema:
 
 ## Processing rules (runtime expectations)
 
-- ONNX Runtime reads `manifest.json` first to enumerate component models and any declared variants.
+- ONNX Runtime reads `manifest.json` first if the 
 - For each component model, `metadata.json` supplies the definitive list of variants and constraints.
 - Variant selection is performed by matching constraints (EP, device, `ep_compatibility_info`, and optionally architecture). **The EP’s returned compatibility value (e.g., `EP_SUPPORTED_OPTIMAL`, `EP_SUPPORTED_PREFER_RECOMPILATION`) is used to score and pick the winning model variant.**
-- All file paths must be relative to the component model directory; avoid absolute paths to keep packages portable
+- All file paths must be relative paths; avoid absolute paths to keep packages portable

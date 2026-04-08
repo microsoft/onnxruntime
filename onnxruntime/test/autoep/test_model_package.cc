@@ -4,7 +4,9 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -81,6 +83,19 @@ std::filesystem::path CreateComponentModelMetadata(
   return component_root;
 }
 
+std::string MakeManifestJson(std::string_view model_name,
+                             std::string_view component_model_name) {
+  std::ostringstream oss;
+  oss << R"({
+    "model_name": ")"
+      << model_name << R"(",
+    "model_version": "1.0",
+    "component_models": [")"
+      << component_model_name << R"("]
+  })";
+  return oss.str();
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------
@@ -88,82 +103,6 @@ std::filesystem::path CreateComponentModelMetadata(
 // ------------------------------------------------------------------
 TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
   // Test Case 1:
-  // package_root is a model package directory which contains a full detailed manifest.json.
-  // This model package only contains one component model and it doesn't have metadata.json, so
-  // ORT should parse manifest alone to get model variants' constraints.
-  // ORT selects most suitable model variant based on constraints and then loads it to run inference successfully.
-  {
-    // Build model package on disk
-    const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
-    constexpr std::string_view manifest_json = R"({
-    "model_name": "test_model",
-    "component_models": {
-      "model_1": {
-        "model_variants": {
-          "variant_1" : {
-             "model_file": "mul_1.onnx",
-             "constraints": {
-               "ep": "example_ep",
-               "device": "cpu",
-               "architecture": "arch1"
-             }
-          },
-          "variant_2" : {
-            "model_file": "mul_16.onnx",
-            "constraints": {
-              "ep": "example_ep",
-              "device": "npu",
-              "architecture": "arch2"
-            }
-          }
-        }
-      }
-    }
-    })";
-
-    CreateModelPackage(package_root, manifest_json,
-                       "model_1", "variant_1", "variant_2",
-                       std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
-
-    // Register example EP and get its device
-    RegisteredEpDeviceUniquePtr example_ep;
-    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
-    Ort::ConstEpDevice plugin_ep_device(example_ep.get());
-
-    // Prepare session options with ExampleEP appended
-    Ort::SessionOptions session_options;
-    std::unordered_map<std::string, std::string> ep_options;
-    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
-
-    // Create session from package root (directory)
-    // ORT should pick the variant_1 model since the constraints match the example EP device (device "cpu" matches)
-    Ort::Session session(*ort_env, package_root.c_str(), session_options);
-
-    // Prepare input X
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-    std::vector<int64_t> shape = {3, 2};
-    std::vector<float> input_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
-    Ort::Value input = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
-                                                       shape.data(), shape.size());
-    const char* input_names[] = {"X"};
-    const char* output_names[] = {"Y"};
-    std::vector<Ort::Value> inputs;
-    inputs.push_back(std::move(input));
-
-    // Run
-    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, inputs.data(), inputs.size(),
-                               output_names, 1);
-    ASSERT_EQ(outputs.size(), 1u);
-    const float* out = outputs[0].GetTensorData<float>();
-    gsl::span<const float> out_span(out, input_data.size());
-    EXPECT_THAT(out_span, ::testing::ElementsAre(1.f, 4.f, 9.f, 16.f, 25.f, 36.f));
-
-    // Cleanup
-    std::error_code ec;
-    std::filesystem::remove_all(package_root, ec);
-  }
-
-  // Test Case 2:
   // package_root is a model package directory which contains a manifest.json.
   // This model package only contains one component model and it has a metadata.json.
   // ORT should parse the manifest and the metadata.json to get model variants' constraints.
@@ -171,20 +110,12 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
   {
     // Build model package on disk
     const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
-    constexpr std::string_view manifest_json = R"({
-    "model_name": "test_model",
-    "component_models": {
-      "model_1": {
-      }
-    }
-    })";
-
-    CreateModelPackage(package_root, manifest_json,
+    CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
                        "model_1", "variant_1", "variant_2",
                        std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
     constexpr std::string_view metadata_json = R"({
-      "model_component_name": "model_1",
+      "component_model_name": "model_1",
       "model_variants": {
         "variant_1": {
           "model_file": "mul_1.onnx",
@@ -247,27 +178,20 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
     std::filesystem::remove_all(package_root, ec);
   }
 
-  // Test Case 3:
+  // Test Case 2:
   // package_root is a component model directory which contains a metadata.json.
   // ORT should parse metadata.json to get model variants' constraints.
   // ORT selects most suitable model variant based on constraints and then loads it to run inference successfully.
   {
     // Build model package on disk
     const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
-    constexpr std::string_view manifest_json = R"({
-    "model_name": "test_model",
-    "component_models": {
-      "model_1": {
-      }
-    }
-    })";
 
-    CreateModelPackage(package_root, manifest_json,
+    CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
                        "model_1", "variant_1", "variant_2",
                        std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
     constexpr std::string_view metadata_json = R"({
-      "model_component_name": "model_1",
+      "component_model_name": "model_1",
       "model_variants": {
         "variant_1": {
           "model_file": "mul_1.onnx",
@@ -334,20 +258,13 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
 TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
   // Build model package on disk
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
-  constexpr std::string_view manifest_json = R"({
-    "model_name": "test_model",
-    "component_models": {
-      "model_1": {
-      }
-    }
-    })";
 
-  CreateModelPackage(package_root, manifest_json,
+  CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
                      "model_1", "variant_1", "variant_2",
                      std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
   constexpr std::string_view metadata_json = R"({
-      "model_component_name": "model_1",
+      "component_model_name": "model_1",
       "model_variants": {
         "variant_1": {
           "model_file": "mul_1.onnx",
@@ -435,20 +352,13 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
 
   // Build model package on disk
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
-  constexpr std::string_view manifest_json = R"({
-    "model_name": "test_model",
-    "component_models": {
-      "model_1": {
-      }
-    }
-    })";
 
-  CreateModelPackage(package_root, manifest_json,
+  CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
                      "model_1", "variant_2", "variant_1",
                      std::filesystem::path{"testdata/mul_16.onnx"}, std::filesystem::path{"plugin_ep_compat_test.onnx"});
 
   constexpr std::string_view metadata_json = R"({
-      "model_component_name": "model_1",
+      "component_model_name": "model_1",
       "model_variants": {
         "variant_2": {
           "model_file": "mul_16.onnx",
@@ -505,10 +415,10 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
   // Prepare component model with metadata and variants
   const std::string component_model_name = "model_1";
   constexpr std::string_view metadata_json = R"({
-      "model_component_name": "model_1",
+      "component_model_name": "model_1",
       "model_variants": {
         "variant_1": {
-          "file": "mul_1.onnx",
+          "model_file": "mul_1.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "cpu",
@@ -516,7 +426,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
           }
         },
         "variant_2": {
-          "file": "mul_16.onnx",
+          "model_file": "mul_16.onnx",
           "constraints": {
             "ep": "example_ep",
             "device": "npu",
@@ -577,28 +487,29 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_parse_variant";
   std::error_code ec;
 
-  // Base manifest with a single component/variant entry; we'll override per subcase.
-  auto write_manifest = [&](std::string_view manifest_json) {
-    CreateManifestJson(package_root, manifest_json);
+  auto write_manifest = [&]() {
+    CreateManifestJson(package_root, MakeManifestJson("test_model", "model_1"));
+  };
+
+  auto write_metadata = [&](std::string_view metadata_json) {
+    CreateComponentModelMetadata(package_root, "model_1", metadata_json);
   };
 
   // Subcase 1: "model_file" points to a directory containing exactly one .onnx file.
   {
     std::filesystem::remove_all(package_root, ec);
-    constexpr std::string_view manifest_json = R"({
-      "model_name": "test_model",
-      "component_models": {
-        "model_1": {
-          "model_variants": {
-            "variant_dir": {
-              "model_file": "subdir",
-              "constraints": {}
-            }
-          }
+    write_manifest();
+
+    constexpr std::string_view metadata_json = R"({
+      "component_model_name": "model_1",
+      "model_variants": {
+        "variant_dir": {
+          "model_file": "subdir",
+          "constraints": {}
         }
       }
     })";
-    write_manifest(manifest_json);
+    write_metadata(metadata_json);
 
     const auto variant_dir = package_root / "models" / "model_1" / "variant_dir";
     const auto subdir = variant_dir / "subdir";
@@ -617,19 +528,17 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
   // Subcase 2: No "model_file" field; discover the single .onnx in the variant directory.
   {
     std::filesystem::remove_all(package_root, ec);
-    constexpr std::string_view manifest_json = R"({
-      "model_name": "test_model",
-      "component_models": {
-        "model_1": {
-          "model_variants": {
-            "variant_autodiscover": {
-              "constraints": {}
-            }
-          }
+    write_manifest();
+
+    constexpr std::string_view metadata_json = R"({
+      "component_model_name": "model_1",
+      "model_variants": {
+        "variant_autodiscover": {
+          "constraints": {}
         }
       }
     })";
-    write_manifest(manifest_json);
+    write_metadata(metadata_json);
 
     const auto variant_dir = package_root / "models" / "model_1" / "variant_autodiscover";
     std::filesystem::create_directories(variant_dir);
@@ -647,19 +556,17 @@ TEST(ModelPackageTest, ParseVariantFileResolution) {
   // Subcase 3: Multiple .onnx files -> error.
   {
     std::filesystem::remove_all(package_root, ec);
-    constexpr std::string_view manifest_json = R"({
-      "model_name": "test_model",
-      "component_models": {
-        "model_1": {
-          "model_variants": {
-            "variant_multi": {
-              "constraints": {}
-            }
-          }
+    write_manifest();
+
+    constexpr std::string_view metadata_json = R"({
+      "component_model_name": "model_1",
+      "model_variants": {
+        "variant_multi": {
+          "constraints": {}
         }
       }
     })";
-    write_manifest(manifest_json);
+    write_metadata(metadata_json);
 
     const auto variant_dir = package_root / "models" / "model_1" / "variant_multi";
     std::filesystem::create_directories(variant_dir);
@@ -727,29 +634,23 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_EQ(variants.size(), 2u);
 
-  bool found_mul_1 = false;
-  bool found_mul_16 = false;
-
-  for (const auto& variant : variants) {
-    const auto file_name = variant.model_path.filename().string();
-
-    if (file_name == "mul_1.onnx") {
-      found_mul_1 = true;
-      EXPECT_EQ(variant.ep, "example_ep");
-      EXPECT_EQ(variant.device, "cpu");
-      EXPECT_EQ(variant.architecture, "arch1");
-    } else if (file_name == "mul_16.onnx") {
-      found_mul_16 = true;
-      EXPECT_EQ(variant.ep, "example_ep");
-      EXPECT_EQ(variant.device, "npu");
-      EXPECT_EQ(variant.architecture, "arch2");
-    } else {
-      FAIL() << "Unexpected model variant file: " << file_name;
-    }
+  std::unordered_map<std::string, const ModelVariantInfo*> by_file;
+  for (const auto& v : variants) {
+    by_file.emplace(v.model_path.filename().string(), &v);
   }
 
-  EXPECT_TRUE(found_mul_1);
-  EXPECT_TRUE(found_mul_16);
+  ASSERT_EQ(by_file.count("mul_1.onnx"), 1u);
+  ASSERT_EQ(by_file.count("mul_16.onnx"), 1u);
+
+  const auto* v1 = by_file.at("mul_1.onnx");
+  EXPECT_EQ(v1->ep, "example_ep");
+  EXPECT_EQ(v1->device, "cpu");
+  EXPECT_EQ(v1->architecture, "arch1");
+
+  const auto* v2 = by_file.at("mul_16.onnx");
+  EXPECT_EQ(v2->ep, "example_ep");
+  EXPECT_EQ(v2->device, "npu");
+  EXPECT_EQ(v2->architecture, "arch2");
 
   std::filesystem::remove_all(package_root, ec);
 }
