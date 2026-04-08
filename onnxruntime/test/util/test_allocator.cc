@@ -14,6 +14,8 @@ MockedOrtAllocator::MockedOrtAllocator() {
     *stats = static_cast<const MockedOrtAllocator*>(this_)->Stats();
     return nullptr;
   };
+  OrtAllocator::AllocOnStream = nullptr;
+  OrtAllocator::Shrink = nullptr;
   Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
 }
 
