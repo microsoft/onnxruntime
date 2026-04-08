@@ -966,7 +966,7 @@ TEST(MLOpTest, TreeRegressorOutsideBoundaryTargetIds) {
   std::vector<float> Y = {17.700000762939453, 11.100000381469727, -4.699999809265137};
   test.AddInput<float>("X", {3, 2}, X);
   test.AddOutput<float>("Y", {3, 1}, Y);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (1) in target_ids or class_ids is greater than the number of targets or classes");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (1) in target_ids or class_ids is greater or equal to the number of targets or classes (1)");
 }
 
 }  // namespace test
