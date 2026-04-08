@@ -129,7 +129,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index != 0 || has_weight_idx_indirect;
   const bool single_scale_weights = (block_size == K * N);
-  if (has_weight_idx_indirect || dispatch_M < min_M_for_tile_optimization) {
+  if (has_weight_idx_indirect || M < min_M_for_tile_optimization) {
     uint32_t tile_size_k_vec = 32;
     uint32_t tile_size_n = 4;
 
