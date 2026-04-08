@@ -11,17 +11,15 @@ We're always looking for your help to improve the product (bug fixes, new featur
 
 ## Git hooks (recommended)
 
-This repository provides a pre-commit hook that runs [lintrunner](https://github.com/suo/lintrunner) on staged files before each commit. To enable it:
+Enable the repo's pre-commit hook to run [lintrunner](https://github.com/suo/lintrunner) automatically before each commit:
 
 ```sh
 git config core.hooksPath .githooks
 ```
 
-The hook checks staged files for lint issues and blocks the commit if any are found. To auto-fix issues, run `lintrunner -a`, re-stage the changes, and commit again.
+If lint issues are found, the commit is blocked. Run `lintrunner -a` to auto-fix, re-stage, and commit again. Use `git commit --no-verify` to bypass.
 
-If you need to bypass the hook (e.g., for a work-in-progress commit), use `git commit --no-verify`.
-
-> **Note:** Setting `core.hooksPath` replaces Git's default hook directory (`.git/hooks/`). If you have existing custom hooks, you may need to integrate them manually.
+> **Note:** `core.hooksPath` replaces Git's default hook directory (`.git/hooks/`). If you have existing custom hooks, you may need to integrate them manually.
 
 ## Propose a new public API
 
