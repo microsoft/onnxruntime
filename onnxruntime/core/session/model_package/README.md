@@ -66,7 +66,7 @@ Schema:
 - `model_version` (string, optional): Version of the model package.
 - `component_models` (array of strings, optional): List of component model names. If this field is omitted, ONNX Runtime will discover component models by enumerating subdirectories under `models/`. If present, the names listed here must match the subdirectory names under `models/`.
 
-### `manifest.json` examples
+### `manifest.json` example
 
 ```json
 {
@@ -108,7 +108,7 @@ Schema:
             "model_file": "model_ctx.onnx",
             "constraints": {
                 "ep": "TensorrtExecutionProvider",
-                "ep_compatibility_info": "device=gpu,npu;cuda_driver_version_support=..."
+                "ep_compatibility_info": "..."
             }
         },
         <variant_2>: {
@@ -117,7 +117,7 @@ Schema:
              "constraints": {
                  "ep": "OpenVINOExecutionProvider",
                  "device": "cpu",
-                 "ep_compatibility_info": "device=cpu;hardware_architecture=panther_lake;..."
+                 "ep_compatibility_info": "..."
              }
         }
     }
@@ -127,7 +127,8 @@ Schema:
 
 ## Processing rules (runtime expectations)
 
-- ONNX Runtime reads `manifest.json` first if the 
+- ONNX Runtime reads `manifest.json` if the path passed in is the package root directory; if `component_models` is present, it uses that to determine which component models to load. If `component_models` is not present, ONNX Runtime discovers component models by enumerating subdirectories under `models/`. (In this case, ONNX Runtime expects only one component model exist in the model package.)
+- ONNX Runtime reads component model's `metadata.json` and ignores `manifest.json` if the path passed in points directly to a component model directory.
 - For each component model, `metadata.json` supplies the definitive list of variants and constraints.
 - Variant selection is performed by matching constraints (EP, device, `ep_compatibility_info`, and optionally architecture). **The EP’s returned compatibility value (e.g., `EP_SUPPORTED_OPTIMAL`, `EP_SUPPORTED_PREFER_RECOMPILATION`) is used to score and pick the winning model variant.**
 - All file paths must be relative paths; avoid absolute paths to keep packages portable

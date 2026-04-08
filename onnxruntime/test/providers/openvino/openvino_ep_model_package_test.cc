@@ -100,10 +100,7 @@ TEST(OpenVINOModelPackageTest, LoadModelPackage_CPU_DeviceConstraint) {
 
   constexpr std::string_view manifest_json = R"({
     "model_name": "openvino_test_model",
-    "component_models": {
-      "model_1": {
-      }
-    }
+    "component_models": ["model_1"]
   })";
 
   // Create model package with two different model files
