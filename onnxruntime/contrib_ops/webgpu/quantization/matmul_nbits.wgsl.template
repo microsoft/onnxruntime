@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param a_length_per_tile
+#param broadcast_a_row
 #param component_a
 #param component_b
 #param elements_in_value_b
@@ -63,6 +64,14 @@ $MAIN {
   let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
   let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
 
+  // When broadcast_a_row is true, A has only 1 row but M=k for dispatch.
+  // Always read from A row 0; a_global is used for output row and weight selection.
+#if broadcast_a_row
+  let a_row = 0u;
+#else
+  let a_row = a_global;
+#endif
+
   let idx = local_idx % tile_size_k_vec;
   let idy = local_idx / tile_size_k_vec;
 
@@ -76,7 +85,7 @@ $MAIN {
   {
     for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
     {
-      loadSHMA(batch, a_global, kidx, id);
+      loadSHMA(batch, a_row, kidx, id);
     }
     workgroupBarrier();
 

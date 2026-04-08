@@ -41,8 +41,8 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool per_row_weight_indirect = false)
-      : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points), has_bias_(has_bias), has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, single_scale_weights_(single_scale_weights), tile_size_k_vec_(tile_size_k_vec), per_row_weight_indirect_(per_row_weight_indirect) {}
+  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool per_row_weight_indirect = false, bool broadcast_a_row = false)
+      : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points), has_bias_(has_bias), has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, single_scale_weights_(single_scale_weights), tile_size_k_vec_(tile_size_k_vec), per_row_weight_indirect_(per_row_weight_indirect), broadcast_a_row_(broadcast_a_row) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -67,6 +67,7 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool single_scale_weights_;
   uint32_t tile_size_k_vec_;
   bool per_row_weight_indirect_;
+  bool broadcast_a_row_;
 };
 
 class MatMulNBits final : public WebGpuKernel {
@@ -95,7 +96,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level, int64_t bits_op,
                         onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index = 0,
                         const Tensor* weight_index_indirect = nullptr,
-                        bool per_row_weight_indirect = false);
+                        bool per_row_weight_indirect = false,
+                        uint32_t override_M = 0);
 
 }  // namespace webgpu
 }  // namespace contrib
