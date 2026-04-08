@@ -1,0 +1,35 @@
+#!/bin/sh
+# .githooks/pre-commit — check staged files with lintrunner before commit
+#
+# Setup (one-time per clone):
+#   git config core.hooksPath .githooks
+#
+# Skip when needed:
+#   git commit --no-verify
+
+if ! command -v lintrunner >/dev/null 2>&1; then
+    echo "Warning: lintrunner not found - skipping pre-commit lint check."
+    echo "  To install: pip install -r requirements-lintrunner.txt && lintrunner init"
+    exit 0
+fi
+
+# Check if there are any staged files to lint (added, copied, modified, renamed)
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+# Run lintrunner in check mode (no auto-fix) on staged files.
+# --paths-cmd lets lintrunner handle the file list safely, avoiding
+# shell quoting issues with special characters in filenames.
+lintrunner --paths-cmd='git diff --cached --name-only --diff-filter=ACMR'
+STATUS=$?
+
+if [ "$STATUS" -ne 0 ]; then
+    echo ""
+    echo "Pre-commit lint check failed."
+    echo "  To auto-fix:  lintrunner -a"
+    echo "  Then re-stage and commit again."
+    echo "  To skip:      git commit --no-verify"
+    exit 1
+fi
