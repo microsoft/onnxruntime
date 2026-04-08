@@ -350,13 +350,6 @@ function (setup_arm_neon_nchwc)
      ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
      ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
      )
-    if(MLAS_ARM64_BFLOAT16_COMPILE_FLAGS)
-      target_sources(onnxruntime_mlas PRIVATE
-       ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeonBf16.S
-       ${MLAS_SRC_DIR}/aarch64/SconvKernelNeonBf16.S
-       ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeonBf16.S
-      )
-    endif()
   endif()
   list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
   set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
@@ -475,27 +468,6 @@ else()
     endif()
     if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
-        set(MLAS_ARM64_BFLOAT16_COMPILE_FLAGS "")
-        if(APPLE)
-          set(MLAS_OLD_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
-          set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -arch arm64")
-          check_cxx_compiler_flag("-march=armv8.2-a+bf16" HAS_ARM64_BFLOAT16_MARCH_APPLE)
-          if(HAS_ARM64_BFLOAT16_MARCH_APPLE)
-            set(MLAS_ARM64_BFLOAT16_COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
-          else()
-            check_cxx_compiler_flag("-Xclang -target-feature -Xclang +bf16" HAS_ARM64_BFLOAT16_TARGET_FEATURE_APPLE)
-            if(HAS_ARM64_BFLOAT16_TARGET_FEATURE_APPLE)
-              set(MLAS_ARM64_BFLOAT16_COMPILE_FLAGS " -Xclang -target-feature -Xclang +bf16 ")
-            endif()
-          endif()
-          set(CMAKE_REQUIRED_FLAGS "${MLAS_OLD_REQUIRED_FLAGS}")
-          unset(MLAS_OLD_REQUIRED_FLAGS)
-        else()
-          check_cxx_compiler_flag("-march=armv8.2-a+bf16" HAS_ARM64_BFLOAT16_MARCH)
-          if(HAS_ARM64_BFLOAT16_MARCH)
-            set(MLAS_ARM64_BFLOAT16_COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
-          endif()
-        endif()
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDot.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDotLd64.S
@@ -575,12 +547,22 @@ else()
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
           )
+          if (onnxruntime_USE_ARM_NEON_NCHWC)
+            list(APPEND mlas_platform_srcs
+              ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeonBf16.S
+              ${MLAS_SRC_DIR}/aarch64/SconvKernelNeonBf16.S
+              ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeonBf16.S
+            )
+          endif()
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/cast_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
@@ -588,16 +570,10 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-        endif()
-
-        if(MLAS_ARM64_BFLOAT16_COMPILE_FLAGS)
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeonBf16.S PROPERTIES COMPILE_FLAGS "${MLAS_ARM64_BFLOAT16_COMPILE_FLAGS}")
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvKernelNeonBf16.S PROPERTIES COMPILE_FLAGS "${MLAS_ARM64_BFLOAT16_COMPILE_FLAGS}")
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeonBf16.S PROPERTIES COMPILE_FLAGS "${MLAS_ARM64_BFLOAT16_COMPILE_FLAGS}")
-          if(NOT APPLE)
-            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S PROPERTIES COMPILE_FLAGS "${MLAS_ARM64_BFLOAT16_COMPILE_FLAGS}")
-            set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS "${MLAS_ARM64_BFLOAT16_COMPILE_FLAGS}")
-            set_source_files_properties(${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp PROPERTIES COMPILE_FLAGS "${MLAS_ARM64_BFLOAT16_COMPILE_FLAGS}")
+          if (onnxruntime_USE_ARM_NEON_NCHWC)
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           endif()
         endif()
 
