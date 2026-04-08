@@ -17,7 +17,9 @@ namespace onnxruntime {
     `WhereDummyDq` inserts a dummy DQ so that `xf ≈ DQ(xq, scale, zp)`.
 
     The `xq`, `zp` are chosen per the table below (by the dtype of the existing DQ's zero-point),
-    and `scale` is computed from them:
+    and `scale` is computed from them.
+
+    We select these values in order to keep the `scale` non-negative:
 
       |                 |  uint8 | uint16 |  int8 |  int16 |
       |-----------------|--------|--------|-------|--------|
