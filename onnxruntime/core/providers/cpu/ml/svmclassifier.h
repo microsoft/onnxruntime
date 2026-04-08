@@ -125,7 +125,7 @@ class SVMClassifier final : public OpKernel, private SVMCommon {
   size_t vector_count_;
   bool using_strings_;
   std::vector<int64_t> vectors_per_class_;
-  std::vector<int64_t> starting_vector_;
+  std::vector<size_t> starting_vector_;
   std::vector<float> rho_;
   std::vector<float> proba_;
   std::vector<float> probb_;

@@ -84,7 +84,7 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
                 ") for the given class_count and vector_count.");
 
     // rho needs one entry per classifier pair: class_count * (class_count - 1) / 2
-    const size_t num_classifiers = static_cast<size_t>(class_count_) * static_cast<size_t>(class_count_ - 1) / 2;
+    const size_t num_classifiers = class_count_ * (class_count_ - 1) / 2;
     ORT_ENFORCE(rho_.size() >= num_classifiers,
                 "rho attribute size (", rho_.size(),
                 ") is smaller than expected (", num_classifiers,
@@ -111,7 +111,7 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
 }
 
 template <typename LabelType>
-static void ChooseClass(Tensor& output, const int64_t output_idx, float max_weight, const int64_t maxclass,
+static void ChooseClass(Tensor& output, const int64_t output_idx, float max_weight, const size_t maxclass,
                         bool have_proba, bool weights_are_all_positive,
                         const std::vector<LabelType>& classlabels,
                         const LabelType& posclass, const LabelType& negclass) {
@@ -124,9 +124,9 @@ static void ChooseClass(Tensor& output, const int64_t output_idx, float max_weig
       else if (max_weight > 0 && !weights_are_all_positive)
         output_data = classlabels[1];
       else
-        output_data = classlabels[onnxruntime::narrow<size_t>(maxclass)];
+        output_data = classlabels[maxclass];
     } else {
-      output_data = classlabels[onnxruntime::narrow<size_t>(maxclass)];
+      output_data = classlabels[maxclass];
     }
   } else if (max_weight > 0) {
     output_data = posclass;
@@ -388,10 +388,10 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
     // onnx specs expects one column per class.
     if (num_classifiers == 1) {  // binary case
       if (using_strings_) {
-        ChooseClass<std::string>(Y, n, max_weight, maxclass, have_proba, weights_are_all_positive_,
+        ChooseClass<std::string>(Y, n, max_weight, onnxruntime::narrow<size_t>(maxclass), have_proba, weights_are_all_positive_,
                                  classlabels_strings_, "1", "0");
       } else {
-        ChooseClass<int64_t>(Y, n, max_weight, maxclass, have_proba, weights_are_all_positive_,
+        ChooseClass<int64_t>(Y, n, max_weight, onnxruntime::narrow<size_t>(maxclass), have_proba, weights_are_all_positive_,
                              classlabels_ints_, 1, 0);
       }
     } else {  // multiclass
