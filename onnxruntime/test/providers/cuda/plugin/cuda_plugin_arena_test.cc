@@ -359,10 +359,10 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_InvalidConfigIsRejected) {
   bad_options.Add("arena.initial_chunk_size_bytes", "not_a_number");
 
   try {
-    auto bad_alloc = ort_env->CreateSharedAllocator(
+    ORT_IGNORE_RETURN_VALUE(ort_env->CreateSharedAllocator(
         cuda_device_, OrtDeviceMemoryType_DEFAULT,
         OrtDeviceAllocator,
-        bad_options);
+        bad_options));
     // If we get here, the allocator was created — that's wrong.
     // Clean up and fail.
     ort_env->CreateSharedAllocator(
@@ -385,10 +385,10 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_NegativeConfigIsRejected) {
   bad_options.Add("arena.initial_chunk_size_bytes", "-100");
 
   try {
-    auto bad_alloc = ort_env->CreateSharedAllocator(
+    ORT_IGNORE_RETURN_VALUE(ort_env->CreateSharedAllocator(
         cuda_device_, OrtDeviceMemoryType_DEFAULT,
         OrtDeviceAllocator,
-        bad_options);
+        bad_options));
     ort_env->CreateSharedAllocator(
         cuda_device_, OrtDeviceMemoryType_DEFAULT,
         OrtDeviceAllocator, {});
@@ -959,10 +959,10 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_InvalidMaxMemIsRejected) {
   bad_options.Add("arena.max_mem", "abc");
 
   try {
-    auto bad_alloc = ort_env->CreateSharedAllocator(
+    ORT_IGNORE_RETURN_VALUE(ort_env->CreateSharedAllocator(
         cuda_device_, OrtDeviceMemoryType_DEFAULT,
         OrtDeviceAllocator,
-        bad_options);
+        bad_options));
     ort_env->CreateSharedAllocator(
         cuda_device_, OrtDeviceMemoryType_DEFAULT,
         OrtDeviceAllocator, {});
