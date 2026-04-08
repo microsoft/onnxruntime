@@ -15,15 +15,16 @@ namespace onnxruntime {
 // See https://onnx.ai/onnx/operators/onnx__DeformConv.html
 // Used by both CPU and CUDA implementations (CUDA includes from here).
 struct DeformConvAttributes {
-  explicit DeformConvAttributes(const OpKernelInfo& info) {
+  template <typename KernelInfoType>
+  explicit DeformConvAttributes(const KernelInfoType& info) {
     // Optional attributes.
     // If not present, they will be empty/default, and handled in Compute/ComputeInternal.
     (void)info.GetAttrs("kernel_shape", kernel_shape);
     (void)info.GetAttrs("strides", strides);
     (void)info.GetAttrs("pads", pads);
     (void)info.GetAttrs("dilations", dilations);
-    group = info.GetAttrOrDefault<int64_t>("group", 1);
-    offset_group = info.GetAttrOrDefault<int64_t>("offset_group", 1);
+    group = info.template GetAttrOrDefault<int64_t>("group", 1);
+    offset_group = info.template GetAttrOrDefault<int64_t>("offset_group", 1);
   }
 
   TensorShapeVector kernel_shape;

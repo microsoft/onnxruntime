@@ -30,6 +30,7 @@ class QLinearConv : public OpKernel {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
@@ -495,6 +496,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
 template <typename ActType>
 Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                        int input_idx,
                                                        /*out*/ bool& used_shared_buffers) {
   if (input_idx != 3) {

@@ -46,7 +46,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status Gather::ComputeInternal(OpKernelContext* context) const {
   Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
+  ORT_RETURN_IF_ERROR(PrepareForComputeImpl(context, p));
 
   const TensorShape& input_shape = p.input_tensor->Shape();
 

@@ -238,7 +238,7 @@ public:
 
         constexpr uint32_t dftAxis = 1;
         constexpr bool dftIsInverse = false;
-        m_dftOperator.op = wil::MakeOrThrow<GpuDFTOperator>(
+        m_dftOperator.op = Dml::SafeMakeOrThrow<GpuDFTOperator>(
             m_d3dDevice.Get(),
             dftAxis,
             params.isOnesided,
@@ -516,7 +516,7 @@ public:
     {
         try
         {
-            auto dftOperator = wil::MakeOrThrow<DmlSTFTOperator>(context);
+            auto dftOperator = Dml::SafeMakeOrThrow<DmlSTFTOperator>(context);
             dftOperator.CopyTo(kernel);
             return S_OK;
         }
@@ -574,8 +574,8 @@ public:
         kernelDescription.options = MLOperatorKernelOptions::None;
         kernelDescription.executionOptions = 0;
 
-        auto shareInferrer = wil::MakeOrThrow<STFTShapeInferrer>();
-        auto factory = wil::MakeOrThrow<DmlSTFTOperatorFactory>();
+        auto shareInferrer = Dml::SafeMakeOrThrow<STFTShapeInferrer>();
+        auto factory = Dml::SafeMakeOrThrow<DmlSTFTOperatorFactory>();
 
         std::array<uint32_t, 2> requiredConstantCpuInputs = { /*frame_step*/1, /*frame_length*/3 };
 
