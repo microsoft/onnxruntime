@@ -16,8 +16,11 @@ limitations under the License.
 
 #include "core/providers/cpu/tensor/onehot.h"
 #include "core/common/eigen_common_wrapper.h"
+#include "core/common/safeint.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
+
+#include <limits>
 
 #ifndef EIGEN_USE_THREADS
 #define EIGEN_USE_THREADS
@@ -100,11 +103,29 @@ Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const 
 
   output_shape.insert(output_shape.begin() + true_axis, depth_val);
 
-  prefix_dim_size = 1;
-  for (int64_t i = 0; i < true_axis; ++i) {
-    prefix_dim_size *= indices_dims[onnxruntime::narrow<size_t>(i)];
+  // Validate that the total output tensor element count does not overflow int64.
+  {
+    int64_t total_elements = 1;
+    for (auto dim : output_shape) {
+      if (dim > 0 && total_elements > std::numeric_limits<int64_t>::max() / dim) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "OneHot: output tensor size would overflow for the given indices shape "
+                               "and depth value (",
+                               depth_val, ").");
+      }
+      total_elements *= dim;
+    }
   }
-  suffix_dim_size = indices_shape.Size() / prefix_dim_size;
+
+  // Use SafeInt for prefix_dim_size computation to guard against overflow.
+  SafeInt<int64_t> safe_prefix = 1;
+  for (int64_t i = 0; i < true_axis; ++i) {
+    safe_prefix *= indices_dims[onnxruntime::narrow<size_t>(i)];
+  }
+  prefix_dim_size = safe_prefix;
+
+  // Guard against division by zero when indices have a zero-sized dimension before the axis.
+  suffix_dim_size = (prefix_dim_size > 0) ? (indices_shape.Size() / prefix_dim_size) : 0;
 
   return Status::OK();
 }
@@ -166,6 +187,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   // allocate output
   const auto* values_data = values->Data<out_type>();
   Tensor* output = p_op_kernel_context->Output(0, TensorShape(output_shape));
+  ORT_RETURN_IF_NOT(output, "OneHot: failed to allocate output tensor. Output shape may be too large.");
 
   // edge case where we have a dim with a value of 0
   if (output->Shape().Size() == 0)
