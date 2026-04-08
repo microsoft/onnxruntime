@@ -503,6 +503,13 @@ class InferenceSession(Session):
         `['CUDAExecutionProvider', 'CPUExecutionProvider']`
         means execute a node using `CUDAExecutionProvider`
         if capable, otherwise execute using `CPUExecutionProvider`.
+
+        **EP cache versioning:** Some execution providers (CoreML, TensorRT, MIGraphX, etc.)
+        cache compiled artifacts. After an ONNX Runtime update, outdated caches can cause
+        crashes. To avoid this, either (1) use :func:`onnxruntime.get_versioned_ep_cache_path`
+        when setting cache directory options (e.g. ``ModelCacheDirectory`` for CoreML), or
+        (2) set ``sess_options.add_session_config_entry("session.ep_cache_use_ort_version", "1")``
+        before adding providers to have cache paths versioned automatically.
         """
         super().__init__(enable_fallback=int(kwargs.get("enable_fallback", 1)) == 1)
 

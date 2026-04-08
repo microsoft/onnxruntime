@@ -104,6 +104,38 @@ if version:
 onnxruntime_validation.check_distro_info()
 
 
+def get_versioned_ep_cache_path(base_path: str) -> str:
+    """Return a path for execution provider caches that includes the ONNX Runtime version.
+
+    Use this when setting cache directory options (e.g. CoreML ``ModelCacheDirectory``,
+    TensorRT ``trt_engine_cache_path``, MIGraphX ``migraphx_model_cache_dir``) so that
+    caches are stored per ORT version and outdated caches are not loaded after an update.
+
+    Example::
+
+        import os
+        import onnxruntime as ort
+
+        cache_path = ort.get_versioned_ep_cache_path(".caches")
+        session = ort.InferenceSession(
+            "model.onnx",
+            providers=[("CoreMLExecutionProvider", {"ModelCacheDirectory": cache_path})],
+        )
+
+    Alternatively, set ``session.ep_cache_use_ort_version`` to ``"1"`` in session options
+    before adding providers to have cache paths versioned automatically.
+
+    Args:
+        base_path: Base directory for the cache (e.g. ``".caches"`` or ``"/tmp/ort_cache"``).
+
+    Returns:
+        ``os.path.join(base_path, get_version_string())``
+    """
+    import os  # noqa: PLC0415
+
+    return os.path.join(base_path, get_version_string())
+
+
 def _get_package_version(package_name: str):
     from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
 

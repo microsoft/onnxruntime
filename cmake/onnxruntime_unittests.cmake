@@ -1611,9 +1611,20 @@ endif()
     set(onnxruntime_shared_lib_test_LIBS
         onnxruntime_mocked_allocator
         onnxruntime_test_utils
+        onnxruntime_util
         onnxruntime_common
+        onnxruntime_framework
+        onnxruntime_graph
+        onnxruntime_optimizer
+        onnxruntime_providers
+        onnxruntime_session
+        onnxruntime_mlas
+        onnxruntime_flatbuffers
+        onnxruntime_lora
         onnx_proto
-        onnxruntime_runtime_path_test_shared_library)
+        onnxruntime_runtime_path_test_shared_library
+        re2::re2
+        ${onnxruntime_EXTERNAL_LIBRARIES})
 
     if(NOT WIN32)
       if(onnxruntime_USE_SNPE)
