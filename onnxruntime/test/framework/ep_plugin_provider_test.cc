@@ -1128,7 +1128,7 @@ static OrtStatus* ORT_API_CALL FakeGetStats(const OrtAllocator*, OrtKeyValuePair
 }
 
 static FakeArenaOrtAllocator MakeFakeArenaAllocator(OrtMemoryInfo* mem_info, bool with_shrink = true) {
-  FakeArenaOrtAllocator fa;
+  FakeArenaOrtAllocator fa{};
   static_assert(std::is_standard_layout_v<OrtAllocator>);
   std::memset(static_cast<OrtAllocator*>(&fa), 0, sizeof(OrtAllocator));
   fa.version = ORT_API_VERSION;
