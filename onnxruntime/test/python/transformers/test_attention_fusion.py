@@ -30,6 +30,45 @@ else:
 
 
 class TestFusion(unittest.TestCase):
+    def _validate_mha_input_types(self, optimized_model):
+        """Verify all MultiHeadAttention inputs share the same element type.
+
+        MHA's type parameter T binds Q, K, V to a single type. A mismatch
+        (e.g., Q=float32, V=float16) produces a graph that ORT rejects at load time.
+
+        Runs ONNX shape inference first to populate type info for intermediate
+        tensors — without this, get_dtype returns None for outputs of internal
+        nodes and the check would pass vacuously even if types are mismatched.
+        """
+        # Run shape inference to propagate types through standard ONNX ops
+        # so that MHA inputs (from Reshape, Transpose, etc.) have type info.
+        try:
+            inferred = onnx.shape_inference.infer_shapes(optimized_model.model, check_type=True, strict_mode=False)
+            optimized_model.model.CopyFrom(inferred)
+            # Reset cached dtype dict so get_dtype picks up inferred types
+            optimized_model._dtype_dict = None
+        except Exception:
+            pass  # Custom ops (com.microsoft) may cause warnings; proceed with available info
+
+        for node in optimized_model.model.graph.node:
+            if node.op_type == "MultiHeadAttention":
+                input_types = []
+                for inp_name in node.input[:3]:  # Q, K, V
+                    if not inp_name:
+                        continue
+                    dtype = optimized_model.get_dtype(inp_name)
+                    if dtype is not None:
+                        input_types.append((inp_name, dtype))
+                if len(input_types) >= 2:
+                    first_name, first_dtype = input_types[0]
+                    for inp_name, dtype in input_types[1:]:
+                        self.assertEqual(
+                            dtype,
+                            first_dtype,
+                            f"MHA input type mismatch: {first_name} has type {first_dtype} "
+                            f"but {inp_name} has type {dtype}",
+                        )
+
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort(is_deterministic=True)
 
@@ -620,6 +659,9 @@ class TestFusion(unittest.TestCase):
         optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
         os.remove(model_path)
 
+        # Validate the optimized model produces a type-consistent fused graph.
+        self._validate_mha_input_types(optimized_model)
+
         mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
         self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
 
@@ -653,6 +695,10 @@ class TestFusion(unittest.TestCase):
 
         optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
         os.remove(model_path)
+
+        # Validate MHA input types — catches mixed-dtype fused graphs (e.g.,
+        # Q=float32 but V=float16) that pass structural assertions but fail at ORT load.
+        self._validate_mha_input_types(optimized_model)
 
         mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
         self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
@@ -689,6 +735,8 @@ class TestFusion(unittest.TestCase):
         optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
         os.remove(model_path)
 
+        self._validate_mha_input_types(optimized_model)
+
         mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
         self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
 
@@ -715,6 +763,8 @@ class TestFusion(unittest.TestCase):
 
         optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
         os.remove(model_path)
+
+        self._validate_mha_input_types(optimized_model)
 
         mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
         self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")

@@ -279,8 +279,12 @@ class FusionMultiHeadAttentionDiT(Fusion):
 
         # MultiHeadAttention normalizes along the last axis. Only fuse when Softmax
         # uses the last axis (default for opset 13+), otherwise semantics would change.
+        # For opset < 13, ONNX Softmax defaults axis to 1 when omitted, so an absent
+        # axis attribute is NOT safe to fuse — it would silently change semantics.
         axis = OnnxModel.get_node_attribute(softmax, "axis")
         if axis is not None and axis not in (-1, 3):
+            return
+        if axis is None and self.model.get_opset_version() < 13:
             return
 
         # ========================================================================
@@ -380,6 +384,17 @@ class FusionMultiHeadAttentionDiT(Fusion):
         k_transposed_input = matmul_qk.input[1]
         v_bnsh = matmul_sv.input[1]
 
+        # In the cast-wrapped path, V may have been cast to match the post-Softmax
+        # attention weights' type (e.g., V cast from FP32 to FP16). The fused MHA op
+        # requires Q, K, V to share the same element type (type parameter T), so we
+        # trace V back through any Cast that was inserted for type consistency.
+        v_traced_through_cast = False
+        if cast_after_softmax is not None and v_bnsh in output_name_to_node:
+            v_producer = output_name_to_node[v_bnsh]
+            if v_producer.op_type == "Cast":
+                v_bnsh = v_producer.input[0]
+                v_traced_through_cast = True
+
         # Check if K^T comes from Transpose(perm=0,1,3,2) — if so, use K_BNSH directly
         k_transpose_node = self.model.match_parent(
             matmul_qk, "Transpose", input_index=1, output_name_to_node=output_name_to_node
@@ -389,6 +404,32 @@ class FusionMultiHeadAttentionDiT(Fusion):
         else:
             # K is natively in BNHS format, add a Transpose to convert to BNSH
             k_bnsh = self.transpose_bnhs_to_bnsh(k_transposed_input)
+
+        # Verify Q, K, V element types are consistent. MHA's type parameter T binds
+        # all three inputs to the same type — mismatches produce invalid graphs.
+        q_dtype = self.model.get_dtype(q_bnsh)
+        k_dtype = self.model.get_dtype(k_bnsh)
+        v_dtype = self.model.get_dtype(v_bnsh)
+        if q_dtype is not None and v_dtype is not None and q_dtype != v_dtype:
+            logger.debug("fuse_dit_attention: Q/V element type mismatch (%s vs %s), skipping", q_dtype, v_dtype)
+            return
+        if q_dtype is not None and k_dtype is not None and q_dtype != k_dtype:
+            logger.debug("fuse_dit_attention: Q/K element type mismatch (%s vs %s), skipping", q_dtype, k_dtype)
+            return
+        # When casts are present and V was NOT traced back through one, we can't be
+        # sure V matches Q/K's type. Bail out if types are unverifiable — proceeding
+        # could create a type-invalid MHA (e.g., Q=float32 but V=float16).
+        # When V WAS traced back, the trace-back already recovered the pre-cast tensor,
+        # so type consistency is structurally guaranteed.
+        if (cast_before_softmax is not None or cast_after_softmax is not None) and not v_traced_through_cast:
+            if q_dtype is None or v_dtype is None:
+                logger.debug(
+                    "fuse_dit_attention: cast nodes present, V not traced through Cast, "
+                    "types unverifiable (q=%s, v=%s), skipping",
+                    q_dtype,
+                    v_dtype,
+                )
+                return
 
         # ========================================================================
         # Detect num_heads
@@ -414,6 +455,20 @@ class FusionMultiHeadAttentionDiT(Fusion):
         # ========================================================================
         q_bsnh = self.transpose_bnsh_to_bsnh(q_bnsh)
         q_bsd = self.reshape_to_3d(q_bsnh, q_bsnh + "_BSD")
+
+        # ========================================================================
+        # Single-consumer guard: bail out if any matched intermediate tensor feeds
+        # another node. Removing multi-consumer intermediates would break the graph.
+        # ========================================================================
+        intermediate_outputs = [matmul_qk.output[0], mul_scale.output[0], softmax.output[0]]
+        if cast_before_softmax is not None:
+            intermediate_outputs.append(cast_before_softmax.output[0])
+        if cast_after_softmax is not None:
+            intermediate_outputs.append(cast_after_softmax.output[0])
+        for tensor_name in intermediate_outputs:
+            if tensor_name in input_name_to_nodes and len(input_name_to_nodes[tensor_name]) > 1:
+                logger.debug("fuse_dit_attention: intermediate %s has multiple consumers, skipping", tensor_name)
+                return
 
         # ========================================================================
         # Create MultiHeadAttention node
