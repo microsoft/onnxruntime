@@ -9,8 +9,10 @@
 
 #include <memory>
 
+#include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
+#include "core/framework/op_kernel_info.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
@@ -19,8 +21,8 @@
 #include "tensor_helper.h"
 
 namespace onnxruntime {
-struct DataTransferManager;
-struct IExecutionProvider;
+class DataTransferManager;
+class IExecutionProvider;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -41,18 +43,26 @@ struct OpKernelInfo {
   // to manage the lifetime of the cached data.
   struct KernelInfoCache {
     explicit KernelInfoCache(const OrtKernelInfo* kernel_info) : kernel_info_(kernel_info) {
+      const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(kernel_info);
+      execution_provider_ = core_kernel_info->GetExecutionProvider();
+      ort_ep_ = execution_provider_ != nullptr ? execution_provider_->GetOrtEp() : nullptr;
+      ep_impl_ = ort_ep_ != nullptr ? (static_cast<const Ep*>(ort_ep_))->EpImpl() : execution_provider_;
+
       Ort::ConstKernelInfo info{kernel_info};
-      const int input_count = info.GetInputCount();
+      const size_t input_count = info.GetInputCount();
       constant_input_tensors.resize(input_count);
-      for (int i = 0; i < input_count; ++i) {
+      for (size_t i = 0; i < input_count; ++i) {
         int is_constant = 0;
-        Ort::ConstValue const_input = info.GetTensorConstantInput(i, &is_constant);
+        Ort::ConstValue const_input = info.GetTensorConstantInput(gsl::narrow_cast<int>(i), &is_constant);
         if (is_constant && const_input != nullptr && const_input.IsTensor()) {
           constant_input_tensors[i] = CreateTensorFromApiValue(const_cast<OrtValue*>(static_cast<const OrtValue*>(const_input)));
         }
       }
     }
     const OrtKernelInfo* kernel_info_;
+    const ::onnxruntime::IExecutionProvider* execution_provider_{};
+    const OrtEp* ort_ep_{};
+    const ::onnxruntime::IExecutionProvider* ep_impl_{};
     std::vector<Tensor> constant_input_tensors;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelInfoCache);
   };
@@ -61,13 +71,24 @@ struct OpKernelInfo {
   }
 
   const DataTransferManager& GetDataTransferManager() const noexcept {
-    return (static_cast<const Ep*>(info_.GetEp()))->GetDataTransferManager();
+    return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
+
+  // Delegates to the core OpKernelInfo::GetAllocator so the adapter returns
+  // exactly the same allocator the framework would provide for each OrtMemType.
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const {
+    const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(cache_->kernel_info_);
+    return core_kernel_info->GetAllocator(mem_type);
+  }
+
   Node node() const noexcept {
     return Node{cache_->kernel_info_};
   }
   const IExecutionProvider* GetExecutionProvider() const noexcept {
-    return (static_cast<const Ep*>(info_.GetEp()))->EpImpl();
+    return cache_->ep_impl_;
+  }
+  const OrtEp* GetOrtEp() const noexcept {
+    return cache_->ort_ep_;
   }
 
   KernelDef GetKernelDef() const noexcept {
@@ -75,7 +96,7 @@ struct OpKernelInfo {
   }
 
   const Ort::ConstKernelInfo GetKernelInfo() const noexcept {
-    return info_;
+    return Ort::ConstKernelInfo{cache_->kernel_info_};
   }
 
   ConfigOptions GetConfigOptions() const noexcept {
@@ -85,7 +106,7 @@ struct OpKernelInfo {
   }
 
   int GetInputCount() const noexcept {
-    return info_.GetInputCount();
+    return gsl::narrow_cast<int>(info_.GetInputCount());
   }
 
   const std::vector<Tensor>& GetConstantInputTensors() const noexcept {
