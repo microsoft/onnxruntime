@@ -1093,6 +1093,7 @@ Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContex
     ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappedMemoryPtr(context_bin_filepath, &buffer));
 
     auto sys_ctx_handle = GetSystemContextHandle();
+    ORT_RETURN_IF(sys_ctx_handle == nullptr, "System context handle is null.");
 
     uint32_t graph_count = 0;
     Qnn_Version_t blob_version;
@@ -1106,8 +1107,7 @@ Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContex
 
     // Return ORT failure to continue to retry logic in CreateContextVtcmBackupBufferSharingEnabled()
     ORT_RETURN_IF(!MinVersionMet(blob_version, {3, 3, 3}), "Context binary of ", context_bin_filepath, " is v",
-                  std::to_string(blob_version.major), ".", std::to_string(blob_version.minor),
-                  ".", std::to_string(blob_version.patch),
+                  blob_version.major, ".", blob_version.minor, ".", blob_version.patch,
                   ". File mapping is only supported for versions >= 3.3.3");
 
     auto notify_param_ptr = std::make_unique<FileMappingCallbackInfo_t>(buffer, buffer_size, this);
@@ -1296,6 +1296,7 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
   // spill fill starts from 2.28
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)
   auto sys_ctx_handle = GetSystemContextHandle();
+  ORT_RETURN_IF(sys_ctx_handle == nullptr, "System context handle is null.");
 
   uint32_t graph_count = 0;
   QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
@@ -1372,6 +1373,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 #endif
 
   auto sys_ctx_handle = GetSystemContextHandle();
+  ORT_RETURN_IF(sys_ctx_handle == nullptr, "System context handle is null.");
 
   uint32_t graph_count = 0;
   QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
@@ -1393,8 +1395,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   if (use_file_mapping && !MinVersionMet(blob_version, {3, 3, 3})) {
-    LOGS(*logger_, WARNING) << "Context binary of " << node_name << " is v" << std::to_string(blob_version.major) << "."
-                            << std::to_string(blob_version.minor) << "." << std::to_string(blob_version.patch)
+    LOGS(*logger_, WARNING) << "Context binary of " << node_name << " is v"
+                            << blob_version.major << "." << blob_version.minor << "." << blob_version.patch
                             << ". File mapping is only supported for versions >= 3.3.3. Disabling file mapping for this node.";
     use_file_mapping = false;
   }
