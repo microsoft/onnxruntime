@@ -57,29 +57,6 @@ const OrtHardwareDevice* FindMatchingHardwareDevice(std::string_view device_cons
   return nullptr;
 }
 
-bool MatchesDeviceTypeProviderOption(std::string_view provider_option_key,
-                                     std::string_view provider_option_value,
-                                     std::string_view device_constraint) {
-  if (device_constraint.empty()) {
-    return true;
-  }
-
-  const auto key_lower = ToLower(provider_option_key);
-
-  // If provider option key is related to device type, then its value must match the device constraint value.
-  //
-  // Those keys are not standardized and are defined by EPs, e.g. "device_type" for OpenVINO EP, "backend_type" for QNN EP.
-  //   - "backend_type" has valid values: "cpu", "gpu", "htp" and "saver".
-  //   - "device_type" has valid values: "CPU", "GPU", "GPU.0", "GPU.1" and "NPU".
-  //
-  // TODO: In the future, we can consider standardizing the key for device type in provider options and make it more generic for all EPs to use.
-  if (key_lower == "device_type" || key_lower == "backend_type") {
-    return ToLower(provider_option_value).find(ToLower(device_constraint)) != std::string::npos;
-  }
-
-  return true;
-}
-
 Status ValidateCompiledModelCompatibilityInfo(const VariantSelectionEpInfo& ep_info,
                                               const std::string& compatibility_info,
                                               std::vector<const OrtHardwareDevice*>& constraint_devices,
@@ -154,20 +131,6 @@ bool MatchesVariant(ModelVariantInfo& variant, const VariantSelectionEpInfo& ep_
                        << "' does not match any device supported by EP '"
                        << ep_info.ep_name << "'. Skip this variant.";
     return false;
-  }
-
-  // Additional check for provider-bridge EPs only.
-  // If provider option contains key related to device type, then the value must match the device constraint if any.
-  // Gets the target device if matched.
-  if (ep_info.hardware_devices.empty()) {
-    for (const auto& [key, value] : ep_info.ep_options) {
-      if (!MatchesDeviceTypeProviderOption(key, value, variant.device)) {
-        LOGS_DEFAULT(INFO) << "Provider option '" << key << "' with value '" << value
-                           << "' does not match device constraint '" << variant.device
-                           << "'. Skip this variant.";
-        return false;
-      }
-    }
   }
 
   // 3) Check ep_compatibility_info constraint
