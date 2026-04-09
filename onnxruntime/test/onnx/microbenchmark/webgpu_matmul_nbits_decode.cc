@@ -3,13 +3,19 @@
 
 #include <benchmark/benchmark.h>
 
+#include <iostream>
 #include <random>
+#include <sstream>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <core/graph/onnx_protobuf.h>
 #include <core/session/onnxruntime_c_api.h>
 #include <core/session/onnxruntime_cxx_api.h>
+
+#include <dawn/native/DawnNative.h>
+#include <webgpu/webgpu.h>
 
 extern OrtEnv* env;
 extern const OrtApi* g_ort;
@@ -23,6 +29,205 @@ struct DecodeBenchConfig {
   int64_t block_size;
   int64_t accuracy_level;
 };
+
+struct AdapterSelectionConfig {
+  // adapter_type: Dawn adapter type to select, e.g. integrated or discrete GPU.
+  // adapter_index: zero-based index among only adapters of adapter_type.
+  // context_id: ORT WebGPU custom context ID used to bind the externally created instance/device.
+  // backend_type: Dawn backend to enumerate adapters from, e.g. D3D12 or Vulkan.
+  // print_adapter_list: whether to print all discovered adapters before selecting one.
+  WGPUAdapterType adapter_type;
+  int adapter_index;
+  int context_id;
+  WGPUBackendType backend_type;
+  bool print_adapter_list;
+};
+
+struct AdapterCandidate {
+  dawn::native::Adapter adapter;
+  int global_index;
+  WGPUAdapterType adapter_type;
+  int type_index;
+  uint32_t vendor_id;
+  uint32_t device_id;
+  std::string vendor;
+  std::string architecture;
+  std::string device;
+  std::string description;
+};
+
+struct SelectedWebGpuContext {
+  std::unique_ptr<dawn::native::Instance> dawn_instance;
+  WGPUInstance instance{nullptr};
+  WGPUDevice device{nullptr};
+  std::unordered_map<std::string, std::string> provider_options;
+  std::string selected_adapter_summary;
+};
+
+std::string ToString(WGPUStringView value) {
+  return value.data == nullptr ? std::string{} : std::string(value.data, value.length);
+}
+
+const char* AdapterTypeToString(WGPUAdapterType adapter_type) {
+  switch (adapter_type) {
+    case WGPUAdapterType_DiscreteGPU:
+      return "discrete";
+    case WGPUAdapterType_IntegratedGPU:
+      return "integrated";
+    case WGPUAdapterType_CPU:
+      return "cpu";
+    default:
+      return "unknown";
+  }
+}
+
+bool IsGpuAdapterType(WGPUAdapterType adapter_type) {
+  return adapter_type == WGPUAdapterType_DiscreteGPU ||
+         adapter_type == WGPUAdapterType_IntegratedGPU;
+}
+
+std::string FormatAdapterSummary(const AdapterCandidate& adapter) {
+  std::ostringstream stream;
+  stream << "adapter[" << adapter.global_index << "]"
+         << " type=" << AdapterTypeToString(adapter.adapter_type)
+         << " type_index=" << adapter.type_index
+         << " vendor=" << adapter.vendor
+         << " architecture=" << adapter.architecture
+         << " gpu_name=" << adapter.device
+         << " description=" << adapter.description
+         << " vendor_id=" << adapter.vendor_id
+         << " device_id=" << adapter.device_id;
+  return stream.str();
+}
+
+AdapterSelectionConfig GetAdapterSelectionConfig() {
+  // Pick the second discrete adapter by default so this benchmark can target the
+  // "other" dGPU on a machine with two discrete GPUs and one integrated GPU.
+  return {
+      WGPUAdapterType_DiscreteGPU,  // adapter_type
+      1,                            // adapter_index
+      1,                            // context_id
+      WGPUBackendType_D3D12,        // backend_type
+      true,                         // print_adapter_list
+  };
+}
+
+SelectedWebGpuContext CreateSelectedWebGpuContext() {
+  const AdapterSelectionConfig config = GetAdapterSelectionConfig();
+
+  SelectedWebGpuContext selected_context;
+  selected_context.dawn_instance = std::make_unique<dawn::native::Instance>();
+
+  WGPURequestAdapterOptions adapter_options = WGPU_REQUEST_ADAPTER_OPTIONS_INIT;
+  adapter_options.backendType = config.backend_type;
+  adapter_options.powerPreference = WGPUPowerPreference_Undefined;
+
+  std::vector<dawn::native::Adapter> adapters = selected_context.dawn_instance->EnumerateAdapters(&adapter_options);
+  if (adapters.empty()) {
+    throw std::runtime_error("No Dawn adapters were found for the configured backend.");
+  }
+
+  std::vector<AdapterCandidate> candidates;
+  candidates.reserve(adapters.size());
+  int discrete_index = 0;
+  int integrated_index = 0;
+  int cpu_index = 0;
+  int unknown_index = 0;
+  for (size_t i = 0; i < adapters.size(); ++i) {
+    WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
+    if (wgpuAdapterGetInfo(adapters[i].Get(), &info) != WGPUStatus_Success) {
+      continue;
+    }
+
+    const WGPUAdapterType adapter_type = info.adapterType;
+    int current_type_index = 0;
+    switch (adapter_type) {
+      case WGPUAdapterType_DiscreteGPU:
+        current_type_index = discrete_index++;
+        break;
+      case WGPUAdapterType_IntegratedGPU:
+        current_type_index = integrated_index++;
+        break;
+      case WGPUAdapterType_CPU:
+        current_type_index = cpu_index++;
+        break;
+      default:
+        current_type_index = unknown_index++;
+        break;
+    }
+    candidates.push_back(AdapterCandidate{
+        adapters[i],
+        static_cast<int>(i),
+        adapter_type,
+        current_type_index,
+        info.vendorID,
+        info.deviceID,
+        ToString(info.vendor),
+        ToString(info.architecture),
+        ToString(info.device),
+        ToString(info.description),
+    });
+
+    wgpuAdapterInfoFreeMembers(info);
+  }
+
+  if (config.print_adapter_list) {
+    std::cout << "Available Dawn GPU adapters for WebGPU benchmark:" << std::endl;
+    bool printed_gpu = false;
+    for (const auto& candidate : candidates) {
+      if (!IsGpuAdapterType(candidate.adapter_type)) {
+        continue;
+      }
+
+      printed_gpu = true;
+      std::cout << "  " << FormatAdapterSummary(candidate) << std::endl;
+    }
+
+    if (!printed_gpu) {
+      std::cout << "  No integrated or discrete GPU adapters were found." << std::endl;
+    }
+  }
+
+  const AdapterCandidate* selected_adapter = nullptr;
+  for (const auto& candidate : candidates) {
+    if (candidate.adapter_type == config.adapter_type &&
+        candidate.type_index == config.adapter_index) {
+      selected_adapter = &candidate;
+      break;
+    }
+  }
+
+  if (selected_adapter == nullptr) {
+    std::ostringstream stream;
+    stream << "Failed to find " << AdapterTypeToString(config.adapter_type)
+           << " adapter index " << config.adapter_index
+           << ". Update GetAdapterSelectionConfig() to match the available adapters listed above.";
+    throw std::runtime_error(stream.str());
+  }
+
+  selected_context.instance = selected_context.dawn_instance->Get();
+  selected_context.device = selected_adapter->adapter.CreateDevice();
+  if (selected_context.device == nullptr) {
+    throw std::runtime_error("Failed to create a WGPUDevice for the selected adapter.");
+  }
+
+  selected_context.selected_adapter_summary = FormatAdapterSummary(*selected_adapter);
+  std::cout << "Selected Dawn adapter for WebGPU benchmark: "
+            << selected_context.selected_adapter_summary << std::endl;
+
+  selected_context.provider_options["deviceId"] = std::to_string(config.context_id);
+  selected_context.provider_options["webgpuInstance"] = std::to_string(reinterpret_cast<size_t>(selected_context.instance));
+  selected_context.provider_options["webgpuDevice"] = std::to_string(reinterpret_cast<size_t>(selected_context.device));
+  selected_context.provider_options["preserveDevice"] = "1";
+  selected_context.provider_options["dawnProcTable"] = std::to_string(reinterpret_cast<size_t>(&dawn::native::GetProcs()));
+
+  return selected_context;
+}
+
+const SelectedWebGpuContext& GetSelectedWebGpuContext() {
+  static const SelectedWebGpuContext selected_context = CreateSelectedWebGpuContext();
+  return selected_context;
+}
 
 template <typename T>
 void AddTensorInitializer(ONNX_NAMESPACE::GraphProto& graph,
@@ -172,10 +377,11 @@ static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
   }
 
   std::vector<uint8_t> model_data = SerializeMatMulNBitsModel(config);
+  const SelectedWebGpuContext& selected_context = GetSelectedWebGpuContext();
 
   Ort::SessionOptions session_options;
   session_options.DisableMemPattern();
-  session_options.AppendExecutionProvider("WebGPU", std::unordered_map<std::string, std::string>{});
+  session_options.AppendExecutionProvider("WebGPU", selected_context.provider_options);
 
   OrtSession* raw_session = nullptr;
   OrtStatus* status = g_ort->CreateSessionFromArray(env, model_data.data(), model_data.size(), session_options, &raw_session);
@@ -217,7 +423,7 @@ static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
 
   const double total_flops = 2.0 * static_cast<double>(config.n) * static_cast<double>(config.k);
 
-  state.SetLabel("fp16_decode_bias");
+  state.SetLabel("fp16_decode_bias_custom_adapter");
   state.counters["TFLOPS"] = benchmark::Counter(
       total_flops,
       benchmark::Counter::kIsIterationInvariantRate);
