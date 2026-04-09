@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <limits>
 
 #include "gtest/gtest.h"
 
