@@ -15,6 +15,8 @@
 #include <string_view>
 #include <unordered_set>
 
+#include "core/common/safeint.h"
+
 namespace onnxruntime {
 namespace cuda_plugin {
 
@@ -179,7 +181,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
     if (has_budget && !previously_assigned) {
       OrtResourceCount cost = resource_budget.ComputeNodeCost(node);
       size_t cost_bytes = cost.AsTotalBytes();
-      size_t would_be_consumed = consumed_bytes + cost_bytes;
+      size_t would_be_consumed = SafeInt<size_t>(consumed_bytes) + cost_bytes;
 
       {
         // Log per-node cost information (mirrors in-tree CUDA EP logging)

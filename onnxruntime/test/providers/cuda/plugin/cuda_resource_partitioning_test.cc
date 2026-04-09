@@ -24,6 +24,7 @@
 #include "core/graph/model.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
+#include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/session/utils.h"
@@ -207,7 +208,7 @@ class CudaPluginPartitioningTest : public ::testing::Test {
     // registers it with the session, and calls session.Initialize() which
     // runs graph partitioning (invoking plugin GetCapability).
     OrtStatus* status = InitializeSession(&ort_options, session);
-    ASSERT_EQ(status, nullptr) << "InitializeSession failed";
+    ASSERT_STATUS_OK(ToStatusAndRelease(status));
 
     verifier(session.GetGraph());
   }
@@ -236,8 +237,8 @@ TEST_F(CudaPluginPartitioningTest, NoBudget_AllNodesCudaPlugin) {
 TEST_F(CudaPluginPartitioningTest, LargeBudget_AllNodesCudaPlugin) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/mul_1.onnx");
 
-  // 1 TB — effectively unlimited
-  LoadAndVerifyPartitioning(model_path, /*budget_kb=*/1024 * 1024 * 1024, [](const Graph& graph) {
+  // 1 GB — effectively unlimited and safe across 32-bit/64-bit builds
+  LoadAndVerifyPartitioning(model_path, /*budget_kb=*/1024 * 1024, [](const Graph& graph) {
     for (const auto& node : graph.Nodes()) {
       EXPECT_NE(node.GetExecutionProviderType(), kCpuExecutionProvider)
           << "Node " << node.Name() << " (" << node.OpType()
@@ -252,7 +253,7 @@ TEST_F(CudaPluginPartitioningTest, TinyBudget_NodesOffloadedToCpu) {
   // Use a model with multiple nodes so we can see some go to CPU.
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
 
-  // 1 byte budget — ad-hoc accountant will compute non-zero cost for any
+  // 1 KB budget — ad-hoc accountant will compute non-zero cost for any
   // node with initializers or known output shapes, so nodes must be offloaded.
   LoadAndVerifyPartitioning(model_path, /*budget_kb=*/1, [](const Graph& graph) {
     bool has_cpu_node = false;
