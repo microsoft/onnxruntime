@@ -80,6 +80,13 @@ def get_cuda_plugin_device_id(device):
         raise unittest.SkipTest(f"CUDA plugin EP device metadata had non-integer device_id={device_id!r}") from exc
 
 
+def is_cuda_mempool_unsupported_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "cudaMemPoolCreate failed" in message and (
+        "cudaErrorNotSupported" in message or "operation not supported" in message
+    )
+
+
 def _create_session_options(session_config=None):
     sess_options = onnxrt.SessionOptions()
     if session_config:
@@ -2061,10 +2068,15 @@ class TestCudaPluginEP(unittest.TestCase):
             model_path = tmp.name
         try:
             create_matmul_model(model_path)
-            session = self._create_cuda_graph_session(
-                model_path,
-                extra_session_config={"ep.cudapluginexecutionprovider.arena.use_cuda_mempool": "1"},
-            )
+            try:
+                session = self._create_cuda_graph_session(
+                    model_path,
+                    extra_session_config={"ep.cudapluginexecutionprovider.arena.use_cuda_mempool": "1"},
+                )
+            except Exception as exc:
+                if is_cuda_mempool_unsupported_error(exc):
+                    self.skipTest("CUDA mempool is not supported on this device/driver configuration")
+                raise
 
             assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
             self.assertTrue(
