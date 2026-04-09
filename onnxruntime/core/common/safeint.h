@@ -36,3 +36,50 @@ class SafeIntExceptionHandler<onnxruntime::OnnxRuntimeException> {
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+
+#include <type_traits>
+
+namespace onnxruntime {
+
+template <typename T>
+using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
+
+template <typename T>
+inline constexpr bool is_supported_integer_v =
+    std::is_integral_v<remove_cvref_t<T>> && !std::is_same_v<remove_cvref_t<T>, bool>;
+
+//------------------------------------------------------------------------------
+// Safe multiplication of two or more integer values into an explicit result type R.
+// Throws OnnxRuntimeException on overflow.
+//------------------------------------------------------------------------------
+template <typename R, typename T, typename U, typename... Rest>
+[[nodiscard]] R SafeMul(T a, U b, Rest... rest) {
+  static_assert(is_supported_integer_v<R>,
+                "SafeMul requires an integral result type (excluding bool)");
+  static_assert(is_supported_integer_v<T> && is_supported_integer_v<U>,
+                "SafeMul requires integral operand types (excluding bool)");
+  static_assert((is_supported_integer_v<Rest> && ...),
+                "SafeMul requires integral operand types (excluding bool)");
+
+  // SafeMultiply(T, U, T&) requires the first argument and result to share
+  // the same type. Cast the first operand to R so the result is directly in R.
+  R result{};
+  if constexpr (std::is_same_v<R, T>) {
+    result = a;
+  } else {
+    if (!SafeCast(a, result)) {
+      ORT_THROW("SafeMul: integer multiplication overflow");
+    }
+  }
+
+  if (!SafeMultiply(result, b, result)) {
+    ORT_THROW("SafeMul: integer multiplication overflow");
+  }
+
+  if constexpr (sizeof...(rest) > 0) {
+    return SafeMul<R>(result, rest...);
+  }
+  return result;
+}
+
+}  // namespace onnxruntime

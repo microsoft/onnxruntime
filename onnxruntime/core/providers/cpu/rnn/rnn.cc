@@ -88,7 +88,7 @@ void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens
   if (seq_length == 0) {
     // No sequence data was processed; zero out Y_h for this direction.
     int64_t Y_h_direction_offset = direction * batch_size * hidden_size;
-    math::Set<T, CPUMathUtil>(SafeInt<size_t>(batch_size) * hidden_size, T{0},
+    math::Set<T, CPUMathUtil>(SafeMul<size_t>(batch_size, hidden_size), T{0},
                               Y_h->MutableData<T>() + Y_h_direction_offset, &CPUMathUtil::Instance());
     return;
   }
@@ -100,7 +100,7 @@ void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens
       if (last_time_step < 0) {
         // sequence_lens[batch] == 0: no data was processed for this batch; zero out Y_h.
         int64_t Y_h_offset = direction * batch_size * hidden_size + batch * hidden_size;
-        math::Set<T, CPUMathUtil>(onnxruntime::narrow<size_t>(hidden_size), T{0},
+        math::Set<T, CPUMathUtil>(narrow<size_t>(hidden_size), T{0},
                                   Y_h->MutableData<T>() + Y_h_offset, &CPUMathUtil::Instance());
         continue;
       }
@@ -109,7 +109,7 @@ void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens
                        direction * batch_size * hidden_size +
                        batch * hidden_size;
     int64_t Y_h_offset = direction * batch_size * hidden_size + batch * hidden_size;
-    math::CopyVector<T, CPUMathUtil>(onnxruntime::narrow<int>(hidden_size), Y_buffer_data + y_offset,
+    math::CopyVector<T, CPUMathUtil>(narrow<int>(hidden_size), Y_buffer_data + y_offset,
                                      Y_h->MutableData<T>() + Y_h_offset,
                                      &CPUMathUtil::Instance());
   }
@@ -126,7 +126,7 @@ void ClearMissingFrames(T* Y_buffer_data, const Tensor* sequence_lens,
               seq * num_directions * batch_size * hidden_size +
               direction * batch_size * hidden_size +
               batch * hidden_size;
-          math::Set<T, CPUMathUtil>(onnxruntime::narrow<size_t>(hidden_size), 0, Y_buffer_data + offset, &CPUMathUtil::Instance());
+          math::Set<T, CPUMathUtil>(narrow<size_t>(hidden_size), 0, Y_buffer_data + offset, &CPUMathUtil::Instance());
         }
       }
     }
@@ -172,7 +172,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
   // X * W^t, each direction has shape of [seq_length, batch_size, hidden_size]
-  auto x_matmul_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * seq_length * batch_size * hidden_size_);
+  auto x_matmul_data = alloc->Alloc(SafeMul<size_t>(sizeof(float), seq_length, batch_size, hidden_size_));
   BufferUniquePtr x_matmul_buffer(x_matmul_data, BufferDeleter(alloc));
   auto* x_matmul_w_buffer_data = static_cast<float*>(x_matmul_buffer.get());
 
@@ -182,7 +182,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   if (Y != nullptr)
     Y_buffer_data = Y->MutableData<float>();
   else {
-    Y_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * seq_length * num_directions * batch_size * hidden_size_);
+    Y_data = alloc->Alloc(SafeMul<size_t>(sizeof(float), seq_length, num_directions, batch_size, hidden_size_));
     Y_matmul_buffer = BufferUniquePtr(Y_data, BufferDeleter(alloc));
     Y_buffer_data = static_cast<float*>(Y_matmul_buffer.get());
   }
@@ -194,20 +194,20 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
     bool isReverse = direction_ == "reverse" || direction == 1;
 
     if (B != nullptr) {
-      EigenMatrixMapRowMajor<float>(x_matmul_w_buffer_data, seq_length * SafeInt<size_t>(batch_size), onnxruntime::narrow<size_t>(hidden_size_)).rowwise() =
-          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_, onnxruntime::narrow<size_t>(hidden_size_)).transpose() +
-          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_ + hidden_size_, onnxruntime::narrow<size_t>(hidden_size_)).transpose();
+      EigenMatrixMapRowMajor<float>(x_matmul_w_buffer_data, SafeMul<size_t>(seq_length, batch_size), narrow<size_t>(hidden_size_)).rowwise() =
+          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_, narrow<size_t>(hidden_size_)).transpose() +
+          ConstEigenVectorMap<float>(B->Data<float>() + direction * 2 * hidden_size_ + hidden_size_, narrow<size_t>(hidden_size_)).transpose();
     } else {
-      math::Set<float, CPUMathUtil>(seq_length * batch_size * SafeInt<size_t>(hidden_size_), 0, x_matmul_w_buffer_data, &CPUMathUtil::Instance());
+      math::Set<float, CPUMathUtil>(SafeMul<size_t>(seq_length, batch_size, hidden_size_), 0, x_matmul_w_buffer_data, &CPUMathUtil::Instance());
     }
 
     // X * W[direction]^t + B
     math::Gemm<float>(
         CblasNoTrans,
         CblasTrans,
-        onnxruntime::narrow<int>(SafeInt<int64_t>(seq_length) * batch_size),
-        onnxruntime::narrow<int>(hidden_size_),
-        onnxruntime::narrow<int>(input_size),
+        SafeMul<int>(seq_length, batch_size),
+        narrow<int>(hidden_size_),
+        narrow<int>(input_size),
         1,
         X.Data<float>(),
         W.Data<float>() + direction * hidden_size_ * input_size,
@@ -219,7 +219,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
       int64_t time_step = isReverse ? (seq_length - t - 1) : t;
       int64_t Y_frame_offset = (time_step * num_directions + direction) * Y_frame_size;
       float* Y_buffer_data_current_frame = Y_buffer_data + Y_frame_offset;
-      auto y_frame_mat = EigenMatrixMapRowMajor<float>(Y_buffer_data_current_frame, onnxruntime::narrow<size_t>(batch_size), onnxruntime::narrow<size_t>(hidden_size_));
+      auto y_frame_mat = EigenMatrixMapRowMajor<float>(Y_buffer_data_current_frame, narrow<size_t>(batch_size), narrow<size_t>(hidden_size_));
 
       const float* h_prev = nullptr;
       if (t == 0) {
@@ -241,9 +241,9 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
         math::Gemm<float>(
             CblasNoTrans,
             CblasTrans,
-            onnxruntime::narrow<int>(batch_size),
-            onnxruntime::narrow<int>(hidden_size_),
-            onnxruntime::narrow<int>(hidden_size_),
+            narrow<int>(batch_size),
+            narrow<int>(hidden_size_),
+            narrow<int>(hidden_size_),
             1,
             h_prev,
             R.Data<float>() + direction * hidden_size_ * hidden_size_,
@@ -251,11 +251,11 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
             Y_buffer_data_current_frame,
             tp, &mlas_backend_kernel_selector_config_);
       } else {
-        math::Set<float, CPUMathUtil>(batch_size * SafeInt<size_t>(hidden_size_), 0, Y_buffer_data_current_frame, &CPUMathUtil::Instance());
+        math::Set<float, CPUMathUtil>(SafeMul<size_t>(batch_size, hidden_size_), 0, Y_buffer_data_current_frame, &CPUMathUtil::Instance());
       }
 
       // X[time_step] * W^t + H_t_1 * R^t
-      y_frame_mat += EigenMatrixMapRowMajor<float>(&x_matmul_w_buffer_data[time_step * Y_frame_size], onnxruntime::narrow<size_t>(batch_size), onnxruntime::narrow<size_t>(hidden_size_));
+      y_frame_mat += EigenMatrixMapRowMajor<float>(&x_matmul_w_buffer_data[time_step * Y_frame_size], narrow<size_t>(batch_size), narrow<size_t>(hidden_size_));
 
       // apply activation
       ApplyActivationToBatches<float>(sequence_lens, h_prev, Y_buffer_data_current_frame,
@@ -275,10 +275,10 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   }
 
   if (Y != nullptr)
-    DumpMatrix("Y", Y_buffer_data, (int)(seq_length * num_directions * batch_size), (int)hidden_size_);
+    DumpMatrix("Y", Y_buffer_data, SafeMul<int>(seq_length, num_directions, batch_size), narrow<int>(hidden_size_));
 
   if (Y_h != nullptr)
-    DumpMatrix("Y_h", Y_h->Data<float>(), (int)(num_directions * batch_size), (int)hidden_size_);
+    DumpMatrix("Y_h", Y_h->Data<float>(), SafeMul<int>(num_directions, batch_size), narrow<int>(hidden_size_));
 
   return Status::OK();
 }
