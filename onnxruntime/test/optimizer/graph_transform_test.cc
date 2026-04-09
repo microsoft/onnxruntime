@@ -845,7 +845,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs)
 
 TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalOutputs) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInitializer<int64_t>({6}, {2, 1, 2, 3, 3, 3});
+    auto* input = builder.MakeInitializer<int64_t>({6}, {2, 1, 2, 3, 3, 4});
     auto* unique_values = builder.MakeOutput<int64_t>(std::nullopt);
     auto* missing_indices = builder.MakeEmptyInput();
     auto* missing_inverse_indices = builder.MakeEmptyInput();
