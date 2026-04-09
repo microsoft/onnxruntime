@@ -541,6 +541,17 @@ size_t CalculateBufferElementCount(std::initializer_list<int> dimensions) {
   return count;
 }
 
+int CalculateOutputStepLength(int batch_size, int hidden_size, int num_directions, rnn::detail::Direction direction) {
+  SafeInt<int> output_step_length{batch_size};
+  output_step_length *= hidden_size;
+
+  if (direction == kForward && num_directions == 2) {
+    output_step_length *= 2;
+  }
+
+  return output_step_length;
+}
+
 template <typename T>
 UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const int seq_length,
@@ -750,9 +761,8 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
   // we do not need to do that if there are two directions and we're doing the backwards pass as we
   // are writing to a temporary buffer (as outputs == outputs_reverse_) which is later copied
   // to the real output by ReverseSequence. this later copy includes num_directions in the step length.
-  int output_step_length = batch_size_ * hidden_size_;
-  if (direction_ == kForward && num_directions == 2)
-    output_step_length = 2 * batch_size_ * hidden_size_;
+  const int single_direction_output_step_length = CalculateOutputStepLength(batch_size_, hidden_size_, 1, direction_);
+  const int output_step_length = CalculateOutputStepLength(batch_size_, hidden_size_, num_directions, direction_);
 
   // convenience end iterators we use in the loops below to detect any bounds issues
   span_T_const_iter batched_bias_WRz_local_end = batched_bias_WRz_.end();
@@ -1041,13 +1051,13 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
   // zero any values beyond the evaluated steps if the maximum explicit sequence length we saw (max_sequence_length)
   // was shorter than the maximum possible sequence length (seq_length_)
   if (output_sequence && max_sequence_length < seq_length_) {
-    if (output_step_length == batch_size_ * hidden_size_) {  // contiguous
+    if (output_step_length == single_direction_output_step_length) {  // contiguous
       const auto span_to_zero = outputs.subspan(
           max_sequence_length * output_step_length, (seq_length_ - max_sequence_length) * output_step_length);
       std::fill_n(&*span_to_zero.begin(), span_to_zero.size(), T{});
     } else {
       for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
-        const auto span_to_zero = outputs.subspan(i * output_step_length, batch_size_ * hidden_size_);
+        const auto span_to_zero = outputs.subspan(i * output_step_length, single_direction_output_step_length);
         std::fill_n(&*span_to_zero.begin(), span_to_zero.size(), T{});
       }
     }
