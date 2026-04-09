@@ -103,6 +103,7 @@ TEST(PluginEpGraphCapture, WebGpuGraphCaptureAndReplay) {
       ASSERT_ORTSTATUS_OK(ort_env->CopyTensor(cpu_input_2, gpu_input, nullptr));
     }
 
+    io_binding.SynchronizeInputs();
     session.Run(run_options, io_binding);
     io_binding.SynchronizeOutputs();
 
