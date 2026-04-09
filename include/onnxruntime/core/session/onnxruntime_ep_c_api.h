@@ -2374,7 +2374,7 @@ struct OrtEp {
    * graph capture/replay.
    *
    * **ORT graph capture/replay summary:**
-   * During OrtSession initialization, ORT calls OrtEp::IsGraphCaptured() on each EP in the order specified during
+   * During OrtSession initialization, ORT calls OrtEp::IsGraphCaptureEnabled() on each EP in the order specified during
    * provider registration with the session. If an EP returns true, ORT validates that the graph is suitable for
    * graph capture, and if so, caches the EP for graph capture during the next run. The graph validation ensures
    * that there are no control flow nodes and that node-to-EP assignments are compatible with the policy specified
@@ -2384,7 +2384,7 @@ struct OrtEp {
    * During the first call to OrtApi::Run() for the OrtSession, ORT performs multiple internal runs of the model
    * until the EP indicates that the graph has been captured by returning `true` from `OrtEp::IsGraphCaptured()`.
    * If the EP is unable to capture the graph within 8 runs, the call to OrtApi::Run() returns an error OrtStatus.
-   * Each internal run invokes `OrtEp::OnRunStart() -> normal execution -> `OrtEp::OnRunEnd()`. EPs should use
+   * Each internal run invokes `OrtEp::OnRunStart()`, normal execution, and `OrtEp::OnRunEnd()`. EPs should use
    * these run callbacks to track the number of necessary warm-up runs and begin/end graph capture when ready.
    *
    * After successful graph capture, subsequent calls to OrtApi::Run() skip normal execution and ORT instead calls
