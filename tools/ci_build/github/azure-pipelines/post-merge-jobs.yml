@@ -430,7 +430,6 @@ stages:
       vmImage: "macOS-14"
 
     steps:
-
     - template: templates/setup-feeds-and-python-steps.yml
       parameters:
         versionSpec: "3.12"
