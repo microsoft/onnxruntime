@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/quantization/quantize_linear.h"
 
+#include "core/framework/int4.h"
 #include "core/providers/common.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -34,6 +35,7 @@ Status QuantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(HAS_ZERO_POINT, has_zero_point_),
                              WGSL_TEMPLATE_PARAMETER(QUANTIZATION_TYPE, quantization_type_),
                              WGSL_TEMPLATE_PARAMETER(Y_IS_SIGNED, y_is_signed_),
+                             WGSL_TEMPLATE_PARAMETER(Y_PACKING_MODE, y_packing_mode_),
                              WGSL_TEMPLATE_VARIABLE(x, x_var));
 }
 
@@ -60,7 +62,9 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
 
   const auto x_components = 1;
 
-  const auto y_components = 4;  // uint8/int8 use 4 components
+  const auto y_packing_mode = util::GetOnnxTensorElementDataTypePackingMode(y->GetElementType());
+  int y_components;
+  ORT_RETURN_IF_ERROR(util::GetU32PackingNumComponents(y_packing_mode, y_components));
 
   uint32_t axis_uniform = 0;
   uint32_t block_size_uniform = 1;
@@ -82,8 +86,8 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
 
   program.AddOutput(ProgramOutput{y, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, y_components});
 
-  // Each thread packs 4 elements into one u32, so dispatch ceil(x_size/4) threads.
-  const auto output_size = CeilDiv(x_size, int64_t{4});
+  // Each thread packs y_components elements into one u32, so dispatch ceil(x_size/y_components) threads.
+  const auto output_size = CeilDiv(x_size, static_cast<int64_t>(y_components));
   program.SetDispatchGroupSize(CeilDiv<decltype(WORKGROUP_SIZE)>(output_size, WORKGROUP_SIZE));
 
   program.AddUniformVariables({
@@ -103,7 +107,7 @@ const std::vector<MLDataType>& InputTypeConstraints() {
 }
 
 const std::vector<MLDataType>& OutputAndZeroPointTypeConstraints() {
-  static const auto constraints = BuildKernelDefConstraints<uint8_t, int8_t>();
+  static const auto constraints = BuildKernelDefConstraints<uint8_t, int8_t, UInt4x2, Int4x2>();
   return constraints;
 }
 }  // namespace

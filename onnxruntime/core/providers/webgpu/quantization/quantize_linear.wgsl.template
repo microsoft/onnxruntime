@@ -16,17 +16,27 @@
 
 #param HAS_ZERO_POINT
 #param QUANTIZATION_TYPE
-#param WORKGROUP_SIZE
 #param Y_IS_SIGNED
+#param Y_PACKING_MODE
 
-#if Y_IS_SIGNED
-const CLAMP_MIN: i32 = -128;
-const CLAMP_MAX: i32 = 127;
-fn unpack_zp(packed: u32) -> vec4<i32> { return unpack4xI8(packed); }
-#else
-const CLAMP_MIN: i32 = 0;
-const CLAMP_MAX: i32 = 255;
-fn unpack_zp(packed: u32) -> vec4<i32> { return vec4<i32>(unpack4xU8(packed)); }
+#if Y_PACKING_MODE == U32_PACKING_MODE_4B_X_8
+  #if Y_IS_SIGNED
+  const CLAMP_MIN: i32 = -8;
+  const CLAMP_MAX: i32 = 7;
+  #else
+  const CLAMP_MIN: i32 = 0;
+  const CLAMP_MAX: i32 = 15;
+  #endif
+#elif Y_PACKING_MODE == U32_PACKING_MODE_8B_X_4
+  #if Y_IS_SIGNED
+  const CLAMP_MIN: i32 = -128;
+  const CLAMP_MAX: i32 = 127;
+  fn unpack_zp(packed: u32) -> vec4<i32> { return unpack4xI8(packed); }
+  #else
+  const CLAMP_MIN: i32 = 0;
+  const CLAMP_MAX: i32 = 255;
+  fn unpack_zp(packed: u32) -> vec4<i32> { return vec4<i32>(unpack4xU8(packed)); }
+  #endif
 #endif
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
@@ -61,22 +71,26 @@ fn get_zero_point(element_idx: u32) -> i32 {
 #if HAS_ZERO_POINT
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
-    let zero_point_vec = unpack_zp(y_zero_point[0]);
-    return zero_point_vec[0];
-#endif  // QUANTIZATION_TYPE_PER_TENSOR
-
-#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_AXIS
+    let zp_idx = 0u;
+#elif QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_AXIS
     let x_indices = x.offsetToIndices(element_idx);
-    let axis_idx = getElementAt(x_indices, uniforms.axis, x.rank);
-    let zero_point_vec = unpack_zp(y_zero_point[axis_idx / 4]);
-    return zero_point_vec[axis_idx % 4];
-#endif  // QUANTIZATION_TYPE_PER_AXIS
+    let zp_idx = getElementAt(x_indices, uniforms.axis, x.rank);
+#elif QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
+    let zp_idx = get_scale_offset(element_idx);
+#endif
 
-#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
-    let scale_idx = get_scale_offset(element_idx);
-    let zero_point_vec = unpack_zp(y_zero_point[scale_idx / 4]);
-    return zero_point_vec[scale_idx % 4];
-#endif  // QUANTIZATION_TYPE_BLOCKED
+#if Y_PACKING_MODE == U32_PACKING_MODE_4B_X_8
+    let packed = y_zero_point[zp_idx / 8];
+    let nibble = (packed >> ((zp_idx % 8u) * 4u)) & 0xFu;
+  #if Y_IS_SIGNED
+    return select(i32(nibble), i32(nibble) - 16, nibble >= 8u);
+  #else
+    return i32(nibble);
+  #endif
+#elif Y_PACKING_MODE == U32_PACKING_MODE_8B_X_4
+    let zero_point_vec = unpack_zp(y_zero_point[zp_idx / 4]);
+    return zero_point_vec[zp_idx % 4];
+#endif
 
 #else   // HAS_ZERO_POINT
     return 0;
@@ -87,18 +101,14 @@ fn get_scale(element_idx: u32) -> y_scale_value_t {
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
     return y_scale[0];
-#endif  // QUANTIZATION_TYPE_PER_TENSOR
-
-#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_AXIS
+#elif QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_AXIS
     let x_indices = x.offsetToIndices(element_idx);
     let axis_idx = getElementAt(x_indices, uniforms.axis, x.rank);
     return y_scale[axis_idx];
-#endif  // QUANTIZATION_TYPE_PER_AXIS
-
-#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
+#elif QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
     let scale_idx = get_scale_offset(element_idx);
     return y_scale[scale_idx];
-#endif  // QUANTIZATION_TYPE_BLOCKED
+#endif
 
 }
 
@@ -113,8 +123,39 @@ fn quantize_element(element_idx: u32) -> i32 {
 }
 
 $MAIN {
-    // Each thread quantizes 4 elements and packs them into one u32 output word.
-    // global_idx is the output u32 index.
+#if Y_PACKING_MODE == U32_PACKING_MODE_4B_X_8
+    // 4-bit: each thread quantizes 8 elements and packs them into one u32 output word.
+    let base_idx = global_idx * 8u;
+    if (base_idx >= uniforms.data_size) {
+        return;
+    }
+
+    var result = 0u;
+
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
+    // Per-tensor: scale and zero_point are the same for all elements, so fetch once.
+    let scale_value = get_scale(base_idx);
+    let zero_point_value = get_zero_point(base_idx);
+    for (var i = 0u; i < 8u; i++) {
+        if (base_idx + i < uniforms.data_size) {
+            let q = quantize(x[base_idx + i], scale_value, zero_point_value);
+            result |= u32(q & 0xF) << (i * 4u);
+        }
+    }
+#else
+    // Per-axis / blocked: each element may have a different scale/zero_point.
+    for (var i = 0u; i < 8u; i++) {
+        if (base_idx + i < uniforms.data_size) {
+            let q = quantize_element(base_idx + i);
+            result |= u32(q & 0xF) << (i * 4u);
+        }
+    }
+#endif
+
+    y[global_idx] = result;
+
+#elif Y_PACKING_MODE == U32_PACKING_MODE_8B_X_4
+    // 8-bit: each thread quantizes 4 elements and packs them into one u32 output word.
     let base_idx = global_idx * 4u;
     if (base_idx >= uniforms.data_size) {
         return;
@@ -139,4 +180,6 @@ $MAIN {
 #endif
 
     y[global_idx] = pack4xI8(packed);
+
+#endif  // Y_PACKING_MODE
 }

@@ -50,4 +50,10 @@ enum class U32PackingMode {
  */
 U32PackingMode GetOnnxTensorElementDataTypePackingMode(int32_t data_type);
 
+/**
+ * Returns the number of elements packed into a single u32 for the given packing mode.
+ * Returns an error status if the packing mode is `None` (i.e., not a packed type).
+ */
+Status GetU32PackingNumComponents(U32PackingMode packing_mode, int& num_components);
+
 }  // namespace onnxruntime::webgpu::util

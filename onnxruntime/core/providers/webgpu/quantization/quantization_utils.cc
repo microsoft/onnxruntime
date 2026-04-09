@@ -119,4 +119,18 @@ U32PackingMode GetOnnxTensorElementDataTypePackingMode(int32_t data_type) {
   }
 }
 
+Status GetU32PackingNumComponents(U32PackingMode packing_mode, int& num_components) {
+  switch (packing_mode) {
+    case U32PackingMode::Pack4bx8:
+      num_components = 8;
+      return Status::OK();
+    case U32PackingMode::Pack8bx4:
+      num_components = 4;
+      return Status::OK();
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Unsupported U32 packing mode");
+  }
+}
+
 }  // namespace onnxruntime::webgpu::util

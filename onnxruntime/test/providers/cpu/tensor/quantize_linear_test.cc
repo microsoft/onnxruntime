@@ -1426,6 +1426,90 @@ TEST(QuantizeLinearOpTest, Int8_Blocked_3D_Axis1_Exact) {
   test.Run();
 }
 
+// Int4 per-tensor with exact scale values and clamping
+TEST(QuantizeLinearOpTest, Int4_PerTensor_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{8};
+  // scale=2.0, zp=1 → q=round(x/2)+1, clamp [-8,7]
+  test.AddInput<float>("x", dims, {-20, -14, -4, 0, 2, 6, 12, 20});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<Int4x2>("y_zero_point", {}, {Int4x2(1, 0)});
+  // round/2+1: -10+1=-9→-8, -7+1=-6, -2+1=-1, 0+1=1, 1+1=2, 3+1=4, 6+1=7, 10+1=11→7
+  test.AddOutput<Int4x2>("y", dims,
+                         {Int4x2(-8, -6), Int4x2(-1, 1), Int4x2(2, 4), Int4x2(7, 7)});
+  test.Run();
+}
+
+// UInt4 per-tensor with exact scale values and clamping
+TEST(QuantizeLinearOpTest, UInt4_PerTensor_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{8};
+  // scale=2.0, zp=4 → q=round(x/2)+4, clamp [0,15]
+  test.AddInput<float>("x", dims, {-10, -8, -2, 0, 4, 10, 20, 30});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<UInt4x2>("y_zero_point", {}, {UInt4x2(4, 0)});
+  // round/2+4: -5+4=-1→0, -4+4=0, -1+4=3, 0+4=4, 2+4=6, 5+4=9, 10+4=14, 15+4=19→15
+  test.AddOutput<UInt4x2>("y", dims,
+                          {UInt4x2(0, 0), UInt4x2(3, 4), UInt4x2(6, 9), UInt4x2(14, 15)});
+  test.Run();
+}
+
+// Int4 per-axis (axis=1) with exact scale values
+TEST(QuantizeLinearOpTest, Int4_PerAxis_Axis1_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{2, 4};
+  test.AddInput<float>("X", dims,
+                       {0, 4, -6, 8,
+                        2, -2, 9, -28});
+  test.AddInput<float>("scale", {4}, {1, 2, 3, 4});
+  test.AddInput<Int4x2>("zero_point", {4}, {Int4x2(0, 0), Int4x2(0, 0)});
+  // row0: 0/1=0, 4/2=2, -6/3=-2, 8/4=2
+  // row1: 2/1=2, -2/2=-1, 9/3=3, -28/4=-7
+  test.AddOutput<Int4x2>("Y", dims,
+                         {Int4x2(0, 2), Int4x2(-2, 2), Int4x2(2, -1), Int4x2(3, -7)});
+  test.Run();
+}
+
+// Int4 blocked quantization (axis=1, block_size=2, no zero_point)
+TEST(QuantizeLinearOpTest, Int4_Blocked_Axis1_NoZeroPoint_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  // x shape [2, 4], axis=1, block_size=2 → scale shape [2, 2]
+  test.AddInput<float>("x", {2, 4},
+                       {0, 4, 8, -12,
+                        2, -6, 4, -20});
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<float>("y_scale", {2, 2}, {2.0f, 4.0f, 2.0f, 4.0f});
+  test.AddInput<Int4x2>("y_zero_point", {2, 2}, {Int4x2(0, 0), Int4x2(0, 0)});
+  // block [0,0]: round(0/2)=0, round(4/2)=2
+  // block [0,1]: round(8/4)=2, round(-12/4)=-3
+  // block [1,0]: round(2/2)=1, round(-6/2)=-3
+  // block [1,1]: round(4/4)=1, round(-20/4)=-5
+  test.AddOutput<Int4x2>("y", {2, 4},
+                         {Int4x2(0, 2), Int4x2(2, -3), Int4x2(1, -3), Int4x2(1, -5)});
+  test.Run();
+}
+
+// Int4 blocked quantization with zero_point
+TEST(QuantizeLinearOpTest, Int4_Blocked_Axis1_WithZeroPoint_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  // x shape [2, 4], axis=1, block_size=2 → scale shape [2, 2]
+  test.AddInput<float>("x", {2, 4},
+                       {0, 4, 8, 12,
+                        2, -6, 4, -20});
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<float>("y_scale", {2, 2}, {2.0f, 4.0f, 2.0f, 4.0f});
+  test.AddInput<Int4x2>("y_zero_point", {2, 2}, {Int4x2(5, -3), Int4x2(0, -2)});
+  // block [0,0] zp=5: round(0/2)+5=5, round(4/2)+5=7
+  // block [0,1] zp=-3: round(8/4)+(-3)=-1, round(12/4)+(-3)=0
+  // block [1,0] zp=0: round(2/2)+0=1, round(-6/2)+0=-3
+  // block [1,1] zp=-2: round(4/4)+(-2)=-1, round(-20/4)+(-2)=-7
+  test.AddOutput<Int4x2>("y", {2, 4},
+                         {Int4x2(5, 7), Int4x2(-1, 0), Int4x2(1, -3), Int4x2(-1, -7)});
+  test.Run();
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename InT, typename OutT>
