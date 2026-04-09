@@ -5,6 +5,8 @@ if(UNIX)
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime.lds)
   if(APPLE)
     set(OUTPUT_STYLE xcode)
+  elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
+    set(OUTPUT_STYLE aix)
   else()
     set(OUTPUT_STYLE gcc)
   endif()
@@ -66,7 +68,6 @@ if(onnxruntime_BUILD_SHARED_LIB)
     list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
   endforeach()
 
-  if(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
   add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
     COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
       --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
@@ -76,7 +77,6 @@ if(onnxruntime_BUILD_SHARED_LIB)
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
   add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
-  endif()
   if(WIN32)
     onnxruntime_add_shared_library(onnxruntime
       ${SYMBOL_FILE}
@@ -122,11 +122,7 @@ if(onnxruntime_BUILD_SHARED_LIB)
       # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
     )
   else()
-    if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-      onnxruntime_add_shared_library(onnxruntime ${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc)
-    else()
-      onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
-    endif()
+    onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
     if(NOT APPLE)
       include(CheckLinkerFlag)
       check_linker_flag(CXX "LINKER:-rpath=\$ORIGIN" LINKER_SUPPORT_RPATH)
@@ -136,11 +132,7 @@ if(onnxruntime_BUILD_SHARED_LIB)
     endif()
   endif()
 
-  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-    add_dependencies(onnxruntime ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  else()
-    add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  endif()
+  add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
 
@@ -149,7 +141,10 @@ if(onnxruntime_BUILD_SHARED_LIB)
   if(UNIX)
     if (APPLE)
       target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
-    elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+    elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
+      set_property(TARGET onnxruntime PROPERTY AIX_EXPORT_ALL_SYMBOLS OFF)
+      target_link_options(onnxruntime PRIVATE "LINKER:-bE:${SYMBOL_FILE}")
+    else()
       target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections" "LINKER:-z,noexecstack")
     endif()
   else()
@@ -287,20 +282,12 @@ if(WIN32)
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT APPLE AND NOT WIN32)
-  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-    set_target_properties(onnxruntime PROPERTIES
-      PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-      VERSION ${ORT_VERSION}
-      SOVERSION 1
-      FOLDER "ONNXRuntime")
-  else()
-    set_target_properties(onnxruntime PROPERTIES
-      PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-      LINK_DEPENDS ${SYMBOL_FILE}
-      VERSION ${ORT_VERSION}
-      SOVERSION 1
-      FOLDER "ONNXRuntime")
-  endif()
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    SOVERSION 1
+    FOLDER "ONNXRuntime")
 else()
   # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
   set_target_properties(onnxruntime PROPERTIES
