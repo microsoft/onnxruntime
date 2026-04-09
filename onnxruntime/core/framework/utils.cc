@@ -50,6 +50,34 @@ bool ProviderIsCpuBased(const IExecutionProvider& provider) {
   return provider.GetDevice().Type() == OrtDevice::CPU;
 }
 
+// Returns true if no data transfer is needed between the two devices.
+// HOST_ACCESSIBLE memory is a superset — accessible by both host and device — so it can satisfy
+// DEFAULT memory requirements on the same physical device without a copy.
+static bool DevicesAreMemoryCompatible(const OrtDevice& a, const OrtDevice& b) {
+  const bool a_is_cpu_mem = a.UsesCpuMemory();
+  const bool b_is_cpu_mem = b.UsesCpuMemory();
+
+  // Both CPU-accessible: compatible unless both are HOST_ACCESSIBLE on different physical devices.
+  if (a_is_cpu_mem && b_is_cpu_mem) {
+    if (a.Type() == OrtDevice::CPU || b.Type() == OrtDevice::CPU) {
+      return true;
+    }
+    return a.Type() == b.Type() &&
+           a.Vendor() == b.Vendor() &&
+           a.Id() == b.Id();
+  }
+
+  // HOST_ACCESSIBLE <-> DEFAULT: compatible only on the same physical device.
+  if ((a_is_cpu_mem != b_is_cpu_mem) &&
+      a.Type() == b.Type() &&
+      a.Vendor() == b.Vendor() &&
+      a.Id() == b.Id()) {
+    return true;
+  }
+
+  return false;
+}
+
 bool IsMemcpyNode(const Node& node) {
   return node.Domain() == kOnnxDomain &&
          (node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost");
@@ -117,6 +145,24 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
   return required_provider_type;
 }
 
+// Populate device_fetches for the output-copy path.
+// Reuses a pre-allocated user buffer when the memory is compatible (same device or HOST_ACCESSIBLE
+// <-> DEFAULT on the same physical device); otherwise inserts an empty placeholder.
+static void PopulateDeviceFetches(gsl::span<const MLValueCopyInfo> fetch_copy_info,
+                                  const std::vector<OrtValue>& fetches,
+                                  std::vector<OrtValue>& device_fetches) {
+  device_fetches.reserve(fetches.size());
+  for (size_t i = 0; i < fetches.size(); ++i) {
+    const auto& src = fetch_copy_info[i].source_device;
+    const auto& tgt = fetch_copy_info[i].target_device;
+    if ((src == tgt || DevicesAreMemoryCompatible(src, tgt)) && fetches[i].IsAllocated()) {
+      device_fetches.push_back(fetches[i]);
+    } else {
+      device_fetches.push_back({});
+    }
+  }
+}
+
 // Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_tensor_pairs/copy_sparse_pairs is provided,
 // src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
 // implementation for performance reasons.
@@ -132,8 +178,10 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr)
 #endif
 {
-  // same device so direct copy
-  if (copy_info.source_device == copy_info.target_device) {
+  // No data transfer needed if devices are the same or memory-compatible
+  // (e.g. HOST_ACCESSIBLE <-> DEFAULT on the same physical device).
+  if (copy_info.source_device == copy_info.target_device ||
+      DevicesAreMemoryCompatible(copy_info.source_device, copy_info.target_device)) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
   }
@@ -324,7 +372,8 @@ static bool FinalizeCopyInfoForFeeds(gsl::span<const OrtDevice> feed_locations,
   for (size_t i = 0, end = feed_locations.size(); i < end; ++i) {
     copy_info[i].source_device = feed_locations[i];
 
-    if (copy_info[i].source_device != copy_info[i].target_device) {
+    if (copy_info[i].source_device != copy_info[i].target_device &&
+        !DevicesAreMemoryCompatible(copy_info[i].source_device, copy_info[i].target_device)) {
       copy_needed = true;
     }
   }
@@ -345,7 +394,8 @@ static bool FinalizeCopyInfoForFetches(gsl::span<const OrtDevice* const>& fetch_
       copy_info[i].target_device = *alloc_info;
     }
 
-    if (copy_info[i].source_device != copy_info[i].target_device) {
+    if (copy_info[i].source_device != copy_info[i].target_device &&
+        !DevicesAreMemoryCompatible(copy_info[i].source_device, copy_info[i].target_device)) {
       copy_needed = true;
     }
   }
@@ -656,18 +706,7 @@ ExecuteGraphImpl(const SessionState& session_state,
     const auto& fetch_copy_info = feeds_fetches_manager.GetFetchesDeviceCopyInfo();
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
-      // need intermediate fetches. use pre-allocated fetches where possible.
-      device_fetches.reserve(num_outputs);
-
-      for (size_t i = 0; i < num_outputs; ++i) {
-        if (fetch_copy_info[i].source_device == fetch_copy_info[i].target_device && fetches[i].IsAllocated()) {
-          device_fetches.push_back(fetches[i]);
-        } else {
-          // use temporary value
-          device_fetches.push_back({});
-        }
-      }
-
+      PopulateDeviceFetches(fetch_copy_info, fetches, device_fetches);
       p_fetches = &device_fetches;
     }
 
@@ -812,18 +851,7 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
     const auto& fetch_copy_info = feeds_fetches_manager.GetFetchesDeviceCopyInfo();
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
-      // need intermediate fetches. use pre-allocated fetches where possible.
-      device_fetches.reserve(num_outputs);
-
-      for (size_t i = 0; i < num_outputs; ++i) {
-        if (fetch_copy_info[i].source_device == fetch_copy_info[i].target_device && fetches[i].IsAllocated()) {
-          device_fetches.push_back(fetches[i]);
-        } else {
-          // use temporary value
-          device_fetches.push_back({});
-        }
-      }
-
+      PopulateDeviceFetches(fetch_copy_info, fetches, device_fetches);
       p_fetches = &device_fetches;
     }
 

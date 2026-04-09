@@ -215,6 +215,18 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   }
 }
 
+OrtDevice PluginExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+    // Use the host-accessible allocator device if one was registered by the plugin.
+    // This avoids unnecessary copies between CPU and HOST_ACCESSIBLE memory.
+    if (!ep_devices_.empty() && ep_devices_[0]->host_accessible_memory_info != nullptr) {
+      return ep_devices_[0]->host_accessible_memory_info->device;
+    }
+    return OrtDevice();
+  }
+  return GetDevice();
+}
+
 PluginExecutionProvider::~PluginExecutionProvider() {
   if (ort_ep_ && !api_node_compute_infos_.empty() && ort_ep_->ReleaseNodeComputeInfos != nullptr) {
     ort_ep_->ReleaseNodeComputeInfos(ort_ep_.get(), api_node_compute_infos_.data(),

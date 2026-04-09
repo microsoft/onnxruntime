@@ -918,7 +918,7 @@ class PlannerImpl {
           // We only do it for CPU based EPs. We are not likely to encounter
           // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
           // However, we still ignore them.
-          if (output_device.Type() == OrtDevice::CPU) {
+          if (output_device.UsesCpuMemory()) {
             const auto& output_name = node_output->Name();
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
             for (const auto* consumer : consumers) {
