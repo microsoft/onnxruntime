@@ -51,7 +51,7 @@ Session::Run()
 | `ep.cudapluginexecutionprovider.enable_cuda_graph` | bool | false | Enable CUDA graph capture/replay |
 | `ep.cudapluginexecutionprovider.min_num_runs_before_cuda_graph_capture` | int | 2 | Warmup runs before capture |
 
-Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supported.
+Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supported. For the warm-up count, `ep.cuda.min_num_runs_before_cuda_graph_capture` is also accepted.
 
 ---
 
@@ -73,9 +73,7 @@ Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supp
 | `onnxruntime/core/session/inference_session.cc` | Replaced hard-coded EP name list with policy-driven graph capture validation loop; added bounded recursion via `RunImpl()` with `kMaxGraphCaptureWarmupRuns`; stream collection not recycled during graph capture |
 | `onnxruntime/core/session/inference_session.h` | Added `RunImpl()` private method and `kMaxGraphCaptureWarmupRuns` constant |
 | `onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.cc` | Added version-gated `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` bridge implementations |
-| In-tree EPs (CUDA, DML, JS, WebGPU) | Added `GetGraphCaptureNodeAssignmentPolicy()` override returning `ALLOW_CPU_FOR_SHAPES` |
 | `onnxruntime/core/providers/webgpu/ep/ep.cc` | Added graph capture callback delegation to underlying `IExecutionProvider` |
-| `onnxruntime/core/providers/nv_tensorrt_rtx/nv_execution_provider.cc` | Changed `IsGraphCaptureEnabled()` to return `false` (NvTRT RTX manages graph capture internally) |
 
 ### Key Design Decisions
 
@@ -120,9 +118,9 @@ Concurrent `Session::Run()` is supported with CUDA graph enabled by keeping capt
 
 ## Verification
 
-1. Build: `./cuda_plugin.sh` — compiles with no errors
-2. Test without graph: `./cuda_plugin.sh --test_plugin` — existing tests pass
-3. Test with graph: Run `test_cuda_plugin_ep.py` — CUDA graph tests validate:
+1. Build and deploy the plugin using the instructions in [QUICK_START.md](QUICK_START.md#build-instructions) and [QUICK_START.md](QUICK_START.md#running-tests).
+2. Run `onnxruntime/test/python/transformers/test_cuda_plugin_ep.py` as described in [QUICK_START.md](QUICK_START.md#running-tests).
+3. The CUDA graph tests in that script validate:
    - `test_cuda_graph_capture_and_replay` — warmup + capture + replay with default arena
    - `test_cuda_graph_replay_with_updated_input` — in-place input update after graph capture
    - `test_cuda_graph_with_mempool` — graph capture with `arena.use_cuda_mempool=1`
@@ -131,4 +129,4 @@ Concurrent `Session::Run()` is supported with CUDA graph enabled by keeping capt
 
 ## Future Work
 
-1. **Profiling integration**: CUDA graph replay currently bypasses the profiler. Integration with the plugin profiler (when available) is future work.
+1. **Profiling integration**: CUDA graph replay currently bypasses the CUDA plugin EP profiler path because the CUDA plugin EP does not yet implement `OrtEp::CreateProfiler`. Wiring graph replay into that path is future work.

@@ -9,7 +9,7 @@ The CUDA Plugin EP is an alternative build of the ONNX Runtime CUDA Execution Pr
 - Support all operators currently supported by the in-tree CUDA EP (tunable ops are low priority)
 - Minimize changes to existing CUDA kernel source files
 
-**Current status:** The plugin build is functional on this branch and the focused plugin validation script (`./cuda_plugin.sh --build --test_plugin`) passes. Most core CUDA kernels now compile in the plugin build; the remaining source-level exclusions are documented in [Section 7](#7-excluded-operators).
+**Current status:** The plugin build is functional. Most core CUDA kernels now compile in the plugin build; the remaining source-level exclusions are documented in [Section 7](#7-excluded-operators).
 
 ---
 
@@ -323,7 +323,7 @@ For stream bridging, the preferred helpers are:
 
 #### 5.3.1 NHWC Layout-Transformation Support
 
-The bundled CUDA EP's NHWC path is not just a kernel-registration feature. It is a coordinated contract between provider configuration, ORT's layout transformer, kernel registration, adapter/provider access, and graph partitioning. On the current branch, the CUDA plugin EP now supports this path when NHWC is compiled in and the session requests `prefer_nhwc`.
+The bundled CUDA EP's NHWC path is not just a kernel-registration feature. It is a coordinated contract between provider configuration, ORT's layout transformer, kernel registration, adapter/provider access, and graph partitioning. The current implementation supports this path when NHWC is compiled in and the session requests `prefer_nhwc`.
 
 #### 5.3.1.1 End-to-End Flow
 
@@ -344,7 +344,7 @@ This means the plugin must satisfy two distinct contracts at the same time:
 
 #### 5.3.1.2 Current Plugin Status
 
-The current branch already has the core runtime pieces in place:
+The current implementation already has the core runtime pieces in place:
 
 | Component | Current state |
 |-----------|---------------|
@@ -378,7 +378,7 @@ The implementation should preserve the following invariants:
 
 #### 5.3.1.4 Implemented Design and Remaining Follow-Ups
 
-The current branch has already landed the minimum runtime fixes required for plugin-side NHWC execution. The remaining work is mostly cleanup, consolidation, and stronger diagnostics.
+The current implementation has the minimum runtime fixes required for plugin-side NHWC execution. The remaining work is mostly cleanup, consolidation, and stronger diagnostics.
 
 **A. Keep partitioning registry-driven and preserve pre-assigned NHWC nodes**
 
@@ -414,8 +414,8 @@ The NHWC rollout is effectively in a "runtime enabled, cleanup remaining" state:
 
 | Phase | Change | Expected outcome |
 |-------|--------|------------------|
-| 1 | Enable plugin NHWC callbacks and preserve pre-assigned nodes in the second capability pass | Completed on the current branch |
-| 2 | Cache the shim provider pointer in the adapter `OpKernelInfo` | Completed on the current branch; fixes the observed NHWC runtime crash |
+| 1 | Enable plugin NHWC callbacks and preserve pre-assigned nodes in the second capability pass | Implemented |
+| 2 | Cache the shim provider pointer in the adapter `OpKernelInfo` | Implemented; fixes the observed NHWC runtime crash |
 | 3 | Consolidate allowlists, improve internal-domain diagnostics, and strengthen structural NHWC assertions | Recommended follow-up work |
 
 ### 5.4 CUDA Graph Support
@@ -620,15 +620,7 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 
 ### 10.2 Running Tests
 
-After building and deploying the plugin (see [Section 9.5](#95-deployment)):
-
-```bash
-# Run tests from /tmp to avoid module shadowing
-cd /tmp
-python /path/to/onnxruntime/test/python/transformers/test_cuda_plugin_ep.py
-```
-
-The current branch has been validated with `./cuda_plugin.sh --build --test_plugin`, which runs this script against the locally built plugin library.
+After building and deploying the plugin (see [Section 9.5](#95-deployment)), use the shared test instructions in [QUICK_START.md](QUICK_START.md#running-tests). That section is the source of truth for prerequisites, `ORT_CUDA_PLUGIN_PATH`, and platform-specific test commands.
 
 ### 10.3 Parity Report
 
@@ -841,9 +833,9 @@ include/onnxruntime/ep/
 
 ## 14. Future Work
 
-1. **Profiling and observability** — The in-tree CUDA EP exposes an EP profiler, while the plugin shim currently does not surface equivalent profiling hooks. Future work should wire up `GetProfiler()` for the plugin path, integrate CUDA/NVTX/CUPTI-based tracing where appropriate, and make plugin execution visible in the same profiling flows users already rely on for the bundled CUDA EP.
+1. **Profiling and observability** — ORT's generic plugin EP bridge now supports `OrtEp::CreateProfiler`, but the CUDA plugin EP does not implement that callback yet. Future work should add CUDA-plugin-specific profiler wiring, integrate CUDA/NVTX/CUPTI-based tracing where appropriate, and make plugin execution visible in the same profiling flows users already rely on for the bundled CUDA EP.
 
-2. **Remaining stream/adapter parity for framework-style `Stream*` consumers** — Much of the broad `Stream*` gap has been addressed on `main`: the plugin adapter now provides an `OrtStreamAdapter` / `PluginStreamShim` path for framework-style `Stream*` call sites, FFT is included, and quantization/diffusion kernels are no longer excluded as a class. Remaining work is narrower:
+2. **Remaining stream/adapter parity for framework-style `Stream*` consumers** — Much of the broad `Stream*` gap has already been addressed: the plugin adapter now provides an `OrtStreamAdapter` / `PluginStreamShim` path for framework-style `Stream*` call sites, FFT is included, and quantization/diffusion kernels are no longer excluded as a class. Remaining work is narrower:
 
    - Continue using `Stream(context)` / `GetOrtStream(context)` patterns for migrated kernels rather than adding raw-stream-only forks.
    - Audit still-excluded directories that require more than a stream handle: `contrib_ops/cuda/llm/*`, `contrib_ops/cuda/transformers/*`, and `contrib_ops/cuda/collective/*`.
@@ -857,11 +849,11 @@ include/onnxruntime/ep/
 
 6. **Remaining contrib exclusions** — Remaining contrib exclusions are: `shrunken_gather.cc` (training), `transformers/*` (subgraph), `aten_ops/*` (ATen), `collective/*` (NCCL), and `llm/*` (contrib LLM pass).
 
-7. **CI integration and targeted benchmarking** — Partially complete on `main`. Basic CUDA plugin build + `test_cuda_plugin_ep.py` coverage now exists in Linux and Windows plugin CI workflows. Remaining work is perf-oriented and feature-specific validation: add targeted benchmarks or perf gates for graph replay and allocator behavior, and extend CI once profiling and tunable-op support land.
+7. **CI integration and targeted benchmarking** — Partially complete. Basic CUDA plugin build + `test_cuda_plugin_ep.py` coverage now exists in Linux and Windows plugin CI workflows. Remaining work is perf-oriented and feature-specific validation: add targeted benchmarks or perf gates for graph replay and allocator behavior, and extend CI once profiling and tunable-op support land.
 
-8. **NHWC cleanup and hardening** — Partially complete on `main`. Runtime NHWC callbacks, second-pass capability handling for pre-assigned NHWC nodes, cached provider-config access, and focused Conv/BatchNormalization/Pool tests are in place. Remaining work is the cleanup described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the conversion allowlist with the bundled CUDA EP, improve internal-domain kernel-miss diagnostics, and add stronger structural assertions that plugin-backed NHWC execution was actually selected.
+8. **NHWC cleanup and hardening** — Partially complete. Runtime NHWC callbacks, second-pass capability handling for pre-assigned NHWC nodes, cached provider-config access, and focused Conv/BatchNormalization/Pool tests are in place. Remaining work is the cleanup described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the conversion allowlist with the bundled CUDA EP, improve internal-domain kernel-miss diagnostics, and add stronger structural assertions that plugin-backed NHWC execution was actually selected.
 
-9. **OpSchema-validated kernel registration after PR #27713** — PR #27713 has landed on `main`, so the `OrtEpApi` and C++ wrappers for querying ONNX operator schemas are available (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). The remaining work is plugin-side adoption:
+9. **OpSchema-validated kernel registration after PR #27713** — PR #27713 has already landed, so the `OrtEpApi` and C++ wrappers for querying ONNX operator schemas are available (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). The remaining work is plugin-side adoption:
 
     **A. Registration-time validation pass**
 
@@ -889,7 +881,7 @@ include/onnxruntime/ep/
     | `cuda_ep.cc` / `GetCapabilityImpl()` | (Optional) Add schema-based diagnostic when `EpGraphSupportInfo_LookUpKernel` returns nullptr |
     | `test_cuda_plugin_ep.py` | Add a validation stage that exercises schema-validated registration |
 
-10. **Resource accounting and annotation-based partitioning after PR #27595** — PR #27595 has landed on `main`, so ORT now has framework-side resource accounting and layering annotations. The remaining CUDA plugin work is to bridge those capabilities through the plugin EP API and plugin capability implementation.
+10. **Resource accounting and annotation-based partitioning after PR #27595** — PR #27595 has already landed, so ORT now has framework-side resource accounting and layering annotations. The remaining CUDA plugin work is to bridge those capabilities through the plugin EP API and plugin capability implementation.
 
     **A. Resource accounting**
 

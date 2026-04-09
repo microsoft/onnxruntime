@@ -3094,11 +3094,11 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
-  // Check if this Run() is simply going to be a CUDA Graph replay.
+  // Check if this Run() can skip normal execution and replay a previously captured graph.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "
                                  << cached_execution_provider_for_graph_replay_.Type()
-                                 << " CUDA Graph for this model with tag: " << run_options.run_tag
+                                 << " graph for this model with tag: " << run_options.run_tag
                                  << " with graph annotation id: " << graph_annotation_id;
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart(session_id_);
@@ -3221,9 +3221,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         run_profiler->EndProfiling();
       }
 
-      // Move stream cleanup from ExecuteGraph to here for cuda graph capture.
-      // Cleanup will call cudaStreamSyncronize, which is not allowed for graph capture.
-      // Note that graph capture ends when we call xp->OnRunEnd() in the above code so it is safe here.
+      // Move stream cleanup from ExecuteGraph to here for graph capture.
+      // Cleanup may synchronize provider streams, which is not allowed while an
+      // EP is still inside its capture window.
+      // Graph capture, if any, ends when xp->OnRunEnd() returns above, so it is safe here.
 #ifdef ORT_ENABLE_STREAM
       DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
       if (device_stream_collection) {
@@ -3322,11 +3323,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
   reset_saturation_count();
 
-  // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
-  // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
-  // so that users just need one session run to capture the graph.
-  // N is defined in min_num_runs_before_cuda_graph_capture_ for CUDA EP,
-  // and the value could be different for other EP.
+  // Some EPs require multiple internal runs before replay is ready: warm-up
+  // runs for allocations/setup followed by one run that captures the graph.
+  // Retry within the same user-visible Session::Run() call until the EP reports
+  // that capture has completed, subject to kMaxGraphCaptureWarmupRuns.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {

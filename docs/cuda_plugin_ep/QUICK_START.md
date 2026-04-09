@@ -12,7 +12,6 @@ build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_whe
           --cudnn_home "D:\path\to\cudnn-installation-root" ^
           --use_vcpkg --use_binskim_compliant_compile_flags ^
           --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=native" ^
-          --cmake_extra_defines "onnxruntime_BUILD_UNIT_TESTS=ON" ^
           --cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"
 ```
 
@@ -106,7 +105,7 @@ The focused validation script for the CUDA Plugin EP is `onnxruntime/test/python
 
 ### Test prerequisites
 
-- Build ONNX Runtime with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` and `onnxruntime_BUILD_UNIT_TESTS=ON`.
+- Build ONNX Runtime with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`.
 - Install the built ONNX Runtime wheel.
 - Install Python test dependencies. `test_cuda_plugin_ep.py` uses PyTorch for CPU-side reference computations, so CPU-only PyTorch is sufficient.
 
@@ -151,16 +150,10 @@ python test_cuda_plugin_ep.py
 
 The script validates plugin registration, device enumeration, provider options, operator coverage, and that key nodes are actually assigned to `CudaPluginExecutionProvider`.
 
-## Known Limitations
-* The plugin does not currently support CUDA Graphs.
-* The plugin direct-allocates memory using `cudaMalloc` resulting in a potential performance penalty compared to the integrated Memory Arena.
 
 ## Verification
 You can generate a parity report comparing the kernels available in the plugin EP versus the statically linked CUDA EP.
 ```bash
-# Check static source registration parity:
-python tools/ci_build/cuda_plugin_parity_report.py
-
 # Check runtime registry parity:
 python tools/ci_build/cuda_plugin_parity_report.py --runtime --plugin-ep-lib build/Linux/RelWithDebInfo/libonnxruntime_providers_cuda_plugin.so
 ```
