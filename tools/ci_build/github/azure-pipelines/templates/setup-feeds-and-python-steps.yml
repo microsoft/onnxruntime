@@ -19,6 +19,8 @@ parameters:
   default: ''
 
 steps:
+- task: NuGetAuthenticate@1 # just auth w/ internal feeds
+
 - task: MavenAuthenticate@0
   inputs:
     artifactsFeeds: ${{ parameters.artifactFeeds }}
@@ -93,5 +95,28 @@ steps:
     }
     "@
   displayName: 'Maven/Gradle - mirror / feed via `${{ parameters.artifactFeeds }}`'
+  env:
+    central_maven_feed_name: ${{ parameters.artifactFeeds }}
+
+- pwsh: |
+    # NuGet appears to fail if any of the pkg sources are unreachable.
+    # Replace the NuGet.config w/ one that only has the internal feed.
+    # HACK: We'd rather splice the structure, not override the file.
+    Set-Content -Path "NuGet.config" -Value @"
+    <?xml version="1.0" encoding="utf-8"?>
+    <configuration>
+      <solution>
+        <add key="disableSourceControlIntegration" value="true" />
+      </solution>
+      <packageSources>
+        <clear />
+        <add key="1ES Feed" value="https://pkgs.dev.azure.com/aiinfra/_packaging/${env:central_maven_feed_name}/nuget/v3/index.json" />
+      </packageSources>
+      <disabledPackageSources>
+        <clear />
+      </disabledPackageSources>
+    </configuration>
+    "@
+  displayName: NuGet - override `NuGet.config` to lock feed to `${{ parameters.artifactFeeds }}`
   env:
     central_maven_feed_name: ${{ parameters.artifactFeeds }}
