@@ -66,6 +66,20 @@ def get_cuda_plugin_device_by_id(device_id: int):
     raise unittest.SkipTest(f"CUDA plugin EP device_id={device_id} is not available in this environment")
 
 
+def get_cuda_plugin_device_id(device):
+    device_id = device.ep_options.get("device_id")
+    if device_id is None:
+        device_id = device.ep_metadata.get("cuda_device_id")
+
+    if device_id is None:
+        raise unittest.SkipTest("CUDA plugin EP device metadata did not include a CUDA device_id")
+
+    try:
+        return int(device_id)
+    except (TypeError, ValueError) as exc:
+        raise unittest.SkipTest(f"CUDA plugin EP device metadata had non-integer device_id={device_id!r}") from exc
+
+
 def _create_session_options(session_config=None):
     sess_options = onnxrt.SessionOptions()
     if session_config:
@@ -442,6 +456,19 @@ def _run_model_test(
             os.remove(model_path)
 
 
+def _run_cpu_reference_model(model, feed_dict):
+    """Run a model on CPU EP and return all outputs for reference comparisons."""
+    with tempfile.NamedTemporaryFile(suffix="_cpu_reference.onnx", delete=False) as tmp:
+        model_path = tmp.name
+    try:
+        save(model, model_path)
+        sess = onnxrt.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        return sess.run(None, feed_dict)
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+
+
 class TestCudaPluginEP(unittest.TestCase):
     # ---- Registration tests (verify nodes run on the plugin EP) ----
 
@@ -798,6 +825,35 @@ class TestCudaPluginEP(unittest.TestCase):
             target_device, "Resize", model, {"X": x}, lambda f: np.repeat(np.repeat(f["X"], 2, axis=2), 2, axis=3)
         )
         self.assertEqual(result, TEST_PASS, "Resize plugin op test failed")
+
+    def test_op_resize_antialias(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node(
+            "Resize",
+            ["X", "", "scales"],
+            ["Y"],
+            mode="linear",
+            antialias=1,
+            coordinate_transformation_mode="half_pixel",
+        )
+        graph = helper.make_graph(
+            [node],
+            "test-Resize-antialias",
+            [helper.make_tensor_value_info("X", f_dtype, [1, 1, 4, 4])],
+            [helper.make_tensor_value_info("Y", f_dtype, [1, 1, 2, 2])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 18
+        model = helper.make_model(graph, opset_imports=[opset])
+        model.graph.initializer.append(helper.make_tensor("scales", TensorProto.FLOAT, [4], [1.0, 1.0, 0.5, 0.5]))
+        x = np.random.rand(1, 1, 4, 4).astype(np.float32)
+
+        def expected(feed):
+            return _run_cpu_reference_model(model, feed)[0]
+
+        result = _run_model_test(target_device, "Resize_antialias", model, {"X": x}, expected, atol=1e-4)
+        self.assertEqual(result, TEST_PASS, "Resize antialias plugin op test failed")
 
     def test_op_sum_variadic(self):
         target_device = get_cuda_plugin_device()
@@ -1609,6 +1665,32 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "ScatterElements", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "ScatterElements test failed")
 
+    def test_op_scatter_nd(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ScatterND",
+            [
+                ("data", TensorProto.FLOAT, [4, 4]),
+                ("indices", TensorProto.INT64, [2, 1]),
+                ("updates", TensorProto.FLOAT, [2, 4]),
+            ],
+            [("Y", TensorProto.FLOAT, [4, 4])],
+            opset=16,
+        )
+        data = np.arange(16, dtype=np.float32).reshape(4, 4)
+        indices = np.array([[0], [2]], dtype=np.int64)
+        updates = np.array([[100, 101, 102, 103], [200, 201, 202, 203]], dtype=np.float32)
+        feed = {"data": data, "indices": indices, "updates": updates}
+
+        def expected(f):
+            result = f["data"].copy()
+            result[0] = f["updates"][0]
+            result[2] = f["updates"][1]
+            return result
+
+        result = _run_model_test(target_device, "ScatterND", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "ScatterND test failed")
+
     def test_op_onehot(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
@@ -1855,6 +1937,94 @@ class TestCudaPluginEP(unittest.TestCase):
             lambda f: np.maximum(f["X"], 0),
         )
         self.assertEqual(result, TEST_PASS, "Explicit MemcpyFromHost→Relu→MemcpyToHost roundtrip test failed")
+
+    # ---- IOBinding / Sync tests ----
+
+    def test_iobinding_add(self):
+        """Run a simple Add model using IOBinding to exercise the EP Sync path.
+
+        Binding CPU inputs forces ORT to stage host-to-device copies on the
+        plugin sync stream before kernel execution begins.
+        """
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_add_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], {})
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            a = np.random.rand(3, 2).astype(np.float32)
+            b = np.random.rand(3, 2).astype(np.float32)
+
+            io_binding = sess.io_binding()
+            io_binding.bind_cpu_input("A", a)
+            io_binding.bind_cpu_input("B", b)
+            io_binding.bind_output("Y", "cuda", cuda_device_id)
+
+            # Exercise the EP Sync callback explicitly. run_with_iobinding()
+            # alone does not call SynchronizeInputs().
+            io_binding.synchronize_inputs()
+            sess.run_with_iobinding(io_binding)
+
+            # No explicit synchronize_outputs() is needed here because
+            # copy_outputs_to_cpu() performs the blocking device-to-host copy.
+            result = io_binding.copy_outputs_to_cpu()[0]
+            np.testing.assert_allclose(result, a + b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_iobinding_matmul(self):
+        """Run a MatMul model using IOBinding to exercise the EP Sync path."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], {})
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+
+            io_binding = sess.io_binding()
+            io_binding.bind_cpu_input("A", a)
+            io_binding.bind_cpu_input("B", b)
+            io_binding.bind_output("Y", "cuda", cuda_device_id)
+
+            # Exercise the EP Sync callback explicitly. run_with_iobinding()
+            # alone does not call SynchronizeInputs().
+            io_binding.synchronize_inputs()
+            sess.run_with_iobinding(io_binding)
+
+            # No explicit synchronize_outputs() is needed here because
+            # copy_outputs_to_cpu() performs the blocking device-to-host copy.
+            result = io_binding.copy_outputs_to_cpu()[0]
+            np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
 
 
 if __name__ == "__main__":

@@ -84,10 +84,23 @@ class IExecutionProvider {
       : default_device_(device), type_{type}, logger_{&logger} {
   }
 
+  IExecutionProvider(const std::string& type, OrtDevice device,
+                     std::vector<const OrtEpDevice*> ep_devices, const logging::Logger& logger)
+      : default_device_(device), ep_devices_{ep_devices}, type_{type}, logger_{&logger} {
+  }
+
   /*
      default device for this ExecutionProvider
   */
   const OrtDevice default_device_;
+
+  /*
+     The OrtEpDevice list this execution provider supports.
+
+     It's mainly for plugin EP which implements this interface or provider-bridge EP that
+     implements OrtEpFactory as OrtEpDevice(s) are available for such scenarios.
+  */
+  const std::vector<const OrtEpDevice*> ep_devices_;
 
  public:
   virtual ~IExecutionProvider() = default;
@@ -186,6 +199,11 @@ class IExecutionProvider {
    * Get the OrtDevice the execution provider was registered with.
    */
   const OrtDevice& GetDevice() const { return default_device_; }
+
+  /**
+   * Get the OrtEpDevice list the execution provider was registered with.
+   */
+  const std::vector<const OrtEpDevice*>& GetEpDevices() const { return ep_devices_; }
 
   /**
      Get execution provider's configuration options.

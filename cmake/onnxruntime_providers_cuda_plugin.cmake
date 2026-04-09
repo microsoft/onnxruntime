@@ -111,6 +111,10 @@ onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CC_SRCS}
     ${CUDA_PLUGIN_EP_CU_SRCS}
 )
+
+# Mirror directory structure in the Visual Studio solution tree under "onnxruntime".
+source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_EP_CC_SRCS} ${CUDA_EP_CU_SRCS})
+source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_CONTRIB_OPS_CC_SRCS} ${CUDA_CONTRIB_OPS_CU_SRCS})
 # Keep the plugin CUDA target aligned with the repo-wide C++20 baseline.
 # Forcing CUDA C++17 here breaks newer protobuf/absl headers used by the plugin
 # build, as absl::compare expects standard ordering support in this configuration.
@@ -143,8 +147,12 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--std c++20>"
     "$<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr;-Xcudafe;--diag_suppress=550>"
     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=2810>"
-    "$<$<COMPILE_LANGUAGE:CXX>:-include;${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
-    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
+    # Force-include adapters.h and cuda_kernel_adapter.h for CXX sources.
+    # GCC/Clang use -include, MSVC uses /FI.
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-include;${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/FI${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/FI${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
 )
 
 if (MSVC)
@@ -158,6 +166,11 @@ if (MSVC)
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        # /permissive is required for CUTLASS cute headers (cute::stride.hpp, cute::Layout etc.)
+        "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
+        # /permissive disables C++ alternative tokens (or, and, not, etc.).
+        # Force-include iso646.h to restore them as macros.
+        "$<$<COMPILE_LANGUAGE:CXX>:/FIiso646.h>"
         "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>"
     )
 endif()
@@ -275,9 +288,10 @@ endif()
 
 
 
-# Set output name
+# Set output name and solution folder
 set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES
     OUTPUT_NAME "onnxruntime_providers_cuda_plugin"
+    FOLDER "ONNXRuntime"
 )
 
 # Install

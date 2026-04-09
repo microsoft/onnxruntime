@@ -11,9 +11,9 @@
 
 #include "cuda_plugin_utils.h"
 
-#include <vector>
-#include <unordered_map>
 #include <mutex>
+#include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -61,6 +61,11 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   cublasHandle_t cublas_handle_ = nullptr;
   cudnnHandle_t cudnn_handle_ = nullptr;
   cublasLtHandle_t cublas_lt_handle_ = nullptr;
+
+  // Tracks whether the stream was successfully registered in the global map.
+  // Only registered streams should be unregistered in the destructor to avoid
+  // unnecessarily bumping the TLS generation counter.
+  bool registered_ = false;
 
   // CPU buffers whose deallocation is deferred to OnSessionRunEnd.
   // Pinned memory must remain valid until all async device operations that
