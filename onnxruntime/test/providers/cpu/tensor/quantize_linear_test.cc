@@ -541,7 +541,8 @@ TEST(QuantizeLinearOpTest, Int8) {
   test.AddInput<int8_t>("y_zero_point", {}, {0});
   test.AddOutput<int8_t>("y", dims, {0, 51, 76, 127, -51, -127});
   // Disable Tensorrt EP due to the error, out of bounds channel axis 1. Number of input dimensions is 1.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable WebGPU EP due to GPU floating-point precision differences in division.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // Repro for new-delete-type-mismatch in DML EP during graph fusion.
@@ -1057,6 +1058,8 @@ TEST(QuantizeLinearOpTest, Int8_NegativeZeroPoint) {
   excluded_providers.insert(kTensorrtExecutionProvider);
   // Disable OV EP due to different formulation for QuantizeLinear
   excluded_providers.insert(kOpenVINOExecutionProvider);
+  // Disable WebGPU EP due to GPU floating-point precision differences in division.
+  excluded_providers.insert(kWebGpuExecutionProvider);
   test.ConfigExcludeEps(excluded_providers)
       .RunWithConfig();
 }
@@ -1094,6 +1097,8 @@ TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
   excluded_providers.insert(kTensorrtExecutionProvider);
   // Disable OV EP due to different formulation for QuantizeLinear
   excluded_providers.insert(kOpenVINOExecutionProvider);
+  // Disable WebGPU EP due to GPU floating-point precision differences in division.
+  excluded_providers.insert(kWebGpuExecutionProvider);
   test.ConfigExcludeEps(excluded_providers)
       .RunWithConfig();
 }
@@ -1238,6 +1243,102 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
                            0, 1, 2, 255,
                            0, 0, 1, 250});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+// Int8 per-tensor tests using exact-division scale values (power-of-2 scales)
+// to avoid floating-point precision differences across EPs.
+TEST(QuantizeLinearOpTest, Int8_PerTensor_Exact) {
+  OpTester test("QuantizeLinear", 10);
+  std::vector<int64_t> dims{8};
+  // scale=2.0 ensures x/scale is exact for all inputs
+  test.AddInput<float>("x", dims, {0, 4, -4, 10, -10, 254, -256, 100});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  // clamp to [-128, 127]: 0,2,-2,5,-5,127,-128,50
+  test.AddOutput<int8_t>("y", dims, {0, 2, -2, 5, -5, 127, -128, 50});
+  test.Run();
+}
+
+// Int8 per-tensor with non-zero zero_point (negative)
+TEST(QuantizeLinearOpTest, Int8_PerTensor_NegativeZeroPoint_Exact) {
+  OpTester test("QuantizeLinear", 10);
+  std::vector<int64_t> dims{4};
+  test.AddInput<float>("x", dims, {0, 10, -10, 200});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {-10});
+  // round(x/2)+(-10): -10,-5,-15,90 → clamped: -10,-5,-15,90
+  test.AddOutput<int8_t>("y", dims, {-10, -5, -15, 90});
+  test.Run();
+}
+
+// Int8 per-tensor with positive zero_point and clamping
+TEST(QuantizeLinearOpTest, Int8_PerTensor_PositiveZeroPoint_Exact) {
+  OpTester test("QuantizeLinear", 10);
+  std::vector<int64_t> dims{4};
+  test.AddInput<float>("x", dims, {0, 100, -100, 500});
+  test.AddInput<float>("y_scale", {}, {4.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {10});
+  // round(x/4)+10: 10,35,-15,127(clamped)
+  test.AddOutput<int8_t>("y", dims, {10, 35, -15, 127});
+  test.Run();
+}
+
+// Int8 per-axis (axis=1) with exact scale values
+TEST(QuantizeLinearOpTest, Int8_PerAxis_Axis1_Exact) {
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{2, 4};
+  test.AddInput<float>("X", dims,
+                       {0, 4, -6, 1000,
+                        2, -8, 12, -1000});
+  test.AddInput<float>("scale", {4}, {1, 2, 3, 4});
+  test.AddInput<int8_t>("zero_point", {4}, {0, 0, 0, 0});
+  // row0: 0/1=0, 4/2=2, -6/3=-2, 1000/4=250→127(clamp)
+  // row1: 2/1=2, -8/2=-4, 12/3=4, -1000/4=-250→-128(clamp)
+  test.AddOutput<int8_t>("Y", dims,
+                         {0, 2, -2, 127,
+                          2, -4, 4, -128});
+  test.Run();
+}
+
+// Int8 per-axis (axis=0) with zero_point
+TEST(QuantizeLinearOpTest, Int8_PerAxis_Axis0_Exact) {
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{3, 4};
+  test.AddInput<float>("X", dims,
+                       {0, 2, 4, 6,
+                        0, 4, 8, 12,
+                        0, 8, 16, 24});
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddInput<float>("scale", {3}, {1, 2, 4});
+  test.AddInput<int8_t>("zero_point", {3}, {10, -10, 0});
+  // row0: 0+10=10, 2+10=12, 4+10=14, 6+10=16
+  // row1: 0-10=-10, 2-10=-8, 4-10=-6, 6-10=-4
+  // row2: 0+0=0, 2+0=2, 4+0=4, 6+0=6
+  test.AddOutput<int8_t>("Y", dims,
+                         {10, 12, 14, 16,
+                          -10, -8, -6, -4,
+                          0, 2, 4, 6});
+  test.Run();
+}
+
+// Larger int8 tensor to test alignment/padding
+TEST(QuantizeLinearOpTest, Int8_PerTensor_Large_Exact) {
+  OpTester test("QuantizeLinear", 10);
+  // 17 elements: not a multiple of 4, tests workgroup packing edge case
+  std::vector<int64_t> dims{17};
+  std::vector<float> x_data;
+  std::vector<int8_t> y_data;
+  for (int i = 0; i < 17; i++) {
+    float val = static_cast<float>((i - 8) * 4);  // -32,-28,...,0,...,28,32
+    x_data.push_back(val);
+    int32_t q = static_cast<int32_t>(val / 2.0f);  // exact division
+    y_data.push_back(static_cast<int8_t>(std::max(-128, std::min(127, q))));
+  }
+  test.AddInput<float>("x", dims, x_data);
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, y_data);
+  test.Run();
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)

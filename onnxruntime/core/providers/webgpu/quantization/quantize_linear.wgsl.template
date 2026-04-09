@@ -9,51 +9,60 @@
 // These should match the `onnxruntime::webgpu::util::U32PackingMode` enum values.
 #define U32_PACKING_MODE_NONE   0
 #define U32_PACKING_MODE_8B_X_4 1
-#define U32_PACKING_MODE 4B_X_8 2
+#define U32_PACKING_MODE_4B_X_8 2
 
 #param HAS_ZERO_POINT
 #param QUANTIZATION_TYPE
 #param WORKGROUP_SIZE
 #param Y_IS_SIGNED
-#param Y_PACKING_MODE
 
 #if Y_IS_SIGNED
-alias y_unpacked_value_t = i32;
+const CLAMP_MIN: i32 = -128;
+const CLAMP_MAX: i32 = 127;
+fn unpack_zp(packed: u32) -> vec4<i32> { return unpack4xI8(packed); }
 #else
-alias y_unpacked_value_t = u32;
-#endif
-
-#if Y_PACKING_MODE  // placeholder usage
+const CLAMP_MIN: i32 = 0;
+const CLAMP_MAX: i32 = 255;
+fn unpack_zp(packed: u32) -> vec4<i32> { return vec4<i32>(unpack4xU8(packed)); }
 #endif
 
 const y_values_shared_length: u32 = WORKGROUP_SIZE / 4;
 
 var<workgroup> y_values_shared: array<vec4<u32>, y_values_shared_length>;
 
+fn get_axis_idx(global_idx: u32) -> u32 {
+    return (global_idx / uniforms.axis_stride) % uniforms.scale_dim_on_axis;
+}
 
-
-fn get_zero_point(global_idx: u32) -> y_unpacked_value_t {
+fn get_zero_point(global_idx: u32) -> i32 {
 #if HAS_ZERO_POINT
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
-    let zero_point_packed = y_zero_point[0];
-    let zero_point_vec = unpack4xU8(zero_point_packed);
-    let zero_point_value = zero_point_vec[0];
-    return zero_point_value;
+    let zero_point_vec = unpack_zp(y_zero_point[0]);
+    return zero_point_vec[0];
 #endif  // QUANTIZATION_TYPE_PER_TENSOR
 
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_AXIS
+    let axis_idx = get_axis_idx(global_idx);
+    let zero_point_vec = unpack_zp(y_zero_point[axis_idx / 4]);
+    return zero_point_vec[axis_idx % 4];
+#endif  // QUANTIZATION_TYPE_PER_AXIS
+
 #else   // HAS_ZERO_POINT
-    let zero_point_value = y_unpacked_value_t(0);
-    return zero_point_value;
+    return 0;
 #endif  // HAS_ZERO_POINT
 }
 
 fn get_scale(global_idx: u32) -> y_scale_value_t {
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
-    let scale_value = y_scale[0];
-    return scale_value;
+    return y_scale[0];
 #endif  // QUANTIZATION_TYPE_PER_TENSOR
+
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_AXIS
+    let axis_idx = get_axis_idx(global_idx);
+    return y_scale[axis_idx];
+#endif  // QUANTIZATION_TYPE_PER_AXIS
 
 }
 
@@ -67,16 +76,11 @@ $MAIN {
     let y_values_shared_idx = global_quad_idx % y_values_shared_length;
 
     if (in_bounds) {
-        // assume scalar scale and zp
-
         let scale_value = get_scale(global_idx);
-
         let zero_point_value = get_zero_point(global_idx);
-
         let x_value = x[global_idx];
 
-        let y_value = y_unpacked_value_t(
-            clamp(i32(round(x_value / scale_value)) + i32(zero_point_value), 0, 255));
+        let y_value = u32(clamp(i32(round(x_value / scale_value)) + zero_point_value, CLAMP_MIN, CLAMP_MAX));
 
         y_values_shared[y_values_shared_idx][global_quad_remainder] = y_value;
     }

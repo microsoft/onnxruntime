@@ -35,8 +35,7 @@ Status QuantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(HAS_ZERO_POINT, has_zero_point_),
                              WGSL_TEMPLATE_PARAMETER(QUANTIZATION_TYPE, quantization_type_),
                              WGSL_TEMPLATE_PARAMETER(WORKGROUP_SIZE, workgroup_size_),
-                             WGSL_TEMPLATE_PARAMETER(Y_IS_SIGNED, y_is_signed_),
-                             WGSL_TEMPLATE_PARAMETER(Y_PACKING_MODE, y_packing_mode_));
+                             WGSL_TEMPLATE_PARAMETER(Y_IS_SIGNED, y_is_signed_));
 }
 
 // QuantizeLinear
@@ -58,8 +57,8 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
   int64_t block_size = block_size_;
   ORT_RETURN_IF_ERROR(util::DetectQuantizationType(x_shape, y_scale_shape, axis, block_size, quantization_type));
 
-  if (quantization_type != util::QuantizationType::PerTensor) {
-    ORT_NOT_IMPLEMENTED("unsupported quantization type: ", static_cast<int>(quantization_type));
+  if (quantization_type == util::QuantizationType::Blocked) {
+    ORT_NOT_IMPLEMENTED("unsupported quantization type: Blocked");
   }
 
   QuantizeLinearProgram program{quantization_type, y_zero_point != nullptr, WORKGROUP_SIZE, y->GetElementType()};
@@ -68,7 +67,14 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
 
   const auto y_components = 4;  // uint8/int8 use 4 components
 
-  // set up program...
+  // Compute per-axis uniforms.
+  uint32_t axis_stride = 1;
+  uint32_t scale_dim_on_axis = 1;
+  if (quantization_type == util::QuantizationType::PerAxis) {
+    scale_dim_on_axis = narrow<uint32_t>(y_scale_shape[0]);
+    axis_stride = narrow<uint32_t>(x_shape.SizeFromDimension(static_cast<size_t>(axis) + 1));
+  }
+
   program.AddInput(ProgramInput{x, ProgramTensorMetadataDependency::TypeAndRank, x_components});
   program.AddInput(ProgramInput{y_scale, ProgramTensorMetadataDependency::TypeAndRank});
   if (y_zero_point != nullptr) {
@@ -81,7 +87,9 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
   program.SetDispatchGroupSize(CeilDiv<decltype(WORKGROUP_SIZE)>(x_size, WORKGROUP_SIZE));
 
   program.AddUniformVariables({
-      {narrow<uint32_t>(x_size)},  // data_size
+      {narrow<uint32_t>(x_size)},   // data_size
+      {axis_stride},                // axis_stride
+      {scale_dim_on_axis},          // scale_dim_on_axis
   });
 
   return context.RunProgram(program);
@@ -105,6 +113,36 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     QuantizeLinear,
     kOnnxDomain,
     10, 12,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", InputTypeConstraints())
+        .TypeConstraint("T2", OutputAndZeroPointTypeConstraints()),
+    QuantizeLinear);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    QuantizeLinear,
+    kOnnxDomain,
+    13, 18,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", InputTypeConstraints())
+        .TypeConstraint("T2", OutputAndZeroPointTypeConstraints()),
+    QuantizeLinear);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    QuantizeLinear,
+    kOnnxDomain,
+    19, 20,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", InputTypeConstraints())
+        .TypeConstraint("T2", OutputAndZeroPointTypeConstraints()),
+    QuantizeLinear);
+
+ONNX_OPERATOR_KERNEL_EX(
+    QuantizeLinear,
+    kOnnxDomain,
+    21,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", InputTypeConstraints())

@@ -18,7 +18,9 @@ class QuantizeLinearProgram final : public Program<QuantizeLinearProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"data_size", ProgramUniformVariableDataType::Uint32},  // size of input and output data
+      {"data_size", ProgramUniformVariableDataType::Uint32},
+      {"axis_stride", ProgramUniformVariableDataType::Uint32},
+      {"scale_dim_on_axis", ProgramUniformVariableDataType::Uint32},
   );
 
  private:
