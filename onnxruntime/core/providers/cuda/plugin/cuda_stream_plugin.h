@@ -38,6 +38,10 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   void EnqueueDeferredCPUBuffer(void* cpu_buffer);
   OrtStatus* InitHandles();
 
+  /// Initialize with an external (non-owned) CUDA stream. cuBLAS/cuDNN handles
+  /// are created on this stream, but the stream itself is not destroyed on cleanup.
+  OrtStatus* InitHandlesWithExternalStream(cudaStream_t external_stream);
+
   /// Look up the CudaSyncStream wrapper from a raw cudaStream_t handle.
   /// Uses a thread-local TLS cache with a generation counter to avoid lock
   /// contention on this hot path (called on every kernel launch).
@@ -58,6 +62,7 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   CudaEpFactory& factory_;
   int device_id_;
   cudaStream_t cuda_stream_ = nullptr;
+  bool owns_stream_ = true;  ///< False when wrapping an external stream (e.g., for CUDA graph).
   cublasHandle_t cublas_handle_ = nullptr;
   cudnnHandle_t cudnn_handle_ = nullptr;
   cublasLtHandle_t cublas_lt_handle_ = nullptr;

@@ -81,7 +81,7 @@ Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supp
 
 - **`GetGraphCaptureNodeAssignmentPolicy`**: Returns `ALLOW_CPU_FOR_SHAPES` — consistent with the non-plugin CUDA EP behavior and allows shape-inference nodes on CPU.
 - **Thread safety**: Mutable graph state and graph streams are stored per thread. CUDA graph mode reports concurrent `Session::Run()` as supported because overlapping runs no longer share graph IDs, run counts, capture state, replay state, or graph streams.
-- **Scope**: Capture/replay pipeline plus allocator compatibility. The arena allocator work is expected to come from PR #27931; this graph path should integrate with that allocator after rebasing instead of reintroducing separate allocation behavior.
+- **Scope**: Capture/replay pipeline plus allocator compatibility. Arena integration is complete — see the [Arena Allocator Integration](#arena-allocator-integration) section.
 - **Callback assignment**: `IsGraphCaptureEnabled` and `GetGraphCaptureNodeAssignmentPolicy` are always set. `OnRunStart`, `OnRunEnd` are conditional on `enable_cuda_graph`. `IsGraphCaptured` and `ReplayGraph` are always set (return false/error when disabled).
 - **Stream management**: `CreateSyncStreamForDevice` remains unconditional — it branches internally to use the current thread's graph stream (via `InitHandlesWithExternalStream`) when graph capture is enabled, or creates an owned stream when disabled.
 - **Run-end synchronization**: `OnRunEndImpl` honors the `sync_stream` flag by synchronizing the graph stream after warm-up/capture bookkeeping, preserving the normal EP completion contract.
@@ -90,19 +90,22 @@ Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supp
 
 ### Arena Allocator Integration
 
-CUDA graph capture requires that all memory allocations happen during warmup, not during capture. Before PR #27931, the plugin's direct `cudaMalloc` allocator can allocate during capture. To detect this:
+CUDA graph capture requires that all memory allocations happen during warmup, not during capture. The plugin arena allocator (PR #27931) is now landed and integrated with the graph capture path.
+
+**Allocation-during-capture detection:**
 
 - `OnRunStartImpl` records free GPU memory in the per-thread context via `cudaMemGetInfo` before `CaptureBegin`.
 - `OnRunEndImpl` compares post-capture free memory in the same per-thread context. If it decreased, a warning is logged advising the user to increase `min_num_runs_before_cuda_graph_capture`.
+- This `cudaMemGetInfo` check is retained as a last-line diagnostic after arena integration, because custom arena options, insufficient warm-up, or regressions can still surface allocation-during-capture issues.
 
-Assuming PR #27931 lands first, the plugin allocator path will be arena-backed:
+**Arena integration details (now implemented):**
 
-- Default CUDA device allocations should come from the plugin-hosted arena (`CudaArenaAllocator`) rather than raw `cudaMalloc`/`cudaFree`.
-- If `arena.use_cuda_mempool=1` is configured, CUDA device allocations should come from `CudaMempoolOrtAllocator`, which wraps the native CUDA mempool path.
+- Default CUDA device allocations come from the plugin-hosted arena (`CudaArenaAllocator`). During warmup runs, the arena grows to accommodate all needed chunks; during capture and replay, the same chunks are reused without `cudaMalloc` calls.
+- When `arena.use_cuda_mempool=1` is configured, CUDA device allocations come from `CudaMempoolOrtAllocator`, which wraps `cudaMallocFromPoolAsync`/`cudaFreeAsync`. These async allocation/free operations are CUDA-graph-safe since CUDA 11.4+ and become part of the captured graph topology.
 - Pinned allocations are also arena-backed, but remain non-stream-aware.
-- The graph stream created by `CudaEp::PerThreadContext` must continue to flow through `CudaSyncStream::InitHandlesWithExternalStream()` so stream-aware allocation can use the same `cudaStream_t` during warm-up, capture, and replay.
-- Warm-up run count should be validated with arena enabled. The default of 2 is intended to let arena chunk creation and stream assignment settle before `cudaStreamBeginCapture`, but graph tests should cover both default arena and `arena.use_cuda_mempool=1`.
-- The `cudaMemGetInfo` check should remain as a defensive diagnostic even after arena integration, because custom arena options or unusual model behavior can still surface allocation-during-capture regressions.
+- The graph stream created by `CudaEp::PerThreadContext` flows through `CudaSyncStream::InitHandlesWithExternalStream()` so stream-aware arena allocation uses the same `cudaStream_t` during warm-up, capture, and replay.
+- `CudaSyncStream::OnSessionRunEndImpl()` resets arena chunk-to-stream assignments via `factory_.ResetDeviceArenaChunksUsingStream()` at the end of each run, even for graph-enabled runs. ORT does not recycle graph-capture stream collections, but `OnSessionRunEnd` is called before the stream collection is destroyed.
+- The plugin allocator's `OrtMemoryInfo::alloc_type` stays as `OrtDeviceAllocator`; the arena remains opaque to ORT core.
 
 ### Concurrent Run Support
 
@@ -119,10 +122,13 @@ Concurrent `Session::Run()` is supported with CUDA graph enabled by keeping capt
 
 1. Build: `./cuda_plugin.sh` — compiles with no errors
 2. Test without graph: `./cuda_plugin.sh --test_plugin` — existing tests pass
-3. Test with graph: Run `test_cuda_plugin_ep.py` with `enable_cuda_graph=1` — warmup + capture + replay succeeds
+3. Test with graph: Run `test_cuda_plugin_ep.py` — CUDA graph tests validate:
+   - `test_cuda_graph_capture_and_replay` — warmup + capture + replay with default arena
+   - `test_cuda_graph_replay_with_updated_input` — in-place input update after graph capture
+   - `test_cuda_graph_with_mempool` — graph capture with `arena.use_cuda_mempool=1`
+   - `test_cuda_graph_annotation_id` — multiple graphs via `gpu_graph_id` run config
+   - `test_cuda_graph_add_model` — graph capture with Add op (arena-backed)
 
 ## Future Work
 
-1. **Arena validation after PR #27931**: Rebase onto the plugin arena allocator work and validate CUDA graph capture with default `CudaArenaAllocator` and `arena.use_cuda_mempool=1`.
-2. **Multi-graph with dynamic shapes**: The annotation ID system supports this, but testing with variable input shapes is needed.
-3. **Profiling integration**: CUDA graph replay currently bypasses the profiler. Integration with the plugin profiler (when available) is future work.
+1. **Profiling integration**: CUDA graph replay currently bypasses the profiler. Integration with the plugin profiler (when available) is future work.

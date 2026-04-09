@@ -92,19 +92,21 @@ CudaSyncStream::~CudaSyncStream() {
       UnregisterStream(cuda_stream_);
     }
 
-    auto destroy_result = cudaStreamDestroy(cuda_stream_);
-    if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
-      // Fallback: we only reach here when the earlier cudaStreamSynchronize in
-      // OnSessionRunEndImpl failed, leaving some buffers un-freed.
-      // cudaStreamDestroy on a non-blocking stream returns immediately (async
-      // cleanup), so in-flight ops may still reference these buffers. However,
-      // a prior sync failure indicates a serious CUDA error, so best-effort
-      // cleanup is the most we can do here.
-      OrtStatus* status = CleanupDeferredCPUBuffers();
-      if (status != nullptr) {
-        Ort::GetApi().ReleaseStatus(status);
+    if (owns_stream_) {
+      auto destroy_result = cudaStreamDestroy(cuda_stream_);
+      if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
+        // Fallback: we only reach here when the earlier cudaStreamSynchronize in
+        // OnSessionRunEndImpl failed, leaving some buffers un-freed.
+        // cudaStreamDestroy on a non-blocking stream returns immediately (async
+        // cleanup), so in-flight ops may still reference these buffers. However,
+        // a prior sync failure indicates a serious CUDA error, so best-effort
+        // cleanup is the most we can do here.
+        OrtStatus* status = CleanupDeferredCPUBuffers();
+        if (status != nullptr) {
+          Ort::GetApi().ReleaseStatus(status);
+        }
       }
-    }
+    }  // else: external stream — do NOT destroy it.
   }
 }
 
@@ -115,6 +117,46 @@ OrtStatus* CudaSyncStream::InitHandles() {
   Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
   if (status.IsOK()) {
     status = StatusFromCudaError(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasCreate(&cublas_handle_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
+  }
+
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
+
+  if (status.IsOK()) {
+    RegisterStream(cuda_stream_, this);
+    registered_ = true;
+  }
+
+  return status.release();
+}
+
+OrtStatus* CudaSyncStream::InitHandlesWithExternalStream(cudaStream_t external_stream) {
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
+  if (status.IsOK()) {
+    cuda_stream_ = external_stream;
+    owns_stream_ = false;
   }
   if (status.IsOK()) {
     status = StatusFromCublasError(cublasCreate(&cublas_handle_));
@@ -188,6 +230,18 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
 
 /*static*/ OrtStatus* ORT_API_CALL CudaSyncStream::FlushImpl(OrtSyncStreamImpl* this_ptr) noexcept {
   auto* stream = static_cast<CudaSyncStream*>(this_ptr);
+
+  // During CUDA graph capture, cudaStreamSynchronize is not permitted on a
+  // capturing stream. Skip the synchronize − the captured graph preserves
+  // kernel ordering and the stream will be synchronized after capture ends.
+  if (!stream->owns_stream_) {
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    cudaError_t query_err = cudaStreamIsCapturing(stream->cuda_stream_, &capture_status);
+    if (query_err == cudaSuccess && capture_status == cudaStreamCaptureStatusActive) {
+      return nullptr;
+    }
+  }
+
   PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream->cuda_stream_));
   return nullptr;
 }

@@ -818,6 +818,13 @@ class CudaKernel : public OpKernel {
   }
   virtual ~CudaKernel() = default;
   Status Compute(OpKernelContext* ctx) const {
+    // Ensure the correct CUDA device is active for this kernel.
+    // Worker threads default to device 0; sessions on device > 0 need an
+    // explicit cudaSetDevice.  Skip during CUDA graph capture because
+    // cudaSetDevice is not allowed on a capturing stream.
+    if (!IsThreadCapturingCudaGraph()) {
+      PL_CUDA_CALL_THROW(cudaSetDevice(device_id_));
+    }
     Status s = ComputeInternal(ctx);
     if (s.IsOK()) {
       cudaError_t err = cudaGetLastError();

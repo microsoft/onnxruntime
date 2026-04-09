@@ -767,6 +767,19 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  // Maximum number of warm-up runs allowed during graph capture.
+  // This prevents running an unbounded number of warm-up runs due to buggy EPs that never return true from
+  // IsGraphCaptured(). Note that EPs typically need at most 2 warm-up runs (e.g., CUDA EP).
+  static constexpr int kMaxGraphCaptureWarmupRuns = 8;
+
+  // Internal implementation of Run() with graph capture recursion depth tracking.
+  [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                                       gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
+                                       std::vector<OrtValue>* p_fetches,
+                                       const std::vector<OrtDevice>* p_fetches_device_info,
+                                       int graph_capture_depth);
+
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
@@ -1062,6 +1075,8 @@ class InferenceSession {
     }
 
     const std::string& Type() const {
+      ORT_ENFORCE(cached_execution_provider_for_graph_replay_ != nullptr,
+                  "No EP registered for graph replay yet");
       return cached_execution_provider_for_graph_replay_->Type();
     }
 
