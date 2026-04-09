@@ -13,6 +13,8 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/plugin_ep_stream.h"
+#include "core/framework/resource_accountant.h"
+#include "core/common/inlined_containers.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -225,7 +227,6 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
                                        IResourceAccountant* resource_accountant) const {
   ORT_UNUSED_PARAMETER(graph_optimizer_registry);  // TODO: Add support
-  ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
 
   const logging::Logger& logger = GetEpLoggerOrDefault();
 
@@ -236,6 +237,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   }
 
   OrtEpGraphSupportInfo api_graph_support_info(*ep_graph, kernel_lookup);
+  api_graph_support_info.resource_accountant = resource_accountant;
   Status status = ToStatusAndRelease(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info));
 
   if (!status.IsOK()) {
@@ -247,6 +249,18 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   result.reserve(api_graph_support_info.node_groupings.size());
   if (api_graph_support_info.node_groupings.empty()) {
     return {};
+  }
+
+  // Build a mapping from OrtNode* to accepted cost for resource accounting.
+  // The plugin reports accepted nodes and their costs via EpGraphSupportInfo_ReportAcceptedNodeCost.
+  // Costs are OrtResourceCount tagged unions that are converted back to internal ResourceCount
+  // (std::variant) when attaching to IndexedSubGraph.
+  InlinedHashMap<const OrtNode*, OrtResourceCount> node_cost_map;
+  if (resource_accountant != nullptr && !api_graph_support_info.accepted_node_costs.empty()) {
+    node_cost_map.reserve(api_graph_support_info.accepted_node_costs.size());
+    for (const auto& [ort_node, cost] : api_graph_support_info.accepted_node_costs) {
+      node_cost_map[ort_node] = cost;
+    }
   }
 
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
@@ -273,7 +287,29 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
       auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
-      indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->GetInternalNode().Index());
+      const NodeIndex node_index = node_grouping.nodes[0]->GetInternalNode().Index();
+      indexed_sub_graph->nodes.push_back(node_index);
+
+      // Attach resource accounting if the plugin reported a cost for this node.
+      if (resource_accountant != nullptr) {
+        const OrtNode* ort_node_key = static_cast<const OrtNode*>(node_grouping.nodes[0]);
+        auto cost_it = node_cost_map.find(ort_node_key);
+        if (cost_it != node_cost_map.end()) {
+          indexed_sub_graph->SetAccountant(resource_accountant);
+          // Convert OrtResourceCount tagged union back to internal ResourceCount (std::variant).
+          const OrtResourceCount& ort_cost = cost_it->second;
+          switch (ort_cost.kind) {
+            case OrtResourceCountKind_TotalBytes:
+              indexed_sub_graph->AppendNodeCost(ResourceCount{ort_cost.value.total_bytes});
+              break;
+            default:
+              LOGS(logger, WARNING) << "Unknown OrtResourceCountKind: "
+                                    << static_cast<int>(ort_cost.kind) << "; skipping cost.";
+              break;
+          }
+        }
+      }
+
       result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
     } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
       if (node_grouping.nodes.empty()) {

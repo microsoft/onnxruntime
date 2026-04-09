@@ -3725,5 +3725,58 @@ using UnownedSharedPrePackedWeightCache =
 
 ///< Wraps OrtEpApi::GetEnvConfigEntries()
 Ort::KeyValuePairs GetEnvConfigEntries();
+
+/// \brief Non-owning C++ wrapper for resource budget queries on OrtEpGraphSupportInfo.
+///
+/// Constructed from the OrtEpGraphSupportInfo* passed to OrtEp::GetCapability.
+/// Provides convenient methods for resource-constrained node selection.
+/// All costs and budgets use OrtResourceCount, the ABI-stable tagged union.
+///
+/// Example use in a plugin EP's GetCapability implementation:
+/// \code
+///   OrtStatus* GetCapabilityImpl(OrtEp*, const OrtGraph* graph,
+///                                OrtEpGraphSupportInfo* info) noexcept {
+///     Ort::ResourceBudget budget(info);
+///     if (budget.HasBudget()) {
+///       OrtResourceCount remaining = budget.GetBudget();
+///       OrtResourceCount consumed = budget.GetConsumedResources();
+///       for (const OrtNode* node : candidates) {
+///         OrtResourceCount cost = budget.ComputeNodeCost(Ort::ConstNode{node});
+///         if (consumed.AsTotalBytes() + cost.AsTotalBytes() > remaining.AsTotalBytes()) {
+///           budget.SignalStopAssignment();
+///           break;
+///         }
+///         budget.ReportAcceptedNodeCost(Ort::ConstNode{node}, cost);
+///       }
+///     }
+///   }
+/// \endcode
+struct ResourceBudget {
+  explicit ResourceBudget(OrtEpGraphSupportInfo* info) : info_(info) {}
+
+  /// Returns true if a resource budget is configured for this EP.
+  bool HasBudget() const;
+
+  /// Returns the total resource budget. Only valid if HasBudget() is true.
+  OrtResourceCount GetBudget() const;
+
+  /// Returns the amount of resources already consumed.
+  OrtResourceCount GetConsumedResources() const;
+
+  /// Computes the estimated resource cost of the given node.
+  OrtResourceCount ComputeNodeCost(ConstNode node) const;
+
+  /// Reports that the plugin accepted a node at the given cost.
+  void ReportAcceptedNodeCost(ConstNode node, OrtResourceCount cost);
+
+  /// Returns true if stop has been signaled (by this or another EP).
+  bool IsStopIssued() const;
+
+  /// Signals that this EP wants to stop receiving nodes.
+  void SignalStopAssignment();
+
+ private:
+  OrtEpGraphSupportInfo* info_;
+};
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

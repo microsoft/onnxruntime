@@ -4169,4 +4169,43 @@ inline OpSchema GetOpSchema(const char* name, int max_inclusive_version, const c
   ThrowOnError(GetEpApi().GetOpSchema(name, max_inclusive_version, domain, &schema));
   return OpSchema{schema};
 }
+
+// ResourceBudget implementation
+inline bool ResourceBudget::HasBudget() const {
+  bool has_budget = false;
+  ThrowOnError(GetEpApi().EpGraphSupportInfo_HasResourceBudget(info_, &has_budget));
+  return has_budget;
+}
+
+inline OrtResourceCount ResourceBudget::GetBudget() const {
+  OrtResourceCount budget = OrtResourceCount::None();
+  ThrowOnError(GetEpApi().EpGraphSupportInfo_GetResourceBudget(info_, &budget));
+  return budget;
+}
+
+inline OrtResourceCount ResourceBudget::GetConsumedResources() const {
+  OrtResourceCount consumed = OrtResourceCount::None();
+  ThrowOnError(GetEpApi().EpGraphSupportInfo_GetConsumedResources(info_, &consumed));
+  return consumed;
+}
+
+inline OrtResourceCount ResourceBudget::ComputeNodeCost(ConstNode node) const {
+  OrtResourceCount cost = OrtResourceCount::None();
+  ThrowOnError(GetEpApi().EpGraphSupportInfo_ComputeNodeResourceCost(info_, node, &cost));
+  return cost;
+}
+
+inline void ResourceBudget::ReportAcceptedNodeCost(ConstNode node, OrtResourceCount cost) {
+  ThrowOnError(GetEpApi().EpGraphSupportInfo_ReportAcceptedNodeCost(info_, node, cost));
+}
+
+inline bool ResourceBudget::IsStopIssued() const {
+  bool stop = false;
+  ThrowOnError(GetEpApi().EpGraphSupportInfo_IsStopIssued(info_, &stop));
+  return stop;
+}
+
+inline void ResourceBudget::SignalStopAssignment() {
+  ThrowOnError(GetEpApi().EpGraphSupportInfo_SignalStopAssignment(info_));
+}
 }  // namespace Ort

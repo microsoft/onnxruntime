@@ -10,6 +10,7 @@
 #include "ep/get_capability_utils.h"
 
 #include <cstring>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -98,6 +99,18 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   auto* ep = static_cast<CudaEp*>(this_ptr);
   const OrtEpApi& ep_api = ep->factory_.GetEpApi();
 
+  // Early exit if a previous GetCapability pass already signaled stop.
+  // This mirrors the in-tree CUDA EP's check at the top of GetCapability().
+  Ort::ResourceBudget resource_budget(graph_support_info);
+  bool has_budget = resource_budget.HasBudget();
+  if (has_budget && resource_budget.IsStopIssued()) {
+    Ort::Status log_status(Ort::GetApi().Logger_LogMessage(
+        &ep->logger_, ORT_LOGGING_LEVEL_WARNING,
+        "CUDA Plugin EP returning due to Stop Set",
+        ORT_FILE, __LINE__, __FUNCTION__));
+    return nullptr;
+  }
+
   Ort::ConstGraph graph{ort_graph};
   std::vector<Ort::ConstNode> all_nodes = graph.GetNodes();
 
@@ -144,13 +157,59 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
       gsl::span<const OrtNode* const>(tentative_nodes.data(), tentative_nodes.size()),
       cpu_preferred_nodes));
 
-  // Phase 3: Add final supported nodes (tentative minus CPU-preferred).
+  // Phase 3: Add final supported nodes (tentative minus CPU-preferred),
+  // respecting the optional resource budget.
+  // resource_budget and has_budget were computed at the top of this function.
+  size_t budget_bytes = std::numeric_limits<size_t>::max();
+  size_t consumed_bytes = 0;
+  if (has_budget) {
+    budget_bytes = resource_budget.GetBudget().AsTotalBytes();
+    consumed_bytes = resource_budget.GetConsumedResources().AsTotalBytes();
+  }
+
   for (const OrtNode* ort_node : candidate_nodes) {
-    if (cpu_preferred_nodes.count(ort_node) == 0) {
-      Ort::ConstNode node{ort_node};
-      RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
-          graph_support_info, node));
+    if (cpu_preferred_nodes.count(ort_node) != 0) {
+      continue;
     }
+
+    // Previously assigned nodes (ep_name matched) are already accounted for.
+    Ort::ConstNode node{ort_node};
+    bool previously_assigned = !node.GetEpName().empty();
+
+    if (has_budget && !previously_assigned) {
+      OrtResourceCount cost = resource_budget.ComputeNodeCost(node);
+      size_t cost_bytes = cost.AsTotalBytes();
+      size_t would_be_consumed = consumed_bytes + cost_bytes;
+
+      {
+        // Log per-node cost information (mirrors in-tree CUDA EP logging)
+        std::string msg = "CUDA Plugin EP Node: " + node.GetName() +
+                          " Memory usage: " + std::to_string(cost_bytes) +
+                          " would be consumed: " + std::to_string(would_be_consumed) +
+                          " threshold: " + std::to_string(budget_bytes);
+        Ort::Status log_status(Ort::GetApi().Logger_LogMessage(
+            &ep->logger_, ORT_LOGGING_LEVEL_INFO,
+            msg.c_str(), ORT_FILE, __LINE__, __FUNCTION__));
+      }
+
+      if (would_be_consumed > budget_bytes) {
+        {
+          std::string msg = "CUDA Plugin EP Halting assignment due to capacity threshold at node: " +
+                            node.GetName();
+          Ort::Status log_status(Ort::GetApi().Logger_LogMessage(
+              &ep->logger_, ORT_LOGGING_LEVEL_WARNING,
+              msg.c_str(), ORT_FILE, __LINE__, __FUNCTION__));
+        }
+        resource_budget.SignalStopAssignment();
+        break;  // topological-order halt
+      }
+
+      consumed_bytes = would_be_consumed;
+      resource_budget.ReportAcceptedNodeCost(node, cost);
+    }
+
+    RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
+        graph_support_info, node));
   }
 
   return nullptr;

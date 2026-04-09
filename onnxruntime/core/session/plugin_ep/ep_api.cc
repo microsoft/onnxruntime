@@ -33,6 +33,7 @@
 #include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 #include "core/session/utils.h"
 #include "core/common/profiler_common.h"
+#include "core/framework/resource_accountant.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
 
 using namespace onnxruntime;
@@ -1198,6 +1199,142 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
   API_IMPL_END
 }
 
+// Resource accounting for capacity-aware partitioning
+
+namespace {
+// Convert internal ResourceCount (std::variant<size_t>) to the C-safe tagged union.
+OrtResourceCount ToOrtResourceCount(const onnxruntime::ResourceCount& rc) {
+  return std::visit([](auto&& val) -> OrtResourceCount {
+    using T = std::decay_t<decltype(val)>;
+    if constexpr (std::is_same_v<T, size_t>) {
+      return OrtResourceCount::FromTotalBytes(val);
+    }
+    // Future variant members: add else-if branches here and return OrtResourceCount with appropriate kind.
+  },
+                    rc);
+}
+
+// Convert the C-safe tagged union back to internal ResourceCount.
+onnxruntime::ResourceCount FromOrtResourceCount(const OrtResourceCount& ort_rc) {
+  switch (ort_rc.kind) {
+    case OrtResourceCountKind_TotalBytes:
+      return onnxruntime::ResourceCount{ort_rc.value.total_bytes};
+    default:
+      ORT_THROW("Unknown OrtResourceCountKind: ", static_cast<int>(ort_rc.kind));
+  }
+}
+}  // namespace
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_HasResourceBudget,
+                    _In_ const OrtEpGraphSupportInfo* graph_support_info,
+                    _Out_ bool* has_budget) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(graph_support_info == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpGraphSupportInfo instance is NULL");
+  ORT_API_RETURN_IF(has_budget == nullptr, ORT_INVALID_ARGUMENT, "has_budget must not be NULL");
+  *has_budget = (graph_support_info->resource_accountant != nullptr);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_GetResourceBudget,
+                    _In_ const OrtEpGraphSupportInfo* graph_support_info,
+                    _Out_ OrtResourceCount* budget) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(graph_support_info == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpGraphSupportInfo instance is NULL");
+  ORT_API_RETURN_IF(budget == nullptr, ORT_INVALID_ARGUMENT, "budget must not be NULL");
+  auto* accountant = graph_support_info->resource_accountant;
+  ORT_API_RETURN_IF(accountant == nullptr, ORT_INVALID_ARGUMENT, "No resource accountant is active");
+
+  auto threshold = accountant->GetThreshold();
+  if (threshold) {
+    *budget = ToOrtResourceCount(*threshold);
+  } else {
+    *budget = OrtResourceCount::FromTotalBytes(std::numeric_limits<size_t>::max());
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_GetConsumedResources,
+                    _In_ const OrtEpGraphSupportInfo* graph_support_info,
+                    _Out_ OrtResourceCount* consumed) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(graph_support_info == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpGraphSupportInfo instance is NULL");
+  ORT_API_RETURN_IF(consumed == nullptr, ORT_INVALID_ARGUMENT, "consumed must not be NULL");
+  auto* accountant = graph_support_info->resource_accountant;
+  ORT_API_RETURN_IF(accountant == nullptr, ORT_INVALID_ARGUMENT, "No resource accountant is active");
+
+  *consumed = ToOrtResourceCount(accountant->GetConsumedAmount());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_ComputeNodeResourceCost,
+                    _In_ OrtEpGraphSupportInfo* graph_support_info,
+                    _In_ const OrtNode* node, _Out_ OrtResourceCount* cost) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(graph_support_info == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpGraphSupportInfo instance is NULL");
+  ORT_API_RETURN_IF(node == nullptr, ORT_INVALID_ARGUMENT, "OrtNode is NULL");
+  ORT_API_RETURN_IF(cost == nullptr, ORT_INVALID_ARGUMENT, "cost must not be NULL");
+  auto* accountant = graph_support_info->resource_accountant;
+  ORT_API_RETURN_IF(accountant == nullptr, ORT_INVALID_ARGUMENT, "No resource accountant is active");
+
+  const auto* ep_node = onnxruntime::EpNode::ToInternal(node);
+  ORT_API_RETURN_IF(ep_node == nullptr, ORT_INVALID_ARGUMENT, "Invalid OrtNode variant");
+  const onnxruntime::Node& internal_node = ep_node->GetInternalNode();
+
+  *cost = ToOrtResourceCount(accountant->ComputeResourceCount(internal_node));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_ReportAcceptedNodeCost,
+                    _In_ OrtEpGraphSupportInfo* graph_support_info,
+                    _In_ const OrtNode* node, _In_ OrtResourceCount cost) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(graph_support_info == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpGraphSupportInfo instance is NULL");
+  ORT_API_RETURN_IF(node == nullptr, ORT_INVALID_ARGUMENT, "OrtNode is NULL");
+  auto* accountant = graph_support_info->resource_accountant;
+  ORT_API_RETURN_IF(accountant == nullptr, ORT_INVALID_ARGUMENT, "No resource accountant is active");
+
+  graph_support_info->accepted_node_costs.emplace_back(node, cost);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_IsStopIssued,
+                    _In_ const OrtEpGraphSupportInfo* graph_support_info,
+                    _Out_ bool* is_stopped) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(graph_support_info == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpGraphSupportInfo instance is NULL");
+  ORT_API_RETURN_IF(is_stopped == nullptr, ORT_INVALID_ARGUMENT, "is_stopped must not be NULL");
+  auto* accountant = graph_support_info->resource_accountant;
+  ORT_API_RETURN_IF(accountant == nullptr, ORT_INVALID_ARGUMENT, "No resource accountant is active");
+
+  *is_stopped = accountant->IsStopIssued();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_SignalStopAssignment,
+                    _In_ OrtEpGraphSupportInfo* graph_support_info) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(graph_support_info == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtEpGraphSupportInfo instance is NULL");
+  auto* accountant = graph_support_info->resource_accountant;
+  ORT_API_RETURN_IF(accountant == nullptr, ORT_INVALID_ARGUMENT, "No resource accountant is active");
+
+  accountant->SetStopAssignment();
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1287,6 +1424,15 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::EpGraphSupportInfo_HasResourceBudget,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_GetResourceBudget,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_GetConsumedResources,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_ComputeNodeResourceCost,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_ReportAcceptedNodeCost,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_IsStopIssued,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_SignalStopAssignment,
+    // End of Version 26 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1298,6 +1444,8 @@ static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
 static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
               "Size of version 25 API cannot change");
+static_assert(offsetof(OrtEpApi, EpGraphSupportInfo_SignalStopAssignment) / sizeof(void*) == 79,
+              "Size of version 26 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
 

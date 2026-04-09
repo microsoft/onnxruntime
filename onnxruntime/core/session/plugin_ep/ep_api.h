@@ -178,4 +178,19 @@ ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* 
                     _Out_ int64_t* out);
 ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
                     _Outptr_result_maybenull_ const char** out);
+
+// Resource accounting for capacity-aware partitioning
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_HasResourceBudget, _In_ const OrtEpGraphSupportInfo* graph_support_info,
+                    _Out_ bool* has_budget);
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_GetResourceBudget, _In_ const OrtEpGraphSupportInfo* graph_support_info,
+                    _Out_ OrtResourceCount* budget);
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_GetConsumedResources, _In_ const OrtEpGraphSupportInfo* graph_support_info,
+                    _Out_ OrtResourceCount* consumed);
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_ComputeNodeResourceCost, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                    _In_ const OrtNode* node, _Out_ OrtResourceCount* cost);
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_ReportAcceptedNodeCost, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                    _In_ const OrtNode* node, _In_ OrtResourceCount cost);
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_IsStopIssued, _In_ const OrtEpGraphSupportInfo* graph_support_info,
+                    _Out_ bool* is_stopped);
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_SignalStopAssignment, _In_ OrtEpGraphSupportInfo* graph_support_info);
 }  // namespace OrtExecutionProviderApi
