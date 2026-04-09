@@ -2390,6 +2390,10 @@ struct OrtEp {
    * After successful graph capture, subsequent calls to OrtApi::Run() skip normal execution and ORT instead calls
    * `OrtEp::ReplayGraph()` directly.
    *
+   * Applications can capture and replay multiple graphs (e.g., one per distinct input shape) by setting the
+   * `"gpu_graph_id"` run config entry via `OrtApi::AddRunConfigEntry()` to different integer values. ORT passes
+   * the value as the `graph_annotation_id` parameter to `OrtEp::IsGraphCaptured()` and `OrtEp::ReplayGraph()`.
+   *
    * \param[in] this_ptr The OrtEp instance.
    * \return true if graph capture mode is enabled, false otherwise.
    *
@@ -2408,10 +2412,11 @@ struct OrtEp {
    * returns true (handling warm-up runs transparently).
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[in] graph_annotation_id Identifies which captured graph to query. Defaults to 0.
-   *            Applications may set `gpu_graph_id` in run options to capture multiple graphs
-   *            (e.g., for different input shapes) keyed by different IDs. A value of -1 means
-   *            graph capture/replay should be skipped for this run.
+   * \param[in] graph_annotation_id Identifies which captured graph to query.
+   *            Applications can set this value via `OrtApi::AddRunConfigEntry()` with the key `"gpu_graph_id"`.
+   *            The default value is 0 when the run config entry is not set.
+   *            Setting different IDs allows the EP to capture and manage multiple graphs (e.g., one per
+   *            distinct input shape). A value of -1 means graph capture/replay should be skipped for this run.
    * \return true if the graph has been captured, false otherwise.
    *
    * \note This function must be implemented if `OrtEp::IsGraphCaptureEnabled` is implemented and may return true.
@@ -2425,8 +2430,10 @@ struct OrtEp {
    * Called by ORT instead of normal execution when `IsGraphCaptured()` returns true.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[in] graph_annotation_id Identifies which captured graph to replay. A value of -1 means
-   *            graph replay should be skipped for this run.
+   * \param[in] graph_annotation_id Identifies which captured graph to replay.
+   *            Applications can set this value via `OrtApi::AddRunConfigEntry()` with the key `"gpu_graph_id"`.
+   *            The default value is 0 when the run config entry is not set.
+   *            A value of -1 means graph replay should be skipped for this run.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
