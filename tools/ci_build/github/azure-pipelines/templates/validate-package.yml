@@ -9,8 +9,6 @@ parameters:
   workingDirectory: "$(Build.BinariesDirectory)"
 
 steps:
-    - template: setup-feeds-and-python-steps.yml
-
     - task: PythonScript@0
       displayName: 'Validate Package'
       inputs:

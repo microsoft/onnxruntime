@@ -40,6 +40,9 @@ stages:
     steps:
     - checkout: self
       submodules: true
+
+    - template: ../templates/setup-feeds-and-python-steps.yml
+
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
@@ -71,8 +74,6 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
-
-    - template: ../templates/setup-feeds-and-python-steps.yml
 
     - template: ../templates/set-version-number-variables-step.yml
 
