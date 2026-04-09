@@ -15,10 +15,6 @@ parameters:
   type: string
   default: '3.12'
 
-- name: addToPath
-  type: boolean
-  default: true
-
 - name: architecture
   type: string
   default: ''
@@ -37,11 +33,34 @@ steps:
 
 - task: UsePythonVersion@0
   displayName: 'Use Python ${{ parameters.versionSpec }}'
+  # aarch64 (aka arm64) is not currently available (2026-04-09). Skip installation.
+  # We'll be verifying the requested version of python is already installed below.
+  condition: ne('${{ parameters.architecture }}', 'aarch64')
   inputs:
     versionSpec: ${{ parameters.versionSpec }}
-    addToPath: ${{ parameters.addToPath }}
     ${{ if ne(parameters.architecture, '') }}:
       architecture: ${{ parameters.architecture }}
+
+- pwsh: |
+    # Check if python is available in PATH
+    $pythonCmd = Get-Command "python${env:python_version_spec}" -ErrorAction SilentlyContinue
+    if ($pythonCmd) {
+      Write-Host "Found `python${env:python_version_spec}` at $($pythonCmd.Source)"
+      exit 0
+    }
+
+    $pythonCmd = Get-Command "python" -ErrorAction SilentlyContinue
+    if ($pythonCmd) {
+      Write-Host "Found `python` at $($pythonCmd.Source)."
+      # FUTURE WORK: validate it matches the requested version spec
+      exit 0
+    }
+
+    Write-Host "##vso[task.logissue type=error]Neither `python` nor `python${env:python_version_spec}` are on PATH."
+    exit 1
+  displayName: 'Verify Python ${{ parameters.versionSpec }} is on path'
+  env:
+    python_version_spec: ${{ parameters.versionSpec }}
 
 - pwsh: |
     # Force everything to go through & authenticate using the main feed.
