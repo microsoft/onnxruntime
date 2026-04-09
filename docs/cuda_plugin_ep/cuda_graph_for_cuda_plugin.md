@@ -42,7 +42,7 @@ Session::Run()
 - **`CudaGraphSet`** — Hash map storage for `cudaGraphExec_t`, keyed by annotation ID. Owns the CUDA graph exec resources.
 - **`CudaGraphManager`** — Orchestrates capture lifecycle: `CaptureBegin()`, `CaptureEnd()`, `Replay()`, warm-up tracking via `IncrementRegularRunCount()` / `IsGraphCaptureAllowed()`.
 - **`CudaEp::PerThreadContext`** — Per-thread owner for the graph stream, `CudaGraphManager`, and the pre-capture free-memory watermark. The context is owned by a thread-local cache keyed by `CudaEp*`, so it is destroyed automatically when that thread exits. `CudaEp` keeps weak references to live thread-local cache maps only so it can erase its entry during EP teardown, and it prunes expired cache-map references while creating new contexts.
-- **`CudaSyncStream::InitHandlesWithExternalStream()`** — Wraps an external (non-owned) `cudaStream_t` with cuBLAS/cuDNN/cuBLASLt handles. Used so that kernel dispatches go through the EP's graph-capture stream.
+- **`CudaSyncStream::InitHandlesWithExternalStream()`** — Wraps an external (non-owned) `cudaStream_t` for registration/lifecycle tracking. Migrated kernels bind cuBLAS/cuDNN/cuBLASLt through thread-local fallback handles at dispatch time when the wrapper does not own library handles.
 
 ### Config Options
 
@@ -70,7 +70,9 @@ Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supp
 | `onnxruntime/core/providers/cuda/plugin/cuda_ep_factory.cc` | Added config parsing for `enable_cuda_graph` and `min_num_runs_before_cuda_graph_capture` |
 | `include/onnxruntime/core/session/onnxruntime_ep_c_api.h` | Added `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` callbacks and `OrtGraphCaptureNodeAssignmentPolicy` enum to `OrtEp` |
 | `include/onnxruntime/core/framework/execution_provider.h` | Added `GetGraphCaptureNodeAssignmentPolicy()` virtual to `IExecutionProvider` |
-| `onnxruntime/core/session/inference_session.cc` | Replaced hard-coded EP name list with policy-driven graph capture validation loop; added bounded recursion via `RunImpl()` with `kMaxGraphCaptureWarmupRuns`; stream collection not recycled during graph capture |
+| `onnxruntime/core/session/inference_session.cc` | Replaced hard-coded EP name list with policy-driven graph capture validation loop; added bounded recursion via `RunImpl()` with `kMaxGraphCaptureWarmupRuns`; graph-enabled runs now reacquire stream collections through ORT core's thread-affine pool across internal warm-up/capture recursion |
+| `onnxruntime/core/framework/session_state.cc` | Sharded the `DeviceStreamCollection` cache by caller thread using per-thread lifetime tokens, so stream wrappers are only reused on the creating thread |
+| `onnxruntime/core/framework/session_state.h` | Added thread-affine stream pool bucket state for `DeviceStreamCollection` reuse |
 | `onnxruntime/core/session/inference_session.h` | Added `RunImpl()` private method and `kMaxGraphCaptureWarmupRuns` constant |
 | `onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.cc` | Added version-gated `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` bridge implementations |
 | `onnxruntime/core/providers/webgpu/ep/ep.cc` | Added graph capture callback delegation to underlying `IExecutionProvider` |
@@ -78,12 +80,12 @@ Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supp
 ### Key Design Decisions
 
 - **`GetGraphCaptureNodeAssignmentPolicy`**: Returns `ALLOW_CPU_FOR_SHAPES` — consistent with the non-plugin CUDA EP behavior and allows shape-inference nodes on CPU.
-- **Thread safety**: Mutable graph state and graph streams are stored per thread. CUDA graph mode reports concurrent `Session::Run()` as supported because overlapping runs no longer share graph IDs, run counts, capture state, replay state, or graph streams.
+- **Thread safety**: Mutable graph state and graph streams are stored per thread. ORT core's `DeviceStreamCollection` cache is also thread-affine, so graph-enabled runs can recycle stream wrappers without exposing them to a different thread.
 - **Scope**: Capture/replay pipeline plus allocator compatibility. Arena integration is complete — see the [Arena Allocator Integration](#arena-allocator-integration) section.
 - **Callback assignment**: `IsGraphCaptureEnabled` and `GetGraphCaptureNodeAssignmentPolicy` are always set. `OnRunStart`, `OnRunEnd` are conditional on `enable_cuda_graph`. `IsGraphCaptured` and `ReplayGraph` are always set (return false/error when disabled).
 - **Stream management**: `CreateSyncStreamForDevice` remains unconditional — it branches internally to use the current thread's graph stream (via `InitHandlesWithExternalStream`) when graph capture is enabled, or creates an owned stream when disabled.
-- **Run-end synchronization**: `OnRunEndImpl` honors the `sync_stream` flag by synchronizing the graph stream after warm-up/capture bookkeeping, preserving the normal EP completion contract.
-- **Stream collection reuse**: ORT does not recycle device stream collections while graph capture is enabled. This prevents a stream wrapper that points at one thread's graph stream from being reused by a later run on another thread.
+- **Run-end synchronization**: `OnRunEndImpl` honors the `sync_stream` flag without double-synchronizing replayed graphs, preserving the normal EP completion contract.
+- **Stream collection reuse**: ORT core now recycles `DeviceStreamCollection` objects into a thread-affine session pool keyed by a per-thread lifetime token. Warm-up, capture, replay, and later user-visible `Run()` calls on the same thread can reuse the same stream wrappers, while dead-thread buckets are pruned before they can be reused by another thread.
 - **Per-thread context lifecycle**: Thread-local caches hold the strong `PerThreadContext` references, so CUDA streams and captured graph executables are released when the owning thread exits. The EP tracks weak references to those cache maps to remove stale entries during EP destruction without keeping the contexts alive.
 
 ### Arena Allocator Integration
@@ -102,18 +104,18 @@ CUDA graph capture requires that all memory allocations happen during warmup, no
 - When `arena.use_cuda_mempool=1` is configured, CUDA device allocations come from `CudaMempoolOrtAllocator`, which wraps `cudaMallocFromPoolAsync`/`cudaFreeAsync`. These async allocation/free operations are CUDA-graph-safe since CUDA 11.4+ and become part of the captured graph topology.
 - Pinned allocations are also arena-backed, but remain non-stream-aware.
 - The graph stream created by `CudaEp::PerThreadContext` flows through `CudaSyncStream::InitHandlesWithExternalStream()` so stream-aware arena allocation uses the same `cudaStream_t` during warm-up, capture, and replay.
-- `CudaSyncStream::OnSessionRunEndImpl()` resets arena chunk-to-stream assignments via `factory_.ResetDeviceArenaChunksUsingStream()` at the end of each run, even for graph-enabled runs. ORT does not recycle graph-capture stream collections, but `OnSessionRunEnd` is called before the stream collection is destroyed.
+- `CudaSyncStream::OnSessionRunEndImpl()` resets arena chunk-to-stream assignments via `factory_.ResetDeviceArenaChunksUsingStream()` at the end of each run, even for graph-enabled runs. `OnSessionRunEnd` executes before the stream collection is recycled into the current thread's pool bucket.
 - The plugin allocator's `OrtMemoryInfo::alloc_type` stays as `OrtDeviceAllocator`; the arena remains opaque to ORT core.
 
 ### Concurrent Run Support
 
-Concurrent `Session::Run()` is supported with CUDA graph enabled by keeping capture/replay state thread-local:
+Concurrent `Session::Run()` is supported with CUDA graph enabled:
 
 - `CudaEp::PerThreadContext` owns the graph stream, graph manager, warm-up run counts, and memory watermark for the current thread.
 - The current thread's cache owns the `PerThreadContext`; new threads get independent contexts, and exited threads release their contexts automatically.
 - `CreateSyncStreamForDeviceImpl()` wraps the current thread's graph stream, so warm-up, capture, and replay all use the same stream for that thread.
 - `CudaGraphManager::CaptureBegin()` uses `cudaStreamCaptureModeThreadLocal`, allowing overlapping capture scopes on different threads.
-- ORT destroys graph-capture stream wrappers at the end of graph-enabled runs instead of recycling them into the session-wide stream collection pool. This avoids reusing a wrapper bound to one thread's graph stream on a different thread.
+- ORT core recycles graph-enabled `DeviceStreamCollection` objects into a thread-affine session pool, so internal warm-up/capture recursion and later top-level `Run()` calls on the same thread reuse the same stream wrappers without cross-thread leakage.
 - `IsGraphCaptured()` and `ReplayGraph()` resolve the current thread's graph context. If a new thread runs a graph-enabled session for the first time, that thread performs its own warm-up and capture before replaying.
 
 ## Verification

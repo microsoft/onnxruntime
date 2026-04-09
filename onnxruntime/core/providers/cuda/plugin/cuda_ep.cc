@@ -34,6 +34,8 @@ AllocatorPtr CreateCudaPluginTempSpaceCpuAllocator() {
   return ::onnxruntime::CPUAllocator::DefaultInstance();
 }
 
+void DestroyCudaStreamForDevice(cudaStream_t stream, int device_id);
+
 cudaStream_t CreateCudaStreamForDevice(int device_id) {
   int prev_device = -1;
   const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
@@ -47,7 +49,7 @@ cudaStream_t CreateCudaStreamForDevice(int device_id) {
     }
   } catch (...) {
     if (stream != nullptr) {
-      cudaStreamDestroy(stream);
+      DestroyCudaStreamForDevice(stream, device_id);
     }
     if (restore_prev_device) {
       static_cast<void>(cudaSetDevice(prev_device));
@@ -394,12 +396,11 @@ OrtStatus* ORT_API_CALL CudaEp::SyncImpl(OrtEp* this_ptr) noexcept {
 /*static*/
 OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
     OrtEp* this_ptr, bool* is_supported) noexcept {
-  ORT_UNUSED_PARAMETER(this_ptr);
-
   if (is_supported == nullptr) {
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "is_supported must not be null.");
   }
 
+  ORT_UNUSED_PARAMETER(this_ptr);
   *is_supported = true;
   return nullptr;
 }
@@ -508,6 +509,7 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
 
   auto& context = ep->GetPerThreadContext();
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
+  bool replayed_graph = false;
   if (!context.cuda_graph.IsGraphCaptured(id)) {
     if (context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
       context.cuda_graph.CaptureEnd(id);
@@ -536,12 +538,13 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
       if (status != nullptr) {
         return status;
       }
+      replayed_graph = true;
     } else {
       context.cuda_graph.IncrementRegularRunCount(id);
     }
   }
 
-  if (sync_stream) {
+  if (sync_stream && !replayed_graph) {
     PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(context.graph_stream));
   }
   return nullptr;

@@ -445,7 +445,7 @@ Session-level changes in `inference_session.cc`:
 
 - **Policy-driven validation**: Graph capture validation at session initialization now iterates all EPs and queries `GetGraphCaptureNodeAssignmentPolicy()` instead of hard-coding EP name lists.
 - **Bounded recursion**: After each normal run when graph capture is enabled, the session recursively calls `RunImpl()` (bounded by `kMaxGraphCaptureWarmupRuns = 8`) until the graph is captured. From the user's perspective, a single `Run()` call handles the entire warm-up + capture sequence.
-- **Stream collection lifetime**: The session does not recycle `DeviceStreamCollection` objects into the session-wide pool while graph capture is active (i.e., until `IsGraphCaptured()` returns true). This prevents a stream wrapper bound to one thread's graph stream from being destroyed and recreated during warm-up, which would force handle re-initialization inside an active capture scope.
+- **Stream collection lifetime**: ORT core now caches `DeviceStreamCollection` objects in thread-affine session buckets keyed by a per-thread lifetime token. Graph-enabled runs recycle and reacquire stream wrappers only on the creating thread, which preserves warm-up/capture reuse without cross-thread leakage.
 
 ---
 

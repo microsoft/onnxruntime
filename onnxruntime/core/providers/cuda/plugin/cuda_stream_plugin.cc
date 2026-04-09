@@ -155,23 +155,10 @@ OrtStatus* CudaSyncStream::InitHandlesWithExternalStream(cudaStream_t external_s
 
   Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
   if (status.IsOK()) {
+    // Graph-mode wrappers only need to publish the raw stream identity. CUDA
+    // library handles fall back to per-thread defaults at kernel dispatch time.
     cuda_stream_ = external_stream;
     owns_stream_ = false;
-  }
-  if (status.IsOK()) {
-    status = StatusFromCublasError(cublasCreate(&cublas_handle_));
-  }
-  if (status.IsOK()) {
-    status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
-  }
-  if (status.IsOK()) {
-    status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
-  }
-  if (status.IsOK()) {
-    status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
-  }
-  if (status.IsOK()) {
-    status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
   }
 
   if (restore_prev_device) {

@@ -22,6 +22,7 @@
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/device_stream_collection.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/graph_partitioner.h"
@@ -3230,17 +3231,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       if (device_stream_collection) {
         bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
         ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));
-        if (cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
-            cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
-          // Graph capture streams can be tied to thread-local EP state. Do not
-          // recycle the stream collection into a session-wide pool where a later
-          // run on another thread could reuse it.
-          // Only reset once the graph is fully captured. During warm-up runs the
-          // EP may begin stream capture in OnRunStart before the framework
-          // creates new streams, so destroying the collection prematurely would
-          // force stream/handle recreation while capture is active.
-          device_stream_collection_holder.p_.reset();
-        }
       }
 #endif
     }
