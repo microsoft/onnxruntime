@@ -853,7 +853,22 @@ bool PluginExecutionProvider::IsGraphCaptureEnabled() const {
   if (ort_ep_->ort_version_supported < 26 || ort_ep_->IsGraphCaptureEnabled == nullptr) {
     return false;
   }
-  return ort_ep_->IsGraphCaptureEnabled(ort_ep_.get());
+
+  if (!ort_ep_->IsGraphCaptureEnabled(ort_ep_.get())) {
+    return false;
+  }
+
+  // Validate that the EP also implements IsGraphCaptured and ReplayGraph. Without these,
+  // ORT-managed graph capture/replay cannot function correctly.
+  if (ort_ep_->IsGraphCaptured == nullptr || ort_ep_->ReplayGraph == nullptr) {
+    LOGS(GetEpLoggerOrDefault(), WARNING)
+        << Type() << " returned true from OrtEp::IsGraphCaptureEnabled but did not implement "
+        << (ort_ep_->IsGraphCaptured == nullptr ? "OrtEp::IsGraphCaptured" : "OrtEp::ReplayGraph")
+        << ". ORT will not use this EP for graph capture/replay.";
+    return false;
+  }
+
+  return true;
 }
 
 bool PluginExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {

@@ -2394,6 +2394,8 @@ struct OrtEp {
    * \return true if graph capture mode is enabled, false otherwise.
    *
    * \note Implementation of this function is optional. If set to NULL, ORT assumes graph capture is not enabled.
+   * \note If this function returns true, `OrtEp::IsGraphCaptured` and `OrtEp::ReplayGraph` must also be implemented.
+   *       If either is NULL, ORT will log a warning and ignore this EP for graph capture.
    *
    * \since Version 1.26.
    */
@@ -2412,7 +2414,7 @@ struct OrtEp {
    *            graph capture/replay should be skipped for this run.
    * \return true if the graph has been captured, false otherwise.
    *
-   * \note Implementation of this function is optional. If set to NULL, ORT assumes no graph has been captured.
+   * \note This function must be implemented if `OrtEp::IsGraphCaptureEnabled` is implemented and may return true.
    *
    * \since Version 1.26.
    */
@@ -2428,7 +2430,7 @@ struct OrtEp {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \note Implementation of this function is optional. If set to NULL, ORT returns a default OK status.
+   * \note This function must be implemented if `OrtEp::IsGraphCaptureEnabled` is implemented and may return true.
    *
    * \since Version 1.26.
    */

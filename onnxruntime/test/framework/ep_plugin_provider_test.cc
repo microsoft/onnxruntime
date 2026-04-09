@@ -1227,11 +1227,23 @@ TEST(PluginExecutionProviderTest, IsGraphCaptureEnabled) {
 
   {
     // Non-NULL implementation returning true.
+    // IsGraphCaptured and ReplayGraph must also be set for IsGraphCaptureEnabled() to return true.
     auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
       return true;
     };
+    auto is_graph_captured = [](const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> bool {
+      return false;
+    };
+    auto replay_graph = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
     ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = is_graph_captured;
+    ort_ep->ReplayGraph = replay_graph;
     ASSERT_TRUE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->IsGraphCaptured = nullptr;        // Restore.
+    ort_ep->ReplayGraph = nullptr;            // Restore.
   }
 
   {
@@ -1252,6 +1264,40 @@ TEST(PluginExecutionProviderTest, IsGraphCaptureEnabled) {
     ort_ep->ort_version_supported = 25;
     ASSERT_FALSE(ep->IsGraphCaptureEnabled());
     ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+
+  {
+    // IsGraphCaptureEnabled returns true but IsGraphCaptured is NULL.
+    // Should return false because ORT-managed graph capture requires IsGraphCaptured.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    auto replay_graph = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = nullptr;
+    ort_ep->ReplayGraph = replay_graph;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->ReplayGraph = nullptr;            // Restore.
+  }
+
+  {
+    // IsGraphCaptureEnabled returns true but ReplayGraph is NULL.
+    // Should return false because ORT-managed graph capture requires ReplayGraph.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    auto is_graph_captured = [](const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> bool {
+      return false;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = is_graph_captured;
+    ort_ep->ReplayGraph = nullptr;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->IsGraphCaptured = nullptr;        // Restore.
   }
 }
 
