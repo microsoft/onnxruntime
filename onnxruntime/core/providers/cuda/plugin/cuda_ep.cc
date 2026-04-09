@@ -464,6 +464,10 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
     return nullptr;
   }
 
+  // Recover from any previous failed run on this thread before deciding whether
+  // this run will enter capture mode.
+  IsThreadCapturingCudaGraph() = false;
+
   auto& context = ep->GetPerThreadContext();
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
   if (!context.cuda_graph.IsGraphCaptured(id) &&
@@ -475,8 +479,11 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
     if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess) {
       context.pre_capture_free_mem = free_mem;
     }
-    IsThreadCapturingCudaGraph() = true;
+    // Keep the current CUDA device aligned with the graph stream for the full
+    // capture window. Kernel Compute() skips cudaSetDevice() while capturing.
+    PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
     context.cuda_graph.CaptureBegin(id);
+    IsThreadCapturingCudaGraph() = true;
   }
 
   return nullptr;
@@ -494,13 +501,14 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
     return nullptr;
   }
 
+  // Always clear the flag before leaving this callback so a failed capture or
+  // failed replay cannot poison later runs on the same thread.
+  IsThreadCapturingCudaGraph() = false;
+
   auto& context = ep->GetPerThreadContext();
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
   if (!context.cuda_graph.IsGraphCaptured(id)) {
     if (context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
-      // Clear the capture flag before CaptureEnd so it's always reset even if
-      // CaptureEnd throws.  The stream capture has ended regardless.
-      IsThreadCapturingCudaGraph() = false;
       context.cuda_graph.CaptureEnd(id);
 
       // Check if GPU memory was allocated during capture (which would make the
@@ -569,6 +577,7 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
     return Ort::GetApi().CreateStatus(
         ORT_EP_FAIL, "ReplayGraph called but CUDA graph manager is not initialized");
   }
+  PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
   return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id);
 
   EXCEPTION_TO_STATUS_END

@@ -184,15 +184,18 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
         continue;
       }
 
-      if (extract_arena && key.compare(0, arena_prefix.size(), arena_prefix) == 0) {
-        if (!session_arena_options_) {
-          session_arena_options_.emplace();
+      if (key.compare(0, arena_prefix.size(), arena_prefix) == 0) {
+        if (extract_arena) {
+          if (!session_arena_options_) {
+            session_arena_options_.emplace();
+          }
+          session_arena_options_->Add(key.substr(ep_prefix.size()).c_str(), value.c_str());
         }
-        session_arena_options_->Add(key.substr(ep_prefix.size()).c_str(), value.c_str());
-      } else {
-        // Store the bare option name (strip the ep.<ep_name>. prefix) for GetProviderOptions().
-        provider_options_[key.substr(ep_prefix.size())] = value;
+        continue;
       }
+
+      // Store the bare option name (strip the ep.<ep_name>. prefix) for GetProviderOptions().
+      provider_options_[key.substr(ep_prefix.size())] = value;
     }
   }
 
