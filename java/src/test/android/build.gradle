@@ -3,16 +3,6 @@ buildscript {
 	ext.kotlin_version = '1.6.21'
 
 	repositories {
-		// Use `Lotus` if available; it is the official internal feed for ORT.
-		maven {
-			name "Lotus"
-			url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/Lotus/maven/v1")
-			credentials(PasswordCredentials) {
-				username "AzureDevOps"
-				password System.getenv("SYSTEM_ACCESSTOKEN") ?: ""
-			}
-		}
-
 		google()
 		mavenCentral()
 	}
@@ -26,16 +16,6 @@ buildscript {
 
 allprojects {
 	repositories {
-		// Use `Lotus` if available; it is the official internal feed for ORT.
-		maven {
-			name "Lotus"
-			url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/Lotus/maven/v1")
-			credentials(PasswordCredentials) {
-				username "AzureDevOps"
-				password System.getenv("SYSTEM_ACCESSTOKEN") ?: ""
-			}
-		}
-
 		google()
 		mavenCentral()
 		flatDir{dirs 'libs'}

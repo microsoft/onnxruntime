@@ -207,8 +207,6 @@ stages:
       - ${{ else }}:
         - task: PythonScript@0
           displayName: 'Generate build system and build'
-          env:
-            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
             arguments: '$(commonBuildPyArgs) --build_dir $(Build.BinariesDirectory)'

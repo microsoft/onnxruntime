@@ -9,16 +9,6 @@ buildscript {
         kotlinVersion = "1.8.0"
     }
     repositories {
-        // Use `Lotus` if available; it is the official internal feed for ORT.
-        maven {
-            name "Lotus"
-            url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/Lotus/maven/v1")
-            credentials(PasswordCredentials) {
-                username "AzureDevOps"
-                password System.getenv("SYSTEM_ACCESSTOKEN") ?: ""
-            }
-        }
-
         google()
         mavenCentral()
     }
@@ -27,6 +17,8 @@ buildscript {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
         classpath("com.facebook.react:react-native-gradle-plugin")
 
+
+
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
     }
@@ -34,16 +26,6 @@ buildscript {
 
 allprojects {
     repositories {
-        // Use `Lotus` if available; it is the official internal feed for ORT.
-        maven {
-            name "Lotus"
-            url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/Lotus/maven/v1")
-            credentials(PasswordCredentials) {
-                username "AzureDevOps"
-                password System.getenv("SYSTEM_ACCESSTOKEN") ?: ""
-            }
-        }
-
         mavenLocal()
         maven {
             // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm

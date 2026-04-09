@@ -24,7 +24,7 @@ def getVersionCode(String version) {
 	String[] codes = versionAndRelSufx[0].split('\\.')
 	// This will have problem if we have 3 digit [sub]version number, such as 1.7.199
 	// but it is highly unlikely to happen
-	String versionCodeStr	= String.format("%d%02d%02d", codes[0] as int, codes[1] as int, codes[2] as int)
+	String versionCodeStr  = String.format("%d%02d%02d", codes[0] as int, codes[1] as int, codes[2] as int)
 
 	if (versionAndRelSufx.length > 1) {
 		String suffixType = versionAndRelSufx[1].split('\\.')[0]
@@ -63,16 +63,6 @@ def qnnDescription = 'ONNX Runtime is a performance-focused inference engine for
 
 buildscript {
 	repositories {
-		// Use `Lotus` if available; it is the official internal feed for ORT.
-		maven {
-			name "Lotus"
-			url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/Lotus/maven/v1")
-			credentials(PasswordCredentials) {
-				username "AzureDevOps"
-				password System.getenv("SYSTEM_ACCESSTOKEN") ?: ""
-			}
-		}
-
 		google()
 		mavenCentral()
 	}
@@ -86,15 +76,6 @@ buildscript {
 
 allprojects {
 	repositories {
-		// Use `Lotus` if available; it is the official internal feed for ORT.
-		maven {
-			url = uri("https://aiinfra.pkgs.visualstudio.com/_packaging/Lotus/maven/v1")
-			credentials(PasswordCredentials) {
-				username = "AzureDevOps"
-				password = System.getenv("SYSTEM_ACCESSTOKEN") ?: ""
-			}
-		}
-
 		google()
 		mavenCentral()
 	}

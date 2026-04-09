@@ -23,7 +23,6 @@ steps:
 - task: PowerShell@2
   displayName: 'Build and Package Java Artifacts'
   env:
-    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
     msbuild_platform: ${{ parameters.msbuildPlatform }}
     java_artifact_id: ${{ parameters.java_artifact_id }}
     pre_release_version_suffix_string: ${{ parameters.PreReleaseVersionSuffixString }}
