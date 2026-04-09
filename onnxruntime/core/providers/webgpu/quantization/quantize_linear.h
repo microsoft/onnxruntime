@@ -12,17 +12,21 @@ namespace onnxruntime::webgpu {
 
 class QuantizeLinearProgram final : public Program<QuantizeLinearProgram> {
  public:
-  QuantizeLinearProgram(util::QuantizationType quantization_type, bool has_zero_point)
-      : Program<QuantizeLinearProgram>{"QuantizeLinear"},
-        quantization_type_{quantization_type},
-        has_zero_point_{has_zero_point} {
-  }
+  QuantizeLinearProgram(util::QuantizationType quantization_type, bool has_zero_point,
+                        uint32_t workgroup_size, int32_t y_element_data_type);
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"data_size", ProgramUniformVariableDataType::Uint32},  // size of input and output data
+  );
 
  private:
   const util::QuantizationType quantization_type_;
   const bool has_zero_point_;
+  const uint32_t workgroup_size_;
+  const bool y_is_signed_;
+  const util::U32PackingMode y_packing_mode_;
 };
 
 class QuantizeLinear final : public WebGpuKernel {

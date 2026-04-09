@@ -5,6 +5,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime::webgpu::util {
 
@@ -84,6 +85,38 @@ Status DetectQuantizationType(const TensorShape& input_shape, const TensorShape&
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to detect quantization type.");
+}
+
+bool IsOnnxElementDataTypeSigned(int32_t data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2:
+      return false;
+
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2:
+      return true;
+
+    default:
+      ORT_THROW("Unhandled data type value: ", (data_type));
+  }
+}
+
+U32PackingMode GetOnnxTensorElementDataTypePackingMode(int32_t data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      return U32PackingMode::Pack8bx4;
+
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+      return U32PackingMode::Pack4bx8;
+
+    default:
+      return U32PackingMode::None;
+  }
 }
 
 }  // namespace onnxruntime::webgpu::util

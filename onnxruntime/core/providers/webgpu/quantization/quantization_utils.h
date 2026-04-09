@@ -9,7 +9,7 @@
 namespace onnxruntime::webgpu::util {
 
 enum class QuantizationType {
-  PerTensor,
+  PerTensor = 0,
   PerAxis,
   Blocked,
 };
@@ -33,5 +33,21 @@ enum class QuantizationType {
 Status DetectQuantizationType(const TensorShape& input_shape, const TensorShape& scale_shape,
                               int64_t& axis, int64_t& block_size,
                               QuantizationType& quantization_type);
+
+/**
+ * Determines whether the specified ONNX element data type is signed.
+ */
+bool IsOnnxElementDataTypeSigned(int32_t data_type);
+
+enum class U32PackingMode {
+  None = 0,
+  Pack8bx4,  // pack 4 8-bit values per u32
+  Pack4bx8,  // pack 8 4-bit values per u32
+};
+
+/**
+ * Determines the packing mode to use for the specified ONNX data element type.
+ */
+U32PackingMode GetOnnxTensorElementDataTypePackingMode(int32_t data_type);
 
 }  // namespace onnxruntime::webgpu::util

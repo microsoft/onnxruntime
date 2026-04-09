@@ -1,15 +1,90 @@
-#param has_zero_point
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-#use guardAgainstOutOfBoundsWorkgroupSizes
+// These should match the `onnxruntime::webgpu::util::QuantizationType` enum values.
+#define QUANTIZATION_TYPE_PER_TENSOR 0
+#define QUANTIZATION_TYPE_PER_AXIS   1
+#define QUANTIZATION_TYPE_BLOCKED    2
 
-// hello this is a test!
-#if has_zero_point
+// These should match the `onnxruntime::webgpu::util::U32PackingMode` enum values.
+#define U32_PACKING_MODE_NONE   0
+#define U32_PACKING_MODE_8B_X_4 1
+#define U32_PACKING_MODE 4B_X_8 2
+
+#param HAS_ZERO_POINT
+#param QUANTIZATION_TYPE
+#param WORKGROUP_SIZE
+#param Y_IS_SIGNED
+#param Y_PACKING_MODE
+
+#if Y_IS_SIGNED
+alias y_unpacked_value_t = i32;
 #else
+alias y_unpacked_value_t = u32;
 #endif
 
-$MAIN {
-    guardAgainstOutOfBoundsWorkgroupSizes(uniforms.y_size);
+#if Y_PACKING_MODE  // placeholder usage
+#endif
 
-    // some trivial test code...
-    y[0] = y_type_t(0);
+const y_values_shared_length: u32 = WORKGROUP_SIZE / 4;
+
+var<workgroup> y_values_shared: array<vec4<u32>, y_values_shared_length>;
+
+
+
+fn get_zero_point(global_idx: u32) -> y_unpacked_value_t {
+#if HAS_ZERO_POINT
+
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
+    let zero_point_packed = y_zero_point[0];
+    let zero_point_vec = unpack4xU8(zero_point_packed);
+    let zero_point_value = zero_point_vec[0];
+    return zero_point_value;
+#endif  // QUANTIZATION_TYPE_PER_TENSOR
+
+#else   // HAS_ZERO_POINT
+    let zero_point_value = y_unpacked_value_t(0);
+    return zero_point_value;
+#endif  // HAS_ZERO_POINT
+}
+
+fn get_scale(global_idx: u32) -> y_scale_value_t {
+
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
+    let scale_value = y_scale[0];
+    return scale_value;
+#endif  // QUANTIZATION_TYPE_PER_TENSOR
+
+}
+
+$MAIN {
+    // Note: We don't use guardAgainstOutOfBoundsWorkgroupSizes because it doesn't work with workgroupBarrier().
+
+    let in_bounds = global_idx < uniforms.data_size;
+
+    let global_quad_idx = global_idx / 4;
+    let global_quad_remainder = global_idx % 4;
+    let y_values_shared_idx = global_quad_idx % y_values_shared_length;
+
+    if (in_bounds) {
+        // assume scalar scale and zp
+
+        let scale_value = get_scale(global_idx);
+
+        let zero_point_value = get_zero_point(global_idx);
+
+        let x_value = x[global_idx];
+
+        let y_value = y_unpacked_value_t(
+            clamp(i32(round(x_value / scale_value)) + i32(zero_point_value), 0, 255));
+
+        y_values_shared[y_values_shared_idx][global_quad_remainder] = y_value;
+    }
+
+    workgroupBarrier();
+
+    if (in_bounds && global_quad_remainder == 0) {
+        // pack y_values_shared into output
+        y[global_quad_idx] = pack4xU8(y_values_shared[y_values_shared_idx]);
+    }
 }
