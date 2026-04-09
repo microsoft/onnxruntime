@@ -13,20 +13,22 @@ namespace onnxruntime::webgpu {
 class QuantizeLinearProgram final : public Program<QuantizeLinearProgram> {
  public:
   QuantizeLinearProgram(util::QuantizationType quantization_type, bool has_zero_point,
-                        uint32_t workgroup_size, int32_t y_element_data_type);
+                        int32_t y_element_data_type);
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"data_size", ProgramUniformVariableDataType::Uint32},
-      {"axis_stride", ProgramUniformVariableDataType::Uint32},
-      {"scale_dim_on_axis", ProgramUniformVariableDataType::Uint32},
+      {"axis_stride", ProgramUniformVariableDataType::Uint32},             // product of dims after the quantization axis
+      {"scale_dim_on_axis", ProgramUniformVariableDataType::Uint32},       // scale shape on axis (per-axis: scale_shape[0], blocked: ceil(dim/block_size))
+      {"block_size", ProgramUniformVariableDataType::Uint32},              // blocked quantization block size
+      {"norm_dim_on_axis", ProgramUniformVariableDataType::Uint32},        // input (x) dimension size on the quantization axis
+      {"scale_dim_times_axis_stride", ProgramUniformVariableDataType::Uint32},  // scale_dim_on_axis * axis_stride (precomputed)
   );
 
  private:
   const util::QuantizationType quantization_type_;
   const bool has_zero_point_;
-  const uint32_t workgroup_size_;
   const bool y_is_signed_;
   const util::U32PackingMode y_packing_mode_;
 };

@@ -1341,6 +1341,91 @@ TEST(QuantizeLinearOpTest, Int8_PerTensor_Large_Exact) {
   test.Run();
 }
 
+// Blocked quantization: int8, axis=1, block_size=2, zero zero_point
+TEST(QuantizeLinearOpTest, Int8_Blocked_Axis1_NoZeroPoint_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  // x shape [2, 4], axis=1, block_size=2 → scale shape [2, 2]
+  test.AddInput<float>("x", {2, 4},
+                       {0, 4, 8, 12,
+                        2, -6, 4, -20});
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  // scale[0,0]=2 for x[0,0:2], scale[0,1]=4 for x[0,2:4]
+  // scale[1,0]=2 for x[1,0:2], scale[1,1]=4 for x[1,2:4]
+  test.AddInput<float>("y_scale", {2, 2}, {2.0f, 4.0f, 2.0f, 4.0f});
+  test.AddInput<int8_t>("y_zero_point", {2, 2}, {0, 0, 0, 0});
+  // round(0/2)=0, round(4/2)=2, round(8/4)=2, round(12/4)=3
+  // round(2/2)=1, round(-6/2)=-3, round(4/4)=1, round(-20/4)=-5
+  test.AddOutput<int8_t>("y", {2, 4}, {0, 2, 2, 3, 1, -3, 1, -5});
+  test.Run();
+}
+
+// Blocked quantization: int8, axis=0, block_size=2
+TEST(QuantizeLinearOpTest, Int8_Blocked_Axis0_NoZeroPoint_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  // x shape [4, 2], axis=0, block_size=2 → scale shape [2, 2]
+  // Rows 0-1 share block 0 scales, rows 2-3 share block 1 scales
+  test.AddInput<float>("x", {4, 2},
+                       {0, 4,
+                        6, 8,
+                        10, -12,
+                        -14, 16});
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<float>("y_scale", {2, 2}, {2.0f, 4.0f, 2.0f, 4.0f});
+  test.AddInput<int8_t>("y_zero_point", {2, 2}, {0, 0, 0, 0});
+  // block 0: round(0/2)=0, round(4/4)=1, round(6/2)=3, round(8/4)=2
+  // block 1: round(10/2)=5, round(-12/4)=-3, round(-14/2)=-7, round(16/4)=4
+  test.AddOutput<int8_t>("y", {4, 2}, {0, 1, 3, 2, 5, -3, -7, 4});
+  test.Run();
+}
+
+// Blocked quantization: int8, with zero_point
+TEST(QuantizeLinearOpTest, Int8_Blocked_Axis1_WithZeroPoint_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  // x shape [2, 4], axis=1, block_size=2 → scale shape [2, 2]
+  test.AddInput<float>("x", {2, 4},
+                       {0, 4, 8, 12,
+                        2, -6, 4, -20});
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<float>("y_scale", {2, 2}, {2.0f, 4.0f, 2.0f, 4.0f});
+  test.AddInput<int8_t>("y_zero_point", {2, 2}, {5, -3, 0, 10});
+  // block [0,0]: round(0/2)+5=5, round(4/2)+5=7
+  // block [0,1]: round(8/4)+(-3)=-1, round(12/4)+(-3)=0
+  // block [1,0]: round(2/2)+0=1, round(-6/2)+0=-3
+  // block [1,1]: round(4/4)+10=11, round(-20/4)+10=5
+  test.AddOutput<int8_t>("y", {2, 4}, {5, 7, -1, 0, 1, -3, 11, 5});
+  test.Run();
+}
+
+// Blocked quantization: int8, 3D tensor (axis=1)
+TEST(QuantizeLinearOpTest, Int8_Blocked_3D_Axis1_Exact) {
+  OpTester test("QuantizeLinear", 21);
+  // x shape [2, 4, 2], axis=1, block_size=2 → scale shape [2, 2, 2]
+  // For each [batch, :, col], blocks of 2 along axis 1 share a scale
+  test.AddInput<float>("x", {2, 4, 2},
+                       {0, 4, 6, 8, 10, 12, 14, 16,      // batch 0
+                        2, -4, -6, -8, -10, -12, -14, 16}); // batch 1
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  // scale shape [2, 2, 2]:
+  // batch 0, block 0: scale[0,0,0]=2, scale[0,0,1]=4
+  // batch 0, block 1: scale[0,1,0]=2, scale[0,1,1]=4
+  // batch 1, block 0: scale[1,0,0]=2, scale[1,0,1]=4
+  // batch 1, block 1: scale[1,1,0]=2, scale[1,1,1]=4
+  test.AddInput<float>("y_scale", {2, 2, 2}, {2, 4, 2, 4, 2, 4, 2, 4});
+  test.AddInput<int8_t>("y_zero_point", {2, 2, 2}, {0, 0, 0, 0, 0, 0, 0, 0});
+  // batch 0: round(0/2)=0, round(4/4)=1, round(6/2)=3, round(8/4)=2,
+  //          round(10/2)=5, round(12/4)=3, round(14/2)=7, round(16/4)=4
+  // batch 1: round(2/2)=1, round(-4/4)=-1, round(-6/2)=-3, round(-8/4)=-2,
+  //          round(-10/2)=-5, round(-12/4)=-3, round(-14/2)=-7, round(16/4)=4
+  test.AddOutput<int8_t>("y", {2, 4, 2},
+                         {0, 1, 3, 2, 5, 3, 7, 4,
+                          1, -1, -3, -2, -5, -3, -7, 4});
+  test.Run();
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename InT, typename OutT>

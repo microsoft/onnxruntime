@@ -26,12 +26,20 @@ const CLAMP_MAX: i32 = 255;
 fn unpack_zp(packed: u32) -> vec4<i32> { return vec4<i32>(unpack4xU8(packed)); }
 #endif
 
-const y_values_shared_length: u32 = WORKGROUP_SIZE / 4;
-
-var<workgroup> y_values_shared: array<vec4<u32>, y_values_shared_length>;
-
 fn get_axis_idx(global_idx: u32) -> u32 {
     return (global_idx / uniforms.axis_stride) % uniforms.scale_dim_on_axis;
+}
+
+// For blocked quantization, compute the flat index into the scale/zero_point buffer.
+// The scale has the same shape as x except on the block axis where it is ceil(dim/block_size).
+// Decompose global_idx into (prefix, axis_idx, suffix) based on x's shape, then remap
+// the axis_idx by dividing by block_size and recompute the flat index in scale's shape.
+fn get_blocked_scale_idx(global_idx: u32) -> u32 {
+    let suffix = global_idx % uniforms.axis_stride;
+    let remainder = global_idx / uniforms.axis_stride;
+    let axis_idx = remainder % uniforms.norm_dim_on_axis;
+    let prefix = remainder / uniforms.norm_dim_on_axis;
+    return prefix * uniforms.scale_dim_times_axis_stride + (axis_idx / uniforms.block_size) * uniforms.axis_stride + suffix;
 }
 
 fn get_zero_point(global_idx: u32) -> i32 {
@@ -47,6 +55,12 @@ fn get_zero_point(global_idx: u32) -> i32 {
     let zero_point_vec = unpack_zp(y_zero_point[axis_idx / 4]);
     return zero_point_vec[axis_idx % 4];
 #endif  // QUANTIZATION_TYPE_PER_AXIS
+
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
+    let scale_idx = get_blocked_scale_idx(global_idx);
+    let zero_point_vec = unpack_zp(y_zero_point[scale_idx / 4]);
+    return zero_point_vec[scale_idx % 4];
+#endif  // QUANTIZATION_TYPE_BLOCKED
 
 #else   // HAS_ZERO_POINT
     return 0;
@@ -64,31 +78,48 @@ fn get_scale(global_idx: u32) -> y_scale_value_t {
     return y_scale[axis_idx];
 #endif  // QUANTIZATION_TYPE_PER_AXIS
 
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
+    let scale_idx = get_blocked_scale_idx(global_idx);
+    return y_scale[scale_idx];
+#endif  // QUANTIZATION_TYPE_BLOCKED
+
+}
+
+// Quantize a single float value given a pre-fetched scale and zero_point.
+fn quantize(x_value: x_value_t, scale_value: y_scale_value_t, zero_point_value: i32) -> i32 {
+    return clamp(i32(round(x_value / scale_value)) + zero_point_value, CLAMP_MIN, CLAMP_MAX);
+}
+
+// Quantize a single element at the given flat index in x, fetching its own scale/zero_point.
+fn quantize_element(element_idx: u32) -> i32 {
+    return quantize(x[element_idx], get_scale(element_idx), get_zero_point(element_idx));
 }
 
 $MAIN {
-    // Note: We don't use guardAgainstOutOfBoundsWorkgroupSizes because it doesn't work with workgroupBarrier().
-
-    let in_bounds = global_idx < uniforms.data_size;
-
-    let global_quad_idx = global_idx / 4;
-    let global_quad_remainder = global_idx % 4;
-    let y_values_shared_idx = global_quad_idx % y_values_shared_length;
-
-    if (in_bounds) {
-        let scale_value = get_scale(global_idx);
-        let zero_point_value = get_zero_point(global_idx);
-        let x_value = x[global_idx];
-
-        let y_value = u32(clamp(i32(round(x_value / scale_value)) + zero_point_value, CLAMP_MIN, CLAMP_MAX));
-
-        y_values_shared[y_values_shared_idx][global_quad_remainder] = y_value;
+    // Each thread quantizes 4 elements and packs them into one u32 output word.
+    // global_idx is the output u32 index.
+    let base_idx = global_idx * 4u;
+    if (base_idx >= uniforms.data_size) {
+        return;
     }
 
-    workgroupBarrier();
+    var packed = vec4<i32>(0);
 
-    if (in_bounds && global_quad_remainder == 0) {
-        // pack y_values_shared into output
-        y[global_quad_idx] = pack4xU8(y_values_shared[y_values_shared_idx]);
-    }
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
+    // Per-tensor: scale and zero_point are the same for all elements, so fetch once.
+    let scale_value = get_scale(base_idx);
+    let zero_point_value = get_zero_point(base_idx);
+    packed[0] = quantize(x[base_idx], scale_value, zero_point_value);
+    if (base_idx + 1u < uniforms.data_size) { packed[1] = quantize(x[base_idx + 1u], scale_value, zero_point_value); }
+    if (base_idx + 2u < uniforms.data_size) { packed[2] = quantize(x[base_idx + 2u], scale_value, zero_point_value); }
+    if (base_idx + 3u < uniforms.data_size) { packed[3] = quantize(x[base_idx + 3u], scale_value, zero_point_value); }
+#else
+    // Per-axis / blocked: each element may have a different scale/zero_point.
+    packed[0] = quantize_element(base_idx);
+    if (base_idx + 1u < uniforms.data_size) { packed[1] = quantize_element(base_idx + 1u); }
+    if (base_idx + 2u < uniforms.data_size) { packed[2] = quantize_element(base_idx + 2u); }
+    if (base_idx + 3u < uniforms.data_size) { packed[3] = quantize_element(base_idx + 3u); }
+#endif
+
+    y[global_idx] = pack4xI8(packed);
 }
