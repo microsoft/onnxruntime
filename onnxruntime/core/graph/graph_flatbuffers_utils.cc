@@ -8,6 +8,7 @@
 #include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/framework/allocator.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/graph.h"
@@ -232,8 +233,21 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
                 "' with data type '", tensor_data_type_str,
                 "'. Invalid ORT format model.");
 
-  auto num_elements = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), SafeInt<size_t>(1),
-                                      std::multiplies<>());
+  size_t num_elements = 1;
+  for (int64_t dim : *fbs_dims) {
+    ORT_RETURN_IF(dim < 0,
+                  "Invalid negative dimension ", dim,
+                  " for tensor '", tensor_name_str,
+                  "' with data type '", tensor_data_type_str,
+                  "'. Invalid ORT format model.");
+
+    if (!IAllocator::CalcMemSizeForArray(num_elements, static_cast<size_t>(dim), &num_elements)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tensor element count overflows size_t for tensor '", tensor_name_str,
+                             "' with data type '", tensor_data_type_str,
+                             "'. Invalid ORT format model.");
+    }
+  }
 
   size_t byte_size_of_one_element;
 
@@ -301,7 +315,14 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
                              "' for tensor '", tensor_name_str,
                              "'. Invalid ORT format model.");
   }
-  size_in_bytes = num_elements * byte_size_of_one_element;
+
+  if (!IAllocator::CalcMemSizeForArray(num_elements, byte_size_of_one_element, &size_in_bytes)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Tensor byte size overflows size_t for tensor '", tensor_name_str,
+                           "' with data type '", tensor_data_type_str,
+                           "'. Invalid ORT format model.");
+  }
+
   return Status::OK();
 }
 

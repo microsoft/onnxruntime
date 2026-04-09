@@ -353,6 +353,56 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithoutDims) {
                                       "Missing dimensions for initializer");
 }
 
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithNegativeDim) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_negative_dim");
+  auto dims = builder.CreateVector(std::vector<int64_t>{2, -1});
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::FLOAT);
+  tensor_builder.add_external_data_offset(0);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ExternalDataReader reader = [](uint64_t, gsl::span<uint8_t>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reader should not be called for invalid tensor.");
+  };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader),
+                                      "Invalid negative dimension -1");
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithOverflowingDims) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_overflow_dims");
+  auto dims = builder.CreateVector(std::vector<int64_t>{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()});
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::FLOAT);
+  tensor_builder.add_external_data_offset(0);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ExternalDataReader reader = [](uint64_t, gsl::span<uint8_t>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reader should not be called for invalid tensor.");
+  };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader),
+                                      "overflows size_t");
+}
+
 #ifdef ENABLE_TRAINING_APIS
 // tests method that loads to OrtTensor (used when loading a checkpoint into a checkpoint state)
 TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
