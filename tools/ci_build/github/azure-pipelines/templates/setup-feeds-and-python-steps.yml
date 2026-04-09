@@ -1,5 +1,10 @@
-# Template to authenticate pip and set up Python.
-# Combines the common PipAuthenticate + UsePythonVersion pattern.
+# Template for setting up the package feeds and installing python.
+# Feeds configured:
+#   - pip
+#   - maven & gradle
+#   - nuget
+#
+# FIXME: Not idempotent.
 
 parameters:
 - name: artifactFeeds
