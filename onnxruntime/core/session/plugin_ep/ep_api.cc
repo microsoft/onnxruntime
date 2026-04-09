@@ -1293,6 +1293,9 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_ReportAcceptedNodeCost,
   ORT_API_RETURN_IF(node == nullptr, ORT_INVALID_ARGUMENT, "OrtNode is NULL");
   auto* accountant = graph_support_info->resource_accountant;
   ORT_API_RETURN_IF(accountant == nullptr, ORT_INVALID_ARGUMENT, "No resource accountant is active");
+  ORT_API_RETURN_IF(cost.reserved_ != 0, ORT_INVALID_ARGUMENT, "OrtResourceCount reserved_ field must be zero");
+  ORT_API_RETURN_IF(cost.kind != OrtResourceCountKind_None && cost.kind != OrtResourceCountKind_TotalBytes,
+                    ORT_INVALID_ARGUMENT, "Unsupported OrtResourceCountKind value");
 
   graph_support_info->accepted_node_costs.emplace_back(node, cost);
   return nullptr;

@@ -3742,7 +3742,7 @@ Ort::KeyValuePairs GetEnvConfigEntries();
 ///       OrtResourceCount consumed = budget.GetConsumedResources();
 ///       for (const OrtNode* node : candidates) {
 ///         OrtResourceCount cost = budget.ComputeNodeCost(Ort::ConstNode{node});
-///         if (consumed.AsTotalBytes() + cost.AsTotalBytes() > remaining.AsTotalBytes()) {
+///         if (cost.AsTotalBytes() > remaining.AsTotalBytes() - consumed.AsTotalBytes()) {
 ///           budget.SignalStopAssignment();
 ///           break;
 ///         }

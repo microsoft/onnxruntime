@@ -246,7 +246,7 @@ TEST_F(CudaPluginPartitioningTest, LargeBudget_AllNodesCudaPlugin) {
   });
 }
 
-// With a tiny budget (1 byte), nodes should be offloaded to CPU because
+// With a tiny budget (1 KB), nodes should be offloaded to CPU because
 // the resource accountant will run out of budget.
 TEST_F(CudaPluginPartitioningTest, TinyBudget_NodesOffloadedToCpu) {
   // Use a model with multiple nodes so we can see some go to CPU.
