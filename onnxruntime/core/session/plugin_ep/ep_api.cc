@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -1214,15 +1215,6 @@ OrtResourceCount ToOrtResourceCount(const onnxruntime::ResourceCount& rc) {
                     rc);
 }
 
-// Convert the C-safe tagged union back to internal ResourceCount.
-onnxruntime::ResourceCount FromOrtResourceCount(const OrtResourceCount& ort_rc) {
-  switch (ort_rc.kind) {
-    case OrtResourceCountKind_TotalBytes:
-      return onnxruntime::ResourceCount{ort_rc.value.total_bytes};
-    default:
-      ORT_THROW("Unknown OrtResourceCountKind: ", static_cast<int>(ort_rc.kind));
-  }
-}
 }  // namespace
 
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_HasResourceBudget,

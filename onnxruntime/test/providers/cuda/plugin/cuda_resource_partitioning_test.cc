@@ -11,6 +11,7 @@
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -93,9 +94,7 @@ Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
 // Get the internal OrtEnv* from the C++ Ort::Env wrapper.
 // Ort::Env inherits Base<OrtEnv> which has operator OrtEnv*().
 OrtEnv& GetOrtEnv() {
-  OrtEnv* p = static_cast<OrtEnv*>(*ort_env);
-  ORT_ENFORCE(p != nullptr);
-  return *p;
+  return *static_cast<OrtEnv*>(*ort_env);
 }
 
 }  // namespace
