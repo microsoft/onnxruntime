@@ -19,11 +19,8 @@ class QuantizeLinearProgram final : public Program<QuantizeLinearProgram> {
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"data_size", ProgramUniformVariableDataType::Uint32},
-      {"axis_stride", ProgramUniformVariableDataType::Uint32},             // product of dims after the quantization axis
-      {"scale_dim_on_axis", ProgramUniformVariableDataType::Uint32},       // scale shape on axis (per-axis: scale_shape[0], blocked: ceil(dim/block_size))
-      {"block_size", ProgramUniformVariableDataType::Uint32},              // blocked quantization block size
-      {"norm_dim_on_axis", ProgramUniformVariableDataType::Uint32},        // input (x) dimension size on the quantization axis
-      {"scale_dim_times_axis_stride", ProgramUniformVariableDataType::Uint32},  // scale_dim_on_axis * axis_stride (precomputed)
+      {"axis", ProgramUniformVariableDataType::Uint32},        // quantization axis
+      {"block_size", ProgramUniformVariableDataType::Uint32},  // blocked quantization block size
   );
 
  private:

@@ -11,6 +11,9 @@
 #define U32_PACKING_MODE_8B_X_4 1
 #define U32_PACKING_MODE_4B_X_8 2
 
+#use getElementAt
+#use .offsetToIndices .rank
+
 #param HAS_ZERO_POINT
 #param QUANTIZATION_TYPE
 #param WORKGROUP_SIZE
@@ -26,23 +29,35 @@ const CLAMP_MAX: i32 = 255;
 fn unpack_zp(packed: u32) -> vec4<i32> { return vec4<i32>(unpack4xU8(packed)); }
 #endif
 
-fn get_axis_idx(global_idx: u32) -> u32 {
-    return (global_idx / uniforms.axis_stride) % uniforms.scale_dim_on_axis;
+#if QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
+// Compute the flat offset into the scale (and zero_point) buffer for blocked quantization.
+// The scale tensor has the same rank as x, but on the quantization axis the dimension is
+// ceil(x_dim / block_size). For each dimension, copy x's index unchanged, except on the
+// block axis where we divide by block_size. Then recompose to a flat offset using the
+// scale tensor's strides.
+#if x.rank > 1
+fn get_scale_offset(element_idx: u32) -> u32 {
+    let x_indices = x.offsetToIndices(element_idx);
+    var offset = 0u;
+    for (var dim = 0; dim < x.rank - 1; dim++) {
+        let x_idx = getElementAt(x_indices, dim, x.rank);
+        let s_idx = select(x_idx, x_idx / uniforms.block_size, u32(dim) == uniforms.axis);
+        offset += s_idx * getElementAt(uniforms.y_scale_stride, dim, x.rank - 1);
+    }
+    // Last dimension (stride is implicitly 1).
+    let last_idx = getElementAt(x_indices, x.rank - 1, x.rank);
+    offset += select(last_idx, last_idx / uniforms.block_size, u32(x.rank - 1) == uniforms.axis);
+    return offset;
 }
-
-// For blocked quantization, compute the flat index into the scale/zero_point buffer.
-// The scale has the same shape as x except on the block axis where it is ceil(dim/block_size).
-// Decompose global_idx into (prefix, axis_idx, suffix) based on x's shape, then remap
-// the axis_idx by dividing by block_size and recompute the flat index in scale's shape.
-fn get_blocked_scale_idx(global_idx: u32) -> u32 {
-    let suffix = global_idx % uniforms.axis_stride;
-    let remainder = global_idx / uniforms.axis_stride;
-    let axis_idx = remainder % uniforms.norm_dim_on_axis;
-    let prefix = remainder / uniforms.norm_dim_on_axis;
-    return prefix * uniforms.scale_dim_times_axis_stride + (axis_idx / uniforms.block_size) * uniforms.axis_stride + suffix;
+#else
+fn get_scale_offset(element_idx: u32) -> u32 {
+    // Rank <= 1: the only dimension is the block axis.
+    return element_idx / uniforms.block_size;
 }
+#endif  // x.rank > 1
+#endif  // QUANTIZATION_TYPE_BLOCKED
 
-fn get_zero_point(global_idx: u32) -> i32 {
+fn get_zero_point(element_idx: u32) -> i32 {
 #if HAS_ZERO_POINT
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
@@ -51,13 +66,14 @@ fn get_zero_point(global_idx: u32) -> i32 {
 #endif  // QUANTIZATION_TYPE_PER_TENSOR
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_AXIS
-    let axis_idx = get_axis_idx(global_idx);
+    let x_indices = x.offsetToIndices(element_idx);
+    let axis_idx = getElementAt(x_indices, uniforms.axis, x.rank);
     let zero_point_vec = unpack_zp(y_zero_point[axis_idx / 4]);
     return zero_point_vec[axis_idx % 4];
 #endif  // QUANTIZATION_TYPE_PER_AXIS
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
-    let scale_idx = get_blocked_scale_idx(global_idx);
+    let scale_idx = get_scale_offset(element_idx);
     let zero_point_vec = unpack_zp(y_zero_point[scale_idx / 4]);
     return zero_point_vec[scale_idx % 4];
 #endif  // QUANTIZATION_TYPE_BLOCKED
@@ -67,19 +83,20 @@ fn get_zero_point(global_idx: u32) -> i32 {
 #endif  // HAS_ZERO_POINT
 }
 
-fn get_scale(global_idx: u32) -> y_scale_value_t {
+fn get_scale(element_idx: u32) -> y_scale_value_t {
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_TENSOR
     return y_scale[0];
 #endif  // QUANTIZATION_TYPE_PER_TENSOR
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_PER_AXIS
-    let axis_idx = get_axis_idx(global_idx);
+    let x_indices = x.offsetToIndices(element_idx);
+    let axis_idx = getElementAt(x_indices, uniforms.axis, x.rank);
     return y_scale[axis_idx];
 #endif  // QUANTIZATION_TYPE_PER_AXIS
 
 #if QUANTIZATION_TYPE == QUANTIZATION_TYPE_BLOCKED
-    let scale_idx = get_blocked_scale_idx(global_idx);
+    let scale_idx = get_scale_offset(element_idx);
     return y_scale[scale_idx];
 #endif  // QUANTIZATION_TYPE_BLOCKED
 

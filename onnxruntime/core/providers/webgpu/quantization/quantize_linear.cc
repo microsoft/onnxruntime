@@ -21,8 +21,8 @@ QuantizeLinearProgram::QuantizeLinearProgram(util::QuantizationType quantization
 }
 
 Status QuantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("x");
-  shader.AddInput("y_scale");
+  const auto& x_var = shader.AddInput("x", ShaderUsage::UseShapeAndStride | ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("y_scale", ShaderUsage::UseShapeAndStride | ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   if (has_zero_point_) {
     shader.AddInput("y_zero_point");
@@ -33,7 +33,8 @@ Status QuantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/quantize_linear.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(HAS_ZERO_POINT, has_zero_point_),
                              WGSL_TEMPLATE_PARAMETER(QUANTIZATION_TYPE, quantization_type_),
-                             WGSL_TEMPLATE_PARAMETER(Y_IS_SIGNED, y_is_signed_));
+                             WGSL_TEMPLATE_PARAMETER(Y_IS_SIGNED, y_is_signed_),
+                             WGSL_TEMPLATE_VARIABLE(x, x_var));
 }
 
 // QuantizeLinear
@@ -61,27 +62,15 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
 
   const auto y_components = 4;  // uint8/int8 use 4 components
 
-  // Compute per-axis/blocked uniforms.
-  //   axis_stride:                product of dims after the quantization axis
-  //   scale_dim_on_axis:          number of scale values along the quantization axis
-  //   norm_dim_on_axis:           x's full dimension size on the quantization axis
-  //   block_size:                 number of x elements per scale block along the axis
-  //   scale_dim_times_axis_stride: scale_dim_on_axis * axis_stride (precomputed)
-  uint32_t axis_stride = 1;
-  uint32_t scale_dim_on_axis = 1;
+  uint32_t axis_uniform = 0;
   uint32_t block_size_uniform = 1;
-  uint32_t norm_dim_on_axis = 1;
-  uint32_t scale_dim_times_axis_stride = 1;
 
-  if (quantization_type == util::QuantizationType::PerAxis) {
-    scale_dim_on_axis = narrow<uint32_t>(y_scale_shape[0]);
-    axis_stride = narrow<uint32_t>(x_shape.SizeFromDimension(static_cast<size_t>(axis) + 1));
-  } else if (quantization_type == util::QuantizationType::Blocked) {
-    axis_stride = narrow<uint32_t>(x_shape.SizeFromDimension(static_cast<size_t>(axis) + 1));
-    norm_dim_on_axis = narrow<uint32_t>(x_shape[static_cast<size_t>(axis)]);
-    scale_dim_on_axis = narrow<uint32_t>(y_scale_shape[static_cast<size_t>(axis)]);
+  if (quantization_type == util::QuantizationType::PerAxis ||
+      quantization_type == util::QuantizationType::Blocked) {
+    axis_uniform = narrow<uint32_t>(axis);
+  }
+  if (quantization_type == util::QuantizationType::Blocked) {
     block_size_uniform = narrow<uint32_t>(block_size);
-    scale_dim_times_axis_stride = scale_dim_on_axis * axis_stride;
   }
 
   program.AddInput(ProgramInput{x, ProgramTensorMetadataDependency::TypeAndRank, x_components});
@@ -98,12 +87,9 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
   program.SetDispatchGroupSize(CeilDiv<decltype(WORKGROUP_SIZE)>(output_size, WORKGROUP_SIZE));
 
   program.AddUniformVariables({
-      {narrow<uint32_t>(x_size)},   // data_size
-      {axis_stride},                // axis_stride
-      {scale_dim_on_axis},          // scale_dim_on_axis
-      {block_size_uniform},         // block_size
-      {norm_dim_on_axis},           // norm_dim_on_axis
-      {scale_dim_times_axis_stride},  // scale_dim_times_axis_stride
+      {narrow<uint32_t>(x_size)},  // data_size
+      {axis_uniform},              // axis
+      {block_size_uniform},        // block_size
   });
 
   return context.RunProgram(program);
