@@ -48,6 +48,8 @@ class MoE : public WebGpuKernel {
       activation_type_ = MoEActivationType::Identity;
     } else if (activation_type == "swiglu") {
       activation_type_ = MoEActivationType::SwiGLU;
+    } else if (activation_type == "relu2") {
+      activation_type_ = MoEActivationType::Relu2;
     } else {
       ORT_THROW("Unsupported MoE activation type: ", activation_type);
     }

@@ -19,6 +19,10 @@ float ApplyActivation(float x, ActivationType activation_type) {
       return x * (1.0f / (1.0f + std::exp(-x)));
     case ActivationType::Identity:
       return x;
+    case ActivationType::Relu2: {
+      float r = std::max(0.0f, x);
+      return r * r;
+    }
     case ActivationType::SwiGLU:
       // SwiGLU is a special case handled by ApplySwiGLUActivation, this is just a placeholder
       return x;
