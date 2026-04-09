@@ -257,8 +257,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
         const int ort_value_idx = info.GetMLValueIndex(node_out->Name());
         if (ort_value_idx < 0) {
-          LOGS(logger, WARNING) << "Skipping constant folding for " << node->OpType() << " node '" << node->Name()
-                                << "' due to missing OrtValue index for output '" << node_out->Name() << "'";
+          LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
+                             << " node '" << node->Name()
+                             << "' because some outputs are not present in the graph.";
           fetch_mlvalue_idxs.clear();
           fetch_to_output_idx.clear();
           break;
