@@ -1002,6 +1002,12 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
     expected_op_counts[dq_key] = 1;
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
     VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
+
+    // set kOrtSessionOptionsDisableDQConstantFolding to preserve DQ nodes even when disable_quant_qdq is "1".
+    expected_op_counts[dq_key] = 3;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableDQConstantFolding, "1"));
+    VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
   };
 
   test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx",
