@@ -472,6 +472,10 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
   CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
   if (!context.cuda_graph.IsGraphCaptured(id) &&
       context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
+    // Keep the current CUDA device aligned with the graph stream for the full
+    // capture window. Kernel Compute() skips cudaSetDevice() while capturing.
+    PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
+
     // Record free GPU memory before capture for allocation-during-capture detection.
     context.pre_capture_free_mem = 0;
     size_t free_mem = 0;
@@ -479,9 +483,6 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
     if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess) {
       context.pre_capture_free_mem = free_mem;
     }
-    // Keep the current CUDA device aligned with the graph stream for the full
-    // capture window. Kernel Compute() skips cudaSetDevice() while capturing.
-    PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
     context.cuda_graph.CaptureBegin(id);
     IsThreadCapturingCudaGraph() = true;
   }
@@ -531,7 +532,7 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
 
       // CUDA work issued to a capturing stream doesn't actually run on the GPU,
       // so replay the captured graph to actually execute the work.
-      OrtStatus* status = context.cuda_graph.Replay(id);
+      OrtStatus* status = context.cuda_graph.Replay(id, sync_stream);
       if (status != nullptr) {
         return status;
       }

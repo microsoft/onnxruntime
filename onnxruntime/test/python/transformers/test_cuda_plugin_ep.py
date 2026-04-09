@@ -2003,8 +2003,9 @@ class TestCudaPluginEP(unittest.TestCase):
             )
 
             # Set deterministic input data.
-            a = np.random.rand(3, 4).astype(np.float32)
-            b = np.random.rand(4, 5).astype(np.float32)
+            rng = np.random.default_rng(0)
+            a = rng.random((3, 4), dtype=np.float32)
+            b = rng.random((4, 5), dtype=np.float32)
             input_vals["A"].update_inplace(a)
             input_vals["B"].update_inplace(b)
 

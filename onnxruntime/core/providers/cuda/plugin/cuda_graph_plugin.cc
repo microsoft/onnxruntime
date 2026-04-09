@@ -103,6 +103,14 @@ void CudaGraphManager::CaptureEnd(CudaGraphAnnotation_t id) {
 }
 
 OrtStatus* CudaGraphManager::Replay(CudaGraphAnnotation_t id, bool sync) {
+  if (!cuda_graph_set_.Contains(id)) {
+    return Ort::GetApi().CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        (std::string("CUDA graph replay error: graph not found for id ") +
+         std::to_string(id))
+            .c_str());
+  }
+
   cudaGraphExec_t graph_exec = cuda_graph_set_.Get(id);
 
   cudaError_t err = cudaGraphLaunch(graph_exec, stream_);
