@@ -840,17 +840,10 @@ class CudaKernel : public OpKernel {
     // CUDA graph capture because cudaSetDevice is not allowed on a capturing
     // stream.
     if (!IsThreadCapturingCudaGraph()) {
-      thread_local int last_device = -1;
-      if (last_device < 0) {
-        int current_device = -1;
-        if (cudaGetDevice(&current_device) == cudaSuccess) {
-          last_device = current_device;
-        }
-      }
-
-      if (last_device != device_id_) {
+      int current_device = -1;
+      PL_CUDA_CALL_THROW(cudaGetDevice(&current_device));
+      if (current_device != device_id_) {
         PL_CUDA_CALL_THROW(cudaSetDevice(device_id_));
-        last_device = device_id_;
       }
     }
     Status s = ComputeInternal(ctx);
