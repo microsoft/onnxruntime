@@ -2377,23 +2377,33 @@ struct OrtEp {
    * for the CUDA EP). An EP should return true from this function if it has been configured to enable
    * graph capture/replay.
    *
-   * **ORT calling convention:**
-   * During session initialization, ORT calls this function on each EP. If true, ORT validates the
-   * graph (no control flow nodes, node assignments compatible with GetGraphCaptureNodeAssignmentPolicy),
-   * then caches this EP for graph capture.
+   * **ORT graph capture/replay summary:**
+   * During OrtSession initialization, ORT calls OrtEp::IsGraphCaptureEnabled() on each EP in the order specified during
+   * provider registration with the session. If an EP returns true, ORT validates that the graph is suitable for
+   * graph capture, and if so, caches the EP for graph capture during the next run. The graph validation ensures
+   * that there are no control flow nodes and that node-to-EP assignments are compatible with the policy specified
+   * by the EP via OrtEp::GetGraphCaptureNodeAssignmentPolicy().
+   * Note that an OrtSession only supports graph capture for one EP (i.e., the first EP to claim support).
    *
-   * During the first user call to `Session::Run()`, ORT performs N warm-up runs for memory
-   * allocation followed by 1 run to capture the graph. Each warm-up run invokes
-   * `OnRunStart` → normal execution → `OnRunEnd`. The EP should use these callbacks to track
-   * warm-up runs and begin/end capture when ready. ORT automatically re-runs within the same
-   * `Session::Run()` call until `IsGraphCaptured()` returns true (or a maximum of 8 times), so users only call
-   * `Session::Run()` once. On subsequent calls, if `IsGraphCaptured()` returns true, ORT skips
-   * normal execution and calls `ReplayGraph()` directly.
+   * During the first call to OrtApi::Run() for the OrtSession, ORT performs multiple internal runs of the model
+   * until the EP indicates that the graph has been captured by returning `true` from `OrtEp::IsGraphCaptured()`.
+   * If the EP is unable to capture the graph within 8 runs, the call to OrtApi::Run() returns an error OrtStatus.
+   * Each internal run invokes `OrtEp::OnRunStart()`, normal execution, and `OrtEp::OnRunEnd()`. EPs should use
+   * these run callbacks to track the number of necessary warm-up runs and begin/end graph capture when ready.
+   *
+   * After successful graph capture, subsequent calls to OrtApi::Run() skip normal execution and ORT instead calls
+   * `OrtEp::ReplayGraph()` directly.
+   *
+   * Applications can capture and replay multiple graphs (e.g., one per distinct input shape) by setting the
+   * `"gpu_graph_id"` run config entry via `OrtApi::AddRunConfigEntry()` to different integer values. ORT passes
+   * the value as the `graph_annotation_id` parameter to `OrtEp::IsGraphCaptured()` and `OrtEp::ReplayGraph()`.
    *
    * \param[in] this_ptr The OrtEp instance.
    * \return true if graph capture mode is enabled, false otherwise.
    *
    * \note Implementation of this function is optional. If set to NULL, ORT assumes graph capture is not enabled.
+   * \note If this function returns true, `OrtEp::IsGraphCaptured` and `OrtEp::ReplayGraph` must also be implemented.
+   *       If either is NULL, ORT will log a warning and ignore this EP for graph capture.
    *
    * \since Version 1.26.
    */
@@ -2406,13 +2416,14 @@ struct OrtEp {
    * returns true (handling warm-up runs transparently).
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[in] graph_annotation_id Identifies which captured graph to query. Defaults to 0.
-   *            Applications may set `gpu_graph_id` in run options to capture multiple graphs
-   *            (e.g., for different input shapes) keyed by different IDs. A value of -1 means
-   *            graph capture/replay should be skipped for this run.
+   * \param[in] graph_annotation_id Identifies which captured graph to query.
+   *            Applications can set this value via `OrtApi::AddRunConfigEntry()` with the key `"gpu_graph_id"`.
+   *            The default value is 0 when the run config entry is not set.
+   *            Setting different IDs allows the EP to capture and manage multiple graphs (e.g., one per
+   *            distinct input shape). A value of -1 means graph capture/replay should be skipped for this run.
    * \return true if the graph has been captured, false otherwise.
    *
-   * \note Implementation of this function is optional. If set to NULL, ORT assumes no graph has been captured.
+   * \note This function must be implemented if `OrtEp::IsGraphCaptureEnabled` is implemented and may return true.
    *
    * \since Version 1.26.
    */
@@ -2423,12 +2434,14 @@ struct OrtEp {
    * Called by ORT instead of normal execution when `IsGraphCaptured()` returns true.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[in] graph_annotation_id Identifies which captured graph to replay. A value of -1 means
-   *            graph replay should be skipped for this run.
+   * \param[in] graph_annotation_id Identifies which captured graph to replay.
+   *            Applications can set this value via `OrtApi::AddRunConfigEntry()` with the key `"gpu_graph_id"`.
+   *            The default value is 0 when the run config entry is not set.
+   *            A value of -1 means graph replay should be skipped for this run.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \note Implementation of this function is optional. If set to NULL, ORT returns a default OK status.
+   * \note This function must be implemented if `OrtEp::IsGraphCaptureEnabled` is implemented and may return true.
    *
    * \since Version 1.26.
    */
