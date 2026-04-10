@@ -262,7 +262,7 @@ Status CheckInputs(const T* query,
   }
 
   const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
-  if (seqlens_k_dim.size() != 1 && seqlens_k_dim[0] != batch_size) {
+  if (seqlens_k_dim.size() != 1 || seqlens_k_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens_k must be shape (batch_size).");
   }
