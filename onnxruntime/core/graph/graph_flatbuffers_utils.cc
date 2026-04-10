@@ -228,18 +228,22 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
   }
 
   const auto* fbs_dims = tensor.dims();
-  ORT_RETURN_IF(nullptr == fbs_dims,
-                "Missing dimensions for tensor '", tensor_name_str,
-                "' with data type '", tensor_data_type_str,
-                "'. Invalid ORT format model.");
+  if (nullptr == fbs_dims) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Missing dimensions for tensor '", tensor_name_str,
+                           "' with data type '", tensor_data_type_str,
+                           "'. Invalid ORT format model.");
+  }
 
   size_t num_elements = 1;
   for (int64_t dim : *fbs_dims) {
-    ORT_RETURN_IF(dim < 0,
-                  "Invalid negative dimension ", dim,
-                  " for tensor '", tensor_name_str,
-                  "' with data type '", tensor_data_type_str,
-                  "'. Invalid ORT format model.");
+    if (dim < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid negative dimension ", dim,
+                             " for tensor '", tensor_name_str,
+                             "' with data type '", tensor_data_type_str,
+                             "'. Invalid ORT format model.");
+    }
 
     if (!IAllocator::CalcMemSizeForArray(num_elements, static_cast<size_t>(dim), &num_elements)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
