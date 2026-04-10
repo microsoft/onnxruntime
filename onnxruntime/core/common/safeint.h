@@ -63,23 +63,21 @@ template <typename R, typename T, typename U, typename... Rest>
 
   // SafeMultiply(T, U, T&) requires the first argument and result to share
   // the same type. Cast the first operand to R so the result is directly in R.
-  R result{};
-  if constexpr (std::is_same_v<R, T>) {
-    result = a;
-  } else {
-    if (!SafeCast(a, result)) {
-      SafeIntDefaultExceptionHandler::SafeIntOnOverflow();
-    }
+  R cast_a{};
+  if (!SafeCast(a, cast_a)) {
+    SafeIntDefaultExceptionHandler::SafeIntOnOverflow();
   }
 
-  if (!SafeMultiply(result, b, result)) {
+  R result{};
+  if (!SafeMultiply(cast_a, b, result)) {
     SafeIntDefaultExceptionHandler::SafeIntOnOverflow();
   }
 
   if constexpr (sizeof...(rest) > 0) {
     return SafeMul<R>(result, rest...);
+  } else {
+    return result;
   }
-  return result;
 }
 
 }  // namespace onnxruntime
