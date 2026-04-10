@@ -47,7 +47,7 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   class_count_ = 0;
   for (size_t i = 0; i < vectors_per_class_.size(); i++) {
     starting_vector_.push_back(vector_count_);
-    vector_count_ += narrow<ptrdiff_t>(vectors_per_class_[i]);
+    vector_count_ += onnxruntime::narrow<size_t>(vectors_per_class_[i]);
   }
 
   ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0, "One of classlabels_strings, classlabels_ints is required.");
@@ -317,7 +317,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
 
         for (size_t j = i + 1; j < class_count_; j++) {
           size_t start_index_j = starting_vector_[j];  // start of support vectors for class j
-          size_t class_j_support_count = vectors_per_class_[j];
+          size_t class_j_support_count = onnxruntime::narrow<size_t>(vectors_per_class_[j]);
           size_t j_coeff_row_offset = vector_count_ * (j - 1);
 
           double sum = 0;
@@ -347,7 +347,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                          &classifier_scores_data, num_classifiers, &votes_data, &Y,
                          num_scores_per_batch, write_additional_scores](ptrdiff_t idx) {
     int n = SafeInt<int32_t>(idx);  // convert to a usable sized type
-    auto cur_scores = final_scores.subspan(n * SafeInt<int32_t>(final_scores_per_batch), final_scores_per_batch);
+    auto cur_scores = final_scores.subspan(n * SafeInt<size_t>(final_scores_per_batch), final_scores_per_batch);
 
     if (mode_ == SVM_TYPE::SVM_SVC && have_proba) {
       auto probsp2 = gsl::make_span<float>(probsp2_data.data() + (n * class_count_squared), class_count_squared);
