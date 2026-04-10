@@ -849,4 +849,48 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
   return ep_profiler;
 }
 
+bool PluginExecutionProvider::IsGraphCaptureEnabled() const {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->IsGraphCaptureEnabled == nullptr) {
+    return false;
+  }
+
+  if (!ort_ep_->IsGraphCaptureEnabled(ort_ep_.get())) {
+    return false;
+  }
+
+  // Validate that the EP also implements IsGraphCaptured and ReplayGraph. Without these,
+  // ORT-managed graph capture/replay cannot function correctly.
+  if (ort_ep_->IsGraphCaptured == nullptr || ort_ep_->ReplayGraph == nullptr) {
+    LOGS(GetEpLoggerOrDefault(), WARNING)
+        << Type() << " returned true from OrtEp::IsGraphCaptureEnabled but did not implement "
+        << (ort_ep_->IsGraphCaptured == nullptr ? "OrtEp::IsGraphCaptured" : "OrtEp::ReplayGraph")
+        << ". ORT will not use this EP for graph capture/replay.";
+    return false;
+  }
+
+  return true;
+}
+
+bool PluginExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->IsGraphCaptured == nullptr) {
+    return false;
+  }
+  return ort_ep_->IsGraphCaptured(ort_ep_.get(), graph_annotation_id);
+}
+
+Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id) {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->ReplayGraph == nullptr) {
+    return Base::ReplayGraph(graph_annotation_id);
+  }
+  return ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id));
+}
+
+OrtGraphCaptureNodeAssignmentPolicy PluginExecutionProvider::GetGraphCaptureNodeAssignmentPolicy() const {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->GetGraphCaptureNodeAssignmentPolicy == nullptr) {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
+  }
+
+  return ort_ep_->GetGraphCaptureNodeAssignmentPolicy(ort_ep_.get());
+}
+
 }  // namespace onnxruntime

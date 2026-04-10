@@ -58,6 +58,12 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   Compile = nullptr;
   ReleaseNodeComputeInfos = nullptr;
 
+  // Graph capture/replay
+  IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
+  IsGraphCaptured = IsGraphCapturedImpl;
+  ReplayGraph = ReplayGraphImpl;
+  GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+
   const OrtApi& ort_api = factory_.GetOrtApi();
   Ort::Status log_status(ort_api.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_INFO,
                                                    "CUDA Plugin EP created",
@@ -302,6 +308,31 @@ OrtStatus* ORT_API_CALL CudaEp::SyncImpl(OrtEp* this_ptr) noexcept {
   return status.release();
 
   EXCEPTION_TO_STATUS_END
+}
+
+bool ORT_API_CALL CudaEp::IsGraphCaptureEnabledImpl(const OrtEp* /*this_ptr*/) noexcept {
+  // TODO: forward to EpImpl()->IsGraphCaptureEnabled()
+  return false;
+}
+
+/*static*/
+bool ORT_API_CALL CudaEp::IsGraphCapturedImpl(const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept {
+  // TODO: forward to EpImpl()->IsGraphCaptured(graph_annotation_id)
+  return false;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept {
+  // TODO: forward to EpImpl()->ReplayGraph(graph_annotation_id)
+  return Ort::GetApi().CreateStatus(ORT_NOT_IMPLEMENTED,
+                                    "Graph capture replay is not yet supported in the CUDA plugin EP.");
+}
+
+/*static*/
+OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL CudaEp::GetGraphCaptureNodeAssignmentPolicyImpl(
+    const OrtEp* /*this_ptr*/) noexcept {
+  // TODO: forward to EpImpl()->GetGraphCaptureNodeAssignmentPolicy()
+  return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
 }
 
 }  // namespace cuda_plugin

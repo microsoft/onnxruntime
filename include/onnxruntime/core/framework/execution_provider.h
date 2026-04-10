@@ -293,6 +293,15 @@ class IExecutionProvider {
   }
 
   /**
+     Get the node assignment validation policy for graph capture.
+     When graph capture is enabled, ORT validates that nodes are assigned to EPs
+     in a way compatible with graph capture. This tells ORT which policy to apply.
+   */
+  virtual OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
+  }
+
+  /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and
      clean up its temporary resources to reduce memory and ensure the first run is fast.

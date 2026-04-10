@@ -61,6 +61,17 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
 
   static OrtStatus* ORT_API_CALL SyncImpl(OrtEp* this_ptr) noexcept;
 
+  static bool ORT_API_CALL IsGraphCaptureEnabledImpl(const OrtEp* this_ptr) noexcept;
+
+  static bool ORT_API_CALL IsGraphCapturedImpl(const OrtEp* this_ptr,
+                                               int graph_annotation_id) noexcept;
+
+  static OrtStatus* ORT_API_CALL ReplayGraphImpl(OrtEp* this_ptr,
+                                                 int graph_annotation_id) noexcept;
+
+  static OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL GetGraphCaptureNodeAssignmentPolicyImpl(
+      const OrtEp* this_ptr) noexcept;
+
   CudaEpFactory& factory_;
   std::string name_;
   Config config_;

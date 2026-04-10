@@ -1055,6 +1055,11 @@ inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
   return Status(status);
 }
 
+inline Status Env::CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const {
+  OrtStatus* status = GetApi().CopyTensors(p_, &src_tensor, &dst_tensor, stream, 1);
+  return Status(status);
+}
+
 inline UnownedAllocator Env::CreateSharedAllocator(const OrtEpDevice* ep_device, OrtDeviceMemoryType mem_type,
                                                    OrtAllocatorType allocator_type,
                                                    const OrtKeyValuePairs* allocator_options) {

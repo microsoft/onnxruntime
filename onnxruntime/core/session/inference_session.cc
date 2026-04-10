@@ -162,31 +162,25 @@ static bool HasMemcpyNodes(const Graph& graph) {
   return false;
 }
 
-static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(const Graph& graph) {
-  bool nodes_on_cpu_and_cuda_and_js_and_dml_eps_only = true;
+static bool AreAllComputeNodesAssignedToEpOrCpu(const Graph& graph, ProviderType provider) {
+  bool has_node_on_provider = false;
 
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
-    // Empty node provider means CPU EP
-    if (!node_provider.empty() &&
-        !(node_provider == kCudaExecutionProvider ||
-          node_provider == kJsExecutionProvider ||
-          node_provider == kWebGpuExecutionProvider ||
-          node_provider == kDmlExecutionProvider) &&
-        node_provider != kCpuExecutionProvider) {
-      nodes_on_cpu_and_cuda_and_js_and_dml_eps_only = false;
-      break;
+    if (node_provider == provider) {
+      has_node_on_provider = true;
+    } else if (!node_provider.empty() &&
+               node_provider != kCpuExecutionProvider) {
+      return false;
     }
   }
 
-  // If we see nodes assigned to EPs other than CPU, or CUDA/JS
-  // (or) if there are Memcpy nodes, then all compute nodes have
-  // not been parititoned to the CUDA/JS EP.
-  // We allow CPU EPs to show up in the EP list as long as thre is no Memcpy
+  // Require at least one node on the target EP, and no Memcpy nodes.
+  // We allow CPU EPs to show up in the EP list as long as there is no Memcpy
   // involved as shape subgraphs will be forced onto CPU and these will not have
   // Memcpy nodes involved.
-  return nodes_on_cpu_and_cuda_and_js_and_dml_eps_only && !HasMemcpyNodes(graph);
+  return has_node_on_provider && !HasMemcpyNodes(graph);
 }
 
 static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
@@ -2433,101 +2427,69 @@ common::Status InferenceSession::Initialize() {
                                "Session initialization canceled due to user request.");
       }
 
-      // Currently graph capture is only considered by CUDA EP, TRT EP and JS EP.
-      //
-      // Check for CUDA EP:
-      // If the CUDA EP is part of the providers list for this session AND
-      // The CUDA EP is configured to do a graph capture AND
-      // All the "compute" graph nodes have been assigned to the CUDA EP,
-      // Then the CUDA EP is cached for triggering a ReplayGraph() in Run().
-      //
-      // Check for TRT EP:
-      // If the TRT EP is part of the providers list for this session AND
-      // The TRT EP is configured to do a graph capture AND
-      // All the graph nodes have been assigned to the TRT EP,
-      // Then the TRT EP is cached for triggering a ReplayGraph() in Run().
-      //
-      // Check for JS EP:
-      // If the JS EP is part of the providers list for this session AND
-      // The JS EP is configured to do a graph capture AND
-      // All the "compute" graph nodes have been assigned to the JS EP,
-      // Then the JS EP is cached for triggering a ReplayGraph() in Run().
-      //
-      std::vector<const char*> graph_support_ep_list = {
-          onnxruntime::kTensorrtExecutionProvider,
-          onnxruntime::kCudaExecutionProvider,
-          onnxruntime::kJsExecutionProvider,
-          onnxruntime::kWebGpuExecutionProvider,
-          onnxruntime::kDmlExecutionProvider};
+      // Check if any EP is configured for graph capture (e.g., CUDA Graph, DML Graph).
+      // If so, validate the graph and cache the EP for triggering ReplayGraph() in Run().
+      for (const auto& ep : execution_providers_) {
+        if (!ep->IsGraphCaptureEnabled()) {
+          continue;
+        }
 
-      for (auto& it : graph_support_ep_list) {
-        auto* target_ep = execution_providers_.Get(it);
+        // Graph capture can't work with control flow nodes
+        if (HasControlflowNodes(graph)) {
+          LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
+                                        << "as the model has control flow nodes which can't be supported by "
+                                        << ep->Type();
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                              "This session cannot use the graph capture feature as requested by the user "
+                              "as the model has control flow nodes which can't be supported by " +
+                                  ep->Type()));
+        }
 
-        if (target_ep && target_ep->IsGraphCaptureEnabled()) {
-          // Graphs capture can't work with control flow nodes
-          if (HasControlflowNodes(graph)) {
+        auto policy = ep->GetGraphCaptureNodeAssignmentPolicy();
+        if (policy == OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES) {
+          // Ensure that all nodes have been partitioned to the EP or CPU EP && there are no memcpy nodes.
+          // The reasoning is that certain shape nodes will be forced onto CPU and as long as there are
+          // no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP.
+          if (!AreAllComputeNodesAssignedToEpOrCpu(graph, ep->Type())) {
             LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
-                                          << "as the model has control flow nodes which can't be supported by "
-                                          << target_ep->Type();
-
+                                          << " as all compute graph nodes have not been partitioned to the "
+                                          << ep->Type();
             ORT_RETURN_IF_ERROR_SESSIONID_(
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                 "This session cannot use the graph capture feature as requested by the user "
-                                "as the model has control flow nodes which can't be supported by" +
-                                    target_ep->Type()));
+                                " as all compute graph nodes have not been partitioned to the " +
+                                    ep->Type()));
           }
 
-          if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kWebGpuExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kDmlExecutionProvider) == 0) {
-            // Ensure that all nodes have been partitioned to CUDA/JS or CPU EP && there are no memcpy nodes
-            // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
-            // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
-            // which is all we care about.
-            if (!AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(graph)) {
-              LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
-                                            << " as all compute graph nodes have not been partitioned to the "
-                                            << target_ep->Type();
-
-              ORT_RETURN_IF_ERROR_SESSIONID_(
-                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "This session cannot use the graph capture feature as requested by the user "
-                                  " as all compute graph nodes have not been partitioned to the " +
-                                      target_ep->Type()));
-            }
-
-            // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
-            if (HasShapeSubgraphNodes(graph)) {
-              LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
-                                              << "Use the graph capture feature with caution. "
-                                              << "As long as the intermediate shapes produced in the model "
-                                              << "using the representative input used to capture the graph, "
-                                              << "will match the shapes produced in the model for other inputs "
-                                              << "of the same shape as the representative input (common case), "
-                                              << "it is safe to use the graph capture feature.";
-            }
-          } else {
-            // Following code path is for TRT EP currently.
-            if (!AreAllNodesInMainGraphAssignedToOneEp(graph, target_ep->Type())) {
-              LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                            << "as all the graph nodes have not been assigned to "
-                                            << target_ep->Type();
-
-              // Return error status as we don't want the session initialization to complete successfully
-              // if the user has requested usage of CUDA Graph feature and we cannot honor that.
-              ORT_RETURN_IF_ERROR_SESSIONID_(
-                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "This session cannot use the CUDA Graph feature as requested by the user "
-                                  "as all the graph nodes have not been assigned to " +
-                                      target_ep->Type()));
-            }
+          // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
+          if (HasShapeSubgraphNodes(graph)) {
+            LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
+                                            << "Use the graph capture feature with caution. "
+                                            << "As long as the intermediate shapes produced in the model "
+                                            << "using the representative input used to capture the graph, "
+                                            << "will match the shapes produced in the model for other inputs "
+                                            << "of the same shape as the representative input (common case), "
+                                            << "it is safe to use the graph capture feature.";
           }
-
-          LOGS(*session_logger_, INFO) << "This session will use the CUDA/HIP Graph feature as requested by the user.";
-          cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
-          break;  // Make sure only one ep can run CUDA graph.
+        } else {
+          // AllNodesOnEp: all nodes in the main graph must be assigned to this EP.
+          if (!AreAllNodesInMainGraphAssignedToOneEp(graph, ep->Type())) {
+            LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
+                                          << "as all the graph nodes have not been assigned to "
+                                          << ep->Type();
+            ORT_RETURN_IF_ERROR_SESSIONID_(
+                ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                "This session cannot use the graph capture feature as requested by the user "
+                                "as all the graph nodes have not been assigned to " +
+                                    ep->Type()));
+          }
         }
+
+        LOGS(*session_logger_, INFO) << "This session will use the graph capture feature as requested by the user "
+                                     << "with " << ep->Type() << ".";
+        cached_execution_provider_for_graph_replay_.SetExecutionProvider(ep.get());
+        break;  // Only one EP can use graph capture.
       }
 
       const bool disable_cpu_ep_fallback = session_options_.config_options.GetConfigOrDefault(
@@ -3073,6 +3035,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
+                 /*graph_capture_depth=*/0);
+}
+
+Status InferenceSession::RunImpl(const RunOptions& run_options,
+                                 gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
+                                 gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
+                                 const std::vector<OrtDevice>* p_fetches_device_info,
+                                 int graph_capture_depth) {
   // Ignore run-level profiling request if session-level profiling is already enabled.
   std::optional<profiling::Profiler> run_profiler;
   if (run_options.enable_profiling && session_profiler_.IsEnabled()) {
@@ -3348,11 +3319,19 @@ Status InferenceSession::Run(const RunOptions& run_options,
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
+    if (graph_capture_depth + 1 >= kMaxGraphCaptureRunAttempts) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Graph capture did not complete after ", kMaxGraphCaptureRunAttempts,
+                             " internal runs for ", cached_execution_provider_for_graph_replay_.Type(),
+                             ". The execution provider may not support ORT-managed graph capture/replay.");
+    }
+
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     // Disable run-level profiling for internal runs used for memory allocation or graph capture
     RunOptions recursive_run_options{run_options};
     recursive_run_options.enable_profiling = false;
-    ORT_RETURN_IF_ERROR(Run(recursive_run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+    ORT_RETURN_IF_ERROR(RunImpl(recursive_run_options, feed_names, feeds, output_names, p_fetches,
+                                p_fetches_device_info, graph_capture_depth + 1));
   }
 
   // Log runtime error telemetry if the return value is not OK
