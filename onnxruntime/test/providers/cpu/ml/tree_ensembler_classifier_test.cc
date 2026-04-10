@@ -578,7 +578,7 @@ TEST(MLOpTest, TreeEnsembleNegativeFeatureIds) {
   test.AddOutput<int64_t>("Y", {N}, results);
   test.AddOutput<float>("Z", {N, 1}, scores);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "nodes_featureids[0]=-2 cannot be negative if the node is not a leaf");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "nodes_featureids[0]=-2 must be in [0, 2147483647] for non-leaf nodes");
 }
 
 }  // namespace test

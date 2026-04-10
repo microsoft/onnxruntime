@@ -1002,7 +1002,7 @@ TEST(MLOpTest, TreeEnsembleRegressorTargetIdsOutsideBoundary) {
   test.AddInput<float>("X", {1, 1}, X);
   test.AddOutput<float>("Y", {1, 2}, {0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "target_ids[1]=99 not in the expected range [0, 1]");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (99) in target_ids or class_ids is greater or equal to the number of targets or classes (2)");
 }
 
 TEST(MLOpTest, TreeEnsembleRegressorNegativeFeatureId) {
