@@ -835,10 +835,8 @@ class CudaKernel : public OpKernel {
   Status Compute(OpKernelContext* ctx) const {
     // Ensure the correct CUDA device is active for this kernel.
     // Worker threads default to device 0; sessions on device > 0 need an
-    // explicit cudaSetDevice. Cache the active device per thread so steady
-    // state avoids a redundant cudaSetDevice on every Compute(). Skip during
-    // CUDA graph capture because cudaSetDevice is not allowed on a capturing
-    // stream.
+    // explicit cudaSetDevice. Skip during CUDA graph capture because
+    // cudaSetDevice is not allowed on a capturing stream.
     if (!IsThreadCapturingCudaGraph()) {
       int current_device = -1;
       PL_CUDA_CALL_THROW(cudaGetDevice(&current_device));
