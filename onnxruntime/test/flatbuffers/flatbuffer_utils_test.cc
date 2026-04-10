@@ -404,6 +404,35 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithOverflowingDim
                                       "overflows size_t");
 }
 
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithDimTooLargeForSizeT) {
+  if (std::numeric_limits<int64_t>::max() <= static_cast<int64_t>(std::numeric_limits<size_t>::max())) {
+    GTEST_SKIP() << "All int64_t dimensions fit in size_t on this platform.";
+  }
+
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_dim_too_large_for_size_t");
+  auto dims = builder.CreateVector(std::vector<int64_t>{static_cast<int64_t>(std::numeric_limits<size_t>::max()) + 1});
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::FLOAT);
+  tensor_builder.add_external_data_offset(0);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ExternalDataReader reader = [](uint64_t, gsl::span<uint8_t>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reader should not be called for invalid tensor.");
+  };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader),
+                                      "does not fit in size_t");
+}
+
 #ifdef ENABLE_TRAINING_APIS
 // tests method that loads to OrtTensor (used when loading a checkpoint into a checkpoint state)
 TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadOrtTensor) {

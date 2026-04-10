@@ -3,6 +3,8 @@
 
 #include "graph_flatbuffers_utils.h"
 
+#include <limits>
+
 #include "core/common/flatbuffers.h"
 
 #include "core/common/narrow.h"
@@ -238,6 +240,12 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
     ORT_RETURN_IF(dim < 0,
                   "Invalid negative dimension ", dim,
                   " for tensor '", tensor_name_str,
+                  "' with data type '", tensor_data_type_str,
+                  "'. Invalid ORT format model.");
+
+    ORT_RETURN_IF(static_cast<uint64_t>(dim) > static_cast<uint64_t>(std::numeric_limits<size_t>::max()),
+                  "Dimension ", dim,
+                  " does not fit in size_t for tensor '", tensor_name_str,
                   "' with data type '", tensor_data_type_str,
                   "'. Invalid ORT format model.");
 

@@ -16,7 +16,7 @@ namespace test {
 
 #ifndef ORT_NO_EXCEPTIONS
 TEST(GRUTest, CalculateBufferElementCountThrowsOnOverflow) {
-  EXPECT_THROW((void)onnxruntime::detail::CalculateBufferElementCount({std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5}),
+  EXPECT_THROW((void)onnxruntime::rnn::detail::CalculateBufferElementCount({std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5}),
                OnnxRuntimeException);
 }
 #endif
