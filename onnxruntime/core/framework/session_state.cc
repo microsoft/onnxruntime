@@ -28,6 +28,14 @@ static inline std::string GetWaitKey(const OrtDevice::DeviceType notification_de
   return std::to_string(notification_device_type) + ":" + std::to_string(executor_device_type);
 }
 
+static const std::shared_ptr<const int>& GetDeviceStreamPoolThreadToken() {
+  // Use a thread-lifetime token instead of std::thread::id so a bucket from a
+  // dead thread cannot be accidentally reused if the runtime later reuses the
+  // same thread id value for a different thread.
+  thread_local const auto thread_token = std::make_shared<const int>(0);
+  return thread_token;
+}
+
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
  public:
   // Wait is a little special as we need to consider the source stream the notification generated,
@@ -1809,16 +1817,25 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
   if (has_device_stream_enabled_ep_) {
+    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const void* thread_key = thread_token.get();
+
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
-    if (!device_stream_pool_.empty()) {
-      auto device_stream = std::move(device_stream_pool_.back());
-      device_stream_pool_.pop_back();
-      return device_stream;
-    } else {
-      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *allocators_, graph_viewer_->ParentNode() == nullptr);
-      BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    PruneExpiredDeviceStreamPoolsLocked();
+
+    auto it = device_stream_pools_.find(thread_key);
+    if (it != device_stream_pools_.end() && !it->second.device_streams.empty()) {
+      auto device_stream = std::move(it->second.device_streams.back());
+      it->second.device_streams.pop_back();
+      if (it->second.device_streams.empty()) {
+        device_stream_pools_.erase(it);
+      }
       return device_stream;
     }
+
+    auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *allocators_, graph_viewer_->ParentNode() == nullptr);
+    BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    return device_stream;
   } else {
     // no reusing of device stream is needed, just return nullptr, the caller will handle it
     return nullptr;
@@ -1828,10 +1845,27 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
   // if no need to reuse the device stream, don't perform the recycle
   if (has_device_stream_enabled_ep_) {
+    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const void* thread_key = thread_token.get();
+
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
-    device_stream_pool_.push_back(std::move(device_stream_collection));
+    PruneExpiredDeviceStreamPoolsLocked();
+    auto& bucket = device_stream_pools_[thread_key];
+    bucket.thread_token = thread_token;
+    bucket.device_streams.push_back(std::move(device_stream_collection));
   } else {
     device_stream_collection.reset(nullptr);
+  }
+}
+
+void SessionState::PruneExpiredDeviceStreamPoolsLocked() const {
+  for (auto it = device_stream_pools_.begin(); it != device_stream_pools_.end();) {
+    if (it->second.thread_token.expired()) {
+      auto expired_it = it++;
+      device_stream_pools_.erase(expired_it);
+    } else {
+      ++it;
+    }
   }
 }
 #endif
