@@ -531,27 +531,6 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 // Implementation of internal helper code
 namespace detail {
 
-size_t CalculateBufferElementCount(std::initializer_list<int> dimensions) {
-  SafeInt<size_t> count{1};
-
-  for (int dimension : dimensions) {
-    count *= dimension;
-  }
-
-  return count;
-}
-
-int CalculateOutputStepLength(int batch_size, int hidden_size, int num_directions, rnn::detail::Direction direction) {
-  SafeInt<int> output_step_length{batch_size};
-  output_step_length *= hidden_size;
-
-  if (direction == kForward && num_directions == 2) {
-    output_step_length *= 2;
-  }
-
-  return output_step_length;
-}
-
 template <typename T>
 UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const int seq_length,
@@ -761,8 +740,8 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
   // we do not need to do that if there are two directions and we're doing the backwards pass as we
   // are writing to a temporary buffer (as outputs == outputs_reverse_) which is later copied
   // to the real output by ReverseSequence. this later copy includes num_directions in the step length.
-  const int single_direction_output_step_length = CalculateOutputStepLength(batch_size_, hidden_size_, 1, direction_);
-  const int output_step_length = CalculateOutputStepLength(batch_size_, hidden_size_, num_directions, direction_);
+  const int single_direction_output_step_length = rnn::detail::CalculateOutputStepLength(batch_size_, hidden_size_, 1, direction_);
+  const int output_step_length = rnn::detail::CalculateOutputStepLength(batch_size_, hidden_size_, num_directions, direction_);
 
   // convenience end iterators we use in the loops below to detect any bounds issues
   span_T_const_iter batched_bias_WRz_local_end = batched_bias_WRz_.end();
@@ -1072,32 +1051,32 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
 
 template <typename T>
 void UniDirectionalGru<T>::AllocateBuffers() {
-  cur_h_ = Allocate(allocator_, CalculateBufferElementCount({hidden_size_, batch_size_}), cur_h_ptr_);
-  batched_hidden0_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_hidden0_ptr_, true);
+  cur_h_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({hidden_size_, batch_size_}), cur_h_ptr_);
+  batched_hidden0_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, hidden_size_}), batched_hidden0_ptr_, true);
 
   if (use_bias_) {
-    batched_bias_WRz_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRz_ptr_);
-    batched_bias_WRr_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRr_ptr_);
+    batched_bias_WRz_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRz_ptr_);
+    batched_bias_WRr_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRr_ptr_);
 
     if (linear_before_reset_) {
-      batched_bias_Wh_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_Wh_ptr_);
-      batched_bias_Rh_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_Rh_ptr_);
+      batched_bias_Wh_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_Wh_ptr_);
+      batched_bias_Rh_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_Rh_ptr_);
     } else {
-      batched_bias_WRh_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRh_ptr_);
+      batched_bias_WRh_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, hidden_size_}), batched_bias_WRh_ptr_);
     }
   }
 
   if (linear_before_reset_) {
-    linear_output_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), linear_output_ptr_);
+    linear_output_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, hidden_size_}), linear_output_ptr_);
   }
 
   if (!training_mode_) {
-    outputZRH_ = Allocate(allocator_, CalculateBufferElementCount({hidden_size_, 3, batch_size_, seq_length_}), outputZRH_ptr_, true);
+    outputZRH_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({hidden_size_, 3, batch_size_, seq_length_}), outputZRH_ptr_, true);
   }
 
   if (direction_ == kReverse) {
-    inputs_reverse_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, seq_length_, input_size_}), inputs_reverse_ptr_);
-    outputs_reverse_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, seq_length_, hidden_size_}), outputs_reverse_ptr_);
+    inputs_reverse_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, seq_length_, input_size_}), inputs_reverse_ptr_);
+    outputs_reverse_ = Allocate(allocator_, rnn::detail::CalculateBufferElementCount({batch_size_, seq_length_, hidden_size_}), outputs_reverse_ptr_);
   }
 }
 

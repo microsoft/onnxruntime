@@ -5,7 +5,6 @@
 
 #include <algorithm>
 
-#include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -21,31 +20,6 @@ namespace lstm {
 #else
 #define DumpMatrix(...) ((void)0)
 #endif
-
-namespace {
-
-size_t CalculateBufferElementCount(std::initializer_list<int> dimensions) {
-  SafeInt<size_t> count{1};
-
-  for (int dimension : dimensions) {
-    count *= dimension;
-  }
-
-  return count;
-}
-
-int CalculateOutputStepLength(int batch_size, int hidden_size, int num_directions, Direction direction) {
-  SafeInt<int> output_step_length{batch_size};
-  output_step_length *= hidden_size;
-
-  if (direction == kForward && num_directions == 2) {
-    output_step_length *= 2;
-  }
-
-  return output_step_length;
-}
-
-}  // namespace
 
 template <typename TLambda>
 static inline void ExecuteLambdaInParallel(TLambda lambda, int max, int step, double cost,
