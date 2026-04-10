@@ -22,6 +22,7 @@ class SVMCommon {
     ORT_THROW_IF_ERROR(info.GetAttrs<float>("kernel_params", kernel_params));
 
     if (!kernel_params.empty()) {
+      ORT_ENFORCE(kernel_params.size() == 3, "kernel_params must be empty or have 3 values not ", kernel_params.size(), ".");
       gamma_ = kernel_params[0];
       coef0_ = kernel_params[1];
       degree_ = kernel_params[2];
