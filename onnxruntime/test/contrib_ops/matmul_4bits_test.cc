@@ -880,6 +880,95 @@ TEST(MatMulNBits, Basic_M10_N128_K512) {
 }
 #endif
 
+// Test that out-of-range g_idx values are rejected with INVALID_ARGUMENT.
+// CUDA EP is excluded from these tests, so no risk of hitting CUDA_KERNEL_ASSERT.
+TEST(MatMulNBits, InvalidGIdx_OutOfRange) {
+  constexpr int64_t M = 2, N = 4, K = 32, block_size = 16;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;  // 2
+  constexpr int64_t blob_size = block_size * QBits / 8;            // 8
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  // A: [M, K]
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  // B: [N, k_blocks, blob_size]
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  // scales: [N, k_blocks]
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  // zero_points: optional (skip)
+  test.AddOptionalInputEdge<uint8_t>();
+
+  // g_idx with out-of-range values (valid range is [0, k_blocks) = [0, 2))
+  std::vector<int32_t> g_idx(K);
+  for (int64_t i = 0; i < K; i++) {
+    g_idx[i] = 99999;  // way out of range
+  }
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+
+  // bias: optional (skip)
+  test.AddOptionalInputEdge<float>();
+
+  // Output placeholder (won't actually be compared since we expect failure)
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
+// Test that negative g_idx values are rejected.
+TEST(MatMulNBits, InvalidGIdx_Negative) {
+  constexpr int64_t M = 2, N = 4, K = 32, block_size = 16;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  test.AddOptionalInputEdge<uint8_t>();
+
+  // g_idx with negative values
+  std::vector<int32_t> g_idx(K);
+  for (int64_t i = 0; i < K; i++) {
+    g_idx[i] = -1;
+  }
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+
+  test.AddOptionalInputEdge<float>();
+
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

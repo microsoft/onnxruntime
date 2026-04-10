@@ -138,6 +138,13 @@ struct TreeEnsembleAttributesV3 {
                     "base_values_as_tensor should have 0 or ", n_targets_or_classes, " values.");
       }
     }
+
+    int64_t min_ids = *std::min_element(target_class_ids.begin(), target_class_ids.end());
+    ORT_ENFORCE(min_ids >= 0, "target_ids or class_ids cannot have negative values (", min_ids, ").");
+    int64_t max_ids = *std::max_element(target_class_ids.begin(), target_class_ids.end());
+    ORT_ENFORCE(max_ids < n_targets_or_classes, "At least one value (", max_ids,
+                ") in target_ids or class_ids is greater or equal to the number of targets or classes (",
+                n_targets_or_classes, ").");
   }
 
   std::string aggregate_function;

@@ -4,6 +4,7 @@
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include "gsl/gsl"
@@ -1097,5 +1098,321 @@ TEST(PluginExecutionProviderTest, ProfilingEvent_ConstWrapper) {
   EXPECT_EQ(const_event.GetDurationUs(), 111);
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
+
+// ---------------------------------------------------------------------------
+// Test that CreatePreferredAllocators wraps a Shrink-capable plugin allocator
+// as IArena (not just IAllocator), so ShrinkMemoryArenas can find it.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Minimal fake OrtAllocator with Shrink support.
+// Tracks Shrink calls via a counter.
+struct FakeArenaOrtAllocator : OrtAllocator {
+  int shrink_call_count = 0;
+  OrtMemoryInfo* mem_info = nullptr;
+};
+
+static void* ORT_API_CALL FakeAlloc(OrtAllocator*, size_t) noexcept { return nullptr; }
+static void ORT_API_CALL FakeFree(OrtAllocator*, void*) noexcept {}
+static const OrtMemoryInfo* ORT_API_CALL FakeInfo(const OrtAllocator* self) noexcept {
+  return static_cast<const FakeArenaOrtAllocator*>(self)->mem_info;
+}
+static OrtStatus* ORT_API_CALL FakeShrink(OrtAllocator* self) noexcept {
+  static_cast<FakeArenaOrtAllocator*>(self)->shrink_call_count++;
+  return nullptr;
+}
+static OrtStatus* ORT_API_CALL FakeGetStats(const OrtAllocator*, OrtKeyValuePairs** out) noexcept {
+  ::OrtGetApiBase()->GetApi(ORT_API_VERSION)->CreateKeyValuePairs(out);
+  return nullptr;
+}
+
+static FakeArenaOrtAllocator MakeFakeArenaAllocator(OrtMemoryInfo* mem_info, bool with_shrink = true) {
+  FakeArenaOrtAllocator fa{};
+  static_assert(std::is_standard_layout_v<OrtAllocator>);
+  std::memset(static_cast<OrtAllocator*>(&fa), 0, sizeof(OrtAllocator));
+  fa.version = ORT_API_VERSION;
+  fa.mem_info = mem_info;
+  fa.Alloc = FakeAlloc;
+  fa.Free = FakeFree;
+  fa.Info = FakeInfo;
+  fa.Shrink = with_shrink ? FakeShrink : nullptr;
+  fa.GetStats = FakeGetStats;
+  return fa;
+}
+
+// Namespace-level storage so C function pointers can access the fake allocator.
+static OrtAllocator* g_fake_allocator_for_test = nullptr;
+
+static OrtStatus* ORT_API_CALL FakeCreateAllocator(OrtEp*, const OrtMemoryInfo*,
+                                                   OrtAllocator** out) noexcept {
+  *out = g_fake_allocator_for_test;
+  return nullptr;
+}
+
+static void ORT_API_CALL FakeReleaseAllocator(OrtEpFactory*, OrtAllocator*) noexcept {
+  // No-op: tests own the fake allocator lifetime.
+}
+
+}  // namespace
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_ShrinkCapableAllocatorExposedAsArena) {
+  // Set up a device with device_memory_info so CreatePreferredAllocators iterates it.
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+
+  // Create the fake arena allocator with Shrink support.
+  auto fake_allocator = MakeFakeArenaAllocator(ort_memory_info.get(), /*with_shrink=*/true);
+  FakeArenaOrtAllocator* fake_alloc_ptr = &fake_allocator;
+
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ort_memory_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+
+  g_fake_allocator_for_test = fake_alloc_ptr;
+  ort_ep->CreateAllocator = FakeCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocator;
+
+  auto allocators = ep->CreatePreferredAllocators();
+  ASSERT_EQ(allocators.size(), 1u);
+
+  // The allocator supports Shrink, so it should be wrapped as IArena.
+  auto* arena = allocators[0]->AsArena();
+  ASSERT_NE(arena, nullptr) << "Shrink-capable plugin allocator must be exposed as IArena";
+
+  // Shrink should forward to the fake allocator's Shrink callback.
+  ASSERT_EQ(fake_alloc_ptr->shrink_call_count, 0);
+  auto status = arena->Shrink();
+  ASSERT_TRUE(status.IsOK());
+  EXPECT_EQ(fake_alloc_ptr->shrink_call_count, 1);
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_NonShrinkAllocatorNotExposedAsArena) {
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+
+  auto fake_allocator = MakeFakeArenaAllocator(ort_memory_info.get(), /*with_shrink=*/false);
+  FakeArenaOrtAllocator* fake_alloc_ptr = &fake_allocator;
+
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ort_memory_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+
+  g_fake_allocator_for_test = fake_alloc_ptr;
+  ort_ep->CreateAllocator = FakeCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocator;
+
+  auto allocators = ep->CreatePreferredAllocators();
+  ASSERT_EQ(allocators.size(), 1u);
+
+  // Without Shrink, the allocator should NOT be exposed as IArena.
+  EXPECT_EQ(allocators[0]->AsArena(), nullptr)
+      << "Non-Shrink allocator must not be exposed as IArena";
+}
+
+TEST(PluginExecutionProviderTest, IsGraphCaptureEnabled) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return false (default behavior).
+    ort_ep->IsGraphCaptureEnabled = nullptr;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+  }
+
+  {
+    // Non-NULL implementation returning true.
+    // IsGraphCaptured and ReplayGraph must also be set for IsGraphCaptureEnabled() to return true.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    auto is_graph_captured = [](const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> bool {
+      return false;
+    };
+    auto replay_graph = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = is_graph_captured;
+    ort_ep->ReplayGraph = replay_graph;
+    ASSERT_TRUE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->IsGraphCaptured = nullptr;        // Restore.
+    ort_ep->ReplayGraph = nullptr;            // Restore.
+  }
+
+  {
+    // Non-NULL implementation returning false.
+    auto graph_capture_disabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return false;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_disabled;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+  }
+
+  {
+    // Backward compatibility: version < 26 should return false even if function pointer is set.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->ort_version_supported = 25;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+
+  {
+    // IsGraphCaptureEnabled returns true but IsGraphCaptured is NULL.
+    // Should return false because ORT-managed graph capture requires IsGraphCaptured.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    auto replay_graph = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = nullptr;
+    ort_ep->ReplayGraph = replay_graph;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->ReplayGraph = nullptr;            // Restore.
+  }
+
+  {
+    // IsGraphCaptureEnabled returns true but ReplayGraph is NULL.
+    // Should return false because ORT-managed graph capture requires ReplayGraph.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    auto is_graph_captured = [](const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> bool {
+      return false;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = is_graph_captured;
+    ort_ep->ReplayGraph = nullptr;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->IsGraphCaptured = nullptr;        // Restore.
+  }
+}
+
+TEST(PluginExecutionProviderTest, IsGraphCaptured) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return false (default behavior).
+    ort_ep->IsGraphCaptured = nullptr;
+    ASSERT_FALSE(ep->IsGraphCaptured(0));
+  }
+
+  {
+    // Non-NULL implementation that checks graph_annotation_id.
+    auto graph_captured_for_id_42 = [](const OrtEp* /*this_ptr*/, int graph_annotation_id) noexcept -> bool {
+      return graph_annotation_id == 42;
+    };
+    ort_ep->IsGraphCaptured = graph_captured_for_id_42;
+    ASSERT_TRUE(ep->IsGraphCaptured(42));
+    ASSERT_FALSE(ep->IsGraphCaptured(0));
+    ASSERT_FALSE(ep->IsGraphCaptured(-1));
+  }
+
+  {
+    // Backward compatibility: version < 26 should return false even if function pointer is set.
+    auto always_captured = [](const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> bool {
+      return true;
+    };
+    ort_ep->IsGraphCaptured = always_captured;
+    ort_ep->ort_version_supported = 25;
+    ASSERT_FALSE(ep->IsGraphCaptured(0));
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+}
+
+TEST(PluginExecutionProviderTest, ReplayGraph) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return OK (default behavior).
+    ort_ep->ReplayGraph = nullptr;
+    ASSERT_STATUS_OK(ep->ReplayGraph(0));
+  }
+
+  {
+    // Non-NULL implementation returning OK.
+    auto replay_ok = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->ReplayGraph = replay_ok;
+    ASSERT_STATUS_OK(ep->ReplayGraph(0));
+  }
+
+  {
+    // Non-NULL implementation returning an error.
+    auto replay_fail = [](OrtEp* this_ptr, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Graph replay failed");
+    };
+    ort_ep->ReplayGraph = replay_fail;
+    auto status = ep->ReplayGraph(0);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Graph replay failed"));
+  }
+
+  {
+    // Backward compatibility: version < 26 should return OK even if function pointer is set.
+    auto replay_fail = [](OrtEp* this_ptr, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Should not be called");
+    };
+    ort_ep->ReplayGraph = replay_fail;
+    ort_ep->ort_version_supported = 25;
+    ASSERT_STATUS_OK(ep->ReplayGraph(0));
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+}
+
+TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return ALL_NODES_ON_EP (strictest default).
+    ort_ep->GetGraphCaptureNodeAssignmentPolicy = nullptr;
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
+  }
+
+  {
+    // Non-NULL implementation returning ALL_NODES_ON_EP.
+    auto all_nodes_on_ep = [](const OrtEp* /*this_ptr*/) noexcept -> OrtGraphCaptureNodeAssignmentPolicy {
+      return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
+    };
+    ort_ep->GetGraphCaptureNodeAssignmentPolicy = all_nodes_on_ep;
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
+  }
+
+  {
+    // Non-NULL implementation returning ALLOW_CPU_FOR_SHAPES.
+    auto allow_cpu = [](const OrtEp* /*this_ptr*/) noexcept -> OrtGraphCaptureNodeAssignmentPolicy {
+      return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+    };
+    ort_ep->GetGraphCaptureNodeAssignmentPolicy = allow_cpu;
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES);
+  }
+
+  {
+    // Backward compatibility: version < 26 should return ALL_NODES_ON_EP even if function pointer is set.
+    auto allow_cpu = [](const OrtEp* /*this_ptr*/) noexcept -> OrtGraphCaptureNodeAssignmentPolicy {
+      return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+    };
+    ort_ep->GetGraphCaptureNodeAssignmentPolicy = allow_cpu;
+    ort_ep->ort_version_supported = 25;
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+}
 
 }  // namespace onnxruntime::test

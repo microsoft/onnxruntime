@@ -225,6 +225,19 @@ inline void* AllocatorImpl<T>::Alloc(size_t size) {
 }
 
 template <typename T>
+inline void* AllocatorImpl<T>::Reserve(size_t size) {
+  // Reserve was added in version 18. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 18 && this->p_->Reserve) {
+    return this->p_->Reserve(this->p_, size);
+  }
+  // Fall back to Alloc() for allocators that don't implement Reserve,
+  // matching the ORT-core adapter behavior (IAllocatorImplWrappingOrtAllocator,
+  // IArenaImplWrappingOrtAllocator).
+  return this->p_->Alloc(this->p_, size);
+}
+
+template <typename T>
 inline MemoryAllocation AllocatorImpl<T>::GetAllocation(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));
@@ -249,6 +262,15 @@ inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
   OrtKeyValuePairs* out;
   ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
   return KeyValuePairs(out);
+}
+
+template <typename T>
+inline void AllocatorImpl<T>::Shrink() {
+  // Shrink was added in version 25. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 25 && this->p_->Shrink) {
+    ThrowOnError(this->p_->Shrink(this->p_));
+  }
 }
 }  // namespace detail
 
@@ -1030,6 +1052,11 @@ inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
   const OrtValue* const* src_tensors_ptr = reinterpret_cast<const OrtValue* const*>(src_tensors.data());
   OrtValue* const* dst_tensors_ptr = reinterpret_cast<OrtValue* const*>(dst_tensors.data());
   OrtStatus* status = GetApi().CopyTensors(p_, src_tensors_ptr, dst_tensors_ptr, stream, src_tensors.size());
+  return Status(status);
+}
+
+inline Status Env::CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const {
+  OrtStatus* status = GetApi().CopyTensors(p_, &src_tensor, &dst_tensor, stream, 1);
   return Status(status);
 }
 

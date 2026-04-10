@@ -21,6 +21,7 @@
 #include "core/common/float8.h"
 #include "core/framework/float4.h"
 #include "core/framework/allocator.h"
+#include "core/framework/stream_handles.h"
 #include "core/framework/tensor_shape.h"
 #include "core/util/math.h"
 #include <gsl/gsl>
@@ -99,7 +100,12 @@ class OrtStreamAdapter {
 
 namespace onnxruntime {
 inline constexpr const char* kCudaPluginExecutionProvider = "CudaPluginExecutionProvider";
-}
+
+// Forward declaration of GetEnvironmentVar for plugin builds on Windows.
+// Defined in provider_api_shims.cc; mirrors the provider_api.h declaration
+// which is a no-op when BUILD_CUDA_EP_AS_PLUGIN is set.
+std::string GetEnvironmentVar(const std::string& var_name);
+}  // namespace onnxruntime
 
 namespace onnxruntime {
 namespace cuda {
@@ -475,6 +481,7 @@ IConstantBuffer<T>* GetConstOnesBufferForDevice(int device_id) {
 struct DefaultCudaHandles {
   cublasHandle_t cublas = nullptr;
   cudnnHandle_t cudnn = nullptr;
+  cublasLtHandle_t cublas_lt = nullptr;
 
   ~DefaultCudaHandles() {
     if (cublas != nullptr) {
@@ -482,6 +489,9 @@ struct DefaultCudaHandles {
     }
     if (cudnn != nullptr) {
       cudnnDestroy(cudnn);
+    }
+    if (cublas_lt != nullptr) {
+      cublasLtDestroy(cublas_lt);
     }
   }
 };
@@ -511,6 +521,17 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
       }
       handles_by_device.erase(it);
       ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
+    }
+    if (cublasLtCreate(&it->second.cublas_lt) != CUBLAS_STATUS_SUCCESS) {
+      cudnnDestroy(it->second.cudnn);
+      it->second.cudnn = nullptr;
+      cublasDestroy(it->second.cublas);
+      it->second.cublas = nullptr;
+      if (get_device_result == cudaSuccess) {
+        cudaSetDevice(prev_device);
+      }
+      handles_by_device.erase(it);
+      ORT_THROW("Failed to create default cuBLASLt handle for CUDA plugin device ", device_id);
     }
     if (get_device_result == cudaSuccess) {
       PL_CUDA_CALL_THROW(cudaSetDevice(prev_device));
@@ -812,6 +833,17 @@ class CudaKernel : public OpKernel {
   }
   virtual ~CudaKernel() = default;
   Status Compute(OpKernelContext* ctx) const {
+    // Ensure the correct CUDA device is active for this kernel.
+    // Worker threads default to device 0; sessions on device > 0 need an
+    // explicit cudaSetDevice. Skip during CUDA graph capture because
+    // cudaSetDevice is not allowed on a capturing stream.
+    if (!IsThreadCapturingCudaGraph()) {
+      int current_device = -1;
+      PL_CUDA_CALL_THROW(cudaGetDevice(&current_device));
+      if (current_device != device_id_) {
+        PL_CUDA_CALL_THROW(cudaSetDevice(device_id_));
+      }
+    }
     Status s = ComputeInternal(ctx);
     if (s.IsOK()) {
       cudaError_t err = cudaGetLastError();
@@ -824,6 +856,7 @@ class CudaKernel : public OpKernel {
   inline cudaStream_t DefaultCudaStream() const { return Stream(static_cast<OpKernelContext*>(nullptr)); }
   inline cublasHandle_t DefaultCublasHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cublas; }
   inline cudnnHandle_t DefaultCudnnHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cudnn; }
+  inline cublasLtHandle_t DefaultCublasLtHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cublas_lt; }
 
   inline Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst, onnxruntime::Stream& stream) const {
     if (src.Shape().Size() == 0) return Status::OK();
@@ -906,7 +939,10 @@ class CudaKernel : public OpKernel {
   static inline cublasLtHandle_t GetCublasLtHandle(onnxruntime::Stream* stream) {
     return stream ? GetCublasLtHandle(static_cast<cudaStream_t>(stream->GetHandle())) : nullptr;
   }
-  cublasLtHandle_t GetCublasLtHandle(OpKernelContext* ctx) const { return GetCublasLtHandle(Stream(ctx)); }
+  cublasLtHandle_t GetCublasLtHandle(OpKernelContext* ctx) const {
+    auto handle = GetCublasLtHandle(Stream(ctx));
+    return handle != nullptr ? handle : DefaultCublasLtHandle();
+  }
 
   const cudaDeviceProp& GetDeviceProp() const {
     // Some migrated kernels size their launches from device properties. If the
@@ -963,9 +999,13 @@ class CudaKernel : public OpKernel {
     cudaError_t alloc_result = cudaSuccess;
     bool used_async_alloc = false;
     if (s) {
+      // Note: stream-ordered allocations (cudaMallocAsync/cudaFreeAsync) rely on CUDA Memory Pools,
+      // which are not supported on NVIDIA GPUs with Multi-Instance GPU (MIG) enabled.
+      // On such instances, this will return cudaErrorNotSupported.
       alloc_result = cudaMallocAsync(&p, sz, static_cast<cudaStream_t>(s));
       used_async_alloc = (alloc_result == cudaSuccess);
       if (!used_async_alloc && (alloc_result == cudaErrorNotSupported || alloc_result == cudaErrorInvalidValue)) {
+        cudaGetLastError();  // Clear the thread-local error state
         alloc_result = cudaMalloc(&p, sz);
       }
     } else {
@@ -984,10 +1024,12 @@ class CudaKernel : public OpKernel {
         // the raw cudaStream_t handle is still valid.
         if (used_async_alloc && s &&
             cuda_plugin::CudaSyncStream::FromCudaStream(static_cast<cudaStream_t>(s)) != nullptr) {
+          // As noted above, cudaFreeAsync may also return cudaErrorNotSupported on MIG-enabled instances.
           cudaError_t free_result = cudaFreeAsync(ptr, static_cast<cudaStream_t>(s));
           if (free_result == cudaSuccess) {
             return;
           }
+          cudaGetLastError();  // Clear any error set by cudaFreeAsync
         }
 
         // Fall back to synchronous free if async free is unsupported or if the
