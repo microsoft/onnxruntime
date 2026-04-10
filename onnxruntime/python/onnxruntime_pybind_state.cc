@@ -277,9 +277,9 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
     return py::cast<py::object>(result);
   }
 
-  const auto device_type = device.Type();
-  // Create an numpy array on top of the OrtValue memory, no copy
-  if (device_type == OrtDevice::CPU) {
+  // Create an numpy array on top of the OrtValue memory, no copy.
+  // UsesCpuMemory() returns true for CPU devices and HOST_ACCESSIBLE memory (e.g. plugin EP shared memory).
+  if (device.UsesCpuMemory()) {
     py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
     return py::cast<py::object>(result);
   }

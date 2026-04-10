@@ -1082,6 +1082,7 @@ class OrtValue:
         device_type: str = "cpu",
         device_id: int = 0,
         vendor_id: int | OrtDeviceVendorId = -1,
+        memory_info=None,
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -1091,7 +1092,25 @@ class OrtValue:
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         :param vendor_id: The device's PCI vendor id as an int or OrtDeviceVendorId. If provided, the device type should be "gpu" or "npu".
+        :param memory_info: An OrtMemoryInfo from an OrtEpDevice (e.g. via ep_device.memory_info(OrtDeviceMemoryType.HOST_ACCESSIBLE)). When provided, the allocator matching this memory info is used directly, which allows allocating HOST_ACCESSIBLE memory for zero-copy numpy interop. The device_type, device_id, and vendor_id parameters are ignored when memory_info is provided.
         """
+
+        if memory_info is not None:
+            if isinstance(element_type, int):
+                return cls(
+                    C.OrtValue.ortvalue_from_shape_and_onnx_type_for_memory_info(
+                        shape,
+                        element_type,
+                        memory_info,
+                    )
+                )
+            return cls(
+                C.OrtValue.ortvalue_from_shape_and_type_for_memory_info(
+                    shape,
+                    element_type,
+                    memory_info,
+                )
+            )
 
         device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
 
