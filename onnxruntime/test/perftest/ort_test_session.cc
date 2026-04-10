@@ -658,6 +658,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
   }
 
+  if (performance_test_config.run_config.spin_duration_us >= 0) {
+    warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinDurationUs);
+    auto val = std::to_string(performance_test_config.run_config.spin_duration_us);
+    fprintf(stdout, "Setting intra-op spin duration to %s us\n", val.c_str());
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinDurationUs, val.c_str());
+  }
+
   if (performance_test_config.run_config.disable_spinning_between_run) {
     warn_dup_config_entry(kOrtSessionOptionsConfigForceSpinningStop);
     fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
