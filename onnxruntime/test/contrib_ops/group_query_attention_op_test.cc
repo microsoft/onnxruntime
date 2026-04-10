@@ -117,5 +117,20 @@ TEST(GroupQueryAttentionTest, BoundaryValidSeqlensK) {
       "");
 }
 
+// Non-first-prompt (token generation): seqlens_k too small for sequence_length
+// causes unsigned underflow in past_seqlen = total_seqlen - sequence_length.
+// Here seq=1, total_seq=2, past_seq=1, but seqlens_k claims total is 0 (< seq_len).
+TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{-1},
+      /*total_seq_len=*/2,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k[0] is negative",
+      /*provide_past=*/true,
+      /*past_seq_len=*/1);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
