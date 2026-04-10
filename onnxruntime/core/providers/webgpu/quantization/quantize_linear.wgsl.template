@@ -179,7 +179,11 @@ $MAIN {
     if (base_idx + 3u < uniforms.data_size) { packed[3] = quantize_element(base_idx + 3u); }
 #endif
 
+#if Y_IS_SIGNED
     y[global_idx] = pack4xI8(packed);
+#else
+    y[global_idx] = pack4xU8(vec4<u32>(packed));
+#endif
 
 #endif  // Y_PACKING_MODE
 }

@@ -60,7 +60,7 @@ Status DetectQuantizationType(const TensorShape& input_shape, const TensorShape&
     int64_t actual_block_size{};
     if (block_size == 0) {
       // block_size is unspecified. Try to detect it.
-      ORT_RETURN_IF_NOT(input_dim % scale_dim != 0,
+      ORT_RETURN_IF_NOT(input_dim % scale_dim == 0,
                         "Automatic detection of block size requires input dimension (", input_dim,
                         ") to be a multiple of scale dimension (", scale_dim, ").");
       actual_block_size = input_dim / scale_dim;

@@ -103,7 +103,6 @@ namespace {
 const std::vector<MLDataType>& InputTypeConstraints() {
   static const auto constraints = BuildKernelDefConstraints<float>();
   return constraints;
-  // return WebGpuSupportedFloatTypes();
 }
 
 const std::vector<MLDataType>& OutputAndZeroPointTypeConstraints() {
