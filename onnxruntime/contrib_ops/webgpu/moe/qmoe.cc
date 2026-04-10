@@ -232,15 +232,6 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   Status status;
 
   Tensor* output_tensor = context.Output(0, input_shape);
-  const int total_output_size = (static_cast<int>(input_shape.Size()) + 3) / 4;
-
-  // we are accumulating expert results into output_tensor, need to initialize to zero
-  ZeroTensorProgram zero;
-  zero
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
-      .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
-  ORT_RETURN_IF_ERROR(context.RunProgram(zero));
 
   if (moe_params.num_rows == 1) {
     // Fused MoE path for 1 token: instead of looping k times with separate dispatches,
@@ -322,6 +313,15 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
     return Status::OK();
   }
+
+  // Multi-token path: accumulates into output_tensor, need to initialize to zero.
+  const int total_output_size = (static_cast<int>(input_shape.Size()) + 3) / 4;
+  ZeroTensorProgram zero;
+  zero
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+      .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
+  ORT_RETURN_IF_ERROR(context.RunProgram(zero));
 
   // path for num_tokens > 1
   // process tokens in chunks of max_tokens to put some cap on memory usage

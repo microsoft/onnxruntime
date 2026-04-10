@@ -143,7 +143,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
                            {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(b_components * kU32Components)},
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddUniformVariables({batch_count, dispatch_M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col, weight_index})
+        .AddUniformVariables({batch_count, M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col, weight_index, dispatch_M})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
         .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, broadcast_a);
     if (has_zero_points) {

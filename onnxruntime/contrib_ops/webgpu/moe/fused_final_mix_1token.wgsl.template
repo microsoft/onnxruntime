@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 // Fused FinalMix for 1-token MoE: processes all k experts in one dispatch.
-// Each workgroup handles one of the k expert results.
+// The kernel is dispatched over hidden_size; each thread computes one output
+// element and accumulates the weighted contributions from all k experts.
 // in: fc2_outputs [k, hidden_size] — concatenated fc2 results for all k experts
 // in: router_values [1, num_experts] — softmax weights per expert
 // in: indirect_experts [k] — which expert index each row corresponds to

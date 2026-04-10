@@ -35,8 +35,8 @@ fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 }
 
 $MAIN {
-  let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
-  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
+  let batch = workgroup_idx / (uniforms.dispatch_M * uniforms.num_N_tile);
+  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.dispatch_M;
 #if has_weight_idx
 #if has_weight_idx_indirect
   let actual_weight_idx = weight_index_indirect[a_global];
@@ -238,7 +238,7 @@ $MAIN {
       output_value += inter_results[local_idx][b];
     }
     let b_global =  b_global_base + local_idx;
-    let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
+    let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
     if (b_global < uniforms.N) {
 #if has_bias
       output_value += bias[b_global + b_bias_offset];

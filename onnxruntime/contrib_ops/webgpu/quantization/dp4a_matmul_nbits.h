@@ -80,7 +80,8 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
       {"block_size", ProgramUniformVariableDataType::Uint32},
       {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32});
+      {"weight_idx", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_M", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_k_vec_;

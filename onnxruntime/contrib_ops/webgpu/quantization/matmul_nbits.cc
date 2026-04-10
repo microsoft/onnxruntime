@@ -314,17 +314,17 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   constexpr uint32_t tile_size = 8;
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
-  uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
   MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a};
   program.SetWorkgroupSize(workgroup_size);
-  program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, dispatch_M, batch_count);
+  uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
+  program.SetDispatchGroupSize(num_N_tile, dispatch_M, batch_count);
   program
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
                   {scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariables({{dispatch_M},
+      .AddUniformVariables({{M},
                             {N},
                             {K},
                             {K / components_a},
@@ -334,7 +334,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {zero_blocks_per_col},
                             {num_N_tile},
                             {batch_count},
-                            {weight_index}})
+                            {weight_index},
+                            {dispatch_M}})
       .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});

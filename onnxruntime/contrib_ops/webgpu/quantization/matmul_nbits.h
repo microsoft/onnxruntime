@@ -55,7 +55,8 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32});
+      {"weight_idx", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_M", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;
