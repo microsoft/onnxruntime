@@ -23,7 +23,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n";
 
   // Get x input
-  if (packing_ == PackingMode::Packed4) {
+  if (packing_mode_ == util::U32PackingMode::Pack4bx8) {
     // 4-bit packing: 8 elements per u32
     shader.MainFunctionBody()
         << "let x = " << x.GetByOffset("global_idx / 8") << ";\n"
@@ -35,7 +35,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody()
           << "let x_value = input_element_t(x_raw);\n";
     }
-  } else if (packing_ == PackingMode::Packed8) {
+  } else if (packing_mode_ == util::U32PackingMode::Pack8bx4) {
     // 8-bit packing: 4 elements per u32
     std::string unpack = (packed_signed_) ? "unpack4xI8(x)" : "unpack4xU8(x)";
     if (output.NumComponents() == 1) {
@@ -55,11 +55,11 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Get scaler
-  if (per_layer_) {
+  if (quantization_type_ == util::QuantizationType::PerTensor) {
     // scale input is a scalar ()
     shader.MainFunctionBody()
         << "let scale_value = " << scale.GetByOffset("0") << ";\n";
-  } else if (per_axis_) {
+  } else if (quantization_type_ == util::QuantizationType::PerAxis) {
     shader.MainFunctionBody()
         << "let scale_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
         << "let scale_value = " << scale.GetByOffset("scale_index") << ";\n";
@@ -80,15 +80,15 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_zeropoint_) {
     const auto& zero_point = shader.AddInput("zero_point", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
-    if (packing_ == PackingMode::Packed4) {
+    if (packing_mode_ == util::U32PackingMode::Pack4bx8) {
       // 4-bit zero-point: 8 elements per u32, with sign extension for signed types
       std::string sign_extend_prefix = packed_signed_ ? "let zp_raw = " : "let zero_point_value = input_element_t(";
       std::string sign_extend_suffix = packed_signed_ ? ";\nlet zero_point_value = select(input_element_t(zp_raw), input_element_t(zp_raw) - 16, zp_raw >= 8u);\n"
                                                       : ");\n";
-      if (per_layer_) {
+      if (quantization_type_ == util::QuantizationType::PerTensor) {
         shader.MainFunctionBody()
             << sign_extend_prefix << zero_point.GetByOffset("0") << " & 0xFu" << sign_extend_suffix;
-      } else if (per_axis_) {
+      } else if (quantization_type_ == util::QuantizationType::PerAxis) {
         shader.MainFunctionBody()
             << "let zero_point_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
             << "let zero_point_packed = " << zero_point.GetByOffset("zero_point_index / 8") << ";\n"
@@ -101,9 +101,9 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
     } else {
       std::string unpack = (packed_signed_) ? "unpack4xI8(zero_point_input)" : "unpack4xU8(zero_point_input)";
-      if (per_layer_) {
+      if (quantization_type_ == util::QuantizationType::PerTensor) {
         // zero-point input is a scalar
-        if (packing_ == PackingMode::Packed8) {
+        if (packing_mode_ == util::U32PackingMode::Pack8bx4) {
           shader.MainFunctionBody()
               << "let zero_point_input = " << zero_point.GetByOffset("0") << ";\n"
               << "let zero_point_vec = " << unpack << ";\n"
@@ -112,9 +112,9 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
           shader.MainFunctionBody()
               << "let zero_point_value = " << zero_point.GetByOffset("0") << ";\n";
         }
-      } else if (per_axis_) {
+      } else if (quantization_type_ == util::QuantizationType::PerAxis) {
         // zero-point input is a 1D tensor
-        if (packing_ == PackingMode::Packed8) {
+        if (packing_mode_ == util::U32PackingMode::Pack8bx4) {
           shader.MainFunctionBody()
               << "let zero_point_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
               << "let zero_point_input = " << zero_point.GetByOffset("zero_point_index / 4") << ";\n"
@@ -127,7 +127,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
         }
       } else {
         // BlockedQuantization. The zero-point input shape is the same as the scale input shape.
-        if (packing_ == PackingMode::Packed8) {
+        if (packing_mode_ == util::U32PackingMode::Pack8bx4) {
           shader.MainFunctionBody()
               << "let zero_point_offset = " << scale.IndicesToOffset("scale_indices") << ";\n"
               << "let zero_point_input = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
@@ -156,89 +156,46 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   const auto* x = context.Input(0);
   const auto* x_scale = context.Input(1);
   const auto* x_zeropoint = context.Input(2);
-  const auto x_shape = x->Shape();
-  int64_t x_size = x_shape.Size();
+  const auto& x_shape = x->Shape();
+  const auto x_size = x_shape.Size();
   auto* output_tensor = context.Output(0, x_shape);
-  int64_t x_scale_rank = x_scale->Shape().NumDimensions();
 
-  auto x_type = x->GetElementType();
+  const auto x_type = x->GetElementType();
+  const auto packing_mode = util::GetOnnxTensorElementDataTypeU32PackingMode(x_type);
+  const bool packed = packing_mode != util::U32PackingMode::None;
+  const bool is_packed_signed = packed && util::IsOnnxElementDataTypeSigned(x_type);
 
-  PackingMode packing = (x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4)
-                            ? PackingMode::Packed4
-                        : (x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8)
-                            ? PackingMode::Packed8
-                            : PackingMode::None;
-  bool packed = packing != PackingMode::None;
-  bool is_packed_signed = x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
-  int64_t axis = (axis_ >= 0) ? axis_ : axis_ + x_shape.NumDimensions();
-
-  int max_components = GetMaxComponents(x_size);
-
-  // scaler - single scaler for all elements
-  bool per_layer = x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1);
-
-  // 1D tensor - 1 scaler for per axis
-  bool per_axis = per_layer == false && x_scale_rank == 1;
-
-  // Compute effective block_size. When block_size_ is 0 (default) but scale is 1D with
-  // fewer elements than the input dimension on the axis, infer block_size from the ratio.
+  util::QuantizationType quantization_type{};
+  int64_t axis = axis_;
   int64_t block_size = block_size_;
-  if (per_axis && block_size == 0) {
-    int64_t input_dim = x_shape[onnxruntime::narrow<size_t>(axis)];
-    int64_t scale_dim = x_scale->Shape()[0];
-    if (scale_dim < input_dim) {
-      block_size = input_dim / scale_dim;
-      per_axis = false;  // treat as block quantization
-    }
-  }
+  ORT_RETURN_IF_ERROR(util::ValidateAndDetectQuantizationType(x_shape,
+                                                              x_scale->Shape(),
+                                                              x_zeropoint ? &x_zeropoint->Shape() : nullptr,
+                                                              axis,
+                                                              block_size,
+                                                              quantization_type));
 
-  // When scale is N-D (block quantization) and block_size is 0, infer axis and block_size
-  // from the shapes. Find the dimension where scale is smaller than input to determine axis,
-  // then compute block_size from the ratio.
-  if (!per_layer && !per_axis && block_size == 0) {
-    const auto& scale_shape = x_scale->Shape();
-    for (size_t i = 0; i < x_shape.NumDimensions(); i++) {
-      if (scale_shape[i] < x_shape[i]) {
-        axis = static_cast<int64_t>(i);
-        block_size = x_shape[i] / scale_shape[i];
-        break;
-      }
-    }
-    if (block_size == 0) {
-      block_size = 1;  // all dims match, default to block_size=1
-    }
-  }
+  const int max_components = GetMaxComponents(x_size);
 
-  // Validate shapes for blocked quantization.
-  if (!per_layer && !per_axis && block_size > 0) {
-    const auto& scale_shape = x_scale->Shape();
-    ORT_RETURN_IF(scale_shape.NumDimensions() != x_shape.NumDimensions(),
-                  "x_scale and x must have the same rank for blocked quantization");
-    for (size_t i = 0; i < x_shape.NumDimensions(); i++) {
-      if (static_cast<int64_t>(i) == axis) {
-        ORT_RETURN_IF(scale_shape[i] != (x_shape[i] + block_size - 1) / block_size,
-                      "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization");
-      } else {
-        ORT_RETURN_IF(scale_shape[i] != x_shape[i],
-                      "x_scale and x must have the same shape on non-quantize axes for blocked quantization");
-      }
-    }
-    if (x_zeropoint != nullptr) {
-      for (size_t i = 0; i < x_shape.NumDimensions(); i++) {
-        ORT_RETURN_IF(x_zeropoint->Shape()[i] != scale_shape[i],
-                      "x_zero_point and x_scale must have the same shape for blocked quantization");
-      }
-    }
-  }
+  const int pack_factor = util::GetU32PackingModeNumComponents(packing_mode).value_or(1);
 
-  bool use_components = per_layer && packing != PackingMode::Packed4 && (!packed || max_components == 4);
-  int components = use_components ? max_components : 1;
-  int input_component = use_components ? max_components : 1;
-  // For 4-bit types, each u32 holds 8 elements; for 8-bit types, 4 elements.
-  int pack_factor = (packing == PackingMode::Packed4) ? 8 : 4;
+  const bool use_components = quantization_type == util::QuantizationType::PerTensor &&
+                              packing_mode != util::U32PackingMode::Pack4bx8 &&
+                              (!packed || max_components == 4);
+  const int components = use_components ? max_components : 1;
+  const int input_component = use_components ? max_components : 1;
 
-  DequantizeLinearProgram program{packing, is_packed_signed, per_layer, per_axis, x_zeropoint != nullptr,
+  DequantizeLinearProgram program{packing_mode, is_packed_signed, quantization_type, x_zeropoint != nullptr,
                                   static_cast<int>(x_shape.NumDimensions())};
+
+  uint32_t axis_uniform = 0;
+  uint32_t block_size_uniform = 1;
+  if (quantization_type == util::QuantizationType::PerAxis || quantization_type == util::QuantizationType::Blocked) {
+    axis_uniform = narrow<uint32_t>(axis);
+  }
+  if (quantization_type == util::QuantizationType::Blocked) {
+    block_size_uniform = narrow<uint32_t>(block_size);
+  }
 
   program
       .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, packed ? pack_factor : input_component}})
@@ -247,10 +204,11 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
                      ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, ProgramOutput::Flatten, components}
                      : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, components})
       .SetDispatchGroupSize((x_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(axis)}})
-      .AddUniformVariables({{static_cast<uint32_t>(block_size)}})
+      .AddUniformVariables({{axis_uniform}})
+      .AddUniformVariables({{block_size_uniform}})
       .AddUniformVariables({{static_cast<uint32_t>(x_size / components)}})
-      .CacheHint(std::to_string(axis), std::to_string(is_packed_signed), std::to_string(per_layer), std::to_string(per_axis), std::to_string(block_size), std::to_string(static_cast<int>(packing)));
+      .CacheHint(std::to_string(static_cast<int>(quantization_type)), std::to_string(is_packed_signed),
+                 std::to_string(static_cast<int>(packing_mode)));
 
   if (x_zeropoint != nullptr) {
     program.AddInputs({{x_zeropoint, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, packed ? pack_factor : 1}});

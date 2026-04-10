@@ -3,27 +3,20 @@
 
 #pragma once
 
+#include "core/providers/webgpu/quantization/quantization_utils.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-// How the quantized input is packed into u32 words.
-enum class PackingMode {
-  None,     // no packing (e.g. int32)
-  Packed8,  // 8-bit: 4 elements per u32, uses unpack4x[I/U]8
-  Packed4,  // 4-bit: 8 elements per u32, manual bit extraction
-};
-
 class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
  public:
-  DequantizeLinearProgram(PackingMode packing, bool is_packed_signed, bool per_layer,
-                          bool per_axis, bool has_zeropoint, int rank = 0)
+  DequantizeLinearProgram(util::U32PackingMode packing_mode, bool is_packed_signed,
+                          util::QuantizationType quantization_type, bool has_zeropoint, int rank = 0)
       : Program<DequantizeLinearProgram>{"DequantizeLinear"},
-        packing_{packing},
+        packing_mode_{packing_mode},
         packed_signed_{is_packed_signed},
-        per_layer_{per_layer},
-        per_axis_{per_axis},
+        quantization_type_{quantization_type},
         has_zeropoint_{has_zeropoint},
         rank_{rank} {}
 
@@ -34,10 +27,9 @@ class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
                                           {"output_size", ProgramUniformVariableDataType::Uint32});
 
  private:
-  PackingMode packing_;
+  util::U32PackingMode packing_mode_;
   bool packed_signed_;
-  bool per_layer_;
-  bool per_axis_;
+  util::QuantizationType quantization_type_;
   bool has_zeropoint_;
   int rank_;
 };

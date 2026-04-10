@@ -9,9 +9,18 @@
 
 namespace onnxruntime::webgpu::util {
 
-Status DetectQuantizationType(const TensorShape& input_shape, const TensorShape& scale_shape,
-                              int64_t& axis, int64_t& block_size,
-                              QuantizationType& quantization_type) {
+Status ValidateAndDetectQuantizationType(const TensorShape& input_shape,
+                                         const TensorShape& scale_shape,
+                                         const TensorShape* zero_point_shape,
+                                         int64_t& axis,
+                                         int64_t& block_size,
+                                         QuantizationType& quantization_type) {
+  if (zero_point_shape != nullptr) {
+    ORT_RETURN_IF_NOT(scale_shape == *zero_point_shape,
+                      "The scale and zero point shapes must be equal. Scale shape: ",
+                      scale_shape, ", zero point shape: ", *zero_point_shape);
+  }
+
   if (IsScalarOr1ElementVector(scale_shape)) {
     // PerTensor
 
@@ -104,7 +113,7 @@ bool IsOnnxElementDataTypeSigned(int32_t data_type) {
   }
 }
 
-U32PackingMode GetOnnxTensorElementDataTypePackingMode(int32_t data_type) {
+U32PackingMode GetOnnxTensorElementDataTypeU32PackingMode(int32_t data_type) {
   switch (data_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
@@ -119,17 +128,14 @@ U32PackingMode GetOnnxTensorElementDataTypePackingMode(int32_t data_type) {
   }
 }
 
-Status GetU32PackingNumComponents(U32PackingMode packing_mode, int& num_components) {
+std::optional<int> GetU32PackingModeNumComponents(U32PackingMode packing_mode) {
   switch (packing_mode) {
     case U32PackingMode::Pack4bx8:
-      num_components = 8;
-      return Status::OK();
+      return 8;
     case U32PackingMode::Pack8bx4:
-      num_components = 4;
-      return Status::OK();
+      return 4;
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Unsupported U32 packing mode");
+      return std::nullopt;
   }
 }
 

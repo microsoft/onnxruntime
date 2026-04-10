@@ -13,7 +13,13 @@ namespace onnxruntime::webgpu {
 class QuantizeLinearProgram final : public Program<QuantizeLinearProgram> {
  public:
   QuantizeLinearProgram(util::QuantizationType quantization_type, bool has_zero_point,
-                        int32_t y_element_data_type);
+                        bool y_is_signed, util::U32PackingMode y_packing_mode)
+      : Program<QuantizeLinearProgram>{"QuantizeLinear"},
+        quantization_type_{quantization_type},
+        has_zero_point_{has_zero_point},
+        y_is_signed_{y_is_signed},
+        y_packing_mode_{y_packing_mode} {
+  }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 

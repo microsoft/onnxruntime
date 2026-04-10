@@ -3,11 +3,16 @@
 
 #pragma once
 
+#include <optional>
+
 #include "core/common/status.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime::webgpu::util {
 
+/**
+ * Q or DQ op quantization granularity.
+ */
 enum class QuantizationType {
   PerTensor = 0,
   PerAxis,
@@ -15,11 +20,14 @@ enum class QuantizationType {
 };
 
 /**
- * Validates the parameters and detects the Q or DQ op quantization type.
- * The `axis` and `block_size` parameters will be updated if applicable.
+ * Validates the Q or DQ op input shapes and attributes and detects the quantization type.
+ * For inout parameters `axis` and `block_size`, the input is the attribute value and the output is the effective
+ * value to use, if applicable.
+ * `quantization_type` will be set to the detected quantization type.
  *
  * @param input_shape The shape of the input data tensor.
  * @param scale_shape The shape of the scale tensor.
+ * @param zero_point_shape The shape of the zero point tensor, if present.
  * @param[inout] axis The axis value.
  *                    The input value may be negative.
                       It will be normalized to a non-negative value for `PerAxis` and `Blocked` quantization.
@@ -30,15 +38,21 @@ enum class QuantizationType {
  *
  * @return Status indicating success.
  */
-Status DetectQuantizationType(const TensorShape& input_shape, const TensorShape& scale_shape,
-                              int64_t& axis, int64_t& block_size,
-                              QuantizationType& quantization_type);
+Status ValidateAndDetectQuantizationType(const TensorShape& input_shape,
+                                         const TensorShape& scale_shape,
+                                         const TensorShape* zero_point_shape,
+                                         int64_t& axis,
+                                         int64_t& block_size,
+                                         QuantizationType& quantization_type);
 
 /**
  * Determines whether the specified ONNX element data type is signed.
  */
 bool IsOnnxElementDataTypeSigned(int32_t data_type);
 
+/**
+ * Modes for packing values into a single u32.
+ */
 enum class U32PackingMode {
   None = 0,
   Pack8bx4,  // pack 4 8-bit values per u32
@@ -48,12 +62,11 @@ enum class U32PackingMode {
 /**
  * Determines the packing mode to use for the specified ONNX data element type.
  */
-U32PackingMode GetOnnxTensorElementDataTypePackingMode(int32_t data_type);
+U32PackingMode GetOnnxTensorElementDataTypeU32PackingMode(int32_t data_type);
 
 /**
- * Returns the number of elements packed into a single u32 for the given packing mode.
- * Returns an error status if the packing mode is `None` (i.e., not a packed type).
+ * Returns the number of elements packed into a single u32 for the given packing mode, if applicable.
  */
-Status GetU32PackingNumComponents(U32PackingMode packing_mode, int& num_components);
+std::optional<int> GetU32PackingModeNumComponents(U32PackingMode packing_mode);
 
 }  // namespace onnxruntime::webgpu::util

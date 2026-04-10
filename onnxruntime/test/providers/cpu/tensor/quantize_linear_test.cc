@@ -1405,8 +1405,8 @@ TEST(QuantizeLinearOpTest, Int8_Blocked_3D_Axis1_Exact) {
   // x shape [2, 4, 2], axis=1, block_size=2 → scale shape [2, 2, 2]
   // For each [batch, :, col], blocks of 2 along axis 1 share a scale
   test.AddInput<float>("x", {2, 4, 2},
-                       {0, 4, 6, 8, 10, 12, 14, 16,      // batch 0
-                        2, -4, -6, -8, -10, -12, -14, 16}); // batch 1
+                       {0, 4, 6, 8, 10, 12, 14, 16,          // batch 0
+                        2, -4, -6, -8, -10, -12, -14, 16});  // batch 1
   test.AddAttribute<int64_t>("axis", 1);
   test.AddAttribute<int64_t>("block_size", 2);
   // scale shape [2, 2, 2]:

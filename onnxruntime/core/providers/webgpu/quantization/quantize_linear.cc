@@ -4,22 +4,12 @@
 #include "core/providers/webgpu/quantization/quantize_linear.h"
 
 #include "core/framework/int4.h"
-#include "core/providers/common.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime::webgpu {
 
 // QuantizeLinearProgram
-
-QuantizeLinearProgram::QuantizeLinearProgram(util::QuantizationType quantization_type, bool has_zero_point,
-                                             int32_t y_element_data_type)
-    : Program<QuantizeLinearProgram>{"QuantizeLinear"},
-      quantization_type_{quantization_type},
-      has_zero_point_{has_zero_point},
-      y_is_signed_{util::IsOnnxElementDataTypeSigned(y_element_data_type)},
-      y_packing_mode_{util::GetOnnxTensorElementDataTypePackingMode(y_element_data_type)} {
-}
 
 Status QuantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x_var = shader.AddInput("x", ShaderUsage::UseShapeAndStride | ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -56,26 +46,29 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
   util::QuantizationType quantization_type{};
   int64_t axis = axis_;
   int64_t block_size = block_size_;
-  ORT_RETURN_IF_ERROR(util::DetectQuantizationType(x_shape, y_scale_shape, axis, block_size, quantization_type));
-
-  QuantizeLinearProgram program{quantization_type, y_zero_point != nullptr, y->GetElementType()};
+  ORT_RETURN_IF_ERROR(util::ValidateAndDetectQuantizationType(x_shape, y_scale_shape,
+                                                              y_zero_point ? &y_zero_point->Shape() : nullptr,
+                                                              axis, block_size,
+                                                              quantization_type));
 
   const auto x_components = 1;
 
-  const auto y_packing_mode = util::GetOnnxTensorElementDataTypePackingMode(y->GetElementType());
-  int y_components;
-  ORT_RETURN_IF_ERROR(util::GetU32PackingNumComponents(y_packing_mode, y_components));
+  const auto y_element_type = y->GetElementType();
+  const auto y_is_signed = util::IsOnnxElementDataTypeSigned(y_element_type);
+  const auto y_packing_mode = util::GetOnnxTensorElementDataTypeU32PackingMode(y_element_type);
+  const auto y_components = util::GetU32PackingModeNumComponents(y_packing_mode).value_or(1);
 
   uint32_t axis_uniform = 0;
   uint32_t block_size_uniform = 1;
 
-  if (quantization_type == util::QuantizationType::PerAxis ||
-      quantization_type == util::QuantizationType::Blocked) {
+  if (quantization_type == util::QuantizationType::PerAxis || quantization_type == util::QuantizationType::Blocked) {
     axis_uniform = narrow<uint32_t>(axis);
   }
   if (quantization_type == util::QuantizationType::Blocked) {
     block_size_uniform = narrow<uint32_t>(block_size);
   }
+
+  QuantizeLinearProgram program{quantization_type, y_zero_point != nullptr, y_is_signed, y_packing_mode};
 
   program.AddInput(ProgramInput{x, ProgramTensorMetadataDependency::TypeAndRank, x_components});
   program.AddInput(ProgramInput{y_scale, ProgramTensorMetadataDependency::TypeAndRank});
@@ -87,7 +80,7 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
   program.AddOutput(ProgramOutput{y, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, y_components});
 
   // Each thread packs y_components elements into one u32, so dispatch ceil(x_size/y_components) threads.
-  const auto output_size = CeilDiv(x_size, static_cast<int64_t>(y_components));
+  const auto output_size = CeilDiv<int64_t>(x_size, y_components);
   program.SetDispatchGroupSize(CeilDiv<decltype(WORKGROUP_SIZE)>(output_size, WORKGROUP_SIZE));
 
   program.AddUniformVariables({
