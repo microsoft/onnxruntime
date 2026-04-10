@@ -3316,14 +3316,14 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   // Some EPs require multiple internal runs before replay is ready: warm-up
   // runs for allocations/setup followed by one run that captures the graph.
   // Retry within the same user-visible Session::Run() call until the EP reports
-  // that capture has completed, subject to kMaxGraphCaptureWarmupRuns.
+  // that capture has completed, subject to kMaxGraphCaptureRunAttempts.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
-    if (graph_capture_depth >= kMaxGraphCaptureWarmupRuns) {
+    if (graph_capture_depth + 1 >= kMaxGraphCaptureRunAttempts) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Graph capture did not complete after ", kMaxGraphCaptureWarmupRuns,
-                             " warm-up runs for ", cached_execution_provider_for_graph_replay_.Type(),
+                             "Graph capture did not complete after ", kMaxGraphCaptureRunAttempts,
+                             " internal runs for ", cached_execution_provider_for_graph_replay_.Type(),
                              ". The execution provider may not support ORT-managed graph capture/replay.");
     }
 

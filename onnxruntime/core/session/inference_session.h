@@ -768,10 +768,11 @@ class InferenceSession {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
-  // Maximum number of warm-up runs allowed during graph capture.
-  // This prevents running an unbounded number of warm-up runs due to buggy EPs that never return true from
-  // IsGraphCaptured(). Note that EPs typically need at most 2 warm-up runs (e.g., CUDA EP).
-  static constexpr int kMaxGraphCaptureWarmupRuns = 8;
+  // Maximum number of internal run attempts allowed (within a single session.Run()) for EP graph capture.
+  // If the number of run attempts exceeds this limit, the session.Run() returns an error status.
+  // This prevents running an unbounded number of runs due to buggy EPs that never return true from
+  // IsGraphCaptured(). Note that EPs typically need at most two runs to capture a graph (e.g., CUDA EP).
+  static constexpr int kMaxGraphCaptureRunAttempts = 8;
 
   // Internal implementation of Run() with graph capture recursion depth tracking.
   [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, gsl::span<const std::string> feed_names,
