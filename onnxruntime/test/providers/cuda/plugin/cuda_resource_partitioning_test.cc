@@ -27,6 +27,7 @@
 #include "core/session/inference_session.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_env.h"
 #include "core/session/utils.h"
 #include "test/util/include/asserts.h"
@@ -196,7 +197,7 @@ class CudaPluginPartitioningTest : public ::testing::Test {
     if (budget_kb > 0) {
       std::string config_value = std::to_string(budget_kb) + ",";
       ASSERT_STATUS_OK(ort_options.value.config_options.AddConfigEntry(
-          "session.resource_cuda_partitioning_settings", config_value.c_str()));
+          kOrtSessionOptionsResourceCudaPartitioningSettings, config_value.c_str()));
     }
 
     // Create the session wrapper — gives us access to the graph after partitioning.
@@ -304,7 +305,7 @@ class CudaResourcePartitioningTest : public ::testing::Test {
 
     if (budget_kb > 0) {
       std::string config_value = std::to_string(budget_kb) + ",";
-      so.AddConfigEntry("session.resource_cuda_partitioning_settings",
+      so.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings,
                         config_value.c_str());
     }
 

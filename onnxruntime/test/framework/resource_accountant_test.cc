@@ -15,6 +15,15 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
+
+#ifdef _WIN32
+#include <process.h>
+#define ORT_TEST_PID _getpid()
+#else
+#include <unistd.h>
+#define ORT_TEST_PID getpid()
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -287,11 +296,13 @@ TEST(ResourceAccountantTest, CrossSubGraph_DedupWorks) {
 TEST(RealAccountantTest, StatsPath_ComputesCostFromStatsFile) {
   auto h = SharedWeightGraph::Create();
 
-  // Write a stats file with known costs
+  // Write a stats file with known costs (unique per PID to avoid parallel collisions)
   std::error_code ec;
   auto stats_dir = std::filesystem::temp_directory_path(ec);
   ASSERT_FALSE(ec) << ec.message();
-  auto stats_path = stats_dir / "test_resource_accountant_stats.csv";
+  std::ostringstream fname;
+  fname << "test_resource_accountant_stats_" << ORT_TEST_PID << ".csv";
+  auto stats_path = stats_dir / fname.str();
 
   // Get the unique node names the accountant will look up
   std::string name_a = IResourceAccountant::MakeUniqueNodeName(*h.node_a);
@@ -340,7 +351,9 @@ TEST(RealAccountantTest, StatsPath_UnknownNodeReturnsZero) {
   std::error_code ec;
   auto stats_dir = std::filesystem::temp_directory_path(ec);
   ASSERT_FALSE(ec) << ec.message();
-  auto stats_path = stats_dir / "test_resource_accountant_empty_stats.csv";
+  std::ostringstream fname;
+  fname << "test_resource_accountant_empty_stats_" << ORT_TEST_PID << ".csv";
+  auto stats_path = stats_dir / fname.str();
 
   {
     std::ofstream ofs(stats_path);

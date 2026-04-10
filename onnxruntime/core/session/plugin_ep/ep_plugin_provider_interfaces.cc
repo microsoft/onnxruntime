@@ -302,6 +302,8 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
             case OrtResourceCountKind_TotalBytes:
               indexed_sub_graph->AppendNodeCost(ResourceCount{ort_cost.value.total_bytes});
               break;
+            case OrtResourceCountKind_None:
+              [[fallthrough]];
             default:
               LOGS(logger, WARNING) << "Unknown OrtResourceCountKind: "
                                     << static_cast<int>(ort_cost.kind) << "; skipping cost.";
