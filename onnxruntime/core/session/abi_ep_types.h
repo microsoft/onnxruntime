@@ -55,8 +55,4 @@ struct OrtEpGraphSupportInfo {
   // Optional resource accountant for capacity-aware partitioning.
   // Owned by the graph partitioner; lifetime exceeds this struct.
   onnxruntime::IResourceAccountant* resource_accountant = nullptr;
-
-  // Per-node costs reported by the plugin via EpGraphSupportInfo_ReportAcceptedNodeCost.
-  // Keyed by the OrtNode pointer (same lifetime as the EpGraph).
-  std::vector<std::pair<const OrtNode*, OrtResourceCount>> accepted_node_costs;
 };

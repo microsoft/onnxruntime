@@ -4,9 +4,9 @@
 // Integration tests for resource-constrained partitioning through the CUDA plugin EP.
 //
 // Two test levels:
-// 1. OrtResourceCount struct tests — validate the C-safe tagged union.
-// 2. Partitioning verification tests — use InferenceSessionWrapper to inspect
+// 1. Partitioning verification tests — use InferenceSessionWrapper to inspect
 //    per-node EP assignments after partitioning through the plugin EP.
+// 2. E2E session tests — validate output correctness under budget constraints.
 
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
@@ -15,7 +15,6 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
-#include <limits>
 #include <string>
 #include <vector>
 
@@ -99,48 +98,6 @@ OrtEnv& GetOrtEnv() {
 }
 
 }  // namespace
-
-// ---------------------------------------------------------------------------
-// OrtResourceCount struct tests
-// ---------------------------------------------------------------------------
-
-TEST(OrtResourceCountTest, None_HasKindNone) {
-  OrtResourceCount rc = OrtResourceCount::None();
-  EXPECT_EQ(rc.kind, OrtResourceCountKind_None);
-}
-
-TEST(OrtResourceCountTest, FromTotalBytes_RoundTrips) {
-  constexpr uint64_t kTestValue = 42 * 1024 * 1024;  // 42 MB
-  OrtResourceCount rc = OrtResourceCount::FromTotalBytes(kTestValue);
-  EXPECT_EQ(rc.kind, OrtResourceCountKind_TotalBytes);
-  EXPECT_EQ(rc.AsTotalBytes(), kTestValue);
-}
-
-TEST(OrtResourceCountTest, FromTotalBytes_MaxValue) {
-  OrtResourceCount rc = OrtResourceCount::FromTotalBytes(std::numeric_limits<uint64_t>::max());
-  EXPECT_EQ(rc.kind, OrtResourceCountKind_TotalBytes);
-  EXPECT_EQ(rc.AsTotalBytes(), std::numeric_limits<uint64_t>::max());
-}
-
-TEST(OrtResourceCountTest, FromTotalBytes_Zero) {
-  OrtResourceCount rc = OrtResourceCount::FromTotalBytes(0);
-  EXPECT_EQ(rc.kind, OrtResourceCountKind_TotalBytes);
-  EXPECT_EQ(rc.AsTotalBytes(), uint64_t{0});
-}
-
-TEST(OrtResourceCountTest, CopySemantics) {
-  OrtResourceCount original = OrtResourceCount::FromTotalBytes(12345);
-  OrtResourceCount copy = original;
-  EXPECT_EQ(copy.kind, OrtResourceCountKind_TotalBytes);
-  EXPECT_EQ(copy.AsTotalBytes(), uint64_t{12345});
-  copy.value.total_bytes = 99999;
-  EXPECT_EQ(original.AsTotalBytes(), uint64_t{12345});
-}
-
-TEST(OrtResourceCountTest, ReservedFieldIsZero) {
-  OrtResourceCount rc = OrtResourceCount::FromTotalBytes(100);
-  EXPECT_EQ(rc.reserved_, uint32_t{0});
-}
 
 // ---------------------------------------------------------------------------
 // Lower-level partitioning tests that verify per-node EP assignments

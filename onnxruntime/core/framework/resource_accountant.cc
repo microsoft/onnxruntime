@@ -120,7 +120,7 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
     }
   }
 
-  void ResetPendingWeights() override {
+  void ResetPendingWeightsImpl() override {
     pending_weights_.clear();
     pending_weights_by_node_.clear();
   }

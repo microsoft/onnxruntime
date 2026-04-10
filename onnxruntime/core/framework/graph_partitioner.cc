@@ -277,7 +277,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
     if (params.resource_accountant) {
-      params.resource_accountant->ResetPendingWeights();
+      params.resource_accountant->ResetForNewPass();
     }
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
@@ -348,7 +348,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
     if (params.resource_accountant) {
-      params.resource_accountant->ResetPendingWeights();
+      params.resource_accountant->ResetForNewPass();
     }
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);

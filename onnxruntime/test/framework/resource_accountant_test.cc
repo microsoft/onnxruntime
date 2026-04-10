@@ -132,8 +132,8 @@ TEST(ResourceAccountantTest, AccountForAllNodes_CorrectlyUsesPreStoredCosts) {
       << "AccountForAllNodes should sum pre-stored costs (3000 + 1500)";
 }
 
-// Verifies that ResetPendingWeights + re-probe produces correct results.
-// After probing (which only writes to pending), resetting pending and
+// Verifies that ResetForNewPass + re-probe produces correct results.
+// After probing (which only writes to pending), resetting for a new pass and
 // re-probing should see the full weight cost again since nothing was committed.
 TEST(ResourceAccountantTest, ComputeAndAccountForNode_CorrectAfterReset) {
   auto h = SharedWeightGraph::Create();
@@ -147,7 +147,7 @@ TEST(ResourceAccountantTest, ComputeAndAccountForNode_CorrectAfterReset) {
   EXPECT_EQ(GetSizeT(cost_b), size_t{1500});
 
   // Discard the pass (simulating capabilities.clear() before second GetCapability)
-  accountant->ResetPendingWeights();
+  accountant->ResetForNewPass();
 
   // Re-probe: weight_W was never committed, so it should be counted again
   IndexedSubGraph sub_graph;
@@ -157,7 +157,23 @@ TEST(ResourceAccountantTest, ComputeAndAccountForNode_CorrectAfterReset) {
   sub_graph.AccountForNode(h.node_a->Index(), recomputed_cost);
 
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{3000})
-      << "After ResetPendingWeights, re-probe should see full weight cost";
+      << "After ResetForNewPass, re-probe should see full weight cost";
+}
+
+// ResetForNewPass clears the stop flag so a second GetCapability pass
+// (e.g., after layout transformation) can run from scratch.
+TEST(ResourceAccountantTest, ResetForNewPass_ClearsStopFlag) {
+  std::optional<ResourceAccountantMap> acc_map;
+  auto* accountant = CreateAdHocAccountant(/*limit_kb=*/1, PathString(), acc_map);
+
+  // Simulate first pass exhausting budget and setting stop.
+  accountant->SetStopAssignment();
+  EXPECT_TRUE(accountant->IsStopIssued());
+
+  // Framework discards first-pass results and resets for second pass.
+  accountant->ResetForNewPass();
+  EXPECT_FALSE(accountant->IsStopIssued())
+      << "ResetForNewPass should clear the stop flag for the next pass";
 }
 
 // Each node has a unique initializer. AccountForAllNodes sums both.
@@ -269,8 +285,8 @@ TEST(ResourceAccountantTest, CrossSubGraph_DedupWorks) {
   accountant->CommitWeightsForNode(h.node_a->Index());
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{3000});
 
-  // Reset pending to simulate new GetCapability pass
-  accountant->ResetPendingWeights();
+  // Reset for new pass to simulate new GetCapability pass
+  accountant->ResetForNewPass();
 
   // EP2 probes node_B: weight_W already committed, only output counted
   auto cost_b = accountant->ComputeResourceCount(*h.node_b);
