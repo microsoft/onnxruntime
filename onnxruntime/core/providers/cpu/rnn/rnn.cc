@@ -87,8 +87,9 @@ void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens
                 int64_t num_directions, int direction, bool isReverse, int64_t batch_size, int64_t seq_length, int64_t hidden_size) {
   if (seq_length == 0) {
     // No sequence data was processed; zero out Y_h for this direction.
-    int64_t Y_h_direction_offset = direction * batch_size * hidden_size;
-    math::Set<T, CPUMathUtil>(SafeMul<size_t>(batch_size, hidden_size), T{0},
+    const size_t y_h_direction_size = SafeMul<size_t>(batch_size, hidden_size);
+    const size_t Y_h_direction_offset = SafeMul<size_t>(direction, y_h_direction_size);
+    math::Set<T, CPUMathUtil>(y_h_direction_size, T{0},
                               Y_h->MutableData<T>() + Y_h_direction_offset, &CPUMathUtil::Instance());
     return;
   }

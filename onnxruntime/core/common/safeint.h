@@ -68,12 +68,12 @@ template <typename R, typename T, typename U, typename... Rest>
     result = a;
   } else {
     if (!SafeCast(a, result)) {
-      ORT_THROW("SafeMul: integer multiplication overflow");
+      SafeIntDefaultExceptionHandler::SafeIntOnOverflow();
     }
   }
 
   if (!SafeMultiply(result, b, result)) {
-    ORT_THROW("SafeMul: integer multiplication overflow");
+    SafeIntDefaultExceptionHandler::SafeIntOnOverflow();
   }
 
   if constexpr (sizeof...(rest) > 0) {
