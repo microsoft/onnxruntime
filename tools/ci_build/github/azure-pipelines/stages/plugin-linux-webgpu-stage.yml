@@ -94,3 +94,73 @@ stages:
           vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-linux-x64'
           versionOption: custom
           versionPublish: '$(PluginUniversalPackageVersion)'
+
+  # Python package build job
+  - job: Linux_plugin_webgpu_x64_Python_Package
+    dependsOn: Linux_plugin_webgpu_x64_Build
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)/python
+        artifactName: webgpu_plugin_python_linux_x64
+    variables:
+    - template: ../templates/common-variables.yml
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/set-plugin-build-variables-step.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download plugin build artifacts'
+      inputs:
+        artifactName: webgpu_plugin_linux_x64
+        targetPath: '$(Build.BinariesDirectory)/plugin_artifacts'
+
+    - script: |
+        set -e -x
+        python3 -m pip install -r "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/requirements-build-wheel.txt"
+        python3 "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/build_wheel.py" \
+          --binary_dir "$(Build.BinariesDirectory)/plugin_artifacts/bin" \
+          --version "$(PluginPythonPackageVersion)" \
+          --output_dir "$(Build.ArtifactStagingDirectory)/python"
+      displayName: 'Build Python wheel'
+
+  # Python package test job
+  - job: Linux_plugin_webgpu_x64_Python_Test
+    dependsOn: Linux_plugin_webgpu_x64_Python_Package
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: Onnxruntime-Linux-GPU-A10
+      os: linux
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download Python wheel'
+      inputs:
+        artifactName: webgpu_plugin_python_linux_x64
+        targetPath: '$(Build.BinariesDirectory)/python_wheel'
+
+    - script: |
+        set -e -x
+        python3 -m venv "$(Build.BinariesDirectory)/test_venv"
+        source "$(Build.BinariesDirectory)/test_venv/bin/activate"
+        python3 -m pip install onnxruntime onnx numpy
+        wheel=$(find "$(Build.BinariesDirectory)/python_wheel" -name "onnxruntime_ep_webgpu-*.whl" | head -1)
+        python3 -m pip install "$wheel"
+        python3 "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py"
+      displayName: 'Install and test Python package'

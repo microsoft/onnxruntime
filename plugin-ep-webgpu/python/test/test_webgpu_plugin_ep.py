@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Smoke test for the onnxruntime-ep-webgpu Python package.
+
+Tests:
+1. Package import and library path resolution
+2. EP registration with ONNX Runtime
+3. Device discovery
+4. Inference with a simple Mul model (requires WebGPU-capable hardware)
+
+The inference test is skipped gracefully if no WebGPU device is available
+(e.g., on CPU-only build agents).
+"""
+
+import sys
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import onnx
+import onnxruntime as ort
+from onnx import TensorProto, helper
+
+
+def create_mul_model() -> str:
+    """Create a simple Mul model and return the path to the saved .onnx file."""
+    X = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
+    Y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
+    Z = helper.make_tensor_value_info("z", TensorProto.FLOAT, [2, 3])
+
+    mul_node = helper.make_node("Mul", inputs=["x", "y"], outputs=["z"])
+
+    graph = helper.make_graph([mul_node], "mul_graph", [X, Y], [Z])
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    model.ir_version = 7
+
+    model_path = Path(tempfile.mkdtemp()) / "mul.onnx"
+    onnx.save(model, str(model_path))
+    return str(model_path)
+
+
+def test_import_and_library_path():
+    """Test that the package imports and the library path is valid."""
+    import onnxruntime_ep_webgpu as webgpu_ep
+
+    lib_path = webgpu_ep.get_library_path()
+    assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
+    print(f"OK: Library path: {lib_path}")
+
+    ep_name = webgpu_ep.get_ep_name()
+    assert ep_name == "WebGpuExecutionProvider", f"Unexpected EP name: {ep_name}"
+    print(f"OK: EP name: {ep_name}")
+
+    ep_names = webgpu_ep.get_ep_names()
+    assert ep_names == ["WebGpuExecutionProvider"], f"Unexpected EP names: {ep_names}"
+    print(f"OK: EP names: {ep_names}")
+
+
+def test_registration_and_inference():
+    """Test EP registration, device discovery, and inference."""
+    import onnxruntime_ep_webgpu as webgpu_ep
+
+    lib_path = webgpu_ep.get_library_path()
+    ep_name = webgpu_ep.get_ep_name()
+    registration_name = "webgpu_plugin_test"
+
+    # Register the plugin EP
+    ort.register_execution_provider_library(registration_name, lib_path)
+    print(f"OK: Registered EP library as '{registration_name}'")
+
+    try:
+        # Discover devices
+        all_devices = ort.get_ep_devices()
+        webgpu_devices = [d for d in all_devices if d.ep_name == ep_name]
+        print(f"Found {len(webgpu_devices)} WebGPU device(s)")
+
+        if not webgpu_devices:
+            print("SKIP: No WebGPU devices available — skipping inference test")
+            return
+
+        # Create session with WebGPU EP
+        sess_options = ort.SessionOptions()
+        sess_options.add_provider_for_devices(webgpu_devices, {})
+        assert sess_options.has_providers(), "SessionOptions should have providers after add_provider_for_devices"
+        print("OK: Session options configured with WebGPU EP")
+
+        model_path = create_mul_model()
+        sess = ort.InferenceSession(model_path, sess_options=sess_options)
+        print("OK: InferenceSession created")
+
+        # Run inference
+        x = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+        y = np.array([[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], dtype=np.float32)
+        expected = x * y
+
+        outputs = sess.run(None, {"x": x, "y": y})
+        result = outputs[0]
+
+        np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+        print(f"OK: Inference result matches expected output")
+
+        del sess
+        print("OK: Session released")
+
+    finally:
+        ort.unregister_execution_provider_library(registration_name)
+        print(f"OK: Unregistered EP library '{registration_name}'")
+
+
+def main():
+    print("=== WebGPU Plugin EP Python Package Test ===")
+
+    print("\n--- Test 1: Import and library path ---")
+    test_import_and_library_path()
+
+    print("\n--- Test 2: Registration and inference ---")
+    test_registration_and_inference()
+
+    print("\n=== All tests passed ===")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print(f"\nFAILED: {e}", file=sys.stderr)
+        sys.exit(1)
