@@ -301,7 +301,8 @@ class CudaResourcePartitioningTest : public ::testing::Test {
   Ort::Session CreateSessionWithBudget(const ORTCHAR_T* model_path,
                                        size_t budget_kb) {
     Ort::SessionOptions so;
-    so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, {});
+    so.AppendExecutionProvider_V2(*ort_env, {cuda_device_},
+                                  std::unordered_map<std::string, std::string>{});
 
     if (budget_kb > 0) {
       std::string config_value = std::to_string(budget_kb) + ",";
