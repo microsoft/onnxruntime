@@ -77,14 +77,24 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   // out-of-bounds reads from crafted models.
   if (mode_ == SVM_TYPE::SVM_SVC) {
     // SVC mode: coefficients layout is [class_count - 1, vector_count]
-    const size_t expected_coefficients = static_cast<size_t>(class_count_ - 1) * static_cast<size_t>(vector_count_);
+    size_t expected_coefficients = 0;
+    if (!SafeMultiply(static_cast<size_t>(class_count_ - 1), static_cast<size_t>(vector_count_),
+                      expected_coefficients)) {
+      ORT_THROW("class_count - 1 (", class_count_ - 1, ") * vector_count (", vector_count_,
+                ") overflows size_t");
+    }
     ORT_ENFORCE(coefficients_.size() >= expected_coefficients,
                 "coefficients attribute size (", coefficients_.size(),
                 ") is smaller than expected (", expected_coefficients,
                 ") for the given class_count and vector_count.");
 
     // rho needs one entry per classifier pair: class_count * (class_count - 1) / 2
-    const size_t num_classifiers = static_cast<size_t>(class_count_) * static_cast<size_t>(class_count_ - 1) / 2;
+    size_t num_classifiers = 0;
+    if (!SafeMultiply(static_cast<size_t>(class_count_), static_cast<size_t>(class_count_ - 1), num_classifiers)) {
+      ORT_THROW("class_count (", class_count_, ") * (class_count - 1) (", class_count_ - 1,
+                ") overflows size_t");
+    }
+    num_classifiers /= 2;
     ORT_ENFORCE(rho_.size() >= num_classifiers,
                 "rho attribute size (", rho_.size(),
                 ") is smaller than expected (", num_classifiers,
@@ -196,7 +206,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   const auto input_rank = x_shape.NumDimensions();
   ORT_RETURN_IF_NOT(input_rank > 0 && input_rank <= 2, "Input shape must have 1 or 2 dimensions. Dims=", input_rank);
 
-  const auto num_batches = SafeInt<int32_t>(input_rank == 1 ? 1 : x_shape[0]);
+  const ptrdiff_t num_batches = SafeInt<ptrdiff_t>(input_rank == 1 ? 1 : x_shape[0]);
   const ptrdiff_t num_features = input_rank == 1 ? narrow<ptrdiff_t>(x_shape[0])
                                                  : narrow<ptrdiff_t>(x_shape[1]);
   ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0,
