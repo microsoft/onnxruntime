@@ -27,6 +27,10 @@ struct OrtThreadPoolParams {
   bool allow_spinning = false;
 #endif
 
+  // Duration in microseconds that threads spin waiting for work before blocking.
+  // Only takes effect when allow_spinning is true. Default is kDefaultSpinDurationUs (1ms).
+  int spin_duration_us = onnxruntime::concurrency::kDefaultSpinDurationUs;
+
   // It it is non-negative, thread pool will split a task by a decreasing block size
   // of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)
   int dynamic_block_base_ = 0;

@@ -163,7 +163,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
 #endif
 
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                      options.allow_spinning);
+                                      options.allow_spinning ? options.spin_duration_us : 0);
 }
 
 std::unique_ptr<ThreadPool>

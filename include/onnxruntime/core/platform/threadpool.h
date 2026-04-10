@@ -129,6 +129,9 @@ struct TensorOpCost {
 
 namespace concurrency {
 
+// Default spin duration in microseconds used when spinning is enabled.
+static constexpr int kDefaultSpinDurationUs = 1000;  // 1ms
+
 template <typename Environment, typename CallbackPolicy>
 class ThreadPoolTempl;
 
@@ -145,18 +148,16 @@ class ThreadPool {
 #endif
   // Constructs a pool for running with with "degree_of_parallelism" threads with
   // specified "name". env->StartThread() is used to create individual threads
-  // with the given ThreadOptions. If "low_latency_hint" is true the thread pool
-  // implementation may use it as a hint that lower latency is preferred at the
-  // cost of higher CPU usage, e.g. by letting one or more idle threads spin
-  // wait. Conversely, if the threadpool is used to schedule high-latency
-  // operations like I/O the hint should be set to false.
+  // with the given ThreadOptions. "spin_duration_us" controls how long idle
+  // threads will spin-wait for work (in microseconds) before blocking.
+  // Set to 0 to disable spinning entirely.
   //
   // REQUIRES: degree_of_parallelism > 0
   ThreadPool(Env* env,
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,
              int degree_of_parallelism,
-             bool low_latency_hint,
+             int spin_duration_us = kDefaultSpinDurationUs,
              bool force_hybrid = false);
 
   // Waits until all scheduled work has finished and then destroy the

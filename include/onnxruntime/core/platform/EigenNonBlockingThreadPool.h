@@ -37,6 +37,7 @@
 #pragma warning(disable : 4127)
 #pragma warning(disable : 4805)
 #endif
+#include <chrono>
 #include <memory>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
@@ -864,12 +865,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef RunQueue<CallbackPolicy, Tag, 1024> Queue;
 
-  ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
-                  const ThreadOptions& thread_options)
+  ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, int spin_duration_us,
+                  Environment& env, const ThreadOptions& thread_options)
       : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
-        allow_spinning_(allow_spinning),
+        spin_duration_(std::chrono::microseconds(spin_duration_us)),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
         callback_policy_(thread_options),
         worker_data_(num_threads),
@@ -1600,7 +1601,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   Environment& env_;
   const unsigned num_threads_;
-  const bool allow_spinning_;
+  const std::chrono::microseconds spin_duration_;
   const bool set_denormal_as_zero_;
   CallbackPolicy callback_policy_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
@@ -1642,12 +1643,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    // Time-based spin: spin for up to 1ms before blocking. This avoids
-    // burning CPU for hundreds of milliseconds with iteration-count-based
+    // Time-based spin: spin for a configurable duration before blocking.
+    // This avoids burning CPU for hundreds of milliseconds with iteration-count-based
     // spinning, where the actual wall-clock duration depends heavily on
     // the pause instruction used (_mm_pause ~10-40 cycles vs _tpause ~1000 cycles).
-    constexpr std::chrono::microseconds spin_duration{1000};  // 1ms
-    constexpr int steal_interval = 100;                       // attempt steal every 100 iterations
+    const auto spin_duration = spin_duration_;
+    // Number of spin-loop iterations between work-steal attempts.
+    constexpr unsigned int kStealInterval = 100;
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
@@ -1656,13 +1658,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       Work w = q.PopFront();
       if (!w) {
         // Spin waiting for work with a time-based exit condition.
-        if (allow_spinning_) {
-          const auto spin_deadline = std::chrono::high_resolution_clock::now() + spin_duration;
-          for (int i = 0; !done_; i++) {
-            if (((i + 1) % steal_interval == 0)) {
+        if (spin_duration_.count() > 0) {
+          const auto spin_deadline = std::chrono::steady_clock::now() + spin_duration;
+          for (unsigned int i = 0; !done_; i++) {
+            if (((i + 1) % kStealInterval == 0)) {
               w = Steal(StealAttemptKind::TRY_ONE);
               // Re-check deadline after steal attempt (which is more expensive)
-              if (!w && std::chrono::high_resolution_clock::now() >= spin_deadline) break;
+              if (!w && std::chrono::steady_clock::now() >= spin_deadline) break;
             } else {
               w = q.PopFront();
             }

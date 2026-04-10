@@ -154,6 +154,14 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
 
+// Configure the duration in microseconds that threads spin waiting for work before blocking.
+// Only takes effect when spinning is enabled (allow_spinning = true). When spinning is disabled,
+// the spin duration is forced to 0 regardless of this setting.
+// Setting this to "0" with spinning enabled effectively disables spinning (equivalent to allow_spinning = false).
+// Default is kDefaultSpinDurationUs (defined in core/platform/threadpool.h).
+static const char* const kOrtSessionOptionsConfigIntraOpSpinDurationUs = "session.intra_op.spin_duration_us";
+static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "session.inter_op.spin_duration_us";
+
 // Key for using model bytes directly for ORT format
 // If a session is created using an input byte array contains the ORT format model data,
 // By default we will copy the model bytes at the time of session creation to ensure the model bytes
