@@ -1,13 +1,26 @@
-"""Minimal setup.py to mark the wheel as platform-specific (non-pure).
+"""Minimal setup.py to produce a platform-specific wheel.
 
-pyproject.toml alone cannot express the non-pure wheel requirement, so this
-companion setup.py defines a BinaryDistribution that ensures the wheel gets
-the correct platform tag (e.g., win_amd64, manylinux_x86_64) instead of
-py3-none-any.
+The package contains pre-built native libraries (not CPython extension modules),
+so the wheel tag should be py3-none-{platform} rather than cp3XX-cp3XX-{platform}.
+This means a single wheel works across all supported Python versions.
 """
 
 from setuptools import setup
 from setuptools.dist import Distribution
+
+try:
+    from wheel.bdist_wheel import bdist_wheel
+
+    class PlatformBdistWheel(bdist_wheel):
+        """Override wheel tags to py3-none-{platform}."""
+
+        def get_tag(self):
+            _, _, plat = super().get_tag()
+            return "py3", "none", plat
+
+    cmdclass = {"bdist_wheel": PlatformBdistWheel}
+except ImportError:
+    cmdclass = {}
 
 
 class BinaryDistribution(Distribution):
@@ -15,4 +28,4 @@ class BinaryDistribution(Distribution):
         return True
 
 
-setup(distclass=BinaryDistribution)
+setup(distclass=BinaryDistribution, cmdclass=cmdclass)
