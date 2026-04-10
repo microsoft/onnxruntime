@@ -128,7 +128,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
-  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+  const int min_num_runs_before_cuda_graph_capture_ = 1;  // Required regular runs before graph capture for any necessary allocations.
   int m_current_graph_annotation_id = 0;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)

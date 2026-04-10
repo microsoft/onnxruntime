@@ -173,20 +173,30 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
-  // Extract session-level arena options (ep.<ep_name>.arena.* keys) when the factory
-  // supports allocator creation with options. Only the factory path (not OrtEp::CreateAllocator)
-  // accepts allocator_options, so skip the scan when the factory path won't be used.
-  if (ep_factory_.CreateAllocator && !ort_ep_->CreateAllocator) {
+  // Extract EP-scoped session config entries (ep.<ep_name>.* keys).
+  // Arena options go to session_arena_options_; the rest go to provider_options_.
+  {
     const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
     const std::string arena_prefix = ep_prefix + "arena.";
+    const bool extract_arena = ep_factory_.CreateAllocator && !ort_ep_->CreateAllocator;
+
     for (const auto& [key, value] : session_options.value.config_options.GetConfigOptionsMap()) {
-      if (key.compare(0, arena_prefix.size(), arena_prefix) == 0) {
-        // Build OrtKeyValuePairs on first match; store bare "arena.*" keys.
-        if (!session_arena_options_) {
-          session_arena_options_.emplace();
-        }
-        session_arena_options_->Add(key.substr(ep_prefix.size()).c_str(), value.c_str());
+      if (key.compare(0, ep_prefix.size(), ep_prefix) != 0) {
+        continue;
       }
+
+      if (key.compare(0, arena_prefix.size(), arena_prefix) == 0) {
+        if (extract_arena) {
+          if (!session_arena_options_) {
+            session_arena_options_.emplace();
+          }
+          session_arena_options_->Add(key.substr(ep_prefix.size()).c_str(), value.c_str());
+        }
+        continue;
+      }
+
+      // Store the bare option name (strip the ep.<ep_name>. prefix) for GetProviderOptions().
+      provider_options_[key.substr(ep_prefix.size())] = value;
     }
   }
 
@@ -849,6 +859,10 @@ std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
   return ep_profiler;
 }
 
+ProviderOptions PluginExecutionProvider::GetProviderOptions() const {
+  return provider_options_;
+}
+
 bool PluginExecutionProvider::IsGraphCaptureEnabled() const {
   if (ort_ep_->ort_version_supported < 26 || ort_ep_->IsGraphCaptureEnabled == nullptr) {
     return false;
@@ -861,10 +875,12 @@ bool PluginExecutionProvider::IsGraphCaptureEnabled() const {
   // Validate that the EP also implements IsGraphCaptured and ReplayGraph. Without these,
   // ORT-managed graph capture/replay cannot function correctly.
   if (ort_ep_->IsGraphCaptured == nullptr || ort_ep_->ReplayGraph == nullptr) {
+    std::string missing;
+    if (ort_ep_->IsGraphCaptured == nullptr) missing += "OrtEp::IsGraphCaptured ";
+    if (ort_ep_->ReplayGraph == nullptr) missing += "OrtEp::ReplayGraph";
     LOGS(GetEpLoggerOrDefault(), WARNING)
         << Type() << " returned true from OrtEp::IsGraphCaptureEnabled but did not implement "
-        << (ort_ep_->IsGraphCaptured == nullptr ? "OrtEp::IsGraphCaptured" : "OrtEp::ReplayGraph")
-        << ". ORT will not use this EP for graph capture/replay.";
+        << missing << ". ORT will not use this EP for graph capture/replay.";
     return false;
   }
 

@@ -275,8 +275,8 @@ class IExecutionProvider {
   }
 
   /**
-     Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
-     the provider.
+     Indicate whether graph capture/replay (for example, CUDA graph capture) is
+     enabled for the provider.
    */
   virtual bool IsGraphCaptureEnabled() const { return false; }
 

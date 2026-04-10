@@ -2216,6 +2216,8 @@ struct OrtEp {
    * \param[in] run_options The run options for this run.
    *
    * \note Implementation of this function is optional.
+   *       When graph capture/replay is enabled and a graph has already been captured, ORT skips
+   *       normal execution and calls ReplayGraph() directly, so this callback is not invoked for replay runs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2231,6 +2233,8 @@ struct OrtEp {
    *                        Only applicable if there is such a stream.
    *
    * \note Implementation of this function is optional.
+   *       When graph capture/replay is enabled and a graph has already been captured, ORT skips
+   *       normal execution and calls ReplayGraph() directly, so this callback is not invoked for replay runs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

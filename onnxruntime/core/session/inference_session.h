@@ -1077,7 +1077,7 @@ class InferenceSession {
 
     const std::string& Type() const {
       ORT_ENFORCE(cached_execution_provider_for_graph_replay_ != nullptr,
-                  "Cached EP instance for graph replay is not set yet before calling Type()");
+                  "No EP registered for graph replay yet");
       return cached_execution_provider_for_graph_replay_->Type();
     }
 
