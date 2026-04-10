@@ -310,11 +310,12 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           // Convert OrtResourceCount tagged union back to internal ResourceCount (std::variant).
           const OrtResourceCount& ort_cost = cost_it->second;
           switch (ort_cost.kind) {
+            case OrtResourceCountKind_None:
+              indexed_sub_graph->AppendNodeCost(ResourceCount{size_t{0}});
+              break;
             case OrtResourceCountKind_TotalBytes:
               indexed_sub_graph->AppendNodeCost(ResourceCount{ort_cost.value.total_bytes});
               break;
-            case OrtResourceCountKind_None:
-              [[fallthrough]];
             default:
               LOGS(logger, WARNING) << "Unknown OrtResourceCountKind: "
                                     << static_cast<int>(ort_cost.kind) << "; skipping cost.";
@@ -364,13 +365,33 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // be true because we've already checked that the EP did not try to claim nodes already assigned to another EP.
       // TODO(adrianlizarraga): This check can be removed when we stop using utils::CreateSupportedPartitions() above.
       std::vector<NodeIndex>& capability_node_indices = capabilities[0]->sub_graph->nodes;
-      std::unordered_set<NodeIndex> capability_node_indices_set(capability_node_indices.begin(),
-                                                                capability_node_indices.end());
+      InlinedHashSet<NodeIndex> capability_node_indices_set(capability_node_indices.begin(),
+                                                            capability_node_indices.end());
 
       if (node_set.size() != capability_node_indices_set.size()) {
         LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type()
                             << " set nodes that cannot all be fused together.";
         return {};
+      }
+
+      // Attach resource accounting for fused capabilities.
+      // Compute per-component-node costs from the accountant so that:
+      //  - nodes_costs.size() == nodes.size() (required by IsAccountingEnabled())
+      //  - AccountForAllNodes() later calls CommitWeightsForNode() for each component,
+      //    which finalizes the pending/committed weight dedup state in the accountant.
+      if (resource_accountant != nullptr) {
+        auto* fused_sub_graph = capabilities[0]->sub_graph.get();
+        fused_sub_graph->SetAccountant(resource_accountant);
+
+        for (NodeIndex idx : fused_sub_graph->nodes) {
+          const Node* node = graph_viewer.GetNode(idx);
+          // Append a cost for every node to keep nodes_costs aligned with nodes.
+          // If the node can't be found (shouldn't happen), append zero cost so
+          // CommitWeightsForNode() is still called for the correct node index.
+          fused_sub_graph->AppendNodeCost(
+              node != nullptr ? resource_accountant->ComputeResourceCount(*node)
+                              : ResourceCount{size_t{0}});
+        }
       }
 
       result.push_back(std::move(capabilities[0]));

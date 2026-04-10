@@ -1209,8 +1209,10 @@ OrtResourceCount ToOrtResourceCount(const onnxruntime::ResourceCount& rc) {
     using T = std::decay_t<decltype(val)>;
     if constexpr (std::is_same_v<T, size_t>) {
       return OrtResourceCount::FromTotalBytes(val);
+    } else {
+      // If ResourceCount gains new variant members, add conversion branches above.
+      static_assert(sizeof(T) == 0, "Unhandled ResourceCount variant member in ToOrtResourceCount");
     }
-    // Future variant members: add else-if branches here and return OrtResourceCount with appropriate kind.
   },
                     rc);
 }
@@ -1243,7 +1245,7 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_GetResourceBudget,
   if (threshold) {
     *budget = ToOrtResourceCount(*threshold);
   } else {
-    *budget = OrtResourceCount::FromTotalBytes(std::numeric_limits<size_t>::max());
+    *budget = OrtResourceCount::FromTotalBytes(std::numeric_limits<uint64_t>::max());
   }
   return nullptr;
   API_IMPL_END

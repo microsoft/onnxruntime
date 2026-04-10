@@ -110,31 +110,31 @@ TEST(OrtResourceCountTest, None_HasKindNone) {
 }
 
 TEST(OrtResourceCountTest, FromTotalBytes_RoundTrips) {
-  constexpr size_t kTestValue = 42 * 1024 * 1024;  // 42 MB
+  constexpr uint64_t kTestValue = 42 * 1024 * 1024;  // 42 MB
   OrtResourceCount rc = OrtResourceCount::FromTotalBytes(kTestValue);
   EXPECT_EQ(rc.kind, OrtResourceCountKind_TotalBytes);
   EXPECT_EQ(rc.AsTotalBytes(), kTestValue);
 }
 
 TEST(OrtResourceCountTest, FromTotalBytes_MaxValue) {
-  OrtResourceCount rc = OrtResourceCount::FromTotalBytes(std::numeric_limits<size_t>::max());
+  OrtResourceCount rc = OrtResourceCount::FromTotalBytes(std::numeric_limits<uint64_t>::max());
   EXPECT_EQ(rc.kind, OrtResourceCountKind_TotalBytes);
-  EXPECT_EQ(rc.AsTotalBytes(), std::numeric_limits<size_t>::max());
+  EXPECT_EQ(rc.AsTotalBytes(), std::numeric_limits<uint64_t>::max());
 }
 
 TEST(OrtResourceCountTest, FromTotalBytes_Zero) {
   OrtResourceCount rc = OrtResourceCount::FromTotalBytes(0);
   EXPECT_EQ(rc.kind, OrtResourceCountKind_TotalBytes);
-  EXPECT_EQ(rc.AsTotalBytes(), size_t{0});
+  EXPECT_EQ(rc.AsTotalBytes(), uint64_t{0});
 }
 
 TEST(OrtResourceCountTest, CopySemantics) {
   OrtResourceCount original = OrtResourceCount::FromTotalBytes(12345);
   OrtResourceCount copy = original;
   EXPECT_EQ(copy.kind, OrtResourceCountKind_TotalBytes);
-  EXPECT_EQ(copy.AsTotalBytes(), size_t{12345});
+  EXPECT_EQ(copy.AsTotalBytes(), uint64_t{12345});
   copy.value.total_bytes = 99999;
-  EXPECT_EQ(original.AsTotalBytes(), size_t{12345});
+  EXPECT_EQ(original.AsTotalBytes(), uint64_t{12345});
 }
 
 TEST(OrtResourceCountTest, ReservedFieldIsZero) {

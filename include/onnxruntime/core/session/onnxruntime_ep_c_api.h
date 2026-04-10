@@ -956,7 +956,7 @@ struct OrtScanKernelHelper {
  */
 typedef enum OrtResourceCountKind {
   OrtResourceCountKind_None = 0,        ///< Unset / zero-cost sentinel.
-  OrtResourceCountKind_TotalBytes = 1,  ///< Single size_t: total estimated bytes.
+  OrtResourceCountKind_TotalBytes = 1,  ///< Single uint64_t: total estimated bytes.
 } OrtResourceCountKind;
 
 /**
@@ -972,12 +972,12 @@ typedef enum OrtResourceCountKind {
  * \since Version 1.26.
  */
 typedef struct OrtResourceCount {
-  OrtResourceCountKind kind;
+  uint32_t kind;       ///< OrtResourceCountKind discriminator. Use uint32_t for ABI stability.
   uint32_t reserved_;  ///< Alignment padding + future flags. Must be zero.
 
   union {
-    size_t total_bytes;    ///< Active when kind == OrtResourceCountKind_TotalBytes.
-    uint8_t _storage[48];  ///< ABI reserve: all types must fit within 48 bytes.
+    uint64_t total_bytes;  ///< Active when kind == OrtResourceCountKind_TotalBytes.
+    uint64_t _storage[6];  ///< ABI reserve (48 bytes): all types must fit within this.
   } value;
 
 #ifdef __cplusplus
@@ -988,7 +988,7 @@ typedef struct OrtResourceCount {
   }
 
   /// Create a TotalBytes resource count.
-  static OrtResourceCount FromTotalBytes(size_t bytes) {
+  static OrtResourceCount FromTotalBytes(uint64_t bytes) {
     OrtResourceCount rc{};
     rc.kind = OrtResourceCountKind_TotalBytes;
     rc.value.total_bytes = bytes;
@@ -996,7 +996,7 @@ typedef struct OrtResourceCount {
   }
 
   /// Extract total_bytes. Caller must check kind == OrtResourceCountKind_TotalBytes first.
-  size_t AsTotalBytes() const {
+  uint64_t AsTotalBytes() const {
     return value.total_bytes;
   }
 #endif
@@ -2087,7 +2087,7 @@ struct OrtEpApi {
    * Only valid if EpGraphSupportInfo_HasResourceBudget returns true.
    * If the accountant has no explicit threshold (e.g. auto-detection mode),
    * the returned OrtResourceCount will have kind == OrtResourceCountKind_TotalBytes with
-   * value.total_bytes set to SIZE_MAX.
+   * value.total_bytes set to UINT64_MAX.
    *
    * \param[in] graph_support_info The OrtEpGraphSupportInfo instance from OrtEp::GetCapability().
    * \param[out] budget Output parameter set to the total resource budget.
