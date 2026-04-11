@@ -31,13 +31,8 @@ python build_wheel.py \
   --output_dir ./dist
 ```
 
-The script will:
-1. Copy plugin binaries into the package directory
-2. Stamp the version in `pyproject.toml`
-3. Build the wheel
-4. Run `auditwheel repair` on Linux for manylinux compliance
-5. Verify the wheel was produced
-6. Clean up copied binaries and restore `pyproject.toml`
+The script combines the pre-built plugin EP binaries with the package source to
+produce a platform-specific wheel.
 
 ## Testing
 

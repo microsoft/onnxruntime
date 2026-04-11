@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "onnxruntime-ep-webgpu"
-version = "0.0.0"  # Replaced at build time by build_wheel.py
+version = "VERSION_PLACEHOLDER"  # Replaced at build time by build_wheel.py
 description = "ONNX Runtime WebGPU Plugin Execution Provider"
 readme = "onnxruntime_ep_webgpu/README.md"
 license = {text = "MIT"}

@@ -79,6 +79,7 @@ def test_registration_and_inference():
 
         # Create session with WebGPU EP
         sess_options = ort.SessionOptions()
+        sess_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
         sess_options.add_provider_for_devices(webgpu_devices, {})
         assert sess_options.has_providers(), "SessionOptions should have providers after add_provider_for_devices"
         print("OK: Session options configured with WebGPU EP")
