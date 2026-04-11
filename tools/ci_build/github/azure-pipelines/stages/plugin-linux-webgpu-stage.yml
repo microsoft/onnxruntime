@@ -3,6 +3,10 @@ parameters:
   type: string
   default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
+- name: gpu_machine_pool
+  type: string
+  default: 'Onnxruntime-Linux-GPU-A10'
+
 - name: package_version
   type: string
   default: dev
@@ -120,6 +124,13 @@ stages:
       parameters:
         package_version: ${{ parameters.package_version }}
 
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
+        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimewebgpuplugin
+
     - task: DownloadPipelineArtifact@2
       displayName: 'Download plugin build artifacts'
       inputs:
@@ -128,11 +139,9 @@ stages:
 
     - script: |
         set -e -x
-        python3 -m pip install -r "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/requirements-build-wheel.txt"
-        python3 "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/build_wheel.py" \
-          --binary_dir "$(Build.BinariesDirectory)/plugin_artifacts/bin" \
-          --version "$(PluginPythonPackageVersion)" \
-          --output_dir "$(Build.ArtifactStagingDirectory)/python"
+        $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_python_package.sh \
+          -i onnxruntimewebgpuplugin \
+          -v "$(PluginPythonPackageVersion)"
       displayName: 'Build Python wheel'
 
   # Python package test job
@@ -142,12 +151,19 @@ stages:
     workspace:
       clean: all
     pool:
-      name: Onnxruntime-Linux-GPU-A10
+      name: ${{ parameters.gpu_machine_pool }}
       os: linux
     steps:
     - checkout: self
       clean: true
       submodules: none
+
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
+        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimewebgpuplugin
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Python wheel'
@@ -157,10 +173,17 @@ stages:
 
     - script: |
         set -e -x
-        python3 -m venv "$(Build.BinariesDirectory)/test_venv"
-        source "$(Build.BinariesDirectory)/test_venv/bin/activate"
-        python3 -m pip install onnxruntime onnx numpy
-        wheel=$(find "$(Build.BinariesDirectory)/python_wheel" -name "onnxruntime_ep_webgpu-*.whl" | head -1)
-        python3 -m pip install "$wheel"
-        python3 "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py"
+        docker run --rm --gpus all \
+          --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
+          --volume "$(Build.BinariesDirectory):/build" \
+          onnxruntimewebgpuplugin \
+          /bin/bash -c "
+            set -e -x
+            python3 -m venv /build/test_venv
+            source /build/test_venv/bin/activate
+            python3 -m pip install onnxruntime onnx numpy
+            wheel=\$(find /build/python_wheel -name 'onnxruntime_ep_webgpu-*.whl' | head -1)
+            python3 -m pip install \"\$wheel\"
+            python3 /onnxruntime_src/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py
+          "
       displayName: 'Install and test Python package'

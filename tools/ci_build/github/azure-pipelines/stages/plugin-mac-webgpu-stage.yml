@@ -133,6 +133,10 @@ stages:
       clean: true
       submodules: none
 
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'arm64'
+
     - template: ../templates/set-plugin-build-variables-step.yml
       parameters:
         package_version: ${{ parameters.package_version }}
@@ -167,6 +171,10 @@ stages:
     - checkout: self
       clean: true
       submodules: none
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'arm64'
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Python wheel'

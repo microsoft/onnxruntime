@@ -256,78 +256,89 @@ stages:
           versionOption: custom
           versionPublish: '$(PluginUniversalPackageVersion)'
 
-    # Python package build job
-    - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Package
-      dependsOn: Win_plugin_webgpu_${{ parameters.arch }}_Build
-      timeoutInMinutes: 30
-      workspace:
-        clean: all
-      pool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
-        os: windows
-      templateContext:
-        outputs:
-        - output: pipelineArtifact
-          targetPath: '$(Build.ArtifactStagingDirectory)\python'
-          artifactName: webgpu_plugin_python_win_${{ parameters.arch }}
-      variables:
-      - template: ../templates/common-variables.yml
-      steps:
-      - checkout: self
-        clean: true
-        submodules: none
+    # Python package jobs (x64 only — arm64 cross-compiled binaries can't be
+    # packaged or tested on x64 agents)
+    - ${{ if eq(parameters.arch, 'x64') }}:
+      # Python package build job
+      - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Package
+        dependsOn: Win_plugin_webgpu_${{ parameters.arch }}_Build
+        timeoutInMinutes: 30
+        workspace:
+          clean: all
+        pool:
+          name: onnxruntime-Win-CPU-VS2022-Latest
+          os: windows
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            targetPath: '$(Build.ArtifactStagingDirectory)\python'
+            artifactName: webgpu_plugin_python_win_${{ parameters.arch }}
+        variables:
+        - template: ../templates/common-variables.yml
+        steps:
+        - checkout: self
+          clean: true
+          submodules: none
 
-      - template: ../templates/set-plugin-build-variables-step.yml
-        parameters:
-          package_version: ${{ parameters.package_version }}
+        - template: ../templates/setup-build-tools.yml
+          parameters:
+            host_cpu_arch: 'x64'
 
-      - task: DownloadPipelineArtifact@2
-        displayName: 'Download plugin build artifacts'
-        inputs:
-          artifactName: webgpu_plugin_win_${{ parameters.arch }}
-          targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
+        - template: ../templates/set-plugin-build-variables-step.yml
+          parameters:
+            package_version: ${{ parameters.package_version }}
 
-      - task: PowerShell@2
-        displayName: 'Build Python wheel'
-        inputs:
-          targetType: inline
-          pwsh: true
-          script: |
-            python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\requirements-build-wheel.txt"
-            python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\build_wheel.py" `
-              --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
-              --version "$(PluginPythonPackageVersion)" `
-              --output_dir "$(Build.ArtifactStagingDirectory)\python"
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download plugin build artifacts'
+          inputs:
+            artifactName: webgpu_plugin_win_${{ parameters.arch }}
+            targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
 
-    # Python package test job
-    - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Test
-      dependsOn: Win_plugin_webgpu_${{ parameters.arch }}_Python_Package
-      timeoutInMinutes: 30
-      workspace:
-        clean: all
-      pool:
-        name: onnxruntime-Win2022-VS2022-webgpu-A10
-        os: windows
-      steps:
-      - checkout: self
-        clean: true
-        submodules: none
+        - task: PowerShell@2
+          displayName: 'Build Python wheel'
+          inputs:
+            targetType: inline
+            pwsh: true
+            script: |
+              python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\requirements-build-wheel.txt"
+              python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\build_wheel.py" `
+                --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
+                --version "$(PluginPythonPackageVersion)" `
+                --output_dir "$(Build.ArtifactStagingDirectory)\python"
 
-      - task: DownloadPipelineArtifact@2
-        displayName: 'Download Python wheel'
-        inputs:
-          artifactName: webgpu_plugin_python_win_${{ parameters.arch }}
-          targetPath: '$(Build.BinariesDirectory)\python_wheel'
+      # Python package test job
+      - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Test
+        dependsOn: Win_plugin_webgpu_${{ parameters.arch }}_Python_Package
+        timeoutInMinutes: 30
+        workspace:
+          clean: all
+        pool:
+          name: onnxruntime-Win2022-VS2022-webgpu-A10
+          os: windows
+        steps:
+        - checkout: self
+          clean: true
+          submodules: none
 
-      - task: PowerShell@2
-        displayName: 'Install and test Python package'
-        inputs:
-          targetType: inline
-          pwsh: true
-          script: |
-            python -m venv "$(Build.BinariesDirectory)\test_venv"
-            & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
-            python -m pip install onnxruntime onnx numpy
-            $wheel = (Get-ChildItem "$(Build.BinariesDirectory)\python_wheel\onnxruntime_ep_webgpu-*.whl")[0]
-            python -m pip install $wheel.FullName
-            python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
+        - template: ../templates/setup-build-tools.yml
+          parameters:
+            host_cpu_arch: 'x64'
+
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Python wheel'
+          inputs:
+            artifactName: webgpu_plugin_python_win_${{ parameters.arch }}
+            targetPath: '$(Build.BinariesDirectory)\python_wheel'
+
+        - task: PowerShell@2
+          displayName: 'Install and test Python package'
+          inputs:
+            targetType: inline
+            pwsh: true
+            script: |
+              python -m venv "$(Build.BinariesDirectory)\test_venv"
+              & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
+              python -m pip install onnxruntime onnx numpy
+              $wheel = (Get-ChildItem "$(Build.BinariesDirectory)\python_wheel\onnxruntime_ep_webgpu-*.whl")[0]
+              python -m pip install $wheel.FullName
+              python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
