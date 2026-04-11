@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <cuda_runtime_api.h>

@@ -314,11 +314,11 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         if (has_budget) {
           size_t would_be_consumed = SafeInt<size_t>(consumed_bytes) + cost_bytes;
 
-          LOGS(logger, INFO) << Type() << " node: " << internal_node.Name()
-                             << " (" << internal_node.OpType() << ")"
-                             << " cost: " << cost_bytes
-                             << " would_be_consumed: " << would_be_consumed
-                             << " budget: " << budget_bytes;
+          LOGS(logger, VERBOSE) << Type() << " node: " << internal_node.Name()
+                                << " (" << internal_node.OpType() << ")"
+                                << " cost: " << cost_bytes
+                                << " would_be_consumed: " << would_be_consumed
+                                << " budget: " << budget_bytes;
 
           if (would_be_consumed > budget_bytes) {
             LOGS(logger, WARNING) << Type() << " halting assignment due to budget at node: "
@@ -408,9 +408,9 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         if (has_budget) {
           size_t would_be_consumed = SafeInt<size_t>(consumed_bytes) + group_cost_bytes;
 
-          LOGS(logger, INFO) << Type() << " fused group cost: " << group_cost_bytes
-                             << " would_be_consumed: " << would_be_consumed
-                             << " budget: " << budget_bytes;
+          LOGS(logger, VERBOSE) << Type() << " fused group cost: " << group_cost_bytes
+                                << " would_be_consumed: " << would_be_consumed
+                                << " budget: " << budget_bytes;
 
           if (would_be_consumed > budget_bytes) {
             LOGS(logger, WARNING) << Type() << " halting assignment: fused group exceeds budget.";

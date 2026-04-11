@@ -36,19 +36,21 @@ size_t GetSizeT(const ResourceCount& rc) {
 }
 
 // Helper to create a real SizeBasedStatsAccountant in ad-hoc mode (no stats file) via factory.
-IResourceAccountant* CreateAdHocAccountant(
+// Must be called from within a TEST body (or via ASSERT_NO_FATAL_FAILURE) because it uses ASSERT_*.
+void CreateAdHocAccountant(
     size_t limit_kb,
     const std::filesystem::path& model_path,
-    std::optional<ResourceAccountantMap>& acc_map) {
+    std::optional<ResourceAccountantMap>& acc_map,
+    IResourceAccountant*& out) {
   ConfigOptions config;
   std::string setting = std::to_string(limit_kb) + ",";
-  ORT_THROW_IF_ERROR(config.AddConfigEntry(
+  ASSERT_STATUS_OK(config.AddConfigEntry(
       kOrtSessionOptionsResourceCudaPartitioningSettings, setting.c_str()));
-  ORT_THROW_IF_ERROR(CreateAccountants(config, model_path, acc_map));
-  ORT_ENFORCE(acc_map.has_value());
+  ASSERT_STATUS_OK(CreateAccountants(config, model_path, acc_map));
+  ASSERT_TRUE(acc_map.has_value());
   auto it = acc_map->find(kCudaExecutionProvider);
-  ORT_ENFORCE(it != acc_map->end());
-  return it->second.get();
+  ASSERT_NE(it, acc_map->end());
+  out = it->second.get();
 }
 
 }  // namespace
@@ -60,8 +62,7 @@ struct SharedWeightGraph {
   Node* node_a = nullptr;
   Node* node_b = nullptr;
 
-  static SharedWeightGraph Create() {
-    SharedWeightGraph h;
+  static void Create(SharedWeightGraph& h) {
     std::unordered_map<std::string, int> dom;
     dom[kOnnxDomain] = 12;
     h.model = std::make_unique<Model>(
@@ -94,9 +95,7 @@ struct SharedWeightGraph {
     h.node_a = &h.graph->AddNode("node_A", "Add", "A", {ia, wa}, {oa});
     h.node_b = &h.graph->AddNode("node_B", "Add", "B", {ib, wa}, {ob});
 
-    auto status = h.graph->Resolve();
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    return h;
+    ASSERT_STATUS_OK(h.graph->Resolve());
   }
 };
 
@@ -108,9 +107,11 @@ struct SharedWeightGraph {
 // AccountForAllNodes sums pre-stored per-node costs
 // that already have correct within-pass weight deduplication.
 TEST(ResourceAccountantTest, AccountForAllNodes_CorrectlyUsesPreStoredCosts) {
-  auto h = SharedWeightGraph::Create();
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
   std::optional<ResourceAccountantMap> acc_map;
-  auto* accountant = CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map);
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
 
   IndexedSubGraph sub_graph;
   sub_graph.nodes.push_back(h.node_a->Index());
@@ -136,9 +137,11 @@ TEST(ResourceAccountantTest, AccountForAllNodes_CorrectlyUsesPreStoredCosts) {
 // After probing (which only writes to pending), resetting for a new pass and
 // re-probing should see the full weight cost again since nothing was committed.
 TEST(ResourceAccountantTest, ComputeAndAccountForNode_CorrectAfterReset) {
-  auto h = SharedWeightGraph::Create();
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
   std::optional<ResourceAccountantMap> acc_map;
-  auto* accountant = CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map);
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
 
   // Probing pass populates pending weights
   auto cost_a = accountant->ComputeResourceCount(*h.node_a);
@@ -164,7 +167,8 @@ TEST(ResourceAccountantTest, ComputeAndAccountForNode_CorrectAfterReset) {
 // (e.g., after layout transformation) can run from scratch.
 TEST(ResourceAccountantTest, ResetForNewPass_ClearsStopFlag) {
   std::optional<ResourceAccountantMap> acc_map;
-  auto* accountant = CreateAdHocAccountant(/*limit_kb=*/1, PathString(), acc_map);
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/1, PathString(), acc_map, accountant));
 
   // Simulate first pass exhausting budget and setting stop.
   accountant->SetStopAssignment();
@@ -217,7 +221,8 @@ TEST(ResourceAccountantTest, AccountForAllNodes_NoSharedWeights) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   std::optional<ResourceAccountantMap> acc_map;
-  auto* accountant = CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map);
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
 
   IndexedSubGraph sub_graph;
   sub_graph.nodes.push_back(node1.Index());
@@ -236,11 +241,13 @@ TEST(ResourceAccountantTest, AccountForAllNodes_NoSharedWeights) {
 
 // AccountForNode per-node and AccountForAllNodes bulk produce same result.
 TEST(ResourceAccountantTest, AccountForNode_MatchesAccountForAllNodes) {
-  auto h = SharedWeightGraph::Create();
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
 
   // Per-node path
   std::optional<ResourceAccountantMap> acc_map1;
-  auto* acc1 = CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map1);
+  IResourceAccountant* acc1 = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map1, acc1));
   IndexedSubGraph sub1;
   sub1.nodes.push_back(h.node_a->Index());
   sub1.nodes.push_back(h.node_b->Index());
@@ -253,7 +260,8 @@ TEST(ResourceAccountantTest, AccountForNode_MatchesAccountForAllNodes) {
 
   // Bulk path
   std::optional<ResourceAccountantMap> acc_map2;
-  auto* acc2 = CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map2);
+  IResourceAccountant* acc2 = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map2, acc2));
   IndexedSubGraph sub2;
   sub2.nodes.push_back(h.node_a->Index());
   sub2.nodes.push_back(h.node_b->Index());
@@ -272,9 +280,11 @@ TEST(ResourceAccountantTest, AccountForNode_MatchesAccountForAllNodes) {
 // correctly sees weight_W as already accounted.
 // node_A cost: 3000, node_B cost after commit: (0 + 1000) * 1.5 = 1500
 TEST(ResourceAccountantTest, CrossSubGraph_DedupWorks) {
-  auto h = SharedWeightGraph::Create();
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
   std::optional<ResourceAccountantMap> acc_map;
-  auto* accountant = CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map);
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
 
   // EP1 probes and commits node_A
   IndexedSubGraph sub1;
@@ -308,9 +318,19 @@ TEST(ResourceAccountantTest, CrossSubGraph_DedupWorks) {
 // Stats-based path and factory tests
 // ---------------------------------------------------------------------------
 
+// RAII helper to remove a temp file on scope exit, even if a test assertion fails.
+struct ScopedFileRemover {
+  std::filesystem::path path;
+  ~ScopedFileRemover() {
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+  }
+};
+
 // Stats-based path: cost is sum of all NodeAllocationStats fields.
 TEST(RealAccountantTest, StatsPath_ComputesCostFromStatsFile) {
-  auto h = SharedWeightGraph::Create();
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
 
   // Write a stats file with known costs (unique per PID to avoid parallel collisions)
   std::error_code ec;
@@ -319,6 +339,7 @@ TEST(RealAccountantTest, StatsPath_ComputesCostFromStatsFile) {
   std::ostringstream fname;
   fname << "test_resource_accountant_stats_" << ORT_TEST_PID << ".csv";
   auto stats_path = stats_dir / fname.str();
+  ScopedFileRemover stats_cleanup{stats_path};
 
   // Get the unique node names the accountant will look up
   std::string name_a = IResourceAccountant::MakeUniqueNodeName(*h.node_a);
@@ -355,14 +376,12 @@ TEST(RealAccountantTest, StatsPath_ComputesCostFromStatsFile) {
   auto threshold = accountant->GetThreshold();
   ASSERT_TRUE(threshold.has_value());
   EXPECT_EQ(std::get<size_t>(*threshold), size_t{500 * 1024});
-
-  std::error_code remove_ec;
-  std::filesystem::remove(stats_path, remove_ec);
 }
 
 // Stats-based path returns 0 for unknown nodes.
 TEST(RealAccountantTest, StatsPath_UnknownNodeReturnsZero) {
-  auto h = SharedWeightGraph::Create();
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
 
   std::error_code ec;
   auto stats_dir = std::filesystem::temp_directory_path(ec);
@@ -370,6 +389,7 @@ TEST(RealAccountantTest, StatsPath_UnknownNodeReturnsZero) {
   std::ostringstream fname;
   fname << "test_resource_accountant_empty_stats_" << ORT_TEST_PID << ".csv";
   auto stats_path = stats_dir / fname.str();
+  ScopedFileRemover stats_cleanup{stats_path};
 
   {
     std::ofstream ofs(stats_path);
@@ -389,9 +409,6 @@ TEST(RealAccountantTest, StatsPath_UnknownNodeReturnsZero) {
 
   auto cost = accountant->ComputeResourceCount(*h.node_a);
   EXPECT_EQ(std::get<size_t>(cost), size_t{0});
-
-  std::error_code remove_ec;
-  std::filesystem::remove(stats_path, remove_ec);
 }
 
 // Factory with no limit and no stats file creates accountant with no threshold.
