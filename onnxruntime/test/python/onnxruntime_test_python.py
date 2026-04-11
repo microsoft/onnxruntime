@@ -98,13 +98,6 @@ class TestInferenceSession(unittest.TestCase):
             return -1
         return num_device.value
 
-    def test_tvm_imported(self):
-        if "TvmExecutionProvider" not in onnxrt.get_available_providers():
-            return
-        import tvm  # noqa: PLC0415
-
-        self.assertTrue(tvm is not None)
-
     def test_get_version_string(self):
         self.assertIsNot(onnxrt.get_version_string(), None)
 
