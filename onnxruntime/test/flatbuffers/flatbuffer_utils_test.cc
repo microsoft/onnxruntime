@@ -383,7 +383,13 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithOverflowingDim
   flatbuffers::FlatBufferBuilder builder(256);
 
   auto name = builder.CreateString("tensor_overflow_dims");
-  auto dims = builder.CreateVector(std::vector<int64_t>{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()});
+  std::vector<int64_t> overflow_dims;
+  if (sizeof(size_t) < sizeof(int64_t)) {
+    overflow_dims = {static_cast<int64_t>(std::numeric_limits<size_t>::max()), 2};
+  } else {
+    overflow_dims = {std::numeric_limits<int64_t>::max(), 3};
+  }
+  auto dims = builder.CreateVector(overflow_dims);
 
   fbs::TensorBuilder tensor_builder(builder);
   tensor_builder.add_name(name);
