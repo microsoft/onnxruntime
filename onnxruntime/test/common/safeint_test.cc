@@ -27,11 +27,11 @@ TEST(SafeIntTest, SafeMulHandlesSameVariableOperands) {
 
 #ifndef ORT_NO_EXCEPTIONS
 TEST(SafeIntTest, SafeMulThrowsOnInitialCastOverflow) {
-  EXPECT_THROW((SafeMul<uint32_t>(-1, 2)), OnnxRuntimeException);
+  EXPECT_THROW((void)SafeMul<uint32_t>(-1, 2), OnnxRuntimeException);
 }
 
 TEST(SafeIntTest, SafeMulThrowsOnMultiplyOverflow) {
-  EXPECT_THROW((SafeMul<int>(std::numeric_limits<int>::max(), 2)), OnnxRuntimeException);
+  EXPECT_THROW((void)SafeMul<int>(std::numeric_limits<int>::max(), 2), OnnxRuntimeException);
 }
 #endif
 
