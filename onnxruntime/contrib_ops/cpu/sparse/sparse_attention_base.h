@@ -80,7 +80,7 @@ class SparseAttentionBase {
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
     const bool past_present_share_buffer =
-      past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
+        past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
 
     auto* tp = context->GetOperatorThreadPool();
 
