@@ -69,6 +69,7 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
   }
 
   QuantizeLinearProgram program{quantization_type, y_zero_point != nullptr, y_is_signed, y_packing_mode};
+  program.CacheHint(std::to_string(static_cast<int>(quantization_type)));
 
   program.AddInput(ProgramInput{x, ProgramTensorMetadataDependency::TypeAndRank, x_components});
   program.AddInput(ProgramInput{y_scale, ProgramTensorMetadataDependency::TypeAndRank});
@@ -135,14 +136,25 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T2", OutputAndZeroPointTypeConstraints()),
     QuantizeLinear);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     QuantizeLinear,
     kOnnxDomain,
-    21,
+    21, 22,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", InputTypeConstraints())
         .TypeConstraint("T2", OutputAndZeroPointTypeConstraints()),
+    QuantizeLinear);
+
+ONNX_OPERATOR_KERNEL_EX(
+    QuantizeLinear,
+    kOnnxDomain,
+    23,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", InputTypeConstraints())
+        .TypeConstraint("T2", InputTypeConstraints())
+        .TypeConstraint("T3", OutputAndZeroPointTypeConstraints()),
     QuantizeLinear);
 
 }  // namespace onnxruntime::webgpu

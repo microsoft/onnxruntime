@@ -6,8 +6,7 @@
 #include "core/providers/webgpu/quantization/quantization_utils.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
-namespace onnxruntime {
-namespace webgpu {
+namespace onnxruntime::webgpu {
 
 class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
  public:
@@ -36,20 +35,21 @@ class DequantizeLinearProgram final : public Program<DequantizeLinearProgram> {
 
 class DequantizeLinear final : public WebGpuKernel {
  public:
-  DequantizeLinear(const OpKernelInfo& info) : WebGpuKernel(info) {
-    axis_ = info.GetAttrOrDefault<int64_t>("axis", 1);
-    block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 0);
-    output_dtype_ = info.GetAttrOrDefault<int64_t>("output_dtype", 0);
+  DequantizeLinear(const OpKernelInfo& info) : WebGpuKernel(info),
+      axis_{info.GetAttrOrDefault<int64_t>("axis", 1)},
+      block_size_{info.GetAttrOrDefault<int64_t>("block_size", 0)} {
     ORT_ENFORCE(block_size_ >= 0, "'block_size' must be non-negative.");
+
+    if (info.GetAttrOrDefault<int64_t>("output_dtype", 0) != int64_t{0}) {
+      ORT_NOT_IMPLEMENTED("Explicitly specified 'output_dtype' is not yet supported.");
+    }
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
-  int64_t axis_;
-  int64_t block_size_;
-  int64_t output_dtype_;
+  const int64_t axis_;
+  const int64_t block_size_;
 };
 
-}  // namespace webgpu
-}  // namespace onnxruntime
+}  // namespace onnxruntime::webgpu

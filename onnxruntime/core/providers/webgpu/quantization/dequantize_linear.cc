@@ -10,8 +10,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
-namespace onnxruntime {
-namespace webgpu {
+namespace onnxruntime::webgpu {
 
 Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -54,7 +53,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let x_value = " << x.GetByOffset("global_idx") << ";\n";
   }
 
-  // Get scaler
+  // Get scale
   if (quantization_type_ == util::QuantizationType::PerTensor) {
     // scale input is a scalar ()
     shader.MainFunctionBody()
@@ -204,9 +203,9 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
                      ? ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, ProgramOutput::Flatten, components}
                      : ProgramOutput{output_tensor, ProgramTensorMetadataDependency::Rank, components})
       .SetDispatchGroupSize((x_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{axis_uniform}})
-      .AddUniformVariables({{block_size_uniform}})
-      .AddUniformVariables({{static_cast<uint32_t>(x_size / components)}})
+      .AddUniformVariables({{axis_uniform},
+                            {block_size_uniform},
+                            {static_cast<uint32_t>(x_size / components)}})
       .CacheHint(std::to_string(static_cast<int>(quantization_type)), std::to_string(is_packed_signed),
                  std::to_string(static_cast<int>(packing_mode)));
 
@@ -274,8 +273,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DequantizeLinearConstraints())
-        .TypeConstraint("T2", WebGpuSupportedFloatTypes()),
+        .TypeConstraint("T2", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T3", WebGpuSupportedFloatTypes()),
     DequantizeLinear);
 
-}  // namespace webgpu
-}  // namespace onnxruntime
+}  // namespace onnxruntime::webgpu
