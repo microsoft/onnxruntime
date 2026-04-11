@@ -99,10 +99,6 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_key = context->Output(1, present_k_shape);
   Tensor* present_value = context->Output(2, present_v_shape);
 
-  const bool past_present_share_buffer =
-      past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
-  parameters.past_present_share_buffer = past_present_share_buffer;
-
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 

@@ -405,14 +405,14 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithOverflowingDim
 }
 
 TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithDimTooLargeForSizeT) {
-  if (std::numeric_limits<int64_t>::max() <= static_cast<int64_t>(std::numeric_limits<size_t>::max())) {
-    GTEST_SKIP() << "All int64_t dimensions fit in size_t on this platform.";
+  if (sizeof(size_t) >= sizeof(int64_t)) {
+    GTEST_SKIP() << "This platform does not have a narrower size_t than int64_t.";
   }
 
   flatbuffers::FlatBufferBuilder builder(256);
 
   auto name = builder.CreateString("tensor_dim_too_large_for_size_t");
-  auto dims = builder.CreateVector(std::vector<int64_t>{static_cast<int64_t>(std::numeric_limits<size_t>::max()) + 1});
+  auto dims = builder.CreateVector(std::vector<int64_t>{std::numeric_limits<int64_t>::max()});
 
   fbs::TensorBuilder tensor_builder(builder);
   tensor_builder.add_name(name);

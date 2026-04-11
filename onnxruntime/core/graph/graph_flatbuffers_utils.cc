@@ -247,11 +247,13 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
                              "'. Invalid ORT format model.");
     }
 
-    ORT_RETURN_IF(static_cast<uint64_t>(dim) > static_cast<uint64_t>(std::numeric_limits<size_t>::max()),
-                  "Dimension ", dim,
-                  " does not fit in size_t for tensor '", tensor_name_str,
-                  "' with data type '", tensor_data_type_str,
-                  "'. Invalid ORT format model.");
+    if (static_cast<uint64_t>(dim) > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Dimension ", dim,
+                             " does not fit in size_t for tensor '", tensor_name_str,
+                             "' with data type '", tensor_data_type_str,
+                             "'. Invalid ORT format model.");
+    }
 
     if (!IAllocator::CalcMemSizeForArray(num_elements, static_cast<size_t>(dim), &num_elements)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
