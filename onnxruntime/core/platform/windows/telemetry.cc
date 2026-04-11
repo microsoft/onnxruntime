@@ -316,7 +316,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& model_weight_hash,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
-                                          bool use_fp16, bool captureState) const {
+                                          bool use_fp16, bool captureState,
+                                          int64_t model_data_length) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -388,7 +389,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
                       TraceLoggingString(service_names.c_str(), "serviceNames"),
-                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"),
+                      TraceLoggingInt64(model_data_length, "modelDataLength"));
   } else {
     TraceLoggingWrite(telemetry_provider_handle,
                       "SessionCreation_CaptureState",
@@ -416,7 +418,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
                       TraceLoggingString(service_names.c_str(), "serviceNames"),
-                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"),
+                      TraceLoggingInt64(model_data_length, "modelDataLength"));
   }
 }
 

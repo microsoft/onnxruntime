@@ -994,6 +994,10 @@ class InferenceSession {
 
   // Flag indicating if ModelProto has been parsed in an applicable ctor
   bool is_model_proto_parsed_ = false;
+
+  // Size of the model data in bytes, or -1 if unknown
+  int64_t model_data_length_ = -1;
+
   const Environment& environment_;
 
   // View of the bytes from an ORT format model.

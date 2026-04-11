@@ -720,6 +720,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
   is_model_proto_parsed_ = true;
+  // Capture model data length from the serialized proto size
+  model_data_length_ = static_cast<int64_t>(model_proto_.ByteSizeLong());
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -739,6 +741,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
+  model_data_length_ = static_cast<int64_t>(model_proto_.ByteSizeLong());
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -750,6 +753,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
+  model_data_length_ = static_cast<int64_t>(model_data_len);
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -1061,6 +1065,14 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
 common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
   model_location_ = model_uri;
+
+  // Capture model file size for telemetry
+  std::error_code ec;
+  auto fsize = std::filesystem::file_size(model_uri, ec);
+  if (!ec) {
+    model_data_length_ = static_cast<int64_t>(fsize);
+  }
+
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_location_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
@@ -1125,6 +1137,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  model_data_length_ = static_cast<int64_t>(model_data_len);
   std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
@@ -1683,6 +1696,13 @@ static Status LoadOrtModelBytes(const PathString& model_uri,
 }
 
 Status InferenceSession::LoadOrtModel(const PathString& model_uri) {
+  // Capture model file size for telemetry
+  std::error_code ec;
+  auto fsize = std::filesystem::file_size(model_uri, ec);
+  if (!ec) {
+    model_data_length_ = static_cast<int64_t>(fsize);
+  }
+
   return LoadOrtModelWithLoader(
       [&]() {
         model_location_ = model_uri;
@@ -1693,6 +1713,7 @@ Status InferenceSession::LoadOrtModel(const PathString& model_uri) {
 }
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
+  model_data_length_ = static_cast<int64_t>(model_data_len);
   return LoadOrtModelWithLoader([&]() {
     const auto& config_options = GetSessionOptions().config_options;
     const auto use_ort_model_bytes_directly =
@@ -2660,7 +2681,8 @@ common::Status InferenceSession::Initialize() {
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
-        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
+        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false,
+        model_data_length_);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
@@ -4147,7 +4169,8 @@ void InferenceSession::LogAllSessions() {
       env.GetTelemetryProvider().LogSessionCreation(
           session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
           graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
-          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
+          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true,
+          session->model_data_length_);
     }
 
     InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);
