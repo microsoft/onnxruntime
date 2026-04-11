@@ -4,7 +4,7 @@ This directory contains the packaging source for the `onnxruntime-ep-webgpu` Pyt
 
 ## Prerequisites
 
-- Python 3.9+
+- Python 3.11+
 - Pre-built WebGPU plugin EP binaries (from CI or a local build)
 
 Install build dependencies:
@@ -26,7 +26,7 @@ Example:
 
 ```bash
 python build_wheel.py \
-  --binary_dir /build/Release \
+  --binary_dir ./build/Release \
   --version 1.26.0.dev20260410 \
   --output_dir ./dist
 ```
