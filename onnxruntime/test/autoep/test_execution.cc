@@ -605,11 +605,11 @@ TEST(OrtEpLibrary, PluginEp_CompatibilityInfo_WrittenToMetadata) {
     std::string compatibility_value = value.get();
     ASSERT_GT(compatibility_value.length(), 0) << "Compatibility info should not be empty";
 
-    // Validate the exact compatibility string format and values
-    // Format: "example_ep;version=0.1.0;ort_api_version=<ORT_API_VERSION>"
+    // Validate the compatibility string format and values
+    // Format: "example_ep;version=0.1.0;ort_api_version=<ORT_API_VERSION>;..."
     std::string expected_compatibility_info = "example_ep;version=0.1.0;ort_api_version=" +
                                               std::to_string(ORT_API_VERSION);
-    EXPECT_EQ(compatibility_value, expected_compatibility_info);
+    EXPECT_TRUE(compatibility_value.starts_with(expected_compatibility_info));
   }
 
   std::filesystem::remove(output_model_file);

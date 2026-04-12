@@ -1,0 +1,146 @@
+# Template for setting up the package feeds and installing python.
+# Feeds configured:
+#   - pip
+#   - maven & gradle
+#   - nuget
+#
+# FIXME: Not idempotent.
+
+parameters:
+- name: artifactFeeds
+  type: string
+  default: 'Lotus'
+
+- name: versionSpec
+  type: string
+  default: '3.12'
+
+- name: architecture
+  type: string
+  default: ''
+
+steps:
+- task: NuGetAuthenticate@1 # just auth w/ internal feeds
+
+- task: MavenAuthenticate@0
+  inputs:
+    artifactsFeeds: ${{ parameters.artifactFeeds }}
+
+- task: PipAuthenticate@1
+  displayName: 'Pip Authenticate'
+  inputs:
+    artifactFeeds: ${{ parameters.artifactFeeds }}
+
+- task: UsePythonVersion@0
+  displayName: 'Use Python ${{ parameters.versionSpec }}'
+  # aarch64 (aka arm64) is not currently available (2026-04-09). Skip installation.
+  # We'll be verifying the requested version of python is already installed below.
+  condition: ne('${{ parameters.architecture }}', 'aarch64')
+  inputs:
+    versionSpec: ${{ parameters.versionSpec }}
+    ${{ if ne(parameters.architecture, '') }}:
+      architecture: ${{ parameters.architecture }}
+
+- pwsh: |
+    # Check if python is available in PATH
+    $pythonCmd = Get-Command "python${env:python_version_spec}" -ErrorAction SilentlyContinue
+    if ($pythonCmd) {
+      Write-Host "Found `python${env:python_version_spec}` at $($pythonCmd.Source)"
+      exit 0
+    }
+
+    $pythonCmd = Get-Command "python" -ErrorAction SilentlyContinue
+    if ($pythonCmd) {
+      Write-Host "Found `python` at $($pythonCmd.Source)."
+      # FUTURE WORK: validate it matches the requested version spec
+      exit 0
+    }
+
+    Write-Host "##vso[task.logissue type=error]Neither `python` nor `python${env:python_version_spec}` are on PATH."
+    exit 1
+  displayName: 'Verify Python ${{ parameters.versionSpec }} is on path'
+  env:
+    python_version_spec: ${{ parameters.versionSpec }}
+
+- pwsh: |
+    # Force everything to go through & authenticate using the main feed.
+    # ASSUME: there is no `mirrors` section already present in the settings.xml.
+    # HACK: Does not escape `parameters.artifactFeeds`. Assumes pattern is [A-Za-z0-9]+.
+    # HACK: Assumes feed is a org-scoped feed in `aiinfra`.
+    (Get-Content ~/.m2/settings.xml) | `
+      %{ $_ -replace '</settings>', "<mirrors><mirror><id>${env:central_maven_feed_name}</id><name>1ES Feed Override</name><url>https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1</url><mirrorOf>*</mirrorOf></mirror></mirrors></settings>" } | `
+      Set-Content ~/.m2/settings.xml
+
+    # gradle - inject 1ES feed repo into all projects/buildscripts. Auth using creds from maven settings.xml.
+    $gradleInitDir = if ($env:GRADLE_HOME_DIR) { $env:GRADLE_HOME_DIR } else { "~/.gradle" }
+    if (!(Test-Path -Path "${gradleInitDir}/init.d")) {
+      New-Item -ItemType Directory -Path "${gradleInitDir}/init.d"
+    }
+    Set-Content -Path "${gradleInitDir}/init.d/1es-feed-inject.init.gradle" -Value @"
+    // Use official 1ES feed. Network isolation prevents us from reaching out directly to other feeds.
+
+    def mavenSettingsServers = {
+      File mavenSettings = new File(System.getProperty("user.home"), ".m2/settings.xml")
+      return new XmlSlurper().parse(mavenSettings)."servers"."server"
+    }
+
+    def oneEsFeedCredentials = {
+      for (x in mavenSettingsServers()) {
+        if (x."id".text() == "${env:central_maven_feed_name}") {
+          return [username: x.username.text(), password: x.password.text()]
+        }
+      }
+    }
+
+    allprojects {
+      buildscript {
+        repositories {
+          maven {
+            name "1ES Feed"
+            url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1")
+            credentials(PasswordCredentials) {
+              username oneEsFeedCredentials().username
+              password oneEsFeedCredentials().password
+            }
+          }
+        }
+      }
+
+      repositories {
+        maven {
+          name "1ES Feed"
+          url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1")
+          credentials(PasswordCredentials) {
+            username oneEsFeedCredentials().username
+            password oneEsFeedCredentials().password
+          }
+        }
+      }
+    }
+    "@
+  displayName: 'Maven/Gradle - mirror / feed via `${{ parameters.artifactFeeds }}`'
+  env:
+    central_maven_feed_name: ${{ parameters.artifactFeeds }}
+
+- pwsh: |
+    # NuGet appears to fail if any of the pkg sources are unreachable.
+    # Replace the NuGet.config w/ one that only has the internal feed.
+    # HACK: We'd rather splice the structure, not override the file.
+    Set-Content -Path "NuGet.config" -Value @"
+    <?xml version="1.0" encoding="utf-8"?>
+    <configuration>
+      <solution>
+        <add key="disableSourceControlIntegration" value="true" />
+      </solution>
+      <packageSources>
+        <clear />
+        <add key="1ES Feed" value="https://pkgs.dev.azure.com/aiinfra/_packaging/${env:central_maven_feed_name}/nuget/v3/index.json" />
+      </packageSources>
+      <disabledPackageSources>
+        <clear />
+      </disabledPackageSources>
+    </configuration>
+    "@
+  displayName: NuGet - override `NuGet.config` to lock feed to `${{ parameters.artifactFeeds }}`
+  env:
+    central_maven_feed_name: ${{ parameters.artifactFeeds }}
