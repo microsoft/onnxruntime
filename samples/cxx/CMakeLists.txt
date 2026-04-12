@@ -48,3 +48,23 @@ add_custom_command(TARGET onnxruntime_sample_program POST_BUILD
         $<TARGET_FILE_DIR:onnxruntime_sample_program>
 )
 endblock()
+
+#
+# OpTest – GQA / Flash Attention test on WebGPU EP
+#
+block()
+add_executable(OpTest)
+
+target_sources(OpTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/OpTest.cc)
+
+target_include_directories(OpTest PRIVATE ${ORT_HEADER_DIR})
+
+target_link_directories(OpTest PRIVATE ${ORT_LIBRARY_DIR})
+target_link_libraries(OpTest PRIVATE onnxruntime)
+
+add_custom_command(TARGET OpTest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${ORT_SHARED_LIBS}
+        $<TARGET_FILE_DIR:OpTest>
+)
+endblock()

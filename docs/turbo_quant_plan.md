@@ -103,7 +103,7 @@ Where `compressed_head_dim = ceil(head_size / 8) + 1`:
 - Each uint32 holds 8 int4 values
 - 128 int4 values → 16 uint32 elements for data
 - +1 uint32 for the fp16 scale (packed into uint32)
-- Total: 17 uint32 = 68 bytes vs 256 bytes for fp16 → **3.76× savings**
+- Total: `head_size/8 + 1` uint32 values (e.g., 17 for head_size=128 → 68 bytes vs 256 bytes → **3.76× savings**)
 
 Alternative (simpler for Phase 1): Keep fp16 type, pack int4 into fp16 carrier:
 - 4 int4 values per fp16 element → `head_size/4 = 32` fp16 for data
@@ -194,8 +194,14 @@ Alternative (simpler for Phase 1): Keep fp16 type, pack int4 into fp16 carrier:
 
 ---
 
-### Phase 2: Pseudo-Quantization
-**Goal**: After rotation, quantize K and V to 4-bit using TurboQuant codebook. Store compressed in KV cache.
+### Phase 2: Pseudo-Quantization (fp16 indices — no bit-packing)
+**Goal**: After rotation, quantize each element of K and V to its nearest TurboQuant centroid index (0–15). Store the index **as fp16** in the existing KV cache layout (same shape, same type). The cache size does NOT change yet — this phase validates the quantization/dequantization math end-to-end before introducing a new packed format.
+
+**Why fp16 indices first?**
+- No KV cache shape or type changes → no GenAI changes needed
+- Flash attention shaders can dequantize by treating each fp16 as an integer index: `centroid[u32(value)]`
+- Easy to validate against reference PyTorch `tq_pseudo_quantize()` output
+- Isolates quantization quality impact from packing complexity
 
 **Codebook (compile-time constants in WGSL)**:
 ```wgsl
@@ -209,41 +215,57 @@ const TQ_BOUNDARIES = array<f16, 17>(
 );
 ```
 
-**Quantize Shader** (during CopyKV / fused path):
+**Quantize Shader** (runs after rotation, before cache write):
 ```
-1. Load rotated K/V vector (fp16, head_size dims)
-2. Compute L2 norm: norm = sqrt(sum(x_i^2))
+1. Load rotated K/V vector (fp16, head_size elements)
+2. Compute L2 norm: norm = sqrt(sum(x_i^2))  — stored in a dedicated position or uniform
 3. Normalize: x_unit_i = x_i / norm
-4. For each element: find bucket via searchsorted on boundaries → 4-bit index
-5. Pack 8 indices into one uint32
-6. Store: [norm_as_fp16_in_uint32, packed_indices[0..15]] → 17 uint32 per token per head
+4. For each element: searchsorted on TQ_BOUNDARIES → 4-bit index (0–15)
+5. Store the index as fp16: present_value[offset + i] = f16(index)
+6. Store norm separately (e.g., in the last element, or a parallel norm buffer)
 ```
 
-**Dequantize Shader** (during attention computation):
+**KV Cache Format (Phase 2 — unchanged shape)**:
 ```
-1. Load norm from first uint32 (unpack fp16)
-2. For each group of 8 elements: unpack uint32 → 8 indices → lookup centroids
-3. Multiply each centroid by norm → reconstructed fp16 values
-4. Use for dot product (QK^T) or weighted sum (softmax·V)
+Per token per KV head: head_size fp16 values (128 for Phi-4)
+  [0..126]: centroid index stored as fp16 (values 0.0h–15.0h)
+  [127]: L2 norm stored as fp16
+  — Same shape [batch, kv_heads, max_seq, 128] fp16 as baseline
+  — No memory savings yet, but quantization math is validated
 ```
 
-**KV Cache Format**:
-```
-Per token per KV head: 17 uint32 values
-  [0]: fp16 norm packed in uint32 (upper 16 bits unused or used for fp16 second value)
-  [1..16]: 128 int4 indices packed as 8 per uint32
+**Dequantize** (inside flash attention loadk/loadv):
+```wgsl
+let idx = u32(kv_cache[offset + i]);          // fp16 → integer index
+let centroid_val = TQ_CENTROIDS[idx];          // lookup
+let norm = kv_cache[offset + head_size - 1u];  // last element is the norm
+let reconstructed = centroid_val * norm;        // dequantized fp16 value
 ```
 
 **Files**:
-- `onnxruntime/contrib_ops/webgpu/bert/turbo_quant_quantize.wgsl.template` — NEW
-- `onnxruntime/contrib_ops/webgpu/bert/flash_attention_decode_qkt.wgsl.template` — Modified loadk with dequantize
-- `onnxruntime/contrib_ops/webgpu/bert/flash_attention_decode_split_vx.wgsl.template` — Modified loadv with dequantize
-- `onnxruntime/contrib_ops/webgpu/bert/flash_attention.wgsl.template` — Modified loadk/loadv with dequantize
+- `turbo_quant_hadamard.cc` — Extend or add new `TurboQuantQuantizeProgram`: rotate → normalize → searchsorted → store fp16 index + norm
+- `flash_attention.wgsl.template` — Modify loadk/loadv: when turbo_quant, dequantize via centroid lookup
+- `flash_attention_decode_qkt.wgsl.template` — Modify loadk with dequantize
+- `flash_attention_decode_split_vx.wgsl.template` — Modify loadv with dequantize
 
 ---
 
-### Phase 3: Adjusting KV Cache Dimensions in GenAI + TMAC-style Lookup Table MatMul
-**Goal**: Actually allocate smaller KV cache buffers. Use lookup table for QK dot product.
+### Phase 3: Bit-Packing to uint4
+**Goal**: Pack the fp16 centroid indices from Phase 2 into actual 4-bit integers. 8 indices per uint32, plus a fp16 norm. This changes the KV cache shape and type, yielding ~3.8× memory savings.
+
+**KV Cache Format (Phase 3 — compressed)**:
+```
+Per token per KV head: head_size/8 + 1 uint32 values
+  [0]: fp16 norm packed in uint32 (lower 16 bits)
+  [1..head_size/8]: head_size int4 indices packed as 8 per uint32
+Total: (head_size/8 + 1) × 4 bytes vs head_size × 2 bytes
+  e.g., head_size=128: 17 × 4 = 68 bytes vs 256 bytes → 3.76× savings
+```
+
+**Changes from Phase 2**:
+- Quantize shader: after searchsorted, pack 8 indices into one uint32 instead of storing as fp16
+- Dequantize shader: unpack uint32 → 8 indices → centroid lookup (replaces `u32(kv_cache[i])` with bitwise extract)
+- KV cache shape: `[batch, kv_heads, max_seq, head_size/8 + 1]` with type uint32
 
 #### GenAI KV Cache Dimension Change
 **Files (GenAI: C:\onnxruntime-genai)**:
@@ -372,7 +394,7 @@ GQA::ComputeInternal()
 ```
 Shape: [batch_size, kv_num_heads, present_sequence_length, head_size]
   Phi-4: [1, 8, max_length, 128]  with fp16
-  TurboQuant: [1, 8, max_length, 17]  with uint32  (Phase 3)
+  TurboQuant: [1, 8, max_length, head_size/8+1]  with uint32  (Phase 3)  e.g., 17 for head_size=128
   Phase 0-2: [1, 8, max_length, 128] with fp16  (unchanged, rotation only)
 
 Access pattern in WGSL:
@@ -382,9 +404,53 @@ Access pattern in WGSL:
 
 ---
 
+## Building & Running OpTest
+
+OpTest is a standalone C++ test binary that exercises GQA with WebGPU EP (flash attention path), comparing baseline vs TurboQuant.
+
+### Prerequisites
+- ORT built with WebGPU (`build.bat --use_webgpu --build_shared_lib ...`, build dir `build/WGPU`)
+- Python with `onnx` and `numpy` installed (for model generation)
+
+### Generate the GQA Model
+```powershell
+cd c:\onnxruntime\samples\cxx
+python generate_gqa_model.py   # produces gqa_model.onnx
+```
+
+### Configure & Build OpTest
+```powershell
+# One-time configure (adjust generator as needed):
+$buildDir = "c:\onnxruntime\build\OpTest"
+mkdir $buildDir -Force
+cd $buildDir
+cmake c:\onnxruntime\samples\cxx `
+  -DORT_HEADER_DIR="c:\onnxruntime\include\onnxruntime\core\session" `
+  -DORT_LIBRARY_DIR="c:\onnxruntime\build\WGPU\RelWithDebInfo\RelWithDebInfo" `
+  -G "Visual Studio 18 2026"
+
+# Build:
+cmake --build . --config RelWithDebInfo --target OpTest
+```
+
+### Copy Runtime Dependencies & Run
+```powershell
+Copy-Item c:\onnxruntime\build\WGPU\RelWithDebInfo\RelWithDebInfo\*.dll `
+  c:\onnxruntime\build\OpTest\RelWithDebInfo\ -Force
+Copy-Item c:\onnxruntime\samples\cxx\gqa_model.onnx `
+  c:\onnxruntime\build\OpTest\RelWithDebInfo\ -Force
+
+cd c:\onnxruntime\build\OpTest\RelWithDebInfo
+.\OpTest.exe gqa_model.onnx
+```
+
+The test creates two sessions (baseline and TurboQuant), runs identical workloads with deterministic seeds, and compares outputs (max abs diff, RMSE, cosine similarity) plus latency.
+
+---
+
 ## Todos
 
-### Phase 0: First Checkpoint (V Rotation + Inverse Rotation)
+### Phase 0: First Checkpoint (V Rotation + Inverse Rotation) — COMPLETE ✓
 - [x] **0.1** Add `turboQuant` provider option to WebGPU EP
   - `webgpu_provider_options.h`: Added `kTurboQuant` constant
   - `webgpu_execution_provider.h`: Added config field + member + accessor
@@ -399,16 +465,80 @@ Access pattern in WGSL:
   - NEW `turbo_quant_hadamard.cc`: FWHT butterfly shader in shared memory, output-only binding for in-place ops
   - No matrix storage needed — O(n log n) on-the-fly computation
 - [x] **0.4** Wire V rotation into ApplyFlashAttention
-  - `flash_attention.cc`: After CopyKVCache/fused split → rotate present_value (new tokens only)
+  - `flash_attention.cc`: After CopyKVCache/fused split → rotate present_value (new tokens only for share_buffer, all tokens otherwise)
   - `flash_attention.cc`: After prompt flash attention → inverse-rotate output
   - `flash_attention.cc`: After decode VxReduce → inverse-rotate output
 - [x] **0.5** Build successfully with turbo_quant changes
-- [ ] **0.6** Test: Run with `turboQuant=1` in genai_config.json
-  - Verify output matches non-rotated version (rotation + inverse = identity for V path)
-  - Verify no numeric drift across sequence lengths
-- [ ] **0.7** Fix CMake CXX_STANDARD issue for VS 2026 (separate PR)
+- [x] **0.6** OpTest: Standalone C++ test binary exercising GQA with WebGPU EP
+  - `samples/cxx/generate_gqa_model.py`: Generates minimal ONNX model with single GQA op (Phi-4 params)
+  - `samples/cxx/OpTest.cc`: Dual-session test (baseline vs TurboQuant), deterministic seeds, median-of-10 timing
+  - `samples/cxx/CMakeLists.txt`: Standalone CMake build targeting ORT headers + library
+  - Tests: prompt (1/8/64/256/1024 tokens), single-step decode (0/64/256/1024/4000 past), consistency, perf summary
+  - CPU reference FWHT validates GPU shader rotation at every test point
+  - **ALL TESTS PASSED** — V rotation cosine=1.000000, output cosine≥0.999998 at all sizes
+- [x] **0.7** Fix shader compilation error: duplicate `workgroup_idx`/`local_idx` declarations
+  - Root cause: `ShaderHelper` auto-generates `workgroup_idx` and `local_idx` in the main function preamble; our `MainFunctionBody()` redeclared them
+- [x] **0.8** Add shader debug output to `program_manager.cc`
+  - On pipeline creation failure, full WGSL source is dumped to stderr with error message
+- [ ] **0.9** Fix CMake CXX_STANDARD issue for VS 2026 (separate PR)
   - `cmake/CMakeLists.txt`: Changed conditional `set` to unconditional `set(CMAKE_CXX_STANDARD 20)`
   - Root cause: `date` library caches `CMAKE_CXX_STANDARD=17`, blocking ORT's conditional set on rebuilds
+
+---
+
+## Learnings: ORT WebGPU Shader System
+
+### ShaderHelper Auto-Generated Variables
+The `ShaderHelper` class (`core/providers/webgpu/shader_helper.cc`) generates a standard preamble for every shader's `main()` function. **Do NOT redeclare** these in `MainFunctionBody()`:
+- `local_idx` — function parameter from `@builtin(local_invocation_index)`
+- `workgroup_idx` — `let workgroup_idx = workgroup_id.x;` (or multi-dim variant depending on dispatch)
+- `global_idx` — `let global_idx = ...;`
+- `workgroup_id`, `local_id`, `global_id` — function parameters from `@builtin(...)`
+- `sg_id`, `sg_size` — subgroup builtins (when subgroups enabled)
+
+### Shader Assembly Order (7 sections)
+`GenerateSourceCode()` assembles the final WGSL in this order:
+1. **Feature enables** — `enable f16;`, `enable subgroups;` (auto-added based on tensor types and features)
+2. **Constants** — `const workgroup_size_x: u32 = ...;`
+3. **Storage buffers** — `@group(0) @binding(N) var<storage, ...> name: array<...>;`
+4. **Uniforms** — `struct Uniforms { ... }; @group(0) @binding(M) var<uniform> uniforms: Uniforms;`
+5. **Type aliases & helpers** — `alias data_value_t = f16;`, `alias data_element_t = f16;`, accessor functions
+6. **AdditionalImplementation()** — custom code (e.g., `var<workgroup>` declarations). Safe to use type aliases here.
+7. **Main function** — preamble + `MainFunctionBody()` content
+
+### Tensor Binding Model
+- `shader.AddInput("name", ...)` → `var<storage, read>` (read-only)
+- `shader.AddOutput("name", ...)` → `var<storage, read_write>` (read-write)
+- **In-place operations**: Use `AddOutput()` only. Reading and writing through the same `read_write` binding works. Do NOT bind the same buffer as both input and output — WebGPU validation will reject it.
+- `ShaderUsage::UseUniform` — access shape/stride via `uniforms.name_shape[i]`
+- `ShaderUsage::UseValueTypeAlias` → `name_value_t` (may be vec4, packed type, etc.)
+- `ShaderUsage::UseElementTypeAlias` → `name_element_t` (scalar: f16, f32, u32, etc.)
+- `ShaderUsage::UseIndicesTypeAlias` → `name_indices_t` (u32, vec2<u32>, etc.)
+
+### Tensor Access Methods
+Both direct indexing and method-based access work:
+```wgsl
+data[offset]                        // direct read/write by u32 offset
+data.getByOffset(offset)            // method-based read
+data.setByOffset(offset, value)     // method-based write
+data.getByIndices(indices)          // multi-dimensional read
+```
+
+### Uniform Variables
+Defined in the Program class header via `WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(...)`. Names must match exactly between the macro and the values passed to `AddUniformVariables()` (same order). Accessed in WGSL as `uniforms.name`.
+
+### Program Caching
+Programs are cached by a key that includes the program name, cache hints, tensor types/ranks, and uniform variable types. Use `.CacheHint(...)` to differentiate program variants (e.g., different head sizes or modes).
+
+### past_present_share_buffer Behavior
+- **share_buffer=true** (GenAI with static cache): past and present are the same buffer. CopyKVCache writes only new tokens at `past_sequence_length`. TQ rotation targets `[past_seq_len, past_seq_len + kv_seq_len)`.
+- **share_buffer=false** (standalone test): past and present are separate buffers. CopyKVCache copies all past tokens + writes new tokens. TQ rotation targets `[0, total_seq_len)` — rotates everything.
+- **Implication for multi-step decode**: Chaining decode steps only works correctly with share_buffer=true. In non-share-buffer mode, re-feeding TQ's rotated present_value as next past causes double-rotation (Hadamard is self-inverse, so double-rotation = identity = effectively unrotated).
+
+### Flash Attention Path Selection
+Flash attention requires: `context.HasFeature(wgpu::FeatureName::Subgroups)`, `head_size % 4 == 0`, no bias, not packed QKV (packed QKV takes the fused split+RoPE+copy path first, then flash attention). When subgroups are unavailable, falls back to non-flash tiled attention.
+
+---
 
 ### Phase 1: QK Rotation
 - [ ] **1.1** Rotate K in flash_attention.cc (reuse `ApplyTurboQuantRotation` on `present_key`)
@@ -416,29 +546,40 @@ Access pattern in WGSL:
 - [ ] **1.3** Verify: QK^T scores identical with and without rotation (since H is orthogonal)
 - [ ] **1.4** Verify: output differs only by inverse rotation (which we apply)
 
-### Phase 2: Pseudo-Quantization
-- [ ] **2.1** Create quantize shader: rotate → normalize → searchsorted → pack int4 + scale
-  - NEW `turbo_quant_quantize.wgsl.template`
-  - Fuse with rotation for efficiency
-- [ ] **2.2** Modify flash attention loadk/loadv to dequantize
-  - Unpack int4 → lookup centroid → multiply by scale
-  - Template parameter `#param turbo_quant` in each WGSL template
-- [ ] **2.3** Validate against reference PyTorch implementation
-  - Compare attention scores with/without quantization
-  - Measure perplexity impact
+### Phase 2: Pseudo-Quantization (fp16 indices)
+- [ ] **2.1** Create quantize shader: rotate → norm → searchsorted → store fp16 index + norm
+  - Extend `turbo_quant_hadamard.cc` or add new `TurboQuantQuantizeProgram`
+  - Store centroid index 0–15 as fp16 in existing cache layout
+  - Store L2 norm in last element (head_size-1) of each vector
+- [ ] **2.2** Modify flash attention loadk/loadv to dequantize from fp16 indices
+  - `u32(value)` → centroid lookup → multiply by norm
+  - Conditioned on `turbo_quant` parameter in WGSL templates
+- [ ] **2.3** Update OpTest: CPU reference pseudo-quantize, compare with GPU
+  - Implement CPU searchsorted + centroid lookup
+  - Compare present_value indices (GPU) vs CPU reference
+  - Measure output quality degradation from quantization
+- [ ] **2.4** Validate against reference PyTorch `tq_pseudo_quantize()`
+  - Compare attention output quality with/without quantization
 
-### Phase 3: KV Cache Dimension Change + TMAC
-- [ ] **3.1** GenAI: Modify DefaultKeyValueCache allocation
+### Phase 3: Bit-Packing to uint4 + KV Cache Dimension Change
+- [ ] **3.1** Update quantize shader: pack 8 indices into one uint32
+  - Replace fp16 index storage with bitwise packing
+  - Store norm in first uint32 (packed fp16)
+- [ ] **3.2** Update dequantize in loadk/loadv: bitwise extract → centroid lookup
+  - Replace `u32(fp16_value)` with `(packed >> (slot * 4)) & 0xF`
+- [ ] **3.3** GenAI: Modify DefaultKeyValueCache allocation
   - Detect turboQuant from provider options
-  - Change shape_[3] and type_ for compressed storage
+  - Change shape_[3] to compressed_kv_last_dim (head_size/8 + 1) and type_ to uint32
   - Add uint32_t template specialization for RewindPastTensorsTo
-- [ ] **3.2** ORT GQA: Adjust present_key/present_value output shapes
+- [ ] **3.4** ORT GQA: Adjust present_key/present_value output shapes
   - present_dims[3] = compressed_kv_last_dim
   - Skip head_size validation for turbo_quant
-- [ ] **3.3** Update quantize/dequantize shaders for uint32 packed format
-- [ ] **3.4** (Optional) Implement TMAC-style LUT for QK dot product
+- [ ] **3.5** End-to-end validation: GenAI + ORT with compressed KV cache
+  - Memory savings measurement (expect ~3.76×)
+  - Quality comparison (perplexity / generation quality)
+
+### Phase 4: TMAC-style Lookup Table Optimization (Optional)
+- [ ] **4.1** Implement TMAC-style LUT for QK dot product
   - Precompute q_i × centroid[c] LUT per Q vector
   - Replace dequantize+dot with LUT lookups
-- [ ] **3.5** End-to-end validation: GenAI + ORT with compressed KV cache
-  - Memory savings measurement
-  - Quality comparison (perplexity / generation quality)
+- [ ] **4.2** Benchmark LUT approach vs naive dequantize+dot

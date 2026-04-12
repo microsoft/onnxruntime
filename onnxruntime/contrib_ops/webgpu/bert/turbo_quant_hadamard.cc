@@ -25,9 +25,7 @@ Status TurboQuantRotateProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Declare workgroup shared memory at module scope
   shader.AdditionalImplementation() << "var<workgroup> tq_shared_data : array<data_element_t, " << head_size_ << ">;\n";
 
-  shader.MainFunctionBody() << "  let workgroup_idx = workgroup_id.x;\n"
-                            << "  let local_idx = local_id.x;\n"
-                            << "  let num_heads = " << num_heads_ << "u;\n"
+  shader.MainFunctionBody() << "  let num_heads = " << num_heads_ << "u;\n"
                             << "  let head_size = " << head_size_ << "u;\n"
                             << "  let log2_head_size = " << log2_head_size << "u;\n"
                             << "\n"

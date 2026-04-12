@@ -32,5 +32,11 @@
         "**/cmake/external/**": true,
         "**/node_modules/**": true,
         "**/.git/**": true
+    },
+
+    // CMake generator for ORT builds. Change to "Visual Studio 18 2026" if using VS 2026.
+    "ort.cmakeGenerator": "Visual Studio 17 2022",
+    "chat.tools.terminal.autoApprove": {
+        ".\\build.bat": true
     }
 }
