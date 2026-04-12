@@ -357,9 +357,12 @@ Status TensorProtoWithExternalDataToTensorProto(
       ++data;
     }
   } else {
-    // Load the external data into memory
+    // Load the external data into memory.
+    // model_path is the full model file path (e.g., "/path/to/model.onnx").
+    // ReadExternalDataForTensor expects the parent directory, matching the
+    // pattern used by UnpackInitializerData() at line ~2572.
     std::vector<uint8_t> unpacked_data;
-    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, model_path, unpacked_data));
+    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, model_path.parent_path(), unpacked_data));
 
     // Set the raw data in the new tensor
     onnxruntime::utils::SetRawDataInTensorProto(result, unpacked_data.data(), unpacked_data.size());
