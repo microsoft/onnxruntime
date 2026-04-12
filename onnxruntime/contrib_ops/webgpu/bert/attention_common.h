@@ -114,6 +114,7 @@ struct WebgpuAttentionParameters {
   int* zero_ptr_ = nullptr;
   // Computed values
   int n_reps = 1;
+  bool turbo_quant_ = false;
   AttentionMaskType mask_type_ = MASK_NONE;
   AttentionQkvFormat qkv_format_ = UNKNOWN;
 };

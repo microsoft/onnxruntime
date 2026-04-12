@@ -44,6 +44,7 @@ struct WebGpuExecutionProviderConfig {
   bool enable_pix_capture{false};                // PIX capture is disabled by default
   bool enable_int64{false};                      // int64 ops are not enabled by default
   uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
+  bool turbo_quant{false};                        // enable TurboQuant KV cache compression
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -104,6 +105,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
+  bool TurboQuant() const { return turbo_quant_; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
   inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
@@ -126,6 +128,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_graph_capture_ = false;
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
+  bool turbo_quant_ = false;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // Required regular runs before graph capture for any necessary allocations.

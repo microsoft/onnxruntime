@@ -13,6 +13,7 @@ constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLa
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
+constexpr const char* kTurboQuant = "ep.webgpuexecutionprovider.turboQuant";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 

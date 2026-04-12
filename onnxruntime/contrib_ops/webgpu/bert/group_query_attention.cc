@@ -226,6 +226,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       static_cast<int>(Info().GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
 
   WebgpuAttentionParameters parameters(params);
+  parameters.turbo_quant_ = context.TurboQuant();
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
   output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);

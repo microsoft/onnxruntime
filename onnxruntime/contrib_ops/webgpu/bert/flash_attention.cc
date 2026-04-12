@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
+#include "contrib_ops/webgpu/bert/turbo_quant_hadamard.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -475,6 +476,28 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
+  // TurboQuant: Apply Hadamard rotation to present_value (V rotation).
+  // The rotation is applied to the newly written tokens in the KV cache.
+  // For Phase 0, we rotate V only. Q and K rotation will be added in Phase 1.
+  if (parameters.turbo_quant_) {
+    // For past_present_share_buffer, new tokens start at past_sequence_length.
+    // For dynamic cache, CopyKVCache copies all tokens so start at 0.
+    const uint32_t start_token = parameters.past_present_share_buffer_
+                                     ? static_cast<uint32_t>(parameters.past_sequence_length_)
+                                     : 0u;
+    const uint32_t num_new_tokens = parameters.past_present_share_buffer_
+                                        ? static_cast<uint32_t>(parameters.kv_sequence_length_)
+                                        : static_cast<uint32_t>(parameters.total_sequence_length_);
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantRotation(context, present_value,
+                                                static_cast<uint32_t>(parameters.head_size_),
+                                                static_cast<uint32_t>(parameters.num_heads_),
+                                                static_cast<uint32_t>(parameters.batch_size_),
+                                                num_new_tokens,
+                                                present_sequence_length,
+                                                start_token,
+                                                static_cast<uint32_t>(parameters.n_reps)));
+  }
+
   if (parameters.sequence_length_ > 1) {
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
@@ -532,7 +555,20 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                               {attn_bias_dim0},
                               {attn_bias_dim1}});
 
-    return context.RunProgram(program);
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+    // TurboQuant: Apply inverse Hadamard rotation to attention output.
+    // Output is in BSNH format: [batch, sequence_length, num_heads, head_size]
+    if (parameters.turbo_quant_) {
+      ORT_RETURN_IF_ERROR(ApplyTurboQuantInverseRotation(context, output,
+                                                         static_cast<uint32_t>(parameters.head_size_),
+                                                         static_cast<uint32_t>(parameters.num_heads_),
+                                                         static_cast<uint32_t>(parameters.batch_size_),
+                                                         static_cast<uint32_t>(parameters.sequence_length_),
+                                                         static_cast<uint32_t>(parameters.n_reps)));
+    }
+
+    return Status::OK();
   }
 
   // For decode path (sequence_length == 1)
@@ -566,6 +602,17 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeVxReduce(context, &out_split_vx, output, seqlen_k, parameters,
                                                           num_total_seq_length_tile,
                                                           num_present_sequence_length_tile, tile_size, use_indirect_dispatch));
+
+  // TurboQuant: Apply inverse Hadamard rotation to decode output.
+  // Output is in BSNH format: [batch, sequence_length(=1), num_heads, head_size]
+  if (parameters.turbo_quant_) {
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantInverseRotation(context, output,
+                                                       static_cast<uint32_t>(parameters.head_size_),
+                                                       static_cast<uint32_t>(parameters.num_heads_),
+                                                       static_cast<uint32_t>(parameters.batch_size_),
+                                                       static_cast<uint32_t>(parameters.sequence_length_),
+                                                       static_cast<uint32_t>(parameters.n_reps)));
+  }
 
   return Status::OK();
 }
