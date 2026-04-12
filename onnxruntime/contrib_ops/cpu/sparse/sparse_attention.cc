@@ -86,8 +86,13 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(q_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
+  constexpr bool past_present_share_buffer = true;  // Only supports share buffer for past and present for now.
+  parameters.past_present_share_buffer = past_present_share_buffer;
+
   int head_size = parameters.head_size;
-  const int cache_length = parameters.max_cache_sequence_length;
+  const int cache_length = past_present_share_buffer
+                               ? parameters.max_cache_sequence_length
+                               : parameters.total_sequence_length;
   std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size),
                                         static_cast<int64_t>(kv_num_heads_),
                                         static_cast<int64_t>(cache_length),
@@ -98,6 +103,11 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
                                         static_cast<int64_t>(head_size)});
   Tensor* present_key = context->Output(1, present_k_shape);
   Tensor* present_value = context->Output(2, present_v_shape);
+
+  // Check past and present share buffer.
+  if (past_present_share_buffer) {
+    ORT_ENFORCE(past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw());
+  }
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));

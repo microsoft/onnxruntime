@@ -79,8 +79,8 @@ class SparseAttentionBase {
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
-    const bool past_present_share_buffer =
-        past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
+    bool past_present_share_buffer = parameters.past_present_share_buffer;
+    assert(past_present_share_buffer);
 
     auto* tp = context->GetOperatorThreadPool();
 
@@ -170,7 +170,7 @@ class SparseAttentionBase {
     unit_cost.bytes_loaded += static_cast<double>(probs_matrix_bytes);
     unit_cost.bytes_stored += static_cast<double>(probs_matrix_bytes);
 
-    // Cost to concatenate the current key chunk into the present cache.
+    // Cost to concatenate current key to cache (assume past and present share buffer).
     double bytes_to_copy_key = static_cast<double>(sizeof(T) * sequence_length * head_size);
     unit_cost.bytes_loaded += bytes_to_copy_key;
     unit_cost.bytes_stored += bytes_to_copy_key;
