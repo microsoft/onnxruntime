@@ -476,9 +476,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
-  // TurboQuant: Apply Hadamard rotation to present_value (V rotation).
-  // The rotation is applied to the newly written tokens in the KV cache.
-  // For Phase 0, we rotate V only. Q and K rotation will be added in Phase 1.
+  // TurboQuant: Apply Hadamard rotation to K, V, and Q.
+  // K and V rotation is applied to newly written tokens in the KV cache.
+  // Q rotation is applied before computing attention scores.
+  // Key property: Q'·K'ᵀ = (HQ)·(HK)ᵀ = Q·Hᵀ·H·Kᵀ = Q·Kᵀ (QK scores invariant).
+  // The inverse rotation on the output handles V rotation: inv(H) · softmax(QK') · V'.
   if (parameters.turbo_quant_) {
     // For past_present_share_buffer, new tokens start at past_sequence_length.
     // For dynamic cache, CopyKVCache copies all tokens so start at 0.
@@ -488,6 +490,18 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     const uint32_t num_new_tokens = parameters.past_present_share_buffer_
                                         ? static_cast<uint32_t>(parameters.kv_sequence_length_)
                                         : static_cast<uint32_t>(parameters.total_sequence_length_);
+
+    // Rotate K (present_key) — newly written tokens only
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantRotation(context, present_key,
+                                                static_cast<uint32_t>(parameters.head_size_),
+                                                static_cast<uint32_t>(parameters.num_heads_),
+                                                static_cast<uint32_t>(parameters.batch_size_),
+                                                num_new_tokens,
+                                                present_sequence_length,
+                                                start_token,
+                                                static_cast<uint32_t>(parameters.n_reps)));
+
+    // Rotate V (present_value) — newly written tokens only
     ORT_RETURN_IF_ERROR(ApplyTurboQuantRotation(context, present_value,
                                                 static_cast<uint32_t>(parameters.head_size_),
                                                 static_cast<uint32_t>(parameters.num_heads_),
@@ -496,6 +510,17 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                 present_sequence_length,
                                                 start_token,
                                                 static_cast<uint32_t>(parameters.n_reps)));
+
+    // Rotate Q — BSNH format, contiguous head vectors, same FWHT transform.
+    // In the do_rotary path, Q points to the mutable query_output tensor.
+    // ApplyTurboQuantInverseRotation treats the tensor as a flat array of head_size vectors.
+    ORT_ENFORCE(do_rotary, "TurboQuant requires packed QKV with rotary embedding (do_rotary path).");
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantInverseRotation(context, &query_output,
+                                                       static_cast<uint32_t>(parameters.head_size_),
+                                                       static_cast<uint32_t>(parameters.num_heads_),
+                                                       static_cast<uint32_t>(parameters.batch_size_),
+                                                       static_cast<uint32_t>(parameters.sequence_length_),
+                                                       static_cast<uint32_t>(parameters.n_reps)));
   }
 
   if (parameters.sequence_length_ > 1) {

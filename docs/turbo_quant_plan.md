@@ -404,9 +404,9 @@ Access pattern in WGSL:
 
 ---
 
-## Building & Running OpTest
+## Building & Running GqaTest
 
-OpTest is a standalone C++ test binary that exercises GQA with WebGPU EP (flash attention path), comparing baseline vs TurboQuant.
+GqaTest is a standalone C++ test binary that exercises GQA with WebGPU EP (flash attention path), comparing baseline vs TurboQuant.
 
 ### Prerequisites
 - ORT built with WebGPU (`build.bat --use_webgpu --build_shared_lib ...`, build dir `build/WGPU`)
@@ -418,10 +418,10 @@ cd c:\onnxruntime\samples\cxx
 python generate_gqa_model.py   # produces gqa_model.onnx
 ```
 
-### Configure & Build OpTest
+### Configure & Build GqaTest
 ```powershell
 # One-time configure (adjust generator as needed):
-$buildDir = "c:\onnxruntime\build\OpTest"
+$buildDir = "c:\onnxruntime\samples\cxx\build"
 mkdir $buildDir -Force
 cd $buildDir
 cmake c:\onnxruntime\samples\cxx `
@@ -430,18 +430,15 @@ cmake c:\onnxruntime\samples\cxx `
   -G "Visual Studio 18 2026"
 
 # Build:
-cmake --build . --config RelWithDebInfo --target OpTest
+cmake --build . --config RelWithDebInfo --target GqaTest
 ```
 
-### Copy Runtime Dependencies & Run
+### Run
 ```powershell
-Copy-Item c:\onnxruntime\build\WGPU\RelWithDebInfo\RelWithDebInfo\*.dll `
-  c:\onnxruntime\build\OpTest\RelWithDebInfo\ -Force
-Copy-Item c:\onnxruntime\samples\cxx\gqa_model.onnx `
-  c:\onnxruntime\build\OpTest\RelWithDebInfo\ -Force
-
-cd c:\onnxruntime\build\OpTest\RelWithDebInfo
-.\OpTest.exe gqa_model.onnx
+# DLLs and model are copied automatically by CMake post-build step.
+# If ORT_LIBRARY_DIR has no DLLs (e.g. static build), copy manually:
+cd c:\onnxruntime\samples\cxx\build\RelWithDebInfo
+.\GqaTest.exe
 ```
 
 The test creates two sessions (baseline and TurboQuant), runs identical workloads with deterministic seeds, and compares outputs (max abs diff, RMSE, cosine similarity) plus latency.
@@ -469,9 +466,9 @@ The test creates two sessions (baseline and TurboQuant), runs identical workload
   - `flash_attention.cc`: After prompt flash attention → inverse-rotate output
   - `flash_attention.cc`: After decode VxReduce → inverse-rotate output
 - [x] **0.5** Build successfully with turbo_quant changes
-- [x] **0.6** OpTest: Standalone C++ test binary exercising GQA with WebGPU EP
+- [x] **0.6** GqaTest: Standalone C++ test binary exercising GQA with WebGPU EP
   - `samples/cxx/generate_gqa_model.py`: Generates minimal ONNX model with single GQA op (Phi-4 params)
-  - `samples/cxx/OpTest.cc`: Dual-session test (baseline vs TurboQuant), deterministic seeds, median-of-10 timing
+  - `samples/cxx/GqaTest.cc`: Dual-session test (baseline vs TurboQuant), deterministic seeds, median-of-10 timing
   - `samples/cxx/CMakeLists.txt`: Standalone CMake build targeting ORT headers + library
   - Tests: prompt (1/8/64/256/1024 tokens), single-step decode (0/64/256/1024/4000 past), consistency, perf summary
   - CPU reference FWHT validates GPU shader rotation at every test point
@@ -554,7 +551,7 @@ Flash attention requires: `context.HasFeature(wgpu::FeatureName::Subgroups)`, `h
 - [ ] **2.2** Modify flash attention loadk/loadv to dequantize from fp16 indices
   - `u32(value)` → centroid lookup → multiply by norm
   - Conditioned on `turbo_quant` parameter in WGSL templates
-- [ ] **2.3** Update OpTest: CPU reference pseudo-quantize, compare with GPU
+- [ ] **2.3** Update GqaTest: CPU reference pseudo-quantize, compare with GPU
   - Implement CPU searchsorted + centroid lookup
   - Compare present_value indices (GPU) vs CPU reference
   - Measure output quality degradation from quantization
