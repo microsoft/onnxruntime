@@ -887,6 +887,9 @@ TEST(RNNTest, RNN_with_invalid_activation_load_failure) {
 
 // Test that seq_length == 0 produces zero-filled Y and Y_h without crashing.
 TEST(RNNTest, RNN_seq_length_zero) {
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+
   OpTester test("RNN");
   int64_t num_directions = 1, input_size = 2, hidden_size = 3, batch_size = 2, seq_length = 0;
 
@@ -915,14 +918,14 @@ TEST(RNNTest, RNN_seq_length_zero) {
   std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
   std::vector<float> Y_h_data(num_directions * batch_size * hidden_size, 0.f);
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
-            kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 // Test that per-batch sequence_lens containing 0 produces zero-filled Y_h for those batches.
 TEST(RNNTest, RNN_forward_sequence_lens_with_zero) {
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+
   OpTester test("RNN");
   int64_t num_directions = 1, input_size = 2, hidden_size = 3, batch_size = 2, seq_length = 2;
 
@@ -980,10 +983,7 @@ TEST(RNNTest, RNN_forward_sequence_lens_with_zero) {
   std::vector<float> Y_h_data{y_h_batch0_f0, y_h_batch0_f1, y_h_batch0_f2,
                               0.f, 0.f, 0.f};
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
-            kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 }  // namespace test
