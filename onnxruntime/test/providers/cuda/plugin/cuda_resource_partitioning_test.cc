@@ -93,6 +93,75 @@ Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
   return Ort::ConstEpDevice{nullptr};
 }
 
+// Build a serialized ONNX model with a chain of Add nodes.
+// Each node adds its own initializer (of `weight_elements` floats) to the
+// previous node's output, producing a linear graph:
+//   input -> Add(w0) -> Add(w1) -> ... -> Add(wN-1) -> output
+// The initializer size directly controls what the ad-hoc resource accountant
+// computes per node, giving us precise budget targeting.
+std::string BuildAddChainModel(size_t num_nodes, int64_t weight_elements) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("add_chain");
+
+  // Shared shape for all tensors.
+  auto set_type_shape = [weight_elements](ONNX_NAMESPACE::TypeProto* tp) {
+    auto* tensor_type = tp->mutable_tensor_type();
+    tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(weight_elements);
+  };
+
+  // Graph input.
+  auto* graph_input = graph->add_input();
+  graph_input->set_name("input");
+  set_type_shape(graph_input->mutable_type());
+
+  std::string prev_output = "input";
+  for (size_t i = 0; i < num_nodes; ++i) {
+    std::string weight_name = "w_" + std::to_string(i);
+    std::string output_name = (i + 1 < num_nodes)
+                                  ? "t_" + std::to_string(i)
+                                  : "output";
+
+    // Initializer with known byte size = weight_elements * sizeof(float).
+    auto* init = graph->add_initializer();
+    init->set_name(weight_name);
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    init->add_dims(weight_elements);
+    // Use raw_data for compactness — zeros are fine.
+    init->set_raw_data(std::string(weight_elements * sizeof(float), '\0'));
+
+    // Weight input value_info (needed for valid graph).
+    auto* w_input = graph->add_input();
+    w_input->set_name(weight_name);
+    set_type_shape(w_input->mutable_type());
+
+    // Add node.
+    auto* node = graph->add_node();
+    node->set_op_type("Add");
+    node->set_name("add_" + std::to_string(i));
+    node->add_input(prev_output);
+    node->add_input(weight_name);
+    node->add_output(output_name);
+
+    prev_output = output_name;
+  }
+
+  // Graph output.
+  auto* graph_output = graph->add_output();
+  graph_output->set_name("output");
+  set_type_shape(graph_output->mutable_type());
+
+  std::string serialized;
+  model.SerializeToString(&serialized);
+  return serialized;
+}
+
 // Get the internal OrtEnv* from the C++ Ort::Env wrapper.
 // Ort::Env inherits Base<OrtEnv> which has operator OrtEnv*().
 OrtEnv& GetOrtEnv() {
@@ -172,6 +241,36 @@ class CudaPluginPartitioningTest : public ::testing::Test {
     verifier(session.GetGraph());
   }
 
+  // Overload that loads a model from serialized bytes (e.g., from BuildAddChainModel).
+  void LoadAndVerifyPartitioning(const std::string& model_bytes,
+                                 size_t budget_kb,
+                                 const std::function<void(const Graph&)>& verifier) {
+    OrtSessionOptions ort_options;
+
+    const OrtEpDevice* device_ptr = static_cast<const OrtEpDevice*>(cuda_device_);
+    auto ep_devices_span = gsl::make_span(&device_ptr, 1);
+
+    std::unique_ptr<IExecutionProviderFactory> factory;
+    ASSERT_STATUS_OK(CreateIExecutionProviderFactoryForEpDevices(
+        GetOrtEnv().GetEnvironment(), ep_devices_span, factory));
+
+    ort_options.provider_factories.push_back(std::move(factory));
+
+    if (budget_kb > 0) {
+      std::string config_value = std::to_string(budget_kb) + ",";
+      ASSERT_STATUS_OK(ort_options.value.config_options.AddConfigEntry(
+          kOrtSessionOptionsResourceCudaPartitioningSettings, config_value.c_str()));
+    }
+
+    InferenceSessionWrapper session(ort_options.value, GetOrtEnv().GetEnvironment());
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+    OrtStatus* status = InitializeSession(&ort_options, session);
+    ASSERT_STATUS_OK(ToStatusAndRelease(status));
+
+    verifier(session.GetGraph());
+  }
+
   std::unique_ptr<ScopedCudaPluginRegistration> registration_;
   Ort::ConstEpDevice cuda_device_{nullptr};
 };
@@ -206,29 +305,42 @@ TEST_F(CudaPluginPartitioningTest, LargeBudget_AllNodesCudaPlugin) {
   });
 }
 
-// With a tiny budget (1 KB), nodes should be offloaded to CPU because
-// the resource accountant will run out of budget.
+// With a small budget, the resource accountant should assign fewer nodes
+// to the plugin EP than the no-budget baseline.
 TEST_F(CudaPluginPartitioningTest, TinyBudget_NodesOffloadedToCpu) {
-  // Use a model with multiple nodes so we can see some go to CPU.
-  constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+  // Build a chain of 6 Add nodes, each with a 256-element float initializer
+  // (1 KB per weight). The ad-hoc accountant adds weight + output sizes with
+  // a 1.5x multiplier, so each node costs roughly 1.5 * (1 KB + 1 KB) = 3 KB.
+  // A 10 KB budget should accept ~3 nodes before halting.
+  const std::string model = BuildAddChainModel(/*num_nodes=*/6, /*weight_elements=*/256);
 
-  // 1 KB budget — ad-hoc accountant will compute non-zero cost for any
-  // node with initializers or known output shapes, so nodes must be offloaded.
-  LoadAndVerifyPartitioning(model_path, /*budget_kb=*/1, [](const Graph& graph) {
-    bool has_cpu_node = false;
-    bool has_plugin_node = false;
+  // Baseline: count plugin nodes with no budget.
+  size_t baseline_plugin_count = 0;
+  LoadAndVerifyPartitioning(model, /*budget_kb=*/0, [&](const Graph& graph) {
     for (const auto& node : graph.Nodes()) {
-      if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
-        has_cpu_node = true;
-      } else if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
-        has_plugin_node = true;
+      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+        ++baseline_plugin_count;
       }
     }
-    EXPECT_TRUE(has_cpu_node)
-        << "With a 1 KB budget, at least some nodes should be offloaded to CPU";
-    EXPECT_TRUE(has_plugin_node)
-        << "Budget enforcement should be partial, not all-or-nothing CPU fallback";
   });
+  ASSERT_GT(baseline_plugin_count, size_t{1})
+      << "Baseline must have multiple plugin nodes for the test to be meaningful";
+
+  // Now run with a 10 KB budget — should accept some but not all nodes.
+  size_t constrained_plugin_count = 0;
+  LoadAndVerifyPartitioning(model, /*budget_kb=*/10, [&](const Graph& graph) {
+    for (const auto& node : graph.Nodes()) {
+      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+        ++constrained_plugin_count;
+      }
+    }
+  });
+
+  EXPECT_GT(constrained_plugin_count, size_t{0})
+      << "Budget should be large enough to accept at least one node";
+  EXPECT_LT(constrained_plugin_count, baseline_plugin_count)
+      << "A 10 KB budget should reduce plugin EP node count from the no-budget baseline ("
+      << baseline_plugin_count << " nodes)";
 }
 
 // ---------------------------------------------------------------------------

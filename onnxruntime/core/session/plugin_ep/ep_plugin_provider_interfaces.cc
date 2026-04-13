@@ -15,7 +15,6 @@
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/resource_accountant.h"
 #include "core/common/inlined_containers.h"
-#include "core/common/safeint.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -275,13 +274,10 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   // The host computes costs and enforces the budget uniformly for all node grouping kinds.
   // Plugin EPs only propose supported nodes; the host decides which to accept.
   const bool has_budget = resource_accountant != nullptr && resource_accountant->GetThreshold().has_value();
-  size_t budget_bytes = std::numeric_limits<size_t>::max();
-  size_t consumed_bytes = 0;
-
-  if (has_budget) {
-    budget_bytes = std::get<size_t>(*resource_accountant->GetThreshold());
-    consumed_bytes = std::get<size_t>(resource_accountant->GetConsumedAmount());
-  }
+  ResourceCount consumed = resource_accountant != nullptr
+                               ? resource_accountant->GetConsumedAmount()
+                               : ResourceCount{};
+  ResourceCount budget = has_budget ? *resource_accountant->GetThreshold() : ResourceCount{};
 
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
@@ -319,23 +315,22 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // Host-side budget enforcement for single nodes.
       if (resource_accountant != nullptr && !previously_assigned) {
         ResourceCount cost = resource_accountant->ComputeResourceCount(internal_node);
-        size_t cost_bytes = std::get<size_t>(cost);
-        size_t would_be_consumed = SafeInt<size_t>(consumed_bytes) + cost_bytes;
+        ResourceCount would_be_consumed = AddResourceCounts(consumed, cost);
 
         LOGS(logger, VERBOSE) << Type() << " node: " << internal_node.Name()
                               << " (" << internal_node.OpType() << ")"
-                              << " cost: " << cost_bytes
-                              << " would_be_consumed: " << would_be_consumed
-                              << " budget: " << budget_bytes;
+                              << " cost: " << FormatResourceCount(cost)
+                              << " would_be_consumed: " << FormatResourceCount(would_be_consumed)
+                              << " budget: " << FormatResourceCount(budget);
 
-        if (has_budget && would_be_consumed > budget_bytes) {
+        if (has_budget && ResourceCountExceeds(would_be_consumed, budget)) {
           LOGS(logger, WARNING) << Type() << " halting assignment due to budget at node: "
                                 << internal_node.Name();
           resource_accountant->SetStopAssignment();
           break;  // stop processing further groupings
         }
 
-        consumed_bytes = would_be_consumed;
+        consumed = would_be_consumed;
         indexed_sub_graph->SetAccountant(resource_accountant);
         indexed_sub_graph->AppendNodeCost(cost);
       }
@@ -395,7 +390,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         auto* fused_sub_graph = capabilities[0]->sub_graph.get();
         fused_sub_graph->SetAccountant(resource_accountant);
 
-        size_t group_cost_bytes = 0;
+        ResourceCount group_cost{};
         InlinedVector<ResourceCount> node_costs;
         node_costs.reserve(fused_sub_graph->nodes.size());
 
@@ -405,26 +400,26 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
               node != nullptr && !node->GetExecutionProviderType().empty();
           ResourceCount cost = (node != nullptr && !node_already_assigned)
                                    ? resource_accountant->ComputeResourceCount(*node)
-                                   : ResourceCount{size_t{0}};
-          group_cost_bytes = SafeInt<size_t>(group_cost_bytes) + std::get<size_t>(cost);
+                                   : ResourceCount{};
+          group_cost = AddResourceCounts(group_cost, cost);
           node_costs.push_back(cost);
         }
 
+        ResourceCount would_be_consumed = AddResourceCounts(consumed, group_cost);
+
         if (has_budget) {
-          size_t would_be_consumed = SafeInt<size_t>(consumed_bytes) + group_cost_bytes;
+          LOGS(logger, VERBOSE) << Type() << " fused group cost: " << FormatResourceCount(group_cost)
+                                << " would_be_consumed: " << FormatResourceCount(would_be_consumed)
+                                << " budget: " << FormatResourceCount(budget);
 
-          LOGS(logger, VERBOSE) << Type() << " fused group cost: " << group_cost_bytes
-                                << " would_be_consumed: " << would_be_consumed
-                                << " budget: " << budget_bytes;
-
-          if (would_be_consumed > budget_bytes) {
+          if (ResourceCountExceeds(would_be_consumed, budget)) {
             LOGS(logger, WARNING) << Type() << " halting assignment: fused group exceeds budget.";
             resource_accountant->SetStopAssignment();
             break;  // stop processing further groupings
           }
         }
 
-        consumed_bytes = SafeInt<size_t>(consumed_bytes) + group_cost_bytes;
+        consumed = would_be_consumed;
 
         for (const auto& cost : node_costs) {
           fused_sub_graph->AppendNodeCost(cost);
