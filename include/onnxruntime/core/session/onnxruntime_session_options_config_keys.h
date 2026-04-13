@@ -157,8 +157,12 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // Configure the duration in microseconds that threads spin waiting for work before blocking.
 // Only takes effect when spinning is enabled (allow_spinning = true). When spinning is disabled,
 // the spin duration is forced to 0 regardless of this setting.
-// Setting this to "0" with spinning enabled effectively disables spinning (equivalent to allow_spinning = false).
-// Default is kDefaultSpinDurationUs (defined in core/platform/threadpool.h).
+// By default (when this option is not set), the thread pool uses an iteration-count-based spin loop
+// whose wall-clock duration varies by CPU architecture and pause instruction latency. This provides
+// the best throughput but may result in high CPU utilization.
+// Setting a positive value switches to time-based spinning with a deterministic duration, which is
+// recommended for power-sensitive or client/on-device workloads. Common values: 500-2000 (0.5-2ms).
+// Setting to "0" with spinning enabled effectively disables spinning (equivalent to allow_spinning = false).
 static const char* const kOrtSessionOptionsConfigIntraOpSpinDurationUs = "session.intra_op.spin_duration_us";
 static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "session.inter_op.spin_duration_us";
 

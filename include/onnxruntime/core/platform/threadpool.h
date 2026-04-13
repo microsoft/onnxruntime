@@ -129,8 +129,10 @@ struct TensorOpCost {
 
 namespace concurrency {
 
-// Default spin duration in microseconds used when spinning is enabled.
-static constexpr int kDefaultSpinDurationUs = 1000;  // 1ms
+// Sentinel value for spin_duration_us indicating the default iteration-count-based
+// spinning behavior. This preserves the original spin loop performance characteristics
+// where the spin duration varies by architecture depending on pause instruction latency.
+static constexpr int kSpinDurationDefault = -1;
 
 template <typename Environment, typename CallbackPolicy>
 class ThreadPoolTempl;
@@ -148,16 +150,19 @@ class ThreadPool {
 #endif
   // Constructs a pool for running with with "degree_of_parallelism" threads with
   // specified "name". env->StartThread() is used to create individual threads
-  // with the given ThreadOptions. "spin_duration_us" controls how long idle
-  // threads will spin-wait for work (in microseconds) before blocking.
-  // Set to 0 to disable spinning entirely.
+  // with the given ThreadOptions. "spin_duration_us" controls idle thread spin behavior:
+  //   -1 (kSpinDurationDefault) = use default iteration-count-based spinning (best throughput,
+  //       but spin duration varies by CPU architecture and pause instruction latency)
+  //    0 = disable spinning entirely (threads block immediately when idle)
+  //   >0 = use time-based spinning for the specified duration in microseconds
+  //        (deterministic CPU usage, recommended for power-sensitive workloads)
   //
   // REQUIRES: degree_of_parallelism > 0
   ThreadPool(Env* env,
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,
              int degree_of_parallelism,
-             int spin_duration_us = kDefaultSpinDurationUs,
+             int spin_duration_us = kSpinDurationDefault,
              bool force_hybrid = false);
 
   // Waits until all scheduled work has finished and then destroy the

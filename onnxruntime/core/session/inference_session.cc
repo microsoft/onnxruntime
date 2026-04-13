@@ -104,15 +104,16 @@ namespace onnxruntime {
 namespace {
 
 // Parse a spin duration config value (in microseconds) from a string.
-// Returns kDefaultSpinDurationUs on parse failure or negative values, and logs a warning.
+// Returns kSpinDurationDefault (-1) if the config is not explicitly set.
+// Returns the parsed value (>= 0) if valid. Logs a warning and returns
+// kSpinDurationDefault on parse failure.
 int ParseSpinDurationUs(std::string_view str, const char* config_key,
                         const logging::Logger& logger) {
-  int spin_us = concurrency::kDefaultSpinDurationUs;
-  if (!TryParseStringWithClassicLocale(str, spin_us) || spin_us < 0) {
+  int spin_us = concurrency::kSpinDurationDefault;
+  if (!TryParseStringWithClassicLocale(str, spin_us) || spin_us < -1) {
     LOGS(logger, WARNING) << "Invalid value for " << config_key
-                          << ": \"" << str << "\", using default "
-                          << concurrency::kDefaultSpinDurationUs << "us";
-    return concurrency::kDefaultSpinDurationUs;
+                          << ": \"" << str << "\", using default iteration-count spinning";
+    return concurrency::kSpinDurationDefault;
   }
   return spin_us;
 }
@@ -476,7 +477,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         // we set affinity of each thread to each processor.
         to.allow_spinning = allow_intra_op_spinning;
         to.spin_duration_us = ParseSpinDurationUs(
-            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinDurationUs, "1000"),
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinDurationUs, "-1"),
             kOrtSessionOptionsConfigIntraOpSpinDurationUs, *session_logger_);
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
@@ -526,7 +527,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.set_denormal_as_zero = set_denormal_as_zero;
         to.allow_spinning = allow_inter_op_spinning;
         to.spin_duration_us = ParseSpinDurationUs(
-            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinDurationUs, "1000"),
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinDurationUs, "-1"),
             kOrtSessionOptionsConfigInterOpSpinDurationUs, *session_logger_);
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
 

@@ -12,7 +12,7 @@ using namespace onnxruntime::concurrency;
 
 // Thread pool configuration to test.
 constexpr int NUM_THREADS = 8;
-constexpr int SPIN_DURATION_US = kDefaultSpinDurationUs;
+constexpr int SPIN_DURATION_US = kSpinDurationDefault;
 
 static void BM_CreateThreadPool(benchmark::State& state) {
   for (auto _ : state) {

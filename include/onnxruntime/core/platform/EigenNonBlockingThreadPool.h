@@ -870,8 +870,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
-        spin_duration_(std::chrono::microseconds(spin_duration_us)),
-        time_check_mask_(ComputeTimeCheckMask(spin_duration_us)),
+        spin_duration_us_(spin_duration_us),
+        time_check_mask_(spin_duration_us > 0 ? ComputeTimeCheckMask(spin_duration_us) : 0),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
         callback_policy_(thread_options),
         worker_data_(num_threads),
@@ -1620,8 +1620,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   Environment& env_;
   const unsigned num_threads_;
-  const std::chrono::microseconds spin_duration_;
-  const unsigned int time_check_mask_;  // bitmask for time check interval (power of 2 minus 1)
+  const int spin_duration_us_;          // -1 = default iteration-count, 0 = no spin, >0 = time-based (us)
+  const unsigned int time_check_mask_;  // bitmask for time check interval (only used when spin_duration_us_ > 0)
   const bool set_denormal_as_zero_;
   CallbackPolicy callback_policy_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
@@ -1663,25 +1663,40 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    // Time-based spin: spin for a configurable duration before blocking.
-    // This avoids burning CPU for hundreds of milliseconds with iteration-count-based
-    // spinning, where the actual wall-clock duration depends heavily on
-    // the pause instruction used (_mm_pause ~10-40 cycles vs _tpause ~1000 cycles).
-    const auto spin_duration = spin_duration_;
-    // Bitmask for steal interval (power of 2). Use bitwise AND instead of modulo.
-    constexpr unsigned int kStealMask = 128 - 1;  // steal every 128 iterations
-    // Bitmask for time check interval, computed from spin duration at construction.
-    const unsigned int time_check_mask = time_check_mask_;
-
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
     while (!should_exit) {
       Work w = q.PopFront();
       if (!w) {
-        // Spin waiting for work with a time-based exit condition.
-        if (spin_duration_.count() > 0) {
-          const auto spin_deadline = std::chrono::steady_clock::now() + spin_duration;
+        if (spin_duration_us_ < 0) {
+          // Default path: iteration-count-based spinning (original behavior).
+          // The wall-clock duration of this loop depends on the CPU's pause instruction
+          // latency, but it preserves the original throughput characteristics.
+          constexpr int log2_spin = 20;
+          const int spin_count = 1 << log2_spin;
+          const int steal_count = spin_count / 100;
+          for (int i = 0; i < spin_count && !done_; i++) {
+            if (((i + 1) % steal_count == 0)) {
+              w = Steal(StealAttemptKind::TRY_ONE);
+            } else {
+              w = q.PopFront();
+            }
+            if (w) break;
+            if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
+              break;
+            }
+            onnxruntime::concurrency::SpinPause();
+          }
+        } else if (spin_duration_us_ > 0) {
+          // Time-based spinning: spin for the user-configured duration before blocking.
+          // This gives predictable CPU usage regardless of the pause instruction latency.
+          const auto spin_deadline = std::chrono::steady_clock::now() +
+                                     std::chrono::microseconds(spin_duration_us_);
+          // Bitmask for steal interval (power of 2). Use bitwise AND instead of modulo.
+          constexpr unsigned int kStealMask = 128 - 1;  // steal every 128 iterations
+          // Bitmask for time check interval, computed from spin duration at construction.
+          const unsigned int time_check_mask = time_check_mask_;
           for (unsigned int i = 0; !done_; i++) {
             if (((i + 1) & kStealMask) == 0) {
               w = Steal(StealAttemptKind::TRY_ONE);
@@ -1689,20 +1704,18 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
               w = q.PopFront();
             }
             if (w) break;
-
             if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
               break;
             }
-
             // Check deadline at an independent, lower frequency than stealing.
             if (((i + 1) & time_check_mask) == 0 &&
                 std::chrono::steady_clock::now() >= spin_deadline) {
               break;
             }
-
             onnxruntime::concurrency::SpinPause();
           }
         }
+        // spin_duration_us_ == 0: no spinning, fall through directly to blocking.
 
         // Attempt to block
         if (!w) {
