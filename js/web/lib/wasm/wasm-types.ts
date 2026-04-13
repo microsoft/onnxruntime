@@ -358,6 +358,7 @@ export declare namespace WebNN {
 }
 
 export interface OrtInferenceAPIs {
+  _OrtIsTelemetrySupported?(): number;
   _OrtInit(numThreads: number, loggingLevel: number): number;
 
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): number;

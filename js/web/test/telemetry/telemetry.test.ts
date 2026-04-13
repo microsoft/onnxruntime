@@ -7,12 +7,13 @@ import { expect } from 'chai';
 import { env } from 'onnxruntime-common';
 
 interface MockWasmModule {
+  _OrtIsTelemetrySupported?: () => number;
   __ortTelemetryCallback?: (eventName: string, eventData: Record<string, unknown>) => void;
 }
 
 // initTelemetry triggers timers and event listeners at module scope,
 // so we import it once and let the BUILD_DEFS guard handle no-ops in test builds.
-import { initTelemetry } from '../../lib/wasm/telemetry.js';
+import { initTelemetry, logSessionModelInfo } from '../../lib/wasm/telemetry.js';
 import type { OrtWasmModule } from '../../lib/wasm/wasm-types.js';
 
 const asModule = (m: MockWasmModule) => m as unknown as OrtWasmModule;
@@ -21,7 +22,7 @@ describe('#UnitTest# - Telemetry Bridge', () => {
   let mockModule: MockWasmModule;
 
   beforeEach(() => {
-    mockModule = {};
+    mockModule = { _OrtIsTelemetrySupported: () => 1 };
     env.telemetry.enabled = true;
     env.telemetry.onEvent = undefined;
   });
@@ -65,6 +66,50 @@ describe('#UnitTest# - Telemetry Bridge', () => {
     };
 
     mockModule.__ortTelemetryCallback!('SessionCreationStart', { sessionId: 1 });
+    expect(receivedEvents).to.have.length(0);
+  });
+
+  it('should forward JS-generated events to observer callback', () => {
+    const receivedEvents: Array<{ name: string; data: Record<string, unknown> }> = [];
+    env.telemetry.onEvent = (name: string, data: Record<string, unknown>) => {
+      receivedEvents.push({ name, data });
+    };
+
+    initTelemetry(asModule(mockModule));
+    logSessionModelInfo(1024, 2, 1);
+
+    expect(receivedEvents).to.have.length(2);
+    expect(receivedEvents[0].name).to.equal('deviceinfo');
+    expect(receivedEvents[1].name).to.equal('modelinfo');
+    expect(receivedEvents[1].data.modelSizeBytes).to.equal(1024);
+    expect(receivedEvents[1].data.inputCount).to.equal(2);
+    expect(receivedEvents[1].data.outputCount).to.equal(1);
+  });
+
+  it('should not emit JS-generated events when telemetry is disabled', () => {
+    const receivedEvents: Array<{ name: string; data: Record<string, unknown> }> = [];
+    env.telemetry.enabled = false;
+    env.telemetry.onEvent = (name: string, data: Record<string, unknown>) => {
+      receivedEvents.push({ name, data });
+    };
+
+    initTelemetry(asModule(mockModule));
+    logSessionModelInfo(2048, 3, 2);
+
+    expect(receivedEvents).to.have.length(0);
+  });
+
+  it('should skip telemetry when the wasm build does not support it', () => {
+    const unsupportedModule: MockWasmModule = { _OrtIsTelemetrySupported: () => 0 };
+    const receivedEvents: Array<{ name: string; data: Record<string, unknown> }> = [];
+    env.telemetry.onEvent = (name: string, data: Record<string, unknown>) => {
+      receivedEvents.push({ name, data });
+    };
+
+    initTelemetry(asModule(unsupportedModule));
+    logSessionModelInfo(4096, 4, 2);
+
+    expect(unsupportedModule.__ortTelemetryCallback).to.be.undefined;
     expect(receivedEvents).to.have.length(0);
   });
 

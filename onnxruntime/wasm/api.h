@@ -57,6 +57,11 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
 int EMSCRIPTEN_KEEPALIVE OrtGetLastError(int* error_code, const char** error_message);
 
 /**
+ * @returns whether telemetry support is compiled into this WebAssembly build.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtIsTelemetrySupported();
+
+/**
  * create an instance of ORT session options.
  * assume that all enum type parameters, such as graph_optimization_level, execution_mode, and log_severity_level,
  * are checked and set properly at JavaScript.

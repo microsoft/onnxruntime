@@ -19,6 +19,7 @@ const DEVICE_ID_KEY = 'ort_device_id';
 let queue: string[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let deviceId: string | null = null;
+let wasmTelemetrySupported = false;
 
 const generateUUID = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -136,7 +137,35 @@ const enqueue = (eventName: string, eventData: Record<string, unknown>): void =>
   );
 };
 
+const isRuntimeTelemetryEnabled = (): boolean => env.telemetry?.enabled !== false;
+
+const isTelemetrySupported = (): boolean => !BUILD_DEFS.DISABLE_TELEMETRY && wasmTelemetrySupported;
+
+const shouldEmitTelemetry = (): boolean => isTelemetrySupported() && isRuntimeTelemetryEnabled();
+
+const emitTelemetryEvent = (eventName: string, eventData: Record<string, unknown>): void => {
+  if (!shouldEmitTelemetry()) {
+    return;
+  }
+
+  try {
+    env.telemetry?.onEvent?.(eventName, eventData);
+  } catch {
+    // Observer errors must not disrupt the application.
+  }
+
+  try {
+    enqueue(eventName, eventData);
+  } catch {
+    // Telemetry must not disrupt the application.
+  }
+};
+
 const sendWithRetry = (payload: string, headers: Record<string, string>, attempt = 0): void => {
+  if (!shouldEmitTelemetry()) {
+    return;
+  }
+
   fetch(COLLECTOR_URL, {
     method: 'POST',
     headers,
@@ -146,13 +175,21 @@ const sendWithRetry = (payload: string, headers: Record<string, string>, attempt
     (res) => {
       if (!res.ok && attempt < MAX_RETRIES && (res.status === 429 || res.status >= 500)) {
         const delay = 3000 * Math.pow(2, attempt) + Math.random() * 1000;
-        setTimeout(() => sendWithRetry(payload, headers, attempt + 1), delay);
+        setTimeout(() => {
+          if (shouldEmitTelemetry()) {
+            sendWithRetry(payload, headers, attempt + 1);
+          }
+        }, delay);
       }
     },
     () => {
       if (attempt < MAX_RETRIES) {
         const delay = 3000 * Math.pow(2, attempt) + Math.random() * 1000;
-        setTimeout(() => sendWithRetry(payload, headers, attempt + 1), delay);
+        setTimeout(() => {
+          if (shouldEmitTelemetry()) {
+            sendWithRetry(payload, headers, attempt + 1);
+          }
+        }, delay);
       }
     },
   );
@@ -168,6 +205,15 @@ const FETCH_HEADERS: Record<string, string> = {
 /* eslint-enable @typescript-eslint/naming-convention */
 
 const flush = (useBeacon = false): void => {
+  if (!isTelemetrySupported()) {
+    return;
+  }
+
+  if (!isRuntimeTelemetryEnabled()) {
+    queue = [];
+    return;
+  }
+
   if (queue.length === 0) {
     return;
   }
@@ -205,43 +251,41 @@ const startFlushTimer = (): void => {
 };
 
 export const initTelemetry = (module: OrtWasmModule): void => {
+  wasmTelemetrySupported = false;
+
   if (BUILD_DEFS.DISABLE_TELEMETRY) {
     return;
   }
 
-  startFlushTimer();
-  const browserMetadata = getBrowserMetadata();
+  try {
+    wasmTelemetrySupported = !!module._OrtIsTelemetrySupported?.();
+  } catch {
+    wasmTelemetrySupported = false;
+  }
 
-  // Device info event — fires from JS before WASM loads, so it works even on incompatible browsers
-  enqueue('deviceinfo', browserMetadata);
+  if (!wasmTelemetrySupported) {
+    return;
+  }
+
+  startFlushTimer();
 
   // eslint-disable-next-line dot-notation
   (module as unknown as Record<string, unknown>)['__ortTelemetryCallback'] = (
     eventName: string,
     eventData: Record<string, unknown>,
   ) => {
-    if (env.telemetry?.enabled === false) {
-      return;
-    }
-
-    try {
-      env.telemetry?.onEvent?.(eventName, eventData);
-    } catch {
-      // Observer errors must not disrupt the application.
-    }
-
-    try {
-      enqueue(eventName, eventData);
-    } catch {
-      // Telemetry must not disrupt the application.
-    }
+    emitTelemetryEvent(eventName, eventData);
   };
+
+  // Device info event — fires from JS before WASM loads, so it works even on incompatible browsers
+  emitTelemetryEvent('deviceinfo', getBrowserMetadata());
 };
 
 export const logSessionModelInfo = (modelSizeBytes: number, inputCount?: number, outputCount?: number): void => {
-  if (BUILD_DEFS.DISABLE_TELEMETRY) {
+  if (!isTelemetrySupported()) {
     return;
   }
+
   try {
     const info: Record<string, unknown> = { modelSizeBytes };
     if (inputCount !== undefined) {
@@ -250,7 +294,7 @@ export const logSessionModelInfo = (modelSizeBytes: number, inputCount?: number,
     if (outputCount !== undefined) {
       info.outputCount = outputCount;
     }
-    enqueue('modelinfo', info);
+    emitTelemetryEvent('modelinfo', info);
   } catch {
     // Telemetry must not disrupt the application.
   }

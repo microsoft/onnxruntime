@@ -67,6 +67,15 @@ const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? f
 const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
 
 /**
+ * --telemetry (default)
+ * --no-telemetry
+ *
+ * Enable or disable telemetry in the generated JS bundle.
+ */
+const telemetryArg = args.telemetry ?? process.env.npm_config_telemetry;
+const USE_TELEMETRY = telemetryArg === undefined ? true : telemetryArg !== false && telemetryArg !== 'false';
+
+/**
  * Root folder of the source code: `<ORT_ROOT>/js/`
  */
 const SOURCE_ROOT_FOLDER = path.join(__dirname, '../..');
@@ -79,7 +88,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_JSEP': JSON.stringify(!!USE_WEBGPU_EP),
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
-  'BUILD_DEFS.DISABLE_TELEMETRY': 'false',
+  'BUILD_DEFS.DISABLE_TELEMETRY': JSON.stringify(!USE_TELEMETRY),
   'BUILD_DEFS.ENABLE_JSPI': JSON.stringify(!!USE_JSPI),
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
   'BUILD_DEFS.DISABLE_WEBGPU': JSON.stringify(!USE_WEBGPU_EP),

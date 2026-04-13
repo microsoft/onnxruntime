@@ -110,6 +110,14 @@ int OrtGetLastError(int* error_code, const char** error_message) {
   return ORT_OK;
 }
 
+int OrtIsTelemetrySupported() {
+#ifdef USE_WASM_TELEMETRY
+  return 1;
+#else
+  return 0;
+#endif
+}
+
 OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
                                            bool enable_cpu_mem_arena,
                                            bool enable_mem_pattern,

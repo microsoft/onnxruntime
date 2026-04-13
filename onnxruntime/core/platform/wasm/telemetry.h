@@ -13,8 +13,8 @@ namespace onnxruntime {
  * @brief WebAssembly telemetry implementation.
  *
  * Bridges C++ telemetry events to JavaScript via Emscripten EM_JS.
- * The JS side receives structured events and forwards them to the 1DS SDK
- * and/or observer callbacks configured via ort.env.telemetry.
+ * The JS side receives structured events and forwards them to the browser telemetry
+ * transport and/or observer callbacks configured via ort.env.telemetry.
  */
 class WasmTelemetry : public Telemetry {
  public:

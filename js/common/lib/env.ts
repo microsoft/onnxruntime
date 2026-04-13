@@ -248,20 +248,22 @@ export declare namespace Env {
     /**
      * Set or get whether telemetry is enabled.
      *
-     * When enabled, ONNX Runtime sends usage and performance telemetry to Microsoft via the 1DS SDK.
+     * When enabled, ONNX Runtime sends usage and performance telemetry from the browser to Microsoft.
      * No personally identifiable information (PII) is collected.
      *
-     * Telemetry can also be excluded at build time using the `onnxruntime_USE_TELEMETRY` CMake flag.
+     * Telemetry can also be excluded at build time using the `onnxruntime_USE_TELEMETRY` CMake flag and the
+     * `BUILD_DEFS.DISABLE_TELEMETRY` esbuild define.
      *
      * @defaultValue `true`
      */
     enabled?: boolean;
 
     /**
-     * Set or get an observer callback that is invoked for every telemetry event.
+     * Set or get an observer callback that is invoked for every emitted telemetry event.
      *
-     * This allows consumers to "listen in" on telemetry events without implementing their own transport.
-     * The callback receives the event name and a plain object containing the event properties.
+     * This allows consumers to inspect telemetry emitted from both the WebAssembly runtime and the JS bridge without
+     * implementing their own transport. The callback receives the event name and a plain object containing the event
+     * properties.
      *
      * @example
      * ```js
