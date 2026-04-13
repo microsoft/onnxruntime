@@ -50,12 +50,6 @@
 #include "onnx/shape_inference/implementation.h"
 #include "core/optimizer/initializer.h"
 
-#ifdef ENABLE_TRAINING
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
-#include "orttraining/core/framework/torch/refcount_tracker.h"
-#endif
-#endif
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
 #endif
@@ -1806,28 +1800,6 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 
   PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
-
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-  void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }
-  void contrib__PythonOpBase__Clear(contrib::PythonOpBase* p) override { p->PythonOpBase::Clear(); }
-  void contrib__PythonOpBase__SetOutputs(const contrib::PythonOpBase* p, OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) override {
-    return p->PythonOpBase::SetOutputs(context, diff_ctx, returned_args);
-  }
-  void contrib__PythonOpBase__RunForward(const contrib::PythonOpBase* p, OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) override {
-    return p->PythonOpBase::RunForward(context, diff_ctx, returned_ortvalues);
-  }
-
-  void contrib__PythonOpGradBase__Init(contrib::PythonOpGradBase* p, const OpKernelInfo& info) override { return p->PythonOpGradBase::Init(info); }
-  void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) override {
-    return p->PythonOpGradBase::RunBackward(context, returned_ortvalues);
-  }
-  void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) override { p->PythonOpGradBase::SetOutputs(context, returned_args); }
-
-  language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() override { return language_interop_ops::torch::RefCountTracker::GetInstance(); }
-  void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) override {
-    return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
-  }
-#endif
 
 #if defined(USE_CANN)
   RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }

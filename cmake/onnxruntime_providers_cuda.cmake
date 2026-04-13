@@ -93,35 +93,26 @@
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
 
-    if(NOT onnxruntime_ENABLE_TRAINING)
-      file(GLOB_RECURSE onnxruntime_cuda_full_training_only_srcs
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/*.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/*.h"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.h"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/record.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/record.h"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.h"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.h"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cu"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.h"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/triton/triton_op.cc"
-      )
+    # Exclude full-training-only ops (collective, communication, gist, torch, triton)
+    file(GLOB_RECURSE onnxruntime_cuda_full_training_only_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/communication/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/record.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/record.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cu"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/triton/triton_op.cc"
+    )
 
-      list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_full_training_only_srcs})
-    elseif(WIN32 OR NOT onnxruntime_USE_NCCL)
-      # NCCL is not support in Windows build
-      file(GLOB_RECURSE onnxruntime_cuda_nccl_op_srcs
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
-      )
-      list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_nccl_op_srcs})
-    endif()
+    list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_full_training_only_srcs})
   endif()
 
   if (onnxruntime_REDUCED_OPS_BUILD)
@@ -286,10 +277,7 @@
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
     if (onnxruntime_ENABLE_TRAINING_OPS)
       onnxruntime_add_include_to_target(${target} onnxruntime_training)
-      if (onnxruntime_ENABLE_TRAINING)
-        target_link_libraries(${target} PRIVATE onnxruntime_training)
-      endif()
-      if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
+      if (onnxruntime_ENABLE_TRITON)
         onnxruntime_add_include_to_target(${target} Python::Module)
       endif()
     endif()

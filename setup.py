@@ -610,6 +610,12 @@ enable_training_apis = parse_arg_remove_boolean(sys.argv, "--enable_training_api
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
 
+if enable_training:
+    raise RuntimeError(
+        "--enable_training has been removed. ORTModule is no longer supported. "
+        "Use --enable_training_apis for the on-device training API."
+    )
+
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -631,58 +637,19 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
-if enable_training or enable_training_apis:
-    packages.append("onnxruntime.training")
-    if enable_training:
-        packages.extend(
-            [
-                "onnxruntime.training.amp",
-                "onnxruntime.training.experimental",
-                "onnxruntime.training.experimental.gradient_graph",
-                "onnxruntime.training.optim",
-                "onnxruntime.training.ortmodule",
-                "onnxruntime.training.ortmodule.experimental",
-                "onnxruntime.training.ortmodule.experimental.json_config",
-                "onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
-                "onnxruntime.training.ortmodule.graph_optimizers",
-                "onnxruntime.training.ortmodule.experimental.pipe",
-                "onnxruntime.training.ort_triton",
-                "onnxruntime.training.ort_triton.kernel",
-                "onnxruntime.training.utils",
-                "onnxruntime.training.utils.data",
-                "onnxruntime.training.utils.hooks",
-                "onnxruntime.training.api",
-                "onnxruntime.training.onnxblock",
-                "onnxruntime.training.onnxblock.loss",
-                "onnxruntime.training.onnxblock.optim",
-            ]
-        )
-
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc", "*.h"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
-            "*.cpp",
-            "*.cu",
-            "*.cuh",
-            "*.h",
+if enable_training_apis:
+    packages.extend(
+        [
+            "onnxruntime.training",
+            "onnxruntime.training.api",
+            "onnxruntime.training.onnxblock",
+            "onnxruntime.training.onnxblock.loss",
+            "onnxruntime.training.onnxblock.optim",
         ]
+    )
 
     requirements_file = "requirements-training.txt"
-    # with training, we want to follow this naming convention:
-    # stable:
-    # onnxruntime-training-1.7.0+cu111-cp36-cp36m-linux_x86_64.whl
-    # nightly:
-    # onnxruntime-training-1.7.0.dev20210408+cu111-cp36-cp36m-linux_x86_64.whl
-    # this is needed immediately by pytorch/ort so that the user is able to
-    # install an onnxruntime training package with matching torch cuda version.
     if not is_openvino:
-        # To support the package consisting of both openvino and training modules part of it
         package_name = "onnxruntime-training"
 
         disable_local_version = environ.get("ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION", "0")
@@ -693,17 +660,13 @@ if enable_training or enable_training_apis:
         )
         # local version should be disabled for internal feeds.
         if not disable_local_version:
-            # we want put default training packages to pypi. pypi does not accept package with a local version.
             if not default_training_package_device or nightly_build:
                 if cuda_version:
-                    # removing '.' to make Cuda version number in the same form as Pytorch.
                     local_version = "+cu" + cuda_version.replace(".", "")
                 else:
-                    # cpu version for documentation
                     local_version = "+cpu"
         else:
             if not cuda_version:
-                # Training CPU package for ADO feeds is called onnxruntime-training-cpu
                 package_name = "onnxruntime-training-cpu"
 
 if package_name == "onnxruntime-tvm":

@@ -47,19 +47,6 @@ class IOnnxRuntimeOpSchemaCollection;
 
 struct ModelSavingOptions;
 
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-namespace contrib {
-class PythonOpBase;
-class PythonOpGradBase;
-}  // namespace contrib
-
-namespace language_interop_ops {
-namespace torch {
-class RefCountTracker;
-}  // namespace torch
-}  // namespace language_interop_ops
-#endif
-
 namespace training {
 class DistributedRunContext;
 }
@@ -1368,20 +1355,6 @@ struct ProviderHost {
 #endif
 
   virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
-
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-  virtual void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) = 0;
-  virtual void contrib__PythonOpBase__Clear(contrib::PythonOpBase* p) = 0;
-  virtual void contrib__PythonOpBase__RunForward(const contrib::PythonOpBase* p, OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) = 0;
-  virtual void contrib__PythonOpBase__SetOutputs(const contrib::PythonOpBase* p, OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) = 0;
-
-  virtual void contrib__PythonOpGradBase__Init(contrib::PythonOpGradBase* p, const OpKernelInfo& info) = 0;
-  virtual void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) = 0;
-  virtual void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) = 0;
-
-  virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
-  virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
-#endif
 
 #if defined(USE_CANN)
   virtual RandomGenerator& RandomGenerator__Default() = 0;

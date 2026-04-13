@@ -1292,7 +1292,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /**
    * @brief Performs topological sort with customized Kahn's algorithm on the graph/s.
    *  This is a specialized version for training where need memory efficient topological sort.
-   * @param yield_op The YieldOp used in ORTModule training.
+   * @param yield_op The YieldOp used in training.
    * @param shape_size_parents The shape size parents nodes.
    * @param node_orders The output node orders.
    */

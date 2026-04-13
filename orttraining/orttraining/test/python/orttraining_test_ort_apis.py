@@ -46,7 +46,7 @@ def main():
     args = parse_arguments()
     cwd = args.cwd
 
-    log.info("Running ortmodule tests pipeline")
+    log.info("Running training API tests pipeline")
 
     run_onnxblock_tests(cwd, log)
 

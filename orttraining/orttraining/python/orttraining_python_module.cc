@@ -37,9 +37,6 @@ void addGlobalMethods(py::module& m);
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForTraining(py::module& m);
 void addObjectMethodsForEager(py::module& m);
-#ifdef ENABLE_LAZY_TENSOR
-void addObjectMethodsForLazyTensor(py::module& m);
-#endif
 bool InitArray();
 
 bool GetDynamicExecutionProviderHash(
@@ -292,10 +289,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto st = CreateTrainingPybindStateModule(m);
   if (!st.IsOK())
     throw pybind11::import_error(st.ErrorMessage());
-
-#ifdef ENABLE_LAZY_TENSOR
-  addObjectMethodsForLazyTensor(m);
-#endif
 
   m.def("_register_provider_lib", [](const std::string& name,
                                      const std::string& provider_shared_lib_path,

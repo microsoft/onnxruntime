@@ -60,7 +60,7 @@ class IExecutionFrame {
 #endif
 
 #ifdef ENABLE_TRAINING
-  // Referenced by PartialGraphExecutionState which is applicable when using ORTModule.
+  // Referenced by PartialGraphExecutionState which is applicable for partial graph execution in training.
   // These wont be needed when using ORT Training APIs
   void UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds);
   void UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
