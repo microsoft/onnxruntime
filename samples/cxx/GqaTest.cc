@@ -183,6 +183,151 @@ static void cpu_rotate_bnsh(uint16_t* data, int batch_size, int num_heads,
 }
 
 // --------------------------------------------------------------------------
+// CPU Reference: TurboQuant Pseudo-Quantization
+// --------------------------------------------------------------------------
+
+static const float TQ_CENTROIDS[16] = {
+    -0.2377f, -0.1809f, -0.1419f, -0.1104f, -0.0829f, -0.0578f, -0.0342f, -0.0113f,
+     0.0113f,  0.0342f,  0.0578f,  0.0829f,  0.1104f,  0.1419f,  0.1809f,  0.2377f};
+
+static const float TQ_BOUNDARIES[15] = {
+    -0.2093f, -0.1614f, -0.1261f, -0.0966f, -0.0704f, -0.0460f, -0.0227f,
+     0.0000f,  0.0227f,  0.0460f,  0.0704f,  0.0966f,  0.1261f,  0.1614f,  0.2093f};
+
+// Binary search over 15 boundaries → returns index 0..15
+static uint32_t cpu_searchsorted_tq(float val) {
+  uint32_t lo = 0, hi = 15;
+  for (int iter = 0; iter < 4; ++iter) {
+    uint32_t mid = (lo + hi) >> 1;
+    if (val >= TQ_BOUNDARIES[mid]) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
+// Apply fused FWHT rotation + pseudo-quantization to a single head vector.
+// Input: fp16 vector of head_size elements.
+// Output: in-place:
+//   [0..head_size-3] = centroid index stored as fp16 (0.0–15.0)
+//   [head_size-2..head_size-1] = f32 L2 norm bitcast into 2 fp16 values
+static void cpu_fwht_quantize_fp16(uint16_t* vec, int head_size) {
+  // Load to f32
+  std::vector<float> buf(head_size);
+  for (int i = 0; i < head_size; ++i) {
+    buf[i] = fp16_to_fp32(vec[i]);
+  }
+
+  // FWHT in f32
+  for (int half_block = 1; half_block < head_size; half_block <<= 1) {
+    int block_size = half_block << 1;
+    for (int block_start = 0; block_start < head_size; block_start += block_size) {
+      for (int j = 0; j < half_block; ++j) {
+        int i0 = block_start + j;
+        int i1 = i0 + half_block;
+        float a = buf[i0];
+        float b = buf[i1];
+        buf[i0] = a + b;
+        buf[i1] = a - b;
+      }
+    }
+  }
+  float fwht_scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+  for (int i = 0; i < head_size; ++i) {
+    buf[i] *= fwht_scale;
+  }
+
+  // Compute L2 norm in f32
+  double sum_sq = 0.0;
+  for (int i = 0; i < head_size; ++i) {
+    sum_sq += static_cast<double>(buf[i]) * buf[i];
+  }
+  float norm = static_cast<float>(std::sqrt(std::max(sum_sq, 1e-12)));
+  float inv_norm = 1.0f / norm;
+
+  // Quantize: normalize → searchsorted → store index as fp16
+  for (int i = 0; i < head_size - 2; ++i) {
+    float unit_val = buf[i] * inv_norm;
+    uint32_t idx = cpu_searchsorted_tq(unit_val);
+    vec[i] = fp32_to_fp16(static_cast<float>(idx));
+  }
+
+  // Store f32 norm in last 2 fp16 slots via bitcast
+  uint32_t norm_bits;
+  std::memcpy(&norm_bits, &norm, sizeof(norm_bits));
+  uint16_t lo16 = static_cast<uint16_t>(norm_bits & 0xFFFF);
+  uint16_t hi16 = static_cast<uint16_t>((norm_bits >> 16) & 0xFFFF);
+  vec[head_size - 2] = lo16;
+  vec[head_size - 1] = hi16;
+}
+
+// Apply fused FWHT + quantize to a token range in a BNSH tensor on CPU.
+static void cpu_rotate_quantize_bnsh(uint16_t* data, int batch_size, int num_heads,
+                                     int max_seq, int head_size,
+                                     int start_token, int num_tokens) {
+  for (int b = 0; b < batch_size; ++b) {
+    for (int h = 0; h < num_heads; ++h) {
+      for (int t = 0; t < num_tokens; ++t) {
+        size_t offset = (static_cast<size_t>(b) * num_heads + h) * max_seq * head_size +
+                        static_cast<size_t>(start_token + t) * head_size;
+        cpu_fwht_quantize_fp16(data + offset, head_size);
+      }
+    }
+  }
+}
+
+// Read f32 norm from the last 2 fp16 slots of a quantized vector.
+static float read_quantized_norm_fp16(const uint16_t* vec, int head_size) {
+  uint32_t lo = vec[head_size - 2];
+  uint32_t hi = vec[head_size - 1];
+  uint32_t bits = lo | (hi << 16);
+  float norm;
+  std::memcpy(&norm, &bits, sizeof(norm));
+  return norm;
+}
+
+// Dequantize a quantized fp16 vector on CPU:
+// indices in [0..head_size-3], norm in [head_size-2..head_size-1]
+// Output: fp16 vector of head_size reconstructed values.
+static void cpu_dequantize_fp16(const uint16_t* quantized, uint16_t* out, int head_size) {
+  float norm = read_quantized_norm_fp16(quantized, head_size);
+  for (int i = 0; i < head_size - 2; ++i) {
+    uint32_t idx = static_cast<uint32_t>(fp16_to_fp32(quantized[i]) + 0.5f);
+    if (idx > 15) idx = 15;
+    float val = TQ_CENTROIDS[idx] * norm;
+    out[i] = fp32_to_fp16(val);
+  }
+  out[head_size - 2] = 0;
+  out[head_size - 1] = 0;
+}
+
+// Compare centroid indices (0–15) between two quantized BNSH tensors.
+// Returns fraction of matching indices over the index elements [0..head_size-3].
+static double compare_quantized_indices(const uint16_t* a, const uint16_t* b,
+                                        int batch_size, int num_heads,
+                                        int max_seq, int head_size,
+                                        int start_token, int num_tokens) {
+  size_t total = 0, matches = 0;
+  for (int bx = 0; bx < batch_size; ++bx) {
+    for (int h = 0; h < num_heads; ++h) {
+      for (int t = 0; t < num_tokens; ++t) {
+        size_t offset = (static_cast<size_t>(bx) * num_heads + h) * max_seq * head_size +
+                        static_cast<size_t>(start_token + t) * head_size;
+        for (int i = 0; i < head_size - 2; ++i) {
+          uint32_t idx_a = static_cast<uint32_t>(fp16_to_fp32(a[offset + i]) + 0.5f);
+          uint32_t idx_b = static_cast<uint32_t>(fp16_to_fp32(b[offset + i]) + 0.5f);
+          if (idx_a == idx_b) ++matches;
+          ++total;
+        }
+      }
+    }
+  }
+  return (total > 0) ? static_cast<double>(matches) / total : 1.0;
+}
+
+// --------------------------------------------------------------------------
 // GQA Test Configuration
 // --------------------------------------------------------------------------
 struct GqaConfig {
@@ -575,30 +720,29 @@ int main(int argc, char* argv[]) {
       THROW_IF_NOT(base.valid);
       THROW_IF_NOT(tq.valid);
 
-      // Compare outputs
+      // Compare outputs — quantization introduces error, so relax threshold
       auto cmp = compare_fp16(base.result.output.data(), tq.result.output.data(),
                               base.result.output.size());
       print_compare("Output diff", cmp);
 
-      // For Phase 0 (rotation + inverse = identity), outputs should match exactly
-      // Allow small tolerance for fp16 accumulation differences
-      bool close = (cmp.cosine_sim > 0.99);
+      bool close = (cmp.cosine_sim > 0.95);
       std::cout << "  Match:       " << (close ? "PASS" : "FAIL")
-                << " (cosine > 0.99)\n";
+                << " (cosine > 0.95)\n";
       THROW_IF_NOT(close);
 
-      // Verify present_value: rotate baseline's V on CPU and compare with TQ's V.
-      // For prompt (past_seq=0), ALL tokens [0..plen) are newly written by the GQA op.
+      // Verify present_value: rotate+quantize baseline's V on CPU and compare indices with GPU.
+      // For prompt (past_seq=0), ALL tokens [0..plen) are newly written.
       {
-        std::vector<uint16_t> base_pv_rotated = base.result.present_value;
-        cpu_rotate_bnsh(base_pv_rotated.data(), cfg.batch_size, cfg.kv_num_heads,
-                        cfg.max_cache, cfg.head_size, 0, plen);
-        auto pv_cmp = compare_bnsh_token_range(
-            base_pv_rotated.data(), tq.result.present_value.data(),
+        std::vector<uint16_t> base_pv_quantized = base.result.present_value;
+        cpu_rotate_quantize_bnsh(base_pv_quantized.data(), cfg.batch_size, cfg.kv_num_heads,
+                                 cfg.max_cache, cfg.head_size, 0, plen);
+        double idx_match = compare_quantized_indices(
+            base_pv_quantized.data(), tq.result.present_value.data(),
             cfg.batch_size, cfg.kv_num_heads, cfg.max_cache, cfg.head_size,
             0, plen);
-        print_compare("V rotation", pv_cmp);
-        THROW_IF_NOT(pv_cmp.cosine_sim > 0.99);
+        std::cout << "  V quant index match: " << std::fixed << std::setprecision(4)
+                  << (idx_match * 100.0) << "%\n";
+        THROW_IF_NOT(idx_match > 0.95);
       }
     }
 
@@ -649,14 +793,14 @@ int main(int argc, char* argv[]) {
       auto out_cmp = compare_fp16(base_result.output.data(), tq_result.output.data(),
                                   base_result.output.size());
 
-      // Compare present_value: Rotate ALL tokens of baseline on CPU (since TQ
-      // rotates all total_seq tokens in non-share-buffer mode)
+      // Compare present_value: Rotate+quantize ALL tokens of baseline on CPU
+      // (since TQ does fused rotate+quantize on all total_seq tokens in non-share-buffer mode)
       int total_seq = depth + 1;
-      std::vector<uint16_t> base_pv_rotated = base_result.present_value;
-      cpu_rotate_bnsh(base_pv_rotated.data(), cfg.batch_size, cfg.kv_num_heads,
-                      cfg.max_cache, cfg.head_size, 0, total_seq);
-      auto pv_cmp = compare_bnsh_token_range(
-          base_pv_rotated.data(), tq_result.present_value.data(),
+      std::vector<uint16_t> base_pv_quantized = base_result.present_value;
+      cpu_rotate_quantize_bnsh(base_pv_quantized.data(), cfg.batch_size, cfg.kv_num_heads,
+                               cfg.max_cache, cfg.head_size, 0, total_seq);
+      double pv_idx_match = compare_quantized_indices(
+          base_pv_quantized.data(), tq_result.present_value.data(),
           cfg.batch_size, cfg.kv_num_heads, cfg.max_cache, cfg.head_size,
           0, total_seq);
 
@@ -664,16 +808,15 @@ int main(int argc, char* argv[]) {
                 << "  output_cos=" << std::fixed << std::setprecision(6) << out_cmp.cosine_sim
                 << "  output_maxdiff=" << std::scientific << std::setprecision(4) << out_cmp.max_abs_diff
                 << "\n";
-      std::cout << "  V_rot_cos=" << std::fixed << std::setprecision(6) << pv_cmp.cosine_sim
-                << "  V_rot_maxdiff=" << std::scientific << std::setprecision(4) << pv_cmp.max_abs_diff
-                << "  V_rot_rmse=" << pv_cmp.rmse
+      std::cout << "  V_quant_idx_match=" << std::fixed << std::setprecision(4)
+                << (pv_idx_match * 100.0) << "%"
                 << "\n";
       std::cout << "  latency: base=" << std::fixed << std::setprecision(2) << base_result.elapsed_ms
                 << " ms  tq=" << tq_result.elapsed_ms << " ms\n";
 
       THROW_IF_NOT(bv && tv);
-      THROW_IF_NOT(pv_cmp.cosine_sim > 0.99);
-      THROW_IF_NOT(out_cmp.cosine_sim > 0.99);
+      THROW_IF_NOT(pv_idx_match > 0.95);
+      THROW_IF_NOT(out_cmp.cosine_sim > 0.95);
       std::cout << "  Result: PASS\n";
     }
 

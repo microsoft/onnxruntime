@@ -178,19 +178,23 @@ Alternative (simpler for Phase 1): Keep fp16 type, pack int4 into fp16 carrier:
    - After decode path VxReduce: `ApplyTurboQuantInverseRotation()` on output (BSNH)
 ---
 
-### Phase 1: QK Rotation
+### Phase 1: QK Rotation — COMPLETE ✓
 **Goal**: Extend rotation to Q and K. After this phase, Q, K, V are all Hadamard-rotated.
 
 **Changes**:
 - Rotate K before writing to `present_key` (reuse `ApplyTurboQuantRotation` from Phase 0)
-- Rotate Q before computing attention scores (separate dispatch on Q tensor, BNSH or BSNH depending on qkv_format)
+- Rotate Q before computing attention scores (uses `ApplyTurboQuantInverseRotation` for BSNH layout — same FWHT math, different tensor traversal)
 - **Key correctness property**: If Q' = HQ and K' = HK, then Q'·K'ᵀ = (HQ)·(HK)ᵀ = Q·Hᵀ·H·Kᵀ = Q·Kᵀ (since HᵀH = I). So QK scores are invariant — no inverse rotation needed for QK!
 - The inverse rotation is only needed on the attention output (softmax(QK')·V' needs inverse rotation)
 
-**Files**:
-- `flash_attention.cc`: Add `ApplyTurboQuantRotation()` call on `present_key` (same as V)
-- `flash_attention.cc`: Add Q rotation before prompt/decode attention (new call site)
-- May need a variant of `ApplyTurboQuantRotation` for Q's shape (num_heads vs kv_num_heads)
+**Implementation** (5 call sites in `flash_attention.cc`, all guarded by `if (parameters.turbo_quant_)`):
+1. `ApplyTurboQuantRotation()` on `present_key` — newly written tokens, BNSH
+2. `ApplyTurboQuantRotation()` on `present_value` — newly written tokens, BNSH
+3. `ApplyTurboQuantInverseRotation()` on `query_output` — Q rotation, BSNH
+4. `ApplyTurboQuantInverseRotation()` on output — after prompt flash attention, BSNH
+5. `ApplyTurboQuantInverseRotation()` on output — after decode VxReduce, BSNH
+
+**Status**: Code complete, ORT build successful, GqaTest verified — all tests pass.
 
 ---
 
@@ -225,28 +229,43 @@ const TQ_BOUNDARIES = array<f16, 17>(
 6. Store norm separately (e.g., in the last element, or a parallel norm buffer)
 ```
 
-**KV Cache Format (Phase 2 — unchanged shape)**:
+**KV Cache Format (Phase 2 — as implemented)**:
 ```
 Per token per KV head: head_size fp16 values (128 for Phi-4)
-  [0..126]: centroid index stored as fp16 (values 0.0h–15.0h)
-  [127]: L2 norm stored as fp16
+  [0..head_size-3]: centroid index stored as fp16 (values 0.0h–15.0h)  — 126 elements
+  [head_size-2..head_size-1]: f32 L2 norm bitcast into 2 fp16 slots
+    Written:  let norm_halves = bitcast<vec2<f16>>(f32(norm));
+              data[offset + head_size - 2] = norm_halves.x;
+              data[offset + head_size - 1] = norm_halves.y;
+    Read:     let norm = bitcast<f32>(vec2<f16>(data[z_offset], data[w_offset]));
   — Same shape [batch, kv_heads, max_seq, 128] fp16 as baseline
   — No memory savings yet, but quantization math is validated
+  — f32 norm precision avoids fp16 overflow during large-vector norm accumulation
 ```
 
-**Dequantize** (inside flash attention loadk/loadv):
+**Dequantize** (inside flash attention loadk/loadv, as implemented):
 ```wgsl
-let idx = u32(kv_cache[offset + i]);          // fp16 → integer index
-let centroid_val = TQ_CENTROIDS[idx];          // lookup
-let norm = kv_cache[offset + head_size - 1u];  // last element is the norm
-let reconstructed = centroid_val * norm;        // dequantized fp16 value
+const TQ_CENTROIDS = array<f16, 16>(...);  // compile-time constant
+
+fn tq_read_norm(base_offset: u32) -> f32 {
+  let z = present_key[base_offset + uniforms.head_size_vec - 1u].z;
+  let w = present_key[base_offset + uniforms.head_size_vec - 1u].w;
+  return bitcast<f32>(vec2<f16>(z, w));
+}
+
+fn tq_dequant_vec4(v: vec4<f16>, norm: f32) -> vec4<f16> {
+  return vec4<f16>(
+    TQ_CENTROIDS[u32(v.x)], TQ_CENTROIDS[u32(v.y)],
+    TQ_CENTROIDS[u32(v.z)], TQ_CENTROIDS[u32(v.w)]
+  ) * f16(norm);
+}
 ```
 
-**Files**:
-- `turbo_quant_hadamard.cc` — Extend or add new `TurboQuantQuantizeProgram`: rotate → normalize → searchsorted → store fp16 index + norm
-- `flash_attention.wgsl.template` — Modify loadk/loadv: when turbo_quant, dequantize via centroid lookup
-- `flash_attention_decode_qkt.wgsl.template` — Modify loadk with dequantize
-- `flash_attention_decode_split_vx.wgsl.template` — Modify loadv with dequantize
+**Files (as implemented)**:
+- `turbo_quant_hadamard.h/cc` — New `TurboQuantRotateQuantizeProgram`: fused FWHT rotate → f32 norm → searchsorted → store fp16 indices + bitcast norm
+- `flash_attention.wgsl.template` — `#param turbo_quant`; dequantize in loadk/loadv with norm preload
+- `flash_attention_decode_qkt.wgsl.template` — `#param turbo_quant`; dequantize K with shared memory norms
+- `flash_attention_decode_split_vx.wgsl.template` — `#param turbo_quant`; dequantize V with shared memory norms
 
 ---
 
@@ -466,10 +485,10 @@ The test creates two sessions (baseline and TurboQuant), runs identical workload
   - `flash_attention.cc`: After prompt flash attention → inverse-rotate output
   - `flash_attention.cc`: After decode VxReduce → inverse-rotate output
 - [x] **0.5** Build successfully with turbo_quant changes
-- [x] **0.6** GqaTest: Standalone C++ test binary exercising GQA with WebGPU EP
+- [x] **0.6** GqaTest: Standalone C++ test binary exercising GQA with WebGPU EP (renamed from OpTest)
   - `samples/cxx/generate_gqa_model.py`: Generates minimal ONNX model with single GQA op (Phi-4 params)
   - `samples/cxx/GqaTest.cc`: Dual-session test (baseline vs TurboQuant), deterministic seeds, median-of-10 timing
-  - `samples/cxx/CMakeLists.txt`: Standalone CMake build targeting ORT headers + library
+  - `samples/cxx/CMakeLists.txt`: Standalone CMake build targeting ORT headers + library (target: `GqaTest`)
   - Tests: prompt (1/8/64/256/1024 tokens), single-step decode (0/64/256/1024/4000 past), consistency, perf summary
   - CPU reference FWHT validates GPU shader rotation at every test point
   - **ALL TESTS PASSED** — V rotation cosine=1.000000, output cosine≥0.999998 at all sizes
@@ -535,28 +554,73 @@ Programs are cached by a key that includes the program name, cache hints, tensor
 ### Flash Attention Path Selection
 Flash attention requires: `context.HasFeature(wgpu::FeatureName::Subgroups)`, `head_size % 4 == 0`, no bias, not packed QKV (packed QKV takes the fused split+RoPE+copy path first, then flash attention). When subgroups are unavailable, falls back to non-flash tiled attention.
 
+### Phase 2 Learnings: WGSL Quantization Shaders
+
+**No `u16` type in WGSL**: WGSL has `u32`, `i32`, `f32`, `f16` but no `u16` or `i16`. To store an f32 value in 2 fp16 slots, use `bitcast<vec2<f16>>(f32_value)` to split the f32 into two fp16 bit patterns, and `bitcast<f32>(vec2<f16>(z, w))` to reconstruct. This is a bitwise reinterpretation, not a type conversion.
+
+**f32 norm storage**: The L2 norm is accumulated in f32 (to avoid fp16 overflow during sum-of-squares) and stored as 2 fp16 bit slots using the bitcast trick above. This uses elements `[head_size-2]` and `[head_size-1]` of each head vector, leaving `head_size-2` elements for centroid indices.
+
+**Fused rotate+quantize shader**: Rather than separate rotation and quantization dispatches, the Phase 2 shader fuses both operations into a single workgroup dispatch per head vector. The shared memory serves double duty: first for FWHT butterfly operations, then for tree reduction of squared values to compute the L2 norm. This halves the number of GPU dispatches for K and V.
+
+**Non-rotary Q path**: When `do_rotary=false` (e.g., GqaTest model with separate Q/K/V), Q is an immutable input tensor. To apply rotation in-place, we must first copy Q to a mutable tensor (`context.CreateGPUTensor()` + `context.CopyTensor()`). The `do_rotary` path avoids this because Q already points to the mutable `query_output` tensor.
+
+**Binary search for searchsorted**: With only 15 decision boundaries, a 4-iteration binary search (`lo=0, hi=15, 4 iterations`) is more efficient than a linear scan and avoids branch divergence in SIMD execution.
+
 ---
 
-### Phase 1: QK Rotation
-- [ ] **1.1** Rotate K in flash_attention.cc (reuse `ApplyTurboQuantRotation` on `present_key`)
-- [ ] **1.2** Rotate Q before attention (new call site, handle num_heads vs kv_num_heads)
-- [ ] **1.3** Verify: QK^T scores identical with and without rotation (since H is orthogonal)
-- [ ] **1.4** Verify: output differs only by inverse rotation (which we apply)
+### Phase 1: QK Rotation — COMPLETE ✓
+- [x] **1.1** Rotate K in flash_attention.cc (reuse `ApplyTurboQuantRotation` on `present_key`)
+  - `flash_attention.cc` line ~495: `ApplyTurboQuantRotation()` on `present_key` after CopyKVCache, same pattern as V rotation
+  - Uses `start_token` / `num_new_tokens` for share_buffer correctness
+- [x] **1.2** Rotate Q before attention (new call site, handle num_heads vs kv_num_heads)
+  - `flash_attention.cc` line ~518: `ApplyTurboQuantInverseRotation()` on `query_output` (BSNH layout)
+  - Uses `InverseRotation` variant because Q is BSNH (same FWHT math — self-inverse)
+  - Two paths: `do_rotary` (Q already points to mutable `query_output`) and non-rotary (creates mutable copy via `context.CreateGPUTensor()` + `context.CopyTensor()`, then re-points Q)
+- [x] **1.3** Build succeeds with all 5 turbo_quant call sites in flash_attention.cc:
+  1. K rotation on `present_key` (BNSH, after CopyKVCache)
+  2. V rotation on `present_value` (BNSH, after CopyKVCache)
+  3. Q rotation on `query_output` (BSNH, before attention)
+  4. Inverse rotation on output (BSNH, after prompt flash attention)
+  5. Inverse rotation on output (BSNH, after decode VxReduce)
+- [x] **1.4** Run GqaTest and verify: output matches baseline (QK^T invariant, inverse rotation restores output)
 
-### Phase 2: Pseudo-Quantization (fp16 indices)
-- [ ] **2.1** Create quantize shader: rotate → norm → searchsorted → store fp16 index + norm
-  - Extend `turbo_quant_hadamard.cc` or add new `TurboQuantQuantizeProgram`
-  - Store centroid index 0–15 as fp16 in existing cache layout
-  - Store L2 norm in last element (head_size-1) of each vector
-- [ ] **2.2** Modify flash attention loadk/loadv to dequantize from fp16 indices
-  - `u32(value)` → centroid lookup → multiply by norm
-  - Conditioned on `turbo_quant` parameter in WGSL templates
-- [ ] **2.3** Update GqaTest: CPU reference pseudo-quantize, compare with GPU
-  - Implement CPU searchsorted + centroid lookup
-  - Compare present_value indices (GPU) vs CPU reference
-  - Measure output quality degradation from quantization
-- [ ] **2.4** Validate against reference PyTorch `tq_pseudo_quantize()`
-  - Compare attention output quality with/without quantization
+### Phase 2: Pseudo-Quantization (fp16 indices) — COMPLETE ✓
+- [x] **2.1** Create fused rotate+quantize shader (`TurboQuantRotateQuantizeProgram`)
+  - `turbo_quant_hadamard.h`: New `TurboQuantRotateQuantizeProgram` class (head_size, num_heads, is_fp16 constructor params)
+  - `turbo_quant_hadamard.cc`: Fused FWHT + L2 norm + searchsorted in single workgroup dispatch
+    - f32 shared memory (`tq_shared`, `tq_sq_shared`) for FWHT butterfly and norm accumulation
+    - Tree reduction in shared memory for L2 norm (f32 accumulation to avoid overflow)
+    - `searchsorted_tq()` binary search: 4 iterations over 15 decision boundaries
+    - Norm stored as `bitcast<vec2<f16>>(f32(norm))` in last 2 element slots (head_size-2, head_size-1)
+    - Centroid indices (0–15) stored as native element type (fp16) in elements [0..head_size-3]
+  - `flash_attention.cc`: K and V now use `ApplyTurboQuantRotateAndQuantize()` (fused) instead of separate `ApplyTurboQuantRotation()`
+- [x] **2.2** Dequantize in all 3 flash attention WGSL templates
+  - `flash_attention.wgsl.template`: `#param turbo_quant` conditional; TQ_CENTROIDS constant; `tq_read_norm()`/`tq_read_norm_v()` using `bitcast<f32>(vec2<f16>(...))` to recover f32 norm; `tq_dequant_vec4()` function; modified loadk/loadv with per-slot dequantize loop, last vec4 handles z/w as norm bits
+  - `flash_attention_decode_qkt.wgsl.template`: TQ_CENTROIDS, `tq_k_norms` shared memory, preloads norms before inner QKT loop, dequantizes K via centroid lookup
+  - `flash_attention_decode_split_vx.wgsl.template`: TQ_CENTROIDS, `tq_v_norms` shared memory, preloads norms after softmax, dequantizes V in inner Vx loop
+  - All templates use `WGSL_TEMPLATE_PARAMETER(turbo_quant)` with cache hint differentiation
+- [x] **2.3** Update GqaTest with CPU reference pseudo-quantize
+  - `GqaTest.cc`: Full CPU reference implementation:
+    - `TQ_CENTROIDS[16]`, `TQ_BOUNDARIES[15]`, `cpu_searchsorted_tq()`
+    - `cpu_fwht_quantize_fp16()`: fused FWHT + f32 norm + quantize on CPU
+    - `cpu_rotate_quantize_bnsh()`: applies to token range in BNSH tensor
+    - `read_quantized_norm_fp16()`, `cpu_dequantize_fp16()`
+    - `compare_quantized_indices()`: counts matching centroid indices between CPU and GPU
+  - Test results: **100% centroid index match** (CPU vs GPU) at all sequence lengths
+- [x] **2.4** End-to-end quality validation
+  - Output cosine similarity: 0.985–0.990 across all test sizes (prompt and decode)
+  - Cosine threshold relaxed from 0.99 to 0.95 to account for quantization error
+  - ALL TESTS PASSED: prompt (seq_len=1,8,64,256,1024) and decode (past_seq=0,64,256,1024,4000)
+  - Consistency tests pass for both baseline and TurboQuant paths
+
+### Remaining Todos (Pre-Phase 3)
+- [ ] **2.5** Fix Q const_cast / mutable copy in non-rotary path
+  - In `flash_attention.cc` (line ~535), when `!do_rotary && turbo_quant`, Q is immutable so we create a mutable copy via `context.CreateGPUTensor()` + `context.CopyTensor()` and re-point `Q = &query_output`
+  - This works but is an extra GPU copy. Ideally, the FWHT rotation shader should accept separate input/output bindings (read-only input, write to query_output) instead of requiring in-place mutation
+  - Alternative: modify `ApplyTurboQuantInverseRotation()` to accept a source tensor and destination tensor (copy + rotate in one dispatch)
+- [ ] **2.6** Consider fusing Q rotation into flash attention shader itself
+  - Q rotation is pure FWHT (no quantization), could be done on-the-fly in the attention kernel to avoid a separate dispatch
+  - Lower priority — separate dispatch is cleaner and Q is small (only current tokens)
 
 ### Phase 3: Bit-Packing to uint4 + KV Cache Dimension Change
 - [ ] **3.1** Update quantize shader: pack 8 indices into one uint32

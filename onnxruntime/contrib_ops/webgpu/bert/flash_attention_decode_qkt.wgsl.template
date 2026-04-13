@@ -5,6 +5,7 @@
 #param tile_size
 #param tile_size_k_vec
 #param sub_tile_count
+#param turbo_quant
 #param use_indirect_dispatch
 
 // Note that this shader adopts similar algorithm with dp4a generation shader.
@@ -33,6 +34,28 @@
 var<workgroup> tile_q: array<q_value_t, tile_size_k_vec>;
 var<workgroup> inner_qk_values: array<array<q_element_t, tile_size_k_vec>, tile_size>;
 var<workgroup> tile_qk: array<q_element_t, tile_size>;
+
+#if turbo_quant
+const TQ_CENTROIDS = array<f32, 16>(
+    -0.2377, -0.1809, -0.1419, -0.1104, -0.0829, -0.0578, -0.0342, -0.0113,
+     0.0113,  0.0342,  0.0578,  0.0829,  0.1104,  0.1419,  0.1809,  0.2377);
+
+var<workgroup> tq_k_norms: array<f32, tile_size>;
+
+fn tq_read_k_norm(base_offset: u32) -> f32 {
+  let last_vec = present_key[base_offset + uniforms.head_size_vec - 1u];
+  // Norm is stored as bitcast<vec2<f16>>(f32_norm) in the z,w of the last vec4.
+  return bitcast<f32>(vec2<f16>(q_element_t(last_vec.z), q_element_t(last_vec.w)));
+}
+
+fn tq_dequant_vec4_k(v: q_value_t, norm: f32) -> q_value_t {
+  return q_value_t(
+    q_element_t(TQ_CENTROIDS[u32(v.x)] * norm),
+    q_element_t(TQ_CENTROIDS[u32(v.y)] * norm),
+    q_element_t(TQ_CENTROIDS[u32(v.z)] * norm),
+    q_element_t(TQ_CENTROIDS[u32(v.w)] * norm));
+}
+#endif
 
 #if has_attention_bias
   fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32, total_seq_length: u32) -> q_element_t
@@ -74,6 +97,15 @@ $MAIN {
   }
   let q_offset = batch_idx * uniforms.num_heads * uniforms.head_size_vec + head_idx * uniforms.head_size_vec;
   let present_offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * uniforms.head_size_vec;
+
+#if turbo_quant
+  // Preload f32 norms for all tokens in this tile into shared memory.
+  if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
+    tq_k_norms[local_idx] = tq_read_k_norm(present_offset + (total_seq_offset + local_idx) * uniforms.head_size_vec);
+  }
+  workgroupBarrier();
+#endif
+
   for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
     if (local_idx < tile_size_k_vec && k + local_idx < uniforms.head_size_vec) {
       tile_q[local_idx] = q[q_offset + k + local_idx];
@@ -83,7 +115,25 @@ $MAIN {
     if (k + local_col < uniforms.head_size_vec) {
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         if (total_seq_offset + row_offset + local_row < total_sequence_length) {
+#if turbo_quant
+          let k_vec_idx = k + local_col;
+          let raw_k = present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k_vec_idx];
+          let k_norm = tq_k_norms[row_offset + local_row];
+          var dequant_k: q_value_t;
+          if (k_vec_idx < uniforms.head_size_vec - 1u) {
+            dequant_k = tq_dequant_vec4_k(raw_k, k_norm);
+          } else {
+            // Last vec4: only x,y are centroid indices; z,w are norm bits
+            dequant_k = q_value_t(
+              q_element_t(TQ_CENTROIDS[u32(raw_k.x)] * k_norm),
+              q_element_t(TQ_CENTROIDS[u32(raw_k.y)] * k_norm),
+              q_element_t(0),
+              q_element_t(0));
+          }
+          inner_qk_values[row_offset + local_row][local_col] += dot(dequant_k, q_data);
+#else
           inner_qk_values[row_offset + local_row][local_col] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col], q_data);
+#endif
         }
       }
     }

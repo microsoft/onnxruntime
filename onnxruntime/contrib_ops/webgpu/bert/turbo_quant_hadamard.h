@@ -64,6 +64,53 @@ Status ApplyTurboQuantInverseRotation(onnxruntime::webgpu::ComputeContext& conte
                                       uint32_t sequence_length,
                                       uint32_t n_reps);
 
+// TurboQuant fused rotate+quantize program.
+// Applies FWHT rotation, computes L2 norm, normalizes to unit sphere,
+// then maps each element to its nearest TurboQuant centroid index (0–15).
+// Stores centroid indices in the first head_size-2 elements (as the native element type),
+// and the f32 L2 norm bitcast into the last 2 element slots.
+//
+// Dispatched as: one workgroup per (batch * kv_num_heads * num_tokens).
+// Workgroup size = head_size (must be power of 2, typically 128).
+class TurboQuantRotateQuantizeProgram final : public Program<TurboQuantRotateQuantizeProgram> {
+ public:
+  TurboQuantRotateQuantizeProgram(uint32_t head_size, uint32_t num_heads, bool is_fp16)
+      : Program{"TurboQuantRotateQuantize"},
+        head_size_(head_size),
+        num_heads_(num_heads),
+        is_fp16_(is_fp16) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"start_token", ProgramUniformVariableDataType::Uint32},
+      {"n_reps", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t head_size_;
+  uint32_t num_heads_;
+  bool is_fp16_;
+};
+
+// Apply fused Hadamard rotation + pseudo-quantization to a BNSH tensor in-place.
+// After this call the tensor contains centroid indices (as element type) in [0..head_size-3]
+// and an f32 L2 norm bitcast into [head_size-2..head_size-1].
+Status ApplyTurboQuantRotateAndQuantize(onnxruntime::webgpu::ComputeContext& context,
+                                        Tensor* tensor,
+                                        uint32_t head_size,
+                                        uint32_t num_heads,
+                                        uint32_t batch_size,
+                                        uint32_t num_tokens,
+                                        uint32_t present_sequence_length,
+                                        uint32_t start_token,
+                                        uint32_t n_reps,
+                                        bool is_fp16);
+
+// Dequantize a BNSH tensor inline during attention (used for testing / reference).
+// Not called in the main path — the flash attention templates dequantize inline.
+
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

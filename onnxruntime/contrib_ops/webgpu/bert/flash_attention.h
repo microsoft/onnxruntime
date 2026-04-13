@@ -78,7 +78,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool is_nvidia,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
-                        bool has_head_sink = false)
+                        bool has_head_sink = false,
+                        bool turbo_quant = false)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
@@ -89,7 +90,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         is_nvidia_(is_nvidia),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
-        has_head_sink_(has_head_sink) {
+        has_head_sink_(has_head_sink),
+        turbo_quant_(turbo_quant) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -115,13 +117,14 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
+  bool turbo_quant_;
 };
 
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
  public:
   FlashAttentionDecodeQKTProgram(const std::string& kernel_name,
-                                 bool has_attention_bias, uint32_t tile_size, bool use_indirect_dispatch)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), use_indirect_dispatch_(use_indirect_dispatch) {
+                                 bool has_attention_bias, uint32_t tile_size, bool use_indirect_dispatch, bool turbo_quant = false)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), use_indirect_dispatch_(use_indirect_dispatch), turbo_quant_(turbo_quant) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -141,12 +144,13 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
   bool has_attention_bias_;
   uint32_t tile_size_;
   bool use_indirect_dispatch_;
+  bool turbo_quant_;
 };
 
 class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDecodeSplitVxProgram> {
  public:
-  FlashAttentionDecodeSplitVxProgram(const std::string& kernel_name, uint32_t tile_size, int head_size_vec, bool use_indirect_dispatch, bool has_head_sink = false)
-      : Program{kernel_name}, tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), has_head_sink_(has_head_sink) {
+  FlashAttentionDecodeSplitVxProgram(const std::string& kernel_name, uint32_t tile_size, int head_size_vec, bool use_indirect_dispatch, bool has_head_sink = false, bool turbo_quant = false)
+      : Program{kernel_name}, tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), has_head_sink_(has_head_sink), turbo_quant_(turbo_quant) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -164,6 +168,7 @@ class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDe
   int head_size_vec_;
   bool use_indirect_dispatch_;
   bool has_head_sink_;
+  bool turbo_quant_;
 };
 
 class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionDecodeVxReduceProgram> {
