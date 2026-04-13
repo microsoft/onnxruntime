@@ -30,6 +30,7 @@ docker run --rm \
     "$DOCKER_IMAGE" \
     /bin/bash -c "
       set -e -x
+      python3 -m ensurepip
       python3 -m pip install -r /onnxruntime_src/plugin-ep-webgpu/python/requirements-build-wheel.txt
       python3 /onnxruntime_src/plugin-ep-webgpu/python/build_wheel.py \
         --binary_dir /build/plugin_artifacts/bin \
