@@ -31,8 +31,11 @@ namespace test {
 namespace {
 
 // Helper to extract size_t from ResourceCount variant.
+// Uses std::get_if so test failures produce a clear assertion rather than std::bad_variant_access.
 size_t GetSizeT(const ResourceCount& rc) {
-  return std::get<size_t>(rc);
+  const auto* value = std::get_if<size_t>(&rc);
+  EXPECT_NE(value, nullptr) << "ResourceCount does not hold size_t";
+  return value != nullptr ? *value : 0;
 }
 
 // Helper to create a real SizeBasedStatsAccountant in ad-hoc mode (no stats file) via factory.

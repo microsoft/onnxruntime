@@ -86,7 +86,7 @@ class ScopedCudaPluginRegistration {
 Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
   auto ep_devices = env.GetEpDevices();
   for (const auto& device : ep_devices) {
-    if (strcmp(device.EpName(), "CudaPluginExecutionProvider") == 0) {
+    if (strcmp(device.EpName(), kCudaPluginExecutionProvider) == 0) {
       return device;
     }
   }
@@ -197,7 +197,9 @@ class CudaPluginPartitioningTest : public ::testing::Test {
 
   void TearDown() override {
     registration_.reset();
-    cudaDeviceSynchronize();
+    if (cuda_device_) {
+      cudaDeviceSynchronize();
+    }
   }
 
   // Load a model through the CUDA plugin EP with the given resource budget,
@@ -370,7 +372,9 @@ class CudaResourcePartitioningTest : public ::testing::Test {
 
   void TearDown() override {
     registration_.reset();
-    cudaDeviceSynchronize();
+    if (cuda_device_) {
+      cudaDeviceSynchronize();
+    }
   }
 
   Ort::Session CreateSessionWithBudget(const ORTCHAR_T* model_path,
