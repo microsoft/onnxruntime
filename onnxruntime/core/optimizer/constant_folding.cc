@@ -11,6 +11,9 @@
 #include "core/optimizer/utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/common/safeint.h"
+#include "core/common/parse_string.h"
 
 using namespace onnxruntime::common;
 
@@ -140,6 +143,70 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
   return status;
 }
 
+// Default maximum output size per constant-folded node: 1 GB.
+// This prevents malicious models from causing excessive memory allocation during optimization.
+static constexpr int64_t kDefaultConstantFoldingMaxOutputSizeInBytes = 1024 * 1024 * 1024;
+
+// Estimate the total output size in bytes for a node using shape inference results.
+// Returns -1 if the output size cannot be estimated (e.g., unknown shapes or types).
+static int64_t EstimateNodeOutputSizeInBytes(const Node& node) {
+  SafeInt<int64_t> total_size = 0;
+
+  for (const auto* output_def : node.OutputDefs()) {
+    if (!output_def->Exists()) {
+      continue;
+    }
+
+    const auto* type_proto = output_def->TypeAsProto();
+    if (type_proto == nullptr || !utils::HasTensorType(*type_proto)) {
+      return -1;  // Cannot estimate non-tensor or unknown types
+    }
+
+    const auto* shape = output_def->Shape();
+    if (shape == nullptr) {
+      return -1;  // Unknown shape
+    }
+
+    auto elem_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
+        type_proto->tensor_type().elem_type());
+    size_t element_size = utils::GetElementSizeOfTensor(elem_type);
+    if (element_size == 0) {
+      return -1;  // Unknown element type
+    }
+
+    SafeInt<int64_t> num_elements = 1;
+    for (int i = 0; i < shape->dim_size(); ++i) {
+      const auto& dim = shape->dim(i);
+      if (!utils::HasDimValue(dim)) {
+        return -1;  // Symbolic dimension
+      }
+      int64_t dim_value = dim.dim_value();
+      if (dim_value < 0) {
+        return -1;  // Invalid dimension
+      }
+      num_elements *= dim_value;
+    }
+
+    total_size += num_elements * static_cast<int64_t>(element_size);
+  }
+
+  return total_size;
+}
+
+// Get the configured max output size from session options, or use the default.
+static int64_t GetConstantFoldingMaxOutputSize(const ConfigOptions& config_options) {
+  std::string max_size_str = config_options.GetConfigOrDefault(
+      kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes,
+      std::to_string(kDefaultConstantFoldingMaxOutputSizeInBytes));
+
+  int64_t max_size = 0;
+  if (!TryParseStringWithClassicLocale(max_size_str, max_size) || max_size < 0) {
+    max_size = kDefaultConstantFoldingMaxOutputSizeInBytes;
+  }
+
+  return max_size;
+}
+
 Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   bool have_updated_nodes = false;
   GraphViewer graph_viewer(graph);
@@ -150,6 +217,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     return graph.IsSparseInitializer(name);
   };
 #endif
+
+  const int64_t max_output_size = GetConstantFoldingMaxOutputSize(config_options_);
 
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
@@ -233,6 +302,30 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         }
       }
 
+      // Check if the estimated output size exceeds the configured limit.
+      // This prevents malicious models from causing excessive memory allocation during constant folding.
+      if (max_output_size > 0) {
+        int64_t estimated_size = -1;
+        try {
+          estimated_size = EstimateNodeOutputSizeInBytes(*node);
+        } catch (const std::exception&) {
+          // SafeInt overflow means the size is astronomically large - definitely skip
+          LOGS(logger, WARNING) << "Integer overflow while estimating output size of "
+                                << node->OpType() << " node '" << node->Name()
+                                << "'. Skipping constant folding for this node.";
+          continue;
+        }
+
+        if (estimated_size > max_output_size) {
+          LOGS(logger, WARNING) << "Skipping constant folding for " << node->OpType()
+                                << " node '" << node->Name()
+                                << "' because estimated output size (" << estimated_size
+                                << " bytes) exceeds the limit (" << max_output_size << " bytes).";
+          continue;
+        }
+        // If estimated_size is -1, we couldn't estimate; we'll check actual size after execution.
+      }
+
 #if !defined(DISABLE_SPARSE_TENSORS)
       // Create execution frame for executing constant nodes.
       OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
@@ -312,13 +405,50 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 #pragma warning(disable : 6387)
 #endif
       OpKernelContext op_kernel_context(&frame, kernel.get(), /*stream*/ nullptr, nullptr, logger);
-      ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
+
+      // Wrap Compute in try/catch so that overflows (e.g., SafeInt) or other failures in a
+      // single node don't abort the entire constant folding pass.
+      try {
+        ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
+      } catch (const std::exception& ex) {
+        LOGS(logger, WARNING) << "Exception during constant folding of " << node->OpType()
+                              << " node '" << node->Name() << "': " << ex.what()
+                              << ". Skipping constant folding for this node.";
+        continue;
+      }
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
 
       std::vector<OrtValue> fetches;
       ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+
+      // Post-execution size check: verify actual output sizes don't exceed the limit.
+      // This catches cases where pre-execution shape inference couldn't determine the output size.
+      if (max_output_size > 0) {
+        SafeInt<int64_t> actual_total_size = 0;
+        bool size_exceeded = false;
+        try {
+          for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+            if (fetches[fetch_idx].IsTensor()) {
+              const auto& tensor = fetches[fetch_idx].Get<Tensor>();
+              actual_total_size += tensor.SizeInBytes();
+            }
+          }
+          size_exceeded = actual_total_size > max_output_size;
+        } catch (const std::exception&) {
+          // SafeInt overflow means total size is astronomically large
+          size_exceeded = true;
+        }
+
+        if (size_exceeded) {
+          LOGS(logger, WARNING) << "Skipping constant folding for " << node->OpType()
+                                << " node '" << node->Name()
+                                << "' because actual output size exceeds the limit ("
+                                << max_output_size << " bytes).";
+          continue;
+        }
+      }
 
       // Go over all output node args and substitute them with the newly computed tensors, which will be
       // added to the graph as initializers.

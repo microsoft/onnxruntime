@@ -481,3 +481,15 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // - "0": disable. (default)
 // - "1": enable.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// Maximum total output size in bytes that the constant folding optimizer is allowed to produce per node.
+// Prevents malicious models from causing excessive memory allocation during optimization.
+// If the estimated or actual output size of a constant-foldable node exceeds this limit, the node will
+// not be constant folded and will instead be executed at runtime.
+//
+// Option values:
+// - A positive integer (as string): Maximum allowed output size in bytes per constant-folded node.
+//   Default is "1073741824" (1 GB).
+// - "0": Disable the size limit (not recommended for untrusted models).
+static const char* const kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes =
+    "optimization.constant_folding_max_output_size_in_bytes";
