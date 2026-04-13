@@ -212,8 +212,13 @@ void RunFusedMatMulTest(const char* op_name, int32_t opset_version = 7, bool tra
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);
 
-    // Disable OpenVINO, TensorRT because of unsupported data type
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+    // Disable TensorRT because of unsupported data type.
+    // Disable OpenVINO for scale (alpha != 1.0) and transBatch cases due to OV compilation errors.
+    std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider, kQnnExecutionProvider};
+    if (alpha != 1.0f || is_trans_batch_a || is_trans_batch_b) {
+      excluded_eps.insert(kOpenVINOExecutionProvider);
+    }
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
   }
 }
 
