@@ -1,19 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// TurboQuant fused FWHT rotation + pseudo-quantization shader.
+// TurboQuant fused FWHT rotation + quantization + int4 packing shader.
 // Each workgroup processes one head vector (head_size elements).
-// Steps:
-//   1. Load into f32 shared memory
-//   2. FWHT butterfly stages (rotation)
-//   3. f32 tree reduction for L2 norm
-//   4. Normalize to unit sphere, searchsorted -> centroid index (0-15)
-//   5. Write: indices in [0..head_size-3], f32 norm bitcast into [head_size-2..head_size-1]
+// Reads from source (BSNH or BNSH, fp16), writes packed int4 to dest (BNSH compressed fp16).
+//
+// Compressed layout per token (fp16 elements):
+//   [0..1]:   f32 norm as bitcast<vec2<f16>>(f32)
+//   [2..compressed_dim-3]: 4-bit indices packed as u32 -> bitcast<vec2<f16>>
+//   [compressed_dim-2..compressed_dim-1]: padding (0)
 
 #param head_size
 #param num_heads
 #param log2_head_size
 #param is_fp16
+#param source_BSNH
 
 #include "bert/turbo_quant_common.wgsl.template"
 
@@ -22,17 +23,26 @@ var<workgroup> tq_sq_shared : array<f32, head_size>;
 
 $MAIN {
   // Decode workgroup_idx -> (batch, head, token_in_range)
-  let token_in_range = workgroup_idx % uniforms.sequence_length;
-  let head_idx = (workgroup_idx / uniforms.sequence_length) % u32(num_heads);
-  let batch_idx = workgroup_idx / (uniforms.sequence_length * u32(num_heads));
-  let seq_pos = uniforms.start_token + token_in_range;
+  let token_in_range = workgroup_idx % uniforms.kv_sequence_length;
+  let head_idx = (workgroup_idx / uniforms.kv_sequence_length) % u32(num_heads);
+  let batch_idx = workgroup_idx / (uniforms.kv_sequence_length * u32(num_heads));
 
-  // BNSH tensor offset
-  let kv_head_idx = head_idx / uniforms.n_reps;
-  let base_offset = (batch_idx * u32(num_heads) + kv_head_idx) * uniforms.present_sequence_length * u32(head_size) + seq_pos * u32(head_size);
+  // Source offset: read from BSNH or BNSH layout
+#if source_BSNH
+  // source shape: [batch, kv_seq, kv_heads, head_size] (scalar access)
+  let src_base = ((batch_idx * uniforms.kv_sequence_length + token_in_range) * u32(num_heads) + head_idx) * u32(head_size);
+#else
+  // source shape: [batch, kv_heads, ???, head_size] — BNSH
+  let src_base = ((batch_idx * u32(num_heads) + head_idx) * uniforms.present_sequence_length + uniforms.start_token + token_in_range) * u32(head_size);
+#endif
 
-  // Step 1: Load into shared memory as f32 for FWHT + accumulation
-  tq_shared[local_idx] = f32(data[base_offset + local_idx]);
+  // Dest offset: write to BNSH compressed layout
+  // dest shape: [batch, kv_heads, present_seq, compressed_dim] (scalar access)
+  let dest_seq_pos = uniforms.start_token + token_in_range;
+  let dest_base = ((batch_idx * u32(num_heads) + head_idx) * uniforms.present_sequence_length + dest_seq_pos) * uniforms.compressed_dim;
+
+  // Step 1: Load from source into f32 shared memory for FWHT + accumulation
+  tq_shared[local_idx] = f32(source[src_base + local_idx]);
   workgroupBarrier();
 
   // Step 2: FWHT butterfly stages (in f32 for precision)
@@ -71,25 +81,48 @@ $MAIN {
   let norm = sqrt(max(tq_sq_shared[0], 1e-12));
   let inv_norm = 1.0 / norm;
 
-  // Step 4: Normalize and quantize
-  if (local_idx < u32(head_size) - 2u) {
-    let unit_val = rotated_val * inv_norm;
-    let idx = searchsorted_tq(unit_val);
-    data[base_offset + local_idx] = data_element_t(idx);
+  // Step 4: Normalize and quantize -> store index in shared memory for packing
+  let unit_val = rotated_val * inv_norm;
+  let quant_idx = searchsorted_tq(unit_val);
+  tq_shared[local_idx] = f32(quant_idx);
+  workgroupBarrier();
+
+  // Step 5: Pack 8 indices into one u32, write as 2 fp16 values to dest
+  // Each group of 8 threads produces one u32 at fp16 position [2 + group*2, 2 + group*2 + 1]
+  if (local_idx % 8u == 0u) {
+    let group = local_idx / 8u;
+    var packed = 0u;
+    for (var k = 0u; k < 8u; k++) {
+      packed |= u32(tq_shared[local_idx + k]) << (k * 4u);
+    }
+#if is_fp16
+    let packed_f16x2 = bitcast<vec2<f16>>(packed);
+    dest[dest_base + 2u + group * 2u] = packed_f16x2.x;
+    dest[dest_base + 2u + group * 2u + 1u] = packed_f16x2.y;
+#else
+    let packed_bits = bitcast<vec2<f32>>(vec2<u32>(packed, 0u));
+    dest[dest_base + 2u + group * 2u] = packed_bits.x;
+    dest[dest_base + 2u + group * 2u + 1u] = packed_bits.y;
+#endif
   }
 
-  // Step 5: Store f32 norm in the last 2 element slots via bitcast
+  // Step 6: Thread 0 writes the f32 norm as first 2 fp16 slots + padding
   if (local_idx == 0u) {
 #if is_fp16
     let norm_f16x2 = bitcast<vec2<f16>>(f32(norm));
-    data[base_offset + u32(head_size) - 2u] = norm_f16x2.x;
-    data[base_offset + u32(head_size) - 1u] = norm_f16x2.y;
+    dest[dest_base] = norm_f16x2.x;
+    dest[dest_base + 1u] = norm_f16x2.y;
+    // Write padding zeros at the end
+    dest[dest_base + uniforms.compressed_dim - 2u] = f16(0);
+    dest[dest_base + uniforms.compressed_dim - 1u] = f16(0);
 #else
     let norm_bits = bitcast<u32>(f32(norm));
     let lo16 = norm_bits & 0xFFFFu;
     let hi16 = (norm_bits >> 16u) & 0xFFFFu;
-    data[base_offset + u32(head_size) - 2u] = bitcast<data_element_t>(lo16);
-    data[base_offset + u32(head_size) - 1u] = bitcast<data_element_t>(hi16);
+    dest[dest_base] = bitcast<source_element_t>(lo16);
+    dest[dest_base + 1u] = bitcast<source_element_t>(hi16);
+    dest[dest_base + uniforms.compressed_dim - 2u] = source_element_t(0);
+    dest[dest_base + uniforms.compressed_dim - 1u] = source_element_t(0);
 #endif
   }
 }

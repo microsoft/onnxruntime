@@ -37,3 +37,14 @@ fn tq_dequant_vec4(indices: vec4<f32>, norm: f32) -> vec4<f32> {
     TQ_CENTROIDS[u32(indices.z)] * norm,
     TQ_CENTROIDS[u32(indices.w)] * norm);
 }
+
+// Dequantize 4 elements from a packed u32 containing 8 int4 indices.
+// half=0: lower 4 indices (bits 0-15), half=1: upper 4 indices (bits 16-31).
+fn tq_dequant_packed_half(packed: u32, half_sel: u32, norm: f32) -> vec4<f32> {
+  let shift = half_sel * 16u;
+  return vec4<f32>(
+    TQ_CENTROIDS[(packed >> shift) & 0xFu] * norm,
+    TQ_CENTROIDS[(packed >> (shift + 4u)) & 0xFu] * norm,
+    TQ_CENTROIDS[(packed >> (shift + 8u)) & 0xFu] * norm,
+    TQ_CENTROIDS[(packed >> (shift + 12u)) & 0xFu] * norm);
+}

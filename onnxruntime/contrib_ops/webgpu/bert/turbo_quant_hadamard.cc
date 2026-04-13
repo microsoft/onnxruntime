@@ -135,18 +135,20 @@ Status ApplyTurboQuantInverseRotation(onnxruntime::webgpu::ComputeContext& conte
 }
 
 // ---------------------------------------------------------------------------
-// TurboQuantRotateQuantizeProgram: Fused FWHT rotation + pseudo-quantization.
+// TurboQuantRotateQuantizeProgram: Fused FWHT rotation + quantization + int4 packing.
 // Each workgroup processes one head vector (head_size elements).
 // Steps:
-//   1. Load into shared memory
+//   1. Load from source (BSNH or BNSH) into f32 shared memory
 //   2. FWHT butterfly stages (rotation)
-//   3. f32 reduction for L2 norm (via shared memory)
-//   4. Normalize to unit sphere, searchsorted → centroid index (0–15)
-//   5. Write: indices in [0..head_size-3], f32 norm in [head_size-2..head_size-1]
+//   3. f32 reduction for L2 norm
+//   4. Normalize, searchsorted → centroid index (0–15)
+//   5. Pack 8 indices per u32 → write as fp16 pairs to dest (BNSH compressed)
+//   6. Write f32 norm as bitcast<vec2<f16>> to first 2 fp16 slots
 // ---------------------------------------------------------------------------
 
 Status TurboQuantRotateQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddOutput("data", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("source", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddOutput("dest", ShaderUsage::UseUniform);
 
   const uint32_t log2_head_size = static_cast<uint32_t>(std::log2(head_size_));
 
@@ -154,34 +156,40 @@ Status TurboQuantRotateQuantizeProgram::GenerateShaderCode(ShaderHelper& shader)
                              WGSL_TEMPLATE_PARAMETER(head_size, head_size_),
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_ ? 1 : 0),
                              WGSL_TEMPLATE_PARAMETER(log2_head_size, log2_head_size),
-                             WGSL_TEMPLATE_PARAMETER(num_heads, num_heads_));
+                             WGSL_TEMPLATE_PARAMETER(num_heads, num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(source_BSNH, source_BSNH_ ? 1 : 0));
 }
 
 Status ApplyTurboQuantRotateAndQuantize(onnxruntime::webgpu::ComputeContext& context,
-                                        Tensor* tensor,
+                                        const Tensor* source,
+                                        Tensor* dest,
                                         uint32_t head_size,
                                         uint32_t num_heads,
                                         uint32_t batch_size,
-                                        uint32_t num_tokens,
+                                        uint32_t kv_sequence_length,
                                         uint32_t present_sequence_length,
                                         uint32_t start_token,
                                         uint32_t n_reps,
-                                        bool is_fp16) {
+                                        uint32_t compressed_dim,
+                                        bool is_fp16,
+                                        bool source_BSNH) {
   uint32_t kv_num_heads = num_heads / n_reps;
-  uint32_t num_workgroups = batch_size * kv_num_heads * num_tokens;
+  uint32_t num_workgroups = batch_size * kv_num_heads * kv_sequence_length;
   if (num_workgroups == 0) {
     return Status::OK();
   }
 
-  TurboQuantRotateQuantizeProgram program{head_size, kv_num_heads, is_fp16};
-  program.AddOutputs({{tensor, ProgramTensorMetadataDependency::TypeAndRank}});
+  TurboQuantRotateQuantizeProgram program{head_size, kv_num_heads, is_fp16, source_BSNH};
+  program.AddInputs({{source, ProgramTensorMetadataDependency::TypeAndRank}});
+  program.AddOutputs({{dest, ProgramTensorMetadataDependency::TypeAndRank}});
   program.SetDispatchGroupSize(num_workgroups)
       .SetWorkgroupSize(head_size)
-      .CacheHint(head_size, kv_num_heads, is_fp16)
-      .AddUniformVariables({{num_tokens},
+      .CacheHint(head_size, kv_num_heads, is_fp16, source_BSNH)
+      .AddUniformVariables({{kv_sequence_length},
                             {present_sequence_length},
                             {start_token},
-                            {1u}});  // n_reps=1 for KV heads
+                            {1u},
+                            {compressed_dim}});
 
   return context.RunProgram(program);
 }

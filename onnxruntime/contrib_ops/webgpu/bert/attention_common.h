@@ -115,6 +115,7 @@ struct WebgpuAttentionParameters {
   // Computed values
   int n_reps = 1;
   bool turbo_quant_ = false;
+  int compressed_head_size_ = 0;  // head_size/4 + 4 when turbo_quant (vec4-aligned compressed dim)
   AttentionMaskType mask_type_ = MASK_NONE;
   AttentionQkvFormat qkv_format_ = UNKNOWN;
 };

@@ -132,13 +132,36 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // parameters.total_sequence_length_ is past_sequence_length + kv_sequence_length.
   // parameters.kv_num_heads_ may be smaller than parameters.num_heads_ when parameters.is_gqa_ is true.
   int num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
-  // Only copy the new kv data for static kv cache
-  int copy_sequence_length = parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
-  TensorShape copy_kv_shape{parameters.batch_size_, num_heads, copy_sequence_length, parameters.head_size_ / components};
-  int64_t copy_size = copy_kv_shape.Size();
+
+  // For TurboQuant:
+  // - shared buffer: past data persists in-place, nothing to copy
+  // - non-shared buffer: copy compressed past data to the new present buffer
+  //   (new tokens are handled later by the quantize shader)
+  int copy_head_size = parameters.turbo_quant_ ? parameters.compressed_head_size_ : parameters.head_size_;
+  int copy_sequence_length;
+  if (parameters.turbo_quant_) {
+    if (!parameters.past_present_share_buffer_ && past_key != nullptr && past_key->SizeInBytes() > 0 &&
+        parameters.past_sequence_length_ > 0) {
+      // Past KV has compressed data — copy it to the new present buffer
+      ORT_RETURN_IF_ERROR(context.CopyTensor(*past_key, *present_key));
+      ORT_RETURN_IF_ERROR(context.CopyTensor(*past_value, *present_value));
+    }
+    copy_sequence_length = 0;  // CopyKVCache not needed for TQ
+  } else {
+    // Only copy the new kv data for static kv cache
+    copy_sequence_length = parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
+  }
 
   // Determine if we need to prepare indirect dispatch
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
+
+  // Early return if nothing to copy (TQ with no past, or empty sequence)
+  if (copy_sequence_length == 0 && !prepare_indirect_dispatch) {
+    return Status::OK();
+  }
+
+  TensorShape copy_kv_shape{parameters.batch_size_, num_heads, std::max(copy_sequence_length, 1), copy_head_size / components};
+  int64_t copy_size = parameters.batch_size_ * num_heads * copy_sequence_length * (copy_head_size / components);
   bool use_seqlen_k = (seqlen_k != nullptr);
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
   CopyKVCacheProgram program{"CopyKVCache", has_past, kv_BNSH, parameters.past_present_share_buffer_,
@@ -423,15 +446,16 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Create present_key and present_value tensors if they are nullptr
   Tensor internal_present_key;
   Tensor internal_present_value;
+  const int present_head_dim = parameters.turbo_quant_ ? parameters.compressed_head_size_ : parameters.head_size_;
   if (present_key == nullptr) {
     TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
-                                        parameters.total_sequence_length_, parameters.head_size_});
+                                        parameters.total_sequence_length_, present_head_dim});
     internal_present_key = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_key = &internal_present_key;
   }
   if (present_value == nullptr) {
     TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
-                                        parameters.total_sequence_length_, parameters.head_size_});
+                                        parameters.total_sequence_length_, present_head_dim});
     internal_present_value = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_value = &internal_present_value;
   }
@@ -487,37 +511,39 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // The inverse rotation on the output handles V rotation: inv(H) · softmax(QK') · V'.
   if (parameters.turbo_quant_) {
     // For past_present_share_buffer, new tokens start at past_sequence_length.
-    // For dynamic cache, CopyKVCache copies all tokens so start at 0.
-    const uint32_t start_token = parameters.past_present_share_buffer_
-                                     ? static_cast<uint32_t>(parameters.past_sequence_length_)
-                                     : 0u;
-    const uint32_t num_new_tokens = parameters.past_present_share_buffer_
-                                        ? static_cast<uint32_t>(parameters.kv_sequence_length_)
-                                        : static_cast<uint32_t>(parameters.total_sequence_length_);
+    // For dynamic cache, new tokens go at past_sequence_length.
+    const uint32_t start_token = static_cast<uint32_t>(parameters.past_sequence_length_);
+    const uint32_t kv_sequence_length = static_cast<uint32_t>(parameters.kv_sequence_length_);
+    const uint32_t compressed_dim = static_cast<uint32_t>(parameters.compressed_head_size_);
 
     bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    bool source_BSNH = (parameters.qkv_format_ == Q_K_V_BSNH);
 
-    // Fused rotate+quantize K (present_key) — newly written tokens only
-    ORT_RETURN_IF_ERROR(ApplyTurboQuantRotateAndQuantize(context, present_key,
+    // Fused rotate+quantize+pack K: reads from K input, writes packed int4 to present_key
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantRotateAndQuantize(context, K, present_key,
                                                          static_cast<uint32_t>(parameters.head_size_),
                                                          static_cast<uint32_t>(parameters.num_heads_),
                                                          static_cast<uint32_t>(parameters.batch_size_),
-                                                         num_new_tokens,
+                                                         kv_sequence_length,
                                                          present_sequence_length,
                                                          start_token,
                                                          static_cast<uint32_t>(parameters.n_reps),
-                                                         is_fp16));
+                                                         compressed_dim,
+                                                         is_fp16,
+                                                         source_BSNH));
 
-    // Fused rotate+quantize V (present_value) — newly written tokens only
-    ORT_RETURN_IF_ERROR(ApplyTurboQuantRotateAndQuantize(context, present_value,
+    // Fused rotate+quantize+pack V: reads from V input, writes packed int4 to present_value
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantRotateAndQuantize(context, V, present_value,
                                                          static_cast<uint32_t>(parameters.head_size_),
                                                          static_cast<uint32_t>(parameters.num_heads_),
                                                          static_cast<uint32_t>(parameters.batch_size_),
-                                                         num_new_tokens,
+                                                         kv_sequence_length,
                                                          present_sequence_length,
                                                          start_token,
                                                          static_cast<uint32_t>(parameters.n_reps),
-                                                         is_fp16));
+                                                         compressed_dim,
+                                                         is_fp16,
+                                                         source_BSNH));
 
     // Rotate Q — same FWHT transform applied to Q so that QK scores are preserved.
     // Q is not quantized (not cached), only rotated.

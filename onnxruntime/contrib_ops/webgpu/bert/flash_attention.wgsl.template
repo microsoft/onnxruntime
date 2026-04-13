@@ -46,14 +46,17 @@ var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 #if turbo_quant
 #include "bert/turbo_quant_common.wgsl.template"
 
-// Extract f32 norm from the z,w components of the last vec4 in a quantized KV vector.
-// The norm is stored as bitcast<vec2<f16>>(f32_norm) for fp16 tensors.
-fn tq_extract_norm(last_vec: q_value_t) -> f32 {
+// Compressed KV cache: int4 indices packed as u32 pairs in fp16 carrier.
+// compressed_head_size_vec = number of vec4s per token in compressed buffer.
+const compressed_head_size_vec : u32 = head_size / 16u + 1u;
+
+// Extract f32 norm from the x,y components of the first vec4 in a compressed KV token.
+fn tq_extract_norm(first_vec: q_value_t) -> f32 {
 #if is_fp16
-  return bitcast<f32>(vec2<f16>(q_element_t(last_vec.z), q_element_t(last_vec.w)));
+  return bitcast<f32>(vec2<f16>(q_element_t(first_vec.x), q_element_t(first_vec.y)));
 #else
-  let lo = bitcast<u32>(f32(last_vec.z));
-  let hi = bitcast<u32>(f32(last_vec.w));
+  let lo = bitcast<u32>(f32(first_vec.x));
+  let hi = bitcast<u32>(f32(first_vec.y));
   return bitcast<f32>(lo | (hi << 16u));
 #endif
 }
@@ -80,26 +83,29 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
 
 fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
   // Stored as float16[batch_size,num_heads,present_sequence_length,96]
-  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
-               k_start * head_size_vec;
 #if turbo_quant
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * compressed_head_size_vec +
+               k_start * compressed_head_size_vec;
   for (var slot : u32 = 0; slot < k_step; slot++) {
     if (k_start + slot < get_total_sequence_length()) {
-      let token_offset = offset + slot * head_size_vec;
-      let norm = tq_extract_norm(present_key[token_offset + head_size_vec - 1u]);
-      // Cooperative load: each thread handles a subset of vec4s
+      let token_offset = offset + slot * compressed_head_size_vec;
+      let norm = tq_extract_norm(present_key[token_offset]);
+      // Cooperative unpack: each thread handles a subset of output vec4s
       for (var idx : u32 = local_idx; idx < head_size_vec; idx += workgroup_size_x) {
-        if (idx < head_size_vec - 1u) {
-          k_tile[slot][idx] = q_value_t(tq_dequant_vec4(vec4<f32>(present_key[token_offset + idx]), norm));
+        let element_start = idx * 4u;
+        let u32_group = element_start / 8u;
+        let half_sel = (element_start / 4u) % 2u;
+        let compressed_fp16_idx = 2u + u32_group * 2u;
+        let cv_idx = compressed_fp16_idx / 4u;
+        let cv_component_pair = (compressed_fp16_idx % 4u) / 2u;
+        let cv = present_key[token_offset + cv_idx];
+        var packed_u32: u32;
+        if (cv_component_pair == 0u) {
+          packed_u32 = bitcast<u32>(vec2<f16>(q_element_t(cv.x), q_element_t(cv.y)));
         } else {
-          // Last vec4: only x,y are valid indices; z,w are norm bits
-          let raw = present_key[token_offset + idx];
-          k_tile[slot][idx] = q_value_t(
-            q_element_t(TQ_CENTROIDS[u32(raw.x)] * norm),
-            q_element_t(TQ_CENTROIDS[u32(raw.y)] * norm),
-            q_element_t(0),
-            q_element_t(0));
+          packed_u32 = bitcast<u32>(vec2<f16>(q_element_t(cv.z), q_element_t(cv.w)));
         }
+        k_tile[slot][idx] = q_value_t(tq_dequant_packed_half(packed_u32, half_sel, norm));
       }
     } else {
       for (var idx : u32 = local_idx; idx < head_size_vec; idx += workgroup_size_x) {
@@ -108,6 +114,8 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
     }
   }
 #else
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
+               k_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
     let val = select(q_value_t(0), present_key[offset + idx], k_start + slot < get_total_sequence_length());
@@ -118,24 +126,28 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
 
 fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
   // Stored as float16[batch_size,num_heads,present_sequence_length,96]
-  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
-               v_start * head_size_vec;
 #if turbo_quant
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * compressed_head_size_vec +
+               v_start * compressed_head_size_vec;
   for (var slot : u32 = 0; slot < v_step; slot++) {
     if (v_start + slot < get_total_sequence_length()) {
-      let token_offset = offset + slot * head_size_vec;
-      let norm = tq_extract_norm(present_value[token_offset + head_size_vec - 1u]);
+      let token_offset = offset + slot * compressed_head_size_vec;
+      let norm = tq_extract_norm(present_value[token_offset]);
       for (var idx : u32 = local_idx; idx < head_size_vec; idx += workgroup_size_x) {
-        if (idx < head_size_vec - 1u) {
-          v_tile[slot][idx] = q_value_t(tq_dequant_vec4(vec4<f32>(present_value[token_offset + idx]), norm));
+        let element_start = idx * 4u;
+        let u32_group = element_start / 8u;
+        let half_sel = (element_start / 4u) % 2u;
+        let compressed_fp16_idx = 2u + u32_group * 2u;
+        let cv_idx = compressed_fp16_idx / 4u;
+        let cv_component_pair = (compressed_fp16_idx % 4u) / 2u;
+        let cv = present_value[token_offset + cv_idx];
+        var packed_u32: u32;
+        if (cv_component_pair == 0u) {
+          packed_u32 = bitcast<u32>(vec2<f16>(q_element_t(cv.x), q_element_t(cv.y)));
         } else {
-          let raw = present_value[token_offset + idx];
-          v_tile[slot][idx] = q_value_t(
-            q_element_t(TQ_CENTROIDS[u32(raw.x)] * norm),
-            q_element_t(TQ_CENTROIDS[u32(raw.y)] * norm),
-            q_element_t(0),
-            q_element_t(0));
+          packed_u32 = bitcast<u32>(vec2<f16>(q_element_t(cv.z), q_element_t(cv.w)));
         }
+        v_tile[slot][idx] = q_value_t(tq_dequant_packed_half(packed_u32, half_sel, norm));
       }
     } else {
       for (var idx : u32 = local_idx; idx < head_size_vec; idx += workgroup_size_x) {
@@ -144,6 +156,8 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
     }
   }
 #else
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
+               v_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
     let val = select(q_value_t(0), present_value[offset + idx], v_start + slot < get_total_sequence_length());

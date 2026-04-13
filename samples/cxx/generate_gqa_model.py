@@ -10,15 +10,15 @@ Inputs  (all fp16):
   query              : (batch, seq_len, num_heads * head_size)      -- Q in BSD
   key                : (batch, seq_len, kv_num_heads * head_size)   -- K in BSD
   value              : (batch, seq_len, kv_num_heads * head_size)   -- V in BSD
-  past_key           : (batch, kv_num_heads, max_cache, head_size)  -- BNSH
-  past_value         : (batch, kv_num_heads, max_cache, head_size)  -- BNSH
+  past_key           : (batch, kv_num_heads, max_cache, cache_dim) -- BNSH
+  past_value         : (batch, kv_num_heads, max_cache, cache_dim) -- BNSH
   seqlens_k          : (batch,)                                     -- int32
   total_sequence_length : (1,)                                      -- int32
 
 Outputs (all fp16):
   output             : (batch, seq_len, num_heads * head_size)
-  present_key        : (batch, kv_num_heads, max_cache, head_size)  -- BNSH
-  present_value      : (batch, kv_num_heads, max_cache, head_size)  -- BNSH
+  present_key        : (batch, kv_num_heads, max_cache, cache_dim) -- BNSH
+  present_value      : (batch, kv_num_heads, max_cache, cache_dim) -- BNSH
 
 Usage:
   pip install onnx
@@ -54,12 +54,12 @@ def make_gqa_model(
     past_key = helper.make_tensor_value_info(
         "past_key",
         TensorProto.FLOAT16,
-        [batch_size, kv_num_heads, max_cache, head_size],
+        [batch_size, kv_num_heads, "cache_len", "cache_dim"],
     )
     past_value = helper.make_tensor_value_info(
         "past_value",
         TensorProto.FLOAT16,
-        [batch_size, kv_num_heads, max_cache, head_size],
+        [batch_size, kv_num_heads, "cache_len", "cache_dim"],
     )
     seqlens_k = helper.make_tensor_value_info(
         "seqlens_k", TensorProto.INT32, [batch_size]
@@ -75,12 +75,12 @@ def make_gqa_model(
     present_key = helper.make_tensor_value_info(
         "present_key",
         TensorProto.FLOAT16,
-        [batch_size, kv_num_heads, max_cache, head_size],
+        [batch_size, kv_num_heads, "cache_len", "cache_dim"],
     )
     present_value = helper.make_tensor_value_info(
         "present_value",
         TensorProto.FLOAT16,
-        [batch_size, kv_num_heads, max_cache, head_size],
+        [batch_size, kv_num_heads, "cache_len", "cache_dim"],
     )
 
     # --- GQA Node ---

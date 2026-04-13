@@ -197,11 +197,16 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   const Tensor* head_sink = context.Input<Tensor>(11);
 
   GroupQueryAttentionParameters params = {};
+  // When turbo_quant is enabled, past_key/past_value have compressed last dim
+  // which fails the standard head_size validation. Skip past validation.
+  const bool turbo_quant = context.TurboQuant();
+  const Tensor* past_key_for_check = turbo_quant ? nullptr : past_key;
+  const Tensor* past_value_for_check = turbo_quant ? nullptr : past_value;
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
                                                                 value,
-                                                                past_key,
-                                                                past_value,
+                                                                past_key_for_check,
+                                                                past_value_for_check,
                                                                 cos_cache,
                                                                 sin_cache,
                                                                 &params,
@@ -213,6 +218,14 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 softcap_,
                                                                 0,
                                                                 context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
+  // For TQ, CheckInputs skips past validation (compressed dim != head_size), so
+  // past_sequence_length and seqlen_present_kv_cache need to be set manually.
+  if (turbo_quant && past_key != nullptr && past_key->SizeInBytes() > 0) {
+    // past buffer shape[2] is the max cache length (or past sequence length)
+    params.seqlen_present_kv_cache = static_cast<int>(past_key->Shape()[2]);
+    // Derive past_sequence_length = total_sequence_length - sequence_length
+    params.seqlen_past_kv_cache = params.total_sequence_length - params.sequence_length;
+  }
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 
@@ -227,16 +240,25 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   WebgpuAttentionParameters parameters(params);
   parameters.turbo_quant_ = context.TurboQuant();
+  if (parameters.turbo_quant_) {
+    // Compressed KV cache: pack int4 indices into fp16 pairs (u32 via bitcast).
+    // Layout per token: [norm(2 fp16)] [packed indices(head_size/4 fp16)] [padding]
+    // Vec4-aligned: ((head_size/4 + 2 + 3) / 4) * 4
+    parameters.compressed_head_size_ = ((parameters.head_size_ / 4 + 2 + 3) / 4) * 4;
+  }
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
   output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size_);
   Tensor* output = context.Output(0, output_shape);
+  // For TQ, present output uses compressed head dim. The model's expected shape
+  // differs (head_size), but the EP manages the compressed format internally.
+  const int present_head_dim = parameters.turbo_quant_ ? parameters.compressed_head_size_ : parameters.head_size_;
   std::vector<int64_t> present_dims{
       parameters.batch_size_,
       kv_num_heads_,
       parameters.seqlen_present_kv_cache_,
-      parameters.head_size_};
+      present_head_dim};
   std::vector<int64_t> present_kv_shape(present_dims);
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
