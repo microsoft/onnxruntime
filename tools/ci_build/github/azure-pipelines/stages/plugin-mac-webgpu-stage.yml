@@ -88,6 +88,16 @@ stages:
           libonnxruntime_providers_webgpu.dylib
         TargetFolder: '$(Build.ArtifactStagingDirectory)/bin'
 
+    - template: ../templates/mac-esrp-dylib.yml
+      parameters:
+        FolderPath: '$(Build.ArtifactStagingDirectory)/bin'
+        Pattern: '*.dylib'
+
+    - script: |
+        set -e -x
+        codesign --display --verbose=3 "$(Build.ArtifactStagingDirectory)/bin/libonnxruntime_providers_webgpu.dylib"
+      displayName: 'Verify signed binary'
+
     - script: |
         set -e -x
         mkdir -p "$(Build.ArtifactStagingDirectory)/version"
