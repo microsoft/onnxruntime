@@ -8,6 +8,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/cpu/signal/utils.h"
+#include "core/common/math_constants.h"
 
 namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(HannWindow, 17,

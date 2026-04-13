@@ -7,6 +7,7 @@
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
+#include "core/common/math_constants.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

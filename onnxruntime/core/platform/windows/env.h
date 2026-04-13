@@ -47,7 +47,7 @@ class WindowsEnv : public Env {
 #endif
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options);
+                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override;
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif

@@ -31,9 +31,11 @@ struct OpVersionsAndSelector {
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
   OpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
-                        std::unique_ptr<NodeGroupSelector> selector_in)
-      : op_versions_map{ops_and_versions_in},
-        selector{std::move(selector_in)} {}
+                        std::unique_ptr<NodeGroupSelector> selector_in);
+
+  // Destructor defined out-of-line so NodeGroupSelector is complete when
+  // unique_ptr<NodeGroupSelector> is destroyed (required by libc++).
+  ~OpVersionsAndSelector();
 
   OpVersionsMap op_versions_map;
   std::unique_ptr<NodeGroupSelector> selector;
@@ -44,7 +46,8 @@ struct OpVersionsAndSelector {
 // class that manages a set of node group selectors
 class Selectors {
  public:
-  Selectors() = default;
+  Selectors();
+  ~Selectors();
 
   // register a selector for the specified ops.
   void RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
@@ -64,6 +67,7 @@ class Selectors {
 class SelectorManager {
  public:
   SelectorManager();
+  ~SelectorManager();
 
   // Methods that finds and returns a vector of QDQ::NodeGroup in a given graph
   // Can be used in QDQ support in different EPs

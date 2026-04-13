@@ -11,6 +11,7 @@
 #include "core/optimizer/utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/common/math_constants.h"
 
 using namespace onnxruntime::common;
 

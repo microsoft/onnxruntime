@@ -131,7 +131,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
         MLAS_FLOAT32X4 ValueTimesAlpha = MlasMultiplyFloat32x4(Value, AlphaBroadcast);
 
 #if defined(MLAS_NEON_INTRINSICS)
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(__clang__)
         return vbslq_f32(vcleq_z_f32_ex(Value), ValueTimesAlpha, Value);
 #else
         // N.B. Standard NEON headers lack an intrinsic for the "vcle #0" form.

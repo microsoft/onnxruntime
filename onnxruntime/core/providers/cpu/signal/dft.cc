@@ -16,6 +16,7 @@
 #include "core/providers/cpu/signal/utils.h"
 #include "core/util/math_cpuonly.h"
 #include "Eigen/src/Core/Map.h"
+#include "core/common/math_constants.h"
 
 namespace onnxruntime {
 
@@ -204,7 +205,7 @@ static Status dft_bluestein_z_chirp(
     OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor& b_fft, Tensor& chirp, size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride,
     int64_t axis, size_t dft_length, const Tensor* window, bool inverse, InlinedVector<std::complex<T>>& V,
     InlinedVector<std::complex<T>>& temp_output) {
-  static constexpr T pi = static_cast<T>(M_PI);
+  static const T pi = static_cast<T>(3.14159265358979323846);
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
