@@ -11,8 +11,11 @@ The inference test is skipped gracefully if no WebGPU device is available
 (e.g., on CPU-only build agents).
 """
 
+import os
+import platform
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import numpy as np
@@ -38,9 +41,28 @@ def create_mul_model() -> str:
     return str(model_path)
 
 
+def print_environment_info():
+    """Print diagnostic information about the runtime environment."""
+    print(f"  Python: {sys.version}")
+    print(f"  Platform: {platform.platform()}")
+    print(f"  Architecture: {platform.machine()}")
+    print(f"  ONNX Runtime version: {ort.__version__}")
+    print(f"  ONNX Runtime location: {ort.__file__}")
+    print(f"  Available providers (built-in): {ort.get_available_providers()}")
+    # Print relevant environment variables
+    for var in sorted(os.environ):
+        lower = var.lower()
+        if any(kw in lower for kw in ["onnx", "ort", "gpu", "cuda", "vulkan", "webgpu", "dawn", "path", "ld_library"]):
+            print(f"  ENV {var}={os.environ[var]}")
+
+
 def test_import_and_library_path():
     """Test that the package imports and the library path is valid."""
     import onnxruntime_ep_webgpu as webgpu_ep
+
+    print(f"  Package location: {webgpu_ep.__file__}")
+    pkg_dir = Path(webgpu_ep.__file__).parent
+    print(f"  Package directory contents: {sorted(p.name for p in pkg_dir.iterdir())}")
 
     lib_path = webgpu_ep.get_library_path()
     assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
@@ -64,12 +86,15 @@ def test_registration_and_inference():
     registration_name = "webgpu_plugin_test"
 
     # Register the plugin EP
+    print(f"  Registering library: {lib_path}")
+    print(f"  Library file size: {Path(lib_path).stat().st_size} bytes")
     ort.register_execution_provider_library(registration_name, lib_path)
     print(f"OK: Registered EP library as '{registration_name}'")
 
     try:
         # Discover devices
         all_devices = ort.get_ep_devices()
+        print(f"  All devices: {[(d.ep_name, getattr(d, 'device_id', 'N/A')) for d in all_devices]}")
         webgpu_devices = [d for d in all_devices if d.ep_name == ep_name]
         print(f"Found {len(webgpu_devices)} WebGPU device(s)")
 
@@ -85,7 +110,9 @@ def test_registration_and_inference():
         print("OK: Session options configured with WebGPU EP")
 
         model_path = create_mul_model()
+        print(f"  Model path: {model_path}")
         sess = ort.InferenceSession(model_path, sess_options=sess_options)
+        print(f"  Session providers: {sess.get_providers()}")
         print("OK: InferenceSession created")
 
         # Run inference
@@ -110,6 +137,9 @@ def test_registration_and_inference():
 def main():
     print("=== WebGPU Plugin EP Python Package Test ===")
 
+    print("\n--- Environment ---")
+    print_environment_info()
+
     print("\n--- Test 1: Import and library path ---")
     test_import_and_library_path()
 
@@ -124,4 +154,5 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         print(f"\nFAILED: {e}", file=sys.stderr)
+        traceback.print_exc()
         sys.exit(1)
