@@ -3,12 +3,20 @@
 
 #include <string>
 #include <string_view>
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <chrono>
+#include <mutex>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "core/common/inlined_containers.h"
+#include "core/common/logging/macros.h"
+#include "core/platform/env.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -20,6 +28,427 @@ namespace webgpu {
 
 namespace {
 constexpr unsigned int kMinMForTileOptimization = 4;
+constexpr uint32_t kMatMulNBitsMinNForAutoTuning = 65536;
+constexpr const char* kMatMulNBitsAutoTunerEnvVar = "ORT_WEBGPU_MATMUL_NBITS_ENABLE_AUTO_TUNER";
+constexpr double kMatMulNBitsTuneMinImprovementRatio = 0.10;
+
+struct MatMulNBitsTuneParams {
+  uint32_t tile_size_k_vec;
+  uint32_t workgroup_size;
+  uint32_t tile_size;
+};
+
+std::mutex g_matmul_nbits_tune_mutex;
+InlinedHashMap<std::string, MatMulNBitsTuneParams> g_matmul_nbits_tuned_params;
+
+constexpr std::array<MatMulNBitsTuneParams, 12> kMatMulNBitsTuneCandidates{{
+    {8u, 64u, 8u},
+    {8u, 128u, 8u},
+    {8u, 64u, 16u},
+    {8u, 128u, 16u},
+    {16u, 64u, 8u},
+    {16u, 128u, 8u},
+    {16u, 64u, 16u},
+    {16u, 128u, 16u},
+    {32u, 64u, 8u},
+    {32u, 128u, 8u},
+    {32u, 64u, 16u},
+    {32u, 128u, 16u},
+}};
+
+constexpr int kMatMulNBitsTuneWarmupRuns = 1;
+constexpr int kMatMulNBitsTuneMeasuredRuns = 2;
+
+std::string_view ToStdStringView(wgpu::StringView value) {
+  return std::string_view{value.data ? value.data : "", value.length};
+}
+
+std::string MakeMatMulNBitsTuneKey(const onnxruntime::webgpu::ComputeContext& context,
+                                   uint32_t M,
+                                   uint32_t N,
+                                   uint32_t K,
+                                   uint32_t block_size,
+                                   uint32_t nbits,
+                                   bool single_scale_weights,
+                                   bool is_fp16) {
+  return MakeStringWithClassicLocale(ToStdStringView(context.AdapterInfo().vendor),
+                                     "|",
+                                     ToStdStringView(context.AdapterInfo().architecture),
+                                     "|",
+                                     ToStdStringView(context.AdapterInfo().device),
+                                     "|M=",
+                                     M,
+                                     "|N=",
+                                     N,
+                                     "|K=",
+                                     K,
+                                     "|block=",
+                                     block_size,
+                                     "|bits=",
+                                     nbits,
+                                     "|single_scale=",
+                                     single_scale_weights ? 1 : 0,
+                                     "|fp16=",
+                                     is_fp16 ? 1 : 0);
+}
+
+bool IsValidTuneCandidate(const onnxruntime::webgpu::ComputeContext& context,
+                          const MatMulNBitsTuneParams& candidate) {
+  if (candidate.workgroup_size % candidate.tile_size_k_vec != 0 ||
+      candidate.workgroup_size > context.DeviceLimits().maxComputeInvocationsPerWorkgroup) {
+    return false;
+  }
+
+  const uint32_t sub_tile_count = candidate.workgroup_size / candidate.tile_size_k_vec;
+  return sub_tile_count > 0 && candidate.tile_size % sub_tile_count == 0;
+}
+
+MatMulNBitsTuneParams GetDefaultMatMulNBitsTuneParams(const onnxruntime::webgpu::ComputeContext& context) {
+  return MatMulNBitsTuneParams{
+      (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u,
+      128u,
+      8u,
+  };
+}
+
+bool ShouldTuneDefaultMatMulNBitsProgram(const onnxruntime::webgpu::ComputeContext& context,
+                                         uint32_t batch_count,
+                                         uint32_t M,
+                                         uint32_t N,
+                                         bool has_zero_points,
+                                         bool has_bias,
+                                         bool has_weight_idx,
+                                         bool has_weight_idx_indirect) {
+  std::string auto_tuner_env = Env::Default().GetEnvironmentVar(kMatMulNBitsAutoTunerEnvVar);
+  if (auto_tuner_env.empty()) {
+    return false;
+  }
+
+  std::transform(auto_tuner_env.begin(), auto_tuner_env.end(), auto_tuner_env.begin(),
+                 [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+  if (auto_tuner_env == "0" || auto_tuner_env == "false" || auto_tuner_env == "off") {
+    return false;
+  }
+
+  return !context.IsGraphCaptureEnabled() &&
+         batch_count == 1 &&
+         M == 1 &&
+         N >= kMatMulNBitsMinNForAutoTuning &&
+         !has_zero_points &&
+         !has_bias &&
+         !has_weight_idx &&
+         !has_weight_idx_indirect;
+}
+
+Status RunDefaultMatMulNBitsProgram(const Tensor* a,
+                                    const Tensor* b,
+                                    const Tensor* scales,
+                                    const Tensor* zero_points,
+                                    const Tensor* bias,
+                                    uint32_t batch_count,
+                                    uint32_t M,
+                                    uint32_t N,
+                                    uint32_t K,
+                                    uint32_t block_size,
+                                    uint32_t n_blocks_per_col,
+                                    uint32_t zero_blocks_per_col,
+                                    uint32_t blob_size,
+                                    uint32_t nbits,
+                                    bool has_zero_points,
+                                    bool has_bias,
+                                    bool has_weight_idx,
+                                    bool has_weight_idx_indirect,
+                                    bool single_scale_weights,
+                                    onnxruntime::webgpu::ComputeContext& context,
+                                    Tensor* y,
+                                    uint32_t weight_index,
+                                    const Tensor* weight_index_indirect,
+                                    const MatMulNBitsTuneParams& params,
+                                    bool wait_for_completion = false) {
+  constexpr uint32_t kU32Components = 4;
+  const uint32_t components_a = GetMaxComponents(K);
+  const uint32_t blob_size_in_words = blob_size / 4;
+  const uint32_t components_b = GetMaxComponents(blob_size_in_words);
+  const uint32_t components_b_with_u32 = components_b * kU32Components;
+  const uint32_t num_N_tile = CeilDiv(N, params.tile_size);
+  const uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
+
+  MatMulNBitsProgram program{params.tile_size,
+                             nbits,
+                             has_zero_points,
+                             has_bias,
+                             has_weight_idx,
+                             has_weight_idx_indirect,
+                             single_scale_weights,
+                             params.tile_size_k_vec};
+  program.SetWorkgroupSize(params.workgroup_size);
+  program.SetDispatchGroupSize(num_N_tile, M, batch_count);
+  program
+      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
+                  {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
+                  {scales, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddUniformVariables({{M},
+                            {N},
+                            {K},
+                            {K / components_a},
+                            {K_of_b},
+                            {block_size},
+                            {n_blocks_per_col},
+                            {zero_blocks_per_col},
+                            {num_N_tile},
+                            {batch_count},
+                            {weight_index}})
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, params.tile_size_k_vec);
+  if (has_zero_points) {
+    program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+  }
+  if (has_bias) {
+    program.AddInput({bias, ProgramTensorMetadataDependency::None});
+  }
+  if (has_weight_idx_indirect) {
+    program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
+  }
+
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  if (wait_for_completion) {
+    return context.FlushAndWait();
+  }
+  return Status::OK();
+}
+
+MatMulNBitsTuneParams GetTunedMatMulNBitsParams(const Tensor* a,
+                                                const Tensor* b,
+                                                const Tensor* scales,
+                                                const Tensor* zero_points,
+                                                const Tensor* bias,
+                                                uint32_t batch_count,
+                                                uint32_t M,
+                                                uint32_t N,
+                                                uint32_t K,
+                                                uint32_t block_size,
+                                                uint32_t n_blocks_per_col,
+                                                uint32_t zero_blocks_per_col,
+                                                uint32_t blob_size,
+                                                uint32_t nbits,
+                                                bool has_zero_points,
+                                                bool has_bias,
+                                                bool has_weight_idx,
+                                                bool has_weight_idx_indirect,
+                                                bool single_scale_weights,
+                                                onnxruntime::webgpu::ComputeContext& context,
+                                                Tensor* y,
+                                                uint32_t weight_index,
+                                                const Tensor* weight_index_indirect) {
+  const bool is_fp16 = y->DataType() == DataTypeImpl::GetType<MLFloat16>();
+  const std::string tune_key = MakeMatMulNBitsTuneKey(context, M, N, K, block_size, nbits, single_scale_weights, is_fp16);
+
+  {
+    std::lock_guard<std::mutex> lock(g_matmul_nbits_tune_mutex);
+    const auto it = g_matmul_nbits_tuned_params.find(tune_key);
+    if (it != g_matmul_nbits_tuned_params.end()) {
+      return it->second;
+    }
+  }
+
+  const MatMulNBitsTuneParams default_params = GetDefaultMatMulNBitsTuneParams(context);
+  MatMulNBitsTuneParams best_params = default_params;
+  double default_seconds = 0.0;
+  double best_seconds = 0.0;
+
+  bool default_failed = false;
+  for (int i = 0; i < kMatMulNBitsTuneWarmupRuns; ++i) {
+    const Status status = RunDefaultMatMulNBitsProgram(a,
+                                                       b,
+                                                       scales,
+                                                       zero_points,
+                                                       bias,
+                                                       batch_count,
+                                                       M,
+                                                       N,
+                                                       K,
+                                                       block_size,
+                                                       n_blocks_per_col,
+                                                       zero_blocks_per_col,
+                                                       blob_size,
+                                                       nbits,
+                                                       has_zero_points,
+                                                       has_bias,
+                                                       has_weight_idx,
+                                                       has_weight_idx_indirect,
+                                                       single_scale_weights,
+                                                       context,
+                                                       y,
+                                                       weight_index,
+                                                       weight_index_indirect,
+                                                       default_params,
+                                                       true);
+    if (!status.IsOK()) {
+      default_failed = true;
+      break;
+    }
+  }
+
+  if (!default_failed) {
+    for (int i = 0; i < kMatMulNBitsTuneMeasuredRuns; ++i) {
+      const auto start = std::chrono::steady_clock::now();
+      const Status status = RunDefaultMatMulNBitsProgram(a,
+                                                         b,
+                                                         scales,
+                                                         zero_points,
+                                                         bias,
+                                                         batch_count,
+                                                         M,
+                                                         N,
+                                                         K,
+                                                         block_size,
+                                                         n_blocks_per_col,
+                                                         zero_blocks_per_col,
+                                                         blob_size,
+                                                         nbits,
+                                                         has_zero_points,
+                                                         has_bias,
+                                                         has_weight_idx,
+                                                         has_weight_idx_indirect,
+                                                         single_scale_weights,
+                                                         context,
+                                                         y,
+                                                         weight_index,
+                                                         weight_index_indirect,
+                                                         default_params,
+                                                         true);
+      const auto end = std::chrono::steady_clock::now();
+      if (!status.IsOK()) {
+        default_failed = true;
+        break;
+      }
+      default_seconds += std::chrono::duration<double>(end - start).count();
+    }
+  }
+
+  if (default_failed) {
+    LOGS(context.Logger(), WARNING) << "MatMulNBits tuner kept default params for " << tune_key
+                                    << " because the baseline measurement failed"
+                                    << ": tile_size_k_vec=" << default_params.tile_size_k_vec
+                                    << ", workgroup_size=" << default_params.workgroup_size
+                                    << ", tile_size=" << default_params.tile_size;
+
+    std::lock_guard<std::mutex> lock(g_matmul_nbits_tune_mutex);
+    g_matmul_nbits_tuned_params.insert_or_assign(tune_key, default_params);
+    return default_params;
+  }
+
+  best_seconds = default_seconds;
+
+  for (const auto& candidate : kMatMulNBitsTuneCandidates) {
+    if (!IsValidTuneCandidate(context, candidate)) {
+      continue;
+    }
+
+    if (candidate.tile_size_k_vec == default_params.tile_size_k_vec &&
+        candidate.workgroup_size == default_params.workgroup_size &&
+        candidate.tile_size == default_params.tile_size) {
+      continue;
+    }
+
+    bool candidate_failed = false;
+    for (int i = 0; i < kMatMulNBitsTuneWarmupRuns; ++i) {
+      const Status status = RunDefaultMatMulNBitsProgram(a,
+                                                         b,
+                                                         scales,
+                                                         zero_points,
+                                                         bias,
+                                                         batch_count,
+                                                         M,
+                                                         N,
+                                                         K,
+                                                         block_size,
+                                                         n_blocks_per_col,
+                                                         zero_blocks_per_col,
+                                                         blob_size,
+                                                         nbits,
+                                                         has_zero_points,
+                                                         has_bias,
+                                                         has_weight_idx,
+                                                         has_weight_idx_indirect,
+                                                         single_scale_weights,
+                                                         context,
+                                                         y,
+                                                         weight_index,
+                                                         weight_index_indirect,
+                                                         candidate,
+                                                         true);
+      if (!status.IsOK()) {
+        candidate_failed = true;
+        break;
+      }
+    }
+    if (candidate_failed) {
+      continue;
+    }
+
+    double candidate_seconds = 0.0;
+    for (int i = 0; i < kMatMulNBitsTuneMeasuredRuns; ++i) {
+      const auto start = std::chrono::steady_clock::now();
+      const Status status = RunDefaultMatMulNBitsProgram(a,
+                                                         b,
+                                                         scales,
+                                                         zero_points,
+                                                         bias,
+                                                         batch_count,
+                                                         M,
+                                                         N,
+                                                         K,
+                                                         block_size,
+                                                         n_blocks_per_col,
+                                                         zero_blocks_per_col,
+                                                         blob_size,
+                                                         nbits,
+                                                         has_zero_points,
+                                                         has_bias,
+                                                         has_weight_idx,
+                                                         has_weight_idx_indirect,
+                                                         single_scale_weights,
+                                                         context,
+                                                         y,
+                                                         weight_index,
+                                                         weight_index_indirect,
+                                                         candidate,
+                                                         true);
+      const auto end = std::chrono::steady_clock::now();
+      if (!status.IsOK()) {
+        candidate_failed = true;
+        break;
+      }
+      candidate_seconds += std::chrono::duration<double>(end - start).count();
+    }
+
+    if (!candidate_failed && candidate_seconds < best_seconds) {
+      best_seconds = candidate_seconds;
+      best_params = candidate;
+    }
+  }
+
+  const double improvement_ratio = default_seconds > 0.0
+                                       ? (default_seconds - best_seconds) / default_seconds
+                                       : 0.0;
+  if (improvement_ratio <= kMatMulNBitsTuneMinImprovementRatio) {
+    best_params = default_params;
+    best_seconds = default_seconds;
+  }
+
+  LOGS(context.Logger(), WARNING) << "MatMulNBits tuner selected params for " << tune_key
+                                  << ": tile_size_k_vec=" << best_params.tile_size_k_vec
+                                  << ", workgroup_size=" << best_params.workgroup_size
+                                  << ", tile_size=" << best_params.tile_size
+                                  << ", default_measured_seconds=" << default_seconds
+                                  << ", selected_measured_seconds=" << best_seconds
+                                  << ", improvement_ratio=" << improvement_ratio;
+
+  std::lock_guard<std::mutex> lock(g_matmul_nbits_tune_mutex);
+  g_matmul_nbits_tuned_params.insert_or_assign(tune_key, best_params);
+  return best_params;
+}
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -301,46 +730,59 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     return context.RunProgram(program);
   }
 
-  // Use tile_size_k_vec=32 by default for better K-dimension parallelism.
-  // Intel devices use 16 as they have different subgroup/cache characteristics.
-  const uint32_t tile_size_k_vec = (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
+  MatMulNBitsTuneParams params{};
+  if (ShouldTuneDefaultMatMulNBitsProgram(context, batch_count, M, N, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect)) {
+    params = GetTunedMatMulNBitsParams(a,
+                                       b,
+                                       scales,
+                                       zero_points,
+                                       bias,
+                                       batch_count,
+                                       M,
+                                       N,
+                                       K,
+                                       block_size,
+                                       n_blocks_per_col,
+                                       zero_blocks_per_col,
+                                       blob_size,
+                                       static_cast<uint32_t>(nbits),
+                                       has_zero_points,
+                                       has_bias,
+                                       has_weight_idx,
+                                       has_weight_idx_indirect,
+                                       single_scale_weights,
+                                       context,
+                                       y,
+                                       weight_index,
+                                       weight_index_indirect);
+  } else {
+    params = GetDefaultMatMulNBitsTuneParams(context);
+  }
 
-  constexpr uint32_t workgroup_size = 128;
-  constexpr uint32_t tile_size = 8;
-  constexpr uint32_t kU32Components = 4;
-  uint32_t components_b_with_u32 = components_b * kU32Components;
-  uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
-  uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec};
-  program.SetWorkgroupSize(workgroup_size);
-  program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
-  program
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
-                  {scales, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariables({{M},
-                            {N},
-                            {K},
-                            {K / components_a},
-                            {K_of_b},
-                            {block_size},
-                            {n_blocks_per_col},
-                            {zero_blocks_per_col},
-                            {num_N_tile},
-                            {batch_count},
-                            {weight_index}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec);
-  if (has_zero_points) {
-    program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
-  }
-  if (has_bias) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::None});
-  }
-  if (has_weight_idx_indirect) {
-    program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
-  }
-  return context.RunProgram(program);
+  return RunDefaultMatMulNBitsProgram(a,
+                                      b,
+                                      scales,
+                                      zero_points,
+                                      bias,
+                                      batch_count,
+                                      M,
+                                      N,
+                                      K,
+                                      block_size,
+                                      n_blocks_per_col,
+                                      zero_blocks_per_col,
+                                      blob_size,
+                                      static_cast<uint32_t>(nbits),
+                                      has_zero_points,
+                                      has_bias,
+                                      has_weight_idx,
+                                      has_weight_idx_indirect,
+                                      single_scale_weights,
+                                      context,
+                                      y,
+                                      weight_index,
+                                      weight_index_indirect,
+                                      params);
 }
 
 }  // namespace webgpu

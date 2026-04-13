@@ -3,7 +3,12 @@
 
 #include <benchmark/benchmark.h>
 
+#include <algorithm>
+#include <chrono>
+#include <cctype>
+#include <cmath>
 #include <iostream>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <string>
@@ -11,9 +16,11 @@
 #include <vector>
 
 #include <core/graph/onnx_protobuf.h>
+#include <core/platform/env.h>
 #include <core/session/onnxruntime_c_api.h>
 #include <core/session/onnxruntime_cxx_api.h>
 
+#include <dawn/dawn_proc.h>
 #include <dawn/native/DawnNative.h>
 #include <webgpu/webgpu.h>
 
@@ -21,6 +28,23 @@ extern OrtEnv* env;
 extern const OrtApi* g_ort;
 
 namespace {
+constexpr const char* kMatMulNBitsAutoTunerEnvVar = "ORT_WEBGPU_MATMUL_NBITS_ENABLE_AUTO_TUNER";
+constexpr const char* kDecodeBenchmarkModeEnvVar = "ORT_WEBGPU_MATMUL_NBITS_BENCHMARK_MODE";
+constexpr const char* kDecodeBenchmarkGpuEnvVar = "ORT_WEBGPU_MATMUL_NBITS_BENCHMARK_GPU";
+constexpr float kDecodeCorrectnessAbsTolerance = 0.1f;
+constexpr float kDecodeCorrectnessRelTolerance = 0.01f;
+
+enum class DecodeBenchmarkMode {
+  kPerf,
+  kCorrectness,
+};
+
+enum class DecodeBenchmarkGpu {
+  kRtx5060Ti,
+  kT1000,
+};
+
+bool IsMatMulNBitsAutoTunerEnabled();
 
 struct DecodeBenchConfig {
   int64_t n;
@@ -32,11 +56,16 @@ struct DecodeBenchConfig {
 
 struct AdapterSelectionConfig {
   // adapter_type: Dawn adapter type to select, e.g. integrated or discrete GPU.
-  // adapter_index: zero-based index among only adapters of adapter_type.
+  // preferred_vendor_id/device_id: stable PCI identifiers used to locate the target GPU regardless of enumeration order.
+  // preferred_device_substring: fallback name match if device IDs are unavailable or change.
+  // adapter_index: fallback zero-based index among only adapters of adapter_type if the preferred adapter is not found.
   // context_id: ORT WebGPU custom context ID used to bind the externally created instance/device.
   // backend_type: Dawn backend to enumerate adapters from, e.g. D3D12 or Vulkan.
   // print_adapter_list: whether to print all discovered adapters before selecting one.
   WGPUAdapterType adapter_type;
+  uint32_t preferred_vendor_id;
+  uint32_t preferred_device_id;
+  const char* preferred_device_substring;
   int adapter_index;
   int context_id;
   WGPUBackendType backend_type;
@@ -63,6 +92,116 @@ struct SelectedWebGpuContext {
   std::unordered_map<std::string, std::string> provider_options;
   std::string selected_adapter_summary;
 };
+
+struct DecodeTrafficStats {
+  double input_bytes;
+  double packed_weight_bytes;
+  double scale_bytes;
+  double output_bytes;
+  double total_bytes;
+};
+
+constexpr double kRtx5060TiTheoreticalBandwidthBytesPerSecond = 448.0 * 1000.0 * 1000.0 * 1000.0;
+constexpr int kDecodeWarmupRuns = 25;
+
+DecodeBenchmarkMode GetDecodeBenchmarkMode() {
+  std::string mode_env = onnxruntime::Env::Default().GetEnvironmentVar(kDecodeBenchmarkModeEnvVar);
+  if (mode_env.empty()) {
+    return DecodeBenchmarkMode::kPerf;
+  }
+
+  std::transform(mode_env.begin(), mode_env.end(), mode_env.begin(),
+                 [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+  if (mode_env == "0" || mode_env == "false" || mode_env == "off" ||
+      mode_env == "check" || mode_env == "correctness" || mode_env == "validate") {
+    return DecodeBenchmarkMode::kCorrectness;
+  }
+
+  return DecodeBenchmarkMode::kPerf;
+}
+
+bool IsDecodeBenchmarkPerfMode() {
+  return GetDecodeBenchmarkMode() == DecodeBenchmarkMode::kPerf;
+}
+
+DecodeBenchmarkGpu GetDecodeBenchmarkGpu() {
+  std::string gpu_env = onnxruntime::Env::Default().GetEnvironmentVar(kDecodeBenchmarkGpuEnvVar);
+  if (gpu_env.empty()) {
+    return DecodeBenchmarkGpu::kRtx5060Ti;
+  }
+
+  std::transform(gpu_env.begin(), gpu_env.end(), gpu_env.begin(),
+                 [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+  if (gpu_env == "t" || gpu_env == "t1000") {
+    return DecodeBenchmarkGpu::kT1000;
+  }
+
+  return DecodeBenchmarkGpu::kRtx5060Ti;
+}
+
+std::string GetDecodeBenchmarkLabel() {
+  const char* mode_label = IsDecodeBenchmarkPerfMode() ? "perf" : "correctness";
+  const char* adapter_label = GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kRtx5060Ti ? "rtx" : "t";
+  const char* tuner_label = IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off";
+
+  std::ostringstream stream;
+  stream << "fp16_decode_" << mode_label << '_' << adapter_label << '_' << tuner_label;
+  return stream.str();
+}
+
+bool IsMatMulNBitsAutoTunerEnabled() {
+  std::string auto_tuner_env = onnxruntime::Env::Default().GetEnvironmentVar(kMatMulNBitsAutoTunerEnvVar);
+  if (auto_tuner_env.empty()) {
+    return false;
+  }
+
+  std::transform(auto_tuner_env.begin(), auto_tuner_env.end(), auto_tuner_env.begin(),
+                 [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+  return auto_tuner_env != "0" && auto_tuner_env != "false" && auto_tuner_env != "off";
+}
+
+std::vector<wgpu::FeatureName> GetRequiredDeviceFeatures(const wgpu::Adapter& adapter) {
+  std::vector<wgpu::FeatureName> required_features;
+  constexpr wgpu::FeatureName features[]{
+#if !defined(__wasm__)
+      wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
+      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
+#endif
+      wgpu::FeatureName::TimestampQuery,
+      wgpu::FeatureName::ShaderF16,
+      wgpu::FeatureName::Subgroups,
+#if !defined(__wasm__)
+      wgpu::FeatureName::BufferMapExtendedUsages,
+#endif
+  };
+  for (auto feature : features) {
+    if (adapter.HasFeature(feature)) {
+      required_features.push_back(feature);
+    }
+  }
+  return required_features;
+}
+
+wgpu::Limits GetRequiredDeviceLimits(const wgpu::Adapter& adapter) {
+  wgpu::Limits required_limits{};
+  wgpu::Limits adapter_limits{};
+  if (!adapter.GetLimits(&adapter_limits)) {
+    throw std::runtime_error("Failed to query adapter limits for the selected WebGPU adapter.");
+  }
+
+  required_limits.maxBindGroups = adapter_limits.maxBindGroups;
+  required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
+  required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
+  required_limits.maxStorageBuffersPerShaderStage = adapter_limits.maxStorageBuffersPerShaderStage;
+  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxBufferSize = adapter_limits.maxBufferSize;
+  required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
+  required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
+  required_limits.maxComputeWorkgroupSizeY = adapter_limits.maxComputeWorkgroupSizeY;
+  required_limits.maxComputeWorkgroupSizeZ = adapter_limits.maxComputeWorkgroupSizeZ;
+
+  return required_limits;
+}
 
 std::string ToString(WGPUStringView value) {
   return value.data == nullptr ? std::string{} : std::string(value.data, value.length);
@@ -100,12 +239,60 @@ std::string FormatAdapterSummary(const AdapterCandidate& adapter) {
   return stream.str();
 }
 
+std::string FormatFeatureSupport(const dawn::native::Adapter& adapter) {
+  const wgpu::Adapter wgpu_adapter = adapter.Get();
+  std::ostringstream stream;
+  stream << "shader_f16=" << (wgpu_adapter.HasFeature(wgpu::FeatureName::ShaderF16) ? "yes" : "no")
+         << " subgroups=" << (wgpu_adapter.HasFeature(wgpu::FeatureName::Subgroups) ? "yes" : "no")
+         << " timestamp_query=" << (wgpu_adapter.HasFeature(wgpu::FeatureName::TimestampQuery) ? "yes" : "no");
+#if !defined(__wasm__)
+  stream << " subgroup_matrix=" << (wgpu_adapter.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix) ? "yes" : "no")
+         << " buffer_map_extended_usages=" << (wgpu_adapter.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages) ? "yes" : "no")
+         << " timestamp_query_inside_passes=" << (wgpu_adapter.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses) ? "yes" : "no");
+#endif
+  return stream.str();
+}
+
+DecodeTrafficStats CalculateDecodeTrafficStats(const DecodeBenchConfig& config) {
+  const int64_t k_blocks = (config.k + config.block_size - 1) / config.block_size;
+  const int64_t blob_size = (config.block_size * config.bits) / 8;
+
+  const double input_bytes = static_cast<double>(config.k) * sizeof(Ort::Float16_t);
+  const double packed_weight_bytes = static_cast<double>(config.n) * static_cast<double>(k_blocks) * static_cast<double>(blob_size);
+  const double scale_bytes = static_cast<double>(config.n) * static_cast<double>(k_blocks) * sizeof(Ort::Float16_t);
+  const double output_bytes = static_cast<double>(config.n) * sizeof(Ort::Float16_t);
+
+  return {
+      input_bytes,
+      packed_weight_bytes,
+      scale_bytes,
+      output_bytes,
+      input_bytes + packed_weight_bytes + scale_bytes + output_bytes,
+  };
+}
+
 AdapterSelectionConfig GetAdapterSelectionConfig() {
-  // Pick the second discrete adapter by default so this benchmark can target the
-  // "other" dGPU on a machine with two discrete GPUs and one integrated GPU.
+  if (GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kT1000) {
+    return {
+        WGPUAdapterType_DiscreteGPU,  // adapter_type
+        4318,                         // preferred_vendor_id (NVIDIA)
+        8112,                         // preferred_device_id (T1000)
+        "T1000",                     // preferred_device_substring
+        0,                            // adapter_index fallback
+        0,                            // context_id
+        WGPUBackendType_D3D12,        // backend_type
+        true,                         // print_adapter_list
+    };
+  }
+
+  // Prefer the RTX 5060 Ti by stable PCI identity so selection does not depend on
+  // Dawn enumeration order. Fall back to the historical second discrete adapter.
   return {
       WGPUAdapterType_DiscreteGPU,  // adapter_type
-      1,                            // adapter_index
+      4318,                         // preferred_vendor_id (NVIDIA)
+      11524,                        // preferred_device_id (RTX 5060 Ti)
+      "RTX 5060 Ti",                // preferred_device_substring
+      1,                            // adapter_index fallback
       1,                            // context_id
       WGPUBackendType_D3D12,        // backend_type
       true,                         // print_adapter_list
@@ -115,8 +302,20 @@ AdapterSelectionConfig GetAdapterSelectionConfig() {
 SelectedWebGpuContext CreateSelectedWebGpuContext() {
   const AdapterSelectionConfig config = GetAdapterSelectionConfig();
 
+  wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
+  wgpu::InstanceDescriptor instance_desc{};
+  instance_desc.requiredFeatures = required_instance_features;
+  instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
+
   SelectedWebGpuContext selected_context;
-  selected_context.dawn_instance = std::make_unique<dawn::native::Instance>();
+  selected_context.dawn_instance = std::make_unique<dawn::native::Instance>(&instance_desc);
+
+#if !defined(BUILD_DAWN_SHARED_LIBRARY)
+  static std::once_flag dawn_procs_initialized;
+  std::call_once(dawn_procs_initialized, []() {
+    dawnProcSetProcs(&dawn::native::GetProcs());
+  });
+#endif
 
   WGPURequestAdapterOptions adapter_options = WGPU_REQUEST_ADAPTER_OPTIONS_INIT;
   adapter_options.backendType = config.backend_type;
@@ -180,7 +379,9 @@ SelectedWebGpuContext CreateSelectedWebGpuContext() {
       }
 
       printed_gpu = true;
-      std::cout << "  " << FormatAdapterSummary(candidate) << std::endl;
+      std::cout << "  " << FormatAdapterSummary(candidate)
+                << " features={" << FormatFeatureSupport(candidate.adapter) << "}"
+                << std::endl;
     }
 
     if (!printed_gpu) {
@@ -188,32 +389,68 @@ SelectedWebGpuContext CreateSelectedWebGpuContext() {
     }
   }
 
-  const AdapterCandidate* selected_adapter = nullptr;
-  for (const auto& candidate : candidates) {
+  AdapterCandidate* selected_adapter = nullptr;
+  for (auto& candidate : candidates) {
     if (candidate.adapter_type == config.adapter_type &&
-        candidate.type_index == config.adapter_index) {
+        candidate.vendor_id == config.preferred_vendor_id &&
+        candidate.device_id == config.preferred_device_id) {
       selected_adapter = &candidate;
       break;
     }
   }
 
+  if (selected_adapter == nullptr && config.preferred_device_substring != nullptr) {
+    for (auto& candidate : candidates) {
+      if (candidate.adapter_type == config.adapter_type &&
+          candidate.device.find(config.preferred_device_substring) != std::string::npos) {
+        selected_adapter = &candidate;
+        break;
+      }
+    }
+  }
+
+  if (selected_adapter == nullptr) {
+    for (auto& candidate : candidates) {
+    if (candidate.adapter_type == config.adapter_type &&
+        candidate.type_index == config.adapter_index) {
+      selected_adapter = &candidate;
+      break;
+    }
+    }
+  }
+
   if (selected_adapter == nullptr) {
     std::ostringstream stream;
-    stream << "Failed to find " << AdapterTypeToString(config.adapter_type)
-           << " adapter index " << config.adapter_index
+    stream << "Failed to find preferred " << AdapterTypeToString(config.adapter_type)
+           << " adapter vendor_id=" << config.preferred_vendor_id
+           << " device_id=" << config.preferred_device_id
+           << " name~=" << (config.preferred_device_substring ? config.preferred_device_substring : "<none>")
+           << ", or fallback adapter index " << config.adapter_index
            << ". Update GetAdapterSelectionConfig() to match the available adapters listed above.";
     throw std::runtime_error(stream.str());
   }
 
+  const wgpu::Adapter adapter = selected_adapter->adapter.Get();
+  std::vector<wgpu::FeatureName> required_features = GetRequiredDeviceFeatures(adapter);
+  wgpu::Limits required_limits = GetRequiredDeviceLimits(adapter);
+  wgpu::DeviceDescriptor device_desc{};
+  if (!required_features.empty()) {
+    device_desc.requiredFeatures = required_features.data();
+    device_desc.requiredFeatureCount = required_features.size();
+  }
+  device_desc.requiredLimits = &required_limits;
+
   selected_context.instance = selected_context.dawn_instance->Get();
-  selected_context.device = selected_adapter->adapter.CreateDevice();
+  selected_context.device = selected_adapter->adapter.CreateDevice(&device_desc);
   if (selected_context.device == nullptr) {
     throw std::runtime_error("Failed to create a WGPUDevice for the selected adapter.");
   }
 
   selected_context.selected_adapter_summary = FormatAdapterSummary(*selected_adapter);
   std::cout << "Selected Dawn adapter for WebGPU benchmark: "
-            << selected_context.selected_adapter_summary << std::endl;
+            << selected_context.selected_adapter_summary
+            << " features={" << FormatFeatureSupport(selected_adapter->adapter) << "}"
+            << std::endl;
 
   selected_context.provider_options["deviceId"] = std::to_string(config.context_id);
   selected_context.provider_options["webgpuInstance"] = std::to_string(reinterpret_cast<size_t>(selected_context.instance));
@@ -248,10 +485,18 @@ void AddTensorInitializer(ONNX_NAMESPACE::GraphProto& graph,
 std::vector<DecodeBenchConfig> GetDecodeBenchConfigs() {
   // Each entry is {N, K, bits, block_size, accuracy_level} for a decode-style M=1 run.
   return {
-      {5120, 3072, 4, 32, 4},
-      {8192, 3072, 4, 32, 4},
-      {3072, 8192, 4, 32, 4},
-      {200064, 3072, 4, 32, 4},
+      // QKV + AttnProj
+      {1024, 2048, 4, 32, 4},
+      {2048, 2048, 4, 32, 4},
+
+      // Gate + Up proj
+      {6144, 2048, 4, 32, 4},
+
+      // Down proj
+      {2048, 6144, 4, 32, 4},
+
+      // Vocab proj
+      {151936, 2048, 4, 32, 4},
   };
 }
 
@@ -260,7 +505,6 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto& graph,
                         const std::string& input_name,
                         const std::string& weight_name,
                         const std::string& scale_name,
-                        const std::string& bias_name,
                         const std::string& output_name,
                         int64_t k,
                         int64_t n,
@@ -276,7 +520,6 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto& graph,
   node->add_input(scale_name);
   node->add_input("");
   node->add_input("");
-  node->add_input(bias_name);
   node->add_output(output_name);
 
   auto* attr_k = node->add_attribute();
@@ -336,21 +579,17 @@ std::vector<uint8_t> SerializeMatMulNBitsModel(const DecodeBenchConfig& config) 
 
   std::vector<uint8_t> packed_b(static_cast<size_t>(config.n * k_blocks * blob_size), uint8_t{0x11});
   std::vector<Ort::Float16_t> scales(static_cast<size_t>(config.n * k_blocks), Ort::Float16_t(0.03125f));
-  std::vector<Ort::Float16_t> bias(static_cast<size_t>(config.n), Ort::Float16_t(0.125f));
 
   AddTensorInitializer(*graph, "B", ONNX_NAMESPACE::TensorProto_DataType_UINT8,
                        {config.n, k_blocks, blob_size}, packed_b);
   AddTensorInitializer(*graph, "scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
                        {config.n, k_blocks}, scales);
-  AddTensorInitializer(*graph, "bias", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                       {config.n}, bias);
 
   AddMatMulNBitsNode(*graph,
                      "MatMulNBitsDecode",
                      "A",
                      "B",
                      "scales",
-                     "bias",
                      "Y",
                      config.k,
                      config.n,
@@ -362,71 +601,155 @@ std::vector<uint8_t> SerializeMatMulNBitsModel(const DecodeBenchConfig& config) 
   return std::vector<uint8_t>(serialized.begin(), serialized.end());
 }
 
-static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
-  const DecodeBenchConfig config{
-      state.range(0),
-      state.range(1),
-      state.range(2),
-      state.range(3),
-      state.range(4),
-  };
-
-  if (config.k % config.block_size != 0) {
-    state.SkipWithError("K must be divisible by block_size for this benchmark skeleton.");
-    return;
-  }
-
-  std::vector<uint8_t> model_data = SerializeMatMulNBitsModel(config);
-  const SelectedWebGpuContext& selected_context = GetSelectedWebGpuContext();
-
+Ort::Session CreateSessionFromModelData(const std::vector<uint8_t>& model_data,
+                                        const std::unordered_map<std::string, std::string>* provider_options) {
   Ort::SessionOptions session_options;
   session_options.DisableMemPattern();
-  session_options.AppendExecutionProvider("WebGPU", selected_context.provider_options);
+  if (provider_options != nullptr) {
+    session_options.AppendExecutionProvider("WebGPU", *provider_options);
+  }
 
   OrtSession* raw_session = nullptr;
   OrtStatus* status = g_ort->CreateSessionFromArray(env, model_data.data(), model_data.size(), session_options, &raw_session);
   if (status != nullptr) {
-    state.SkipWithError(g_ort->GetErrorMessage(status));
+    std::string error_message = g_ort->GetErrorMessage(status);
     g_ort->ReleaseStatus(status);
-    return;
+    throw std::runtime_error(error_message);
   }
 
-  Ort::Session session{raw_session};
-  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  std::vector<int64_t> input_shape{1, config.k};
-  std::vector<Ort::Float16_t> activation(static_cast<size_t>(config.k));
+  return Ort::Session{raw_session};
+}
 
-  std::mt19937 rng(123);
-  std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-  for (auto& value : activation) {
-    value = Ort::Float16_t(dist(rng));
+void ValidateDecodeOutputs(const std::vector<uint8_t>& model_data,
+                           Ort::Session& webgpu_session,
+                           const char* const* input_names,
+                           const Ort::Value* input_tensor,
+                           const char* const* output_names) {
+  Ort::Session cpu_session = CreateSessionFromModelData(model_data, nullptr);
+
+  auto webgpu_outputs = webgpu_session.Run(Ort::RunOptions{nullptr}, input_names, input_tensor, 1, output_names, 1);
+  auto cpu_outputs = cpu_session.Run(Ort::RunOptions{nullptr}, input_names, input_tensor, 1, output_names, 1);
+
+  if (webgpu_outputs.size() != 1 || cpu_outputs.size() != 1) {
+    throw std::runtime_error("Expected a single output from both WebGPU and CPU sessions.");
   }
 
-  const char* input_names[] = {"A"};
-  const char* output_names[] = {"Y"};
-
-  auto input_tensor = Ort::Value::CreateTensor<Ort::Float16_t>(memory_info,
-                                                                activation.data(),
-                                                                activation.size(),
-                                                                input_shape.data(),
-                                                                input_shape.size());
-
-  for (int i = 0; i < 10; ++i) {
-    auto warmup_outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
-    benchmark::DoNotOptimize(warmup_outputs);
+  const auto& webgpu_output = webgpu_outputs[0];
+  const auto& cpu_output = cpu_outputs[0];
+  const size_t element_count = webgpu_output.GetTensorTypeAndShapeInfo().GetElementCount();
+  if (element_count != cpu_output.GetTensorTypeAndShapeInfo().GetElementCount()) {
+    throw std::runtime_error("WebGPU and CPU output sizes do not match.");
   }
 
-  for (auto _ : state) {
-    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
-    benchmark::DoNotOptimize(outputs);
+  const auto* webgpu_data = webgpu_output.GetTensorData<Ort::Float16_t>();
+  const auto* cpu_data = cpu_output.GetTensorData<Ort::Float16_t>();
+  float max_abs_diff = 0.0f;
+  size_t max_abs_diff_index = 0;
+  for (size_t i = 0; i < element_count; ++i) {
+    const float webgpu_value = webgpu_data[i].ToFloat();
+    const float cpu_value = cpu_data[i].ToFloat();
+    const float abs_diff = std::abs(webgpu_value - cpu_value);
+    const float allowed_diff = kDecodeCorrectnessAbsTolerance +
+                               kDecodeCorrectnessRelTolerance * std::max(std::abs(webgpu_value), std::abs(cpu_value));
+    if (abs_diff > max_abs_diff) {
+      max_abs_diff = abs_diff;
+      max_abs_diff_index = i;
+    }
+    if (abs_diff > allowed_diff) {
+      std::ostringstream stream;
+      stream << "Decode correctness check failed at index " << i
+             << ": webgpu=" << webgpu_value
+             << ", cpu=" << cpu_value
+             << ", abs_diff=" << abs_diff
+             << ", allowed_diff=" << allowed_diff;
+      throw std::runtime_error(stream.str());
+    }
   }
 
-  const double total_flops = 2.0 * static_cast<double>(config.n) * static_cast<double>(config.k);
+  std::cout << "Decode correctness check passed. max_abs_diff=" << max_abs_diff
+            << " at index " << max_abs_diff_index << std::endl;
+}
 
-  state.SetLabel("fp16_decode_bias_custom_adapter");
-  state.counters["TFLOPS"] = benchmark::Counter(
-      total_flops,
-      benchmark::Counter::kIsIterationInvariantRate);
+static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
+  try {
+    const DecodeBenchConfig config{
+        state.range(0),
+        state.range(1),
+        state.range(2),
+        state.range(3),
+        state.range(4),
+    };
+
+    if (config.k % config.block_size != 0) {
+      state.SkipWithError("K must be divisible by block_size for this benchmark skeleton.");
+      return;
+    }
+
+    const DecodeTrafficStats traffic = CalculateDecodeTrafficStats(config);
+    std::vector<uint8_t> model_data = SerializeMatMulNBitsModel(config);
+    const SelectedWebGpuContext& selected_context = GetSelectedWebGpuContext();
+    Ort::Session session = CreateSessionFromModelData(model_data, &selected_context.provider_options);
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    std::vector<int64_t> input_shape{1, config.k};
+    std::vector<Ort::Float16_t> activation(static_cast<size_t>(config.k));
+
+    std::mt19937 rng(123);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    for (auto& value : activation) {
+      value = Ort::Float16_t(dist(rng));
+    }
+
+    const char* input_names[] = {"A"};
+    const char* output_names[] = {"Y"};
+
+    auto input_tensor = Ort::Value::CreateTensor<Ort::Float16_t>(memory_info,
+                                                                  activation.data(),
+                                                                  activation.size(),
+                                                                  input_shape.data(),
+                                                                  input_shape.size());
+
+    if (!IsDecodeBenchmarkPerfMode()) {
+      ValidateDecodeOutputs(model_data, session, input_names, &input_tensor, output_names);
+    }
+
+    // Warm up shader compilation, allocations, and caches before measured iterations.
+    for (int i = 0; i < kDecodeWarmupRuns; ++i) {
+      auto warmup_outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
+      benchmark::DoNotOptimize(warmup_outputs);
+    }
+
+    double total_kernel_seconds = 0.0;
+    for (auto _ : state) {
+      const auto kernel_start = std::chrono::steady_clock::now();
+      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
+      const auto kernel_end = std::chrono::steady_clock::now();
+      total_kernel_seconds += std::chrono::duration<double>(kernel_end - kernel_start).count();
+      benchmark::DoNotOptimize(outputs);
+    }
+
+    const double total_flops = 2.0 * static_cast<double>(config.n) * static_cast<double>(config.k);
+    const double achieved_bandwidth_bytes_per_second =
+        total_kernel_seconds > 0.0
+            ? traffic.total_bytes * static_cast<double>(state.iterations()) / total_kernel_seconds
+            : 0.0;
+    const double achieved_bandwidth_gbps = achieved_bandwidth_bytes_per_second / 1.0e9;
+    const double rtx_5060_ti_utilization_pct =
+        achieved_bandwidth_bytes_per_second / kRtx5060TiTheoreticalBandwidthBytesPerSecond * 100.0;
+
+    state.SetLabel(GetDecodeBenchmarkLabel());
+    state.counters["TFLOPS"] = benchmark::Counter(
+        total_flops,
+        benchmark::Counter::kIsIterationInvariantRate);
+    state.counters["MemBW_GBps"] = benchmark::Counter(achieved_bandwidth_gbps);
+    state.counters["BWUtil_5060Ti_pct"] = benchmark::Counter(rtx_5060_ti_utilization_pct);
+    state.counters["Traffic_MB"] = benchmark::Counter(traffic.total_bytes / 1.0e6);
+    state.counters["Input_MB"] = benchmark::Counter(traffic.input_bytes / 1.0e6);
+    state.counters["PackedW_MB"] = benchmark::Counter(traffic.packed_weight_bytes / 1.0e6);
+    state.counters["Scales_MB"] = benchmark::Counter(traffic.scale_bytes / 1.0e6);
+    state.counters["Output_MB"] = benchmark::Counter(traffic.output_bytes / 1.0e6);
+  } catch (const std::exception& ex) {
+    state.SkipWithError(ex.what());
+  }
 }
 
 void ApplyWebGpuMatMulNBitsDecodeArgs(benchmark::internal::Benchmark* benchmark) {
@@ -437,6 +760,8 @@ void ApplyWebGpuMatMulNBitsDecodeArgs(benchmark::internal::Benchmark* benchmark)
 
 BENCHMARK(BM_WebGpuMatMulNBitsDecode)
     ->Apply(ApplyWebGpuMatMulNBitsDecodeArgs)
+  ->Repetitions(5)
+  ->ReportAggregatesOnly()
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMicrosecond);
 
