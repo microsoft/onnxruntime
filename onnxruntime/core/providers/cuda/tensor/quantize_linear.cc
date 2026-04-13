@@ -646,7 +646,7 @@ REGISTER_DQ_KERNEL_TWO_TYPED_19_20(Float8E4M3FN, MLFloat16)
 REGISTER_DQ_KERNEL_TWO_TYPED_19_20(Float8E5M2, MLFloat16)
 #endif
 
-#define REGISTER_DQ_KERNEL_TWO_TYPED_21_22(T, U)                    \
+#define REGISTER_DQ_KERNEL_TWO_TYPED_21_22(T, U)                   \
   ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                     \
       DequantizeLinear,                                            \
       kOnnxDomain,                                                 \

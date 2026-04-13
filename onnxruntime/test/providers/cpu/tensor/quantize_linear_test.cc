@@ -915,7 +915,7 @@ TEST(DequantizeLinearOpTest, Opset25_BlockedInt4_Cuda) {
   test.AddAttribute<int64_t>("block_size", 2);
   // int4 values: 0,1,2,3, 4,5,6,7
   test.AddInput<Int4x2>("x", dims,
-                         {Int4x2(0, 1), Int4x2(2, 3), Int4x2(4, 5), Int4x2(6, 7)});
+                        {Int4x2(0, 1), Int4x2(2, 3), Int4x2(4, 5), Int4x2(6, 7)});
   test.AddInput<float>("x_scale", {2, 2}, {2.0f, 2.0f, 2.0f, 2.0f});
   test.AddInput<Int4x2>("x_zero_point", {2, 2}, {Int4x2(0, 0), Int4x2(0, 0)});
   // y = (x - 0) * 2
@@ -930,7 +930,7 @@ TEST(DequantizeLinearOpTest, Opset25_BlockedUInt4_Cuda) {
   test.AddAttribute<int64_t>("axis", 1);
   test.AddAttribute<int64_t>("block_size", 2);
   test.AddInput<UInt4x2>("x", dims,
-                          {UInt4x2(0, 1), UInt4x2(2, 3), UInt4x2(4, 5), UInt4x2(6, 7)});
+                         {UInt4x2(0, 1), UInt4x2(2, 3), UInt4x2(4, 5), UInt4x2(6, 7)});
   test.AddInput<float>("x_scale", {2, 2}, {2.0f, 2.0f, 2.0f, 2.0f});
   test.AddInput<UInt4x2>("x_zero_point", {2, 2}, {UInt4x2(0, 0), UInt4x2(0, 0)});
   test.AddOutput<float>("y", dims, {0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f});
