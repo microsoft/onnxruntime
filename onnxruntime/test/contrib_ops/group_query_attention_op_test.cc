@@ -4,12 +4,14 @@
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
 
 // Helper to build a minimal GQA OpTester with given seqlens_k and total_seq_len.
-// batch=1, seq_len=1, num_heads=1, kv_num_heads=1, head_size=4, no past.
+// Uses num_heads=1, kv_num_heads=1, and head_size=4; past may be provided via
+// provide_past/past_seq_len.
 static void RunGQASeqlensKTest(
     const std::vector<int32_t>& seqlens_k_data,
     int32_t total_seq_len,
@@ -21,7 +23,7 @@ static void RunGQASeqlensKTest(
     int past_seq_len = 0) {
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
-  constexpr int head_size = 4;
+  constexpr int head_size = 8;
   constexpr int hidden_size = num_heads * head_size;
   constexpr int kv_hidden_size = kv_num_heads * head_size;
 
@@ -57,15 +59,23 @@ static void RunGQASeqlensKTest(
   tester.AddOptionalInputEdge<float>();    // attention_bias
   tester.AddOptionalInputEdge<float>();    // head_sink
 
-  int present_kv_seqlen = std::max(static_cast<int>(total_seq_len), past_seq_len);
+  // Shape inference derives present_sequence_length from past_key dim 2 when past is
+  // provided, or from total_sequence_length otherwise.
+  int declared_present_seqlen = provide_past ? past_seq_len : static_cast<int>(total_seq_len);
   tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
                           std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
   tester.AddOutput<float>("present_key",
-                          {batch_size, kv_num_heads, present_kv_seqlen, head_size},
-                          std::vector<float>(batch_size * kv_num_heads * present_kv_seqlen * head_size, 0.0f));
+                          {batch_size, kv_num_heads, declared_present_seqlen, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * declared_present_seqlen * head_size, 0.0f));
   tester.AddOutput<float>("present_value",
-                          {batch_size, kv_num_heads, present_kv_seqlen, head_size},
-                          std::vector<float>(batch_size * kv_num_heads * present_kv_seqlen * head_size, 0.0f));
+                          {batch_size, kv_num_heads, declared_present_seqlen, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * declared_present_seqlen * head_size, 0.0f));
+
+  // For success tests, we only care that validation passes without crash;
+  // exact output values are not the focus of these security regression tests.
+  if (expect == OpTester::ExpectResult::kExpectSuccess) {
+    tester.SetOutputTolerance(1e6f);
+  }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -83,7 +93,7 @@ TEST(GroupQueryAttentionTest, NegativeSeqlensK_OOB) {
       "seqlens_k[0] is negative");
 }
 
-// Regression: seqlens_k exceeding present buffer causes GEMM OOB on K/V.
+// Regression: seqlens_k exceeding total_sequence_length causes OOB on attention_bias/output_qk.
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_OOB) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{100},
@@ -117,10 +127,9 @@ TEST(GroupQueryAttentionTest, BoundaryValidSeqlensK) {
       "");
 }
 
-// Non-first-prompt (token generation): seqlens_k too small for sequence_length
-// causes unsigned underflow in past_seqlen = total_seqlen - sequence_length.
-// Here seq=1, total_seq=2, past_seq=1, but seqlens_k claims total is 0 (< seq_len).
-TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
+// Negative seqlens_k with past context: ensures the negative check fires even when
+// past is provided (regression for the original OOB scenario with token generation).
+TEST(GroupQueryAttentionTest, NegativeSeqlensKWithPast_OOB) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{-1},
       /*total_seq_len=*/2,
@@ -130,6 +139,52 @@ TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
       "seqlens_k[0] is negative",
       /*provide_past=*/true,
       /*past_seq_len=*/1);
+}
+
+// Non-first-prompt (subsequent prompt): seqlens_k is non-negative but implies
+// total_seqlen < sequence_length, which would cause unsigned underflow in
+// past_seqlen = total_seqlen - sequence_length. This independently exercises the
+// !is_first_prompt underflow guard with a positive seqlens_k value.
+// seq=3, total_seq=5, past_seq=4, seqlens_k=1 → total_seqlen=2 < seq_len=3.
+TEST(GroupQueryAttentionTest, SubsequentPromptSeqlensKUnderflow_OOB) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{1},
+      /*total_seq_len=*/5,
+      /*batch_size=*/1,
+      /*sequence_length=*/3,
+      OpTester::ExpectResult::kExpectFailure,
+      "implies total_seqlen smaller than sequence_length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
+}
+
+// seqlens_k exceeding total_sequence_length but within KV cache bounds should fail.
+// present_kv_seqlen = max(total_seq=2, past_seq=4) = 4, so seqlens_k=2 (total=3 > total_seq=2)
+// passes the KV cache check but must fail the total_sequence_length check.
+TEST(GroupQueryAttentionTest, SeqlensKExceedsTotalSeqLen_OOB) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{2},
+      /*total_seq_len=*/2,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "exceeds total_sequence_length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
+}
+
+// Boundary: seqlens_k == total_sequence_length - 1 is the maximum valid value when
+// present_kv_seqlen > total_sequence_length (past buffer is larger).
+TEST(GroupQueryAttentionTest, BoundaryValidSeqlensKWithLargerPast) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{1},
+      /*total_seq_len=*/2,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
 }
 
 }  // namespace test
