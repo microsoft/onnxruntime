@@ -41,24 +41,9 @@ var<workgroup> tile_output: array<present_value_value_t, head_size_vec>;
 var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, sub_tile_count>;
 
 #if turbo_quant
-const TQ_CENTROIDS = array<f32, 16>(
-    -0.2377, -0.1809, -0.1419, -0.1104, -0.0829, -0.0578, -0.0342, -0.0113,
-     0.0113,  0.0342,  0.0578,  0.0829,  0.1104,  0.1419,  0.1809,  0.2377);
+#include "bert/turbo_quant_common.wgsl.template"
 
 var<workgroup> tq_v_norms: array<f32, tile_size>;
-
-fn tq_read_v_norm(base_offset: u32) -> f32 {
-  let last_vec = present_value[base_offset + head_size_vec - 1u];
-  return bitcast<f32>(vec2<f16>(present_value_element_t(last_vec.z), present_value_element_t(last_vec.w)));
-}
-
-fn tq_dequant_vec4_v(v: present_value_value_t, norm: f32) -> present_value_value_t {
-  return present_value_value_t(
-    present_value_element_t(TQ_CENTROIDS[u32(v.x)] * norm),
-    present_value_element_t(TQ_CENTROIDS[u32(v.y)] * norm),
-    present_value_element_t(TQ_CENTROIDS[u32(v.z)] * norm),
-    present_value_element_t(TQ_CENTROIDS[u32(v.w)] * norm));
-}
 #endif
 
 $MAIN {
@@ -107,7 +92,8 @@ $MAIN {
 #if turbo_quant
   // Preload f32 norms for all V tokens in this tile.
   if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
-    tq_v_norms[local_idx] = tq_read_v_norm(present_offset + (total_seq_offset + local_idx) * head_size_vec);
+    let last_v = present_value[present_offset + (total_seq_offset + local_idx) * head_size_vec + head_size_vec - 1u];
+    tq_v_norms[local_idx] = bitcast<f32>(vec2<f16>(last_v.z, last_v.w));
   }
   workgroupBarrier();
 #endif
@@ -126,7 +112,7 @@ $MAIN {
           let v_norm = tq_v_norms[row_offset + local_row];
           var dequant_v: present_value_value_t;
           if (v_vec_idx < head_size_vec - 1u) {
-            dequant_v = tq_dequant_vec4_v(raw_v, v_norm);
+            dequant_v = present_value_value_t(tq_dequant_vec4(vec4<f32>(raw_v), v_norm));
           } else {
             dequant_v = present_value_value_t(
               present_value_element_t(TQ_CENTROIDS[u32(raw_v.x)] * v_norm),

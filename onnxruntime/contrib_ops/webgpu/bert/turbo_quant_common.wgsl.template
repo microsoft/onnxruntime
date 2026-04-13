@@ -1,0 +1,39 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// TurboQuant 4-bit codebook constants and utility functions.
+// Shared across all TurboQuant shaders via #include.
+
+// 16 MSE-optimal centroids for unit-sphere coordinates (symmetric: C[i] = -C[15-i])
+const TQ_CENTROIDS = array<f32, 16>(
+    -0.2377, -0.1809, -0.1419, -0.1104, -0.0829, -0.0578, -0.0342, -0.0113,
+     0.0113,  0.0342,  0.0578,  0.0829,  0.1104,  0.1419,  0.1809,  0.2377);
+
+// 15 interior decision boundaries (we handle the -inf/+inf edges in code)
+const TQ_BOUNDARIES = array<f32, 15>(
+    -0.2093, -0.1614, -0.1261, -0.0966, -0.0704, -0.0460, -0.0227,
+     0.0000,  0.0227,  0.0460,  0.0704,  0.0966,  0.1261,  0.1614,  0.2093);
+
+// Binary search over 15 boundaries -> returns centroid index 0..15
+fn searchsorted_tq(val: f32) -> u32 {
+  var lo = 0u;
+  var hi = 15u;
+  for (var iter = 0u; iter < 4u; iter++) {
+    let mid = (lo + hi) >> 1u;
+    if (val >= TQ_BOUNDARIES[mid]) {
+      lo = mid + 1u;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
+// Dequantize a vec4 of centroid indices -> reconstructed f32 values scaled by norm.
+fn tq_dequant_vec4(indices: vec4<f32>, norm: f32) -> vec4<f32> {
+  return vec4<f32>(
+    TQ_CENTROIDS[u32(indices.x)] * norm,
+    TQ_CENTROIDS[u32(indices.y)] * norm,
+    TQ_CENTROIDS[u32(indices.z)] * norm,
+    TQ_CENTROIDS[u32(indices.w)] * norm);
+}

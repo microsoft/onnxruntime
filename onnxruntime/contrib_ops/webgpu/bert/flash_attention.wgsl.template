@@ -44,16 +44,11 @@ var<workgroup> k_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 
 #if turbo_quant
-// TurboQuant 4-bit codebook: 16 MSE-optimal centroids for unit-sphere coordinates
-const TQ_CENTROIDS = array<f32, 16>(
-    -0.2377, -0.1809, -0.1419, -0.1104, -0.0829, -0.0578, -0.0342, -0.0113,
-     0.0113,  0.0342,  0.0578,  0.0829,  0.1104,  0.1419,  0.1809,  0.2377);
+#include "bert/turbo_quant_common.wgsl.template"
 
-// Read f32 norm from last 2 element slots of a quantized KV vector.
+// Extract f32 norm from the z,w components of the last vec4 in a quantized KV vector.
 // The norm is stored as bitcast<vec2<f16>>(f32_norm) for fp16 tensors.
-fn tq_read_norm(base_offset: u32) -> f32 {
-  let last_vec = present_key[base_offset + head_size_vec - 1u]; // we'll override for V
-  // Elements [head_size-2] and [head_size-1] are in the last vec4's z and w components.
+fn tq_extract_norm(last_vec: q_value_t) -> f32 {
 #if is_fp16
   return bitcast<f32>(vec2<f16>(q_element_t(last_vec.z), q_element_t(last_vec.w)));
 #else
@@ -61,26 +56,6 @@ fn tq_read_norm(base_offset: u32) -> f32 {
   let hi = bitcast<u32>(f32(last_vec.w));
   return bitcast<f32>(lo | (hi << 16u));
 #endif
-}
-
-fn tq_read_norm_v(base_offset: u32) -> f32 {
-  let last_vec = present_value[base_offset + head_size_vec - 1u];
-#if is_fp16
-  return bitcast<f32>(vec2<f16>(q_element_t(last_vec.z), q_element_t(last_vec.w)));
-#else
-  let lo = bitcast<u32>(f32(last_vec.z));
-  let hi = bitcast<u32>(f32(last_vec.w));
-  return bitcast<f32>(lo | (hi << 16u));
-#endif
-}
-
-// Dequantize a vec4 of centroid indices → vec4 of reconstructed values.
-fn tq_dequant_vec4(v: q_value_t, norm: f32) -> q_value_t {
-  return q_value_t(
-    q_element_t(TQ_CENTROIDS[u32(v.x)] * norm),
-    q_element_t(TQ_CENTROIDS[u32(v.y)] * norm),
-    q_element_t(TQ_CENTROIDS[u32(v.z)] * norm),
-    q_element_t(TQ_CENTROIDS[u32(v.w)] * norm));
 }
 #endif
 
@@ -111,11 +86,11 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
   for (var slot : u32 = 0; slot < k_step; slot++) {
     if (k_start + slot < get_total_sequence_length()) {
       let token_offset = offset + slot * head_size_vec;
-      let norm = tq_read_norm(token_offset);
+      let norm = tq_extract_norm(present_key[token_offset + head_size_vec - 1u]);
       // Cooperative load: each thread handles a subset of vec4s
       for (var idx : u32 = local_idx; idx < head_size_vec; idx += workgroup_size_x) {
         if (idx < head_size_vec - 1u) {
-          k_tile[slot][idx] = tq_dequant_vec4(present_key[token_offset + idx], norm);
+          k_tile[slot][idx] = q_value_t(tq_dequant_vec4(vec4<f32>(present_key[token_offset + idx]), norm));
         } else {
           // Last vec4: only x,y are valid indices; z,w are norm bits
           let raw = present_key[token_offset + idx];
@@ -149,10 +124,10 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
   for (var slot : u32 = 0; slot < v_step; slot++) {
     if (v_start + slot < get_total_sequence_length()) {
       let token_offset = offset + slot * head_size_vec;
-      let norm = tq_read_norm_v(token_offset);
+      let norm = tq_extract_norm(present_value[token_offset + head_size_vec - 1u]);
       for (var idx : u32 = local_idx; idx < head_size_vec; idx += workgroup_size_x) {
         if (idx < head_size_vec - 1u) {
-          v_tile[slot][idx] = tq_dequant_vec4(present_value[token_offset + idx], norm);
+          v_tile[slot][idx] = q_value_t(tq_dequant_vec4(vec4<f32>(present_value[token_offset + idx]), norm));
         } else {
           let raw = present_value[token_offset + idx];
           v_tile[slot][idx] = q_value_t(
