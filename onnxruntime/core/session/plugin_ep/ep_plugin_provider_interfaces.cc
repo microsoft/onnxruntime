@@ -313,40 +313,34 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // so a non-empty EP type here means it was assigned to this EP.
       const bool previously_assigned = !internal_node.GetExecutionProviderType().empty();
 
+      auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
+      indexed_sub_graph->nodes.push_back(node_index);
+
       // Host-side budget enforcement for single nodes.
       if (resource_accountant != nullptr && !previously_assigned) {
         ResourceCount cost = resource_accountant->ComputeResourceCount(internal_node);
         size_t cost_bytes = std::get<size_t>(cost);
+        size_t would_be_consumed = SafeInt<size_t>(consumed_bytes) + cost_bytes;
 
-        if (has_budget) {
-          size_t would_be_consumed = SafeInt<size_t>(consumed_bytes) + cost_bytes;
+        LOGS(logger, VERBOSE) << Type() << " node: " << internal_node.Name()
+                              << " (" << internal_node.OpType() << ")"
+                              << " cost: " << cost_bytes
+                              << " would_be_consumed: " << would_be_consumed
+                              << " budget: " << budget_bytes;
 
-          LOGS(logger, VERBOSE) << Type() << " node: " << internal_node.Name()
-                                << " (" << internal_node.OpType() << ")"
-                                << " cost: " << cost_bytes
-                                << " would_be_consumed: " << would_be_consumed
-                                << " budget: " << budget_bytes;
-
-          if (would_be_consumed > budget_bytes) {
-            LOGS(logger, WARNING) << Type() << " halting assignment due to budget at node: "
-                                  << internal_node.Name();
-            resource_accountant->SetStopAssignment();
-            break;  // stop processing further groupings
-          }
-
-          consumed_bytes = would_be_consumed;
+        if (has_budget && would_be_consumed > budget_bytes) {
+          LOGS(logger, WARNING) << Type() << " halting assignment due to budget at node: "
+                                << internal_node.Name();
+          resource_accountant->SetStopAssignment();
+          break;  // stop processing further groupings
         }
 
-        auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
-        indexed_sub_graph->nodes.push_back(node_index);
+        consumed_bytes = would_be_consumed;
         indexed_sub_graph->SetAccountant(resource_accountant);
         indexed_sub_graph->AppendNodeCost(cost);
-        result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
-      } else {
-        auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
-        indexed_sub_graph->nodes.push_back(node_index);
-        result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
       }
+
+      result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
     } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
       if (node_grouping.nodes.empty()) {
         LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " set an empty array of nodes "
@@ -428,9 +422,9 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
             resource_accountant->SetStopAssignment();
             break;  // stop processing further groupings
           }
-
-          consumed_bytes = would_be_consumed;
         }
+
+        consumed_bytes = SafeInt<size_t>(consumed_bytes) + group_cost_bytes;
 
         for (const auto& cost : node_costs) {
           fused_sub_graph->AppendNodeCost(cost);

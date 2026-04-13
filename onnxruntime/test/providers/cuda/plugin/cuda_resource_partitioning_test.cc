@@ -22,6 +22,7 @@
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
+#include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
@@ -215,14 +216,18 @@ TEST_F(CudaPluginPartitioningTest, TinyBudget_NodesOffloadedToCpu) {
   // node with initializers or known output shapes, so nodes must be offloaded.
   LoadAndVerifyPartitioning(model_path, /*budget_kb=*/1, [](const Graph& graph) {
     bool has_cpu_node = false;
+    bool has_plugin_node = false;
     for (const auto& node : graph.Nodes()) {
       if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
         has_cpu_node = true;
-        break;
+      } else if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+        has_plugin_node = true;
       }
     }
     EXPECT_TRUE(has_cpu_node)
         << "With a 1 KB budget, at least some nodes should be offloaded to CPU";
+    EXPECT_TRUE(has_plugin_node)
+        << "Budget enforcement should be partial, not all-or-nothing CPU fallback";
   });
 }
 
