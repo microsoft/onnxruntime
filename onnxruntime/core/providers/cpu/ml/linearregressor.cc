@@ -94,8 +94,8 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
                            "num_targets (", num_targets_, ") * num_features (", num_features,
                            ") overflows size_t");
   }
-  ORT_RETURN_IF_NOT(coefficients_.size() == expected_coefficients_size,
-                    "coefficients size (", coefficients_.size(), ") must equal num_targets (", num_targets_,
+  ORT_RETURN_IF_NOT(coefficients_.size() >= expected_coefficients_size,
+                    "coefficients size (", coefficients_.size(), ") is less than num_targets (", num_targets_,
                     ") * num_features (", num_features, ")");
 
   Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});

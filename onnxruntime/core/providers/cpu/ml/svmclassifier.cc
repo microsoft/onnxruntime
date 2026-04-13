@@ -223,8 +223,8 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                              "class_count (", class_count_, ") * num_features (", num_features,
                              ") overflows size_t");
     }
-    ORT_RETURN_IF_NOT(coefficients_.size() == expected_linear_size,
-                      "coefficients size (", coefficients_.size(), ") must equal class_count (", class_count_,
+    ORT_RETURN_IF_NOT(coefficients_.size() >= expected_linear_size,
+                      "coefficients size (", coefficients_.size(), ") is less than class_count (", class_count_,
                       ") * num_features (", num_features, ")");
   } else {
     size_t expected_sv_size = 0;
@@ -235,8 +235,8 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                              "vector_count (", vector_count_, ") * num_features (", num_features,
                              ") overflows size_t");
     }
-    ORT_RETURN_IF_NOT(support_vectors_.size() == expected_sv_size,
-                      "support_vectors size (", support_vectors_.size(), ") must equal vector_count (", vector_count_,
+    ORT_RETURN_IF_NOT(support_vectors_.size() >= expected_sv_size,
+                      "support_vectors size (", support_vectors_.size(), ") is less than vector_count (", vector_count_,
                       ") * num_features (", num_features, ")");
   }
 

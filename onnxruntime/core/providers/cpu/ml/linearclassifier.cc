@@ -159,8 +159,8 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
                            "class_count (", class_count_, ") * num_features (", num_features,
                            ") overflows size_t");
   }
-  ORT_RETURN_IF_NOT(coefficients_.size() == expected_coefficients_size,
-                    "coefficients size (", coefficients_.size(), ") must equal class_count (", class_count_,
+  ORT_RETURN_IF_NOT(coefficients_.size() >= expected_coefficients_size,
+                    "coefficients size (", coefficients_.size(), ") is less than class_count (", class_count_,
                     ") * num_features (", num_features, ")");
 
   Tensor* Y = ctx->Output(0, {num_batches});
