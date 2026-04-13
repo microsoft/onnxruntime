@@ -871,6 +871,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         env_(env),
         num_threads_(num_threads),
         spin_duration_(std::chrono::microseconds(spin_duration_us)),
+        time_check_mask_(ComputeTimeCheckMask(spin_duration_us)),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
         callback_policy_(thread_options),
         worker_data_(num_threads),
@@ -1599,9 +1600,28 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     std::condition_variable cv;
   };
 
+  // Compute a bitmask for the time-check interval (power of 2 minus 1).
+  // Uses spin_duration_us as a proxy for iteration count: round down to
+  // the nearest power of 2, clamped to [128, 4096]. This gives ~3-650
+  // clock reads per spin depending on architecture, well under 1% overhead.
+  static unsigned int ComputeTimeCheckMask(int spin_duration_us) {
+    if (spin_duration_us <= 128) return 128 - 1;
+    auto v = static_cast<unsigned int>(spin_duration_us);
+    // Round down to nearest power of 2
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v = (v >> 1) + 1;
+    if (v > 4096) v = 4096;
+    return v - 1;  // return as bitmask
+  }
+
   Environment& env_;
   const unsigned num_threads_;
   const std::chrono::microseconds spin_duration_;
+  const unsigned int time_check_mask_;  // bitmask for time check interval (power of 2 minus 1)
   const bool set_denormal_as_zero_;
   CallbackPolicy callback_policy_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
@@ -1648,8 +1668,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // spinning, where the actual wall-clock duration depends heavily on
     // the pause instruction used (_mm_pause ~10-40 cycles vs _tpause ~1000 cycles).
     const auto spin_duration = spin_duration_;
-    // Number of spin-loop iterations between work-steal attempts.
-    constexpr unsigned int kStealInterval = 100;
+    // Bitmask for steal interval (power of 2). Use bitwise AND instead of modulo.
+    constexpr unsigned int kStealMask = 128 - 1;  // steal every 128 iterations
+    // Bitmask for time check interval, computed from spin duration at construction.
+    const unsigned int time_check_mask = time_check_mask_;
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
@@ -1661,10 +1683,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         if (spin_duration_.count() > 0) {
           const auto spin_deadline = std::chrono::steady_clock::now() + spin_duration;
           for (unsigned int i = 0; !done_; i++) {
-            if (((i + 1) % kStealInterval == 0)) {
+            if (((i + 1) & kStealMask) == 0) {
               w = Steal(StealAttemptKind::TRY_ONE);
-              // Re-check deadline after steal attempt (which is more expensive)
-              if (!w && std::chrono::steady_clock::now() >= spin_deadline) break;
             } else {
               w = q.PopFront();
             }
@@ -1673,6 +1693,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
             if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
               break;
             }
+
+            // Check deadline at an independent, lower frequency than stealing.
+            if (((i + 1) & time_check_mask) == 0 &&
+                std::chrono::steady_clock::now() >= spin_deadline) {
+              break;
+            }
+
             onnxruntime::concurrency::SpinPause();
           }
         }
