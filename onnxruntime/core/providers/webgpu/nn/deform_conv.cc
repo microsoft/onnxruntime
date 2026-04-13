@@ -309,17 +309,15 @@ Status RunDeformConvOutput(ComputeContext& context,
 
 Status DeformConv::ComputeInternal(ComputeContext& context) const {
   const auto* x = context.Input<Tensor>(0);
-  const Tensor* weight = packed_weight_ ? packed_weight_.get() : context.Input<Tensor>(1);
+  const auto* weight = context.Input<Tensor>(1);
   const auto* offset = context.Input<Tensor>(2);
   const auto* bias = context.Input<Tensor>(3);
   const auto* mask = context.Input<Tensor>(4);
 
-  const TensorShape& original_weight_shape = packed_weight_ ? packed_weight_source_shape_ : context.Input<Tensor>(1)->Shape();
-
   DeformConvParams params;
   ORT_RETURN_IF_ERROR(DeformConvValidateAndParse(
       attrs_,
-      x->Shape(), original_weight_shape, offset->Shape(),
+      x->Shape(), weight->Shape(), offset->Shape(),
       bias ? &bias->Shape() : nullptr,
       mask ? &mask->Shape() : nullptr,
       params));
@@ -333,18 +331,14 @@ Status DeformConv::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(DeformConvValidateAndComputeCommonDims(params, common_dims));
 
   const int64_t m_per_group = params.M / params.group;
-  Tensor packed_weight;
-  if (!packed_weight_) {
-    packed_weight = context.CreateGPUTensor(weight->DataType(), TensorShape{params.group, common_dims.kernel_dim, m_per_group});
-    ORT_RETURN_IF_ERROR(RunDeformConvWeightPack(context, weight, params, common_dims, packed_weight));
-    weight = &packed_weight;
-  }
+  Tensor packed_weight = context.CreateGPUTensor(weight->DataType(), TensorShape{params.group, common_dims.kernel_dim, m_per_group});
+  ORT_RETURN_IF_ERROR(RunDeformConvWeightPack(context, weight, params, common_dims, packed_weight));
 
   Tensor col_buffer = context.CreateGPUTensor(x->DataType(), TensorShape{params.N, params.group, common_dims.output_image_size, common_dims.kernel_dim});
   ORT_RETURN_IF_ERROR(RunDeformConvIm2Col(context, x, offset, mask, params, common_dims, col_buffer));
 
   Tensor mm_output = context.CreateGPUTensor(output->DataType(), TensorShape{params.N, params.group, common_dims.output_image_size, m_per_group});
-  std::vector<const Tensor*> matmul_inputs{&col_buffer, weight};
+  std::vector<const Tensor*> matmul_inputs{&col_buffer, &packed_weight};
   ORT_RETURN_IF_ERROR(ComputeMatMul(&context,
                                     Activation{},
                                     matmul_inputs,
@@ -352,53 +346,6 @@ Status DeformConv::ComputeInternal(ComputeContext& context) const {
                                     true /* is_channels_last */));
 
   return RunDeformConvOutput(context, &mm_output, bias, params, output);
-}
-
-Status DeformConv::PrePackInternal(ComputeContextBase& context,
-                                   const Tensor& tensor,
-                                   int input_idx,
-                                   AllocatorPtr alloc,
-                                    /*out*/ bool& is_packed) {
-  is_packed = false;
-
-  if (input_idx != 1) {
-    return Status::OK();
-  }
-
-  if (tensor.Shape().NumDimensions() != 4) {
-    return Status::OK();
-  }
-
-  DeformConvParams params;
-  params.N = 1;
-  params.C = tensor.Shape()[1] * attrs_.group;
-  params.H = 1;
-  params.W_in = 1;
-  params.M = tensor.Shape()[0];
-  params.group = attrs_.group;
-  params.offset_group = attrs_.offset_group;
-  params.kH = attrs_.kernel_shape.empty() ? tensor.Shape()[2] : attrs_.kernel_shape[0];
-  params.kW = attrs_.kernel_shape.empty() ? tensor.Shape()[3] : attrs_.kernel_shape[1];
-  params.out_h = 1;
-  params.out_w = 1;
-
-  ORT_RETURN_IF_NOT(attrs_.kernel_shape.empty() ||
-                        (attrs_.kernel_shape.size() == 2 &&
-                         attrs_.kernel_shape[0] == tensor.Shape()[2] &&
-                         attrs_.kernel_shape[1] == tensor.Shape()[3]),
-                    "kernel_shape must match weight spatial dimensions for DeformConv prepack.");
-
-  DeformConvCommonDims common_dims;
-  ORT_RETURN_IF_ERROR(DeformConvValidateAndComputeCommonDims(params, common_dims));
-
-  packed_weight_ = std::make_unique<Tensor>(tensor.DataType(),
-                                            TensorShape{params.group, common_dims.kernel_dim, params.M / params.group},
-                                            alloc);
-  packed_weight_source_shape_ = tensor.Shape();
-  ORT_RETURN_IF_ERROR(RunDeformConvWeightPack(context, &tensor, params, common_dims, *packed_weight_));
-  is_packed = true;
-
-  return Status::OK();
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
