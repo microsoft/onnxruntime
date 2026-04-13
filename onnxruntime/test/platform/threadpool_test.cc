@@ -970,4 +970,42 @@ TEST(ThreadPoolTest, TestWorkCallbacks_NoEnqueueWithStartStop) {
 
 #endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
 
+// -------------------------------------------------------------------
+// Tests for the three spin_duration_us modes (-1/0/>0)
+// -------------------------------------------------------------------
+
+// Helper: create a thread pool with the given spin_duration_us, run a parallel
+// workload, and verify correctness.
+void TestSpinDurationMode(int spin_duration_us) {
+  constexpr int num_threads = 4;
+  constexpr std::ptrdiff_t num_tasks = 1024;
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         onnxruntime::ThreadOptions(),
+                                         nullptr,
+                                         num_threads,
+                                         spin_duration_us);
+  std::atomic<std::ptrdiff_t> ctr{0};
+  ThreadPool::TryParallelFor(tp.get(), num_tasks, 0.0,
+                             [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                               ctr += e - s;
+                             });
+  ASSERT_EQ(ctr.load(), num_tasks);
+}
+
+// Default (-1): iteration-count-based spinning (original behavior).
+TEST(ThreadPoolTest, SpinDurationDefault) {
+  TestSpinDurationMode(concurrency::kSpinDurationDefault);
+}
+
+// Zero: no spinning — threads block immediately when idle.
+TEST(ThreadPoolTest, SpinDurationZero_NoSpinning) {
+  TestSpinDurationMode(0);
+}
+
+// Positive: time-based spinning with a short duration.
+TEST(ThreadPoolTest, SpinDurationPositive_TimeBased) {
+  TestSpinDurationMode(100);   // 100us
+  TestSpinDurationMode(1000);  // 1ms
+}
+
 }  // namespace onnxruntime

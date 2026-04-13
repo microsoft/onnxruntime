@@ -1693,8 +1693,21 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           // This gives predictable CPU usage regardless of the pause instruction latency.
           const auto spin_deadline = std::chrono::steady_clock::now() +
                                      std::chrono::microseconds(spin_duration_us_);
-          // Bitmask for steal interval (power of 2). Use bitwise AND instead of modulo.
-          constexpr unsigned int kStealMask = 128 - 1;  // steal every 128 iterations
+          // Steal interval: 512 iterations (power of 2, use bitmask instead of modulo).
+          //
+          // The legacy iteration-count path steals every spin_count/100 = 10,485 iterations,
+          // yielding ~100 total steal attempts over its full ~1M-iteration spin.
+          //
+          // In the time-based path, the total iteration count depends on pause latency:
+          //   _mm_pause (Skylake+ ~47ns/iter):  1ms ≈  21K iters → 512 → ~41 steals
+          //   _mm_pause (pre-Skylake ~3ns/iter): 1ms ≈ 303K iters → 512 → ~592 steals
+          //   _tpause (~333ns/iter):             1ms ≈   3K iters → 512 → ~6 steals
+          //
+          // 512 is a reasonable middle ground: on modern Skylake+ (most common), the
+          // steal count (~41/ms) stays in the same order of magnitude as the legacy path
+          // (~100 total). Steal attempts are cheap (a single CAS on another queue), so
+          // the modest variation across architectures is acceptable for this opt-in path.
+          constexpr unsigned int kStealMask = 512 - 1;
           // Bitmask for time check interval, computed from spin duration at construction.
           const unsigned int time_check_mask = time_check_mask_;
           for (unsigned int i = 0; !done_; i++) {

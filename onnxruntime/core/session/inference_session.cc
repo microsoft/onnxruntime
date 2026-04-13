@@ -107,6 +107,7 @@ namespace {
 // Returns kSpinDurationDefault (-1) if the config is not explicitly set.
 // Returns the parsed value (>= 0) if valid. Logs a warning and returns
 // kSpinDurationDefault on parse failure.
+constexpr int kSpinDurationWarnThresholdUs = 10000;  // 10ms — warn above this
 int ParseSpinDurationUs(std::string_view str, const char* config_key,
                         const logging::Logger& logger) {
   int spin_us = concurrency::kSpinDurationDefault;
@@ -114,6 +115,12 @@ int ParseSpinDurationUs(std::string_view str, const char* config_key,
     LOGS(logger, WARNING) << "Invalid value for " << config_key
                           << ": \"" << str << "\", using default iteration-count spinning";
     return concurrency::kSpinDurationDefault;
+  }
+  if (spin_us > kSpinDurationWarnThresholdUs) {
+    LOGS(logger, WARNING) << config_key << " is set to " << spin_us
+                          << "us (>" << kSpinDurationWarnThresholdUs
+                          << "us). Large spin durations increase CPU/power usage. "
+                          << "Typical values are 500-2000us.";
   }
   return spin_us;
 }
