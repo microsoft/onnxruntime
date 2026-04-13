@@ -1510,6 +1510,13 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFrom
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetExternalDataReader(OrtReadExternalDataFunc read_func,
+                                                                           void* state) {
+  ThrowOnError(GetApi().SessionOptions_SetExternalDataReader(this->p_, read_func, state));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CPU(int use_arena) {
   ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(this->p_, use_arena));
   return *this;

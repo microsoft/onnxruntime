@@ -687,6 +687,9 @@ ORT_API_STATUS_IMPL(Graph_GetOperatorSets, _In_ const OrtGraph* graph,
 ORT_API_STATUS_IMPL(Graph_GetNumInputs, _In_ const OrtGraph* graph, _Out_ size_t* num_inputs);
 ORT_API_STATUS_IMPL(Graph_GetInputs, _In_ const OrtGraph* graph,
                     _Out_writes_(num_inputs) const OrtValueInfo** inputs, _In_ size_t num_inputs);
+
+ORT_API_STATUS_IMPL(SessionOptions_SetExternalDataReader, _Inout_ OrtSessionOptions* options,
+                    _In_ OrtReadExternalDataFunc read_func, _In_opt_ void* state);
 ORT_API_STATUS_IMPL(Graph_GetNumOutputs, _In_ const OrtGraph* graph, _Out_ size_t* num_outputs);
 ORT_API_STATUS_IMPL(Graph_GetOutputs, _In_ const OrtGraph* graph,
                     _Out_writes_(num_outputs) const OrtValueInfo** outputs, _In_ size_t num_outputs);

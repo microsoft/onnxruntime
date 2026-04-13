@@ -4176,6 +4176,68 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
   return Status::OK();
 }
 
+Status Graph::InjectExternalInitializersFromReader(const ExternalDataReaderFn& reader) {
+  for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
+    if (!utils::HasExternalDataInFile(*tensor_proto)) {
+      continue;
+    }
+
+    ORT_RETURN_IF(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING,
+                  "External data reader does not support STRING tensor: ", tensor_name);
+
+    std::unique_ptr<ExternalDataInfo> external_data_info;
+    ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
+
+    const auto& external_file = external_data_info->GetRelPath();
+    const int64_t file_offset = external_data_info->GetOffset();
+    const size_t external_data_length = external_data_info->GetLength();
+
+    SafeInt<size_t> tensor_byte_size;
+    ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &tensor_byte_size));
+
+    ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
+                      "TensorProto: ", tensor_name, " external data size mismatch. Computed size: ",
+                      *&tensor_byte_size, ", external_data.length: ", external_data_length);
+
+    const DataTypeImpl* const element_type =
+        DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type())->GetElementType();
+    TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(*tensor_proto);
+
+    OrtValue ort_value;
+    TensorProto new_tensor_proto;
+    constexpr bool use_tensor_buffer_true = true;
+
+    if (static_cast<size_t>(tensor_byte_size) > utils::kSmallTensorExternalDataThreshold) {
+      // Large tensor: allocate ORT-owned tensor buffer and have callback fill it directly
+      Tensor tensor(element_type, tensor_shape, CPUAllocator::DefaultInstance());
+      ORT_RETURN_IF_ERROR(reader(tensor_name.c_str(), external_file.c_str(),
+                                 file_offset, external_data_length,
+                                 static_cast<size_t>(tensor_byte_size),
+                                 tensor.MutableDataRaw()));
+
+      new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_true);
+      Tensor::InitOrtValue(std::move(tensor), ort_value);
+    } else {
+      // Small tensor: use temporary buffer, callback fills it, then inline into proto
+      InlinedVector<uint8_t> buffer(static_cast<size_t>(tensor_byte_size));
+      ORT_RETURN_IF_ERROR(reader(tensor_name.c_str(), external_file.c_str(),
+                                 file_offset, external_data_length,
+                                 static_cast<size_t>(tensor_byte_size),
+                                 buffer.data()));
+
+      Tensor tensor(element_type, tensor_shape, buffer.data(),
+                    OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+      constexpr bool use_tensor_buffer_false = false;
+      new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
+    }
+
+    ORT_RETURN_IF_ERROR(ReplaceInitializedTensorImpl(std::move(new_tensor_proto), std::move(ort_value), true));
+    LOGS(logger_, INFO) << "Replaced external initializer via reader callback: " << tensor_name;
+  }
+
+  return Status::OK();
+}
+
 #endif  // DISABLE_EXTERNAL_INITIALIZERS
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

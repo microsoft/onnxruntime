@@ -760,6 +760,25 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    */
   common::Status InjectExternalInitializersFromFilesInMemory(
       const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files);
+
+  /** This function uses a user-provided callback to read external initializer data on demand.
+   *  The callback is invoked for each initializer that still has file-based external data
+   *  (i.e., not already replaced by InjectExternalInitializedTensors or
+   *  InjectExternalInitializersFromFilesInMemory).
+   *
+   *  Callback signature: (initializer_name, file_name, file_offset, data_length,
+   *                        expected_tensor_byte_size, buffer) -> Status
+   *  The callback must fill `buffer` with `expected_tensor_byte_size` bytes of plaintext data.
+   */
+  using ExternalDataReaderFn = std::function<common::Status(
+      const char* initializer_name,
+      const PathChar* original_file_name,
+      int64_t original_file_offset,
+      size_t original_data_length,
+      size_t expected_tensor_byte_size,
+      void* buffer)>;
+
+  common::Status InjectExternalInitializersFromReader(const ExternalDataReaderFn& reader);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

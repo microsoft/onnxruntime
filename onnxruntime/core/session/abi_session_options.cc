@@ -413,3 +413,24 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetLoadCancellationFlag, _Inout_ OrtS
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptions_SetExternalDataReader, _Inout_ OrtSessionOptions* options,
+                    _In_ OrtReadExternalDataFunc read_func, _In_opt_ void* state) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  API_IMPL_BEGIN
+  if (read_func == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "read_func must not be null");
+  }
+
+  options->value.external_data_reader_func = read_func;
+  options->value.external_data_reader_state = state;
+  return nullptr;
+  API_IMPL_END
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(read_func);
+  ORT_UNUSED_PARAMETER(state);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "SessionOptions_SetExternalDataReader is not supported in this build");
+#endif
+}

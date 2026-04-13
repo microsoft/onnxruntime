@@ -621,6 +621,43 @@ typedef OrtStatus*(ORT_API_CALL* OrtGetInitializerLocationFunc)(
     _In_opt_ const OrtExternalInitializerInfo* external_info,
     _Outptr_result_maybenull_ OrtExternalInitializerInfo** new_external_info);
 
+/** \brief Function called by ORT to read external initializer data on demand.
+ *
+ * This callback is invoked during session creation for each initializer that has external data stored in a file.
+ * The callback implementation should read, decrypt, decompress, or otherwise produce the plaintext tensor data
+ * and write it into the ORT-provided buffer.
+ *
+ * The `original_file_name`, `original_file_offset`, and `original_data_length` parameters are informational
+ * context from the ONNX model's external data metadata. The callback may ignore them if the data on disk has a
+ * different layout (e.g., encrypted or compressed). The `expected_tensor_byte_size` parameter is the authoritative
+ * size computed from the tensor's shape and data type.
+ *
+ * \note `original_data_length` may be 0, which follows the ONNX convention meaning "remainder of file".
+ *
+ * \param[in] state Opaque pointer holding the user's state.
+ * \param[in] initializer_name The initializer's name as a null-terminated UTF-8 string.
+ * \param[in] original_file_name The external data file name from the model metadata (informational).
+ *                               Null-terminated path string (wchar on Windows, char otherwise).
+ * \param[in] original_file_offset The byte offset within the external file from the model metadata (informational).
+ * \param[in] original_data_length The data length from the model metadata (informational). May be 0.
+ * \param[in] expected_tensor_byte_size The number of bytes the callback must write into `buffer`.
+ *                                      Computed from the tensor's shape and element type.
+ * \param[out] buffer ORT-allocated buffer of `expected_tensor_byte_size` bytes. The callback must fill it
+ *                    with the plaintext tensor data.
+ *
+ * \return OrtStatus* Read status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtReadExternalDataFunc)(
+    _In_ void* state,
+    _In_ const char* initializer_name,
+    _In_ const ORTCHAR_T* original_file_name,
+    _In_ int64_t original_file_offset,
+    _In_ size_t original_data_length,
+    _In_ size_t expected_tensor_byte_size,
+    _Out_writes_(expected_tensor_byte_size) void* buffer);
+
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -7435,6 +7472,39 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* env,
                   _In_ const OrtThreadPoolCallbacksConfig* config);
+
+  /// @}
+
+  /// \name OrtSessionOptions
+  /// @{
+
+  /** \brief Set a callback function for reading external initializer data during session creation.
+   *
+   * This enables applications to provide custom I/O for external initializer data, such as decrypting
+   * encrypted data or decompressing compressed data on the fly during model loading.
+   *
+   * The callback is invoked for each initializer that has external file-based data that was not already
+   * provided via OrtApi::AddExternalInitializers or OrtApi::AddExternalInitializersFromFilesInMemory.
+   * This makes the reader callback composable with the existing external initializer APIs, acting as a
+   * fallback for any remaining file-backed initializers.
+   *
+   * The callback receives the initializer name, the original external data file metadata (file name, offset,
+   * and length from the ONNX model), the expected tensor byte size (computed from shape and data type),
+   * and an ORT-allocated buffer to fill with the plaintext data.
+   *
+   * The callback and state pointer are consumed after session creation and do not need to remain valid
+   * beyond that point.
+   *
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[in] read_func The OrtReadExternalDataFunc callback. Must not be null.
+   * \param[in] state Opaque state pointer passed as the first argument to `read_func`. Can be NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(SessionOptions_SetExternalDataReader, _Inout_ OrtSessionOptions* options,
+                  _In_ OrtReadExternalDataFunc read_func, _In_opt_ void* state);
 
   /// @}
 };

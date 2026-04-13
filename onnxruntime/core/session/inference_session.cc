@@ -2230,6 +2230,30 @@ common::Status InferenceSession::Initialize() {
       InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>{}.swap(
           session_options_.external_initializer_files_mmap);
     }
+
+    if (session_options_.external_data_reader_func != nullptr) {
+      // Wrap the C callback as a std::function for the graph layer
+      auto* read_func = session_options_.external_data_reader_func;
+      auto* read_state = session_options_.external_data_reader_state;
+      Graph::ExternalDataReaderFn reader =
+          [read_func, read_state](const char* initializer_name,
+                                  const PathChar* original_file_name,
+                                  int64_t original_file_offset,
+                                  size_t original_data_length,
+                                  size_t expected_tensor_byte_size,
+                                  void* buffer) -> Status {
+        OrtStatus* ort_status = read_func(read_state, initializer_name, original_file_name,
+                                          original_file_offset, original_data_length,
+                                          expected_tensor_byte_size, buffer);
+        if (ort_status != nullptr) {
+          return ToStatusAndRelease(ort_status);
+        }
+        return Status::OK();
+      };
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializersFromReader(reader));
+      session_options_.external_data_reader_func = nullptr;
+      session_options_.external_data_reader_state = nullptr;
+    }
 #endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT

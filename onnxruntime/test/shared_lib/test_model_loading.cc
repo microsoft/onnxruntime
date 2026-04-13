@@ -380,6 +380,190 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileMmap) {
   TestLoadModelFromArrayWithExternalInitializerFromFileMmap(model_file_name, external_bin_name);
 }
 
+// Tests for SessionOptions_SetExternalDataReader API
+
+// Helper struct to pass context to the reader callback
+struct ExternalDataReaderContext {
+  std::string test_folder;
+  int call_count = 0;
+};
+
+static OrtStatus* ORT_API_CALL TestReadExternalData(
+    void* state,
+    const char* /*initializer_name*/,
+    const ORTCHAR_T* original_file_name,
+    int64_t original_file_offset,
+    size_t /*original_data_length*/,
+    size_t expected_tensor_byte_size,
+    void* buffer) {
+  auto* ctx = static_cast<ExternalDataReaderContext*>(state);
+  ctx->call_count++;
+
+  // Build the full path to the external data file
+#ifdef _WIN32
+  std::wstring file_path(ctx->test_folder.begin(), ctx->test_folder.end());
+  file_path += original_file_name;
+  std::ifstream file(file_path, std::ios::binary);
+#else
+  std::string file_path = ctx->test_folder + original_file_name;
+  std::ifstream file(file_path, std::ios::binary);
+#endif
+
+  if (!file) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to open external data file");
+  }
+
+  file.seekg(original_file_offset);
+  if (!file.read(static_cast<char*>(buffer), static_cast<std::streamsize>(expected_tensor_byte_size))) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to read external data");
+  }
+
+  return nullptr;  // success
+}
+
+// Basic test: reader callback loads external data from file
+TEST(CApiTest, TestExternalDataReaderBasic) {
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
+
+  ExternalDataReaderContext ctx;
+  ctx.test_folder = "testdata/";
+
+  Ort::SessionOptions so;
+  so.SetExternalDataReader(TestReadExternalData, &ctx);
+
+  EXPECT_NO_THROW(Ort::Session session(*ort_env.get(), model_path, so));
+  EXPECT_GT(ctx.call_count, 0);
+}
+
+// Simulated encryption: XOR the external data file, callback decrypts
+TEST(CApiTest, TestExternalDataReaderSimulatedEncryption) {
+  // Read the original external data, XOR-encrypt it, write to temp file
+  std::string test_folder = "testdata/";
+  std::string original_bin_path = test_folder + "Pads.bin";
+  std::vector<char> original_data;
+  ReadFileToBuffer(original_bin_path.c_str(), original_data);
+
+  constexpr uint8_t xor_key = 0x42;
+  std::vector<char> encrypted_data(original_data.size());
+  for (size_t i = 0; i < original_data.size(); ++i) {
+    encrypted_data[i] = original_data[i] ^ static_cast<char>(xor_key);
+  }
+
+  std::string encrypted_bin_path = test_folder + "Pads_encrypted.bin";
+  {
+    std::ofstream out(encrypted_bin_path, std::ios::binary);
+    out.write(encrypted_data.data(), static_cast<std::streamsize>(encrypted_data.size()));
+  }
+
+  // Create a modified model that references the encrypted file
+  // For simplicity, we use the original model but redirect via the callback
+  // The callback reads from the encrypted file and decrypts
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
+
+  // We need to make the callback read from the encrypted file instead.
+  // Since the model references "Pads.bin", we rename the encrypted file to match.
+  // Instead, we modify the callback to always read from the encrypted path.
+  struct XorContext {
+    std::string encrypted_path;
+    int call_count = 0;
+  };
+
+  XorContext xor_ctx;
+  xor_ctx.encrypted_path = encrypted_bin_path;
+
+  auto xor_reader = [](void* state, const char* /*name*/,
+                       const ORTCHAR_T* /*file_name*/,
+                       int64_t file_offset,
+                       size_t /*data_length*/,
+                       size_t expected_size,
+                       void* buffer) -> OrtStatus* {
+    auto* ctx = static_cast<XorContext*>(state);
+    ctx->call_count++;
+
+    std::ifstream file(ctx->encrypted_path, std::ios::binary);
+    if (!file) {
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to open encrypted file");
+    }
+    file.seekg(file_offset);
+    if (!file.read(static_cast<char*>(buffer), static_cast<std::streamsize>(expected_size))) {
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to read encrypted file");
+    }
+
+    constexpr uint8_t key = 0x42;
+    auto* bytes = static_cast<uint8_t*>(buffer);
+    for (size_t i = 0; i < expected_size; ++i) {
+      bytes[i] ^= key;
+    }
+    return nullptr;
+  };
+
+  Ort::SessionOptions so;
+  so.SetExternalDataReader(xor_reader, &xor_ctx);
+
+  EXPECT_NO_THROW(Ort::Session session(*ort_env.get(), model_path, so));
+  EXPECT_GT(xor_ctx.call_count, 0);
+
+  // Cleanup encrypted file
+  std::remove(encrypted_bin_path.c_str());
+}
+
+// Error propagation: callback returns error status
+TEST(CApiTest, TestExternalDataReaderErrorPropagation) {
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
+
+  auto error_reader = [](void* /*state*/, const char* /*name*/,
+                         const ORTCHAR_T* /*file_name*/,
+                         int64_t /*file_offset*/,
+                         size_t /*data_length*/,
+                         size_t /*expected_size*/,
+                         void* /*buffer*/) -> OrtStatus* {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "Simulated read error");
+  };
+
+  Ort::SessionOptions so;
+  so.SetExternalDataReader(error_reader, nullptr);
+
+  try {
+    Ort::Session session(*ort_env.get(), model_path, so);
+    FAIL() << "Session creation should have failed";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_THAT(ex.what(), testing::HasSubstr("Simulated read error"));
+  }
+}
+
+// Null callback rejection
+TEST(CApiTest, TestExternalDataReaderNullCallbackRejection) {
+  Ort::SessionOptions so;
+  try {
+    so.SetExternalDataReader(nullptr, nullptr);
+    FAIL() << "Setting null callback should have thrown";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_THAT(ex.what(), testing::HasSubstr("read_func"));
+  }
+}
+
+// No-op: callback is set but model has no external initializers
+TEST(CApiTest, TestExternalDataReaderNoExternalData) {
+  constexpr auto model_path = ORT_TSTR("testdata/matmul_1.onnx");
+
+  int call_count = 0;
+  auto noop_reader = [](void* state, const char* /*name*/,
+                        const ORTCHAR_T* /*file_name*/,
+                        int64_t /*file_offset*/,
+                        size_t /*data_length*/,
+                        size_t /*expected_size*/,
+                        void* /*buffer*/) -> OrtStatus* {
+    (*static_cast<int*>(state))++;
+    return nullptr;
+  };
+
+  Ort::SessionOptions so;
+  so.SetExternalDataReader(noop_reader, &call_count);
+
+  EXPECT_NO_THROW(Ort::Session session(*ort_env.get(), model_path, so));
+  EXPECT_EQ(call_count, 0);  // Callback should not have been called
+}
+
 #endif
 }  // namespace test
 }  // namespace onnxruntime

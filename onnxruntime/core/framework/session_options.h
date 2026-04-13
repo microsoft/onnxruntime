@@ -179,6 +179,9 @@ struct SessionOptions {
   InlinedHashMap<PathString, std::pair<char*, size_t>> external_initializer_files_mmap;
   Status AddExternalInitializersFromFilesInMemory(gsl::span<const PathString> file_names,
                                                   gsl::span<std::pair<char*, const size_t>> files_buffers);
+  // Callback for reading external initializer data on demand (e.g., for decryption/decompression).
+  OrtReadExternalDataFunc external_data_reader_func = nullptr;
+  void* external_data_reader_state = nullptr;
 #endif
 
   // custom function callback to create a thread
