@@ -504,5 +504,42 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
 }
 #endif
 
+// Regression test: 1D vector dot product with matching K dimension should succeed.
+// A=[K], B=[K] -> scalar output (dot product).
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1", {4}, {1, 2, 3, 4});
+  test.AddInput<uint8_t>("T2", {4}, {5, 6, 7, 8});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  // dot product: 1*5 + 2*6 + 3*7 + 4*8 = 5 + 12 + 21 + 32 = 70
+  test.AddOutput<int32_t>("T3", {}, {70});
+  test.Run();
+}
+
+// Regression test: 1D vectors with mismatched K dimension must fail, not OOB read.
+// This was a heap buffer over-read vulnerability (CVE-like): A=[K], B=[1] where K > 1
+// would read K-1 bytes past B's allocation.
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_KDimensionMismatch) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1", {4}, {1, 1, 1, 1});
+  test.AddInput<uint8_t>("T2", {1}, {5});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {}, {0});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Incompatible dimensions");
+}
+
+// Same regression test with int8_t types.
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_1D_Vector_KDimensionMismatch) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1", {8}, {1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<int8_t>("T2", {1}, {5});
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+  test.AddInput<int8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {}, {0});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Incompatible dimensions");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
