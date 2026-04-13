@@ -216,9 +216,8 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                     ", num_batches=", num_batches);
   if (mode_ == SVM_TYPE::SVM_LINEAR) {
     size_t expected_linear_size = 0;
-    try {
-      expected_linear_size = SafeInt<size_t>(class_count_) * SafeInt<size_t>(num_features);
-    } catch (...) {
+    if (!SafeMultiply(static_cast<size_t>(class_count_), static_cast<size_t>(num_features),
+                      expected_linear_size)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "class_count (", class_count_, ") * num_features (", num_features,
                              ") overflows size_t");
@@ -228,9 +227,8 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                       ") * num_features (", num_features, ")");
   } else {
     size_t expected_sv_size = 0;
-    try {
-      expected_sv_size = SafeInt<size_t>(vector_count_) * SafeInt<size_t>(num_features);
-    } catch (...) {
+    if (!SafeMultiply(static_cast<size_t>(vector_count_), static_cast<size_t>(num_features),
+                      expected_sv_size)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "vector_count (", vector_count_, ") * num_features (", num_features,
                              ") overflows size_t");
@@ -274,7 +272,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   std::vector<float> probsp2_data;
 
   if (mode_ == SVM_TYPE::SVM_SVC && have_proba) {
-    probsp2_data.resize(num_batches * class_count_squared, 0.f);
+    probsp2_data.resize(SafeInt<size_t>(num_batches) * class_count_squared, 0.f);
   }
 
   int write_additional_scores = -1;
@@ -306,7 +304,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
     if (have_proba) {
       // we will write num_batches * num_classifiers scores first, and transform those to num_batches * class_count_,
       // so need to use a separate buffer for the first scoring.
-      classifier_scores_data.resize(num_batches * num_classifiers);
+      classifier_scores_data.resize(SafeInt<size_t>(num_batches) * num_classifiers);
       classifier_scores = gsl::make_span<float>(classifier_scores_data.data(), classifier_scores_data.size());
     } else {
       // we will write directly to the final scores buffer

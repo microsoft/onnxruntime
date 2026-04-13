@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/ml/linearclassifier.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
@@ -152,9 +153,8 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
                                                                   input_shape[0])
                                                             : narrow<ptrdiff_t>(input_shape[1]);
   size_t expected_coefficients_size = 0;
-  try {
-    expected_coefficients_size = SafeInt<size_t>(class_count_) * SafeInt<size_t>(num_features);
-  } catch (...) {
+  if (!SafeMultiply(static_cast<size_t>(class_count_), static_cast<size_t>(num_features),
+                    expected_coefficients_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "class_count (", class_count_, ") * num_features (", num_features,
                            ") overflows size_t");
