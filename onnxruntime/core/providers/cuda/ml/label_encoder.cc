@@ -243,6 +243,10 @@ Status CudaLabelEncoder_4<TKey, TValue>::ComputeInternal(OpKernelContext* contex
 }
 
 // Specializations for InitializeAttrFields
+// Note: For double types, key_field_name_ and value_field_name_ are intentionally
+// left empty. When empty, GetAttrOrTensor skips the list-attribute path and reads
+// directly from the tensor-based attributes (keys_tensor / values_tensor).
+// This mirrors the CPU LabelEncoder_4 behavior for double types.
 
 template <>
 void CudaLabelEncoder_4<int64_t, int64_t>::InitializeAttrFields(const OpKernelInfo& info) {

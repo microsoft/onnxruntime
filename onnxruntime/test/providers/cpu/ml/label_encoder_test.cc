@@ -511,7 +511,9 @@ TEST(LabelEncoder, DoubleNaNsMappedTogetherOpset4) {
   test.Run();
 }
 
-// Tests for numeric-to-numeric NaN key handling (runs on both CPU and CUDA)
+// Tests for numeric-to-numeric NaN key handling.
+// These test cases exercise the CUDA binary search NaN handling path when
+// the CUDA EP is available. OpTester::Run() runs on all registered EPs.
 TEST(LabelEncoder, FloatNaNKeyToInt64Opset4) {
   std::vector<std::int64_t> dims{1, 6};
   std::vector<float> input{3.14f, std::nanf("1"), 2.718f, std::nanf("2"), 5.f, -1.f};
