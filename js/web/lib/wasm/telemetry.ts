@@ -15,7 +15,6 @@ const MAX_QUEUE_SIZE = 500;
 const MAX_RETRIES = 6;
 const DEVICE_ID_KEY = 'ort_device_id';
 
-// eslint-disable-next-line prefer-const
 let queue: string[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let deviceId: string | null = null;
@@ -143,6 +142,9 @@ const isTelemetrySupported = (): boolean => !BUILD_DEFS.DISABLE_TELEMETRY && was
 
 const shouldEmitTelemetry = (): boolean => isTelemetrySupported() && isRuntimeTelemetryEnabled();
 
+const getEventData = (eventName: string, eventData: Record<string, unknown>): Record<string, unknown> =>
+  eventName === 'ProcessInfo' ? { ...getBrowserMetadata(), ...eventData } : eventData;
+
 const emitTelemetryEvent = (eventName: string, eventData: Record<string, unknown>): void => {
   if (!shouldEmitTelemetry()) {
     return;
@@ -258,6 +260,7 @@ export const initTelemetry = (module: OrtWasmModule): void => {
   }
 
   try {
+    // eslint-disable-next-line no-underscore-dangle
     wasmTelemetrySupported = !!module._OrtIsTelemetrySupported?.();
   } catch {
     wasmTelemetrySupported = false;
@@ -274,11 +277,8 @@ export const initTelemetry = (module: OrtWasmModule): void => {
     eventName: string,
     eventData: Record<string, unknown>,
   ) => {
-    emitTelemetryEvent(eventName, eventData);
+    emitTelemetryEvent(eventName, getEventData(eventName, eventData));
   };
-
-  // Device info event — fires from JS before WASM loads, so it works even on incompatible browsers
-  emitTelemetryEvent('deviceinfo', getBrowserMetadata());
 };
 
 export const logSessionModelInfo = (modelSizeBytes: number, inputCount?: number, outputCount?: number): void => {
