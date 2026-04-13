@@ -23,6 +23,7 @@ class DeformConv final : public WebGpuKernel {
  private:
   DeformConvAttributes attrs_;
   std::unique_ptr<Tensor> packed_weight_;
+  TensorShape packed_weight_source_shape_;
 };
 
 }  // namespace webgpu
