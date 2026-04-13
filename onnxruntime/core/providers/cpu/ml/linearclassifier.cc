@@ -163,14 +163,6 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
                     "coefficients size (", coefficients_.size(), ") must equal class_count (", class_count_,
                     ") * num_features (", num_features, ")");
 
-  // Validate coefficients are large enough to prevent OOB read in GEMM.
-  const size_t expected_coefficients_size = SafeInt<size_t>(class_count_) * SafeInt<size_t>(num_features);
-  if (coefficients_.size() < expected_coefficients_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "LinearClassifier: coefficients length (", coefficients_.size(),
-                           ") is less than classes (", class_count_, ") * features (", num_features, ")");
-  }
-
   Tensor* Y = ctx->Output(0, {num_batches});
 
   int64_t output_classes = class_count_;

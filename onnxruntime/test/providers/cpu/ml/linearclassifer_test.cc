@@ -199,7 +199,7 @@ TEST(MLOpTest, LinearClassifierInvalidCoefficientsSizeFails) {
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "LinearClassifier: coefficients length (3) is less than classes (3) * features (2)");
+           "coefficients size (3) must equal class_count (3) * num_features (2)");
 }
 
 // Regression test: coefficients not divisible by class_count.
