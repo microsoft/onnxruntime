@@ -5171,6 +5171,14 @@ Status Graph::ToGraphProtoWithCustomInitializerHandlingImpl(
     }
   }
 
+  // Clear any pre-existing initializers from the graph proto before repopulating them via the callback.
+  // Without clearing, the add_initializer() calls below would create duplicate initializer entries.
+  std::cerr << "Num initializer tensor protos: " << output_graph_proto.initializer_size() << std::endl;
+  output_graph_proto.clear_initializer();
+#if !defined(DISABLE_SPARSE_TENSORS)
+  output_graph_proto.clear_sparse_initializer();
+#endif
+
   // Create a sorted std::vector of initializers so that we always process them in a deterministic order.
   InlinedVector<const ONNX_NAMESPACE::TensorProto*> initializers;
   initializers.reserve(GetAllInitializedTensors().size());

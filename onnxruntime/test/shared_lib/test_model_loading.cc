@@ -5,7 +5,10 @@
 #include "onnxruntime_session_options_config_keys.h"
 #include "core/common/narrow.h"
 #include "test/util/include/asserts.h"
+#include <filesystem>
 #include <fstream>
+
+#include <gsl/gsl>
 #include "test_fixture.h"
 #include "file_util.h"
 
@@ -435,60 +438,111 @@ TEST(CApiTest, TestExternalDataReaderBasic) {
   EXPECT_GT(ctx.call_count, 0);
 }
 
-// Simulated encryption: XOR the external data file, callback decrypts
+// Round-trip test: compile model with encrypted external initializers, then load with decryption reader.
+// Uses OrtCompileApi to compile mul_1.onnx with OrtGetInitializerLocationFunc that XOR-encrypts
+// initializer data into an external file. Then loads the compiled model with SetExternalDataReader
+// that XOR-decrypts on the fly, runs inference, and verifies output.
 TEST(CApiTest, TestExternalDataReaderSimulatedEncryption) {
-  // Read the original external data, XOR-encrypt it, write to temp file
-  std::string test_folder = "testdata/";
-  std::string original_bin_path = test_folder + "Pads.bin";
-  std::vector<char> original_data;
-  ReadFileToBuffer(original_bin_path.c_str(), original_data);
+  const ORTCHAR_T* input_model = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model = ORT_TSTR("mul_1_compile_encrypted.onnx");
+  const ORTCHAR_T* encrypted_bin = ORT_TSTR("mul_1_compile_encrypted.bin");
 
-  constexpr uint8_t xor_key = 0x42;
-  std::vector<char> encrypted_data(original_data.size());
-  for (size_t i = 0; i < original_data.size(); ++i) {
-    encrypted_data[i] = original_data[i] ^ static_cast<char>(xor_key);
-  }
+  // --- Phase 1: Compile with encrypted external initializers ---
+  struct EncryptWriteState {
+    std::ofstream outfile;
+    const ORTCHAR_T* bin_path;
+    int64_t current_offset = 0;
+  };
 
-  std::string encrypted_bin_path = test_folder + "Pads_encrypted.bin";
+  EncryptWriteState encrypt_state;
+  encrypt_state.bin_path = encrypted_bin;
+  encrypt_state.outfile.open(encrypted_bin, std::ios::binary);
+  ASSERT_TRUE(encrypt_state.outfile.is_open());
+  auto cleanup_compiled_model_files = gsl::finally([&]() {
+    if (encrypt_state.outfile.is_open()) {
+      encrypt_state.outfile.close();
+    }
+    std::filesystem::remove(encrypt_state.bin_path);
+    std::filesystem::remove(output_model);
+  });
+
+  // Callback: XOR-encrypt each initializer and write to external file
+  auto encrypt_initializer = [](void* state, const char* /*initializer_name*/,
+                                const OrtValue* c_initializer_value,
+                                const OrtExternalInitializerInfo* /*c_external_info*/,
+                                OrtExternalInitializerInfo** c_new_external_info) -> OrtStatus* {
+    auto* ctx = static_cast<EncryptWriteState*>(state);
+    Ort::ConstValue value{c_initializer_value};
+
+    size_t byte_size = value.GetTensorSizeInBytes();
+    const auto* raw_data = static_cast<const uint8_t*>(value.GetTensorRawData());
+
+    // XOR-encrypt and write to file
+    std::vector<uint8_t> encrypted(byte_size);
+    constexpr uint8_t key = 0x42;
+    for (size_t i = 0; i < byte_size; ++i) {
+      encrypted[i] = raw_data[i] ^ key;
+    }
+
+    int64_t offset = ctx->current_offset;
+    ctx->outfile.write(reinterpret_cast<const char*>(encrypted.data()),
+                       static_cast<std::streamsize>(byte_size));
+    ctx->current_offset += static_cast<int64_t>(byte_size);
+
+    // Create external info pointing to the encrypted file
+    Ort::ExternalInitializerInfo new_info(nullptr);
+    if (Ort::Status status = Ort::ExternalInitializerInfo::Create(
+            ctx->bin_path, offset, byte_size, new_info);
+        !status.IsOK()) {
+      return status.release();
+    }
+
+    *c_new_external_info = new_info.release();
+    return nullptr;
+  };
+
   {
-    std::ofstream out(encrypted_bin_path, std::ios::binary);
-    out.write(encrypted_data.data(), static_cast<std::streamsize>(encrypted_data.size()));
+    Ort::SessionOptions compile_so;
+    Ort::ModelCompilationOptions compile_options(*ort_env, compile_so);
+    compile_options.SetInputModelPath(input_model);
+    compile_options.SetOutputModelPath(output_model);
+    compile_options.SetOutputModelGetInitializerLocationFunc(encrypt_initializer, &encrypt_state);
+
+    Ort::Status compile_status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(compile_status.IsOK()) << compile_status.GetErrorMessage();
   }
 
-  // Create a modified model that references the encrypted file
-  // For simplicity, we use the original model but redirect via the callback
-  // The callback reads from the encrypted file and decrypts
-  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
+  encrypt_state.outfile.flush();
+  encrypt_state.outfile.close();
+  ASSERT_TRUE(std::filesystem::exists(output_model));
+  ASSERT_TRUE(std::filesystem::exists(encrypted_bin));
 
-  // We need to make the callback read from the encrypted file instead.
-  // Since the model references "Pads.bin", we rename the encrypted file to match.
-  // Instead, we modify the callback to always read from the encrypted path.
-  struct XorContext {
-    std::string encrypted_path;
+  // --- Phase 2: Load compiled model with XOR-decryption reader ---
+  struct DecryptReadState {
     int call_count = 0;
   };
 
-  XorContext xor_ctx;
-  xor_ctx.encrypted_path = encrypted_bin_path;
+  DecryptReadState decrypt_state;
 
-  auto xor_reader = [](void* state, const char* /*name*/,
-                       const ORTCHAR_T* /*file_name*/,
-                       int64_t file_offset,
-                       size_t /*data_length*/,
-                       size_t expected_size,
-                       void* buffer) -> OrtStatus* {
-    auto* ctx = static_cast<XorContext*>(state);
+  auto decrypt_reader = [](void* state, const char* /*name*/,
+                           const ORTCHAR_T* file_name,
+                           int64_t file_offset,
+                           size_t /*data_length*/,
+                           size_t expected_size,
+                           void* buffer) -> OrtStatus* {
+    auto* ctx = static_cast<DecryptReadState*>(state);
     ctx->call_count++;
 
-    std::ifstream file(ctx->encrypted_path, std::ios::binary);
+    std::ifstream file(file_name, std::ios::binary);
     if (!file) {
-      return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to open encrypted file");
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to open encrypted external data file");
     }
     file.seekg(file_offset);
     if (!file.read(static_cast<char*>(buffer), static_cast<std::streamsize>(expected_size))) {
-      return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to read encrypted file");
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to read encrypted external data file");
     }
 
+    // XOR-decrypt
     constexpr uint8_t key = 0x42;
     auto* bytes = static_cast<uint8_t*>(buffer);
     for (size_t i = 0; i < expected_size; ++i) {
@@ -497,14 +551,32 @@ TEST(CApiTest, TestExternalDataReaderSimulatedEncryption) {
     return nullptr;
   };
 
-  Ort::SessionOptions so;
-  so.SetExternalDataReader(xor_reader, &xor_ctx);
+  Ort::SessionOptions load_so;
+  load_so.SetExternalDataReader(decrypt_reader, &decrypt_state);
 
-  EXPECT_NO_THROW(Ort::Session session(*ort_env.get(), model_path, so));
-  EXPECT_GT(xor_ctx.call_count, 0);
+  Ort::Session session(*ort_env, output_model, load_so);
+  EXPECT_GT(decrypt_state.call_count, 0);
 
-  // Cleanup encrypted file
-  std::remove(encrypted_bin_path.c_str());
+  // --- Phase 3: Run inference and verify output ---
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input_data(6, 2.0f);
+
+  std::vector<Ort::Value> inputs;
+  inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input_data.data(), input_data.size(), shape.data(), shape.size()));
+
+  std::array<const char*, 1> input_names{"X"};
+  std::array<const char*, 1> output_names{"Y"};
+  std::vector<Ort::Value> outputs = session.Run(
+      Ort::RunOptions{nullptr},
+      input_names.data(), inputs.data(), inputs.size(),
+      output_names.data(), output_names.size());
+
+  // mul_1.onnx: Y = X * W where W = [1, 2, 3, 4, 5, 6], X = [2, 2, 2, 2, 2, 2]
+  const float* output_data = outputs[0].GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
 // Error propagation: callback returns error status
