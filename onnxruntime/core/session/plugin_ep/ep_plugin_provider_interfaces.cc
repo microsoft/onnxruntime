@@ -306,8 +306,15 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       const Node& internal_node = node_grouping.nodes[0]->GetInternalNode();
       const NodeIndex node_index = internal_node.Index();
 
+      // Node already assigned from a previous pass (e.g., before layout transformation
+      // or after function inlining). Its cost was already committed — skip re-computation to avoid
+      // double-charging the output-size component.
+      // FindFirstNodeAssignedToOtherEP already filtered out nodes assigned to a different EP,
+      // so a non-empty EP type here means it was assigned to this EP.
+      const bool previously_assigned = !internal_node.GetExecutionProviderType().empty();
+
       // Host-side budget enforcement for single nodes.
-      if (resource_accountant != nullptr) {
+      if (resource_accountant != nullptr && !previously_assigned) {
         ResourceCount cost = resource_accountant->ComputeResourceCount(internal_node);
         size_t cost_bytes = std::get<size_t>(cost);
 
@@ -388,6 +395,8 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
       // Host-side budget enforcement for fused capabilities.
       // Compute per-component-node costs from the accountant and check total against budget.
+      // Skip cost computation for nodes already assigned to this EP from a previous pass
+      // to avoid double-charging the output-size component.
       if (resource_accountant != nullptr) {
         auto* fused_sub_graph = capabilities[0]->sub_graph.get();
         fused_sub_graph->SetAccountant(resource_accountant);
@@ -398,7 +407,9 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
         for (NodeIndex idx : fused_sub_graph->nodes) {
           const Node* node = graph_viewer.GetNode(idx);
-          ResourceCount cost = node != nullptr
+          const bool node_already_assigned =
+              node != nullptr && !node->GetExecutionProviderType().empty();
+          ResourceCount cost = (node != nullptr && !node_already_assigned)
                                    ? resource_accountant->ComputeResourceCount(*node)
                                    : ResourceCount{size_t{0}};
           group_cost_bytes = SafeInt<size_t>(group_cost_bytes) + std::get<size_t>(cost);
