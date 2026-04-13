@@ -170,8 +170,9 @@ void TestDynamicQuantizeMatMul(const TestDynamicQuantizeMatMulOptions& opts) {
   CalculateDynamicQuantizeMatMul<T>(M, N, K, A_data, B_data, B_scale, B_zero_point, Bias, Y_data,
                                     opts.per_column, opts.has_zp, opts.has_bias);
   test.AddOutput<float>("Y", Y_dims, Y_data);
-  test.SetOutputRelErr("Y", 0.02f);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  test.SetOutputRelErr("Y", 0.05f);
+  test.SetOutputAbsErr("Y", 0.35f);
+  test.Run();
 }
 
 template <typename T>

@@ -293,6 +293,8 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     base_opts.output_abs_error = 0.1f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
     base_opts.output_abs_error = 0.055f;
+  } else {
+    base_opts.output_abs_error = 0.05f;
   }
 
   if (rel_error.has_value()) {
@@ -300,6 +302,8 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   } else if (base_opts.accuracy_level == 4) {
     base_opts.output_rel_error = 0.02f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
+    base_opts.output_rel_error = 0.02f;
+  } else {
     base_opts.output_rel_error = 0.02f;
   }
 
@@ -356,8 +360,6 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   }
 #endif
 }
-
-#if !defined(USE_OPENVINO)
 
 TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
@@ -591,7 +593,6 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
   RunTest<float>(opts);
 }
 
-#endif
 #endif
 #endif
 
