@@ -61,8 +61,10 @@ Status MatMulBnb4<T>::ComputeInternal(OpKernelContext* ctx) const {
                            "Overflow computing K * N for K=", K_, ", N=", N_, ".");
   }
   const int64_t numel = K_ * N_;
-  const int64_t expected_b_quant_size = numel / 2 + (numel & 1);
-  const int64_t expected_absmax_size = numel / block_size_ + (numel % block_size_ != 0 ? 1 : 0);
+  // Overflow-safe ceiling division: rewrite (a + b - 1) / b as ((a - 1) / b) + 1.
+  // Safe because numel > 0 (K_ > 0 and N_ > 0 validated in constructor).
+  const int64_t expected_b_quant_size = ((numel - 1) / 2) + 1;
+  const int64_t expected_absmax_size = ((numel - 1) / block_size_) + 1;
 
   if (b_quant->Shape().Size() < expected_b_quant_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
