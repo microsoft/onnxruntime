@@ -88,15 +88,24 @@ stages:
           libonnxruntime_providers_webgpu.dylib
         TargetFolder: '$(Build.ArtifactStagingDirectory)/bin'
 
+    - script: |
+        set -e -x
+        zip webgpu_plugin.zip libonnxruntime_providers_webgpu.dylib
+      displayName: 'Zip plugin binary for signing'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/bin'
+
     - template: ../templates/mac-esrp-dylib.yml
       parameters:
         FolderPath: '$(Build.ArtifactStagingDirectory)/bin'
-        Pattern: '*.dylib'
+        Pattern: '*.zip'
 
     - script: |
         set -e -x
-        codesign --display --verbose=3 "$(Build.ArtifactStagingDirectory)/bin/libonnxruntime_providers_webgpu.dylib"
-      displayName: 'Verify signed binary'
+        unzip --overwrite webgpu_plugin.zip
+        rm -- webgpu_plugin.zip
+        codesign --display --verbose=3 libonnxruntime_providers_webgpu.dylib
+      displayName: 'Unzip and verify signed binary'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/bin'
 
     - script: |
         set -e -x
