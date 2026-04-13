@@ -2009,6 +2009,56 @@ TEST(ContribOpAttentionTest, AttentionMaskIndexOutOfRange) {
                    AttentionMaskType::MASK_1D_END_START);
 }
 
+TEST(ContribOpAttentionTest, AttentionMaskIndexNegativeEndPosition) {
+  // Test that negative end_position in mask_index is rejected (heap underflow prevention).
+  int batch_size = 2;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  // Negative end_position values in 1D mask_index
+  std::vector<int32_t> mask_index_data = {-10, -1};
+
+  OpTester tester("Attention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+  tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> bias_dims = {3 * hidden_size};
+  std::vector<int64_t> mask_index_dims = {batch_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
+
+  tester.AddInput<float>("input", input_dims, input_data);
+  tester.AddInput<float>("weight", weights_dims, weight_data);
+  tester.AddInput<float>("bias", bias_dims, bias_data);
+  tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
+  tester.AddOptionalInputEdge<float>();    // past
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<int32_t>();  // past_sequence_length
+
+  tester.AddOutput<float>("output", output_dims, std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "mask_index value", {}, nullptr, &execution_providers);
+}
+
 #if !defined(__wasm__)
 // TODO: fix in web assembly
 TEST(ContribOpAttentionTest, AttentionPastState_dynamic) {

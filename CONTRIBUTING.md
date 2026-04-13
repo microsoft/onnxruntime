@@ -9,6 +9,18 @@ We're always looking for your help to improve the product (bug fixes, new featur
 * Make sure your PR adheres to the [PR Guidelines](./docs/PR_Guidelines.md) and [Coding Conventions and Standards](./docs/Coding_Conventions_and_Standards.md) established by the team.
 * If you're unsure about any of the above and want to contribute, you're welcome to [start a discussion](https://github.com/microsoft/onnxruntime/discussions) with the team.
 
+## Git hooks (recommended)
+
+Enable the repo's pre-commit hook to run [lintrunner](https://github.com/suo/lintrunner) automatically before each commit:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+If lint issues are found, the commit is blocked. Run `lintrunner -a` to auto-fix, re-stage, and commit again. Use `git commit --no-verify` to bypass.
+
+> **Note:** `core.hooksPath` replaces Git's default hook directory (`.git/hooks/`). If you have existing custom hooks, you may need to integrate them manually.
+
 ## Propose a new public API
 
  ONNX Runtime has a collection of [public APIs](./README.md#api-documentation).  Some of these APIs make their way back into the Windows OS.  We make compatibility commitments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.

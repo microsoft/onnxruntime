@@ -1024,7 +1024,10 @@ extern "C" {
     // AArch64 assembly micro-kernel for pointwise NCHWc convolution
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeonAsm;
 #endif
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    // AArch64 assembly fast-math micro-kernels
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwBf16KernelNeon;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseBf16KernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
 #endif
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
@@ -1448,7 +1451,9 @@ struct MLAS_PLATFORM {
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwBf16Kernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseBf16Kernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseBf16Kernel;
 #endif
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
