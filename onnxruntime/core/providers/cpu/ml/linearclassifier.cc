@@ -36,6 +36,12 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
 
   using_strings_ = !classlabels_strings_.empty();
   class_count_ = static_cast<ptrdiff_t>(intercepts_.size());
+
+  ORT_ENFORCE(class_count_ > 0, "LinearClassifier: intercepts must not be empty.");
+  ORT_ENFORCE(coefficients_.size() % static_cast<size_t>(class_count_) == 0,
+              "LinearClassifier: coefficients size (", coefficients_.size(),
+              ") must be a multiple of the number of classes (", class_count_, ").");
+
   SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 }
 
@@ -145,6 +151,14 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
   ptrdiff_t num_features = input_shape.NumDimensions() == 1 ? narrow<ptrdiff_t>(
                                                                   input_shape[0])
                                                             : narrow<ptrdiff_t>(input_shape[1]);
+
+  // Validate coefficients are large enough to prevent OOB read in GEMM.
+  const size_t expected_coefficients_size = SafeInt<size_t>(class_count_) * SafeInt<size_t>(num_features);
+  if (coefficients_.size() < expected_coefficients_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearClassifier: coefficients length (", coefficients_.size(),
+                           ") is less than classes (", class_count_, ") * features (", num_features, ")");
+  }
 
   Tensor* Y = ctx->Output(0, {num_batches});
 

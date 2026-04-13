@@ -1,0 +1,24 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Intel SubgroupMatrix prepack kernel
+// Rearranges input matrix A(MxK) so that each subgroup matrix (sg_mat_m x sg_mat_k)
+// has its elements laid out contiguously in memory for subgroupMatrixLoad.
+
+#param sg_mat_k
+#param sg_mat_m
+
+const kSgMatM: u32 = u32(sg_mat_m);
+const kSgMatK: u32 = u32(sg_mat_k);
+
+$MAIN {
+    let M = uniforms.M;
+    let K = uniforms.K;
+    let in_offset = workgroup_id.x * kSgMatM * K + workgroup_id.y * kSgMatK;
+    let out_offset = (workgroup_id.x * K / kSgMatK + workgroup_id.y) * kSgMatM * kSgMatK;
+
+    // Syntax: subgroupMatrixLoad src_ptr, src_offset, is_col_major, src_stride
+    var mat: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
+        subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(&input_a, in_offset, false, uniforms.K);
+    subgroupMatrixStore(&output_a, out_offset, mat, false, kSgMatK);
+}  // MAIN
