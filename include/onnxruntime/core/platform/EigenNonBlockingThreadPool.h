@@ -1605,17 +1605,23 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // the nearest power of 2, clamped to [128, 4096]. This gives ~3-650
   // clock reads per spin depending on architecture, well under 1% overhead.
   static unsigned int ComputeTimeCheckMask(int spin_duration_us) {
-    if (spin_duration_us <= 128) return 128 - 1;
-    auto v = static_cast<unsigned int>(spin_duration_us);
-    // Round down to nearest power of 2
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v = (v >> 1) + 1;
-    if (v > 4096) v = 4096;
-    return v - 1;  // return as bitmask
+    unsigned int p;
+    if (spin_duration_us < 256) {
+      p = 128;
+    } else if (spin_duration_us < 512) {
+      p = 256;
+    } else if (spin_duration_us < 1024) {
+      p = 512;
+    } else if (spin_duration_us < 2048) {
+      p = 1024;
+    } else if (spin_duration_us < 4096) {
+      p = 2048;
+    } else {
+      p = 4096;
+    }
+    // Since p is a power of 2, only one bit is set.
+    // Subtract 1 to get a bitmask where all lower bits are set.
+    return p - 1;
   }
 
   Environment& env_;
@@ -1710,8 +1716,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           constexpr unsigned int kStealMask = 512 - 1;
           // Bitmask for time check interval, computed from spin duration at construction.
           const unsigned int time_check_mask = time_check_mask_;
-          for (unsigned int i = 0; !done_; i++) {
-            if (((i + 1) & kStealMask) == 0) {
+          for (unsigned int i = 1; !done_; i++) {
+            if ((i & kStealMask) == 0) {
               w = Steal(StealAttemptKind::TRY_ONE);
             } else {
               w = q.PopFront();
@@ -1721,7 +1727,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
               break;
             }
             // Check deadline at an independent, lower frequency than stealing.
-            if (((i + 1) & time_check_mask) == 0 &&
+            if ((i & time_check_mask) == 0 &&
                 std::chrono::steady_clock::now() >= spin_deadline) {
               break;
             }

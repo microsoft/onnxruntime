@@ -155,7 +155,7 @@ class ThreadPool {
   //       but spin duration varies by CPU architecture and pause instruction latency)
   //    0 = disable spinning entirely (threads block immediately when idle)
   //   >0 = use time-based spinning for the specified duration in microseconds
-  //        (deterministic CPU usage, recommended for power-sensitive workloads)
+  //        (deterministic CPU usage, configurable balance between latency and CPU utilization)
   //
   // REQUIRES: degree_of_parallelism > 0
   ThreadPool(Env* env,
