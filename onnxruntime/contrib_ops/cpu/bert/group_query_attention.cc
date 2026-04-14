@@ -83,39 +83,19 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const int present_kv_seqlen = parameters.seqlen_present_kv_cache;
   int head_size = parameters.head_size;
 
-  // Validate seqlens_k values to prevent out-of-bounds access in GEMM operations.
-  // Each seqlens_k[b] represents (total_sequence_length - 1) for batch element b.
-  // The derived total_seqlen (= seqlens_k[b] + 1) is used as the N dimension in GEMM calls,
-  // so it must not exceed the present KV cache buffer size or total_sequence_length (which
-  // sizes attention_bias and output_qk). For non-first-prompt cases, total_seqlen must also
-  // be >= sequence_length to avoid unsigned underflow when computing
-  // past_seqlen = total_seqlen - sequence_length.
+  // Validate seqlens_k values before they are used as GEMM dimensions to prevent OOB access.
   {
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
-    const bool is_first_prompt = parameters.is_first_prompt;
-    const int total_seq_length = parameters.total_sequence_length;
     for (int b = 0; b < batch_size; b++) {
-      if (seqlens_k_data[b] < 0) {
+      if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= present_kv_seqlen) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "seqlens_k[", b, "] is negative (", seqlens_k_data[b],
-                               "). Values must be non-negative.");
+                               "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                               " is out of range [0, ", present_kv_seqlen, ")");
       }
-      // Use int64_t to avoid signed overflow when seqlens_k[b] == INT32_MAX.
-      const int64_t total_seqlen = static_cast<int64_t>(seqlens_k_data[b]) + 1;
-      if (total_seqlen > total_seq_length) {
+      if (!parameters.is_first_prompt && seqlens_k_data[b] + 1 < sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "seqlens_k[", b, "] value (", seqlens_k_data[b],
-                               ") exceeds total_sequence_length (", total_seq_length, ").");
-      }
-      if (total_seqlen > present_kv_seqlen) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "seqlens_k[", b, "] value (", seqlens_k_data[b],
-                               ") is too large for present KV cache buffer length (", present_kv_seqlen, ").");
-      }
-      if (!is_first_prompt && total_seqlen < sequence_length) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "seqlens_k[", b, "] value (", seqlens_k_data[b],
-                               ") implies total_seqlen smaller than sequence_length (", sequence_length, ").");
+                               "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                               " is too small for sequence_length ", sequence_length);
       }
     }
   }

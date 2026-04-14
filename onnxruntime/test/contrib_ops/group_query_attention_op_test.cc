@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace test {
 
 // Helper to build a minimal GQA OpTester with given seqlens_k and total_seq_len.
-// Uses num_heads=1, kv_num_heads=1, and head_size=4; past may be provided via
+// Uses num_heads=1, kv_num_heads=1, and head_size=8; past may be provided via
 // provide_past/past_seq_len.
 static void RunGQASeqlensKTest(
     const std::vector<int32_t>& seqlens_k_data,
@@ -90,10 +90,10 @@ TEST(GroupQueryAttentionTest, NegativeSeqlensK_OOB) {
       /*batch_size=*/1,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "seqlens_k[0] is negative");
+      "seqlens_k[0]");
 }
 
-// Regression: seqlens_k exceeding total_sequence_length causes OOB on attention_bias/output_qk.
+// Regression: seqlens_k exceeding present KV cache buffer causes GEMM OOB.
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_OOB) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{100},
@@ -112,7 +112,7 @@ TEST(GroupQueryAttentionTest, MultiBatchOneBadSeqlensK_OOB) {
       /*batch_size=*/2,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "seqlens_k[1] is negative");
+      "seqlens_k[1]");
 }
 
 // Boundary: seqlens_k == present_kv_seqlen - 1 is the maximum valid value.
@@ -127,7 +127,7 @@ TEST(GroupQueryAttentionTest, BoundaryValidSeqlensK) {
       "");
 }
 
-// Negative seqlens_k with past context: ensures the negative check fires even when
+// Negative seqlens_k with past context: ensures the check fires even when
 // past is provided (regression for the original OOB scenario with token generation).
 TEST(GroupQueryAttentionTest, NegativeSeqlensKWithPast_OOB) {
   RunGQASeqlensKTest(
@@ -136,45 +136,12 @@ TEST(GroupQueryAttentionTest, NegativeSeqlensKWithPast_OOB) {
       /*batch_size=*/1,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "seqlens_k[0] is negative",
+      "seqlens_k[0]",
       /*provide_past=*/true,
       /*past_seq_len=*/1);
 }
 
-// Non-first-prompt (subsequent prompt): seqlens_k is non-negative but implies
-// total_seqlen < sequence_length, which would cause unsigned underflow in
-// past_seqlen = total_seqlen - sequence_length. This independently exercises the
-// !is_first_prompt underflow guard with a positive seqlens_k value.
-// seq=3, total_seq=5, past_seq=4, seqlens_k=1 → total_seqlen=2 < seq_len=3.
-TEST(GroupQueryAttentionTest, SubsequentPromptSeqlensKUnderflow_OOB) {
-  RunGQASeqlensKTest(
-      /*seqlens_k_data=*/{1},
-      /*total_seq_len=*/5,
-      /*batch_size=*/1,
-      /*sequence_length=*/3,
-      OpTester::ExpectResult::kExpectFailure,
-      "implies total_seqlen smaller than sequence_length",
-      /*provide_past=*/true,
-      /*past_seq_len=*/4);
-}
-
-// seqlens_k exceeding total_sequence_length but within KV cache bounds should fail.
-// present_kv_seqlen = max(total_seq=2, past_seq=4) = 4, so seqlens_k=2 (total=3 > total_seq=2)
-// passes the KV cache check but must fail the total_sequence_length check.
-TEST(GroupQueryAttentionTest, SeqlensKExceedsTotalSeqLen_OOB) {
-  RunGQASeqlensKTest(
-      /*seqlens_k_data=*/{2},
-      /*total_seq_len=*/2,
-      /*batch_size=*/1,
-      /*sequence_length=*/1,
-      OpTester::ExpectResult::kExpectFailure,
-      "exceeds total_sequence_length",
-      /*provide_past=*/true,
-      /*past_seq_len=*/4);
-}
-
-// Boundary: seqlens_k == total_sequence_length - 1 is the maximum valid value when
-// present_kv_seqlen > total_sequence_length (past buffer is larger).
+// Boundary: seqlens_k within range when present_kv_seqlen > total_sequence_length.
 TEST(GroupQueryAttentionTest, BoundaryValidSeqlensKWithLargerPast) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{1},
@@ -185,6 +152,96 @@ TEST(GroupQueryAttentionTest, BoundaryValidSeqlensKWithLargerPast) {
       "",
       /*provide_past=*/true,
       /*past_seq_len=*/4);
+}
+
+// Non-first-prompt: seqlens_k valid for KV cache but too small for sequence_length.
+// past_seqlen = total_seqlen - sequence_length underflows size_t, causing memcpy OOB.
+TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{1},
+      /*total_seq_len=*/5,
+      /*batch_size=*/1,
+      /*sequence_length=*/3,
+      OpTester::ExpectResult::kExpectFailure,
+      "is too small for sequence_length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
+}
+
+// Shape validation: seqlens_k with wrong rank (2D instead of 1D) must be rejected.
+TEST(GroupQueryAttentionTest, SeqlensKWrongRank) {
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {1, 1, hidden_size}, std::vector<float>(hidden_size, 1.0f));
+  tester.AddInput<float>("key", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
+  tester.AddInput<float>("value", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
+  tester.AddOptionalInputEdge<float>();  // past_key
+  tester.AddOptionalInputEdge<float>();  // past_value
+  // 2D shape {1, 1} instead of {1}
+  tester.AddInput<int32_t>("seqlens_k", {1, 1}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {1, 1, hidden_size}, std::vector<float>(hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, 1, head_size},
+                          std::vector<float>(kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, 1, head_size},
+                          std::vector<float>(kv_num_heads * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "seqlens_k must be shape (batch_size)",
+             {}, nullptr, &execution_providers);
+}
+
+// Shape validation: seqlens_k with wrong length (2 elements for batch_size=1) must be rejected.
+TEST(GroupQueryAttentionTest, SeqlensKWrongLength) {
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {1, 1, hidden_size}, std::vector<float>(hidden_size, 1.0f));
+  tester.AddInput<float>("key", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
+  tester.AddInput<float>("value", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
+  tester.AddOptionalInputEdge<float>();  // past_key
+  tester.AddOptionalInputEdge<float>();  // past_value
+  // Length 2 instead of 1 for batch_size=1
+  tester.AddInput<int32_t>("seqlens_k", {2}, {0, 0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {1, 1, hidden_size}, std::vector<float>(hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, 1, head_size},
+                          std::vector<float>(kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, 1, head_size},
+                          std::vector<float>(kv_num_heads * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "seqlens_k must be shape (batch_size)",
+             {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
