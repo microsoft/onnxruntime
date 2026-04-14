@@ -137,6 +137,9 @@ def test_registration_and_inference():
 def main():
     print("=== WebGPU Plugin EP Python Package Test ===")
 
+    # Set verbose logging so ORT internals are visible in CI logs
+    ort.set_default_logger_severity(0)
+
     print("\n--- Environment ---")
     print_environment_info()
 

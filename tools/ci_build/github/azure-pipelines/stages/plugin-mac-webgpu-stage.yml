@@ -208,5 +208,5 @@ stages:
         python3 -m pip install onnxruntime onnx numpy
         wheel=$(find "$(Build.BinariesDirectory)/python_wheel" -name "onnxruntime_ep_webgpu-*.whl" | head -1)
         python3 -m pip install "$wheel"
-        python3 "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py"
+        python3 -u "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py"
       displayName: 'Install and test Python package'

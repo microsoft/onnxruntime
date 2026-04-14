@@ -354,5 +354,5 @@ stages:
               if ($LASTEXITCODE -ne 0) { throw "pip install wheel failed with exit code $LASTEXITCODE" }
 
               echo "running test_webgpu_plugin_ep.py"
-              python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
+              python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
               if ($LASTEXITCODE -ne 0) { throw "test_webgpu_plugin_ep.py failed with exit code $LASTEXITCODE (0x$($LASTEXITCODE.ToString('X')))" }
