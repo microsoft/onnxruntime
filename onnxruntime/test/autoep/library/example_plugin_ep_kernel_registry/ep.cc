@@ -6,13 +6,16 @@
 #include <gsl/span>
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <memory>
-#include <optional>
+#include <mutex>
 #include <string>
 #include <vector>
 
-#include "ep_factory.h"
 #include "../plugin_ep_utils.h"
+
+#include "ep_factory.h"
+#include "ep_profiling.h"
 
 ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const Config& config, const OrtLogger& logger)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
@@ -28,6 +31,7 @@ ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const Config& 
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
   GetKernelRegistry = GetKernelRegistryImpl;
+  CreateProfiler = CreateProfilerImpl;
 
   // This is not a compiling EP, so don't need the following
   Compile = nullptr;
@@ -118,4 +122,16 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetKernelRegistryImpl(
   // Get the cached kernel registry from parent factory to avoid recreating the kernel registry for every EP instance.
   RETURN_IF_ERROR(ep->factory_.GetKernelRegistryForEp(*ep, kernel_registry));
   return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleKernelEp::CreateProfilerImpl(OrtEp* this_ptr,
+                                                            OrtEpProfilerImpl** profiler) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  ExampleKernelEp* ep = static_cast<ExampleKernelEp*>(this_ptr);
+  auto profiler_unique_ptr = std::make_unique<ExampleKernelEpProfiler>(ep->ep_api_);
+
+  *profiler = profiler_unique_ptr.release();
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }

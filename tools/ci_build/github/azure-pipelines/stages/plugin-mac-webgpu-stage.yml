@@ -1,0 +1,111 @@
+parameters:
+- name: package_version
+  type: string
+  default: dev
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+stages:
+- stage: MacOS_plugin_webgpu_arm64_Build
+  dependsOn: []
+  jobs:
+  - job: MacOS_plugin_webgpu_arm64_Build
+    timeoutInMinutes: 240
+    workspace:
+      clean: all
+    pool:
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: webgpu_plugin_macos_arm64
+    variables:
+    - name: MACOSX_DEPLOYMENT_TARGET
+      value: '14.0'
+    - template: ../templates/common-variables.yml
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: '16.4'
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'arm64'
+
+    - template: ../templates/set-nightly-build-option-variable-step.yml
+
+    - template: ../templates/set-plugin-build-variables-step.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+
+    - script: |
+        set -e -x
+        python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+          --build_dir $(Build.SourcesDirectory)/build \
+          --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+          --use_binskim_compliant_compile_flags \
+          --config ${{ parameters.cmake_build_type }} \
+          --enable_onnx_tests \
+          --use_webgpu shared_lib \
+          --wgsl_template static \
+          --disable_rtti \
+          --enable_lto \
+          --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 onnxruntime_BUILD_UNIT_TESTS=ON $(PluginEpVersionDefine) \
+          --update --skip_submodule_sync --build --parallel
+      displayName: 'Build WebGPU Plugin'
+
+    - script: |
+        set -e
+        plugin_path="$(Build.SourcesDirectory)/build/${{ parameters.cmake_build_type }}/libonnxruntime_providers_webgpu.dylib"
+        if [ ! -f "$plugin_path" ]; then
+          echo "Error: Expected plugin binary not found at '$plugin_path'. Failing build to avoid publishing an invalid package."
+          exit 1
+        fi
+        echo "Verified plugin binary exists at: $plugin_path"
+      displayName: 'Verify plugin binary exists'
+
+    - task: CopyFiles@2
+      displayName: 'Copy plugin binaries to staging directory'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)/build/${{ parameters.cmake_build_type }}'
+        Contents: |
+          libonnxruntime_providers_webgpu.dylib
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/bin'
+
+    - script: |
+        set -e -x
+        mkdir -p "$(Build.ArtifactStagingDirectory)/version"
+        touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
+      displayName: 'Create version marker file'
+
+    - script: |
+        set -e -x
+        mkdir -p "$(Build.BinariesDirectory)/universal_package"
+        cp -R "$(Build.ArtifactStagingDirectory)/bin/"* "$(Build.BinariesDirectory)/universal_package/"
+      displayName: 'Stage binaries for universal package'
+
+    - task: UniversalPackages@0
+      displayName: 'Publish universal package'
+      inputs:
+        command: publish
+        publishDirectory: '$(Build.BinariesDirectory)/universal_package'
+        vstsFeedPublish: 'PublicPackages/ORT-Nightly'
+        vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-macos-arm64'
+        versionOption: custom
+        versionPublish: '$(PluginUniversalPackageVersion)'

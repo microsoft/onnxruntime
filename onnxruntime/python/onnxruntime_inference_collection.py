@@ -1199,6 +1199,109 @@ class OrtValue:
         """
         return self._ortvalue.numpy()
 
+    def __array__(self, dtype=None, copy=None) -> np.ndarray:
+        """
+        Supports ``numpy.asarray(ortvalue)`` and ``numpy.array(ortvalue)`` via the
+        `numpy __array__ protocol <https://numpy.org/devdocs/user/basics.interoperability.html>`_.
+
+        Valid only for OrtValues holding Tensors on CPU.
+
+        :param dtype: Optional numpy dtype to cast the result to.
+        :param copy: Optional bool (numpy >= 2.0). If ``False``, a copy will
+            only be made if necessary. If ``True``, a copy is always forced.
+            If ``None`` (default), a copy will be made only if needed.
+        :return: A numpy array with the same data as the OrtValue.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        arr = self.numpy()
+
+        if copy is not None:
+            # numpy >= 2.0 added the copy kwarg to np.asarray;
+            # np.array has always accepted it but with weaker semantics pre-2.0.
+            arr = np.array(arr, dtype=dtype, copy=copy)
+        elif dtype is not None:
+            # np.asarray avoids a copy when the dtype already matches,
+            # preserving memory sharing with the underlying OrtValue.
+            arr = np.asarray(arr, dtype=dtype)
+
+        return arr
+
+    def __dlpack__(self, *, stream=None):
+        """
+        Returns a DLPack capsule representing the tensor (part of the
+        `DLPack protocol <https://dmlc.github.io/dlpack/latest/>`_).
+
+        This enables interoperability with other frameworks via
+        ``from_dlpack(ortvalue)`` (e.g. ``torch.from_dlpack``,
+        ``jax.dlpack.from_dlpack``, ``numpy.from_dlpack``).
+
+        The OrtValue must hold a contiguous tensor. No data is copied;
+        the consumer shares memory with this OrtValue, which must remain
+        alive while the capsule is in use.
+
+        :param stream: Optional stream on which the tensor data is accessible.
+            Currently unused; included for protocol compliance.
+        :return: A PyCapsule holding a DLManagedTensor.
+        """
+        return self._ortvalue.__dlpack__(stream=stream)
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """
+        Returns ``(device_type, device_id)`` indicating where the tensor data
+        resides (part of the `DLPack protocol
+        <https://dmlc.github.io/dlpack/latest/>`_).
+
+        :return: Tuple of ``(device_type, device_id)`` as ints following DLPack
+            ``DLDeviceType`` enum values.
+        """
+        return self._ortvalue.__dlpack_device__()
+
+    @classmethod
+    def from_dlpack(cls, data, /) -> OrtValue:
+        """
+        Construct an OrtValue from an object that implements the DLPack protocol.
+
+        Accepts either:
+
+        * An object with ``__dlpack__`` / ``__dlpack_device__`` methods
+          (e.g. a PyTorch tensor, JAX array, or numpy array).
+        * A raw DLPack PyCapsule (legacy path).
+
+        Boolean tensors are automatically detected when the source object
+        exposes a ``dtype`` attribute (numpy, PyTorch, etc.) or is an
+        ``OrtValue``. For raw DLPack capsules where the original dtype cannot
+        be inspected, bool tensors encoded as uint8 by older DLPack versions
+        are not distinguishable from true uint8 tensors and will be imported
+        as uint8.
+
+        No data is copied; the new OrtValue shares memory with the source.
+
+        :param data: A tensor object supporting the DLPack protocol, or a raw
+            DLPack PyCapsule.
+        :return: An OrtValue wrapping the tensor data.
+        """
+        # Detect boolean dtype from the source object before consuming it,
+        # because DLPack encodes bool as uint8 and the capsule alone cannot
+        # distinguish between the two.
+        is_bool = False
+        if isinstance(data, OrtValue):
+            is_bool = data.data_type() == "tensor(bool)"
+        elif hasattr(data, "dtype"):
+            dtype_obj = data.dtype
+            # Use .name when available (numpy, cupy, tensorflow all expose it).
+            # Fall back to str() for frameworks that don't (e.g. PyTorch).
+            dtype_name = getattr(dtype_obj, "name", str(dtype_obj))
+            is_bool = dtype_name in ("bool", "bool_", "torch.bool")
+
+        # If the input supports the __dlpack__ protocol, call it to get the capsule.
+        if hasattr(data, "__dlpack__"):
+            capsule = data.__dlpack__()
+        else:
+            capsule = data
+
+        return cls(C.OrtValue.from_dlpack(capsule, is_bool))
+
     def update_inplace(self, np_arr) -> None:
         """
         Update the OrtValue in place with a new Numpy array. The numpy contents

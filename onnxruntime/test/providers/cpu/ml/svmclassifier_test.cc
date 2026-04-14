@@ -263,5 +263,132 @@ TEST(MLOpTest, SVMClassifierLinear) {
   test.Run();
 }
 
+// 3 classes, 2 support vectors (1 each for first two classes), 4 features.
+// Correctly sized attributes:
+//   coefficients: (class_count-1) * vector_count = 2*2 = 4
+//   rho: class_count*(class_count-1)/2 = 3
+//   prob_a/prob_b (if present): 3
+
+TEST(MLOpTest, SVMClassifierUndersizedCoefficients) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 1.f};  // needs 4, only 2 provided
+  std::vector<float> support_vectors = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};
+  std::vector<float> rho = {0.1f, 0.1f, 0.1f};  // correct size
+  std::vector<float> kernel_params = {0.01f, 0.f, 3.f};
+  std::vector<int64_t> classes = {0, 1, 2};
+  std::vector<int64_t> vectors_per_class = {1, 1, 0};
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("vectors_per_class", vectors_per_class);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 4}, {0.f, 0.f, 0.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {1});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients attribute size");
+}
+
+TEST(MLOpTest, SVMClassifierUndersizedRho) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 1.f, 1.f, 1.f};  // correct size
+  std::vector<float> support_vectors = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};
+  std::vector<float> rho = {0.1f};  // needs 3, only 1 provided
+  std::vector<float> kernel_params = {0.01f, 0.f, 3.f};
+  std::vector<int64_t> classes = {0, 1, 2};
+  std::vector<int64_t> vectors_per_class = {1, 1, 0};
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("vectors_per_class", vectors_per_class);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 4}, {0.f, 0.f, 0.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {1});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "rho attribute size");
+}
+
+TEST(MLOpTest, SVMClassifierUndersizedProba) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 1.f, 1.f, 1.f};  // correct size
+  std::vector<float> support_vectors = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};
+  std::vector<float> rho = {0.1f, 0.1f, 0.1f};  // correct size
+  std::vector<float> proba = {0.5f};            // needs 3, only 1 provided
+  std::vector<float> probb = {0.5f};            // needs 3, only 1 provided
+  std::vector<float> kernel_params = {0.01f, 0.f, 3.f};
+  std::vector<int64_t> classes = {0, 1, 2};
+  std::vector<int64_t> vectors_per_class = {1, 1, 0};
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("vectors_per_class", vectors_per_class);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("prob_a", proba);
+  test.AddAttribute("prob_b", probb);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 4}, {0.f, 0.f, 0.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {1});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "prob_a attribute size");
+}
+
+TEST(MLOpTest, SVMClassifierDifferentSizeKernelParameters) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {0.766398549079895f, 0.0871576070785522f, 0.110420741140842f,
+                                     -0.963976919651031f};
+  std::vector<float> support_vectors = {4.80000019073486f, 3.40000009536743f, 1.89999997615814f,
+                                        5.f, 3.f, 1.60000002384186f,
+                                        4.5f, 2.29999995231628f, 1.29999995231628f,
+                                        5.09999990463257f, 2.5f, 3.f};
+  std::vector<float> rho = {2.23510527610779f};
+  std::vector<float> kernel_params = {0.122462183237076f, 0.f, 3.f, 0.5f};  // incorrect size
+  std::vector<int64_t> classes = {0, 1};
+  std::vector<int64_t> vectors_per_class = {3, 1};
+
+  std::vector<float> X = {5.1f, 3.5f, 1.4f,
+                          4.9f, 3.f, 1.4f,
+                          4.7f, 3.2f, 1.3f,
+                          4.6f, 3.1f, 1.5f,
+                          5.f, 3.6f, 1.4f};
+  std::vector<float> scores_predictions = {-1.5556798f, 1.5556798f,
+                                           -1.2610321f, 1.2610321f,
+                                           -1.5795376f, 1.5795376f,
+                                           -1.3083477f, 1.3083477f,
+                                           -1.6572928f, 1.6572928f};
+
+  std::vector<int64_t> class_predictions = {0, 0, 0, 0, 0};
+
+  test.AddAttribute("kernel_type", std::string("LINEAR"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("vectors_per_class", vectors_per_class);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {5, 3}, X);
+  test.AddOutput<int64_t>("Y", {5}, class_predictions);
+  test.AddOutput<float>("Z", {5, 2}, scores_predictions);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "kernel_params must be empty or have 3 values");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

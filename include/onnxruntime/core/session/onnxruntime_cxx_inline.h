@@ -225,6 +225,19 @@ inline void* AllocatorImpl<T>::Alloc(size_t size) {
 }
 
 template <typename T>
+inline void* AllocatorImpl<T>::Reserve(size_t size) {
+  // Reserve was added in version 18. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 18 && this->p_->Reserve) {
+    return this->p_->Reserve(this->p_, size);
+  }
+  // Fall back to Alloc() for allocators that don't implement Reserve,
+  // matching the ORT-core adapter behavior (IAllocatorImplWrappingOrtAllocator,
+  // IArenaImplWrappingOrtAllocator).
+  return this->p_->Alloc(this->p_, size);
+}
+
+template <typename T>
 inline MemoryAllocation AllocatorImpl<T>::GetAllocation(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));
@@ -249,6 +262,15 @@ inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
   OrtKeyValuePairs* out;
   ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
   return KeyValuePairs(out);
+}
+
+template <typename T>
+inline void AllocatorImpl<T>::Shrink() {
+  // Shrink was added in version 25. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 25 && this->p_->Shrink) {
+    ThrowOnError(this->p_->Shrink(this->p_));
+  }
 }
 }  // namespace detail
 
@@ -802,6 +824,98 @@ inline std::string EpAssignedNodeImpl<T>::GetOperatorType() const {
 }
 }  // namespace detail
 
+// ProfilingEvent implementations
+namespace detail {
+template <typename T>
+inline OrtProfilingEventCategory ConstProfilingEventImpl<T>::GetCategory() const {
+  OrtProfilingEventCategory out{};
+  ThrowOnError(GetEpApi().ProfilingEvent_GetCategory(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline const char* ConstProfilingEventImpl<T>::GetName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetName(this->p_, &name));
+  return name;
+}
+
+template <typename T>
+inline int64_t ConstProfilingEventImpl<T>::GetTimestampUs() const {
+  int64_t out = 0;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetTimestampUs(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline int64_t ConstProfilingEventImpl<T>::GetDurationUs() const {
+  int64_t out = 0;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetDurationUs(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline const char* ConstProfilingEventImpl<T>::GetArgValue(const char* key) const {
+  const char* value = nullptr;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetArgValue(this->p_, key, &value));
+  return value;
+}
+}  // namespace detail
+
+inline ProfilingEvent::ProfilingEvent(OrtProfilingEventCategory category,
+                                      int32_t process_id,
+                                      int32_t thread_id,
+                                      const char* event_name,
+                                      int64_t timestamp_us,
+                                      int64_t duration_us,
+                                      const std::unordered_map<std::string, std::string>& args) {
+  const size_t num_args = args.size();
+  std::vector<const char*> arg_keys;
+  std::vector<const char*> arg_vals;
+
+  arg_keys.reserve(num_args);
+  arg_vals.reserve(num_args);
+  for (const auto& [k, v] : args) {
+    arg_keys.push_back(k.c_str());
+    arg_vals.push_back(v.c_str());
+  }
+
+  ThrowOnError(GetEpApi().CreateProfilingEvent(category, process_id, thread_id, event_name,
+                                               timestamp_us, duration_us,
+                                               arg_keys.data(), arg_vals.data(), num_args, &p_));
+}
+
+inline ProfilingEvent::ProfilingEvent(OrtProfilingEventCategory category,
+                                      int32_t process_id,
+                                      int32_t thread_id,
+                                      const char* event_name,
+                                      int64_t timestamp_us,
+                                      int64_t duration_us,
+                                      const char* const* arg_keys,
+                                      const char* const* arg_values,
+                                      size_t num_args) {
+  ThrowOnError(GetEpApi().CreateProfilingEvent(category, process_id, thread_id, event_name,
+                                               timestamp_us, duration_us,
+                                               arg_keys, arg_values, num_args, &p_));
+}
+
+// ProfilingEventsContainer implementations
+namespace detail {
+template <typename T>
+inline Status ProfilingEventsContainerImpl<T>::AddEvents(const OrtProfilingEvent* const* events, size_t num_events) {
+  return Status{GetEpApi().ProfilingEventsContainer_AddEvents(this->p_, events, num_events)};
+}
+
+template <typename T>
+inline Status ProfilingEventsContainerImpl<T>::AddEvents(const std::vector<ProfilingEvent>& events) {
+  static_assert(sizeof(ProfilingEvent) == sizeof(OrtProfilingEvent*) &&
+                    alignof(ProfilingEvent) == alignof(OrtProfilingEvent*),
+                "ProfilingEvent must have the same size and alignment as a raw pointer for reinterpret_cast");
+  const auto* event_ptrs = reinterpret_cast<const OrtProfilingEvent* const*>(events.data());
+  return AddEvents(event_ptrs, events.size());
+}
+}  // namespace detail
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -904,6 +1018,11 @@ inline Env& Env::UnregisterExecutionProviderLibrary(const char* registration_nam
   return *this;
 }
 
+inline Env& Env::SetPerSessionThreadPoolCallbacks(const OrtThreadPoolCallbacksConfig& config) {
+  ThrowOnError(GetApi().SetPerSessionThreadPoolCallbacks(p_, &config));
+  return *this;
+}
+
 inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
   size_t num_devices = 0;
   const OrtEpDevice* const* device_ptrs = nullptr;
@@ -933,6 +1052,11 @@ inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
   const OrtValue* const* src_tensors_ptr = reinterpret_cast<const OrtValue* const*>(src_tensors.data());
   OrtValue* const* dst_tensors_ptr = reinterpret_cast<OrtValue* const*>(dst_tensors.data());
   OrtStatus* status = GetApi().CopyTensors(p_, src_tensors_ptr, dst_tensors_ptr, stream, src_tensors.size());
+  return Status(status);
+}
+
+inline Status Env::CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const {
+  OrtStatus* status = GetApi().CopyTensors(p_, &src_tensor, &dst_tensor, stream, 1);
   return Status(status);
 }
 
@@ -3940,5 +4064,114 @@ inline Ort::KeyValuePairs GetEnvConfigEntries() {
   Ort::ThrowOnError(GetEpApi().GetEnvConfigEntries(&entries));
 
   return Ort::KeyValuePairs{entries};
+}
+
+namespace detail {
+template <typename T>
+inline int OpSchemaImpl<T>::GetSinceVersion() const {
+  int version = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetSinceVersion(this->p_, &version));
+  return version;
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetNumInputs() const {
+  size_t num = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetNumInputs(this->p_, &num));
+  return num;
+}
+
+template <typename T>
+inline std::string OpSchemaImpl<T>::GetInputName(size_t index) const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputName(this->p_, index, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetInputTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetNumOutputs() const {
+  size_t num = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetNumOutputs(this->p_, &num));
+  return num;
+}
+
+template <typename T>
+inline std::string OpSchemaImpl<T>::GetOutputName(size_t index) const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputName(this->p_, index, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetOutputTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetTypeConstraintCount() const {
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraintCount(this->p_, &count));
+  return count;
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline std::string OpSchemaTypeConstraintImpl<T>::GetTypeParamName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetTypeParamName(this->p_, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline std::vector<std::string> OpSchemaTypeConstraintImpl<T>::GetAllowedTypes() const {
+  const char* const* types = nullptr;
+  size_t num_types = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetAllowedTypes(this->p_, &types, &num_types));
+  std::vector<std::string> result;
+  result.reserve(num_types);
+  for (size_t i = 0; i < num_types; ++i) {
+    result.emplace_back(types[i]);
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetInputIndices() const {
+  const size_t* indices = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetInputIndices(this->p_, &indices, &count));
+  if (count == 0) return {};
+  return std::vector<size_t>(indices, indices + count);
+}
+
+template <typename T>
+inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetOutputIndices() const {
+  const size_t* indices = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetOutputIndices(this->p_, &indices, &count));
+  if (count == 0) return {};
+  return std::vector<size_t>(indices, indices + count);
+}
+}  // namespace detail
+
+inline OpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain) {
+  OrtOpSchema* schema = nullptr;
+  ThrowOnError(GetEpApi().GetOpSchema(name, max_inclusive_version, domain, &schema));
+  return OpSchema{schema};
 }
 }  // namespace Ort

@@ -56,7 +56,7 @@
     endif()
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
 
-    onnxruntime_add_shared_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_shared_library_module(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
         ${REPO_ROOT}/include/onnxruntime/core/session
         onnxruntime_common
@@ -83,6 +83,14 @@
     add_definitions("-DONNX_ML=1")
     add_definitions("-DONNX_NAMESPACE=onnx")
     add_definitions("-DONNX_USE_LITE_PROTO=1")
+
+    # Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
+    if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
+      set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
+    endif()
+
+    # Set preprocessor definition for plugin EP version
+    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
 
     # Set preprocessor definitions used in onnxruntime_providers_webgpu.rc
     if(WIN32)
@@ -119,6 +127,12 @@
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       message(FATAL_ERROR "WebGPU EP shared library build is not supported on Emscripten. Please use static library build.")
     endif()
+
+    # Configure precompiled headers for shared library build
+    # PCH ensures ep/adapters.h is included first and improves compilation speed
+    target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
+      "${REPO_ROOT}/include/onnxruntime/ep/adapters.h"
+    )
   endif()
 
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
@@ -242,7 +256,6 @@
     endif()
   endif()
 
-  target_compile_features(onnxruntime_providers_webgpu PRIVATE cxx_std_20)
   add_dependencies(onnxruntime_providers_webgpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   if (onnxruntime_WGSL_TEMPLATE)

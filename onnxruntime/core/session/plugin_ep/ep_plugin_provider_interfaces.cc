@@ -17,10 +17,12 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
+#include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/partitioning_utils.h"
 
@@ -163,12 +165,40 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices), logger),
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices),
+                         std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()),
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+
+  // Extract EP-scoped session config entries (ep.<ep_name>.* keys).
+  // Arena options go to session_arena_options_; the rest go to provider_options_.
+  {
+    const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
+    const std::string arena_prefix = ep_prefix + "arena.";
+    const bool extract_arena = ep_factory_.CreateAllocator && !ort_ep_->CreateAllocator;
+
+    for (const auto& [key, value] : session_options.value.config_options.GetConfigOptionsMap()) {
+      if (key.compare(0, ep_prefix.size(), ep_prefix) != 0) {
+        continue;
+      }
+
+      if (key.compare(0, arena_prefix.size(), arena_prefix) == 0) {
+        if (extract_arena) {
+          if (!session_arena_options_) {
+            session_arena_options_.emplace();
+          }
+          session_arena_options_->Add(key.substr(ep_prefix.size()).c_str(), value.c_str());
+        }
+        continue;
+      }
+
+      // Store the bare option name (strip the ep.<ep_name>. prefix) for GetProviderOptions().
+      provider_options_[key.substr(ep_prefix.size())] = value;
+    }
+  }
 
   for (const auto* ep_device : ep_devices_) {
     if (ep_device->device_memory_info != nullptr) {
@@ -192,6 +222,10 @@ PluginExecutionProvider::~PluginExecutionProvider() {
   }
 }
 
+const logging::Logger& PluginExecutionProvider::GetEpLoggerOrDefault() const {
+  return GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+}
+
 std::shared_ptr<KernelRegistry> PluginExecutionProvider::GetKernelRegistry() const {
   return kernel_registry_;
 }
@@ -204,7 +238,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(graph_optimizer_registry);  // TODO: Add support
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
 
-  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+  const logging::Logger& logger = GetEpLoggerOrDefault();
 
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   if (Status status = EpGraph::Create(graph_viewer, ep_graph, true); !status.IsOK()) {
@@ -414,7 +448,7 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
                 " did not provide a valid ReleaseNodeComputeInfos() function");
 
-  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+  const logging::Logger& logger = GetEpLoggerOrDefault();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
   std::vector<const OrtGraph*> api_graphs;
@@ -627,6 +661,13 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
 }
 
+Status PluginExecutionProvider::Sync() const {
+  if (ort_ep_->ort_version_supported < 25 || ort_ep_->Sync == nullptr) {
+    return Base::Sync();
+  }
+  return ToStatusAndRelease(ort_ep_->Sync(ort_ep_.get()));
+}
+
 Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
                                                     gsl::span<const char* const> values) {
   if (ort_ep_->SetDynamicOptions == nullptr) {
@@ -660,6 +701,8 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> allocators;
   allocators.reserve(allocator_mem_infos_.size());
 
+  const OrtKeyValuePairs* allocator_options = session_arena_options_ ? &*session_arena_options_ : nullptr;
+
   for (const auto* memory_info : allocator_mem_infos_) {
     OrtAllocator* ort_allocator_ptr = nullptr;
 
@@ -670,7 +713,7 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
     // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
     OrtStatus* ort_status = ort_ep_->CreateAllocator
                                 ? ort_ep_->CreateAllocator(ort_ep_.get(), memory_info, &ort_allocator_ptr)
-                                : ep_factory_.CreateAllocator(&ep_factory_, memory_info, /*options*/ nullptr,
+                                : ep_factory_.CreateAllocator(&ep_factory_, memory_info, allocator_options,
                                                               &ort_allocator_ptr);
 
     // throw or log? start with throw
@@ -690,7 +733,17 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
         [this](OrtAllocator* allocator) {
           ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
         });
-    allocators.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator)));
+
+    // Use the arena wrapper when the allocator supports Shrink(), matching
+    // the logic in Environment::CreateSharedAllocatorImpl. This ensures
+    // per-session plugin arenas are visible to ShrinkMemoryArenas.
+    AllocatorPtr alloc_ptr;
+    if (ort_allocator->version >= 25 && ort_allocator->Shrink != nullptr) {
+      alloc_ptr = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
+    } else {
+      alloc_ptr = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+    }
+    allocators.push_back(std::move(alloc_ptr));
   }
 
   return allocators;
@@ -744,7 +797,7 @@ std::string PluginExecutionProvider::GetCompiledModelCompatibilityInfo(const onn
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   auto ort_status = EpGraph::Create(graph_viewer, ep_graph);
   if (!ort_status.IsOK()) {
-    LOGS(*GetLogger(), ERROR) << "Failed to create EpGraph: " << ort_status.ToString();
+    LOGS(GetEpLoggerOrDefault(), ERROR) << "Failed to create EpGraph: " << ort_status.ToString();
     return {};
   }
   // Call EP plugin's OrtEp::GenerateCompiledModelCompatibilityInfo() function.
@@ -775,6 +828,85 @@ Status PluginExecutionProvider::ValidateCompiledModelCompatibilityInfo(const std
 
 const OrtEp* PluginExecutionProvider::GetOrtEp() const {
   return ort_ep_.get();
+}
+
+std::unique_ptr<profiling::EpProfiler> PluginExecutionProvider::GetProfiler() {
+  if (ort_ep_->ort_version_supported < 25 || ort_ep_->CreateProfiler == nullptr) {
+    return {};
+  }
+
+  const logging::Logger& logger = GetEpLoggerOrDefault();
+  OrtEpProfilerImpl* profiler_impl = nullptr;
+  Status status = ToStatusAndRelease(ort_ep_->CreateProfiler(ort_ep_.get(), &profiler_impl));
+
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << "OrtEp::CreateProfiler for " << Type() << " returned an error status: "
+                        << status.ErrorMessage();
+    return {};
+  }
+
+  if (profiler_impl == nullptr) {
+    return {};  // plugin EP doesn't have a profiler
+  }
+
+  std::unique_ptr<PluginEpProfiler> ep_profiler;
+  status = PluginEpProfiler::Create(*profiler_impl, logger, Type(), /*out*/ ep_profiler);
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << status.ErrorMessage();
+    return {};
+  }
+
+  return ep_profiler;
+}
+
+ProviderOptions PluginExecutionProvider::GetProviderOptions() const {
+  return provider_options_;
+}
+
+bool PluginExecutionProvider::IsGraphCaptureEnabled() const {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->IsGraphCaptureEnabled == nullptr) {
+    return false;
+  }
+
+  if (!ort_ep_->IsGraphCaptureEnabled(ort_ep_.get())) {
+    return false;
+  }
+
+  // Validate that the EP also implements IsGraphCaptured and ReplayGraph. Without these,
+  // ORT-managed graph capture/replay cannot function correctly.
+  if (ort_ep_->IsGraphCaptured == nullptr || ort_ep_->ReplayGraph == nullptr) {
+    std::string missing;
+    if (ort_ep_->IsGraphCaptured == nullptr) missing += "OrtEp::IsGraphCaptured ";
+    if (ort_ep_->ReplayGraph == nullptr) missing += "OrtEp::ReplayGraph";
+    LOGS(GetEpLoggerOrDefault(), WARNING)
+        << Type() << " returned true from OrtEp::IsGraphCaptureEnabled but did not implement "
+        << missing << ". ORT will not use this EP for graph capture/replay.";
+    return false;
+  }
+
+  return true;
+}
+
+bool PluginExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->IsGraphCaptured == nullptr) {
+    return false;
+  }
+  return ort_ep_->IsGraphCaptured(ort_ep_.get(), graph_annotation_id);
+}
+
+Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id) {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->ReplayGraph == nullptr) {
+    return Base::ReplayGraph(graph_annotation_id);
+  }
+  return ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id));
+}
+
+OrtGraphCaptureNodeAssignmentPolicy PluginExecutionProvider::GetGraphCaptureNodeAssignmentPolicy() const {
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->GetGraphCaptureNodeAssignmentPolicy == nullptr) {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
+  }
+
+  return ort_ep_->GetGraphCaptureNodeAssignmentPolicy(ort_ep_.get());
 }
 
 }  // namespace onnxruntime

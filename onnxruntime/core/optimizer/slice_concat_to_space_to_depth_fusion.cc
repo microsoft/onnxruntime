@@ -492,6 +492,7 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
                                                           : "Fused Slice*4 + Concat into SpaceToDepth + channel permutation",
                                        {space_to_depth_input},
                                        space_to_depth_outputs,
+                                       concat,
                                        nullptr,
                                        kOnnxDomain);
   space_to_depth.AddAttribute("blocksize", kBlockSize);
@@ -517,6 +518,7 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
                                  "Reorder SpaceToDepth channels to preserve Slice+Concat block order",
                                  {space_to_depth.MutableOutputDefs()[0], gather_indices_arg},
                                  {},
+                                 concat,
                                  nullptr,
                                  kOnnxDomain);
     gather.AddAttribute("axis", static_cast<int64_t>(kChannelAxis));
