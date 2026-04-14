@@ -384,5 +384,23 @@ TEST(ExpandOpTest, Strided) {
 }
 #endif
 
+// Test that negative shape values are rejected
+TEST(ExpandOpTest, Expand_NegativeShapeValue) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {1}, {1.0f});
+  test.AddInput<int64_t>("data_1", {2}, {3, -1});
+  test.AddOutput<float>("result", {0, 0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All shape values must be >= 0");
+}
+
+// Test that a single negative shape value is rejected
+TEST(ExpandOpTest, Expand_NegativeShapeValueSingle) {
+  OpTester test("Expand", 13);
+  test.AddInput<float>("data_0", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("data_1", {1}, {-3});
+  test.AddOutput<float>("result", {0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All shape values must be >= 0");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

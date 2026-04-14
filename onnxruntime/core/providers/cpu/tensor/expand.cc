@@ -48,6 +48,10 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
   const auto* shape_dims = shape_tensor->Data<int64_t>();
   std::vector<int64_t> output_shape{shape_dims, shape_dims + shape_tensor->Shape().Size()};
 
+  for (const auto dim : output_shape) {
+    ORT_RETURN_IF(dim < 0, "All shape values must be >= 0, got: ", dim);
+  }
+
   if (input_shape.size() > output_shape.size()) {
     output_shape.insert(output_shape.begin(), input_shape.size() - output_shape.size(), 1);
   }

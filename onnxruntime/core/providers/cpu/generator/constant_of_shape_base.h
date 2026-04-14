@@ -115,6 +115,10 @@ class ConstantOfShapeCore {
 
     const auto span = shape_tensor->template DataAsSpan<int64_t>();
 
+    for (const auto dim : span) {
+      ORT_RETURN_IF(dim < 0, "All shape values must be >= 0, got: ", dim);
+    }
+
     TensorShape output_shape(span);
     (*output_tensor) = ctx->Output(0, output_shape);
 

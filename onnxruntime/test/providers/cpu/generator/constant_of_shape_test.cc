@@ -161,5 +161,36 @@ TEST(ConstantOfShape, TypeTests) {
   }
 }
 
+TEST(ConstantOfShape, NegativeShapeValue) {
+  OpTester test("ConstantOfShape", 9);
+
+  std::vector<int64_t> input_dims{1};
+  std::vector<int64_t> input{-1};
+  test.AddInput<int64_t>("input", input_dims, input);
+
+  std::vector<int64_t> output_dims{0};
+  std::vector<float> output;
+  test.AddOutput<float>("output", output_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All shape values must be >= 0",
+           {kTensorrtExecutionProvider});
+}
+
+TEST(ConstantOfShape, NegativeShapeValueMultiDim) {
+  OpTester test("ConstantOfShape", 9);
+
+  std::vector<int64_t> input_dims{3};
+  std::vector<int64_t> input{2, -3, 4};
+  test.AddInput<int64_t>("input", input_dims, input);
+
+  // Declare a 3-D output (rank must match number of shape values = 3)
+  std::vector<int64_t> output_dims{0, 0, 0};
+  std::vector<float> output;
+  test.AddOutput<float>("output", output_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All shape values must be >= 0",
+           {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
