@@ -645,6 +645,13 @@ if enable_training_apis:
             "onnxruntime.training.onnxblock",
             "onnxruntime.training.onnxblock.loss",
             "onnxruntime.training.onnxblock.optim",
+            # Deprecation stubs — raise ImportError with a clear message
+            "onnxruntime.training.ortmodule",
+            "onnxruntime.training.amp",
+            "onnxruntime.training.optim",
+            "onnxruntime.training.experimental",
+            "onnxruntime.training.ort_triton",
+            "onnxruntime.training.utils",
         ]
     )
 
