@@ -14,11 +14,17 @@ const FLUSH_INTERVAL_MS = 30_000;
 const MAX_QUEUE_SIZE = 500;
 const MAX_RETRIES = 6;
 const DEVICE_ID_KEY = 'ort_device_id';
+const DEVICE_ID_HASH_PREFIX = 'c:';
+const BYTES_PER_MEBIBYTE = 1024 * 1024;
 
 let queue: string[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let deviceId: string | null = null;
+let protectedDeviceId: string | null = null;
+let protectedDeviceIdInitialized = false;
+let protectedDeviceIdPromise: Promise<string | null> | null = null;
 let wasmTelemetrySupported = false;
+const pendingEnqueues = new Set<Promise<void>>();
 
 const generateUUID = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -49,6 +55,43 @@ const getDeviceId = (): string => {
     deviceId = generateUUID();
   }
   return deviceId;
+};
+
+const toHex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+const hashDeviceId = async (rawDeviceId: string): Promise<string | null> => {
+  if (typeof crypto === 'undefined' || !crypto.subtle?.digest || typeof TextEncoder === 'undefined') {
+    return null;
+  }
+
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawDeviceId));
+  return `${DEVICE_ID_HASH_PREFIX}${toHex(new Uint8Array(digest))}`;
+};
+
+const getProtectedDeviceId = async (): Promise<string | null> => {
+  if (protectedDeviceIdInitialized) {
+    return protectedDeviceId;
+  }
+
+  if (!protectedDeviceIdPromise) {
+    const rawDeviceId = getDeviceId();
+    protectedDeviceIdPromise = hashDeviceId(rawDeviceId)
+      .then((hashedDeviceId) => {
+        protectedDeviceId = hashedDeviceId;
+        protectedDeviceIdInitialized = true;
+        return hashedDeviceId;
+      })
+      .catch(() => {
+        protectedDeviceId = null;
+        protectedDeviceIdInitialized = true;
+        return null;
+      })
+      .finally(() => {
+        protectedDeviceIdPromise = null;
+      });
+  }
+
+  return protectedDeviceIdPromise;
 };
 
 const getBrowserMetadata = (): Record<string, unknown> => {
@@ -105,35 +148,16 @@ const getBrowserMetadata = (): Record<string, unknown> => {
     | undefined;
   if (perfMemory) {
     if (perfMemory.jsHeapSizeLimit) {
-      metadata.jsHeapSizeLimitMB = Math.round(perfMemory.jsHeapSizeLimit / 1048576);
+      metadata.jsHeapSizeLimitMB = Math.round(perfMemory.jsHeapSizeLimit / BYTES_PER_MEBIBYTE);
     }
     if (perfMemory.totalJSHeapSize) {
-      metadata.totalJSHeapSizeMB = Math.round(perfMemory.totalJSHeapSize / 1048576);
+      metadata.totalJSHeapSizeMB = Math.round(perfMemory.totalJSHeapSize / BYTES_PER_MEBIBYTE);
     }
     if (perfMemory.usedJSHeapSize) {
-      metadata.usedJSHeapSizeMB = Math.round(perfMemory.usedJSHeapSize / 1048576);
+      metadata.usedJSHeapSizeMB = Math.round(perfMemory.usedJSHeapSize / BYTES_PER_MEBIBYTE);
     }
   }
   return metadata;
-};
-
-const enqueue = (eventName: string, eventData: Record<string, unknown>): void => {
-  if (queue.length >= MAX_QUEUE_SIZE) {
-    return;
-  }
-  queue.push(
-    JSON.stringify({
-      name: eventName.toLowerCase(),
-      time: new Date().toISOString(),
-      ver: '4.0',
-      iKey: IKEY_PREFIX,
-      ext: {
-        sdk: { ver: 'ORT-Web/1.0' },
-        device: { localId: getDeviceId() },
-      },
-      data: eventData,
-    }),
-  );
 };
 
 const isRuntimeTelemetryEnabled = (): boolean => env.telemetry?.enabled !== false;
@@ -141,6 +165,35 @@ const isRuntimeTelemetryEnabled = (): boolean => env.telemetry?.enabled !== fals
 const isTelemetrySupported = (): boolean => !BUILD_DEFS.DISABLE_TELEMETRY && wasmTelemetrySupported;
 
 const shouldEmitTelemetry = (): boolean => isTelemetrySupported() && isRuntimeTelemetryEnabled();
+
+const enqueue = async (eventName: string, eventData: Record<string, unknown>): Promise<void> => {
+  if (!shouldEmitTelemetry() || queue.length >= MAX_QUEUE_SIZE) {
+    return;
+  }
+
+  const localId = await getProtectedDeviceId();
+  if (!shouldEmitTelemetry() || queue.length >= MAX_QUEUE_SIZE) {
+    return;
+  }
+
+  const ext: Record<string, unknown> = {
+    sdk: { ver: 'ORT-Web/1.0' },
+  };
+  if (localId) {
+    ext.device = { localId };
+  }
+
+  queue.push(
+    JSON.stringify({
+      name: eventName.toLowerCase(),
+      time: new Date().toISOString(),
+      ver: '4.0',
+      iKey: IKEY_PREFIX,
+      ext,
+      data: eventData,
+    }),
+  );
+};
 
 const getEventData = (eventName: string, eventData: Record<string, unknown>): Record<string, unknown> =>
   eventName === 'ProcessInfo' ? { ...getBrowserMetadata(), ...eventData } : eventData;
@@ -156,11 +209,11 @@ const emitTelemetryEvent = (eventName: string, eventData: Record<string, unknown
     // Observer errors must not disrupt the application.
   }
 
-  try {
-    enqueue(eventName, eventData);
-  } catch {
+  const enqueuePromise = enqueue(eventName, eventData).catch(() => {
     // Telemetry must not disrupt the application.
-  }
+  });
+  pendingEnqueues.add(enqueuePromise);
+  void enqueuePromise.finally(() => pendingEnqueues.delete(enqueuePromise));
 };
 
 const sendWithRetry = (payload: string, headers: Record<string, string>, attempt = 0): void => {
@@ -206,7 +259,7 @@ const FETCH_HEADERS: Record<string, string> = {
 };
 /* eslint-enable @typescript-eslint/naming-convention */
 
-const flush = (useBeacon = false): void => {
+const flush = async (useBeacon = false): Promise<void> => {
   if (!isTelemetrySupported()) {
     return;
   }
@@ -214,6 +267,10 @@ const flush = (useBeacon = false): void => {
   if (!isRuntimeTelemetryEnabled()) {
     queue = [];
     return;
+  }
+
+  if (pendingEnqueues.size > 0) {
+    await Promise.allSettled([...pendingEnqueues]);
   }
 
   if (queue.length === 0) {
@@ -239,17 +296,27 @@ const startFlushTimer = (): void => {
   if (flushTimer) {
     return;
   }
-  flushTimer = setInterval(() => flush(), FLUSH_INTERVAL_MS);
+  flushTimer = setInterval(() => {
+    void flush();
+  }, FLUSH_INTERVAL_MS);
 
   if (typeof globalThis !== 'undefined' && typeof globalThis.addEventListener === 'function') {
-    globalThis.addEventListener('beforeunload', () => flush(true));
-    globalThis.addEventListener('pagehide', () => flush(true));
+    globalThis.addEventListener('beforeunload', () => {
+      void flush(true);
+    });
+    globalThis.addEventListener('pagehide', () => {
+      void flush(true);
+    });
     globalThis.addEventListener('visibilitychange', () => {
       if (typeof document !== 'undefined' && 'visibilityState' in document && document.visibilityState === 'hidden') {
-        flush(true);
+        void flush(true);
       }
     });
   }
+};
+
+export const flushTelemetry = async (useBeacon = false): Promise<void> => {
+  await flush(useBeacon);
 };
 
 export const initTelemetry = (module: OrtWasmModule): void => {
@@ -271,6 +338,9 @@ export const initTelemetry = (module: OrtWasmModule): void => {
   }
 
   startFlushTimer();
+  if (isRuntimeTelemetryEnabled()) {
+    void getProtectedDeviceId();
+  }
 
   // eslint-disable-next-line dot-notation
   (module as unknown as Record<string, unknown>)['__ortTelemetryCallback'] = (

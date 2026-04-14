@@ -11,11 +11,11 @@ interface MockWasmModule {
   __ortTelemetryCallback?: (eventName: string, eventData: Record<string, unknown>) => void;
 }
 
-type GlobalPropertyName = 'navigator' | 'location';
+type GlobalPropertyName = 'fetch' | 'localStorage' | 'navigator' | 'location';
 
 // initTelemetry triggers timers and event listeners at module scope,
 // so we import it once and let the BUILD_DEFS guard handle no-ops in test builds.
-import { initTelemetry, logSessionModelInfo } from '../../lib/wasm/telemetry.js';
+import { flushTelemetry, initTelemetry, logSessionModelInfo } from '../../lib/wasm/telemetry.js';
 import type { OrtWasmModule } from '../../lib/wasm/wasm-types.js';
 
 const asModule = (m: MockWasmModule) => m as unknown as OrtWasmModule;
@@ -32,10 +32,14 @@ const restoreGlobalProperty = (name: GlobalPropertyName, descriptor: PropertyDes
 
 describe('#UnitTest# - Telemetry Bridge', () => {
   let mockModule: MockWasmModule;
+  let fetchDescriptor: PropertyDescriptor | undefined;
+  let localStorageDescriptor: PropertyDescriptor | undefined;
   let navigatorDescriptor: PropertyDescriptor | undefined;
   let locationDescriptor: PropertyDescriptor | undefined;
 
   before(() => {
+    fetchDescriptor = getGlobalPropertyDescriptor('fetch');
+    localStorageDescriptor = getGlobalPropertyDescriptor('localStorage');
     navigatorDescriptor = getGlobalPropertyDescriptor('navigator');
     locationDescriptor = getGlobalPropertyDescriptor('location');
   });
@@ -49,6 +53,8 @@ describe('#UnitTest# - Telemetry Bridge', () => {
   afterEach(() => {
     env.telemetry.enabled = true;
     env.telemetry.onEvent = undefined;
+    restoreGlobalProperty('fetch', fetchDescriptor);
+    restoreGlobalProperty('localStorage', localStorageDescriptor);
     restoreGlobalProperty('navigator', navigatorDescriptor);
     restoreGlobalProperty('location', locationDescriptor);
   });
@@ -128,6 +134,70 @@ describe('#UnitTest# - Telemetry Bridge', () => {
     initTelemetry(asModule(mockModule));
 
     expect(receivedEvents).to.have.length(0);
+  });
+
+  it('should hash the device id before sending telemetry', async () => {
+    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+    let storedDeviceId: string | null = null;
+
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => storedDeviceId,
+        setItem: (_key: string, value: string) => {
+          storedDeviceId = value;
+        },
+      },
+    });
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value: async (url: string, init?: RequestInit) => {
+        fetchCalls.push({ url, init });
+        return { ok: true, status: 200 };
+      },
+    });
+
+    initTelemetry(asModule(mockModule));
+    mockModule.__ortTelemetryCallback!('ProcessInfo', { runtimeVersion: '1.25.0' });
+    await flushTelemetry();
+
+    expect(storedDeviceId).to.be.a('string');
+    expect(fetchCalls).to.have.length(1);
+    expect(fetchCalls[0].url).to.contain('https://mobile.events.data.microsoft.com/OneCollector/1.0');
+
+    const payload = JSON.parse(fetchCalls[0].init!.body as string);
+    expect(payload.ext.device.localId).to.match(/^c:[0-9a-f]{64}$/);
+    expect(payload.ext.device.localId).to.not.equal(storedDeviceId);
+  });
+
+  it('should not persist a device id when telemetry is disabled', async () => {
+    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+    let storedDeviceId: string | null = null;
+
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => storedDeviceId,
+        setItem: (_key: string, value: string) => {
+          storedDeviceId = value;
+        },
+      },
+    });
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value: async (url: string, init?: RequestInit) => {
+        fetchCalls.push({ url, init });
+        return { ok: true, status: 200 };
+      },
+    });
+
+    env.telemetry.enabled = false;
+    initTelemetry(asModule(mockModule));
+    mockModule.__ortTelemetryCallback!('ProcessInfo', { runtimeVersion: '1.25.0' });
+    await flushTelemetry();
+
+    expect(storedDeviceId).to.equal(null);
+    expect(fetchCalls).to.have.length(0);
   });
 
   it('should forward JS-generated model events to observer callback', () => {
