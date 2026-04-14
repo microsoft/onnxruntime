@@ -514,7 +514,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct) {
   test.AddInput<uint8_t>("b_zero_point", {}, {0});
   // dot product: 1*5 + 2*6 + 3*7 + 4*8 = 5 + 12 + 21 + 32 = 70
   test.AddOutput<int32_t>("T3", {}, {70});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
 // Regression test: 1D vectors with mismatched K dimension must fail safely.
