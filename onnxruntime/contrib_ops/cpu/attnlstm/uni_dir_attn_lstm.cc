@@ -215,18 +215,17 @@ void UniDirectionalAttnLstm<T>::LoadPeepholeWeights(const gsl::span<const T>& pe
 
 template <typename T>
 void UniDirectionalAttnLstm<T>::LoadBias(const gsl::span<const T>& WbRb_values) {
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
+  const size_t Wb_to_Rb_offset = CheckedMulToSizeT(hidden_size_, 4);
+
   // add Wb and Rb
-  auto copy_fused_bias = [this, &WbRb_values](size_t offset, gsl::span<T>& out) {
-    // gap between Wb and Wb value for an entry
-    const size_t Wb_to_Rb_offset = CheckedMulToSizeT(hidden_size_, 4);
-    const size_t hidden_size = CheckedToSizeT(hidden_size_);
+  auto copy_fused_bias = [&WbRb_values, hidden_size, Wb_to_Rb_offset](size_t offset, gsl::span<T>& out) {
     for (size_t j = 0; j < hidden_size; ++j) {
       out[j] = WbRb_values[j + offset] + WbRb_values[j + offset + Wb_to_Rb_offset];
     }
   };
 
   size_t offset = 0;
-  const size_t hidden_size = CheckedToSizeT(hidden_size_);
   copy_fused_bias(offset, bias_WRi_);
   offset += hidden_size;
   copy_fused_bias(offset, bias_WRo_);
@@ -369,7 +368,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                        c_prev, C_prev_end,
                        c_prev_clipped, C_prev_clipped_end,
                        batched_output, batched_output_end,
-                       sequence_lengths, min_sequence_length, step, 0, batch_size_, output_sequence);
+                       sequence_lengths, hidden_size_x4, min_sequence_length, step, 0, batch_size_, output_sequence);
 
       // copy last row to final_cell_state
       for (int lrow = 0; lrow < batch_size_; lrow++) {
@@ -425,13 +424,12 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
                                                  span_T_iter& C_prev_clipped, span_T_iter& C_prev_clipped_end,
                                                  span_T_iter& batched_output, span_T_iter& batched_output_end,
                                                  const gsl::span<const int>& seq_lengths,
+                                                 const int hidden_size_x4,
                                                  const int min_sequence_length,
                                                  const int step,
                                                  const int row,
                                                  const int local_fused_hidden_rows,
                                                  bool output_sequence) {
-  const int hidden_size_x4 = CheckedMulToInt(hidden_size_, 4);
-
   // Activation gates.
   for (int b = 0; b < local_fused_hidden_rows; b++) {
     const size_t gate_row_offset = CheckedMulToSizeT(b, hidden_size_);
