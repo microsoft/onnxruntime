@@ -280,6 +280,24 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
         }
       }
 
+      // Extract PCI bus location for GPU/NPU devices.
+      // SPDRP_LOCATION_INFORMATION returns strings like "PCI bus 1, device 0, function 0".
+      // Convert to "domain:bus:device.function" format (e.g., "0000:01:00.0") that
+      // CUDA and other runtimes expect (e.g., cudaDeviceGetByPCIBusId).
+      if (entry->type == OrtHardwareDeviceType_GPU || entry->type == OrtHardwareDeviceType_NPU) {
+        if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_LOCATION_INFORMATION, nullptr,
+                                              (PBYTE)buffer, sizeof(buffer), &size)) {
+          std::wstring location_info(buffer, wcslen(buffer));
+          unsigned int bus = 0, device = 0, function = 0;
+          if (swscanf_s(location_info.c_str(), L"PCI bus %u, device %u, function %u",
+                        &bus, &device, &function) == 3) {
+            wchar_t pci_bus_id[32];
+            swprintf_s(pci_bus_id, L"0000:%02x:%02x.%x", bus, device, function);
+            entry->metadata[L"pci_bus_id"] = pci_bus_id;
+          }
+        }
+      }
+
       // Generate telemetry event to log the GPU and NPU driver name and version.
       if (entry->type == OrtHardwareDeviceType_CPU) {
         // Skip processor entries for telemetry.
