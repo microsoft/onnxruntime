@@ -19,6 +19,12 @@ namespace qnn {
 #define QNN_SYSTEM_PROFILE_API_ENABLED
 #endif
 
+#if defined(_WIN32) && (defined(__aarch64__) || defined(_M_ARM64))
+#if QNN_API_VERSION_MAJOR > 2 || ((QNN_API_VERSION_MAJOR) == 2 && (QNN_API_VERSION_MINOR >= 32))
+#define QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+#endif
+#endif
+
 // QNN only support subset of POSIX of dlopen/dlsym/dladdr/dlerror/dlclose
 // except the following flags for dlopen, others should be done only
 // when we really need them
@@ -251,7 +257,7 @@ class QnnTensorWrapper {
     dimensions_.assign(shape_data, shape_data + shape_rank);
     SetQnnTensorDim(qnn_tensor_, dimensions_);
 
-    SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
+    SetQnnTensorMemType(qnn_tensor_, GetQnnTensorMemType(qnn_tensor));
 
     return Status::OK();
   }

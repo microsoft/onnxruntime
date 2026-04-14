@@ -14,6 +14,7 @@
 #include "core/graph/model.h"
 #include "core/optimizer/initializer.h"
 
+#include "core/optimizer/bias_skip_layer_norm_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
@@ -638,6 +639,37 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3_graph_output.onnx", 1, 1, 0, 0, logger_.get());
 }
 
+// SkipLayerNorm fusion should not be applied when gamma/beta have more than 1 dimension,
+// because the SkipLayerNormalization kernel requires 1D gamma/beta.
+TEST_F(GraphTransformationTests, SkipLayerNormFusion_3DGamma_NoFusion) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    // Inputs: A and B are 3D [16, 32, 4]
+    auto* input_a = builder.MakeInput<float>({16, 32, 4}, -1.0f, 1.0f);
+    auto* input_b = builder.MakeInput<float>({16, 32, 4}, -1.0f, 1.0f);
+    // gamma and beta have 3D shape [1, 1, 4] (not 1D)
+    auto* gamma = builder.MakeInitializer<float>({1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+    auto* beta = builder.MakeInitializer<float>({1, 1, 4}, {0.1f, 0.2f, 0.3f, 0.4f});
+    auto* add_out = builder.MakeIntermediate();
+    auto* ln_out = builder.MakeOutput();
+
+    builder.AddNode("Add", {input_a, input_b}, {add_out});
+    builder.AddNode("LayerNormalization", {add_out, gamma, beta}, {ln_out})
+        .AddAttribute("axis", static_cast<int64_t>(-1));
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    // SkipLayerNormalization should NOT have been created because gamma/beta are 3D.
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["LayerNormalization"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.SkipLayerNormalization"] == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<SkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
@@ -723,6 +755,483 @@ static void TestSkipLayerNormFusionNoBeta(const std::basic_string<ORTCHAR_T>& mo
 TEST_F(GraphTransformationTests, SkipLayerNormFusion_NoBeta) {
   TestSkipLayerNormFusionNoBeta(MODEL_FOLDER "fusion/skip_layer_norm_no_beta.onnx", false, logger_.get());
   TestSkipLayerNormFusionNoBeta(MODEL_FOLDER "fusion/skip_layer_norm_no_beta_with_cast.onnx", true, logger_.get());
+}
+
+// ---- BiasSkipLayerNormFusion tests ----
+//
+// All tests start with a pre-existing 4-input com.microsoft.SkipLayerNormalization node,
+// mirroring the scenario where a model was already exported with SkipLayerNormalization (e.g.,
+// via the Python transformer optimizer), and a bias Add upstream still needs to be absorbed.
+
+// Verify that Add(MatMul_out, bias_1D) → SLN(4 inputs) is fused into SLN(5 inputs).
+// Pattern: Add at SLN input[0], bias as Add input[1].
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_AddAtInput0) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* matmul_a = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
+    auto* matmul_b = builder.MakeInitializer<float>({8, 4}, -1.0f, 1.0f);
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.1f, 0.2f, 0.3f, 0.4f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias}, {add_out});
+    // 4-input SLN: add_out at input[0], skip at input[1]
+    builder.AddNode("SkipLayerNormalization", {add_out, skip, gamma, beta}, {sln_out}, kMSDomain);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        // Bias absorbed as 5th input
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 5u);
+
+        // Verify wiring: input[0] is produced by MatMul, input[1] is the original skip input,
+        // and input[4] is an initializer (the fused bias).
+        const auto& input_defs = node.InputDefs();
+        auto* input0 = input_defs[0];
+        auto* input1 = input_defs[1];
+        auto* input4 = input_defs[4];
+
+        // input[0] should come from MatMul
+        const Node* input0_producer = graph.GetProducerNode(input0->Name());
+        TEST_RETURN_IF_NOT(input0_producer != nullptr);
+        TEST_RETURN_IF_NOT(input0_producer->OpType() == "MatMul");
+
+        // input[1] should be the skip connection: a graph input (no producer)
+        const Node* input1_producer = graph.GetProducerNode(input1->Name());
+        TEST_RETURN_IF_NOT(input1_producer == nullptr);
+        bool is_graph_input1 = false;
+        for (const auto* gi : graph.GetInputs()) {
+          if (gi->Name() == input1->Name()) {
+            is_graph_input1 = true;
+            break;
+          }
+        }
+        TEST_RETURN_IF_NOT(is_graph_input1);
+
+        // input[4] should be an initializer (the fused bias), identified by name
+        const Node* input4_producer = graph.GetProducerNode(input4->Name());
+        TEST_RETURN_IF_NOT(input4_producer == nullptr);
+        const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input4->Name(), bias_initializer));
+        TEST_RETURN_IF_NOT(bias_initializer != nullptr);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Same as above, but bias is Add input[0] (not input[1]).
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_BiasAsFirstAddInput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* matmul_a = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
+    auto* matmul_b = builder.MakeInitializer<float>({8, 4}, -1.0f, 1.0f);
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.1f, 0.2f, 0.3f, 0.4f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    // bias is Add input[0], MatMul output is Add input[1]
+    builder.AddNode("Add", {bias, matmul_out}, {add_out});
+    builder.AddNode("SkipLayerNormalization", {add_out, skip, gamma, beta}, {sln_out}, kMSDomain);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 5u);
+
+        // Verify wiring for this scenario as well: input[0] from MatMul, input[1] is skip input,
+        // and input[4] is an initializer (the fused bias).
+        const auto& input_defs = node.InputDefs();
+        auto* input0 = input_defs[0];
+        auto* input1 = input_defs[1];
+        auto* input4 = input_defs[4];
+
+        // input[0] should come from MatMul
+        const Node* input0_producer = graph.GetProducerNode(input0->Name());
+        TEST_RETURN_IF_NOT(input0_producer != nullptr);
+        TEST_RETURN_IF_NOT(input0_producer->OpType() == "MatMul");
+
+        // input[1] should be the skip connection: a graph input (no producer)
+        const Node* input1_producer = graph.GetProducerNode(input1->Name());
+        TEST_RETURN_IF_NOT(input1_producer == nullptr);
+        bool is_graph_input1 = false;
+        for (const auto* gi : graph.GetInputs()) {
+          if (gi->Name() == input1->Name()) {
+            is_graph_input1 = true;
+            break;
+          }
+        }
+        TEST_RETURN_IF_NOT(is_graph_input1);
+
+        // input[4] should be an initializer (the fused bias), identified by name
+        const Node* input4_producer = graph.GetProducerNode(input4->Name());
+        TEST_RETURN_IF_NOT(input4_producer == nullptr);
+        const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input4->Name(), bias_initializer));
+        TEST_RETURN_IF_NOT(bias_initializer != nullptr);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Add(MatMul_out, bias_1D) is connected to SLN input[1] (the "skip" input).
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_AddAtSkipInput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* matmul_a = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
+    auto* matmul_b = builder.MakeInitializer<float>({8, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.1f, 0.2f, 0.3f, 0.4f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias}, {add_out});
+    // add_out at SLN input[1] (skip), primary input at input[0]
+    builder.AddNode("SkipLayerNormalization", {input, add_out, gamma, beta}, {sln_out}, kMSDomain);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 5u);
+
+        const auto& input_defs = node.InputDefs();
+
+        // input[0] should be the original graph input (unchanged – Add fed SLN.input[1], so
+        // only SLN.input[1] is replaced with the MatMul output; input[0] keeps its original value).
+        const Node* input0_producer = graph.GetProducerNode(input_defs[0]->Name());
+        TEST_RETURN_IF_NOT(input0_producer == nullptr);
+        bool is_graph_input0 = false;
+        for (const auto* gi : graph.GetInputs()) {
+          if (gi->Name() == input_defs[0]->Name()) {
+            is_graph_input0 = true;
+            break;
+          }
+        }
+        TEST_RETURN_IF_NOT(is_graph_input0);
+
+        // input[1] should come from MatMul (the bias-Add was at SLN.input[1])
+        const Node* input1_producer = graph.GetProducerNode(input_defs[1]->Name());
+        TEST_RETURN_IF_NOT(input1_producer != nullptr);
+        TEST_RETURN_IF_NOT(input1_producer->OpType() == "MatMul");
+
+        // input[4] should be an initializer (the fused bias)
+        const Node* input4_producer = graph.GetProducerNode(input_defs[4]->Name());
+        TEST_RETURN_IF_NOT(input4_producer == nullptr);
+        const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input_defs[4]->Name(), bias_initializer));
+        TEST_RETURN_IF_NOT(bias_initializer != nullptr);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Cast variant: MatMul → Cast → Add(bias_1D) → SLN(4 inputs).
+// Models using fp16 precision commonly insert a Cast between MatMul and the bias Add.
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_WithCast) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* matmul_a = builder.MakeInput<onnxruntime::MLFloat16>({2, 4, 8}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* matmul_b = builder.MakeInitializer<onnxruntime::MLFloat16>({8, 4}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.1f, 0.2f, 0.3f, 0.4f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* cast_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    builder.AddNode("Add", {cast_out, bias}, {add_out});
+    builder.AddNode("SkipLayerNormalization", {add_out, skip, gamma, beta}, {sln_out}, kMSDomain);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 5u);
+
+        const auto& input_defs = node.InputDefs();
+
+        // input[0] should come from Cast (MatMul → Cast → fused SLN)
+        const Node* input0_producer = graph.GetProducerNode(input_defs[0]->Name());
+        TEST_RETURN_IF_NOT(input0_producer != nullptr);
+        TEST_RETURN_IF_NOT(input0_producer->OpType() == "Cast");
+
+        // input[1] should be the skip connection: a graph input (no producer)
+        const Node* input1_producer = graph.GetProducerNode(input_defs[1]->Name());
+        TEST_RETURN_IF_NOT(input1_producer == nullptr);
+        bool is_graph_input1 = false;
+        for (const auto* gi : graph.GetInputs()) {
+          if (gi->Name() == input_defs[1]->Name()) {
+            is_graph_input1 = true;
+            break;
+          }
+        }
+        TEST_RETURN_IF_NOT(is_graph_input1);
+
+        // input[4] should be an initializer (the fused bias)
+        const Node* input4_producer = graph.GetProducerNode(input_defs[4]->Name());
+        TEST_RETURN_IF_NOT(input4_producer == nullptr);
+        const ONNX_NAMESPACE::TensorProto* bias_initializer = nullptr;
+        TEST_RETURN_IF_NOT(graph.GetInitializedTensor(input_defs[4]->Name(), bias_initializer));
+        TEST_RETURN_IF_NOT(bias_initializer != nullptr);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Cast variant negative test: bias is 1D but its length is incompatible with gamma/beta.
+// This guards against fusing dimension-mismatched biases when hidden-size validation is applied
+// on the Cast path.
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_WithCast_BiasHiddenSizeMismatch) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* matmul_a = builder.MakeInput<onnxruntime::MLFloat16>({2, 4, 8}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* matmul_b = builder.MakeInitializer<onnxruntime::MLFloat16>({8, 4}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    // Intentionally use a 1D bias whose length does not match gamma/beta (size 4).
+    // bias{1} broadcasts validly with cast_out{2,4,4}, but bias_hidden_size(1) != sln_hidden_size(4)
+    // so the fusion is blocked.
+    auto* bias = builder.MakeInitializer<float>({1}, {0.5f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* cast_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+    builder.AddNode("Add", {cast_out, bias}, {add_out});
+    builder.AddNode("SkipLayerNormalization", {add_out, skip, gamma, beta}, {sln_out}, kMSDomain);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    // Fusion should not occur: Add must remain, and SkipLayerNormalization must keep 4 inputs.
+    TEST_RETURN_IF_NOT(op_count["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 4u);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Fusion must NOT occur when the bias is 2D (not 1D).
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_NoFusion_2DBias) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* matmul_a = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
+    auto* matmul_b = builder.MakeInitializer<float>({8, 4}, -1.0f, 1.0f);
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    // 2D bias – should prevent fusion
+    auto* bias_2d = builder.MakeInitializer<float>({1, 4}, {0.1f, 0.2f, 0.3f, 0.4f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias_2d}, {add_out});
+    builder.AddNode("SkipLayerNormalization", {add_out, skip, gamma, beta}, {sln_out}, kMSDomain);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    // Graph should be unchanged: Add and 4-input SLN both remain.
+    TEST_RETURN_IF_NOT(op_count["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 4u);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Fusion must NOT occur when the SLN node already has 5 inputs (bias already absorbed).
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_NoFusion_SLNHas5Inputs) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.1f, 0.2f, 0.3f, 0.4f});
+    auto* sln_out = builder.MakeOutput();
+
+    // SLN already has 5 inputs – no further fusion should happen.
+    builder.AddNode("SkipLayerNormalization", {input, skip, gamma, beta, bias}, {sln_out}, kMSDomain);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 5u);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Fusion must NOT occur when the Add node feeds multiple consumers (the output is used both by
+// SLN and by another node, so removing Add would drop the other consumer's input).
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_NoFusion_AddHasMultipleConsumers) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* matmul_a = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
+    auto* matmul_b = builder.MakeInitializer<float>({8, 4}, -1.0f, 1.0f);
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.1f, 0.2f, 0.3f, 0.4f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeOutput();
+    auto* identity_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias}, {add_out});
+    // add_out feeds both SLN and an Identity node – Add has 2 consumers.
+    builder.AddNode("SkipLayerNormalization", {add_out, skip, gamma, beta}, {sln_out}, kMSDomain);
+    builder.AddNode("Identity", {add_out}, {identity_out});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    // Add must NOT be removed because it has multiple consumers.
+    TEST_RETURN_IF_NOT(op_count["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 4u);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Verify that fusion preserves downstream edges when the SLN output feeds another node.
+// This exercises the edge-rewiring code path: the fused SLN node must inherit all consumers
+// of the original SLN node.
+TEST_F(GraphTransformationTests, BiasSkipLayerNormFusion_DownstreamConsumerPreserved) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* matmul_a = builder.MakeInput<float>({2, 4, 8}, -1.0f, 1.0f);
+    auto* matmul_b = builder.MakeInitializer<float>({8, 4}, -1.0f, 1.0f);
+    auto* skip = builder.MakeInput<float>({2, 4, 4}, -1.0f, 1.0f);
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.1f, 0.2f, 0.3f, 0.4f});
+
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sln_out = builder.MakeIntermediate();  // intermediate: SLN output feeds Identity
+    auto* identity_out = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {matmul_a, matmul_b}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias}, {add_out});
+    builder.AddNode("SkipLayerNormalization", {add_out, skip, gamma, beta}, {sln_out}, kMSDomain);
+    // Downstream consumer of the SLN output: must be preserved after fusion.
+    builder.AddNode("Identity", {sln_out}, {identity_out});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.SkipLayerNormalization"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Identity"] == 1);
+
+    // The Identity node must still be wired to the fused SLN output.
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 1u);
+        const Node* identity_input_producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+        TEST_RETURN_IF_NOT(identity_input_producer != nullptr);
+        TEST_RETURN_IF_NOT(identity_input_producer->OpType() == "SkipLayerNormalization");
+        // The fused SLN must have 5 inputs.
+        TEST_RETURN_IF_NOT(identity_input_producer->InputDefs().size() == 5u);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<BiasSkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {

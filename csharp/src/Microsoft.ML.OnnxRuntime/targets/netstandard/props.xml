@@ -28,14 +28,7 @@
    </Link>
   </ItemDefinitionGroup>
 
-  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')">
-   <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x86/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
-   </Link>
-  </ItemDefinitionGroup>
-
   <PropertyGroup>
-    <EnginePlatform Condition="'$(Platform)' == 'Win32'">x86</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' == 'ARM64'">arm64</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' == 'ARM'">arm</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' != 'Win32' AND '$(Platform)' != 'ARM64'">$(Platform)</EnginePlatform>
@@ -120,7 +113,8 @@
 
     <!-- arm64 -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll"
-          Condition="'$(PlatformTarget)' == 'ARM64'">
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll')">
       <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
@@ -135,7 +129,8 @@
 
     <!-- arm -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime.dll"
-          Condition="'$(PlatformTarget)' == 'ARM'">
+          Condition="'$(PlatformTarget)' == 'ARM' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime.dll')">
       <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
@@ -144,35 +139,6 @@
           Condition="'$(PlatformTarget)' == 'ARM' AND
                      Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime_providers_shared.dll')">
       <Link>onnxruntime_providers_shared.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-
-    <!-- x86 -->
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\onnxruntime.dll"
-          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true'))">
-      <Link>onnxruntime.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\dnnl.dll"
-          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')) AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\dnnl.dll')">
-      <Link>dnnl.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mklml.dll"
-          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')) AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mklml.dll')">
-      <Link>mklml.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\libiomp5md.dll"
-          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')) AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\libiomp5md.dll')">
-      <Link>libiomp5md.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>

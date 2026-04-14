@@ -83,7 +83,8 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
                             bool only_execute_path_to_fetches = false,
-                            Stream* parent_stream = nullptr);
+                            Stream* parent_stream = nullptr,
+                            profiling::Profiler* run_profiler = nullptr);
 
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
@@ -91,7 +92,8 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 #ifdef ORT_ENABLE_STREAM
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
-                            const logging::Logger& logger);
+                            const logging::Logger& logger,
+                            profiling::Profiler* run_profiler = nullptr);
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
@@ -113,7 +115,8 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                /*when this is enabled, we will sync the parent stream to make sure the subgraph fetches
                                is complete. this is mainly used when the parent kernel depends on the CPU value of the
                                subgraph fetches, i.e. the loop condition*/
-                               bool sync_subgraph_fetches = false);
+                               bool sync_subgraph_fetches = false,
+                               profiling::Profiler* run_profiler = nullptr);
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);

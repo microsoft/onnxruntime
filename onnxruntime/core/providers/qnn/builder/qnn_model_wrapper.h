@@ -77,6 +77,9 @@ class QnnModelWrapper {
                            const std::string& tensor_name,
                            QnnTensorWrapper& tensor_wrapper) const;
 
+  // Sets the QNN tensor memory type based on model settings and whether the tensor is a graph input/output.
+  void SetTensorMemTypeFromSettings(QnnTensorWrapper& tensor_wrapper, const std::string& tensor_name);
+
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);
 
@@ -245,7 +248,8 @@ class QnnModelWrapper {
   }
 
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                               std::vector<uint8_t>& unpacked_tensor) const;
+                               std::vector<uint8_t>& unpacked_tensor,
+                               const bool unpack_4_bit_to_8_bit = true) const;
 
   QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 

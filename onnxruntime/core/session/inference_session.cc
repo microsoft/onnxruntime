@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <queue>
+#include <iomanip>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
@@ -21,6 +22,7 @@
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/device_stream_collection.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/graph_partitioner.h"
@@ -28,14 +30,17 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/kernel_type_str_resolver_utils.h"
+#include "core/framework/layering_annotations.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
@@ -111,13 +116,15 @@ inline const wchar_t* GetDateFormatString<wchar_t>() {
   return L"%Y-%m-%d_%H-%M-%S";
 }
 #endif
-// TODO: use LoggingManager::GetTimestamp and date::operator<<
+// TODO: use LoggingManager::GetTimestamp and operator<<
 // (see ostream_sink.cc for an example)
 // to simplify this and match the log file timestamp format.
 template <typename T>
 inline std::basic_string<T> GetCurrentTimeString() {
   auto now = std::chrono::system_clock::now();
   auto in_time_t = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
   std::tm local_tm;  // NOLINT
 
 #ifdef _WIN32
@@ -128,7 +135,10 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
   T time_str[32];
   OrtStrftime<T>(time_str, sizeof(time_str), GetDateFormatString<T>(), &local_tm);
-  return std::basic_string<T>(time_str);
+
+  std::basic_stringstream<T> ss;
+  ss << time_str << T('_') << std::setfill(T('0')) << std::setw(3) << ms.count();
+  return ss.str();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -153,31 +163,25 @@ static bool HasMemcpyNodes(const Graph& graph) {
   return false;
 }
 
-static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(const Graph& graph) {
-  bool nodes_on_cpu_and_cuda_and_js_and_dml_eps_only = true;
+static bool AreAllComputeNodesAssignedToEpOrCpu(const Graph& graph, ProviderType provider) {
+  bool has_node_on_provider = false;
 
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
-    // Empty node provider means CPU EP
-    if (!node_provider.empty() &&
-        !(node_provider == kCudaExecutionProvider ||
-          node_provider == kJsExecutionProvider ||
-          node_provider == kWebGpuExecutionProvider ||
-          node_provider == kDmlExecutionProvider) &&
-        node_provider != kCpuExecutionProvider) {
-      nodes_on_cpu_and_cuda_and_js_and_dml_eps_only = false;
-      break;
+    if (node_provider == provider) {
+      has_node_on_provider = true;
+    } else if (!node_provider.empty() &&
+               node_provider != kCpuExecutionProvider) {
+      return false;
     }
   }
 
-  // If we see nodes assigned to EPs other than CPU, or CUDA/JS
-  // (or) if there are Memcpy nodes, then all compute nodes have
-  // not been parititoned to the CUDA/JS EP.
-  // We allow CPU EPs to show up in the EP list as long as thre is no Memcpy
+  // Require at least one node on the target EP, and no Memcpy nodes.
+  // We allow CPU EPs to show up in the EP list as long as there is no Memcpy
   // involved as shape subgraphs will be forced onto CPU and these will not have
   // Memcpy nodes involved.
-  return nodes_on_cpu_and_cuda_and_js_and_dml_eps_only && !HasMemcpyNodes(graph);
+  return has_node_on_provider && !HasMemcpyNodes(graph);
 }
 
 static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
@@ -419,6 +423,16 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+    auto apply_work_callbacks = [&session_env](OrtThreadPoolParams& params) {
+      const auto* env_cbs = session_env.GetPerSessionWorkCallbacks();
+      if (env_cbs != nullptr) {
+        params.work_callbacks = *env_cbs;
+      }
+    };
+#endif
+
     {
       if (!external_intra_op_thread_pool_) {
         bool allow_intra_op_spinning =
@@ -459,6 +473,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
         }
 
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+        apply_work_callbacks(to);
+#endif
+
         thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
       }
@@ -494,6 +512,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         if (to.custom_create_thread_fn) {
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
         }
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+        apply_work_callbacks(to);
+#endif
+
         inter_op_thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
         if (inter_op_thread_pool_ == nullptr) {
@@ -729,6 +752,25 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 InferenceSession::~InferenceSession() {
+  // Flush any remaining RuntimePerf counters
+  ORT_TRY {
+    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+    if (telemetry_.total_runs_since_last_ > 0) {
+      Env::Default().GetTelemetryProvider().LogRuntimePerf(session_id_,
+                                                           telemetry_.total_runs_since_last_,
+                                                           telemetry_.total_run_duration_since_last_,
+                                                           telemetry_.duration_per_batch_size_);
+    }
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS(*session_logger_, ERROR) << "Error during telemetry flush: " << e.what();
+    });
+  }
+  ORT_CATCH(...) {
+    LOGS(*session_logger_, ERROR) << "Unknown error during telemetry flush";
+  }
+
   if (session_options_.enable_profiling) {
     ORT_TRY {
       EndProfiling();
@@ -968,7 +1010,10 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
+  const Env& env = Env::Default();
   ORT_TRY {
+    env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+
     std::lock_guard<std::mutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
@@ -1003,6 +1048,8 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
+
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status);
 
   return status;
 }
@@ -1287,6 +1334,32 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
   return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static std::unique_ptr<OrtEpAssignedSubgraph> CreateEpAssignedSubgraph(const Graph& graph,
+                                                                       const ComputeCapability& capability,
+                                                                       const std::string& ep_name) {
+  auto assigned_subgraph = std::make_unique<OrtEpAssignedSubgraph>();
+  assigned_subgraph->ep_name = ep_name;
+
+  gsl::span<NodeIndex> node_indices = capability.sub_graph->nodes;
+
+  for (NodeIndex node_index : node_indices) {
+    const Node* node = graph.GetNode(node_index);
+    if (node != nullptr) {
+      auto assigned_node = std::make_unique<OrtEpAssignedNode>();
+      assigned_node->name = node->Name();
+      assigned_node->domain = node->Domain();
+      assigned_node->op_type = node->OpType();
+
+      assigned_subgraph->nodes.push_back(assigned_node.get());
+      assigned_subgraph->nodes_storage.push_back(std::move(assigned_node));
+    }
+  }
+
+  return assigned_subgraph;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. Ensure we inline as many functions as possible. We refer to it as Ahead Of Time (AOT) function inlining.
@@ -1301,12 +1374,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 8. Repeat steps 5 to 7 depending on the graph optimizations loop level.
   // 9. insert copy nodes (required transformer).
 
+  OnPartitionAssignmentFunction on_partition_assignment_fn;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool record_ep_graph_assignment =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+  if (record_ep_graph_assignment) {
+    on_partition_assignment_fn = [this](const Graph& graph, const ComputeCapability& compute_capability,
+                                        const std::string& ep_name) {
+      std::unique_ptr<OrtEpAssignedSubgraph> assigned_subgraph = CreateEpAssignedSubgraph(graph,
+                                                                                          compute_capability,
+                                                                                          ep_name);
+
+      this->ep_graph_assignment_info_.push_back(assigned_subgraph.get());
+      this->ep_graph_assignment_info_storage_.push_back(std::move(assigned_subgraph));
+    };
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
                                                                            execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                                                            session_logger_);
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry),
-                               check_load_cancellation_fn_);
+                               check_load_cancellation_fn_, on_partition_assignment_fn);
 
   // Run Ahead Of time function inlining
   if (const bool disable_aot_function_inlining =
@@ -1324,7 +1414,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   //
   // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
   // with a TensorProto that has the same data type, shape and name. However, its external data
-  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoNativeEndianMemoryAddressTag,
   // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
   // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it. For this reason,
   // we do not convert them at the graph constructor because Node::ToProto() reconstructs Graph instances for subgraphs
@@ -1443,10 +1533,32 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 
+  LayeringIndex* layering_index = nullptr;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  std::optional<LayeringIndex> layering_index_storage;
+  const auto layering_config = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsLayerAssignmentSettings, "");
+  if (!layering_config.empty()) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(LayeringIndex::Create(graph, layering_config, {}, execution_providers_,
+                                                         *session_logger_, layering_index_storage));
+    if (layering_index_storage) {
+      layering_index = &layering_index_storage.value();
+    }
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
-                                                       session_options_.config_options, *session_logger_,
+                                                       session_options_.config_options, *session_logger_, layering_index,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (layering_index) {
+    // Layering annotations maybe present even if index is not built although unlikely.
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph.RemoveAllLayeringAnnotations());
+    // We are currently not using it beyond this point. Clear it to free up memory.
+    layering_index = nullptr;
+    layering_index_storage.reset();
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
   // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
@@ -1597,6 +1709,9 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+
   std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
@@ -1717,6 +1832,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
   is_model_loaded_ = true;
 
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, Status::OK());
+
   return Status::OK();
 }
 
@@ -1768,15 +1885,16 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 #if !defined(ORT_MINIMAL_BUILD)
 [[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
   std::string data_type_list;
+  auto weight_freq = graph.GetWeightDataTypeFrequency();
 
-  for (int i = 0; i < ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE; ++i) {
-    if (graph.weight_data_type_freq_[i] > 0) {
+  for (size_t i = 0; i < weight_freq.size(); ++i) {
+    if (weight_freq[i] > 0) {
       if (!data_type_list.empty()) {
         data_type_list += ", ";
       }
-      data_type_list += TensorProto_DataType_Name(i);
+      data_type_list += TensorProto_DataType_Name(static_cast<int>(i));
       data_type_list += ": ";
-      data_type_list += std::to_string(graph.weight_data_type_freq_[i]);
+      data_type_list += std::to_string(weight_freq[i]);
     }
   }
 
@@ -1958,6 +2076,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             transform_layout_fn,
                                             sess_options.config_options,
                                             logger,
+                                            nullptr /*layering_index*/,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1990,6 +2109,14 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+std::basic_string<ORTCHAR_T> GenerateProfileFilePath(std::basic_string<ORTCHAR_T> profile_file_prefix) {
+  profile_file_prefix.append(ORT_TSTR("_"));
+  profile_file_prefix.append(GetCurrentTimeString<ORTCHAR_T>());
+  profile_file_prefix.append(ORT_TSTR(".json"));
+  return profile_file_prefix;
+}
+
 }  // namespace
 
 static void ResolveMemoryPatternFlags(SessionState& session_state) {
@@ -2219,6 +2346,16 @@ common::Status InferenceSession::Initialize() {
         return Status::OK();
       };
 
+      // Enable DQ->MatMulNBits fusion if NvTensorRTRTX EP is registered.
+      if (execution_providers_.Get(onnxruntime::kNvTensorRTRTXExecutionProvider) != nullptr) {
+        if (session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsEnableDQMatMulNBitsFusion, "") == "") {
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              session_options_.config_options.AddConfigEntry(
+                  kOrtSessionOptionsEnableDQMatMulNBitsFusion, "1"));
+        }
+      }
+
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
                                                                session_options_.graph_optimization_level,
@@ -2291,101 +2428,69 @@ common::Status InferenceSession::Initialize() {
                                "Session initialization canceled due to user request.");
       }
 
-      // Currently graph capture is only considered by CUDA EP, TRT EP and JS EP.
-      //
-      // Check for CUDA EP:
-      // If the CUDA EP is part of the providers list for this session AND
-      // The CUDA EP is configured to do a graph capture AND
-      // All the "compute" graph nodes have been assigned to the CUDA EP,
-      // Then the CUDA EP is cached for triggering a ReplayGraph() in Run().
-      //
-      // Check for TRT EP:
-      // If the TRT EP is part of the providers list for this session AND
-      // The TRT EP is configured to do a graph capture AND
-      // All the graph nodes have been assigned to the TRT EP,
-      // Then the TRT EP is cached for triggering a ReplayGraph() in Run().
-      //
-      // Check for JS EP:
-      // If the JS EP is part of the providers list for this session AND
-      // The JS EP is configured to do a graph capture AND
-      // All the "compute" graph nodes have been assigned to the JS EP,
-      // Then the JS EP is cached for triggering a ReplayGraph() in Run().
-      //
-      std::vector<const char*> graph_support_ep_list = {
-          onnxruntime::kTensorrtExecutionProvider,
-          onnxruntime::kCudaExecutionProvider,
-          onnxruntime::kJsExecutionProvider,
-          onnxruntime::kWebGpuExecutionProvider,
-          onnxruntime::kDmlExecutionProvider};
+      // Check if any EP is configured for graph capture (e.g., CUDA Graph, DML Graph).
+      // If so, validate the graph and cache the EP for triggering ReplayGraph() in Run().
+      for (const auto& ep : execution_providers_) {
+        if (!ep->IsGraphCaptureEnabled()) {
+          continue;
+        }
 
-      for (auto& it : graph_support_ep_list) {
-        auto* target_ep = execution_providers_.Get(it);
+        // Graph capture can't work with control flow nodes
+        if (HasControlflowNodes(graph)) {
+          LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
+                                        << "as the model has control flow nodes which can't be supported by "
+                                        << ep->Type();
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                              "This session cannot use the graph capture feature as requested by the user "
+                              "as the model has control flow nodes which can't be supported by " +
+                                  ep->Type()));
+        }
 
-        if (target_ep && target_ep->IsGraphCaptureEnabled()) {
-          // Graphs capture can't work with control flow nodes
-          if (HasControlflowNodes(graph)) {
+        auto policy = ep->GetGraphCaptureNodeAssignmentPolicy();
+        if (policy == OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES) {
+          // Ensure that all nodes have been partitioned to the EP or CPU EP && there are no memcpy nodes.
+          // The reasoning is that certain shape nodes will be forced onto CPU and as long as there are
+          // no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP.
+          if (!AreAllComputeNodesAssignedToEpOrCpu(graph, ep->Type())) {
             LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
-                                          << "as the model has control flow nodes which can't be supported by "
-                                          << target_ep->Type();
-
+                                          << " as all compute graph nodes have not been partitioned to the "
+                                          << ep->Type();
             ORT_RETURN_IF_ERROR_SESSIONID_(
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                 "This session cannot use the graph capture feature as requested by the user "
-                                "as the model has control flow nodes which can't be supported by" +
-                                    target_ep->Type()));
+                                " as all compute graph nodes have not been partitioned to the " +
+                                    ep->Type()));
           }
 
-          if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kWebGpuExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kDmlExecutionProvider) == 0) {
-            // Ensure that all nodes have been partitioned to CUDA/JS or CPU EP && there are no memcpy nodes
-            // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
-            // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
-            // which is all we care about.
-            if (!AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(graph)) {
-              LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
-                                            << " as all compute graph nodes have not been partitioned to the "
-                                            << target_ep->Type();
-
-              ORT_RETURN_IF_ERROR_SESSIONID_(
-                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "This session cannot use the graph capture feature as requested by the user "
-                                  " as all compute graph nodes have not been partitioned to the " +
-                                      target_ep->Type()));
-            }
-
-            // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
-            if (HasShapeSubgraphNodes(graph)) {
-              LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
-                                              << "Use the graph capture feature with caution. "
-                                              << "As long as the intermediate shapes produced in the model "
-                                              << "using the representative input used to capture the graph, "
-                                              << "will match the shapes produced in the model for other inputs "
-                                              << "of the same shape as the representative input (common case), "
-                                              << "it is safe to use the graph capture feature.";
-            }
-          } else {
-            // Following code path is for TRT EP currently.
-            if (!AreAllNodesInMainGraphAssignedToOneEp(graph, target_ep->Type())) {
-              LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                            << "as all the graph nodes have not been assigned to "
-                                            << target_ep->Type();
-
-              // Return error status as we don't want the session initialization to complete successfully
-              // if the user has requested usage of CUDA Graph feature and we cannot honor that.
-              ORT_RETURN_IF_ERROR_SESSIONID_(
-                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "This session cannot use the CUDA Graph feature as requested by the user "
-                                  "as all the graph nodes have not been assigned to " +
-                                      target_ep->Type()));
-            }
+          // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
+          if (HasShapeSubgraphNodes(graph)) {
+            LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
+                                            << "Use the graph capture feature with caution. "
+                                            << "As long as the intermediate shapes produced in the model "
+                                            << "using the representative input used to capture the graph, "
+                                            << "will match the shapes produced in the model for other inputs "
+                                            << "of the same shape as the representative input (common case), "
+                                            << "it is safe to use the graph capture feature.";
           }
-
-          LOGS(*session_logger_, INFO) << "This session will use the CUDA/HIP Graph feature as requested by the user.";
-          cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
-          break;  // Make sure only one ep can run CUDA graph.
+        } else {
+          // AllNodesOnEp: all nodes in the main graph must be assigned to this EP.
+          if (!AreAllNodesInMainGraphAssignedToOneEp(graph, ep->Type())) {
+            LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
+                                          << "as all the graph nodes have not been assigned to "
+                                          << ep->Type();
+            ORT_RETURN_IF_ERROR_SESSIONID_(
+                ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                "This session cannot use the graph capture feature as requested by the user "
+                                "as all the graph nodes have not been assigned to " +
+                                    ep->Type()));
+          }
         }
+
+        LOGS(*session_logger_, INFO) << "This session will use the graph capture feature as requested by the user "
+                                     << "with " << ep->Type() << ".";
+        cached_execution_provider_for_graph_replay_.SetExecutionProvider(ep.get());
+        break;  // Only one EP can use graph capture.
       }
 
       const bool disable_cpu_ep_fallback = session_options_.config_options.GetConfigOrDefault(
@@ -2513,7 +2618,7 @@ common::Status InferenceSession::Initialize() {
 
     // and log telemetry
     std::filesystem::path model_path = graph.ModelPath();
-    std::string model_file_name = model_path.filename().string();
+    std::string model_file_name = PathToUTF8String(model_path.filename().native());
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
@@ -2557,6 +2662,12 @@ common::Status InferenceSession::Initialize() {
         status = end_status;
       }
     }
+  }
+
+  // Log session creation end telemetry
+  {
+    const Env& init_env = Env::Default();
+    init_env.GetTelemetryProvider().LogSessionCreationEnd(session_id_, status);
   }
 
   return status;
@@ -2925,9 +3036,36 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
+                 /*graph_capture_depth=*/0);
+}
+
+Status InferenceSession::RunImpl(const RunOptions& run_options,
+                                 gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
+                                 gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
+                                 const std::vector<OrtDevice>* p_fetches_device_info,
+                                 int graph_capture_depth) {
+  // Ignore run-level profiling request if session-level profiling is already enabled.
+  std::optional<profiling::Profiler> run_profiler;
+  if (run_options.enable_profiling && session_profiler_.IsEnabled()) {
+    LOGS(*session_logger_, WARNING) << "RunOptions requests profiling but session-level profiling is already enabled. "
+                                       "Ignoring run-level profiling request.";
+  }
+  if (run_options.enable_profiling && !session_profiler_.IsEnabled()) {
+    run_profiler.emplace();
+    run_profiler->Initialize(session_logger_);
+    std::basic_string<ORTCHAR_T> profile_file = GenerateProfileFilePath(run_options.profile_file_prefix);
+    for (auto& ep : execution_providers_) {
+      run_profiler->AddEpProfilers(ep->GetProfiler());
+    }
+    run_profiler->StartProfiling(profile_file);
+  }
+
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
+  } else if (run_profiler) {
+    tp = run_profiler->Start();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -2957,11 +3095,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
-  // Check if this Run() is simply going to be a CUDA Graph replay.
+  // Check if this Run() can skip normal execution and replay a previously captured graph.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "
                                  << cached_execution_provider_for_graph_replay_.Type()
-                                 << " CUDA Graph for this model with tag: " << run_options.run_tag
+                                 << " graph for this model with tag: " << run_options.run_tag
                                  << " with graph annotation id: " << graph_annotation_id;
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart(session_id_);
@@ -3050,6 +3188,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
 #ifdef ORT_ENABLE_STREAM
       DeviceStreamCollectionHolder device_stream_collection_holder(session_state_.get());
+      if (run_options.sync_stream != nullptr) {
+        if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+          // XXX: Not tested in Parallel execution mode and disabled at this time.
+          LOGS(*session_logger_, WARNING) << "Setting sync stream is not supported in parallel execution mode.";
+        } else {
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              device_stream_collection_holder.p_->SetStreamOverride(run_options.sync_stream));
+        }
+      }
 #endif
 
       if (retval.IsOK()) {
@@ -3059,7 +3206,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
                                      device_stream_collection_holder,
 #endif
-                                     run_logger);
+                                     run_logger,
+                                     run_profiler ? &*run_profiler : nullptr);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3069,9 +3217,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(status);
       }
 
-      // Move stream cleanup from ExecuteGraph to here for cuda graph capture.
-      // Cleanup will call cudaStreamSyncronize, which is not allowed for graph capture.
-      // Note that graph capture ends when we call xp->OnRunEnd() in the above code so it is safe here.
+      if (run_profiler) {
+        run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+        run_profiler->EndProfiling();
+      }
+
+      // Move stream cleanup from ExecuteGraph to here for graph capture.
+      // Cleanup may synchronize provider streams, which is not allowed while an
+      // EP is still inside its capture window.
+      // Graph capture, if any, ends when xp->OnRunEnd() returns above, so it is safe here.
 #ifdef ORT_ENABLE_STREAM
       DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
       if (device_stream_collection) {
@@ -3110,24 +3264,31 @@ Status InferenceSession::Run(const RunOptions& run_options,
     break;
   }
 
-  // time to send telemetry?
-  {
-    // Adding lock_guard here to ensure that telemetry updates are thread-safe.
-    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
-    ++telemetry_.total_runs_since_last_;
-    telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
-    telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
+  // Only include successful inferences in batch since failed inferences can skew the metric
+  if (retval.IsOK()) {
+    // time to send telemetry?
+    {
+      // Adding lock_guard here to ensure that telemetry updates are thread-safe.
+      std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+      ++telemetry_.total_runs_since_last_;
+      telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+      telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
-      // send the telemetry
-      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                                telemetry_.total_run_duration_since_last_,
-                                                telemetry_.duration_per_batch_size_);
-      // reset counters
-      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-      telemetry_.total_runs_since_last_ = 0;
-      telemetry_.total_run_duration_since_last_ = 0;
-      telemetry_.duration_per_batch_size_.clear();
+      // Emit RuntimePerf on scheduled interval
+      if ((TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_)) {
+        env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                                  telemetry_.total_run_duration_since_last_,
+                                                  telemetry_.duration_per_batch_size_);
+        // reset counters
+        telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+        telemetry_.total_runs_since_last_ = 0;
+        telemetry_.total_run_duration_since_last_ = 0;
+        telemetry_.duration_per_batch_size_.clear();
+
+        // Double the interval, capping at kRuntimePerfMaxInterval
+        telemetry_.runtime_perf_interval_ = std::min(telemetry_.runtime_perf_interval_ * 2,
+                                                     Telemetry::kRuntimePerfMaxInterval);
+      }
     }
   }
 
@@ -3152,16 +3313,26 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   reset_saturation_count();
 
-  // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
-  // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
-  // so that users just need one session run to capture the graph.
-  // N is defined in min_num_runs_before_cuda_graph_capture_ for CUDA EP,
-  // and the value could be different for other EP.
+  // Some EPs require multiple internal runs before replay is ready: warm-up
+  // runs for allocations/setup followed by one run that captures the graph.
+  // Retry within the same user-visible Session::Run() call until the EP reports
+  // that capture has completed, subject to kMaxGraphCaptureRunAttempts.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
+    if (graph_capture_depth + 1 >= kMaxGraphCaptureRunAttempts) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Graph capture did not complete after ", kMaxGraphCaptureRunAttempts,
+                             " internal runs for ", cached_execution_provider_for_graph_replay_.Type(),
+                             ". The execution provider may not support ORT-managed graph capture/replay.");
+    }
+
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
-    ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+    // Disable run-level profiling for internal runs used for memory allocation or graph capture
+    RunOptions recursive_run_options{run_options};
+    recursive_run_options.enable_profiling = false;
+    ORT_RETURN_IF_ERROR(RunImpl(recursive_run_options, feed_names, feeds, output_names, p_fetches,
+                                p_fetches_device_info, graph_capture_depth + 1));
   }
 
   // Log runtime error telemetry if the return value is not OK
@@ -3681,12 +3852,12 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
       ++iter;
     }
 
-    // Shrink if it is a BFCArena allocator
-    // Iterate through the registered allocators as we could have multiple allocators for the device+type
-    // if they differ by vendor_id.
+    // Shrink if it is an arena allocator.
+    // Both in-tree arenas (BFCArena) and plugin EP arenas (IArenaImplWrappingOrtAllocator)
+    // inherit IArena, so AsArena() returns non-null for both.
     for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
       if (device.Type() == device_type && device.MemType() == memory_type && device.Id() == device_id) {
-        if (allocator_ptr->Info().alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+        if (allocator_ptr->AsArena() != nullptr) {
           arenas_to_shrink.push_back(allocator_ptr);
           break;
         }
@@ -3705,7 +3876,13 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<IArena*>(alloc.get())->Shrink();
+    auto* arena = alloc->AsArena();
+    if (!arena) {
+      LOGS(*session_logger_, WARNING) << "Allocator is not an IArena, skipping Shrink: " << alloc->Info().ToString();
+      continue;
+    }
+
+    auto status = arena->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()
@@ -3948,7 +4125,7 @@ void InferenceSession::LogAllSessions() {
     if (nullptr != model) {
       onnxruntime::Graph& graph = model->MainGraph();
       std::filesystem::path model_path = graph.ModelPath();
-      std::string model_file_name = model_path.filename().string();
+      std::string model_file_name = PathToUTF8String(model_path.filename().native());
       bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
       std::string model_weight_type = session->GetWeightDataType();
       std::string model_graph_hash = session->GetGraphHash();

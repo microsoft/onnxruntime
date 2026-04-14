@@ -97,10 +97,21 @@ class ComputeContextBase {
   }
 
   //
+  // Get the multi rotary cache concatenation offset (0 = disabled).
+  //
+  inline uint32_t MultiRotaryCacheConcatOffset() const {
+    return ep_.MultiRotaryCacheConcatOffset();
+  }
+
+  //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    return ep_.GetEpLogger();
+#else
     return *ep_.GetLogger();
+#endif
   }
 
   //
@@ -199,6 +210,16 @@ class ComputeContext final : public ComputeContextBase {
   //
   inline Status CopyTensor(const Tensor& src, Tensor& dst) {
     return op_kernel_.Info().GetDataTransferManager().CopyTensor(src, dst);
+  }
+
+  //
+  // Fill a GPU tensor with zeros.
+  //
+  inline void FillZero(Tensor& dst) {
+    webgpu_context_.EndComputePass();
+    auto& command_encoder = webgpu_context_.GetCommandEncoder();
+    WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
+    command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
   }
 
  private:

@@ -267,7 +267,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                    use_flash_attention,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
-  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, this->GetComputeStream(context));
 
   PackedMultiHeadAttentionData<CudaT> data;
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());

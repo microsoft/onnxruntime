@@ -14,6 +14,38 @@ Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size");
+  if (Inputs()[0].var_type == ProgramVariableDataType::Boolx4) {
+    const auto& input_indices = shader.AddIndices("input_indices");
+    const auto& output_indices = shader.AddIndices("output_indices");
+    if (input_last_dim_divisible_by_4_) {
+      // The last dims of input shape and output shape are all divisible by 4.
+      shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
+                                << "  let input_offset = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
+                                << output.SetByOffset("global_idx", input.GetByOffset("input_offset / 4"));
+    } else if (output_last_dim_divisible_by_4_) {
+      // The last dim of output shape is divisible by 4, and the last dim of input shape is 1.
+      shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
+                                << "  let input_offset = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
+                                << "  let value = vec4<bool>(" << input.GetByOffset("input_offset / 4") << "[input_offset % 4]);\n"
+                                << "  " << output.SetByOffset("global_idx", "value");
+    } else {
+      shader.MainFunctionBody() << "  var output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
+                                << "  let input_offset_0 = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
+                                << "  output_indices = " << output_indices.OffsetToIndices("global_idx * 4 + 1") << ";\n"
+                                << "  let input_offset_1 = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
+                                << "  output_indices = " << output_indices.OffsetToIndices("global_idx * 4 + 2") << ";\n"
+                                << "  let input_offset_2 = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
+                                << "  output_indices = " << output_indices.OffsetToIndices("global_idx * 4 + 3") << ";\n"
+                                << "  let input_offset_3 = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
+                                << "  let value = vec4<bool>("
+                                << input.GetByOffset("input_offset_0 / 4") << "[input_offset_0 % 4], "
+                                << input.GetByOffset("input_offset_1 / 4") << "[input_offset_1 % 4], "
+                                << input.GetByOffset("input_offset_2 / 4") << "[input_offset_2 % 4], "
+                                << input.GetByOffset("input_offset_3 / 4") << "[input_offset_3 % 4]);\n"
+                                << output.SetByOffset("global_idx", "value");
+    }
+    return Status::OK();
+  }
   if (input.NumComponents() != output.NumComponents()) {
     const auto& output_indices = shader.AddIndices("output_indices");
     shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
@@ -38,42 +70,85 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), input_shape, output_dims, output_shape));
 
   auto* output_tensor = context.Output(0, output_shape);
-  const int components_i = input_shape.IsScalar() ? 1 : input_shape[input_shape.NumDimensions() - 1] % 4 == 0 ? 4
-                                                                                                              : 1;
-  const int components_o = output_shape.IsScalar() ? 1 : output_shape[output_shape.NumDimensions() - 1] % 4 == 0 ? 4
-                                                                                                                 : 1;
-  uint32_t data_size = onnxruntime::narrow<uint32_t>(output_shape.Size() / components_o);
+
+  bool is_int64 = input_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
+  // Check if either input is boolean
+  // For boolean inputs, we need to handle them differently in the shader. This is because `bool` is not a valid type in
+  // storage buffer. We have to use a `u32` to represent 4 boolean values.
+  bool is_bool = input_tensor->DataType() == DataTypeImpl::GetType<bool>();
+  bool input_last_dim_divisible_by_4 = (!(input_shape.IsScalar() || is_int64)) && (input_shape[input_shape.NumDimensions() - 1] % 4 == 0);
+  bool output_last_dim_divisible_by_4 = (!(output_shape.IsScalar() || is_int64)) && (output_shape[output_shape.NumDimensions() - 1] % 4 == 0);
+  const int components_i = (is_bool || input_last_dim_divisible_by_4) ? 4 : 1;
+  const int components_o = (is_bool || output_last_dim_divisible_by_4) ? 4 : 1;
+  uint32_t data_size = onnxruntime::narrow<uint32_t>((output_shape.Size() + components_o - 1) / components_o);
   if (data_size == 0) {
     return Status::OK();
   }
-  ExpandProgram program{};
-  program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_i}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_o}})
-      .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+  ExpandProgram program{input_last_dim_divisible_by_4, output_last_dim_divisible_by_4};
+  program.SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {data_size},
       });
-  if (components_i != components_o) {
+  if (is_bool) {
+    program.CacheHint(std::to_string(static_cast<int>(input_last_dim_divisible_by_4)), std::to_string(static_cast<int>(output_last_dim_divisible_by_4)))
+        .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, components_i}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, {data_size}, components_o}})
+        .AddIndices(std::move(input_shape));
+  } else {
+    program.AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_i}})
+        .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_o}});
+  }
+  if (is_bool || components_i != components_o) {
     program.AddIndices(std::move(output_shape));
   }
   return context.RunProgram(program);
 }
 
-#define WEBGPU_EXPAND_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS, TYPE)                    \
-  ONNX_OPERATOR_KERNEL_EX(                                                            \
-      OP_TYPE, kOnnxDomain, VERSION, kWebGpuExecutionProvider,                        \
-      KernelDefBuilder().TypeConstraint("T", TYPE).InputMemoryType(OrtMemTypeCPU, 1), \
-      KERNEL_CLASS);
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateExpandVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
-#define WEBGPU_EXPAND_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                          \
-      OP_TYPE, kOnnxDomain, VERSION_FROM, VERSION_TO, kWebGpuExecutionProvider,               \
-      KernelDefBuilder().TypeConstraint("T", TYPE).InputMemoryType(OrtMemTypeCPU, 1),         \
-      KERNEL_CLASS);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Expand>(info);
+    return Status::OK();
+  };
 
-WEBGPU_EXPAND_VERSIONED_KERNEL(Expand, 8, 12, Expand, WebGpuSupportedNumberTypes())
-WEBGPU_EXPAND_KERNEL(Expand, 13, Expand, WebGpuSupportedNumberTypes())
+  return {
+      KernelDefBuilder()
+          .SetName("Expand")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(StartVersion, EndVersion)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
+}
+
+template <int SinceVersion>
+KernelCreateInfo CreateExpandKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
+
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Expand>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Expand")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(SinceVersion)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
+}
+
+// Explicit template instantiations
+template KernelCreateInfo CreateExpandVersionedKernelInfo<8, 12>(bool);
+template KernelCreateInfo CreateExpandKernelInfo<13>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

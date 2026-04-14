@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/providers/webgpu/nn/conv.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
+#include "core/providers/webgpu/nn/conv3d_naive.h"
 #include "core/providers/webgpu/nn/im2col_matmul.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -80,8 +81,42 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   std::transform(local_dilations.begin(), local_dilations.end(), std::back_inserter(dilations), transform_dim);
   auto rank = input_shape.NumDimensions();
   const InlinedVector<size_t> perm = {2, 3, 1, 0};
-  if (rank > 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv1d and Conv2d are supported.");
+  if (rank > 5) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv1d, Conv2d, and Conv3d are supported.");
+  } else if (rank == 5) {
+    // Conv3D - use naive per-element shader (matching JS implementation)
+    if (conv_attrs_.group != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Conv3D does not support grouped convolution (group=", conv_attrs_.group, ").");
+    }
+    const auto output_size = static_cast<uint32_t>(output_shape.Size());
+    const auto kernel_depth = static_cast<uint32_t>(kernel_shape[2]);
+    const auto kernel_height = static_cast<uint32_t>(kernel_shape[3]);
+    const auto kernel_width = static_cast<uint32_t>(kernel_shape[4]);
+    // pads: head padding values for each spatial dim (front, top, left)
+    std::vector<uint32_t> pads_3d{pads[0], pads[1], pads[2]};
+    // Extract spatial dims and channels for explicit uniforms
+    const auto x_depth = static_cast<uint32_t>(input_shape[is_channels_last ? 1 : 2]);
+    const auto x_height = static_cast<uint32_t>(input_shape[is_channels_last ? 2 : 3]);
+    const auto x_width = static_cast<uint32_t>(input_shape[is_channels_last ? 3 : 4]);
+    const auto x_channels = static_cast<uint32_t>(input_shape[is_channels_last ? 4 : 1]);
+    Conv3DNaiveProgram program(activation_, has_bias, is_channels_last);
+    program.CacheHint(activation_.ToString(), std::to_string(is_channels_last))
+        .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, 1})
+        .AddInput({kernel, ProgramTensorMetadataDependency::TypeAndRank, kernel_shape, 1})
+        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, 1})
+        .AddUniformVariables({{output_size},
+                              {std::vector<uint32_t>{kernel_depth, kernel_height, kernel_width}},
+                              {pads_3d},
+                              {strides},
+                              {dilations},
+                              {std::vector<uint32_t>{x_depth, x_height, x_width}},
+                              {x_channels}})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+    if (has_bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, bias->Shape(), 1});
+    }
+    return context.RunProgram(program);
   } else if (rank == 4) {
     // Conv2D
   } else if (rank == 3) {
@@ -119,16 +154,16 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto output_height = output_shape_vector[is_channels_last ? 1 : 2];
   const auto output_width = output_shape_vector[is_channels_last ? 2 : 3];
 
-  uint32_t auto_pad_adjust = conv_attrs_.auto_pad == AutoPadType::SAME_LOWER ? 1 : 0;
-  auto pad0 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[0] : (pads[0] + pads[2] + auto_pad_adjust) / 2;
-  auto pad1 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
-  std::vector<uint32_t> updated_pads{pad0, pad1};
+  // pads[0] and pads[1] already contain the correct head (beginning) padding values
+  // computed by InferPadsAndOutputShape() which handles auto_pad correctly.
+  // For SAME_UPPER: head gets less padding (pad_needed / 2)
+  // For SAME_LOWER: head gets more padding ((pad_needed + 1) / 2)
+  std::vector<uint32_t> updated_pads{pads[0], pads[1]};
 
   if (CanApplyIm2ColMatMulProgram(context,
                                   is_channels_last,
                                   activation_.activation_kind_ != ActivationKind::None,
                                   kernel_shape,
-                                  conv_attrs_.auto_pad,
                                   onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
     return ApplyIm2ColMatMulProgram(context,
                                     is_channels_last,
@@ -299,8 +334,7 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   // kernel directly from context.Input(1), ignoring prepacked weights.
   // Skip prepacking when this path will be used at runtime.
   if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_.activation_kind_ != ActivationKind::None,
-                                  kernel_shape, conv_attrs_.auto_pad,
-                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
+                                  kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
     return Status::OK();
   }
 

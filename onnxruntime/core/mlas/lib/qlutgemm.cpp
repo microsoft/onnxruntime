@@ -22,36 +22,83 @@ Abstract:
 
 #include <cassert>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
+#include <mutex>
 #include <unordered_map>
 
-/** T-MAC GEMM kernel Config */
-static std::unordered_map<std::string, struct MlasTMACKernelParams> tmac_kernel_configs;
+/** T-MAC GEMM kernel config key - struct-based for type safety and performance */
+struct TMACConfigKey {
+    size_t M;
+    size_t N;
+    size_t nbits;
+    size_t block_size;
+    bool has_zero_point;
 
-const MlasTMACKernelParams&
+    bool operator==(const TMACConfigKey& other) const {
+        return M == other.M && N == other.N && nbits == other.nbits &&
+               block_size == other.block_size && has_zero_point == other.has_zero_point;
+    }
+};
+
+struct TMACConfigKeyHash {
+    size_t operator()(const TMACConfigKey& k) const {
+        // Combine hash values using a simple mixing function
+        size_t h = std::hash<size_t>{}(k.M);
+        h ^= std::hash<size_t>{}(k.N) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<size_t>{}(k.nbits) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<size_t>{}(k.block_size) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<bool>{}(k.has_zero_point) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+/**
+ * Global cache for T-MAC kernel parameters, indexed by configuration.
+ * This map and its associated mutex ensure thread-safe parameter management
+ * across concurrent MLAS calls.
+ */
+static std::unordered_map<TMACConfigKey, MlasTMACKernelParams, TMACConfigKeyHash> tmac_kernel_configs;
+static std::mutex tmac_kernel_configs_mutex;
+
+static std::string
+GetTmacKey(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
+{
+    // Generate a unique cache key based on the GEMM and quantization configuration.
+    return std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" +
+           std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
+}
+
+MlasTMACKernelParams
 MlasGetLutGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
 {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
-    if (tmac_kernel_configs.count(key)) {
-        return tmac_kernel_configs[key];
+    TMACConfigKey key{M, N, nbits, block_size, has_zero_point};
+    std::lock_guard<std::mutex> lock(tmac_kernel_configs_mutex);
+    auto it = tmac_kernel_configs.find(key);
+    if (it != tmac_kernel_configs.end()) {
+        return it->second;
     }
-    MLAS_THROW_EX(std::runtime_error, "T-MAC kernel parameters not initialized");
+    MLAS_THROW_EX(std::runtime_error, "T-MAC kernel parameters not initialized for key: " + GetTmacKey(M, N, nbits, block_size, has_zero_point));
 }
 
 void MLASCALL
 MlasClearLutGemmKernelConfig()
 {
+    std::lock_guard<std::mutex> lock(tmac_kernel_configs_mutex);
     tmac_kernel_configs.clear();
 }
 
 void MLASCALL
 MlasInitLutGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
 {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
-    if (tmac_kernel_configs.count(key)) {
-        return;
+    TMACConfigKey key{M, N, nbits, block_size, has_zero_point};
+    {
+        std::lock_guard<std::mutex> lock(tmac_kernel_configs_mutex);
+        if (tmac_kernel_configs.find(key) != tmac_kernel_configs.end()) {
+            return;
+        }
     }
 
     MlasTMACKernelParams params;
@@ -121,7 +168,10 @@ MlasInitLutGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
     params.has_zero_point = has_zero_point;
     params.one_scale = false;  // TODO(vraspar): support one scale case for bitnet
 
-    tmac_kernel_configs[key] = params;
+    {
+        std::lock_guard<std::mutex> lock(tmac_kernel_configs_mutex);
+        tmac_kernel_configs[key] = params;
+    }
     return;
 }
 
@@ -163,111 +213,16 @@ LutGemmPackQuantBData(
     const size_t bm = tmac_params.bm;
     const size_t kfactor = tmac_params.kfactor;
 
-    assert(BlkLen % g == 0);
-    assert((BlkLen / g) % kfactor == 0);
+    // LUT GEMM requires a valid LUT dispatch implementation, so dispatch must be available
+    const auto* Dispatch = GetMlasPlatform().LutGenKernel;
+    if (Dispatch == nullptr || Dispatch->PackQuantBData == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "PackQuantBData requires LUT GEMM dispatch support");
+    }
 
-    const size_t mgroup = ngroups_per_elem * simd_n_in;  // 32
-    assert(bm % mgroup == 0);
-    assert(bm % bits == 0);
-
-    std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * (K / g)]);
-    memset(buf.get(), 0, N * bits * (K / g));
-
-    const size_t Iterations = N;  // we parallelize over N, TODO:: tune if needed
-
-    MlasTrySimpleParallel(
-        ThreadPool, Iterations,
-        [&](ptrdiff_t tid) {
-            size_t im = static_cast<size_t>(tid);
-            for (size_t ik = 0; ik < K; ++ik) {
-                size_t idx = (im * K + ik);
-                size_t num_elem_per_byte = 8 / bits;
-                size_t elem_idx = idx % num_elem_per_byte;
-
-                uint8_t v = ((const uint8_t*)QuantBDataBegin)[idx / num_elem_per_byte] >> (elem_idx * bits);
-
-                for (size_t ib = 0; ib < bits; ++ib) {
-                    size_t new_ik = ik / g;
-                    size_t shft_left = ik % g;
-                    buf[im * bits * K / g + ib * K / g + new_ik] += static_cast<uint8_t>(((v >> ib) & 1) << shft_left);
-                }
-            }
-        }
-    );
-
-    // Now buf contains the bit planes grouped by g along K
-    // Next, we need to do a multi-reshape/transpose into the final layout
-
-    const size_t c0_fac2 = K / g;
-    const size_t c0_fac1 = simd_n_out * c0_fac2;
-    const size_t c0_fac0 = bits * c0_fac1;
-
-    const size_t c1_nb2 = K / g;
-    const size_t c1_nb1 = simd_n_in * c1_nb2;
-    const size_t c1_nb0 = ngroups_per_elem * c1_nb1;
-    const size_t c1_fac2 = K / g;
-    const size_t c1_fac1 = ngroups_per_elem * c1_fac2;
-    const size_t c1_fac0 = simd_n_in * c1_fac1;
-
-    const size_t c2_nb4 = kfactor;
-    const size_t c2_nb3 = K / g / kfactor * c2_nb4;
-    const size_t c2_nb2 = ngroups_per_elem * c2_nb3;
-    const size_t c2_nb1 = simd_n_in * c2_nb2;
-    const size_t c2_nb0 = bm / mgroup * c2_nb1;
-    const size_t c2_fac3 = simd_n_in * ngroups_per_elem;
-    const size_t c2_fac2 = kfactor * c2_fac3;
-    const size_t c2_fac1 = bm / mgroup * c2_fac2;
-    const size_t c2_fac0 = K / g / kfactor * c2_fac1;
-
-    const size_t PackedQuantBDataSize = (N * bits) * (K / g / ngroups_per_elem);
-    memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);  // TODO: is this needed?
-
-    MlasTrySimpleParallel(
-        ThreadPool, Iterations,
-        [&](ptrdiff_t tid) {
-            size_t im = static_cast<size_t>(tid);
-            for (size_t ib = 0; ib < bits; ib++) {
-                for (size_t ik = 0; ik < K / g; ik++) {
-                    // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
-                    size_t new_im = im / simd_n_out;
-                    size_t new_isno = im % simd_n_out;
-                    size_t new_ib = ib;
-                    size_t new_ik = ik;
-                    size_t new_idx = new_im * c0_fac0 + new_ib * c0_fac1 + new_isno * c0_fac2 + new_ik;
-
-                    // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
-                    new_im = new_idx / c1_nb0;
-                    size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
-                    size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
-                    new_ik = (new_idx % c1_nb2);
-                    new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
-
-                    // #             0        1             2             3                 4                  5
-                    // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
-                    new_im = new_idx / c2_nb0;
-                    size_t new_ibm = (new_idx % c2_nb0) / c2_nb1;
-                    new_isni = (new_idx % c2_nb1) / c2_nb2;
-                    new_ing = (new_idx % c2_nb2) / c2_nb3;
-                    new_ik = (new_idx % c2_nb3) / c2_nb4;
-                    size_t new_ikf = (new_idx % c2_nb4);
-                    new_idx = new_im * c2_fac0 +
-                              new_ik * c2_fac1 +
-                              new_ibm * c2_fac2 +
-                              new_ikf * c2_fac3 +
-                              new_isni * ngroups_per_elem +
-                              new_ing;
-                    new_idx = new_idx / ngroups_per_elem;
-                    size_t buf_idx = im * bits * K / g + ib * K / g + ik;
-                    uint8_t buf_val = buf[buf_idx];
-
-                    // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
-                    PackedQuantBDataBegin[new_idx] = static_cast<std::byte>(
-                        static_cast<unsigned>(PackedQuantBDataBegin[new_idx]) +
-                        (buf_val << (new_ing * g))
-                    );
-                }
-            }
-        }
+    Dispatch->PackQuantBData(
+        N, K, bits, g, ngroups_per_elem,
+        simd_n_in, simd_n_out, bm, kfactor,
+        QuantBDataBegin, PackedQuantBDataBegin, ThreadPool
     );
 }
 
@@ -298,67 +253,25 @@ LutPackScalesAndZeroPoints(
     bool HasZeroPoint,
     float* PackedQuantBZPBegin,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint
+    const uint8_t* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool
 )
 {
     const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
     const size_t bits = tmac_params.bits;
     const size_t simd_n_out = tmac_params.simd_n_out;
     const size_t bm = tmac_params.bm;
-    const size_t num_elem_per_byte = 8 / bits;
 
-    // ZP array is column-major packed, with per-column alignment to byte boundary
-    const size_t row_blks = K / BlkLen;  // number of blocks per column
-    const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
-
-    for (size_t im = 0; im < N; im += 1) {
-        for (size_t ik = 0; ik < K; ik += BlkLen) {
-            size_t idx = (im * K + ik) / BlkLen;  // linear block index for scale (scale is NOT packed)
-            float scale = QuantBScale[idx];
-            float zp = 0.0f;
-            if (HasZeroPoint) {
-                size_t blk_in_col = ik / BlkLen;  // block index within column
-                size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
-                size_t elem_idx = blk_in_col % num_elem_per_byte;
-                uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & ((1 << bits) - 1);
-
-                // The LUT kernel assumes weights are centered around the midpoint (2 for 2-bit).
-                // Thus, need to correct for the actual ZP relative to the midpoint.
-
-                int midpoint = 1 << (bits - 1);  // 2 for 2-bit
-                zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
-            }
-
-            // TODO(vraspar): fix when k < BlkLen and nb1 is 0
-            size_t nb1 = K / BlkLen;
-            size_t nb0 = bm / bits * nb1;
-
-            size_t new_im, new_ibm, new_ik;
-            if (nb1 == 0) {
-                new_im = 0;
-                new_ibm = 0;
-                new_ik = 0;
-
-            } else {
-                new_im = idx / nb0;
-                new_ibm = (idx % nb0) / nb1;
-                new_ik = (idx % nb1);
-            }
-
-            if (HasZeroPoint) {
-                size_t new_isimd = new_ibm % simd_n_out;
-                size_t new_idx_outer = new_im * bm / bits * K / BlkLen / simd_n_out + new_ik * bm / bits / simd_n_out + new_ibm / simd_n_out;
-                size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
-                size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
-
-                PackedQuantBZPBegin[new_idx_scale] = scale;
-                PackedQuantBZPBegin[new_idx_zero] = zp;
-            } else {
-                size_t new_idx = new_im * bm / bits * K / BlkLen + new_ik * bm / bits + new_ibm;
-                PackedQuantBZPBegin[new_idx] = scale;
-            }
-        }
+    // LUT GEMM is only available for AVX2, so dispatch must be available
+    const auto* Dispatch = GetMlasPlatform().LutGenKernel;
+    if (Dispatch == nullptr || Dispatch->PackScalesAndZeroPoints == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "PackScalesAndZeroPoints requires AVX2 dispatch");
     }
+
+    Dispatch->PackScalesAndZeroPoints(
+        N, K, bits, BlkLen, simd_n_out, bm, HasZeroPoint,
+        PackedQuantBZPBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+    );
 }
 
 // Internal helper: calculates the offset to scales in the packed buffer
@@ -418,7 +331,7 @@ MlasLutGemmPack(
     if (QuantBScale != nullptr) {
         size_t scales_offset = LutGemmPackedScalesOffset(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
         float* scales_dest = reinterpret_cast<float*>(PackedBuf + scales_offset);
-        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint);
+        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint, ThreadPool);
     }
 }
 
@@ -431,7 +344,11 @@ MlasIsLutGemmAvailable(
 )
 {
     const auto* lut_kernel = GetMlasPlatform().LutGenKernel;
-    if (lut_kernel == nullptr || lut_kernel->GenerateLUT == nullptr || lut_kernel->ComputeGemm == nullptr) {
+    if (lut_kernel == nullptr ||
+        lut_kernel->GenerateLUT == nullptr ||
+        lut_kernel->ComputeGemm == nullptr ||
+        lut_kernel->PackQuantBData == nullptr ||
+        lut_kernel->PackScalesAndZeroPoints == nullptr) {
         return false;
     }
 
@@ -472,16 +389,15 @@ size_t
 CalculateLutBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams& tmac_params)
 {
     MLAS_UNREFERENCED_PARAMETER(n);
-    constexpr size_t kAllockAligment = 64;
     const size_t lut_scales_size = k / tmac_params.act_group_size;
 
-    size_t wsize = k * m * 4 * sizeof(int8_t);         // 4 bytes per k element for 2-bit LUT
-    wsize += lut_scales_size * m * 2 * sizeof(float);  // scales + biases
+    // The AVX2 kernel (g=4) expects 16 entries (16 bytes) per group of 4 activations.
+    // This effectively requires 4 bytes per activation in the K dimension.
+    size_t lut_size_bytes = m * k * 4;
+    size_t scales_size_bytes = m * lut_scales_size * sizeof(float);
+    size_t biases_size_bytes = m * lut_scales_size * sizeof(float);
 
-    wsize = ((wsize - 1) / kAllockAligment + 1) * kAllockAligment;
-
-    // TODO(vrapar): add temp buffer for FP16
-    return wsize;
+    return lut_size_bytes + scales_size_bytes + biases_size_bytes + 256;  // + alignment/safety padding
 }
 
 void MLASCALL
@@ -500,7 +416,9 @@ MlasLutGemm(
     // adapted from ggml_backend_tmac_mul_mat
     const auto* Dispatch = GetMlasPlatform().LutGenKernel;
     // This should be ensured by calling MlasIsLutGemmAvailable() before MlasLutGemm()
-    assert(Dispatch && Dispatch->GenerateLUT && "TMAC not supported in this configuration.");
+    if (Dispatch == nullptr || Dispatch->GenerateLUT == nullptr || Dispatch->ComputeGemm == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "TMAC not supported in this configuration");
+    }
 
     // Calculate scales offset from packed buffer
     // TODO(vraspar): support other bitwidths
@@ -532,48 +450,56 @@ MlasLutGemm(
     // n_tiles_num = m * bits / bm;
 
     // TODO(vraspar): support other bitwidths
+    // For T-MAC, kernel properties (bm, n_tiles_num) are primarily driven by the number of output features (N).
+    // Initialization during packing (LutGemmPackQuantBDataSize) uses N as the major dimension,
+    // so we must match that here to ensure consistent weight tiling.
+    MlasInitLutGemmKernelConfig(N, K, 2, BlkLen, HasZeroPoint);
     const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, 2, BlkLen, HasZeroPoint);
     const size_t lut_scales_size = K / tmac_params.act_group_size;
+    const size_t lut_size_bytes = static_cast<size_t>(M) * static_cast<size_t>(K) * 4;
     size_t lut_buffer_size = CalculateLutBufferSize(N, K, M, tmac_params);
 
     // make buffer of lut_buffer_size bytes
     // TODO(vraspar): other way to do it
     auto lut_buffer = std::make_unique<int8_t[]>(lut_buffer_size);
+    memset(lut_buffer.get(), 0, lut_buffer_size);
 
     int8_t* qlut = reinterpret_cast<int8_t*>(lut_buffer.get());
-    float* lut_scales = reinterpret_cast<float*>(qlut + K * M * 4);                  // after lut
-    float* lut_biases = reinterpret_cast<float*>(lut_scales + lut_scales_size * M);  // after scales
+    float* lut_scales = reinterpret_cast<float*>(qlut + lut_size_bytes);                  // after lut
+    float* lut_biases = reinterpret_cast<float*>(lut_scales + lut_scales_size * M);       // after scales
 
     const auto* a_float = reinterpret_cast<const float*>(A);  // Activation data
 
     // const int num_groups = static_cast<int>(K / BlkLen);
 
-    // Parallelize over M (batch dimension)
-    // Each iteration processes one row of the activation matrix
+    // Iterate over M (batch dimension)
+    // Each iteration processes one row of the activation matrix.
+    // NOTE: This loop is intentionally serialized. Previous attempts to parallelize
+    // using MlasTrySimpleParallel caused flaky test failures (race conditions)
+    // when M > 1 (e.g., Batch32 case). Since GenerateLUT is lightweight,
+    // serial execution ensures correctness with negligible performance impact.
     // TODO(vraspar): Ideally we have to do block parallelism here
 
-    MlasTrySimpleParallel(
-        threadpool,
-        static_cast<size_t>(M),
-        [&](ptrdiff_t ine11) {
-            const size_t row_offset = static_cast<size_t>(ine11) * K;
-            const size_t lut_offset = static_cast<size_t>(ine11) * K * 4;  // 4 bytes per K element for 2-bit LUT
-            const size_t scale_bias_offset = static_cast<size_t>(ine11) * lut_scales_size;
+    for (size_t ine11 = 0; ine11 < static_cast<size_t>(M); ine11++) {
+        const size_t row_offset = ine11 * K;
+        // Call the LUT generation kernel for this activation row.
+        // We use a 4-byte stride (per activation) for the LUT entries to satisfy
+        // the memory layout requirements of the computation kernel.
+        const size_t lut_offset = ine11 * K * 4;
+        const size_t scale_bias_offset = ine11 * lut_scales_size;
 
-            // Call the dispatch function for this row
-            // ggml_tmac_mul_mat_task_init
-            Dispatch->GenerateLUT(
-                const_cast<float*>(a_float + row_offset),  // Input activation for this row
-                qlut + lut_offset,                         // Output LUT for this row
-                lut_scales + scale_bias_offset,            // Scales for this row
-                lut_biases + scale_bias_offset,            // Biases for this row
-                M,
-                K,
-                N,
-                tmac_params.act_group_size
-            );
-        }
-    );
+        Dispatch->GenerateLUT(
+            const_cast<float*>(a_float + row_offset),  // Input activation for this row
+            qlut + lut_offset,                         // Output LUT for this row
+            lut_scales + scale_bias_offset,            // Scales for this row
+            lut_biases + scale_bias_offset,            // Biases for this row
+            M,
+            K,
+            N,
+            tmac_params.act_group_size,
+            tmac_params.act_group_size * 4
+        );
+    }
 
     // all relevant LUT's have been generated
     // equivalent of lut_mul_mat's ggml_backend_tmac_mul_mat function ggml_barrier line
@@ -620,10 +546,8 @@ MlasLutGemm(
     size_t scales_size_per_tile = 0;
 
     if (scales_size_total % n_tiles_num != 0) {
-        // Sanity: scales should partition evenly across tiles. If they don't, choose floor division
-        // and document that callers must layout scales accordingly.
-        // Prefer to error loudly in debug builds.
-        fprintf(stderr, "Warning: scales_size_total=%zu is not divisible by n_tiles_num=%zu; using floor division.\n", scales_size_total, n_tiles_num);
+        // Scales must partition evenly across tiles. Callers must ensure proper layout.
+        MLAS_THROW_EX(std::runtime_error, "scales_size_total must be divisible by n_tiles_num");
     }
     scales_size_per_tile = scales_size_total / n_tiles_num;
 
@@ -657,15 +581,17 @@ MlasLutGemm(
 
                 // Process all batch items in this chunk
                 for (size_t ine11 = ir1_start; ine11 < ir1_end; ine11++) {
-                    // Calculate LUT offsets for this batch item
+                    // Calculate LUT offsets with 4-byte stride (per activation) for consistent access.
                     const size_t qlut_offset = K * ine11 * 4;
                     const size_t lut_scales_offset = lut_scales_size * ine11;
 
                     // Calculate output offset
                     const size_t dst_offset = OutputRows * ine11 + ichunk0 * ChunkSize0;
 
-                    // Call the dispatch function to compute this tile
-                    // Note M and N are swapped in TMAC terminology
+                    // Call the dispatch function to compute this tile.
+                    // We pass one batch item at a time (M=1) and ChunkSize0 output features.
+                    // TotalN is passed specifically to allow the kernel to find the correct
+                    // parameters (bm, tiles) used during weight packing.
                     Dispatch->ComputeGemm(
                         packed_weights + w_offset,       // Weight tile
                         QuantBScale + scales_offset,     // Weight scales for this tile
@@ -674,8 +600,9 @@ MlasLutGemm(
                         lut_biases + lut_scales_offset,  // LUT biases
                         act_output + dst_offset,         // Output location
                         static_cast<int>(K),             // K dimension
-                        static_cast<int>(N),             // N dimension
-                        static_cast<int>(1),             // M dimension (processing one batch item at a time)
+                        static_cast<int>(1),             // M dimension (batch size = 1)
+                        static_cast<int>(ir0_end - ir0_start), // N dimension (output features in chunk)
+                        static_cast<int>(N),             // TotalN (total output features in weights)
                         BlkLen,                          // Weight quantization group size
                         HasZeroPoint                     // Whether zero points are used
                     );

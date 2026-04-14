@@ -15,6 +15,8 @@
 #include "core/providers/cpu/controlflow/loop.h"
 #include "core/providers/cpu/controlflow/scan.h"
 #include "core/providers/cpu/math/einsum.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_typed_compute_processor.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
 #include "core/providers/cpu/object_detection/non_max_suppression.h"
 #include "core/providers/cpu/tensor/concatbase.h"
 #include "core/providers/cpu/tensor/padbase.h"
@@ -579,9 +581,11 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
+// Inlined rather than delegated through g_host_cpu because ValidateShapes is
+// pure shape arithmetic with no framework dependencies.
 Status ScatterND::ValidateShapes(const TensorShape& input_shape,
                                  const TensorShape& indice_shape,
-                                 const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
+                                 const TensorShape& update_shape) { return scatter_nd_internal::ValidateShapes(input_shape, indice_shape, update_shape); }
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
   return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape);
@@ -602,11 +606,28 @@ PhiloxGenerator& PhiloxGenerator::Default() { return g_host->PhiloxGenerator__De
 Status Einsum::Compute(OpKernelContext* context) const { return g_host_cpu.Einsum__Compute(this, context); }
 
 template <>
-std::unique_ptr<EinsumTypedComputeProcessor<float>> EinsumTypedComputeProcessor<float>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_float__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+Status EinsumTypedComputeProcessor<float>::Run() {
+  return g_host_cpu.EinsumTypedComputeProcessor_float_Compute(
+      context_, allocator_, tp_, mlas_backend_config_, einsum_compute_preprocessor_, einsum_ep_assets_,
+      device_transpose_func_, device_matmul_func_, device_reduce_sum_func_,
+      device_data_copy_func_, device_zero_buffer_func_, device_create_tensor_func_);
+}
+
 template <>
-std::unique_ptr<EinsumTypedComputeProcessor<double>> EinsumTypedComputeProcessor<double>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_double__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+Status EinsumTypedComputeProcessor<double>::Run() {
+  return g_host_cpu.EinsumTypedComputeProcessor_double_Compute(
+      context_, allocator_, tp_, mlas_backend_config_, einsum_compute_preprocessor_, einsum_ep_assets_,
+      device_transpose_func_, device_matmul_func_, device_reduce_sum_func_,
+      device_data_copy_func_, device_zero_buffer_func_, device_create_tensor_func_);
+}
+
 template <>
-std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProcessor<MLFloat16>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_MLFloat16__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+Status EinsumTypedComputeProcessor<MLFloat16>::Run() {
+  return g_host_cpu.EinsumTypedComputeProcessor_MLFloat16_Compute(
+      context_, allocator_, tp_, mlas_backend_config_, einsum_compute_preprocessor_, einsum_ep_assets_,
+      device_transpose_func_, device_matmul_func_, device_reduce_sum_func_,
+      device_data_copy_func_, device_zero_buffer_func_, device_create_tensor_func_);
+}
 
 void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
                                             InlinedVector<float>& scales) const {
@@ -652,6 +673,7 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, 
 }
 
 namespace transformers {
+#if !defined(DISABLE_GENERATION_OPS)
 void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
 
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
@@ -689,6 +711,7 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, c
                                             const SessionState& subgraph_session_state) {
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
+#endif  // !defined(DISABLE_GENERATION_OPS)
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN

@@ -84,14 +84,8 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   constexpr const size_t kStringInitialSize = 128;
   if (is_max_pool_) {
-    std::string f16_min = "f16(-65504)";
-
-    SS(f32_min_ss, kStringInitialSize);
-    f32_min_ss << "f32(" << std::numeric_limits<float>::lowest() << ")";
-    std::string f32_min = SS_GET(f32_min_ss);
-
     SS(var_decl_ss, kStringInitialSize);
-    var_decl_ss << "  var value = " << (is_float16_ ? f16_min : f32_min) << ";\n";
+    var_decl_ss << "  var value = " << (is_float16_ ? "-65504.0h" : "-3.4028234663852886e+38f") << ";\n";
     var_decl_code = SS_GET(var_decl_ss);
 
     sampling_code = "      value = max(value, x_val);\n";
@@ -255,7 +249,7 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   Tensor* Y = context.Output(0, output_shape);
 
   std::vector<uint32_t> kernel_strides(kernel_shape.size());
-  ORT_ENFORCE(kernel_shape.size() > 0, "kernel_shape must have at least one element.");
+  ORT_ENFORCE(!kernel_shape.empty(), "kernel_shape must have at least one element.");
   // Calculate the kernel element strides for each dimension in reverse order. For example:
   //   kernel_shape = [3, 2], kernel_strides = [2, 1]
   //   kernel_shape = [2, 3, 2], kernel_strides = [6, 2, 1]

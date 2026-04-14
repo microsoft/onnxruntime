@@ -92,9 +92,9 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+
 #include "core/providers/shared_library/provider_interfaces.h"
 #include "core/providers/partitioning_utils.h"
-
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/dnnl/dnnl_provider_factory_creator.h"
@@ -117,6 +117,10 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
+
+#if defined(_WIN32) && !defined(NDEBUG) && defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#include "core/platform/windows/debug_alloc.h"
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) &&                                        \
     (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
@@ -279,8 +283,13 @@ struct ProviderHostImpl : ProviderHost {
     return Status::OK();
   };
 
+#if defined(_WIN32) && !defined(NDEBUG) && defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  void* HeapAllocate(size_t size) override { return DebugHeapAlloc(size, 1); }
+  void HeapFree(void* p) override { DebugHeapFree(p); }
+#else
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
+#endif
 
   logging::Logger* LoggingManager_GetDefaultLogger() override {
     return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
@@ -1286,11 +1295,6 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::utils::HasExternalDataInMemory(ten_proto);
   }
 
-  Status Utils__ValidateExternalDataPath(const std::filesystem::path& base_path,
-                                         const std::filesystem::path& location) override {
-    return onnxruntime::utils::ValidateExternalDataPath(base_path, location);
-  }
-
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -1718,6 +1722,7 @@ struct ProviderHostImpl : ProviderHost {
   const UInt2x4* Tensor__Data_UInt2x4(const Tensor* p) override { return p->Data<UInt2x4>(); }
 
   gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) override { return p->DataAsSpan<int64_t>(); }
+  gsl::span<const int32_t> Tensor__DataAsSpan_int32(const Tensor* p) override { return p->DataAsSpan<int32_t>(); }
 
   void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) override { return p->MutableDataRaw(type); }
   const void* Tensor__DataRaw(const Tensor* p, MLDataType type) override { return p->DataRaw(type); }

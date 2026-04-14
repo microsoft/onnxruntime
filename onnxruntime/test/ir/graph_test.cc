@@ -841,9 +841,7 @@ TEST_F(GraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
   outputs[0] = &output_arg4;
   graph.AddNode("node_4", "Identity_Fake", "node 4", inputs, outputs);
 
-  inputs.resize(2);
-  inputs[0] = &output_arg4;
-  inputs[1] = &output_arg3;
+  inputs = {&output_arg4, &output_arg3};
   outputs[0] = &output_arg5;
   graph.AddNode("node_5", "Merge_Fake", "node 3", inputs, outputs);
 
@@ -1204,15 +1202,12 @@ TEST_F(GraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
   outputs.push_back(&output_arg_a);
   graph.AddNode("a", "Identity_Fake", "a", inputs, outputs);
 
-  inputs.resize(2);
-  inputs[0] = &output_arg_b;
-  inputs[1] = &output_arg_a;
+  inputs = {&output_arg_b, &output_arg_a};
   outputs[0] = &output_arg_c;
   graph.AddNode("c", "Merge_Fake", "c", inputs, outputs);
 
   // deliberately add 'b' after 'c' to mix up the inputs as well
-  inputs.resize(1);
-  inputs[0] = &input_arg_b;
+  inputs = {&input_arg_b};
   outputs[0] = &output_arg_b;
   graph.AddNode("b", "Identity_Fake", "b", inputs, outputs);
 

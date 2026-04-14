@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
@@ -163,7 +164,11 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     inputs.push_back(bias);
   }
 
-  return ComputeMatMul(&context, Activation(), inputs, output_tensor, false);
+  if (intel::CanApplyMatMulIntel(context, helper.M(), helper.N(), helper.K())) {
+    return intel::ApplyMatMulIntel(context, Activation(), inputs, output_tensor);
+  }
+
+  return ComputeMatMul(&context, Activation(), inputs, output_tensor);
 }
 
 Status ComputeMatMul(ComputeContext* context,
@@ -240,29 +245,35 @@ Status ComputeMatMul(ComputeContext* context,
   bool use_bias_in_matmul = has_bias;
   uint32_t split_dim_inner = 1;
 
-  const SplitKConfig& split_k_config = context->GetSplitKConfig();
-  const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, /*is_gemm*/ false, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
-  if (need_split_k) {
-    ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
-    ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
-    ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
+  // Current Split-K implementation relies on atomic operations, which are not deterministic.
+  if (!context->KernelContext().GetUseDeterministicCompute()) {
+    const SplitKConfig& split_k_config = context->GetSplitKConfig();
+    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
+    if (need_split_k) {
+      ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
+      ORT_ENFORCE(is_vec4, "Split-K MatMul requires vec4 packing.");
 
-    // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
-    const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, /*bias_is_scalar*/ false, output_shape_temp);
-    ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
+      if (has_bias) {
+        ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
+      }
 
-    // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
-    // `bias` again in `MatMulProgram`.
-    use_bias_in_matmul = false;
+      // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
+      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp);
+      ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
 
-    // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
-    // number of splits along `dim_inner`.
-    split_dim_inner = split_k_config.GetSplitDimInner();
-    dispatch_z = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+      // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
+      // `bias` again in `MatMulProgram`.
+      use_bias_in_matmul = false;
 
-    // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
-    // built-in functions.
-    output.is_atomic = true;
+      // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
+      // number of splits along `dim_inner`.
+      split_dim_inner = split_k_config.GetSplitDimInner();
+      dispatch_z = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+
+      // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
+      // built-in functions.
+      output.is_atomic = true;
+    }
   }
 
   MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
@@ -291,9 +302,9 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
     bool is_gemm,
     float beta,
     uint32_t output_components,
-    bool bias_is_scalar,
     const TensorShape& output_shape) {
   const bool has_bias = bias != nullptr;
+  const bool bias_is_scalar = has_bias ? bias->Shape().Size() == 1 : false;
 
   // Currently we only support GEMM and channels last format for MatMul with Split-K.
   MatMulFillBiasOrZeroBeforeSplitKProgram program(is_gemm, has_bias, output_components, bias_is_scalar);
@@ -305,8 +316,9 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   const uint32_t total_outputs = dim_a_outer * dim_b_outer;
   const uint32_t dispatch_x = (total_outputs + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
-  // To reuse `MatMulWriteFnSource()` we need to set `dim_b_outer` in components when `output_shape`
-  // is in `vec4`, while use `output_shape` directly as the output shape.
+  // To reuse `MatMulWriteFnSourceForGemm()` or `MatMulWriteFnSourceForMatMul()` we need to set
+  // `dim_b_outer` in components when `output_shape` is in `vec4`, while use `output_shape` directly
+  // as the output shape.
   const uint32_t dim_b_outer_components = narrow<uint32_t>(dim_b_outer * output_components);
   program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar)
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, static_cast<int32_t>(output_components)})

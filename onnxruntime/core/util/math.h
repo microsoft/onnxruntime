@@ -22,6 +22,8 @@
 #include "core/common/common.h"
 #endif
 
+#include "core/mlas/inc/mlas.h"
+
 #ifndef CBLAS_ENUM_DEFINED_H
 #define CBLAS_ENUM_DEFINED_H
 enum CBLAS_ORDER { CblasRowMajor = 101,
@@ -108,7 +110,8 @@ void MatMul(
     ptrdiff_t K,
     const T* A,
     const T* B,
-    T* C, concurrency::ThreadPool* threadpool);
+    T* C, concurrency::ThreadPool* threadpool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 // Decaf gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -124,7 +127,8 @@ void Gemm(
     const T* B,
     T beta,
     T* C,
-    Provider*);
+    Provider*,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 // We also provide a gemm that has explicit lda, ldb and ldc specified.
 // In most cases you probably want to use the function above, though.
@@ -143,7 +147,8 @@ void GemmEx(
     T beta,
     T* C,
     int ldc,
-    Provider*);
+    Provider*,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 // Gemv always takes in a M*N matrix A, and depending on whether we set TransA
 // to Trans, the output is:

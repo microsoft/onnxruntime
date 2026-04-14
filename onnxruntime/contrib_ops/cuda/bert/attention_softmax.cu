@@ -17,7 +17,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <cub/cub.cuh>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -165,7 +164,7 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
   // Update end position for causal.
   int end = valid_end;
   if (causal) {
-    const int end_causal = total_sequence_length - sequence_length + s + 1;
+    const int end_causal = (total_sequence_length - sequence_length) + s + 1;
     if (end_causal < end) {
       end = end_causal;
     }
@@ -241,7 +240,7 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
   // Update end position for causal.
   int end = valid_end;
   if (causal) {
-    int end_causal = total_sequence_length - sequence_length + s + 1;
+    const int end_causal = (total_sequence_length - sequence_length) + s + 1;
     if (end_causal < end) {
       end = end_causal;
     }
@@ -333,7 +332,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
                            : float(input[index]);
     float thread_data = input_data * rsqrt_head_size;
     if (causal) {
-      int from_index = total_sequence_length - sequence_length + s;  // offset in total sequence length.
+      int from_index = (total_sequence_length - sequence_length) + s;  // offset in total sequence length.
       if (i > from_index) {
         thread_data = -CUDART_INF_F;
       }
@@ -439,7 +438,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
     thread_data = float(input[index]) * rsqrt_head_size;
 
     if (causal) {
-      int from_index = total_sequence_length - sequence_length + s;  // offset in total sequence length.
+      int from_index = (total_sequence_length - sequence_length) + s;  // offset in total sequence length.
       if (threadIdx.x > from_index) {
         thread_data = -CUDART_INF_F;
       }
@@ -604,7 +603,7 @@ __global__ void MaskedSoftmaxKernelSmall(const int total_sequence_length,
   if (threadIdx.x == 0) {
     const int batch = blockIdx.y;
     start_position = mask_start != nullptr ? max(0, mask_start[batch]) : 0;
-    end_position = min(total_sequence_length, mask_end[batch]);
+    end_position = max(0, min(total_sequence_length, mask_end[batch]));
 
     // Attend to no word has same effect as attend to all words. This is added to get parity with CPU result.
     if (start_position >= end_position) {
@@ -736,7 +735,7 @@ __global__ void MaskedSoftmaxKernel(const int total_sequence_length,
   if (threadIdx.x == 0) {
     const int batch = blockIdx.y;
     start_position = mask_start != nullptr ? max(0, mask_start[batch]) : 0;
-    end_position = min(total_sequence_length, mask_end[batch]);
+    end_position = max(0, min(total_sequence_length, mask_end[batch]));
 
     // Attend to no word has same effect as attend to all words. This is added to get parity with CPU result.
     if (start_position >= end_position) {
@@ -975,7 +974,7 @@ Status ComputeSoftmaxWithRawMask(Stream* ort_stream,
 
   if (use_persistent_softmax) {
     return onnxruntime::cuda::dispatch_warpwise_softmax_forward<T, T, float, false>(
-        ort_stream,
+        stream,
         output,
         persistent_softmax_workspace,
         total_sequence_length,

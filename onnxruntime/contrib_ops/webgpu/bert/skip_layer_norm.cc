@@ -40,7 +40,8 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
           << "  let workgroup_half_idx = uniforms.hidden_size / (workgroup_size_x * 4);\n"
           << "  if (workgroup_idx >= workgroup_half_idx) {\n"
           << "    offset = (workgroup_idx - workgroup_half_idx) * workgroup_size_x + local_idx;\n"
-          << "    let skip_value = skip[offset];\n"
+          << "    let skip_offset = offset % (uniforms.skip_size / 4);\n"
+          << "    let skip_value = skip[skip_offset];\n"
           << "    let input_value = x[offset];\n"
           << "    let value = input_value + skip_value" << (hasBias_ ? " + bias[offset]" : "") << ";\n"
           << "    input_skip_bias_sum[offset] = value;\n"
@@ -56,7 +57,8 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  var cur_input_skip_bias_sum = x_value_t(0);\n"
         << "  for (var i: u32 = 0; i < uniforms.hidden_size / (workgroup_size_x * 4); i++) {\n"
         << "    let input_offset = i * workgroup_size_x + local_idx;\n"
-        << "    let skip_value = skip[input_offset];\n"
+        << "    let skip_input_offset = input_offset % (uniforms.skip_size / 4);\n"
+        << "    let skip_value = skip[skip_input_offset];\n"
         << "    let input_value = x[input_offset];\n"
         << "    let value = input_value + skip_value" << (hasBias_ ? " + bias[input_offset]" : "") << ";\n"
         << "    if (i == workgroup_idx) {\n"
@@ -106,7 +108,8 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << " stride = hidden_size_vectorized - stride * ix;\n"
         << "}\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " let skip_value = skip[offset + i];\n"
+        << " let skip_offset = (offset + i) % (uniforms.skip_size / uniforms.components);\n"
+        << " let skip_value = skip[skip_offset];\n"
         << " let input_value = x[offset + i];\n"
         << " let value = input_value + skip_value" << bias << ";\n"
         << " output[offset + i] = value;\n"
@@ -162,6 +165,9 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   const uint32_t norm_count = onnxruntime::narrow<uint32_t>(x_shape.SizeToDimension(x_shape.NumDimensions() - 1));
   const bool split_hidden_dim = hidden_size % 512 == 0 && norm_count == 1;
 
+  const auto skip_shape = skip->Shape();
+  const uint32_t skip_size = onnxruntime::narrow<uint32_t>(skip_shape.Size());
+
   SkipLayerNormProgram program{beta != nullptr, bias != nullptr, epsilon_, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim};
   program
       .CacheHint(simplified, has_input_skip_bias_sum, split_hidden_dim)
@@ -178,6 +184,9 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
       })
       .AddUniformVariables({
           {static_cast<float>(epsilon_)},
+      })
+      .AddUniformVariables({
+          {static_cast<uint32_t>(skip_size)},
       });
 
   if (split_hidden_dim) {

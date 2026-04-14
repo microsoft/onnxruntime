@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param a_length_per_tile
+#param broadcast_a_row
 #param component_a
 #param component_b
 #param elements_in_value_b
@@ -13,6 +14,7 @@
 #param tile_size
 #param has_bias
 #param has_weight_idx
+#param has_weight_idx_indirect
 
 #use .getByOffset .setByOffset
 
@@ -33,23 +35,37 @@ fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 }
 
 $MAIN {
-  let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
+  let batch = workgroup_idx / (uniforms.dispatch_M * uniforms.num_N_tile);
+  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.dispatch_M;
 #if has_weight_idx
-  let b_base_offset = uniforms.weight_idx * uniforms.K_of_b * uniforms.N;
-#if single_scale_weights
-  let b_scale_offset = uniforms.weight_idx;
+#if has_weight_idx_indirect
+  let actual_weight_idx = weight_index_indirect[a_global];
 #else
-  let b_scale_offset = uniforms.weight_idx * uniforms.N * uniforms.blocks_per_col;
+  let actual_weight_idx = uniforms.weight_idx;
+#endif
+  let b_base_offset = actual_weight_idx * uniforms.K_of_b * uniforms.N;
+#if single_scale_weights
+  let b_scale_offset = actual_weight_idx;
+#else
+  let b_scale_offset = actual_weight_idx * uniforms.N * uniforms.blocks_per_col;
 #endif
 #else
   const b_base_offset : u32 = 0;
   const b_scale_offset : u32 = 0;
+  const actual_weight_idx : u32 = 0;
 #endif
 #if has_bias
-  let b_bias_offset = uniforms.weight_idx * uniforms.N;
+  let b_bias_offset = actual_weight_idx * uniforms.N;
 #endif
-  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
   let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
+
+  // When broadcast_a_row is true, A has only 1 row but M=k for dispatch.
+  // Always read from A row 0; a_global is used for output row and weight selection.
+#if broadcast_a_row
+  let a_row = 0u;
+#else
+  let a_row = a_global;
+#endif
 
   let idx = local_idx % tile_size_k_vec;
   let idy = local_idx / tile_size_k_vec;
@@ -64,7 +80,7 @@ $MAIN {
   {
     for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
     {
-      loadSHMA(batch, a_global, kidx, id);
+      loadSHMA(batch, a_row, kidx, id);
     }
     workgroupBarrier();
 
@@ -222,7 +238,7 @@ $MAIN {
       output_value += inter_results[local_idx][b];
     }
     let b_global =  b_global_base + local_idx;
-    let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
+    let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
     if (b_global < uniforms.N) {
 #if has_bias
       output_value += bias[b_global + b_bias_offset];

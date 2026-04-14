@@ -47,10 +47,24 @@ std::wstring DetermineLoadLibraryError(const wchar_t* filename_in, DWORD flags) 
     flags = 0;  // Dependent libraries are relative, and flags like LOAD_WITH_ALTERED_SEARCH_PATH is undefined for those.
     for (; import_desc->Characteristics; import_desc++) {
       const char* dll_name = reinterpret_cast<const char*>(reinterpret_cast<const BYTE*>(hModule.get()) + import_desc->Name);
+
+      // Convert the narrow (ANSI) DLL name to a wide string for the W API.
+      // PE import table names are ANSI strings, so CP_ACP is the correct code page.
+      int wide_len = MultiByteToWideChar(CP_ACP, 0, dll_name, -1, nullptr, 0);
+      if (wide_len <= 0) {
+        continue;  // Skip this entry if conversion fails.
+      }
+      std::wstring wide_dll_name(wide_len, L'\0');  // wide_len includes the null terminator
+      int converted = MultiByteToWideChar(CP_ACP, 0, dll_name, -1, wide_dll_name.data(), wide_len);
+      if (converted <= 0) {
+        continue;  // Skip this entry if conversion fails.
+      }
+      wide_dll_name.resize(static_cast<size_t>(converted - 1));
+
       // Try to load the dependent DLL, and if it fails, we loop again with this as the DLL and we'll be one step closer to the missing file.
-      ModulePtr hDepModule{LoadLibrary(dll_name)};
+      ModulePtr hDepModule{LoadLibraryW(wide_dll_name.c_str())};
       if (!hDepModule) {
-        filename = std::wstring(dll_name, dll_name + strlen(dll_name));
+        filename = wide_dll_name;
         error += L" which depends on";
         break;
       }

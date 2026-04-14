@@ -8,6 +8,7 @@
 #include "core/util/math_cpuonly.h"
 #include "ml_common.h"
 #include "core/providers/cpu/math/gemm.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -21,14 +22,18 @@ class SVMCommon {
     ORT_THROW_IF_ERROR(info.GetAttrs<float>("kernel_params", kernel_params));
 
     if (!kernel_params.empty()) {
+      ORT_ENFORCE(kernel_params.size() == 3, "kernel_params must be empty or have 3 values not ", kernel_params.size(), ".");
       gamma_ = kernel_params[0];
       coef0_ = kernel_params[1];
       degree_ = kernel_params[2];
     }
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   void set_kernel_type(KERNEL new_kernel_type) { kernel_type_ = new_kernel_type; }
   KERNEL get_kernel_type() const { return kernel_type_; }
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
   template <typename T>
   void batched_kernel_dot(const gsl::span<const T> a, const gsl::span<const T> b,
@@ -78,7 +83,8 @@ class SVMCommon {
                                         alpha, a.data(), b.data(), beta,
                                         c != 0.f ? &c : nullptr, &shape_C,
                                         out.data(),
-                                        threadpool);
+                                        threadpool,
+                                        &mlas_backend_kernel_selector_config_);
 
       if (kernel_type_ == KERNEL::POLY) {
         auto map_out = EigenVectorArrayMap<T>(out.data(), out.size());
