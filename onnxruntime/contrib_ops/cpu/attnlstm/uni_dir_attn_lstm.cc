@@ -30,12 +30,20 @@ namespace detail {
 
 namespace {
 
+size_t CheckedToSizeT(int value) {
+  return static_cast<size_t>(SafeInt<size_t>(value));
+}
+
 int CheckedMulToInt(int lhs, int rhs) {
   return static_cast<int>(SafeInt<int>(lhs) * rhs);
 }
 
 size_t CheckedMulToSizeT(int lhs, int rhs) {
-  return static_cast<size_t>(SafeInt<size_t>(lhs) * static_cast<size_t>(rhs));
+  return static_cast<size_t>(SafeInt<size_t>(CheckedToSizeT(lhs)) * CheckedToSizeT(rhs));
+}
+
+size_t CheckedMulToSizeT(size_t lhs, size_t rhs) {
+  return static_cast<size_t>(SafeInt<size_t>(lhs) * rhs);
 }
 
 }  // namespace
@@ -110,20 +118,13 @@ UniDirectionalAttnLstm<T>::UniDirectionalAttnLstm(AllocatorPtr allocator,
 
 template <typename T>
 void UniDirectionalAttnLstm<T>::AllocateBuffers() {
-  const auto checked_size = [](int value) {
-    return static_cast<size_t>(SafeInt<size_t>(value));
-  };
-
-  const auto checked_mul = [](size_t lhs, size_t rhs) {
-    return static_cast<size_t>(SafeInt<size_t>(lhs) * rhs);
-  };
-
-  const size_t hidden_size = checked_size(hidden_size_);
-  const size_t batch_size = checked_size(batch_size_);
-  const size_t seq_length = checked_size(seq_length_);
-  const size_t input_size = checked_size(input_size_);
-  const size_t batch_hidden_size = checked_mul(batch_size, hidden_size);
-  const size_t output_iofc_size = checked_mul(checked_mul(hidden_size, 4), checked_mul(batch_size, seq_length));
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
+  const size_t batch_size = CheckedToSizeT(batch_size_);
+  const size_t seq_length = CheckedToSizeT(seq_length_);
+  const size_t input_size = CheckedToSizeT(input_size_);
+  const size_t batch_hidden_size = CheckedMulToSizeT(batch_size, hidden_size);
+  const size_t output_iofc_size = CheckedMulToSizeT(CheckedMulToSizeT(hidden_size, size_t{4}),
+                                                    CheckedMulToSizeT(batch_size, seq_length));
 
   // allocate and fill with 0's.
   constexpr bool fill = true;
@@ -149,8 +150,8 @@ void UniDirectionalAttnLstm<T>::AllocateBuffers() {
   }
 
   if (direction_ == kReverse) {
-    const size_t reversed_input_size = checked_mul(checked_mul(seq_length, batch_size), input_size);
-    const size_t reversed_output_size = checked_mul(checked_mul(seq_length, batch_size), hidden_size);
+    const size_t reversed_input_size = CheckedMulToSizeT(CheckedMulToSizeT(seq_length, batch_size), input_size);
+    const size_t reversed_output_size = CheckedMulToSizeT(CheckedMulToSizeT(seq_length, batch_size), hidden_size);
     inputs_reverse_ = Allocate(allocator_, reversed_input_size, inputs_reverse_ptr_);
     outputs_reverse_ = Allocate(allocator_, reversed_output_size, outputs_reverse_ptr_);
   }
@@ -429,7 +430,6 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
                                                  const int local_fused_hidden_rows,
                                                  bool output_sequence) {
   const int hidden_size_x4 = CheckedMulToInt(hidden_size_, 4);
-  const size_t hidden_size = static_cast<size_t>(hidden_size_);
 
   // Activation gates.
   for (int b = 0; b < local_fused_hidden_rows; b++) {

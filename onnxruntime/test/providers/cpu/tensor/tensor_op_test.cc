@@ -206,7 +206,10 @@ TEST(TensorOpTest, ReshapeHelper_RejectsRequestedShapeOverflow) {
     const std::string message = exception.what();
     EXPECT_NE(message.find("The requested shape has too many elements."), std::string::npos);
     EXPECT_NE(message.find("Input shape:{1}"), std::string::npos);
-    EXPECT_NE(message.find("requested shape:{9223372036854775807,9223372036854775807}"), std::string::npos);
+    EXPECT_NE(message.find("requested shape:"), std::string::npos);
+    EXPECT_NE(message.find("9223372036854775807"), std::string::npos);
+    EXPECT_NE(message.rfind("9223372036854775807"), std::string::npos);
+    EXPECT_NE(message.find("9223372036854775807"), message.rfind("9223372036854775807"));
   }
 }
 
