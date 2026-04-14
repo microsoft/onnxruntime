@@ -160,8 +160,10 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
         key="webgpu_python_packaging",
     ),
 ]
+assert len({cfg.id for cfg in PIPELINE_REGISTRY}) == len(PIPELINE_REGISTRY), "Pipeline IDs must be unique"
 
 _PIPELINE_KEY_TO_ID: dict[str, int] = {cfg.key: cfg.id for cfg in PIPELINE_REGISTRY}
+assert len(_PIPELINE_KEY_TO_ID) == len(PIPELINE_REGISTRY), "Pipeline keys must be unique"
 
 
 def get_token() -> str:
@@ -372,6 +374,8 @@ def _parse_enable_flags(raw: list[str]) -> dict[int, bool]:
         key = key.strip()
         if key not in _PIPELINE_KEY_TO_ID:
             logger.warning("##[warning]Unknown pipeline key: %s", key)
+            # invalid key -> non-empty set -> ensures that we don't enable all pipelines if we don't recognise one.
+            result[-1] = False
             continue
         result[_PIPELINE_KEY_TO_ID[key]] = val.strip().lower() == "true"
     return result
@@ -385,6 +389,10 @@ def _read_enable_flags_from_env() -> dict[int, bool]:
             continue
         pipeline_key = key[len(prefix) :].lower()
         if pipeline_key not in _PIPELINE_KEY_TO_ID:
+            # Given that env vars are a swamp for config, just assume it wasn't meant for us.
+            # Still warn about it, however.
+            # n.b. this differs in behaviour from cmd-ln parsing, where we mark unrecognised keys.
+            logger.warning("##[warning]Unknown pipeline key in env-vars, ignoring: %s", key)
             continue
         result[_PIPELINE_KEY_TO_ID[pipeline_key]] = value.strip().lower() == "true"
     return result
@@ -403,12 +411,15 @@ def main() -> int:
 
     configs = list(PIPELINE_REGISTRY)
 
-    # fetch the pipeline enable/disable flags
+    # No explicit pipeline enable/disable -> use everything.
+    # Specify any pipeline -> opt-in only.
+    # We can add partial opt-out in the future if we need it.
+    # Consequence `argv=['--enable-pipeline', 'A=false']` => nothing enabled.
     enable_flags = _parse_enable_flags(args.enable_pipeline)
     if not enable_flags:
         enable_flags = _read_enable_flags_from_env()
     if enable_flags:
-        configs = [cfg for cfg in configs if enable_flags.get(cfg.id, True)]
+        configs = [cfg for cfg in configs if enable_flags.get(cfg.id, False)]
 
     if args.pre_release_suffix_string:
         for cfg in configs:
