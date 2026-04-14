@@ -380,12 +380,12 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       }
     } else {
       for (int64_t n = 0; n < N; n++) {
-        const T* grid_data = grid->Data<T>() + SafeInt<size_t>(n) * H_out * W_out * 2;
+        const T* grid_data = grid->Data<T>() + static_cast<size_t>(SafeInt<size_t>(n) * H_out * W_out * 2);
         concurrency::ThreadPool::TrySimpleParallelFor(
             tp, onnxruntime::narrow<std::ptrdiff_t>(C),
             [&](std::ptrdiff_t c) {
-              const T* X_data = input->Data<T>() + SafeInt<size_t>(n * C + c) * H_in * W_in;
-              T* Y_data = Y.MutableData<T>() + SafeInt<size_t>(n * C + c) * H_out * W_out;
+              const T* X_data = input->Data<T>() + static_cast<size_t>(SafeInt<size_t>(n * C + c) * H_in * W_in);
+              T* Y_data = Y.MutableData<T>() + static_cast<size_t>(SafeInt<size_t>(n * C + c) * H_out * W_out);
 
               for (int64_t oy = 0; oy < H_out; oy++) {
                 for (int64_t ox = 0; ox < W_out; ox++) {
@@ -470,12 +470,12 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
 
     concurrency::ThreadPool* tp = D_out * H_out * W_out > 64 ? context->GetOperatorThreadPool() : nullptr;
     for (int64_t n = 0; n < N; n++) {
-      const T* grid_data = grid->Data<T>() + SafeInt<size_t>(n) * D_out * H_out * W_out * 3;
+      const T* grid_data = grid->Data<T>() + static_cast<size_t>(SafeInt<size_t>(n) * D_out * H_out * W_out * 3);
       concurrency::ThreadPool::TrySimpleParallelFor(
           tp, onnxruntime::narrow<std::ptrdiff_t>(C),
           [&](std::ptrdiff_t c) {
-            const T* X_data = input->Data<T>() + SafeInt<size_t>(n * C + c) * D_in * H_in * W_in;
-            T* Y_data = Y.MutableData<T>() + SafeInt<size_t>(n * C + c) * D_out * H_out * W_out;
+            const T* X_data = input->Data<T>() + static_cast<size_t>(SafeInt<size_t>(n * C + c) * D_in * H_in * W_in);
+            T* Y_data = Y.MutableData<T>() + static_cast<size_t>(SafeInt<size_t>(n * C + c) * D_out * H_out * W_out);
 
             for (int64_t oz = 0; oz < D_out; oz++) {
               for (int64_t oy = 0; oy < H_out; oy++) {

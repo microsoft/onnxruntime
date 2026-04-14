@@ -518,7 +518,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     void* output_data = output_tensor.MutableDataRaw();
 
     const auto M = before_dims;
-    const auto* A = static_cast<const char*>(input_data) + SafeInt<size_t>(input_offset) * element_size;
+    const auto* A = static_cast<const char*>(input_data) + static_cast<size_t>(SafeInt<size_t>(input_offset) * element_size);
     const auto lda = after_dims_including_split_axis;
     auto* B = output_data;
 
