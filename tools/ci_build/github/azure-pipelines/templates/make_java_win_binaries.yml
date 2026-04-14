@@ -22,28 +22,34 @@ parameters:
 steps:
 - task: PowerShell@2
   displayName: 'Build and Package Java Artifacts'
+  env:
+    msbuild_platform: ${{ parameters.msbuildPlatform }}
+    java_artifact_id: ${{ parameters.java_artifact_id }}
+    pre_release_version_suffix_string: ${{ parameters.PreReleaseVersionSuffixString }}
+    pre_release_version_suffix_number: ${{ parameters.PreReleaseVersionSuffixNumber }}
+    build_only: ${{ parameters.buildOnly }}
   inputs:
     targetType: 'inline'
     script: |
       # Define arguments for the Python script
       $scriptArgs = @(
-        "--sources-dir", "$(Build.SourcesDirectory)",
-        "--binaries-dir", "$(Build.BinariesDirectory)",
-        "--platform", "${{ parameters.msbuildPlatform }}",
-        "--build-config", "RelWithDebInfo",
-        "--java-artifact-id", "${{ parameters.java_artifact_id }}",
-        "--pre-release-version-suffix-string", "${{ parameters.PreReleaseVersionSuffixString }}",
-        "--pre-release-version-suffix-number", "${{ parameters.PreReleaseVersionSuffixNumber }}",
-        "--commit-hash", "$(OnnxRuntimeGitCommitHash)"
+        "--sources-dir",                        "${env:BUILD_SOURCESDIRECTORY}",
+        "--binaries-dir",                       "${env:BUILD_BINARIESDIRECTORY}",
+        "--platform",                           "${env:msbuild_platform}",
+        "--build-config",                       "RelWithDebInfo",
+        "--java-artifact-id",                   "${env:java_artifact_id}",
+        "--pre-release-version-suffix-string",  "${env:pre_release_version_suffix_string}",
+        "--pre-release-version-suffix-number",  "${env:pre_release_version_suffix_number}",
+        "--commit-hash",                        "${env:ONNXRUNTIMEGITCOMMITHASH}"
       )
 
       # Conditionally add the --build-only flag if the parameter is true
-      if ('${{ parameters.buildOnly }}' -eq 'True') {
+      if (${env:build_only} -eq 'True') {
         $scriptArgs += "--build-only"
       }
 
       # Define the path to the python script within your repository
-      $scriptPath = "$(Build.SourcesDirectory)/tools/ci_build/manage_java_artifacts.py"
+      $scriptPath = "${env:BUILD_SOURCESDIRECTORY}/tools/ci_build/manage_java_artifacts.py"
 
       # Execute the Python script, passing all arguments
       Write-Host "Executing Python script: $scriptPath with arguments: $($scriptArgs -join ' ')"

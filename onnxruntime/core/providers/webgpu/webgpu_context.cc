@@ -86,7 +86,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 #endif
 
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
-      if (required_features.size() > 0) {
+      if (!required_features.empty()) {
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
       }
@@ -188,7 +188,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
-  if (outputs.size() == 0) {
+  if (outputs.empty()) {
     return Status::OK();
   }
 

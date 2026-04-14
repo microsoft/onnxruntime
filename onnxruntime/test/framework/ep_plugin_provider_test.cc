@@ -4,6 +4,7 @@
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include "gsl/gsl"
@@ -876,11 +877,8 @@ TEST(OpSchemaTypeConstraintTest, Add_SingleConstraint) {
   // T should allow tensor(float) and tensor(double) among others
   auto allowed_types = tc.GetAllowedTypes();
   EXPECT_GT(allowed_types.size(), 1u);
-  auto has_type = [&](const char* t) {
-    return std::find(allowed_types.begin(), allowed_types.end(), t) != allowed_types.end();
-  };
-  EXPECT_TRUE(has_type("tensor(float)")) << "Expected T to allow tensor(float)";
-  EXPECT_TRUE(has_type("tensor(double)")) << "Expected T to allow tensor(double)";
+  EXPECT_THAT(allowed_types, ::testing::Contains("tensor(float)")) << "Expected T to allow tensor(float)";
+  EXPECT_THAT(allowed_types, ::testing::Contains("tensor(double)")) << "Expected T to allow tensor(double)";
 
   // Both inputs use T
   auto input_indices = tc.GetInputIndices();
@@ -921,22 +919,18 @@ TEST(OpSchemaTypeConstraintTest, LSTM_MultipleConstraints) {
   ASSERT_NE(t_ptr, nullptr) << "Expected to find type constraint 'T'";
   ASSERT_NE(t1_ptr, nullptr) << "Expected to find type constraint 'T1'";
 
-  auto has_type = [](gsl::span<const std::string> types, const char* t) {
-    return std::find(types.begin(), types.end(), t) != types.end();
-  };
-
   // T should include tensor(float) and tensor(double)
   auto t_types = t_tc.GetAllowedTypes();
   EXPECT_GT(t_types.size(), 0u);
-  EXPECT_TRUE(has_type(t_types, "tensor(float)")) << "Expected T to allow tensor(float)";
-  EXPECT_TRUE(has_type(t_types, "tensor(double)")) << "Expected T to allow tensor(double)";
+  EXPECT_THAT(t_types, ::testing::Contains("tensor(float)")) << "Expected T to allow tensor(float)";
+  EXPECT_THAT(t_types, ::testing::Contains("tensor(double)")) << "Expected T to allow tensor(double)";
 
   // T1 should include tensor(int32) (sequence_lens is int32)
   auto t1_types = t1_tc.GetAllowedTypes();
   EXPECT_GT(t1_types.size(), 0u);
 
   // T1 is for sequence_lens which is int32
-  EXPECT_TRUE(has_type(t1_types, "tensor(int32)")) << "Expected T1 to allow tensor(int32)";
+  EXPECT_THAT(t1_types, ::testing::Contains("tensor(int32)")) << "Expected T1 to allow tensor(int32)";
 
   // T should map to inputs X (0), W (1), R (2), B (3), initial_h (5), initial_c (6), P (7)
   auto t_inputs = t_tc.GetInputIndices();
@@ -1104,5 +1098,122 @@ TEST(PluginExecutionProviderTest, ProfilingEvent_ConstWrapper) {
   EXPECT_EQ(const_event.GetDurationUs(), 111);
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
+
+// ---------------------------------------------------------------------------
+// Test that CreatePreferredAllocators wraps a Shrink-capable plugin allocator
+// as IArena (not just IAllocator), so ShrinkMemoryArenas can find it.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Minimal fake OrtAllocator with Shrink support.
+// Tracks Shrink calls via a counter.
+struct FakeArenaOrtAllocator : OrtAllocator {
+  int shrink_call_count = 0;
+  OrtMemoryInfo* mem_info = nullptr;
+};
+
+static void* ORT_API_CALL FakeAlloc(OrtAllocator*, size_t) noexcept { return nullptr; }
+static void ORT_API_CALL FakeFree(OrtAllocator*, void*) noexcept {}
+static const OrtMemoryInfo* ORT_API_CALL FakeInfo(const OrtAllocator* self) noexcept {
+  return static_cast<const FakeArenaOrtAllocator*>(self)->mem_info;
+}
+static OrtStatus* ORT_API_CALL FakeShrink(OrtAllocator* self) noexcept {
+  static_cast<FakeArenaOrtAllocator*>(self)->shrink_call_count++;
+  return nullptr;
+}
+static OrtStatus* ORT_API_CALL FakeGetStats(const OrtAllocator*, OrtKeyValuePairs** out) noexcept {
+  ::OrtGetApiBase()->GetApi(ORT_API_VERSION)->CreateKeyValuePairs(out);
+  return nullptr;
+}
+
+static FakeArenaOrtAllocator MakeFakeArenaAllocator(OrtMemoryInfo* mem_info, bool with_shrink = true) {
+  FakeArenaOrtAllocator fa{};
+  static_assert(std::is_standard_layout_v<OrtAllocator>);
+  std::memset(static_cast<OrtAllocator*>(&fa), 0, sizeof(OrtAllocator));
+  fa.version = ORT_API_VERSION;
+  fa.mem_info = mem_info;
+  fa.Alloc = FakeAlloc;
+  fa.Free = FakeFree;
+  fa.Info = FakeInfo;
+  fa.Shrink = with_shrink ? FakeShrink : nullptr;
+  fa.GetStats = FakeGetStats;
+  return fa;
+}
+
+// Namespace-level storage so C function pointers can access the fake allocator.
+static OrtAllocator* g_fake_allocator_for_test = nullptr;
+
+static OrtStatus* ORT_API_CALL FakeCreateAllocator(OrtEp*, const OrtMemoryInfo*,
+                                                   OrtAllocator** out) noexcept {
+  *out = g_fake_allocator_for_test;
+  return nullptr;
+}
+
+static void ORT_API_CALL FakeReleaseAllocator(OrtEpFactory*, OrtAllocator*) noexcept {
+  // No-op: tests own the fake allocator lifetime.
+}
+
+}  // namespace
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_ShrinkCapableAllocatorExposedAsArena) {
+  // Set up a device with device_memory_info so CreatePreferredAllocators iterates it.
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+
+  // Create the fake arena allocator with Shrink support.
+  auto fake_allocator = MakeFakeArenaAllocator(ort_memory_info.get(), /*with_shrink=*/true);
+  FakeArenaOrtAllocator* fake_alloc_ptr = &fake_allocator;
+
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ort_memory_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+
+  g_fake_allocator_for_test = fake_alloc_ptr;
+  ort_ep->CreateAllocator = FakeCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocator;
+
+  auto allocators = ep->CreatePreferredAllocators();
+  ASSERT_EQ(allocators.size(), 1u);
+
+  // The allocator supports Shrink, so it should be wrapped as IArena.
+  auto* arena = allocators[0]->AsArena();
+  ASSERT_NE(arena, nullptr) << "Shrink-capable plugin allocator must be exposed as IArena";
+
+  // Shrink should forward to the fake allocator's Shrink callback.
+  ASSERT_EQ(fake_alloc_ptr->shrink_call_count, 0);
+  auto status = arena->Shrink();
+  ASSERT_TRUE(status.IsOK());
+  EXPECT_EQ(fake_alloc_ptr->shrink_call_count, 1);
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_NonShrinkAllocatorNotExposedAsArena) {
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+
+  auto fake_allocator = MakeFakeArenaAllocator(ort_memory_info.get(), /*with_shrink=*/false);
+  FakeArenaOrtAllocator* fake_alloc_ptr = &fake_allocator;
+
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ort_memory_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+
+  g_fake_allocator_for_test = fake_alloc_ptr;
+  ort_ep->CreateAllocator = FakeCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocator;
+
+  auto allocators = ep->CreatePreferredAllocators();
+  ASSERT_EQ(allocators.size(), 1u);
+
+  // Without Shrink, the allocator should NOT be exposed as IArena.
+  EXPECT_EQ(allocators[0]->AsArena(), nullptr)
+      << "Non-Shrink allocator must not be exposed as IArena";
+}
 
 }  // namespace onnxruntime::test

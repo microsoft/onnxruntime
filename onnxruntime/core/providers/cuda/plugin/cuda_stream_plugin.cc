@@ -172,6 +172,20 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
   // Synchronize before releasing deferred CPU buffers to ensure
   // all async copies using those buffers have completed.
   PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream->cuda_stream_));
+
+  // Reset arena chunk-to-stream assignments for this device's current arena.
+  // Uses ResetDeviceArenaChunksUsingStream to hold the arena_mutex across the
+  // entire operation, preventing a concurrent ReleaseAllocatorImpl from destroying
+  // the arena while we hold a raw pointer to it.
+  {
+    OrtStatus* arena_status = stream->factory_.ResetDeviceArenaChunksUsingStream(
+        stream->device_id_, this_ptr);
+    if (arena_status != nullptr) {
+      // Ignore the arena reset error and continue session run end — buffer cleanup is more critical.
+      Ort::GetApi().ReleaseStatus(arena_status);
+    }
+  }
+
   return stream->CleanupDeferredCPUBuffers();
 }
 

@@ -9,6 +9,8 @@
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_cxx_api.h"
 
+#include "core/common/common.h"
+
 #include <cuda_runtime_api.h>
 #include <cublas_v2.h>
 #include <cudnn.h>
@@ -33,14 +35,13 @@
 // Throwing variant for use in constructors and non-OrtStatus contexts.
 // Analogous to CUDA_CALL_THROW in the non-plugin build.
 #ifndef PL_CUDA_CALL_THROW
-#define PL_CUDA_CALL_THROW(cuda_call_expr)                                   \
-  do {                                                                       \
-    cudaError_t _cuda_err = (cuda_call_expr);                                \
-    if (_cuda_err != cudaSuccess) {                                          \
-      throw std::runtime_error(                                              \
-          std::string("CUDA error: ") + cudaGetErrorName(_cuda_err) + ": " + \
-          cudaGetErrorString(_cuda_err));                                    \
-    }                                                                        \
+#define PL_CUDA_CALL_THROW(cuda_call_expr)                         \
+  do {                                                             \
+    cudaError_t _cuda_err = (cuda_call_expr);                      \
+    if (_cuda_err != cudaSuccess) {                                \
+      ORT_THROW("CUDA error: ", cudaGetErrorName(_cuda_err), ": ", \
+                cudaGetErrorString(_cuda_err));                    \
+    }                                                              \
   } while (0)
 #endif
 
@@ -72,17 +73,35 @@
   } while (0)
 #endif
 
-#define EXCEPTION_TO_STATUS_BEGIN try {
-#define EXCEPTION_TO_STATUS_END                 \
-  }                                             \
-  catch (const Ort::Exception& ex) {            \
-    Ort::Status status(ex);                     \
-    return status.release();                    \
-  }                                             \
-  catch (const std::exception& ex) {            \
-    Ort::Status status(ex.what(), ORT_EP_FAIL); \
-    return status.release();                    \
-  }
+#if defined(_MSC_VER) && !defined(__clang__)
+// C4702: unreachable code - the trailing return is required for ORT_NO_EXCEPTIONS builds
+#define EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_BEGIN __pragma(warning(push)) __pragma(warning(disable : 4702))
+#define EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_END __pragma(warning(pop))
+#else
+#define EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_BEGIN
+#define EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_END
+#endif
+
+#define EXCEPTION_TO_STATUS_BEGIN EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_BEGIN ORT_TRY {
+#define EXCEPTION_TO_STATUS_END                   \
+  }                                               \
+  ORT_CATCH(const Ort::Exception& ex) {           \
+    OrtStatus* _ort_ex_st = nullptr;              \
+    ORT_HANDLE_EXCEPTION([&]() {                  \
+      Ort::Status status(ex);                     \
+      _ort_ex_st = status.release();              \
+    });                                           \
+    return _ort_ex_st;                            \
+  }                                               \
+  ORT_CATCH(const std::exception& ex) {           \
+    OrtStatus* _std_ex_st = nullptr;              \
+    ORT_HANDLE_EXCEPTION([&]() {                  \
+      Ort::Status status(ex.what(), ORT_EP_FAIL); \
+      _std_ex_st = status.release();              \
+    });                                           \
+    return _std_ex_st;                            \
+  }                                               \
+  EXCEPTION_TO_STATUS_UNREACHABLE_GUARD_END
 
 /// Stored API pointers accessible to all plugin components.
 struct CudaPluginApis {
