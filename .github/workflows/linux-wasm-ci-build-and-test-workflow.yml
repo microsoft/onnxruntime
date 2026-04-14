@@ -46,6 +46,7 @@ jobs:
       buildArch: x64
       common_build_args: >-
         --parallel
+        --throttle 4
         --use_cache
         ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
         --config ${{ inputs.build_config }}

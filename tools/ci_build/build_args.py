@@ -135,6 +135,13 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         help="Use parallel build. Optional value specifies max jobs (0=num CPUs).",
     )
     parser.add_argument(
+        "--throttle",
+        type=int,
+        default=0,
+        help="Reduce the number of parallel build jobs by this many cores. "
+        "The result is clamped to a minimum of 1. Only applies when --parallel is used.",
+    )
+    parser.add_argument(
         "--target",
         nargs=1,
         action="extend",

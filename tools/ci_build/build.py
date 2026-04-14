@@ -202,7 +202,10 @@ def add_default_definition(definition_list, key, default_value):
 
 
 def number_of_parallel_jobs(args):
-    return os.cpu_count() if args.parallel == 0 else args.parallel
+    jobs = os.cpu_count() if args.parallel == 0 else args.parallel
+    if getattr(args, "throttle", 0) > 0:
+        jobs = max(1, jobs - args.throttle)
+    return jobs
 
 
 def number_of_nvcc_threads(args):
