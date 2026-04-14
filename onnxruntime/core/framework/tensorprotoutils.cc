@@ -359,7 +359,9 @@ Status TensorProtoWithExternalDataToTensorProto(
   } else {
     // Load the external data into memory
     std::vector<uint8_t> unpacked_data;
-    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, model_path, unpacked_data));
+    // ReadExternalDataForTensor expects a directory, not a file path.
+    // Use parent_path() to get the directory, matching UnpackInitializerData() at line ~2572.
+    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, model_path.parent_path(), unpacked_data));
 
     // Set the raw data in the new tensor
     onnxruntime::utils::SetRawDataInTensorProto(result, unpacked_data.data(), unpacked_data.size());
