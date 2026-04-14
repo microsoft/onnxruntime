@@ -194,11 +194,13 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       // Fallback: if pci_bus_id was not available, use counter-based ordinal assignment.
       if (current_device_id < 0) {
         current_device_id = cuda_device_index++;
+      }
 
-        // Validate the assigned ordinal is within the range of CUDA-visible devices.
-        if (current_device_id >= cuda_device_count) {
-          continue;
-        }
+      // Validate the assigned ordinal is within the range of CUDA-visible devices.
+      // If hardware enumeration reports GPUs not visible to CUDA (e.g. due to
+      // CUDA_VISIBLE_DEVICES), skip them to avoid failures in allocator/stream creation.
+      if (current_device_id >= cuda_device_count) {
+        continue;
       }
 
       const auto device_key = CudaEpFactory::MakeDeviceKey(factory->ort_api_, device, current_device_id);
