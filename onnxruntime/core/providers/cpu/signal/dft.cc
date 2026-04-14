@@ -145,15 +145,16 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
     size_t conjugate_end = (dft_length % 2 == 0) ? (number_of_samples - 1) : number_of_samples;
     for (size_t k = 1; k < conjugate_end; k++) {
       // Find position in bit-reversed array that represents natural index N-k
-      size_t pos_nk = bit_reverse(dft_length - k, significant_bits);
+      size_t nk = dft_length - k;
+      size_t pos_nk = bit_reverse(nk, significant_bits);
 
-      // Get the input value and window at position k
+      // Get the input value at position k and the window for reconstructed position N-k
       auto x_k = *(X_data + k * X_stride);
-      auto window_k = window_data ? *(window_data + k) : 1;
+      auto window_nk = window_data ? *(window_data + nk) : 1;
 
-      // Apply conjugate symmetry to input, then apply window
-      // X[N-k] = conj(X[k]), then multiply by window
-      *(Y_data + pos_nk * Y_data_stride) = std::conj(x_k) * window_k;
+      // Apply conjugate symmetry to input, then apply the window for X[N-k]
+      // X[N-k] = conj(X[k]), then multiply by window[N-k]
+      *(Y_data + pos_nk * Y_data_stride) = std::conj(x_k) * window_nk;
     }
   }
 
@@ -301,13 +302,12 @@ static Status dft_bluestein_z_chirp(
     // For the input X: X[N-k] = conj(X[k]) for k=1..floor((N-1)/2)
     // We need to apply this BEFORE the chirp multiplication
     // So: a[N-k] = conj(X[k]) * window[N-k] * chirp[N-k]
-    //            = conj(X[k]) * window[k] * chirp[N-k]  (window is symmetric)
     size_t conjugate_end = (N % 2 == 0) ? (number_of_samples - 1) : number_of_samples;
     for (size_t k = 1; k < conjugate_end; k++) {
       auto x_k = *(X_data + k * X_stride);  // Original input at k
-      auto window_k = window_data ? *(window_data + k) : 1;
+      auto window_nk = window_data ? *(window_data + N - k) : 1;
       std::complex<T>& chirp_nk = *(chirp_data + N - k);
-      *(a_data + N - k) = std::conj(x_k) * window_k * chirp_nk;
+      *(a_data + N - k) = std::conj(x_k) * window_nk * chirp_nk;
     }
   }
 
