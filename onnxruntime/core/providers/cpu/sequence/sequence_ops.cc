@@ -4,6 +4,7 @@
 #include "core/providers/cpu/sequence/sequence_ops.h"
 
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/op_kernel_type_control_utils.h"
@@ -517,7 +518,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     void* output_data = output_tensor.MutableDataRaw();
 
     const auto M = before_dims;
-    const auto* A = static_cast<const char*>(input_data) + static_cast<size_t>(input_offset * element_size);
+    const auto* A = static_cast<const char*>(input_data) + SafeInt<size_t>(input_offset) * element_size;
     const auto lda = after_dims_including_split_axis;
     auto* B = output_data;
 
@@ -528,7 +529,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
       const auto* src = reinterpret_cast<const std::string*>(A);
       auto* dst = reinterpret_cast<std::string*>(B);
       if (lda == N) {
-        copy_data<std::string>(src, dst, static_cast<size_t>(M * N));
+        copy_data<std::string>(src, dst, SafeInt<size_t>(M) * N);
       } else {
         size_t lda_offset = 0;
         size_t ldb_offset = 0;
