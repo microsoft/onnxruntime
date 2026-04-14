@@ -45,7 +45,7 @@ Kernel registration uses macros from `core/framework/op_kernel.h`:
 - `ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, version, type, OpName)` — typed variant
 - `ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startVer, endVer, OpName)` — versioned range
 
-To add a new contrib op: implement the kernel class, then register it in the EP's contrib kernel file (e.g., `contrib_ops/cpu/cpu_contrib_kernels.cc`). See `docs/OperatorKernels.md` and `docs/ContribOperators.md` for more details.
+To add a new contrib op: implement the kernel class, then register it in the EP's contrib kernel file (e.g., `onnxruntime/contrib_ops/cpu/cpu_contrib_kernels.cc`). See `docs/OperatorKernels.md` and `docs/ContribOperators.md` for more details.
 
 ### Execution Providers
 
