@@ -1627,6 +1627,46 @@ TEST_F(GraphTransformationTests, ConstantFoldingSmallOutputAllowed) {
                                         pre_graph_checker, post_graph_checker));
 }
 
+// Test that constant folding gracefully handles an Expand node whose output shape
+// dimensions would cause integer overflow. This simulates the attack vector where
+// a malicious model embeds constant initializers with extreme shape values, causing
+// kernel Compute() to execute during graph optimization. The SafeInt-protected
+// arithmetic in Expand::Compute (or TensorShape overflow) should be caught by the
+// try/catch around Compute, and the node should NOT be constant folded.
+TEST_F(GraphTransformationTests, ConstantFoldingExpandOverflowDimsSkipped) {
+  constexpr int64_t kLargeDim = int64_t(1) << 32;  // 4294967296
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInitializer<float>({1}, {1.0f});
+    auto* shape_data = builder.MakeInitializer<int64_t>({2}, {kLargeDim, kLargeDim});
+    auto* output_arg = builder.MakeOutput();
+
+    builder.AddNode("Expand", {input_data, shape_data}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Expand"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // Expand should remain because the overflow prevents constant folding.
+    TEST_RETURN_IF_NOT(op_to_count["Expand"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const ConfigOptions empty_config_options;
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, empty_config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 // Check transformations in the case of a subgraph with constant inputs.
 TEST_F(GraphTransformationTests, SubgraphWithConstantInputs) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant-subgraph.onnx";
