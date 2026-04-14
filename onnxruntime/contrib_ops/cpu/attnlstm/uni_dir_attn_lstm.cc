@@ -219,14 +219,14 @@ void UniDirectionalAttnLstm<T>::LoadBias(const gsl::span<const T>& WbRb_values) 
   auto copy_fused_bias = [this, &WbRb_values](size_t offset, gsl::span<T>& out) {
     // gap between Wb and Wb value for an entry
     const size_t Wb_to_Rb_offset = CheckedMulToSizeT(hidden_size_, 4);
-    const size_t hidden_size = static_cast<size_t>(hidden_size_);
+    const size_t hidden_size = CheckedToSizeT(hidden_size_);
     for (size_t j = 0; j < hidden_size; ++j) {
       out[j] = WbRb_values[j + offset] + WbRb_values[j + offset + Wb_to_Rb_offset];
     }
   };
 
   size_t offset = 0;
-  const size_t hidden_size = static_cast<size_t>(hidden_size_);
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
   copy_fused_bias(offset, bias_WRi_);
   offset += hidden_size;
   copy_fused_bias(offset, bias_WRo_);
@@ -260,6 +260,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   gsl::span<T> batched_internal_state_prev_one_step = batched_internal_memory_prev_;
   gsl::span<T> batched_internal_state_clipped_one_step = batched_internal_memory_clipped_;
 
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
   const int batch_hidden_size = CheckedMulToInt(batch_size_, hidden_size_);
   int output_step_length = batch_hidden_size;
 
@@ -273,8 +274,8 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   if (direction_ == Direction::kForward && num_directions == 2)
     output_step_length = CheckedMulToInt(batch_hidden_size, 2);
 
-  const size_t output_step_length_size = static_cast<size_t>(output_step_length);
-  const size_t batch_hidden_size_size = static_cast<size_t>(batch_hidden_size);
+  const size_t output_step_length_size = CheckedToSizeT(output_step_length);
+  const size_t batch_hidden_size_size = CheckedToSizeT(batch_hidden_size);
 
   gsl::span<T> original_outputs = outputs;
   const bool output_sequence = !outputs.empty();
@@ -356,14 +357,14 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
       span_T_iter batched_output, batched_output_end;
       if (output_sequence) {
-        batched_output = outputs.begin() + static_cast<size_t>(step) * output_step_length_size;
+        batched_output = outputs.begin() + CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size);
         batched_output_end = outputs.end();
       } else {
         batched_output = final_hidden_state.begin();
         batched_output_end = final_hidden_state.end();
       }
 
-      span_T_iter step_out_IOFC_end = step_out_IOFC + batch_size_ * hidden_size_x4;
+      span_T_iter step_out_IOFC_end = step_out_IOFC + step_iofc_stride;
       GateComputations(step_out_IOFC, step_out_IOFC_end,
                        c_prev, C_prev_end,
                        c_prev_clipped, C_prev_clipped_end,
@@ -373,7 +374,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       // copy last row to final_cell_state
       for (int lrow = 0; lrow < batch_size_; lrow++) {
         if ((step + 1) == sequence_lengths[lrow]) {
-          const size_t row_offset = static_cast<size_t>(lrow) * static_cast<size_t>(hidden_size_);
+          const size_t row_offset = CheckedMulToSizeT(CheckedToSizeT(lrow), hidden_size);
           auto src = batched_internal_memory_prev_.subspan(row_offset, hidden_size_);
           auto dst = final_cell_state.subspan(row_offset, hidden_size_);
           gsl::copy(src, dst);
@@ -384,8 +385,8 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
         // set to 0 if step >= sequence_length
         for (int lrow = 0; lrow < batch_size_; lrow++) {
           if (step >= min_sequence_length && step >= sequence_lengths[lrow]) {
-            const size_t row_offset = static_cast<size_t>(step) * output_step_length_size +
-                                      static_cast<size_t>(lrow) * static_cast<size_t>(hidden_size_);
+            const size_t row_offset = CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size) +
+                                      CheckedMulToSizeT(CheckedToSizeT(lrow), hidden_size);
             auto dst = outputs.data() + row_offset;
             std::fill_n(dst, hidden_size_, T{});
           }
@@ -395,7 +396,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       previous_state = batched_output;
       previous_state_end = batched_output_end;
 
-      attention_wrapper_.ProcessOutput(outputs.subspan(static_cast<size_t>(step) * output_step_length_size,
+      attention_wrapper_.ProcessOutput(outputs.subspan(CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size),
                                                        batch_hidden_size_size));
     }
   }
@@ -404,9 +405,9 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     // copy last output to final_hidden_state
     for (int i = 0; i < batch_size_; i++) {
       const int seq_len = sequence_lengths[i];
-      const size_t src_offset = static_cast<size_t>(seq_len - 1) * output_step_length_size +
-                                static_cast<size_t>(i) * static_cast<size_t>(hidden_size_);
-      const size_t dst_offset = static_cast<size_t>(i) * static_cast<size_t>(hidden_size_);
+      const size_t src_offset = CheckedMulToSizeT(CheckedToSizeT(seq_len - 1), output_step_length_size) +
+                                CheckedMulToSizeT(CheckedToSizeT(i), hidden_size);
+      const size_t dst_offset = CheckedMulToSizeT(CheckedToSizeT(i), hidden_size);
       auto src = outputs.subspan(src_offset, hidden_size_);
       auto dest = final_hidden_state.subspan(dst_offset, hidden_size_);
       gsl::copy(src, dest);
