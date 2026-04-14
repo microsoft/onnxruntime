@@ -517,9 +517,8 @@ TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct) {
   test.Run();
 }
 
-// Regression test: 1D vectors with mismatched K dimension must fail, not OOB read.
-// This was a heap buffer over-read vulnerability (CVE-like): A=[K], B=[1] where K > 1
-// would read K-1 bytes past B's allocation.
+// Regression test: 1D vectors with mismatched K dimension must fail safely.
+// Covers prior invalid-shape handling for A=[K], B=[1] where K > 1.
 TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_KDimensionMismatch) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {4}, {1, 1, 1, 1});
