@@ -517,6 +517,18 @@ TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
+// Same 1D vector dot product test with int8_t types.
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct_int8) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1", {3}, {1, -2, 3});
+  test.AddInput<int8_t>("T2", {3}, {4, 5, -6});
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+  test.AddInput<int8_t>("b_zero_point", {}, {0});
+  // dot product: 1*4 + (-2)*5 + 3*(-6) = 4 - 10 - 18 = -24
+  test.AddOutput<int32_t>("T3", {}, {-24});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
 // Regression test: 1D vectors with mismatched K dimension must fail safely.
 // Covers prior invalid-shape handling for A=[K], B=[1] where K > 1.
 TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_KDimensionMismatch) {
