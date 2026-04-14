@@ -374,11 +374,14 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   }
 
   // Should likely account for meta devices as well, but for now keep the current behavior.
-  // Respect the user-provided option for CPU/GPU. For NPU, keep the existing constraint:
+  // Keep the user setting for CPU/GPU. For NPU, disable dynamic shapes by default and enable them when CausalLM is enabled.
   const bool is_npu_device = pi.device_type.find("NPU") != std::string::npos;
-  if (is_npu_device && pi.enable_causallm && pi.disable_dynamic_shapes) {
-    LOGS_DEFAULT(WARNING) << "Enabling dynamic shapes for NPU because CausalLM is enabled.";
-    pi.disable_dynamic_shapes = false;
+  if (is_npu_device) {
+    pi.disable_dynamic_shapes = true;
+    if (pi.enable_causallm) {
+      LOGS_DEFAULT(WARNING) << "Enabling dynamic shapes for NPU because CausalLM is enabled.";
+      pi.disable_dynamic_shapes = false;
+    }
   }
 }
 
