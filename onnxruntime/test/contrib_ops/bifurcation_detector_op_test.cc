@@ -121,7 +121,8 @@ TEST(BifurcationDetectorTest, SuffixMatchMultipleSingleGramUniqueDigram) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// Suffix matching: suffix_idx >= src_tokens_len causes early break → returns -1.
+// Suffix matching: suffix_idx >= src_tokens_len causes an early break after assignment,
+// so this edge case returns the assigned suffix_idx, not -1.
 TEST(BifurcationDetectorTest, SuffixMatchAtEndOfSrc) {
   OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
 
@@ -257,7 +258,8 @@ TEST(BifurcationDetectorTest, PrevSuffixMatchIdxExceedsSrcLen) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "",
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "src_tokens_len >= prev_suffix_match_idx_data",
              {}, nullptr, &execution_providers);
 }
 
