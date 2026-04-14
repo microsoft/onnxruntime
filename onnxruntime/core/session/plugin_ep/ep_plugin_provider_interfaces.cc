@@ -13,6 +13,8 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/plugin_ep_stream.h"
+#include "core/framework/resource_accountant.h"
+#include "core/common/inlined_containers.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -236,9 +238,16 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
                                        IResourceAccountant* resource_accountant) const {
   ORT_UNUSED_PARAMETER(graph_optimizer_registry);  // TODO: Add support
-  ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
 
   const logging::Logger& logger = GetEpLoggerOrDefault();
+
+  // Early exit if a previous GetCapability pass already signaled stop (e.g., budget exhausted).
+  // The framework calls GetCapability multiple times (e.g., after layout transformation),
+  // and each EP is responsible for checking the stop flag.
+  if (resource_accountant != nullptr && resource_accountant->IsStopIssued()) {
+    LOGS(logger, WARNING) << Type() << " returning due to stop already set";
+    return {};
+  }
 
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   if (Status status = EpGraph::Create(graph_viewer, ep_graph, true); !status.IsOK()) {
@@ -247,6 +256,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   }
 
   OrtEpGraphSupportInfo api_graph_support_info(*ep_graph, kernel_lookup);
+  api_graph_support_info.resource_accountant = resource_accountant;
   Status status = ToStatusAndRelease(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info));
 
   if (!status.IsOK()) {
@@ -259,6 +269,15 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   if (api_graph_support_info.node_groupings.empty()) {
     return {};
   }
+
+  // Host-side resource budget enforcement.
+  // The host computes costs and enforces the budget uniformly for all node grouping kinds.
+  // Plugin EPs only propose supported nodes; the host decides which to accept.
+  const bool has_budget = resource_accountant != nullptr && resource_accountant->GetThreshold().has_value();
+  ResourceCount consumed = resource_accountant != nullptr
+                               ? resource_accountant->GetConsumedAmount()
+                               : ResourceCount{};
+  ResourceCount budget = has_budget ? *resource_accountant->GetThreshold() : ResourceCount{};
 
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
@@ -275,21 +294,50 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
     if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
       if (node_grouping.nodes.size() != 1) {
-        // The EpGraphSupportInfo_AddSingleNode() C API should already return an error if the EP tries to provide
-        // an invalid node. However, we check here too just in case this changes.
         LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " did not specify exactly one valid node "
                             << "when calling EpGraphSupportInfo_AddSingleNode().";
         return {};
       }
 
-      auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
+      const Node& internal_node = node_grouping.nodes[0]->GetInternalNode();
+      const NodeIndex node_index = internal_node.Index();
 
-      indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->GetInternalNode().Index());
+      // Node already assigned from a previous pass (e.g., before layout transformation
+      // or after function inlining). Its cost was already committed — skip re-computation to avoid
+      // double-charging the output-size component.
+      // FindFirstNodeAssignedToOtherEP already filtered out nodes assigned to a different EP,
+      // so a non-empty EP type here means it was assigned to this EP.
+      const bool previously_assigned = !internal_node.GetExecutionProviderType().empty();
+
+      auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
+      indexed_sub_graph->nodes.push_back(node_index);
+
+      // Host-side budget enforcement for single nodes.
+      if (resource_accountant != nullptr && !previously_assigned) {
+        ResourceCount cost = resource_accountant->ComputeResourceCount(internal_node);
+        ResourceCount would_be_consumed = AddResourceCounts(consumed, cost);
+
+        LOGS(logger, VERBOSE) << Type() << " node: " << internal_node.Name()
+                              << " (" << internal_node.OpType() << ")"
+                              << " cost: " << FormatResourceCount(cost)
+                              << " would_be_consumed: " << FormatResourceCount(would_be_consumed)
+                              << " budget: " << FormatResourceCount(budget);
+
+        if (has_budget && ResourceCountExceeds(would_be_consumed, budget)) {
+          LOGS(logger, WARNING) << Type() << " halting assignment due to budget at node: "
+                                << internal_node.Name();
+          resource_accountant->SetStopAssignment();
+          break;  // stop processing further groupings
+        }
+
+        consumed = would_be_consumed;
+        indexed_sub_graph->SetAccountant(resource_accountant);
+        indexed_sub_graph->AppendNodeCost(cost);
+      }
+
       result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
     } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
       if (node_grouping.nodes.empty()) {
-        // The EpGraphSupportInfo_AddNodesToFuse() C API should already return an error if the EP tries to provide
-        // an empty array of nodes from OrtEp::GetCapability(). However, we check here too just in case this changes.
         LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " set an empty array of nodes "
                             << "when specifying supported nodes.";
         return {};
@@ -322,17 +370,60 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return {};
       }
 
-      // Log an error if the nodes in node_set do not match the nodes in capabilities[0]. We expect this to always
-      // be true because we've already checked that the EP did not try to claim nodes already assigned to another EP.
+      // Log an error if the nodes in node_set do not match the nodes in capabilities[0].
       // TODO(adrianlizarraga): This check can be removed when we stop using utils::CreateSupportedPartitions() above.
       std::vector<NodeIndex>& capability_node_indices = capabilities[0]->sub_graph->nodes;
-      std::unordered_set<NodeIndex> capability_node_indices_set(capability_node_indices.begin(),
-                                                                capability_node_indices.end());
+      InlinedHashSet<NodeIndex> capability_node_indices_set(capability_node_indices.begin(),
+                                                            capability_node_indices.end());
 
       if (node_set.size() != capability_node_indices_set.size()) {
         LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type()
                             << " set nodes that cannot all be fused together.";
         return {};
+      }
+
+      // Host-side budget enforcement for fused capabilities.
+      // Compute per-component-node costs from the accountant and check total against budget.
+      // Skip cost computation for nodes already assigned to this EP from a previous pass
+      // to avoid double-charging the output-size component.
+      if (resource_accountant != nullptr) {
+        auto* fused_sub_graph = capabilities[0]->sub_graph.get();
+        fused_sub_graph->SetAccountant(resource_accountant);
+
+        ResourceCount group_cost{};
+        InlinedVector<ResourceCount> node_costs;
+        node_costs.reserve(fused_sub_graph->nodes.size());
+
+        for (NodeIndex idx : fused_sub_graph->nodes) {
+          const Node* node = graph_viewer.GetNode(idx);
+          const bool node_already_assigned =
+              node != nullptr && !node->GetExecutionProviderType().empty();
+          ResourceCount cost = (node != nullptr && !node_already_assigned)
+                                   ? resource_accountant->ComputeResourceCount(*node)
+                                   : ResourceCount{};
+          group_cost = AddResourceCounts(group_cost, cost);
+          node_costs.push_back(cost);
+        }
+
+        ResourceCount would_be_consumed = AddResourceCounts(consumed, group_cost);
+
+        if (has_budget) {
+          LOGS(logger, VERBOSE) << Type() << " fused group cost: " << FormatResourceCount(group_cost)
+                                << " would_be_consumed: " << FormatResourceCount(would_be_consumed)
+                                << " budget: " << FormatResourceCount(budget);
+
+          if (ResourceCountExceeds(would_be_consumed, budget)) {
+            LOGS(logger, WARNING) << Type() << " halting assignment: fused group exceeds budget.";
+            resource_accountant->SetStopAssignment();
+            break;  // stop processing further groupings
+          }
+        }
+
+        consumed = would_be_consumed;
+
+        for (const auto& cost : node_costs) {
+          fused_sub_graph->AppendNodeCost(cost);
+        }
       }
 
       result.push_back(std::move(capabilities[0]));
