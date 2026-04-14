@@ -7,7 +7,7 @@ See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`)
 ### Build prerequisites
 
 - **CMake ≥ 3.28**, **C++20**, C99
-- Python 3.10+ (for build scripts, wheels, and tests)
+- Python 3.10+ for core build scripts/tooling; Python 3.11+ for building/installing the Python wheel and running Python tests
 - Platform toolchain (MSVC on Windows, GCC/Clang on Linux, Xcode on macOS)
 - EP-specific SDKs as needed (CUDA Toolkit, TensorRT, etc.)
 
