@@ -101,7 +101,7 @@ stages:
 
     - script: |
         set -e -x
-        unzip --overwrite webgpu_plugin_ep_binaries.zip
+        unzip -o webgpu_plugin_ep_binaries.zip
         rm -- webgpu_plugin_ep_binaries.zip
         codesign --display --verbose=3 libonnxruntime_providers_webgpu.dylib
       displayName: 'Unzip and verify signed binary'
