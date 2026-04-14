@@ -25,7 +25,7 @@ const INSTALL_METADATA = require('./install-metadata.js');
 
 // Bootstrap global-agent to honor the proxy settings in
 // environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
-// See https://github.com/gajus/global-agent/blob/v4.0.0/README.md#environment-variables for details.
+// See https://github.com/gajus/global-agent/blob/v4.1.3/README.md#environment-variables for details.
 globalAgentBootstrap();
 
 // commandline flag:
