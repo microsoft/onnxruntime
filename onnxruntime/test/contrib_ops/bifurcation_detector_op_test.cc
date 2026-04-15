@@ -259,7 +259,7 @@ TEST(BifurcationDetectorTest, PrevSuffixMatchIdxExceedsSrcLen) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "src_tokens_len >= prev_suffix_match_idx_data",
+             "prev_suffix_match_idx must not exceed src_tokens length",
              {}, nullptr, &execution_providers);
 }
 
