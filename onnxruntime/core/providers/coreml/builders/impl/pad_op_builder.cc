@@ -129,7 +129,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       } else {
         AddOperationInput(*op, "constant_val",
                           model_builder.AddScalarConstant(op->type(), "constant_val",
-                                                         constant_value_initializer.DataAsSpan<float>()[0]));
+                                                          constant_value_initializer.DataAsSpan<float>()[0]));
       }
     } else {
       // Provide default 0.0 for constant mode without explicit value, and for non-constant modes.
