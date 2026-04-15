@@ -3,6 +3,8 @@
 
 #include "uni_directional_lstm.h"
 
+#include <algorithm>
+
 #include "core/platform/threadpool.h"
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -93,15 +95,15 @@ void UniDirectionalLstm<T>::AllocateBuffers() {
   constexpr bool fill = true;
   hidden0_ = Allocate(allocator_, hidden_size_, hidden0_ptr_, fill);
   internal_memory_prev_ = Allocate(allocator_, hidden_size_, internal_memory_prev_ptr_, fill);
-  batched_hidden0_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_hidden0_ptr_);
+  batched_hidden0_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_hidden0_ptr_);
 
   batched_internal_memory_prev_ =
-      Allocate(allocator_, batch_size_ * hidden_size_, batched_internal_memory_prev_ptr_);
+      Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_internal_memory_prev_ptr_);
   batched_internal_memory_clipped_ =
-      Allocate(allocator_, batch_size_ * hidden_size_, batched_internal_memory_clipped_ptr_, fill);
+      Allocate(allocator_, CalculateBufferElementCount({batch_size_, hidden_size_}), batched_internal_memory_clipped_ptr_, fill);
 
   if (!training_mode_) {
-    output_iofc_ = Allocate(allocator_, hidden_size_ * 4 * batch_size_ * seq_length_, output_iofc_ptr_);
+    output_iofc_ = Allocate(allocator_, CalculateBufferElementCount({hidden_size_, 4, batch_size_, seq_length_}), output_iofc_ptr_);
   }
 
   if (use_bias_) {
@@ -112,8 +114,8 @@ void UniDirectionalLstm<T>::AllocateBuffers() {
   }
 
   if (direction_ == kReverse) {
-    inputs_reverse_ = Allocate(allocator_, seq_length_ * batch_size_ * input_size_, inputs_reverse_ptr_);
-    outputs_reverse_ = Allocate(allocator_, seq_length_ * batch_size_ * hidden_size_, outputs_reverse_ptr_);
+    inputs_reverse_ = Allocate(allocator_, CalculateBufferElementCount({seq_length_, batch_size_, input_size_}), inputs_reverse_ptr_);
+    outputs_reverse_ = Allocate(allocator_, CalculateBufferElementCount({seq_length_, batch_size_, hidden_size_}), outputs_reverse_ptr_);
   }
 
 #if !defined(LSTM_NO_PEEPHOLE_COPY)
@@ -213,12 +215,11 @@ template <typename WeightT>
 void UniDirectionalLstm<T>::AllocateQuantizeBuffers(int max_sequence_length) {
   // Can not specialize on WeightT without specify T explicitly, so use sizeof
   if constexpr (sizeof(WeightT) == 1) {
-    const int hidden_size_x4 = 4 * hidden_size_;
-    const int total_rows = max_sequence_length * batch_size_;
-
-    int input_or_a_size = std::max(total_rows * input_size_, batch_size_ * hidden_size_);
+    const size_t quantized_input_size = CalculateBufferElementCount({max_sequence_length, batch_size_, input_size_});
+    const size_t quantized_hidden_size = CalculateBufferElementCount({batch_size_, hidden_size_});
+    const size_t input_or_a_size = std::max(quantized_input_size, quantized_hidden_size);
     quantized_input_or_a_ = Allocate(allocator_, input_or_a_size, quantized_input_or_a_ptr_, false);
-    quantized_C_buffer_ = Allocate(allocator_, batch_size_ * hidden_size_x4, quantized_C_buffer_ptr_, false);
+    quantized_C_buffer_ = Allocate(allocator_, CalculateBufferElementCount({batch_size_, 4, hidden_size_}), quantized_C_buffer_ptr_, false);
   }
 }
 
@@ -245,7 +246,8 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
   gsl::span<T> batched_internal_state_prev_one_step = batched_internal_memory_prev_;
   gsl::span<T> batched_internal_state_clipped_one_step = batched_internal_memory_clipped_;
 
-  int output_step_length = batch_size_ * hidden_size_;
+  const int single_direction_output_step_length = CalculateOutputStepLength(batch_size_, hidden_size_, 1, direction_);
+  const int output_step_length = CalculateOutputStepLength(batch_size_, hidden_size_, num_directions, direction_);
 
   // The bidirectional LSTM wrapper wraps this LSTM class and produces bi-directional output
   // the output has layout [seq,num_direction,batch,neurons].
@@ -254,9 +256,6 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
   // Setting output_step_length this way allows writing the output directly without requiring
   // additional memcpy. Note that if direction is kReverse, we write to output_reverse buffer
   // which is then copied to output buffer, and ReverseSequence method handles the step length.
-  if (direction_ == kForward && num_directions == 2)
-    output_step_length = 2 * batch_size_ * hidden_size_;
-
   gsl::span<T> original_outputs = outputs;
   const bool output_sequence = !outputs.empty();
 
@@ -429,7 +428,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
 
   // zero any values beyond the evaluated steps
   if (output_sequence && max_sequence_length < seq_length_) {
-    if (output_step_length == batch_size_ * hidden_size_) {  // contiguous
+    if (output_step_length == single_direction_output_step_length) {  // contiguous
       const auto span_to_zero = outputs.subspan(max_sequence_length * output_step_length,
                                                 (seq_length_ - max_sequence_length) * output_step_length);
       std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
@@ -441,11 +440,11 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
       }
     } else {
       for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
-        const auto span_to_zero = outputs.subspan(i * output_step_length, batch_size_ * hidden_size_);
+        const auto span_to_zero = outputs.subspan(i * output_step_length, single_direction_output_step_length);
         std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
 
         if (training_mode_) {
-          const auto cell_span_to_zero_cell = all_cell_states.subspan(i * output_step_length, batch_size_ * hidden_size_);
+          const auto cell_span_to_zero_cell = all_cell_states.subspan(i * output_step_length, single_direction_output_step_length);
           std::fill_n(cell_span_to_zero_cell.begin(), cell_span_to_zero_cell.size(), T{});
         }
       }

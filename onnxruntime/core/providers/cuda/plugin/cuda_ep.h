@@ -4,10 +4,14 @@
 #pragma once
 
 #include "cuda_plugin_utils.h"
+#include "cuda_graph_plugin.h"
 #include "ep/adapters.h"
 
-#include <string>
+#include <memory>
 #include <mutex>
+#include <set>
+#include <string>
+#include <unordered_map>
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -28,6 +32,8 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
     bool cudnn_conv1d_pad_to_nc1d = false;            ///< Pad 1D convolutions to NC1D format.
     bool fuse_conv_bias = false;                      ///< Enable cuDNN frontend conv+bias fusion.
     int sdpa_kernel = 0;                              ///< Attention backend bitmask override.
+    bool enable_cuda_graph = false;                   ///< Enable CUDA graph capture and replay.
+    int min_num_runs_before_cuda_graph_capture = 2;   ///< Warm-up runs before graph capture begins.
   };
 
   CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger);
@@ -55,10 +61,52 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
       OrtEp* this_ptr, const char* domain, const char* op_type,
       OrtEpDataLayout target_data_layout, int* should_convert) noexcept;
 
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(
+      OrtEp* this_ptr, const OrtMemoryDevice* memory_device,
+      OrtSyncStreamImpl** stream) noexcept;
+
+  static OrtStatus* ORT_API_CALL SyncImpl(OrtEp* this_ptr) noexcept;
+
+  static OrtStatus* ORT_API_CALL IsConcurrentRunSupportedImpl(
+      OrtEp* this_ptr, bool* is_supported) noexcept;
+
+  // CUDA Graph callback implementations
+  static OrtStatus* ORT_API_CALL OnRunStartImpl(
+      OrtEp* this_ptr, const OrtRunOptions* run_options) noexcept;
+
+  static OrtStatus* ORT_API_CALL OnRunEndImpl(
+      OrtEp* this_ptr, const OrtRunOptions* run_options, bool sync_stream) noexcept;
+
+  static bool ORT_API_CALL IsGraphCaptureEnabledImpl(const OrtEp* this_ptr) noexcept;
+
+  static bool ORT_API_CALL IsGraphCapturedImpl(const OrtEp* this_ptr,
+                                               int graph_annotation_id) noexcept;
+
+  static OrtStatus* ORT_API_CALL ReplayGraphImpl(OrtEp* this_ptr,
+                                                 int graph_annotation_id) noexcept;
+
+  static OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL GetGraphCaptureNodeAssignmentPolicyImpl(
+      const OrtEp* this_ptr) noexcept;
+
+  /// Helper to parse the graph annotation ID from run options.
+  CudaGraphAnnotation_t GetGraphAnnotationId(const OrtRunOptions* run_options) const;
+
+  struct PerThreadContext;
+  using PerThreadContextMap = std::unordered_map<const CudaEp*, std::shared_ptr<PerThreadContext>>;
+
+  static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache();
+  PerThreadContext& GetPerThreadContext() const;
+
   CudaEpFactory& factory_;
   std::string name_;
   Config config_;
   const OrtLogger& logger_;
+
+  mutable std::mutex per_thread_contexts_mutex_;
+  // The thread-local cache owns contexts so they are released when a thread exits.
+  // The EP tracks live caches only to remove its entry when the EP is destroyed.
+  mutable std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
+      per_thread_context_caches_;
 };
 
 }  // namespace cuda_plugin
