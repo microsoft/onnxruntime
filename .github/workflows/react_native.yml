@@ -40,7 +40,7 @@ jobs:
         with:
           ndk-version: 28.0.13004108
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.12
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
@@ -197,7 +197,7 @@ jobs:
       - name: Install Python requirements
         run: pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.12
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
@@ -242,7 +242,7 @@ jobs:
         with:
           node-version: '22.x'
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.12
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
