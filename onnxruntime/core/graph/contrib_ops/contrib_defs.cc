@@ -3616,6 +3616,67 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
         }
       });
 
+  static const char* MatMulNBitsSiluMul_ver1_doc = R"DOC(
+MatMulNBitsSiluMul fuses two MatMulNBits projections that share the same input and computes
+
+  Y = SiLU(MatMulNBits(A, gate_weight) + gate_bias) * (MatMulNBits(A, up_weight) + up_bias)
+
+where SiLU(x) = x * sigmoid(x).
+
+This operator is intended for decoder MLP patterns such as Qwen-style gate and up projections, but it remains
+semantically valid for both prefill and decode because the output shape is the standard MatMul result shape
+derived from the runtime shape of A and the shared attributes K and N.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsSiluMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(MatMulNBitsSiluMul_ver1_doc)
+      .Attr("K", "Input feature dimension shared by both quantized weight matrices.", AttributeProto::INT)
+      .Attr("N", "Output feature dimension shared by both quantized weight matrices.", AttributeProto::INT)
+      .Attr("bits", "Bit-width used to quantize both weight matrices (valid range: 2~8)", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("block_size",
+            "Size of each quantization block along the K dimension. Must be a power of two and >= 16.",
+            AttributeProto::INT)
+      .Attr("accuracy_level",
+            "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Input(0, "A", "The shared input tensor.", "T1")
+      .Input(1, "gate_B", "Packed uint8 tensor for the gate projection weights.", "T2")
+      .Input(2, "gate_scales", "Per-block scaling factors for the gate projection.", "T1")
+      .Input(3, "gate_bias", "Optional bias for the gate projection with shape [N].", "T1", OpSchema::Optional)
+      .Input(4, "up_B", "Packed uint8 tensor for the up projection weights.", "T2")
+      .Input(5, "up_scales", "Per-block scaling factors for the up projection.", "T1")
+      .Input(6, "up_bias", "Optional bias for the up projection with shape [N].", "T1", OpSchema::Optional)
+      .Output(0, "Y", "The fused SiLU-multiply output tensor.", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        const int64_t in_features = getAttribute(ctx, "K", -1);
+        const int64_t out_features = getAttribute(ctx, "N", -1);
+        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, true);
+
+        for (size_t bias_input_index : {3U, 6U}) {
+          if (!ctx.hasInput(static_cast<int>(bias_input_index))) {
+            continue;
+          }
+
+          if (!hasInputShape(ctx, static_cast<int>(bias_input_index))) {
+            fail_shape_inference("bias shape must be known");
+          }
+
+          const auto& bias_shape = getInputShape(ctx, static_cast<int>(bias_input_index));
+          if (bias_shape.dim_size() != 1 ||
+              !bias_shape.dim(0).has_dim_value() ||
+              bias_shape.dim(0).dim_value() != out_features) {
+            fail_shape_inference("bias shape must be [N] where N = ", out_features);
+          }
+        }
+      });
+
   static const char* MatMulBnb4_ver1_doc = R"DOC(
 MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4 data type (https://arxiv.org/pdf/2305.14314.pdf). It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
   1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.

@@ -55,6 +55,7 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_nbits_silu_fusion.h"
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
@@ -98,6 +99,17 @@
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime::optimizer_utils {
+
+namespace {
+
+bool IsMatMulNBitsSiluFusionEnabled(const SessionOptions& session_options) {
+  const auto config_value = session_options.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsEnableMatMulNBitsSiluFusion,
+      "0");
+  return config_value != "0";
+}
+
+}  // namespace
 
 static void FilterTransformers(InlinedVector<std::unique_ptr<GraphTransformer>>& transformers,
                                const InlinedHashSet<std::string>& transformers_to_disable) {
@@ -436,6 +448,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
+      if (IsMatMulNBitsSiluFusionEnabled(session_options)) {
+        transformers.emplace_back(std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

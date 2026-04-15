@@ -54,6 +54,19 @@ struct DecodeBenchConfig {
   int64_t accuracy_level;
 };
 
+enum class MlpDecodeBenchmarkVariant {
+  kUnfused,
+  kFused,
+};
+
+struct MlpDecodeBenchConfig {
+  int64_t n;
+  int64_t k;
+  int64_t bits;
+  int64_t block_size;
+  int64_t accuracy_level;
+};
+
 struct AdapterSelectionConfig {
   // adapter_type: Dawn adapter type to select, e.g. integrated or discrete GPU.
   // preferred_vendor_id/device_id: stable PCI identifiers used to locate the target GPU regardless of enumeration order.
@@ -97,6 +110,15 @@ struct DecodeTrafficStats {
   double input_bytes;
   double packed_weight_bytes;
   double scale_bytes;
+  double output_bytes;
+  double total_bytes;
+};
+
+struct MlpTrafficStats {
+  double input_bytes;
+  double packed_weight_bytes;
+  double scale_bytes;
+  double intermediate_bytes;
   double output_bytes;
   double total_bytes;
 };
@@ -270,6 +292,29 @@ DecodeTrafficStats CalculateDecodeTrafficStats(const DecodeBenchConfig& config) 
       input_bytes + packed_weight_bytes + scale_bytes + output_bytes,
   };
 }
+
+    MlpTrafficStats CalculateMlpTrafficStats(const MlpDecodeBenchConfig& config, MlpDecodeBenchmarkVariant variant) {
+      const int64_t k_blocks = (config.k + config.block_size - 1) / config.block_size;
+      const int64_t blob_size = (config.block_size * config.bits) / 8;
+
+      const double input_reads = variant == MlpDecodeBenchmarkVariant::kFused ? 1.0 : 2.0;
+      const double intermediate_bytes =
+        variant == MlpDecodeBenchmarkVariant::kFused ? 0.0 : 4.0 * static_cast<double>(config.n) * sizeof(Ort::Float16_t);
+      const double input_bytes = input_reads * static_cast<double>(config.k) * sizeof(Ort::Float16_t);
+      const double packed_weight_bytes =
+        2.0 * static_cast<double>(config.n) * static_cast<double>(k_blocks) * static_cast<double>(blob_size);
+      const double scale_bytes = 2.0 * static_cast<double>(config.n) * static_cast<double>(k_blocks) * sizeof(Ort::Float16_t);
+      const double output_bytes = static_cast<double>(config.n) * sizeof(Ort::Float16_t);
+
+      return {
+        input_bytes,
+        packed_weight_bytes,
+        scale_bytes,
+        intermediate_bytes,
+        output_bytes,
+        input_bytes + packed_weight_bytes + scale_bytes + intermediate_bytes + output_bytes,
+      };
+    }
 
 AdapterSelectionConfig GetAdapterSelectionConfig() {
   if (GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kT1000) {
@@ -482,6 +527,19 @@ void AddTensorInitializer(ONNX_NAMESPACE::GraphProto& graph,
   initializer->set_raw_data(values.data(), values.size() * sizeof(T));
 }
 
+void AddTensorValueInfo(ONNX_NAMESPACE::GraphProto& graph,
+                        const std::string& name,
+                        int32_t data_type,
+                        const std::vector<int64_t>& dims) {
+  auto* value_info = graph.add_value_info();
+  value_info->set_name(name);
+  value_info->mutable_type()->mutable_tensor_type()->set_elem_type(data_type);
+  auto* shape = value_info->mutable_type()->mutable_tensor_type()->mutable_shape();
+  for (int64_t dim : dims) {
+    shape->add_dim()->set_dim_value(dim);
+  }
+}
+
 std::vector<DecodeBenchConfig> GetDecodeBenchConfigs() {
   // Each entry is {N, K, bits, block_size, accuracy_level} for a decode-style M=1 run.
   return {
@@ -497,6 +555,15 @@ std::vector<DecodeBenchConfig> GetDecodeBenchConfigs() {
 
       // Vocab proj
       {151936, 2048, 4, 32, 4},
+  };
+}
+
+std::vector<MlpDecodeBenchConfig> GetMlpDecodeBenchConfigs() {
+  // Each entry is {N, K, bits, block_size, accuracy_level} for a decode-style M=1 MLP run.
+  return {
+      {6144, 2048, 4, 32, 4},
+      {8192, 3072, 4, 32, 4},
+      {11008, 4096, 4, 32, 4},
   };
 }
 
@@ -519,6 +586,58 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto& graph,
   node->add_input(weight_name);
   node->add_input(scale_name);
   node->add_input("");
+  node->add_input("");
+  node->add_output(output_name);
+
+  auto* attr_k = node->add_attribute();
+  attr_k->set_name("K");
+  attr_k->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_k->set_i(k);
+
+  auto* attr_n = node->add_attribute();
+  attr_n->set_name("N");
+  attr_n->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_n->set_i(n);
+
+  auto* attr_bits = node->add_attribute();
+  attr_bits->set_name("bits");
+  attr_bits->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_bits->set_i(bits);
+
+  auto* attr_block = node->add_attribute();
+  attr_block->set_name("block_size");
+  attr_block->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_block->set_i(block_size);
+
+  auto* attr_accuracy = node->add_attribute();
+  attr_accuracy->set_name("accuracy_level");
+  attr_accuracy->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_accuracy->set_i(accuracy_level);
+}
+
+void AddMatMulNBitsSiluMulNode(ONNX_NAMESPACE::GraphProto& graph,
+                               const std::string& node_name,
+                               const std::string& input_name,
+                               const std::string& gate_weight_name,
+                               const std::string& gate_scale_name,
+                               const std::string& up_weight_name,
+                               const std::string& up_scale_name,
+                               const std::string& output_name,
+                               int64_t k,
+                               int64_t n,
+                               int64_t bits,
+                               int64_t block_size,
+                               int64_t accuracy_level) {
+  auto* node = graph.add_node();
+  node->set_name(node_name);
+  node->set_op_type("MatMulNBitsSiluMul");
+  node->set_domain("com.microsoft");
+  node->add_input(input_name);
+  node->add_input(gate_weight_name);
+  node->add_input(gate_scale_name);
+  node->add_input("");
+  node->add_input(up_weight_name);
+  node->add_input(up_scale_name);
   node->add_input("");
   node->add_output(output_name);
 
@@ -601,10 +720,138 @@ std::vector<uint8_t> SerializeMatMulNBitsModel(const DecodeBenchConfig& config) 
   return std::vector<uint8_t>(serialized.begin(), serialized.end());
 }
 
+std::string GetMlpVariantLabel(MlpDecodeBenchmarkVariant variant) {
+  return variant == MlpDecodeBenchmarkVariant::kFused ? "fused" : "unfused";
+}
+
+std::string GetMlpDecodeBenchmarkLabel(MlpDecodeBenchmarkVariant variant) {
+  std::ostringstream stream;
+  stream << "fp16_mlp_decode_" << GetMlpVariantLabel(variant) << '_'
+         << (IsDecodeBenchmarkPerfMode() ? "perf" : "correctness") << '_'
+         << (GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kRtx5060Ti ? "rtx" : "t") << '_'
+         << (IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off");
+  return stream.str();
+}
+
+std::vector<uint8_t> SerializeMatMulNBitsMlpModel(const MlpDecodeBenchConfig& config,
+                                                  MlpDecodeBenchmarkVariant variant) {
+  const int64_t k_blocks = (config.k + config.block_size - 1) / config.block_size;
+  const int64_t blob_size = (config.block_size * config.bits) / 8;
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(10);
+
+  auto* onnx_opset = model.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(21);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name(variant == MlpDecodeBenchmarkVariant::kFused ? "WebGpuMatMulNBitsMlpDecodeFused"
+                                                               : "WebGpuMatMulNBitsMlpDecodeUnfused");
+
+  auto* input = graph->add_input();
+  input->set_name("A");
+  input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  input->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  input->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(config.k);
+
+  auto* output = graph->add_output();
+  output->set_name("Y");
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  output->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  output->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(config.n);
+
+  std::vector<uint8_t> gate_b(static_cast<size_t>(config.n * k_blocks * blob_size), uint8_t{0x11});
+  std::vector<uint8_t> up_b(static_cast<size_t>(config.n * k_blocks * blob_size), uint8_t{0x77});
+  std::vector<Ort::Float16_t> gate_scales(static_cast<size_t>(config.n * k_blocks), Ort::Float16_t(0.03125f));
+  std::vector<Ort::Float16_t> up_scales(static_cast<size_t>(config.n * k_blocks), Ort::Float16_t(0.0625f));
+
+  AddTensorInitializer(*graph, "gate_B", ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                       {config.n, k_blocks, blob_size}, gate_b);
+  AddTensorInitializer(*graph, "up_B", ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                       {config.n, k_blocks, blob_size}, up_b);
+  AddTensorInitializer(*graph, "gate_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                       {config.n, k_blocks}, gate_scales);
+  AddTensorInitializer(*graph, "up_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                       {config.n, k_blocks}, up_scales);
+
+  if (variant == MlpDecodeBenchmarkVariant::kFused) {
+    AddMatMulNBitsSiluMulNode(*graph,
+                              "MatMulNBitsSiluMulDecode",
+                              "A",
+                              "gate_B",
+                              "gate_scales",
+                              "up_B",
+                              "up_scales",
+                              "Y",
+                              config.k,
+                              config.n,
+                              config.bits,
+                              config.block_size,
+                              config.accuracy_level);
+  } else {
+    AddTensorValueInfo(*graph, "gate_mm", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, config.n});
+    AddTensorValueInfo(*graph, "up_mm", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, config.n});
+    AddTensorValueInfo(*graph, "gate_sigmoid", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, config.n});
+    AddTensorValueInfo(*graph, "gate_silu", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, config.n});
+
+    AddMatMulNBitsNode(*graph,
+                       "GateMatMulNBitsDecode",
+                       "A",
+                       "gate_B",
+                       "gate_scales",
+                       "gate_mm",
+                       config.k,
+                       config.n,
+                       config.bits,
+                       config.block_size,
+                       config.accuracy_level);
+    AddMatMulNBitsNode(*graph,
+                       "UpMatMulNBitsDecode",
+                       "A",
+                       "up_B",
+                       "up_scales",
+                       "up_mm",
+                       config.k,
+                       config.n,
+                       config.bits,
+                       config.block_size,
+                       config.accuracy_level);
+
+    auto* sigmoid = graph->add_node();
+    sigmoid->set_name("GateSigmoid");
+    sigmoid->set_op_type("Sigmoid");
+    sigmoid->add_input("gate_mm");
+    sigmoid->add_output("gate_sigmoid");
+
+    auto* silu_mul = graph->add_node();
+    silu_mul->set_name("GateSiluMul");
+    silu_mul->set_op_type("Mul");
+    silu_mul->add_input("gate_mm");
+    silu_mul->add_input("gate_sigmoid");
+    silu_mul->add_output("gate_silu");
+
+    auto* output_mul = graph->add_node();
+    output_mul->set_name("GateUpMul");
+    output_mul->set_op_type("Mul");
+    output_mul->add_input("gate_silu");
+    output_mul->add_input("up_mm");
+    output_mul->add_output("Y");
+  }
+
+  const auto serialized = model.SerializeAsString();
+  return std::vector<uint8_t>(serialized.begin(), serialized.end());
+}
+
 Ort::Session CreateSessionFromModelData(const std::vector<uint8_t>& model_data,
-                                        const std::unordered_map<std::string, std::string>* provider_options) {
+                                        const std::unordered_map<std::string, std::string>* provider_options,
+                                        GraphOptimizationLevel graph_optimization_level = GraphOptimizationLevel::ORT_ENABLE_ALL) {
   Ort::SessionOptions session_options;
   session_options.DisableMemPattern();
+  session_options.SetGraphOptimizationLevel(graph_optimization_level);
   if (provider_options != nullptr) {
     session_options.AppendExecutionProvider("WebGPU", *provider_options);
   }
@@ -667,6 +914,62 @@ void ValidateDecodeOutputs(const std::vector<uint8_t>& model_data,
   }
 
   std::cout << "Decode correctness check passed. max_abs_diff=" << max_abs_diff
+            << " at index " << max_abs_diff_index << std::endl;
+}
+
+void ValidateMlpDecodeOutputs(const std::vector<uint8_t>& unfused_model_data,
+                              const std::vector<uint8_t>& fused_model_data,
+                              const std::unordered_map<std::string, std::string>& provider_options,
+                              const char* const* input_names,
+                              const Ort::Value* input_tensor,
+                              const char* const* output_names) {
+  Ort::Session unfused_session = CreateSessionFromModelData(unfused_model_data,
+                                                            &provider_options,
+                                                            GraphOptimizationLevel::ORT_DISABLE_ALL);
+  Ort::Session fused_session = CreateSessionFromModelData(fused_model_data,
+                                                          &provider_options,
+                                                          GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+  auto unfused_outputs = unfused_session.Run(Ort::RunOptions{nullptr}, input_names, input_tensor, 1, output_names, 1);
+  auto fused_outputs = fused_session.Run(Ort::RunOptions{nullptr}, input_names, input_tensor, 1, output_names, 1);
+
+  if (unfused_outputs.size() != 1 || fused_outputs.size() != 1) {
+    throw std::runtime_error("Expected a single output from both unfused and fused MLP sessions.");
+  }
+
+  const auto& unfused_output = unfused_outputs[0];
+  const auto& fused_output = fused_outputs[0];
+  const size_t element_count = unfused_output.GetTensorTypeAndShapeInfo().GetElementCount();
+  if (element_count != fused_output.GetTensorTypeAndShapeInfo().GetElementCount()) {
+    throw std::runtime_error("Unfused and fused MLP output sizes do not match.");
+  }
+
+  const auto* unfused_data = unfused_output.GetTensorData<Ort::Float16_t>();
+  const auto* fused_data = fused_output.GetTensorData<Ort::Float16_t>();
+  float max_abs_diff = 0.0f;
+  size_t max_abs_diff_index = 0;
+  for (size_t i = 0; i < element_count; ++i) {
+    const float unfused_value = unfused_data[i].ToFloat();
+    const float fused_value = fused_data[i].ToFloat();
+    const float abs_diff = std::abs(unfused_value - fused_value);
+    const float allowed_diff = kDecodeCorrectnessAbsTolerance +
+                               kDecodeCorrectnessRelTolerance * std::max(std::abs(unfused_value), std::abs(fused_value));
+    if (abs_diff > max_abs_diff) {
+      max_abs_diff = abs_diff;
+      max_abs_diff_index = i;
+    }
+    if (abs_diff > allowed_diff) {
+      std::ostringstream stream;
+      stream << "MLP decode correctness check failed at index " << i
+             << ": unfused=" << unfused_value
+             << ", fused=" << fused_value
+             << ", abs_diff=" << abs_diff
+             << ", allowed_diff=" << allowed_diff;
+      throw std::runtime_error(stream.str());
+    }
+  }
+
+  std::cout << "MLP decode correctness check passed. max_abs_diff=" << max_abs_diff
             << " at index " << max_abs_diff_index << std::endl;
 }
 
@@ -752,8 +1055,110 @@ static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
   }
 }
 
+void BenchmarkWebGpuMatMulNBitsMlpDecode(benchmark::State& state, MlpDecodeBenchmarkVariant variant) {
+  try {
+    const MlpDecodeBenchConfig config{
+        state.range(0),
+        state.range(1),
+        state.range(2),
+        state.range(3),
+        state.range(4),
+    };
+
+    if (config.k % config.block_size != 0) {
+      state.SkipWithError("K must be divisible by block_size for this benchmark skeleton.");
+      return;
+    }
+
+    const MlpTrafficStats traffic = CalculateMlpTrafficStats(config, variant);
+    std::vector<uint8_t> model_data = SerializeMatMulNBitsMlpModel(config, variant);
+    const SelectedWebGpuContext& selected_context = GetSelectedWebGpuContext();
+    const GraphOptimizationLevel optimization_level =
+      variant == MlpDecodeBenchmarkVariant::kUnfused ? GraphOptimizationLevel::ORT_DISABLE_ALL
+                               : GraphOptimizationLevel::ORT_ENABLE_ALL;
+    Ort::Session session = CreateSessionFromModelData(model_data,
+                              &selected_context.provider_options,
+                              optimization_level);
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    std::vector<int64_t> input_shape{1, config.k};
+    std::vector<Ort::Float16_t> activation(static_cast<size_t>(config.k));
+
+    std::mt19937 rng(123);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    for (auto& value : activation) {
+      value = Ort::Float16_t(dist(rng));
+    }
+
+    const char* input_names[] = {"A"};
+    const char* output_names[] = {"Y"};
+
+    auto input_tensor = Ort::Value::CreateTensor<Ort::Float16_t>(memory_info,
+                                                                  activation.data(),
+                                                                  activation.size(),
+                                                                  input_shape.data(),
+                                                                  input_shape.size());
+
+    if (!IsDecodeBenchmarkPerfMode()) {
+      ValidateMlpDecodeOutputs(SerializeMatMulNBitsMlpModel(config, MlpDecodeBenchmarkVariant::kUnfused),
+                               SerializeMatMulNBitsMlpModel(config, MlpDecodeBenchmarkVariant::kFused),
+                               selected_context.provider_options,
+                               input_names,
+                               &input_tensor,
+                               output_names);
+    }
+
+    for (int i = 0; i < kDecodeWarmupRuns; ++i) {
+      auto warmup_outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
+      benchmark::DoNotOptimize(warmup_outputs);
+    }
+
+    double total_kernel_seconds = 0.0;
+    for (auto _ : state) {
+      const auto kernel_start = std::chrono::steady_clock::now();
+      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
+      const auto kernel_end = std::chrono::steady_clock::now();
+      total_kernel_seconds += std::chrono::duration<double>(kernel_end - kernel_start).count();
+      benchmark::DoNotOptimize(outputs);
+    }
+
+    const double total_flops = 4.0 * static_cast<double>(config.n) * static_cast<double>(config.k);
+    const double achieved_bandwidth_bytes_per_second =
+        total_kernel_seconds > 0.0
+            ? traffic.total_bytes * static_cast<double>(state.iterations()) / total_kernel_seconds
+            : 0.0;
+
+    state.SetLabel(GetMlpDecodeBenchmarkLabel(variant));
+    state.counters["TFLOPS"] = benchmark::Counter(
+        total_flops,
+        benchmark::Counter::kIsIterationInvariantRate);
+    state.counters["ApproxMemBW_GBps"] = benchmark::Counter(achieved_bandwidth_bytes_per_second / 1.0e9);
+    state.counters["ApproxTraffic_MB"] = benchmark::Counter(traffic.total_bytes / 1.0e6);
+    state.counters["Input_MB"] = benchmark::Counter(traffic.input_bytes / 1.0e6);
+    state.counters["PackedW_MB"] = benchmark::Counter(traffic.packed_weight_bytes / 1.0e6);
+    state.counters["Scales_MB"] = benchmark::Counter(traffic.scale_bytes / 1.0e6);
+    state.counters["Intermediate_MB"] = benchmark::Counter(traffic.intermediate_bytes / 1.0e6);
+    state.counters["Output_MB"] = benchmark::Counter(traffic.output_bytes / 1.0e6);
+  } catch (const std::exception& ex) {
+    state.SkipWithError(ex.what());
+  }
+}
+
+static void BM_WebGpuMatMulNBitsMlpDecodeUnfused(benchmark::State& state) {
+  BenchmarkWebGpuMatMulNBitsMlpDecode(state, MlpDecodeBenchmarkVariant::kUnfused);
+}
+
+static void BM_WebGpuMatMulNBitsMlpDecodeFused(benchmark::State& state) {
+  BenchmarkWebGpuMatMulNBitsMlpDecode(state, MlpDecodeBenchmarkVariant::kFused);
+}
+
 void ApplyWebGpuMatMulNBitsDecodeArgs(benchmark::internal::Benchmark* benchmark) {
   for (const auto& config : GetDecodeBenchConfigs()) {
+    benchmark->Args({config.n, config.k, config.bits, config.block_size, config.accuracy_level});
+  }
+}
+
+void ApplyWebGpuMatMulNBitsMlpDecodeArgs(benchmark::internal::Benchmark* benchmark) {
+  for (const auto& config : GetMlpDecodeBenchConfigs()) {
     benchmark->Args({config.n, config.k, config.bits, config.block_size, config.accuracy_level});
   }
 }
@@ -764,5 +1169,19 @@ BENCHMARK(BM_WebGpuMatMulNBitsDecode)
   ->ReportAggregatesOnly()
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kMicrosecond);
+
+BENCHMARK(BM_WebGpuMatMulNBitsMlpDecodeUnfused)
+  ->Apply(ApplyWebGpuMatMulNBitsMlpDecodeArgs)
+  ->Repetitions(5)
+  ->ReportAggregatesOnly()
+  ->UseRealTime()
+  ->Unit(benchmark::TimeUnit::kMicrosecond);
+
+BENCHMARK(BM_WebGpuMatMulNBitsMlpDecodeFused)
+  ->Apply(ApplyWebGpuMatMulNBitsMlpDecodeArgs)
+  ->Repetitions(5)
+  ->ReportAggregatesOnly()
+  ->UseRealTime()
+  ->Unit(benchmark::TimeUnit::kMicrosecond);
 
 }  // namespace
