@@ -50,7 +50,7 @@ runs:
 
     - name: Check unformatted files
       run: |
-        node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
+        node -e "a=require('child_process').execSync('git diff --name-only -- .').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
       shell: bash
       working-directory: ${{ github.workspace }}/js
 
@@ -66,6 +66,6 @@ runs:
 
     - name: Check out of dated documents
       run: |
-        node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+        node -e "a=require('child_process').execSync('git diff --name-only -- .').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
       shell: bash
       working-directory: ${{ github.workspace }}/js/web
