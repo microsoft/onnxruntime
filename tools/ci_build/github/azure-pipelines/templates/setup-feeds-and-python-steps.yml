@@ -78,6 +78,8 @@ steps:
 #       (Or intrusively set GRADLE_USER_HOME env var to an agent temp dir. Maven doesn't have equiv facilities.)
 - task: PowerShell@2
   displayName: 'Maven/Gradle - mirror / feed via `${{ parameters.artifactFeeds }}`'
+  env:
+    central_maven_feed_name: ${{ parameters.artifactFeeds }}
   inputs:
     targetType: 'inline'
     script: |
@@ -145,11 +147,11 @@ steps:
         }
       }
       "@
-    env:
-      central_maven_feed_name: ${{ parameters.artifactFeeds }}
 
 - task: PowerShell@2
   displayName: NuGet - override `NuGet.config` to lock feed to `${{ parameters.artifactFeeds }}`
+  env:
+    central_maven_feed_name: ${{ parameters.artifactFeeds }}
   inputs:
     targetType: 'inline'
     script: |
@@ -171,5 +173,3 @@ steps:
         </disabledPackageSources>
       </configuration>
       "@
-  env:
-    central_maven_feed_name: ${{ parameters.artifactFeeds }}
