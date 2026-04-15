@@ -22,6 +22,9 @@ class PadOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
 
+  bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                              const logging::Logger& logger) const override;
+
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
@@ -174,6 +177,27 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   }
 
   return Status::OK();
+}
+
+bool PadOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                          const logging::Logger& logger) const {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type, logger))
+    return false;
+
+  // NeuralNetwork supports float only. ML Program supports float and float16.
+  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    return true;
+  }
+
+  if (input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return true;
+  }
+
+  LOGS(logger, VERBOSE) << "[" << node.OpType()
+                        << "] Input type: [" << input_type
+                        << "] is not supported";
+  return false;
 }
 
 bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
