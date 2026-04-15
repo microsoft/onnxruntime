@@ -9,8 +9,6 @@ Usage:
 """
 
 import argparse
-import glob
-import os
 import platform
 import shutil
 import subprocess
@@ -93,39 +91,37 @@ def auditwheel_repair(wheel_dir: Path):
     if platform.system() != "Linux":
         return
 
-    raw_wheels = glob.glob(str(wheel_dir / "onnxruntime_ep_webgpu-*.whl"))
+    raw_wheels = wheel_dir.glob("onnxruntime_ep_webgpu-*.whl")
     if not raw_wheels:
         return
 
-    repaired_dir = wheel_dir / "_repaired"
-    repaired_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as repaired_dir_name:
+        repaired_dir = Path(repaired_dir_name)
 
-    for wheel in raw_wheels:
-        cmd = [sys.executable, "-m", "auditwheel", "repair", wheel,
-               "--wheel-dir", str(repaired_dir)]
-        for lib in AUDITWHEEL_EXCLUDE:
-            cmd.extend(["--exclude", lib])
-        print(f"Running: {' '.join(cmd)}")
-        subprocess.check_call(cmd)
+        for wheel in raw_wheels:
+            cmd = [sys.executable, "-m", "auditwheel", "repair", str(wheel), "--wheel-dir", str(repaired_dir)]
+            for lib in AUDITWHEEL_EXCLUDE:
+                cmd.extend(["--exclude", lib])
+            print(f"Running: {' '.join(cmd)}")
+            subprocess.check_call(cmd)
 
-    # Replace raw wheels with repaired ones
-    for wheel in raw_wheels:
-        os.remove(wheel)
-    for repaired_wheel in repaired_dir.glob("*.whl"):
-        shutil.move(str(repaired_wheel), str(wheel_dir / repaired_wheel.name))
-    repaired_dir.rmdir()
+        # Replace raw wheels with repaired ones
+        for repaired_wheel in repaired_dir.glob("*.whl"):
+            repaired_wheel.replace(wheel_dir / repaired_wheel.name)
 
 
 def collect_wheels(wheel_dir: Path, output_dir: Path):
     """Copy built wheels to the output directory and verify at least one was produced."""
-    wheels = glob.glob(str(wheel_dir / "onnxruntime_ep_webgpu-*.whl"))
+    wheels = wheel_dir.glob("onnxruntime_ep_webgpu-*.whl")
     if not wheels:
         print("ERROR: No wheel was produced", file=sys.stderr)
         sys.exit(1)
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    for w in wheels:
-        dest = output_dir / Path(w).name
-        shutil.copy2(w, dest)
+
+    for wheel in wheels:
+        dest = output_dir / wheel.name
+        shutil.copy2(wheel, dest)
         print(f"Built wheel: {dest}")
 
 
