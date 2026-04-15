@@ -12,9 +12,9 @@
 #include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
-#include "core/framework/op_kernel_info.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
+#include "core/session/allocator_adapters.h"
 
 #include "node.h"
 #include "kernel_def.h"
@@ -43,12 +43,10 @@ struct OpKernelInfo {
   // to manage the lifetime of the cached data.
   struct KernelInfoCache {
     explicit KernelInfoCache(const OrtKernelInfo* kernel_info) : kernel_info_(kernel_info) {
-      const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(kernel_info);
-      execution_provider_ = core_kernel_info->GetExecutionProvider();
-      ort_ep_ = execution_provider_ != nullptr ? execution_provider_->GetOrtEp() : nullptr;
-      ep_impl_ = ort_ep_ != nullptr ? (static_cast<const Ep*>(ort_ep_))->EpImpl() : execution_provider_;
-
       Ort::ConstKernelInfo info{kernel_info};
+      ort_ep_ = info.GetEp();
+      ep_impl_ = ort_ep_ != nullptr ? (static_cast<const Ep*>(ort_ep_))->EpImpl() : nullptr;
+
       const size_t input_count = info.GetInputCount();
       constant_input_tensors.resize(input_count);
       for (size_t i = 0; i < input_count; ++i) {
@@ -60,7 +58,6 @@ struct OpKernelInfo {
       }
     }
     const OrtKernelInfo* kernel_info_;
-    const ::onnxruntime::IExecutionProvider* execution_provider_{};
     const OrtEp* ort_ep_{};
     const ::onnxruntime::IExecutionProvider* ep_impl_{};
     std::vector<Tensor> constant_input_tensors;
@@ -74,11 +71,12 @@ struct OpKernelInfo {
     return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
 
-  // Delegates to the core OpKernelInfo::GetAllocator so the adapter returns
-  // exactly the same allocator the framework would provide for each OrtMemType.
+  // Retrieves the allocator for a specific memory type via the C API, avoiding
+  // unsafe casts to internal types that would break ABI across DLL boundaries.
   AllocatorPtr GetAllocator(OrtMemType mem_type) const {
-    const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(cache_->kernel_info_);
-    return core_kernel_info->GetAllocator(mem_type);
+    OrtAllocator* ort_allocator = nullptr;
+    Ort::ThrowOnError(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator));
+    return std::make_shared<IAllocatorImplWrappingOrtAllocator>(ort_allocator);
   }
 
   Node node() const noexcept {
