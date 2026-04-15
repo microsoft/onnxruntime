@@ -264,7 +264,8 @@ pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, cons
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
 py::object GetPyObjFromTensor(const OrtValue& ort_value,
                               const DataTransferManager* data_transfer_manager,
-                              const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
+                              const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions,
+                              bool zero_copy_non_owning) {
   ORT_ENFORCE(ort_value.IsTensor(), "This function only supports tensors");
 
   const auto& tensor = ort_value.Get<Tensor>();
@@ -278,9 +279,21 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
   }
 
   const auto device_type = device.Type();
-  // Create an numpy array on top of the OrtValue memory, no copy
+  // Create a numpy array on top of the OrtValue memory, no copy,
+  // but only when the tensor owns the buffer. When the tensor wraps external
+  // memory (e.g. a numpy input array passed through as output), the buffer
+  // lifetime is not tied to the OrtValue and zero-copy would create a
+  // dangling pointer. See https://github.com/microsoft/onnxruntime/issues/21922
   if (device_type == OrtDevice::CPU) {
-    py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
+    if (tensor.OwnsBuffer() || zero_copy_non_owning) {
+      py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
+      return py::cast<py::object>(result);
+    }
+    // Tensor does not own the buffer — must copy to avoid dangling pointers
+    // when the underlying memory (e.g. a numpy input array) is freed.
+    // See https://github.com/microsoft/onnxruntime/issues/21922
+    MemCpyFunc cpu_copy = CpuToCpuMemCpy;
+    py::array result = PrimitiveTensorToNumpyFromDevice(ort_value, cpu_copy);
     return py::cast<py::object>(result);
   }
 

@@ -129,7 +129,8 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
 
 pybind11::object GetPyObjFromTensor(const OrtValue& rtensor,
                                     const DataTransferManager* data_transfer_manager = nullptr,
-                                    const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+                                    const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions = nullptr,
+                                    bool zero_copy_non_owning = false);
 
 // The below two functions are used to convert OrtValue to numpy arrays
 
