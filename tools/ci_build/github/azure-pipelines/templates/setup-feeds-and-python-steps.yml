@@ -23,8 +23,14 @@ steps:
 # HACK: Ensure there are no leftover m2 settings from previous runs. Agent pools are currently stateful.
 #       Ideally we'd just push/pop/layer specific splices to the settings (auth & mirror stuff), but there's no easy
 #       mechanism for that AFAIK.
-- pwsh: if (Test-Path ~/.m2/settings.xml) { Remove-Item ~/.m2/settings.xml }
+- task: PowerShell@2
   displayName: Maven - remove existing ~/.m2/settings.xml
+  inputs:
+    targetType: 'inline'
+    script: |
+      if (Test-Path ~/.m2/settings.xml) {
+        Remove-Item ~/.m2/settings.xml
+      }
 
 - task: NuGetAuthenticate@1 # just auth w/ internal feeds
 
