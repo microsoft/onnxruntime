@@ -844,6 +844,99 @@ TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs)
   ASSERT_TRUE(op_to_count["Reshape"] == 1);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalOutputs) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInitializer<int64_t>(
+        {6}, {5, 5, 5, 10, 10, 20});
+
+    auto* unique_values = builder.MakeOutput<int64_t>(std::nullopt);
+    auto* unique_counts = builder.MakeOutput<int64_t>(std::nullopt);
+
+    auto* missing_indices = builder.MakeEmptyInput();
+    auto* missing_inverse_indices = builder.MakeEmptyInput();
+
+    builder.AddNode(
+        "Unique",
+        {input},
+        {unique_values, missing_indices, missing_inverse_indices, unique_counts});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const auto ops = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(ops.count("Unique") == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto ops = CountOpsInGraph(graph);
+
+    TEST_RETURN_IF(ops.find("Unique") != ops.end());
+
+    const auto& outputs = graph.GetOutputs();
+    TEST_RETURN_IF_NOT(outputs.size() == 2U);
+
+    const auto& init_tensors = graph.GetAllInitializedTensors();
+
+    bool saw_values = false;
+    bool saw_counts = false;
+
+    for (const NodeArg* out : outputs) {
+      auto it = init_tensors.find(out->Name());
+      TEST_RETURN_IF(it == init_tensors.end());
+
+      onnxruntime::Initializer init{
+          graph,
+          *it->second,
+          graph.ModelPath()};
+
+      TEST_RETURN_IF_NOT(init.size() == 3U);
+
+      const int64_t* data = init.data<int64_t>();
+
+      if (data[0] == 5 && data[1] == 10 && data[2] == 20) {
+        if (saw_values) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "Duplicate values output detected");
+        }
+        saw_values = true;
+
+      } else if (data[0] == 3 && data[1] == 2 && data[2] == 1) {
+        if (saw_counts) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "Duplicate counts output detected");
+        }
+        saw_counts = true;
+
+      } else {
+        return Status(common::ONNXRUNTIME, common::FAIL,
+                      "Unexpected tensor content after constant folding");
+      }
+    }
+
+    TEST_RETURN_IF_NOT(saw_values);
+    TEST_RETURN_IF_NOT(saw_counts);
+
+    return Status::OK();
+  };
+
+  const ConfigOptions empty_config_options;
+  auto cpu_ep =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case,
+      13,
+      *logger_,
+      std::make_unique<ConstantFolding>(
+          *cpu_ep,
+          false,
+          empty_config_options),
+      TransformerLevel::Level1,
+      1,
+      pre_graph_checker,
+      post_graph_checker));
+}
+
 static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<std::string, int>& expected_op_count,
                                                       Graph& graph,
                                                       SessionOptions& session_options,

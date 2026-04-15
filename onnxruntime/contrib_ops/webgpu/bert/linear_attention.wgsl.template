@@ -1,0 +1,294 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+//
+// LinearAttention shader
+//
+// Design overview:
+// - Each workgroup handles one (batch, head, dv_tile) combination
+// - Workgroup size = head_dim_k (dk): one thread per state row
+// - Each thread maintains TILE_V columns of its state row in private memory
+// - Tokens are processed sequentially; matrix ops are parallelized across threads
+// - Reductions across dk (for S^T @ k and S^T @ q) use shared memory
+// - For delta/gated_delta: the S^T@k (retrieval) and S^T@q (output) reductions
+//   are fused into a single barrier tree, nearly halving barrier count per token.
+//   Key identity: output = scale * (S_old^T @ q + delta * (k^T @ q))
+//
+
+#param use_vec4
+#param has_initial_state
+#param decay_broadcast_dk
+#param tile_v
+
+// Update rule constants
+#define UPDATE_LINEAR 0
+#define UPDATE_GATED 1
+#define UPDATE_DELTA 2
+#define UPDATE_GATED_DELTA 3
+#param update_rule
+
+// Type aliases: vtype is the element type for state and reductions.
+// otype is the output storage type.
+#if use_vec4
+alias vtype = vec4<f32>;
+alias otype = output_value_t;
+#else
+alias vtype = f32;
+alias otype = output_element_t;
+#endif
+
+const TILE_V: u32 = tile_v;
+
+// Shared memory for parallel reduction across dk threads.
+#if update_rule == UPDATE_DELTA || update_rule == UPDATE_GATED_DELTA
+// Fused reduction: retrieved (S^T@k), pre_output (S^T@q), and kq_dot (k^T@q)
+// are reduced in a single barrier tree.
+var<workgroup> red_retrieved: array<vtype, workgroup_size_x * TILE_V>;
+var<workgroup> red_preout: array<vtype, workgroup_size_x * TILE_V>;
+var<workgroup> red_kq: array<f32, workgroup_size_x>;
+var<workgroup> broadcast_buf: array<vtype, TILE_V>;
+#else
+// Output-only reduction for linear/gated.
+var<workgroup> reduction_buf: array<vtype, workgroup_size_x * TILE_V>;
+#endif
+
+$MAIN {
+  // Identify which (batch, head, dv_tile) this workgroup handles
+  let bh = workgroup_idx / uniforms.num_dv_tiles;
+  let dv_tile_idx = workgroup_idx % uniforms.num_dv_tiles;
+  let batch_idx = bh / uniforms.num_heads;
+  let head_idx = bh % uniforms.num_heads;
+  let dk_idx = local_idx;  // thread index = row in state matrix
+  let dv_start = dv_tile_idx * TILE_V;
+
+  // Precompute packed strides for 3D packed inputs (B, T, H*D)
+  // Q: (B, T, q_num_heads * dk), K: (B, T, n_k_heads * dk),
+  // V/output: (B, T, num_heads * dv)  [schema: output_dim == V_dim]
+  let packed_dk_q = uniforms.q_num_heads * uniforms.head_dim_k;
+  let packed_dk_k = uniforms.n_k_heads * uniforms.head_dim_k;
+  let packed_dk_kv = uniforms.num_heads * uniforms.head_dim_k;
+  let packed_dv = uniforms.num_heads * uniforms.head_dim_v;
+
+  // Initialize state tile in private memory
+  var state: array<vtype, TILE_V>;
+  for (var j = 0u; j < TILE_V; j++) {
+    state[j] = vtype(0.0);
+  }
+
+  // Load initial state if provided
+#if has_initial_state
+  if (dk_idx < uniforms.head_dim_k) {
+    let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;
+    for (var j = 0u; j < TILE_V; j++) {
+      if (dv_start + j < uniforms.head_dim_v) {
+        state[j] = vtype(initial_state[state_base + j]);
+      }
+    }
+  }
+#endif
+
+  // Process each token sequentially
+  for (var t = 0u; t < uniforms.seq_length; t++) {
+    let bt_offset = batch_idx * uniforms.seq_length + t;
+    var k_val: f32 = 0.0;
+    if (dk_idx < uniforms.head_dim_k) {
+      let k_head_idx = head_idx / uniforms.kv_per_k_head;
+      let k_idx = bt_offset * packed_dk_k + k_head_idx * uniforms.head_dim_k + dk_idx;
+      k_val = f32(key[k_idx]);
+    }
+
+    // Step 1: Apply decay (for gated and gated_delta modes)
+#if update_rule == UPDATE_GATED || update_rule == UPDATE_GATED_DELTA
+    // Apply exponential decay: S *= exp(decay)
+#if decay_broadcast_dk
+    let exp_g = exp(f32(decay[bt_offset * uniforms.num_heads + head_idx]));
+#else
+    var exp_g: f32 = 1.0;
+    if (dk_idx < uniforms.head_dim_k) {
+      exp_g = exp(f32(decay[bt_offset * packed_dk_kv + head_idx * uniforms.head_dim_k + dk_idx]));
+    }
+#endif
+    for (var j = 0u; j < TILE_V; j++) {
+      state[j] *= exp_g;
+    }
+#endif
+
+#if update_rule == UPDATE_DELTA || update_rule == UPDATE_GATED_DELTA
+    // Determine Q head and output head for this KV head.
+    // Standard GQA/MHA (heads_per_group > 0): Q indexed by q_head = kv_head * hpg.
+    // Inverse GQA (heads_per_group == 0): multiple KV heads share one Q head;
+    //   output indexed by KV head (each KV head has its own output slot).
+    var q_head_0: u32;
+    var out_head_0: u32;
+    if (uniforms.heads_per_group > 0u) {
+      q_head_0 = head_idx * uniforms.heads_per_group;
+      out_head_0 = q_head_0;
+    } else {
+      q_head_0 = head_idx * uniforms.q_num_heads / uniforms.num_heads;
+      out_head_0 = head_idx;
+    }
+    var q0_val: f32 = 0.0;
+    if (dk_idx < uniforms.head_dim_k) {
+      q0_val = f32(query[bt_offset * packed_dk_q + q_head_0 * uniforms.head_dim_k + dk_idx]);
+    }
+
+    // Fused reduction: compute retrieved = S^T@k, pre_output = S^T@q_0,
+    // and kq_dot = k^T@q_0 in a single barrier tree.
+    // Then: output_0 = scale * (pre_output + delta * kq_dot)
+    for (var j = 0u; j < TILE_V; j++) {
+      red_retrieved[j * workgroup_size_x + dk_idx] = state[j] * k_val;
+      red_preout[j * workgroup_size_x + dk_idx] = state[j] * q0_val;
+    }
+    red_kq[dk_idx] = k_val * q0_val;
+    workgroupBarrier();
+
+    for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+      if (dk_idx < stride) {
+        for (var j = 0u; j < TILE_V; j++) {
+          red_retrieved[j * workgroup_size_x + dk_idx] += red_retrieved[j * workgroup_size_x + dk_idx + stride];
+          red_preout[j * workgroup_size_x + dk_idx] += red_preout[j * workgroup_size_x + dk_idx + stride];
+        }
+        red_kq[dk_idx] += red_kq[dk_idx + stride];
+      }
+      workgroupBarrier();
+    }
+
+    // Thread 0: compute delta, broadcast it, and write output for out_head_0.
+    let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
+    let beta_base = bt_offset * uniforms.num_heads + head_idx;
+    if (dk_idx == 0u) {
+      let beta_val = f32(beta[beta_base]);
+      let kq_dot = red_kq[0];
+      for (var j = 0u; j < TILE_V; j++) {
+        if (dv_start + j < uniforms.head_dim_v) {
+          let retrieved = red_retrieved[j * workgroup_size_x];
+          let pre_out = red_preout[j * workgroup_size_x];
+          let v_val = vtype(value[v_base + j]);
+          let delta_j = beta_val * (v_val - retrieved);
+          broadcast_buf[j] = delta_j;
+          output[bt_offset * packed_dv + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((pre_out + delta_j * kq_dot) * uniforms.scale);
+        } else {
+          broadcast_buf[j] = vtype(0.0);
+        }
+      }
+    }
+    workgroupBarrier();
+
+    // All threads: update state with delta (S_new = S_old + k * delta)
+    for (var j = 0u; j < TILE_V; j++) {
+      state[j] += k_val * broadcast_buf[j];
+    }
+    workgroupBarrier();
+
+    // Standard GQA: additional Q heads — output_g = scale * S_new^T @ q_g
+    // (For inverse GQA, heads_per_group == 0 so this loop is skipped.)
+    for (var qg = 1u; qg < uniforms.heads_per_group; qg++) {
+      let q_head_g = head_idx * uniforms.heads_per_group + qg;
+      var qg_val: f32 = 0.0;
+      if (dk_idx < uniforms.head_dim_k) {
+        qg_val = f32(query[bt_offset * packed_dk_q + q_head_g * uniforms.head_dim_k + dk_idx]);
+      }
+      for (var j = 0u; j < TILE_V; j++) {
+        red_preout[j * workgroup_size_x + dk_idx] = state[j] * qg_val;
+      }
+      workgroupBarrier();
+      for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+        if (dk_idx < stride) {
+          for (var j = 0u; j < TILE_V; j++) {
+            red_preout[j * workgroup_size_x + dk_idx] += red_preout[j * workgroup_size_x + dk_idx + stride];
+          }
+        }
+        workgroupBarrier();
+      }
+      if (dk_idx == 0u) {
+        for (var j = 0u; j < TILE_V; j++) {
+          if (dv_start + j < uniforms.head_dim_v) {
+            output[bt_offset * packed_dv + q_head_g * uniforms.head_dim_v + dv_start + j] = otype(red_preout[j * workgroup_size_x] * uniforms.scale);
+          }
+        }
+      }
+      workgroupBarrier();
+    }
+
+#else
+    // Linear/gated: S += k ⊗ v
+    let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
+    for (var j = 0u; j < TILE_V; j++) {
+      if (dv_start + j < uniforms.head_dim_v) {
+        state[j] += k_val * vtype(value[v_base + j]);
+      }
+    }
+
+    // Output = scale * S^T @ q
+    if (uniforms.heads_per_group > 0u) {
+      // Standard GQA / MHA: one output per Q head in group
+      for (var qg = 0u; qg < uniforms.heads_per_group; qg++) {
+        let q_head_idx = head_idx * uniforms.heads_per_group + qg;
+        var q_val_g: f32 = 0.0;
+        if (dk_idx < uniforms.head_dim_k) {
+          q_val_g = f32(query[bt_offset * packed_dk_q + q_head_idx * uniforms.head_dim_k + dk_idx]);
+        }
+        for (var j = 0u; j < TILE_V; j++) {
+          reduction_buf[j * workgroup_size_x + dk_idx] = state[j] * q_val_g;
+        }
+        workgroupBarrier();
+        for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+          if (dk_idx < stride) {
+            for (var j = 0u; j < TILE_V; j++) {
+              reduction_buf[j * workgroup_size_x + dk_idx] += reduction_buf[j * workgroup_size_x + dk_idx + stride];
+            }
+          }
+          workgroupBarrier();
+        }
+        if (dk_idx == 0u) {
+          let out_base = bt_offset * packed_dv + q_head_idx * uniforms.head_dim_v + dv_start;
+          for (var j = 0u; j < TILE_V; j++) {
+            if (dv_start + j < uniforms.head_dim_v) {
+              output[out_base + j] = otype(reduction_buf[j * workgroup_size_x] * uniforms.scale);
+            }
+          }
+        }
+        workgroupBarrier();
+      }
+    } else {
+      // Inverse GQA: one output per KV head, using shared Q
+      let q_head_inv = head_idx * uniforms.q_num_heads / uniforms.num_heads;
+      var q_val_inv: f32 = 0.0;
+      if (dk_idx < uniforms.head_dim_k) {
+        q_val_inv = f32(query[bt_offset * packed_dk_q + q_head_inv * uniforms.head_dim_k + dk_idx]);
+      }
+      for (var j = 0u; j < TILE_V; j++) {
+        reduction_buf[j * workgroup_size_x + dk_idx] = state[j] * q_val_inv;
+      }
+      workgroupBarrier();
+      for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+        if (dk_idx < stride) {
+          for (var j = 0u; j < TILE_V; j++) {
+            reduction_buf[j * workgroup_size_x + dk_idx] += reduction_buf[j * workgroup_size_x + dk_idx + stride];
+          }
+        }
+        workgroupBarrier();
+      }
+      if (dk_idx == 0u) {
+        let out_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
+        for (var j = 0u; j < TILE_V; j++) {
+          if (dv_start + j < uniforms.head_dim_v) {
+            output[out_base + j] = otype(reduction_buf[j * workgroup_size_x] * uniforms.scale);
+          }
+        }
+      }
+      workgroupBarrier();
+    }
+#endif
+  } // end token loop
+
+  // Write present_state
+  if (dk_idx < uniforms.head_dim_k) {
+    let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;
+    for (var j = 0u; j < TILE_V; j++) {
+      if (dv_start + j < uniforms.head_dim_v) {
+        present_state[state_base + j] = otype(state[j]);
+      }
+    }
+  }
+} // MAIN

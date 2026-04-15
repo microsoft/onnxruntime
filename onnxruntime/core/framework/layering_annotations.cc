@@ -183,7 +183,8 @@ bool MatchEpDevice(const EpDeviceView& ep,
     if (target_specifier.empty()) {
       if (ep.device_type == OrtDevice::GPU) return true;
       // Heuristic fallback for common GPU EPs if hardware info is missing
-      return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kDmlExecutionProvider;
+      return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider ||
+             ep.ep_name == kDmlExecutionProvider;
     }
     // "gpu:<vendor>" or "gpu:<index>"
     if (ep.device_type == OrtDevice::GPU) {
@@ -203,7 +204,7 @@ bool MatchEpDevice(const EpDeviceView& ep,
           ep.vendor_id == OrtDevice::VendorIds::INTEL) return true;
       // Heuristic: gpu:nvidia -> CUDA
       if (CaseInsensitiveCompare(target_specifier, "nvidia") &&
-          ep.ep_name == kCudaExecutionProvider) return true;
+          (ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider)) return true;
     }
     return false;
   }
@@ -225,7 +226,7 @@ bool MatchEpDevice(const EpDeviceView& ep,
   }
   // "cuda"
   if (CaseInsensitiveCompare(target_type_str, "cuda")) {
-    return ep.ep_name == kCudaExecutionProvider;
+    return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider;
   }
   // "dml"
   if (CaseInsensitiveCompare(target_type_str, "dml")) {
@@ -284,7 +285,13 @@ std::optional<std::string> EpLayeringMatcher::Match(gsl::span<const OrtEpDevice*
         ep_device.ep_name,
         device_type,
         has_hw ? ep_device.device->vendor_id : 0u,
-        has_hw ? static_cast<OrtDevice::DeviceId>(ep_device.device->device_id) : OrtDevice::DeviceId{},
+        // Prefer the device ordinal from device_memory_info (set by the EP factory to
+        // a runtime device ordinal such as a CUDA ordinal) over the OrtHardwareDevice::device_id
+        // which is a hardware-type identifier and not guaranteed to be a stable runtime ordinal.
+        ep_device.device_memory_info
+            ? ep_device.device_memory_info->device.Id()
+            : (has_hw ? static_cast<OrtDevice::DeviceId>(ep_device.device->device_id)
+                      : OrtDevice::DeviceId{}),
         has_hw ? std::string_view(ep_device.device->vendor) : std::string_view{}};
 
     if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
