@@ -71,8 +71,6 @@ struct OpKernelInfo {
     return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
 
-  // Retrieves the allocator for a specific memory type via the C API, avoiding
-  // unsafe casts to internal types that would break ABI across DLL boundaries.
   AllocatorPtr GetAllocator(OrtMemType mem_type) const {
     OrtAllocator* ort_allocator = nullptr;
     Ort::ThrowOnError(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator));
