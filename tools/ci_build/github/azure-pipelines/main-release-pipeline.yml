@@ -43,16 +43,6 @@ parameters:
   type: boolean
   default: true
 
-- name: python_dml_packaging
-  displayName: 'Run Python DML Packaging Pipeline (1625)'
-  type: boolean
-  default: true
-
-- name: qnn_nuget_packaging
-  displayName: 'Run QNN_Nuget_Windows (1234)'
-  type: boolean
-  default: true
-
 - name: dml_nuget_packaging
   displayName: 'Run DML Nuget Pipeline (1994)'
   type: boolean

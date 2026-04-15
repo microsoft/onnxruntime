@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "core/providers/cpu/rnn/rnn.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -881,6 +883,107 @@ TEST(RNNTest, RNN_with_invalid_activation_load_failure) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "RNN op: Invalid activation attribute - Invalid_activation",
            {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
+
+// Test that seq_length == 0 produces zero-filled Y and Y_h without crashing.
+TEST(RNNTest, RNN_seq_length_zero) {
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+
+  OpTester test("RNN");
+  int64_t num_directions = 1, input_size = 2, hidden_size = 3, batch_size = 2, seq_length = 0;
+
+  test.AddAttribute("activations", vector<string>(num_directions, "Tanh"));
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data{};
+  test.AddInput<float>("X", X_dims, X_data);
+
+  std::vector<int64_t> W_dims = {num_directions, hidden_size, input_size};
+  std::vector<float> W_data({-0.1f, 0.2f, 1.f, -2.f, -1.f, 3.f});
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
+  std::vector<float> R_data(hidden_size * hidden_size, 0.f);
+  test.AddInput<float>("R", R_dims, R_data);
+
+  // Y: shape [0, 1, 2, 3] -> empty
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  std::vector<float> Y_data{};
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  // Y_h: shape [1, 2, 3] -> all zeros
+  std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
+  std::vector<float> Y_h_data(num_directions * batch_size * hidden_size, 0.f);
+  test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+
+// Test that per-batch sequence_lens containing 0 produces zero-filled Y_h for those batches.
+TEST(RNNTest, RNN_forward_sequence_lens_with_zero) {
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+
+  OpTester test("RNN");
+  int64_t num_directions = 1, input_size = 2, hidden_size = 3, batch_size = 2, seq_length = 2;
+
+  test.AddAttribute("activations", vector<string>(num_directions, "Tanh"));
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  // X shape: [seq_length=2, batch_size=2, input_size=2]
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data({0.1f, 0.2f,
+                             0.3f, 0.4f,
+                             0.5f, 0.6f,
+                             0.7f, 0.8f});
+  test.AddInput<float>("X", X_dims, X_data);
+
+  std::vector<int64_t> W_dims = {num_directions, hidden_size, input_size};
+  std::vector<float> W_data({-0.1f, 0.2f, 1.f, -2.f, -1.f, 3.f});
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
+  std::vector<float> R_data(hidden_size * hidden_size, 0.f);
+  test.AddInput<float>("R", R_dims, R_data);
+
+  std::vector<int64_t> B_dims = {num_directions, 2 * hidden_size};
+  std::vector<float> B_data(2 * hidden_size, 0.f);
+  test.AddInput<float>("B", B_dims, B_data);
+
+  // batch 0 has sequence_lens=2, batch 1 has sequence_lens=0
+  std::vector<int64_t> sequence_lens_dims{batch_size};
+  std::vector<int> sequence_lens_data{2, 0};
+  test.AddInput<int>("sequence_lens", sequence_lens_dims, sequence_lens_data);
+
+  std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
+  std::vector<float> initial_h_data(num_directions * batch_size * hidden_size, 0.f);
+  test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
+
+  // Y output is optional; skip it to keep test simple.
+  test.AddOptionalOutputEdge<float>();
+
+  // Y_h: shape [1, 2, 3]
+  // batch 0 gets the result of forward pass at last time step (seq_length-1=1).
+  // batch 1 has sequence_lens=0 so Y_h should be zero.
+  //
+  // For batch 0:
+  //   time_step 0: X=[0.1, 0.2], Y = tanh(X * W^T) = tanh([-0.1*0.1+0.2*0.2, 1*0.1-2*0.2, -1*0.1+3*0.2])
+  //                = tanh([0.03, -0.3, 0.5])
+  //   time_step 1: X=[0.5, 0.6], Y = tanh(X * W^T + H_prev * R^T)
+  //                R is zero, so Y = tanh([-0.1*0.5+0.2*0.6, 1*0.5-2*0.6, -1*0.5+3*0.6])
+  //                = tanh([0.07, -0.7, 1.3])
+  float y_h_batch0_f0 = std::tanh(0.07f);
+  float y_h_batch0_f1 = std::tanh(-0.7f);
+  float y_h_batch0_f2 = std::tanh(1.3f);
+
+  std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
+  std::vector<float> Y_h_data{y_h_batch0_f0, y_h_batch0_f1, y_h_batch0_f2,
+                              0.f, 0.f, 0.f};
+  test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 }  // namespace test
