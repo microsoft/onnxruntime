@@ -39,7 +39,7 @@ int CheckedMulToInt(int lhs, int rhs) {
 }
 
 size_t CheckedMulToSizeT(int lhs, int rhs) {
-  return static_cast<size_t>(SafeInt<size_t>(CheckedToSizeT(lhs)) * CheckedToSizeT(rhs));
+  return CheckedMulToSizeT(CheckedToSizeT(lhs), CheckedToSizeT(rhs));
 }
 
 size_t CheckedMulToSizeT(size_t lhs, size_t rhs) {
@@ -330,8 +330,9 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
       DumpMatrix("previous_state" + seqno_str, &*previous_state, batch_size_, hidden_size_);
 
-      const size_t step_out_iofc_offset = static_cast<size_t>(step) * step_iofc_stride;
+      const size_t step_out_iofc_offset = CheckedMulToSizeT(CheckedToSizeT(step), step_iofc_stride);
       span_T_iter step_out_IOFC = output_iofc_.begin() + step_out_iofc_offset;
+      span_T_iter step_out_IOFC_end = step_out_IOFC + step_iofc_stride;
 
       // shape is [ attention_size_ ]
       const gsl::span<const T> attention = attention_wrapper_.GetAttnStates();
@@ -342,7 +343,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   attention_size_,
                   input_weights.begin() + input_size_, input_weights.end(),  // WA[iofc]
                   input_size_ + attention_size_, T{1.0},
-                  step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                  step_out_IOFC, step_out_IOFC_end,  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4, ttp_, mlas_backend_kernel_selector_config_);
 
       // calculate Xt*(W[iofc]^T) + Ht-1*R[iofc]
@@ -351,7 +352,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   hidden_size_,
                   recurrent_weights.begin(), recurrent_weights.end(),  // R[iofc]
                   hidden_size_, T{1.0},
-                  step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                  step_out_IOFC, step_out_IOFC_end,  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4, ttp_, mlas_backend_kernel_selector_config_);
 
       span_T_iter batched_output, batched_output_end;
@@ -363,7 +364,6 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
         batched_output_end = final_hidden_state.end();
       }
 
-      span_T_iter step_out_IOFC_end = step_out_IOFC + step_iofc_stride;
       GateComputations(step_out_IOFC, step_out_IOFC_end,
                        c_prev, C_prev_end,
                        c_prev_clipped, C_prev_clipped_end,
