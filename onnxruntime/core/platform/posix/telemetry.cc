@@ -10,6 +10,7 @@
 
 #include <unistd.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
@@ -226,6 +227,7 @@ void PosixTelemetry::Initialize() {
 #endif
     std::string cache_dir = DeviceId::GetStorageDirectory(is_mobile);
     if (!cache_dir.empty()) {
+      mkdir(cache_dir.c_str(), 0755);  // Ensure directory exists for telemetry cache
       std::string cache_path = cache_dir + "/telemetry_cache.db";
       config[CFG_STR_CACHE_FILE_PATH] = cache_path;
     }
