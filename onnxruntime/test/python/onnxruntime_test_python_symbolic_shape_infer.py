@@ -205,6 +205,32 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_shape_with_start_end_opset_15(self):
+        graph = helper.make_graph(
+            [
+                helper.make_node("Shape", ["input"], ["partial_shape"], start=1, end=3),
+                helper.make_node("ConstantOfShape", ["partial_shape"], ["output"]),
+            ],
+            "Shape_Start_End_Test",
+            [
+                helper.make_tensor_value_info(
+                    "input", TensorProto.FLOAT, ["b", "s", "h"]
+                ),
+            ],
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, None),
+            ],
+        )
+        model = helper.make_model(graph, producer_name="Shape_Start_End_Test_Model")
+        model.opset_import[0].version = 15
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("partial_shape", TensorProto.INT64, [2]),
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, ["s", "h"]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
     def test_embed_layer_norm(self):
         hidden_size = 32
         initializers = [
