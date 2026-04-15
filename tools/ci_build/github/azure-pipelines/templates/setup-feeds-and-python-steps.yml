@@ -4,7 +4,7 @@
 #   - maven & gradle
 #   - nuget
 #
-# FIXME: Not idempotent.
+# n.b. This template writes to user profile files.
 
 parameters:
 - name: artifactFeeds
@@ -20,8 +20,15 @@ parameters:
   default: ''
 
 steps:
+# HACK: Ensure there are no leftover m2 settings from previous runs. Agent pools are currently stateful.
+#       Ideally we'd just push/pop/layer specific splices to the settings (auth & mirror stuff), but there's no easy
+#       mechanism for that AFAIK.
+- pwsh: if (Test-Path ~/.m2/settings.xml) { Remove-Item ~/.m2/settings.xml }
+  displayName: Maven - remove existing ~/.m2/settings.xml
+
 - task: NuGetAuthenticate@1 # just auth w/ internal feeds
 
+# Creates/touches ~/.m2/settings.xml
 - task: MavenAuthenticate@0
   inputs:
     artifactsFeeds: ${{ parameters.artifactFeeds }}
@@ -62,16 +69,29 @@ steps:
   env:
     python_version_spec: ${{ parameters.versionSpec }}
 
+# HACK: If agent pools are stateful then we have to ensure that `1es-feed-inject.init.gradle` file path is constant
+#       across all runs.
+#       Proper fix would be to have a post-job task to clean up our junk, but we can't do that without a full task def.
+#       (Or intrusively set GRADLE_USER_HOME env var to an agent temp dir. Maven doesn't have equiv facilities.)
 - pwsh: |
-    # Force everything to go through & authenticate using the main feed.
-    # ASSUME: there is no `mirrors` section already present in the settings.xml.
+    # Force everything in Maven to go through & authenticate using the main feed.
     # HACK: Does not escape `parameters.artifactFeeds`. Assumes pattern is [A-Za-z0-9]+.
     # HACK: Assumes feed is a org-scoped feed in `aiinfra`.
-    (Get-Content ~/.m2/settings.xml) | `
-      %{ $_ -replace '</settings>', "<mirrors><mirror><id>${env:central_maven_feed_name}</id><name>1ES Feed Override</name><url>https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1</url><mirrorOf>*</mirrorOf></mirror></mirrors></settings>" } | `
-      Set-Content ~/.m2/settings.xml
+    $m2SettingsXmlPath = "~/.m2/settings.xml"
+    $m2SettingsContent = Get-Content $m2SettingsXmlPath -Raw
+
+    if ($m2SettingsContent -match '<mirrors>') {
+      echo "##vso[task.logissue type=error]Configuration already contains `<mirrors>`, cannot inject feed mirror w/o corrupting existing config."
+      exit 1
+    }
+
+    echo "Injecting Maven mirrors section for 1ES feed"
+    $( $m2SettingsContent -replace '</settings>', "<mirrors><mirror><id>${env:central_maven_feed_name}</id><name>1ES Feed Override</name><url>https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1</url><mirrorOf>*</mirrorOf></mirror></mirrors></settings>" ) | `
+      Set-Content $m2SettingsXmlPath
+
 
     # gradle - inject 1ES feed repo into all projects/buildscripts. Auth using creds from maven settings.xml.
+    # nb: see HACK note above.
     $gradleInitDir = if ($env:GRADLE_HOME_DIR) { $env:GRADLE_HOME_DIR } else { "~/.gradle" }
     if (!(Test-Path -Path "${gradleInitDir}/init.d")) {
       New-Item -ItemType Directory -Path "${gradleInitDir}/init.d"

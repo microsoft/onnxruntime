@@ -4174,4 +4174,5 @@ inline OpSchema GetOpSchema(const char* name, int max_inclusive_version, const c
   ThrowOnError(GetEpApi().GetOpSchema(name, max_inclusive_version, domain, &schema));
   return OpSchema{schema};
 }
+
 }  // namespace Ort
