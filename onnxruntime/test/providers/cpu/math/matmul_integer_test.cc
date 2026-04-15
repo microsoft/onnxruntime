@@ -539,7 +539,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_KDimensionMismatch) {
   test.AddInput<uint8_t>("a_zero_point", {}, {0});
   test.AddInput<uint8_t>("b_zero_point", {}, {0});
   test.AddOutput<int32_t>("T3", {}, {0});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "MatMul dimension mismatch");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "MatMul dimension mismatch", {kDmlExecutionProvider});
 }
 
 // Same regression test with int8_t types.
@@ -551,7 +551,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_1D_Vector_KDimensionMismatch) {
   test.AddInput<int8_t>("a_zero_point", {}, {0});
   test.AddInput<int8_t>("b_zero_point", {}, {0});
   test.AddOutput<int32_t>("T3", {}, {0});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "MatMul dimension mismatch");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "MatMul dimension mismatch", {kDmlExecutionProvider});
 }
 
 // 1D dot product: uint8 A x int8 B (mixed types).
@@ -746,7 +746,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_PerRow_A_ZeroPoint_Rejected) {
   test.AddInput<uint8_t>("a_zero_point", {2, 1}, {12, 10});
   test.AddInput<uint8_t>("b_zero_point", {}, {0});
   test.AddOutput<int32_t>("T3", {2, 2}, {0, 0, 0, 0});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kDmlExecutionProvider});
 }
 
 }  // namespace test
