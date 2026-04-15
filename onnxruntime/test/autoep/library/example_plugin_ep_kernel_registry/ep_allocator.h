@@ -26,6 +26,7 @@ struct CustomAllocator : BaseAllocator {
     Reserve = AllocImpl;  // no special reserve logic and most likely unnecessary unless you have your own arena
     GetStats = nullptr;
     AllocOnStream = nullptr;
+    Shrink = nullptr;
   }
 
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* /*this_*/, size_t size) {

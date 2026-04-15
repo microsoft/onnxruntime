@@ -5,6 +5,8 @@
 
 #include "cuda_plugin_utils.h"
 #include "cuda_allocator_plugin.h"
+#include "cuda_arena.h"
+#include "cuda_mempool_allocator_plugin.h"
 #include "cuda_data_transfer_plugin.h"
 #include "cuda_stream_plugin.h"
 
@@ -12,6 +14,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -29,6 +33,14 @@ class CudaEpFactory : public OrtEpFactory {
   const OrtApi& GetOrtApi() const { return ort_api_; }
   const OrtEpApi& GetEpApi() const { return ep_api_; }
   const std::string& GetEpName() const { return ep_name_; }
+
+  /// Get the device arena allocator for the given CUDA ordinal, or nullptr if none.
+  CudaArenaAllocator* GetDeviceArenaForDevice(int device_id);
+
+  /// Reset arena chunk-to-stream assignments for a device while holding the arena lock.
+  /// This avoids the use-after-free risk of calling GetDeviceArenaForDevice() and then
+  /// using the raw pointer after the arena_mutex is released.
+  OrtStatus* ResetDeviceArenaChunksUsingStream(int device_id, const OrtSyncStreamImpl* stream_impl);
 
   /// Get or create the shared kernel registry for this factory.
   /// Lazily created on first call; subsequent calls return the cached instance.
@@ -94,12 +106,22 @@ class CudaEpFactory : public OrtEpFactory {
     int cuda_device_id{-1};
     Ort::MemoryInfo device_memory_info{nullptr};
     Ort::MemoryInfo pinned_memory_info{nullptr};
+
+    // Arena members
+    std::mutex arena_mutex;
+    std::unique_ptr<CudaArenaAllocator> device_arena;
+    std::unique_ptr<CudaArenaAllocator> pinned_arena;
+    std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
+    int num_device_arena_users = 0;
+    int num_pinned_arena_users = 0;
+    int num_mempool_users = 0;
   };
 
   struct HardwareDeviceKey {
     OrtHardwareDeviceType type{OrtHardwareDeviceType::OrtHardwareDeviceType_CPU};
     uint32_t vendor_id{0};
-    uint32_t device_id{0};
+    uint32_t device_id{0};  // PCI device ID — identifies the hardware model, NOT a unique device
+    int cuda_ordinal{-1};   // CUDA ordinal — unique per physical GPU on this host
 
     bool operator==(const HardwareDeviceKey&) const = default;
   };
@@ -109,17 +131,29 @@ class CudaEpFactory : public OrtEpFactory {
       size_t hash = static_cast<size_t>(key.type);
       hash = (hash * 1315423911u) ^ static_cast<size_t>(key.vendor_id);
       hash = (hash * 1315423911u) ^ static_cast<size_t>(key.device_id);
+      hash = (hash * 1315423911u) ^ static_cast<size_t>(key.cuda_ordinal);
       return hash;
     }
   };
 
   static HardwareDeviceKey MakeDeviceKey(const OrtApi& ort_api,
-                                         const OrtHardwareDevice& device);
+                                         const OrtHardwareDevice& device,
+                                         int cuda_ordinal);
 
-  // Stable per-device cache keyed by public hardware-device properties instead
-  // of the transient OrtHardwareDevice* pointer received during enumeration.
+  // Per-physical-device cache. The key includes the CUDA ordinal to distinguish
+  // identical GPUs (same PCI vendor/device ID) on multi-GPU hosts.
   std::mutex device_cache_mutex_;
   std::unordered_map<HardwareDeviceKey, DeviceCacheEntry, HardwareDeviceKeyHasher> device_cache_;
+
+  // Ordinal-to-HardwareDeviceKey mapping built during GetSupportedDevicesImpl.
+  InlinedHashMap<int, HardwareDeviceKey> ordinal_to_device_key_;
+
+  /// Find the DeviceCacheEntry for a given CUDA ordinal.
+  /// Returns nullptr if the ordinal has not been registered.
+  DeviceCacheEntry* FindDeviceCacheEntryByOrdinal(int cuda_ordinal);
+
+  /// Same as FindDeviceCacheEntryByOrdinal but assumes device_cache_mutex_ is already held.
+  DeviceCacheEntry* FindDeviceCacheEntryByOrdinalLocked(int cuda_ordinal);
 
   // Kernel registry (cached, shared across EP instances)
   OrtKernelRegistry* kernel_registry_ = nullptr;

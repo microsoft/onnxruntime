@@ -72,17 +72,17 @@ static onnxruntime::PathString GetDynamicLibraryLocationByAddress(const void* ad
 
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
-  void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
+  void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain) = nullptr;
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(
-      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
+      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options) = nullptr;
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_with_error_handling)(
-      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
+      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func) = nullptr;
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_v3)(
-      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
+      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func) = nullptr;
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_v4)(
-      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func, const onnxruntime::logging::Logger& logger);
+      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func, const onnxruntime::logging::Logger& logger) = nullptr;
   void (*vaip_execution_provider_deletor)(std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>*) noexcept = [](std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* p) noexcept { delete p; };
-  uint32_t (*vaip_get_version)();
+  uint32_t (*vaip_get_version)() = nullptr;
   void (*create_ep_context_nodes)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       vaip_core::DllSafe<std::vector<Node*>>* ret_value) = nullptr;
@@ -95,7 +95,7 @@ struct OrtVitisAIEpAPI {
       const char* const* values, size_t kv_len) = nullptr;
   void (*profiler_collect)(
       std::vector<EventInfo>& api_events,
-      std::vector<EventInfo>& kernel_events);
+      std::vector<EventInfo>& kernel_events) = nullptr;
   const char* (*get_compiled_model_compatibility_info)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* eps,
       const void* graph_viewer) = nullptr;
@@ -105,7 +105,7 @@ struct OrtVitisAIEpAPI {
       const void* const* devices,
       size_t num_devices,
       int* model_compatibility) = nullptr;
-  void (*deinitialize_onnxruntime_vitisai_ep)();
+  void (*deinitialize_onnxruntime_vitisai_ep)() = nullptr;
   void Ensure() {
     if (handle_)
       return;
@@ -167,6 +167,22 @@ struct OrtVitisAIEpAPI {
       auto status = env.UnloadDynamicLibrary(handle_);
       vai_assert(status.IsOK(), status.ErrorMessage());
       handle_ = nullptr;
+      // reset all function pointers
+      // this is to avoid calling the function pointers after the library is unloaded
+      initialize_onnxruntime_vitisai_ep = nullptr;
+      compile_onnx_model_vitisai_ep_with_error_handling = nullptr;
+      compile_onnx_model_with_options = nullptr;
+      compile_onnx_model_vitisai_ep_v3 = nullptr;
+      compile_onnx_model_vitisai_ep_v4 = nullptr;
+      vaip_execution_provider_deletor = [](std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* p) noexcept { delete p; };
+      vaip_get_version = nullptr;
+      profiler_collect = nullptr;
+      get_compiled_model_compatibility_info = nullptr;
+      validate_compiled_model_compatibility_info = nullptr;
+      create_ep_context_nodes = nullptr;
+      vitisai_ep_on_run_start = nullptr;
+      vitisai_ep_set_ep_dynamic_options = nullptr;
+      deinitialize_onnxruntime_vitisai_ep = nullptr;
     }
   }
 
