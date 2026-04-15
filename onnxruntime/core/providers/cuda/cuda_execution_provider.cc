@@ -567,52 +567,52 @@ namespace cuda {
 
 #ifndef DISABLE_ML_OPS
 namespace ml {
-  // LabelEncoder (ML domain) - numeric types only
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_int64, LabelEncoder);
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_float, LabelEncoder);
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_float, LabelEncoder);
-  class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_int64, LabelEncoder);
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_int64, LabelEncoder);
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_float, LabelEncoder);
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, float_int64, LabelEncoder);
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, float_float, LabelEncoder);
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_double, LabelEncoder);
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_int64, LabelEncoder);
-  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_double, LabelEncoder);
+// LabelEncoder (ML domain) - numeric types only
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_int64, LabelEncoder);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_float, LabelEncoder);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_float, LabelEncoder);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_int64, LabelEncoder);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_int64, LabelEncoder);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_float, LabelEncoder);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, float_int64, LabelEncoder);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, float_float, LabelEncoder);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_double, LabelEncoder);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_int64, LabelEncoder);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_double, LabelEncoder);
 
-  template <>
-  KernelCreateInfo BuildKernelCreateInfo<void>() {
-    KernelCreateInfo info;
-    return info;
-  }
+template <>
+KernelCreateInfo BuildKernelCreateInfo<void>() {
+  KernelCreateInfo info;
+  return info;
+}
 
-  Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
-    static const BuildKernelCreateInfoFn function_table[] = {
-        BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
 
-        // LabelEncoder (ML domain) - numeric types only
-        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_int64, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_float, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_float, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_int64, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_int64, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_float, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, float_int64, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, float_float, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_double, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_int64, LabelEncoder)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_double, LabelEncoder)>,
-    };
+      // LabelEncoder (ML domain) - numeric types only
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_int64, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_float, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_float, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_int64, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_int64, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_float, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, float_int64, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, float_float, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_double, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_int64, LabelEncoder)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_double, LabelEncoder)>,
+  };
 
-    for (auto& function_table_entry : function_table) {
-      KernelCreateInfo info = function_table_entry();
-      if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
-        ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
-      }
+  for (auto& function_table_entry : function_table) {
+    KernelCreateInfo info = function_table_entry();
+    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+      ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
-
-    return Status::OK();
   }
+
+  return Status::OK();
+}
 }  // namespace ml
 #endif
 

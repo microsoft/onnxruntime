@@ -105,16 +105,16 @@ static int64_t SortKeysValues(std::vector<TKey>& keys, std::vector<TValue>& valu
 // Copy sorted key/value arrays to GPU memory.
 template <typename TKey, typename TValue>
 static void CopyToGpu(const OpKernelInfo& info,
-                       const std::vector<TKey>& keys, const std::vector<TValue>& values,
-                       IAllocatorUniquePtr<TKey>& keys_gpu, IAllocatorUniquePtr<TValue>& values_gpu) {
+                      const std::vector<TKey>& keys, const std::vector<TValue>& values,
+                      IAllocatorUniquePtr<TKey>& keys_gpu, IAllocatorUniquePtr<TValue>& values_gpu) {
   auto alloc = info.GetAllocator(OrtMemTypeDefault);
   if (!keys.empty()) {
     keys_gpu = IAllocator::MakeUniquePtr<TKey>(alloc, keys.size());
     CUDA_CALL_THROW(cudaMemcpy(keys_gpu.get(), keys.data(), keys.size() * sizeof(TKey),
-                                cudaMemcpyHostToDevice));
+                               cudaMemcpyHostToDevice));
     values_gpu = IAllocator::MakeUniquePtr<TValue>(alloc, values.size());
     CUDA_CALL_THROW(cudaMemcpy(values_gpu.get(), values.data(), values.size() * sizeof(TValue),
-                                cudaMemcpyHostToDevice));
+                               cudaMemcpyHostToDevice));
   }
 }
 

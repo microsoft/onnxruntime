@@ -76,26 +76,26 @@ void LabelEncoderImpl(
 
 // Explicit template instantiations for all supported type combinations
 template void LabelEncoderImpl<int64_t, int64_t>(cudaStream_t, const int64_t*, int64_t*, int64_t,
-                                                  const int64_t*, const int64_t*, int64_t,
-                                                  int64_t, int64_t);
-template void LabelEncoderImpl<int64_t, float>(cudaStream_t, const int64_t*, float*, int64_t,
-                                                const int64_t*, const float*, int64_t,
-                                                float, int64_t);
-template void LabelEncoderImpl<float, int64_t>(cudaStream_t, const float*, int64_t*, int64_t,
-                                                const float*, const int64_t*, int64_t,
-                                                int64_t, int64_t);
-template void LabelEncoderImpl<float, float>(cudaStream_t, const float*, float*, int64_t,
-                                              const float*, const float*, int64_t,
-                                              float, int64_t);
-template void LabelEncoderImpl<double, double>(cudaStream_t, const double*, double*, int64_t,
-                                                const double*, const double*, int64_t,
-                                                double, int64_t);
-template void LabelEncoderImpl<double, int64_t>(cudaStream_t, const double*, int64_t*, int64_t,
-                                                 const double*, const int64_t*, int64_t,
+                                                 const int64_t*, const int64_t*, int64_t,
                                                  int64_t, int64_t);
+template void LabelEncoderImpl<int64_t, float>(cudaStream_t, const int64_t*, float*, int64_t,
+                                               const int64_t*, const float*, int64_t,
+                                               float, int64_t);
+template void LabelEncoderImpl<float, int64_t>(cudaStream_t, const float*, int64_t*, int64_t,
+                                               const float*, const int64_t*, int64_t,
+                                               int64_t, int64_t);
+template void LabelEncoderImpl<float, float>(cudaStream_t, const float*, float*, int64_t,
+                                             const float*, const float*, int64_t,
+                                             float, int64_t);
+template void LabelEncoderImpl<double, double>(cudaStream_t, const double*, double*, int64_t,
+                                               const double*, const double*, int64_t,
+                                               double, int64_t);
+template void LabelEncoderImpl<double, int64_t>(cudaStream_t, const double*, int64_t*, int64_t,
+                                                const double*, const int64_t*, int64_t,
+                                                int64_t, int64_t);
 template void LabelEncoderImpl<int64_t, double>(cudaStream_t, const int64_t*, double*, int64_t,
-                                                 const int64_t*, const double*, int64_t,
-                                                 double, int64_t);
+                                                const int64_t*, const double*, int64_t,
+                                                double, int64_t);
 
 }  // namespace cuda
 }  // namespace onnxruntime
