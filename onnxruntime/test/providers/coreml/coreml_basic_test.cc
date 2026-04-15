@@ -436,9 +436,9 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
 #endif
 }
 
-// Test that CoreML EP can load a model with initializers stored in an external data file.
 // Regression test for https://github.com/microsoft/onnxruntime/issues/28022
-// Verify that Pad(mode=reflect) is handled by the CoreML EP (ML Program) instead of falling back to CPU.
+// Verify that Pad(mode=reflect) is handled by the CoreML EP in ML Program mode
+// instead of falling back to CPU.
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(CoreMLExecutionProviderTest, PadReflectMLProgram) {
   // Build a model: output = Pad(X, pads, mode="reflect")
