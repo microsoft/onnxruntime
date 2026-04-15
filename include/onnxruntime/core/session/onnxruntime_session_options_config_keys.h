@@ -47,17 +47,18 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // Its default value is "0" unless the DirectML execution provider is registered, in which case it defaults to "1".
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
-// It controls whether to prevent constant folding from folding DequantizeLinear nodes.
+// This controls whether to prevent constant folding from folding DequantizeLinear nodes:
+// "0": (default) DequantizeLinear constant folding is determined solely by session.disable_quant_qdq.
+// "1": DequantizeLinear nodes are never individually constant folded.
 // When session.disable_quant_qdq is "0" (default), DequantizeLinear nodes are already protected from
 // constant folding to preserve QDQ node units for downstream QDQ fusion optimizers.
-// When session.disable_quant_qdq is "1", DequantizeLinear nodes are normally allowed to be constant folded.
-// Setting this option to "1" overrides that behavior and preserves DequantizeLinear nodes even when
-// session.disable_quant_qdq is "1". This is useful for execution providers like WebNN that disable QDQ fusion
-// but still need the original DQ/Q nodes to be preserved for their own quantization handling.
-// "0": do not force skip. DequantizeLinear constant folding is determined by session.disable_quant_qdq. (default)
-// "1": force skip. DequantizeLinear nodes are always protected from being individually constant folded.
-static const char* const kOrtSessionOptionsDisableDQConstantFolding =
-    "session.disable_dq_constant_folding";
+// When session.disable_quant_qdq is "1", then DequantizeLinear nodes are normally allowed to be
+// constant folded, but setting this option to "1" still preserves DequantizeLinear nodes.
+// This is useful for execution providers like WebNN that disable QDQ fusion, but which
+// still need the original DQ/Q nodes to be preserved for their own quantization handling.
+
+static const char* const kOrtSessionOptionsDisableQDQConstantFolding =
+    "session.disable_qdq_constant_folding";
 
 // It controls whether to enable Double QDQ remover and Identical Children Consolidation
 // "0": not to disable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs

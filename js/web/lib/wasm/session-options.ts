@@ -86,8 +86,8 @@ const setExecutionProviders = async (
         epName = 'WEBNN';
         // Disable QDQ fusion so DQ/Q nodes are preserved as individual ops for WebNN EP.
         appendSessionConfig(sessionOptionsHandle, 'session.disable_quant_qdq', '1', allocs);
-        // Force prevent constant folding from replacing DQ nodes with constants.
-        appendSessionConfig(sessionOptionsHandle, 'session.disable_dq_constant_folding', '1', allocs);
+        // Forcibly prevent constant folding from replacing DQ nodes with constants.
+        appendSessionConfig(sessionOptionsHandle, 'session.disable_qdq_constant_folding', '1', allocs);
         if (typeof ep !== 'string') {
           const webnnOptions = ep as InferenceSession.WebNNExecutionProviderOption;
           // const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
