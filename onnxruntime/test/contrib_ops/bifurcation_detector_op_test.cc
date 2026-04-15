@@ -298,5 +298,46 @@ TEST(BifurcationDetectorTest, PrevSuffixMatchIdxAtBoundary) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// All predicted tokens match source tokens — no bifurcation occurs.
+// pred_bifur_idx reaches the loop bound (src_tokens_len - prev_suffix_match_idx).
+// Output = cur_tokens + all pred_tokens.
+TEST(BifurcationDetectorTest, FullMatchNoBifurcation) {
+  OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
+
+  // src=[10,20,30], prev_idx=0, pred must have len = 3+1-0 = 4.
+  // pred=[10,20,30,99]. Loop: pred[0]==src[0], pred[1]==src[1], pred[2]==src[2].
+  // pred_bifur_idx = 3 (loop bound). Output = [5] + pred[0..3] = [5,10,20,30,99].
+  tester.AddInput<int64_t>("src_tokens", {3}, {10, 20, 30});
+  tester.AddInput<int64_t>("cur_tokens", {1}, {5});
+  tester.AddInput<int64_t>("prev_suffix_match_idx", {}, {0});
+  tester.AddInput<int64_t>("pred_tokens", {4}, {10, 20, 30, 99});
+  tester.AddOutput<int64_t>("tokens", {5}, {5, 10, 20, 30, 99});
+  tester.AddOutput<int64_t>("suffix_match_idx", {}, {-1});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// pred_tokens length does not match the expected (src_tokens_len + 1 - prev_suffix_match_idx).
+TEST(BifurcationDetectorTest, PredTokensLengthMismatch) {
+  OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
+
+  // src_tokens_len=4, prev_suffix_match_idx=0 → expected pred_tokens_len = 5.
+  // Provide pred_tokens_len = 3 to trigger the mismatch check.
+  tester.AddInput<int64_t>("src_tokens", {4}, {1, 5, 3, 4});
+  tester.AddInput<int64_t>("cur_tokens", {1}, {2});
+  tester.AddInput<int64_t>("prev_suffix_match_idx", {}, {0});
+  tester.AddInput<int64_t>("pred_tokens", {3}, {1, 5, 3});
+  tester.AddOutput<int64_t>("tokens", {1}, {0});
+  tester.AddOutput<int64_t>("suffix_match_idx", {}, {0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "pred_tokens length mismatch",
+             {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
