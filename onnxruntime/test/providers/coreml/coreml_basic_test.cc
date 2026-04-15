@@ -549,6 +549,8 @@ TEST(CoreMLExecutionProviderTest, ExternalDataInitializer) {
   ASSERT_STATUS_OK(session.Load(model_path.native()));
   ASSERT_STATUS_OK(session.Initialize());
 
+#if defined(__APPLE__)
+  EXPECT_TRUE(session.GetRegisteredProviderTypes().count(kCoreMLExecutionProvider) > 0);
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
 
@@ -561,6 +563,7 @@ TEST(CoreMLExecutionProviderTest, ExternalDataInitializer) {
     EXPECT_NEAR(output_data[i], input_data[i] + initializer_data[i], 1e-5f)
         << "Mismatch at index " << i;
   }
+#endif  // defined(__APPLE__)
 }
 #endif  // !(ORT_MINIMAL_BUILD)
 
