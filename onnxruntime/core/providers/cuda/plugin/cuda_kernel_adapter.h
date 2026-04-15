@@ -99,7 +99,6 @@ class OrtStreamAdapter {
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-inline constexpr const char* kCudaPluginExecutionProvider = "CudaPluginExecutionProvider";
 
 // Forward declaration of GetEnvironmentVar for plugin builds on Windows.
 // Defined in provider_api_shims.cc; mirrors the provider_api.h declaration

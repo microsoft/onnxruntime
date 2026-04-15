@@ -11,11 +11,14 @@
 #include "ep/get_capability_utils.h"
 
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+
+#include "core/graph/constants.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -227,12 +230,15 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
       cpu_preferred_nodes));
 
   // Phase 3: Add final supported nodes (tentative minus CPU-preferred).
+  // Resource budget enforcement is handled by the host after GetCapability returns.
+
   for (const OrtNode* ort_node : candidate_nodes) {
-    if (cpu_preferred_nodes.count(ort_node) == 0) {
-      Ort::ConstNode node{ort_node};
-      RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
-          graph_support_info, node));
+    if (cpu_preferred_nodes.count(ort_node) != 0) {
+      continue;
     }
+
+    RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
+        graph_support_info, ort_node));
   }
 
   return nullptr;

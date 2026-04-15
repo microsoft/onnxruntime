@@ -277,7 +277,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
     if (params.resource_accountant) {
-      params.resource_accountant->ResetPendingWeights();
+      params.resource_accountant->ResetForNewPass();
     }
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
@@ -348,7 +348,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
     if (params.resource_accountant) {
-      params.resource_accountant->ResetPendingWeights();
+      params.resource_accountant->ResetForNewPass();
     }
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
@@ -1189,7 +1189,15 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
     for (const auto& ep : execution_providers) {
       IResourceAccountant* resource_accountant = nullptr;
       if (acc_map.has_value()) {
-        auto hit = acc_map->find(ep->Type());
+        // Plugin EPs have a different Type() than the in-tree EP they replace
+        // (e.g., kCudaPluginExecutionProvider vs kCudaExecutionProvider), but the
+        // accountant is registered under the in-tree EP name. Translate the key
+        // so plugin EPs find the correct accountant.
+        const auto& ep_type = ep->Type();
+        const auto accountant_key = ep_type == kCudaPluginExecutionProvider
+                                        ? std::string{kCudaExecutionProvider}
+                                        : ep_type;
+        auto hit = acc_map->find(accountant_key);
         if (hit != acc_map->end()) {
           resource_accountant = hit->second.get();
         }
