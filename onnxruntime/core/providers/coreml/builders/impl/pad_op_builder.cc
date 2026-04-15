@@ -125,7 +125,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         AddOperationInput(*op, "constant_val",
                           model_builder.AddScalarConstant(op->type(), "constant_val",
-                                                         constant_value_initializer.DataAsSpan<MLFloat16>()[0]));
+                                                          constant_value_initializer.DataAsSpan<MLFloat16>()[0]));
       } else {
         AddOperationInput(*op, "constant_val",
                           model_builder.AddScalarConstant(op->type(), "constant_val",
