@@ -7,7 +7,6 @@
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
-#include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
@@ -24,8 +23,6 @@ class PadOpBuilder : public BaseOpBuilder {
 
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
-
-  bool SupportsMLProgram() const override { return true; }
 
   int GetMinSupportedOpSet(const Node& /* node */) const override {
     // Note: before Pad-11, inputs `pads` and `constant_value` were attributes
@@ -58,120 +55,57 @@ static InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& ini
 }
 
 void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
-  const auto& input_defs = node.InputDefs();
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // pads
-  if (input_defs.size() > 2) {
-    model_builder.AddInitializerToSkip(input_defs[2]->Name());  // constant_value
-  }
-  if (input_defs.size() > 3) {
-    model_builder.AddInitializerToSkip(input_defs[3]->Name());  // axes
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  //  pads
+  model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  //  constant_value
+  if (node.InputDefs().size() > 3) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // axes
   }
 }
 
 Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                            const Node& node,
                                            const logging::Logger& logger) const {
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
+
+  auto* coreml_pad = layer->mutable_padding();
+  auto* constant_padding_type = coreml_pad->mutable_constant();  // CoreML::Specification::PaddingLayerParams_PaddingConstant
+
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
   GetShape(*input_defs[0], input_shape, logger);
   const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
 
-  const auto& pads_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
+  const auto& pads_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());            // pads
+  const auto& constant_value_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());  // constant_value
+
+  Initializer constant_value_initializer(constant_value_tensor);
+  float constant_value = constant_value_initializer.DataAsSpan<float>()[0];
+  constant_padding_type->set_value(constant_value);
+
   Initializer pads_initializer(pads_tensor);
   auto pads_span = pads_initializer.DataAsSpan<int64_t>();
 
   InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(model_builder.GetInitializerTensors(), node, input_rank);
   int64_t num_axes = axes_tensor_data.size();
 
-  if (model_builder.CreateMLProgram()) {
-    using namespace CoreML::Specification::MILSpec;  // NOLINT
-    // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_operation.pad
-
-    NodeAttrHelper helper(node);
-    const auto mode = helper.Get("mode", "constant");
-
-    auto op = model_builder.CreateOperation(node, "pad");
-    AddOperationInput(*op, "x", input_defs[0]->Name());
-
-    // Convert ONNX pads format to MIL format.
-    // ONNX: [x1_start, x2_start, ..., xN_start, x1_end, x2_end, ..., xN_end] for N axes
-    // MIL:  [x1_start, x1_end, x2_start, x2_end, ...] interleaved, for last N padded dims
-    // MIL pads the last N dimensions where N = len(pad) / 2.
-    // We only need to include dimensions that are actually padded (last 2 dims).
-    std::vector<int64_t> mil_pads;
-    for (int64_t dim = input_rank - 2; dim < input_rank; ++dim) {
-      int64_t pad_start = 0;
-      int64_t pad_end = 0;
-      for (int64_t i = 0; i < num_axes; ++i) {
-        if (axes_tensor_data[i] == dim) {
-          pad_start = pads_span[i];
-          pad_end = pads_span[i + num_axes];
-          break;
-        }
-      }
-      mil_pads.push_back(pad_start);
-      mil_pads.push_back(pad_end);
+  // Add padding
+  auto* height_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
+  auto* width_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
+  for (int64_t i = 0; i < num_axes; i++) {
+    if (axes_tensor_data[i] == input_rank - 2) {
+      height_border->set_startedgesize(pads_span[i]);
+      height_border->set_endedgesize(pads_span[i + num_axes]);
     }
-
-    AddOperationInput(*op, "pad", model_builder.AddConstant(op->type(), "pad", mil_pads));
-    AddOperationInput(*op, "mode", model_builder.AddScalarConstant(op->type(), "mode", std::string(mode)));
-
-    // CoreML runtime requires constant_val even for non-constant modes (despite docs saying optional).
-    auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
-    if (mode == "constant" && input_defs.size() > 2 &&
-        Contains(model_builder.GetInitializerTensors(), input_defs[2]->Name())) {
-      const auto& constant_value_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());
-      Initializer constant_value_initializer(constant_value_tensor);
-      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        AddOperationInput(*op, "constant_val",
-                          model_builder.AddScalarConstant(op->type(), "constant_val",
-                                                         constant_value_initializer.DataAsSpan<MLFloat16>()[0]));
-      } else {
-        AddOperationInput(*op, "constant_val",
-                          model_builder.AddScalarConstant(op->type(), "constant_val",
-                                                         constant_value_initializer.DataAsSpan<float>()[0]));
-      }
-    } else {
-      // Provide default 0.0 for constant mode without explicit value, and for non-constant modes.
-      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        AddOperationInput(*op, "constant_val",
-                          model_builder.AddScalarConstant(op->type(), "constant_val", MLFloat16(0.0f)));
-      } else {
-        AddOperationInput(*op, "constant_val",
-                          model_builder.AddScalarConstant(op->type(), "constant_val", 0.0f));
-      }
+    if (axes_tensor_data[i] == input_rank - 1) {
+      width_border->set_startedgesize(pads_span[i]);
+      width_border->set_endedgesize(pads_span[i + num_axes]);
     }
-
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
-    model_builder.AddOperation(std::move(op));
-  } else {
-    // NeuralNetwork path — constant mode only
-    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
-    auto* coreml_pad = layer->mutable_padding();
-    auto* constant_padding_type = coreml_pad->mutable_constant();
-
-    const auto& constant_value_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());
-    Initializer constant_value_initializer(constant_value_tensor);
-    float constant_value = constant_value_initializer.DataAsSpan<float>()[0];
-    constant_padding_type->set_value(constant_value);
-
-    auto* height_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
-    auto* width_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
-    for (int64_t i = 0; i < num_axes; i++) {
-      if (axes_tensor_data[i] == input_rank - 2) {
-        height_border->set_startedgesize(pads_span[i]);
-        height_border->set_endedgesize(pads_span[i + num_axes]);
-      }
-      if (axes_tensor_data[i] == input_rank - 1) {
-        width_border->set_startedgesize(pads_span[i]);
-        width_border->set_endedgesize(pads_span[i + num_axes]);
-      }
-    }
-
-    *layer->mutable_input()->Add() = input_defs[0]->Name();
-    *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
-    model_builder.AddLayer(std::move(layer));
   }
+
+  *layer->mutable_input()->Add() = input_defs[0]->Name();
+  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+
+  model_builder.AddLayer(std::move(layer));
 
   return Status::OK();
 }
@@ -191,50 +125,38 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     return false;
   }
 
+  // TODO is it ok if the shape is dynamic and empty?
   const TensorShape shape(input_shape);
   if (shape.Size() == 0) {
     LOGS(logger, VERBOSE) << "Cases that input data being empty due to a dimension with value of 0 is not supported";
     return false;
   }
 
-  NodeAttrHelper helper(node);
-  const auto mode = helper.Get("mode", "constant");
-
-  // ML Program supports constant and reflect modes via the MIL pad op.
-  // NeuralNetwork only supports constant mode.
-  if (input_params.create_mlprogram) {
-    if (mode != "constant" && mode != "reflect") {
-      LOGS(logger, VERBOSE) << "For ML Program, only `constant` and `reflect` modes are supported, mode: " << mode;
-      return false;
-    }
-  } else {
+  {
+    NodeAttrHelper helper(node);
+    const auto mode = helper.Get("mode", "constant");
     if (mode != "constant") {
-      LOGS(logger, VERBOSE) << "Only `constant` mode Pad is supported for NeuralNetwork, mode: " << mode;
+      LOGS(logger, VERBOSE) << "Only `constant` mode Pad is currently supported for now, mode: " << mode;
       return false;
     }
-  }
 
-  // constant mode requires a constant_value input
-  if (mode == "constant") {
     if (input_defs.size() < 3) {
       LOGS(logger, VERBOSE) << "`constant_value` input is required for constant mode Pad op.";
       return false;
     }
 
+    // only support if `constant_value` input is a constant initializer
     if (!Contains(initializers, input_defs[2]->Name())) {
       LOGS(logger, VERBOSE) << "constant_value must be a constant initializer.";
       return false;
     }
 
-    if (!input_params.create_mlprogram) {
-      // NeuralNetwork only supports float constant_value
-      int32_t constant_value_type;
-      GetType(*input_defs[2], constant_value_type, logger);
-      if (constant_value_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        LOGS(logger, VERBOSE) << "Only float constant_value is supported for NeuralNetwork, got type: "
-                              << constant_value_type;
-        return false;
-      }
+    int32_t constant_value_type;
+    GetType(*input_defs[2], constant_value_type, logger);
+
+    if (constant_value_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      LOGS(logger, VERBOSE) << "Only float constant_value is supported, got type: " << constant_value_type;
+      return false;
     }
   }
 
@@ -277,21 +199,9 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     for (int64_t i = 0; i < num_axes; i++) {
       if (axes_tensor_data[i] < input_rank - 2) {
         if (pads_tensor_data[i] != 0 || pads_tensor_data[i + num_axes] != 0) {
+          // for axis specified that is not the last two dimension, padding is not supported. i.e.
+          // non-zero value appears in `pads` input for corresponding non-last two dimensions.
           LOGS(logger, VERBOSE) << "CoreML only supports padding on last two dimensions.";
-          return false;
-        }
-      }
-    }
-
-    // For reflect mode, pad amount must be less than the dimension size on each axis.
-    if (mode == "reflect") {
-      for (int64_t i = 0; i < num_axes; i++) {
-        int64_t dim_size = input_shape[axes_tensor_data[i]];
-        if (pads_tensor_data[i] >= dim_size || pads_tensor_data[i + num_axes] >= dim_size) {
-          LOGS(logger, VERBOSE) << "Reflect pad amount must be less than dimension size. "
-                                << "Axis " << axes_tensor_data[i] << " has size " << dim_size
-                                << " but pad amounts are [" << pads_tensor_data[i] << ", "
-                                << pads_tensor_data[i + num_axes] << "]";
           return false;
         }
       }
