@@ -16,9 +16,10 @@ if (NOT CMAKE_C_STANDARD)
   set(CMAKE_C_STANDARD 99)
 endif()
 
-if (NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 20)
-endif()
+# C++20 is required. Set unconditionally to override any cached values from dependencies
+# (e.g., the 'date' library caches CMAKE_CXX_STANDARD=17, which would prevent the
+# conditional set from taking effect on subsequent configures).
+set(CMAKE_CXX_STANDARD 20)
 
 # We don't use C++20 modules yet.
 # There are some known issues to address first:

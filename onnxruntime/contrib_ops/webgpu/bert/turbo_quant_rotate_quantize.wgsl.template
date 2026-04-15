@@ -1,0 +1,128 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// TurboQuant fused FWHT rotation + quantization + int4 packing shader.
+// Each workgroup processes one head vector (head_size elements).
+// Reads from source (BSNH or BNSH, fp16), writes packed int4 to dest (BNSH compressed fp16).
+//
+// Compressed layout per token (fp16 elements):
+//   [0..1]:   f32 norm as bitcast<vec2<f16>>(f32)
+//   [2..compressed_dim-3]: 4-bit indices packed as u32 -> bitcast<vec2<f16>>
+//   [compressed_dim-2..compressed_dim-1]: padding (0)
+
+#param head_size
+#param num_heads
+#param log2_head_size
+#param is_fp16
+#param source_BSNH
+
+#include "bert/turbo_quant_common.wgsl.template"
+
+var<workgroup> tq_shared : array<f32, head_size>;
+var<workgroup> tq_sq_shared : array<f32, head_size>;
+
+$MAIN {
+  // Decode workgroup_idx -> (batch, head, token_in_range)
+  let token_in_range = workgroup_idx % uniforms.kv_sequence_length;
+  let head_idx = (workgroup_idx / uniforms.kv_sequence_length) % u32(num_heads);
+  let batch_idx = workgroup_idx / (uniforms.kv_sequence_length * u32(num_heads));
+
+  // Source offset: read from BSNH or BNSH layout
+#if source_BSNH
+  // source shape: [batch, kv_seq, kv_heads, head_size] (scalar access)
+  let src_base = ((batch_idx * uniforms.kv_sequence_length + token_in_range) * u32(num_heads) + head_idx) * u32(head_size);
+#else
+  // source shape: [batch, kv_heads, ???, head_size] — BNSH
+  let src_base = ((batch_idx * u32(num_heads) + head_idx) * uniforms.present_sequence_length + uniforms.start_token + token_in_range) * u32(head_size);
+#endif
+
+  // Dest offset: write to BNSH compressed layout
+  // dest shape: [batch, kv_heads, present_seq, compressed_dim] (scalar access)
+  let dest_seq_pos = uniforms.start_token + token_in_range;
+  let dest_base = ((batch_idx * u32(num_heads) + head_idx) * uniforms.present_sequence_length + dest_seq_pos) * uniforms.compressed_dim;
+
+  // Step 1: Load from source into f32 shared memory for FWHT + accumulation
+  tq_shared[local_idx] = f32(source[src_base + local_idx]);
+  workgroupBarrier();
+
+  // Step 2: FWHT butterfly stages (in f32 for precision)
+  for (var stage = 0u; stage < u32(log2_head_size); stage++) {
+    let half_block = 1u << stage;
+    let block_size = half_block << 1u;
+    let block_id = local_idx / block_size;
+    let idx_in_block = local_idx % block_size;
+    if (idx_in_block < half_block) {
+      let i = block_id * block_size + idx_in_block;
+      let j = i + half_block;
+      let a = tq_shared[i];
+      let b = tq_shared[j];
+      tq_shared[i] = a + b;
+      tq_shared[j] = a - b;
+    }
+    workgroupBarrier();
+  }
+
+  // Apply FWHT normalization: divide by sqrt(head_size)
+  let fwht_scale = 1.0 / sqrt(f32(head_size));
+  let rotated_val = tq_shared[local_idx] * fwht_scale;
+
+  // Step 3: Compute L2 norm in f32 via shared memory reduction
+  tq_sq_shared[local_idx] = rotated_val * rotated_val;
+  workgroupBarrier();
+
+  // Tree reduction for sum of squares
+  for (var stride = u32(head_size) >> 1u; stride > 0u; stride >>= 1u) {
+    if (local_idx < stride) {
+      tq_sq_shared[local_idx] += tq_sq_shared[local_idx + stride];
+    }
+    workgroupBarrier();
+  }
+
+  let norm = sqrt(max(tq_sq_shared[0], 1e-12));
+  let inv_norm = 1.0 / norm;
+
+  // Step 4: Normalize and quantize -> store index in shared memory for packing
+  let unit_val = rotated_val * inv_norm;
+  let quant_idx = searchsorted_tq(unit_val);
+  tq_shared[local_idx] = f32(quant_idx);
+  workgroupBarrier();
+
+  // Step 5: Pack 8 indices into one u32, write as 2 fp16 values to dest
+  // Each group of 8 threads produces one u32 at fp16 position [2 + group*2, 2 + group*2 + 1]
+  if (local_idx % 8u == 0u) {
+    let group = local_idx / 8u;
+    var packed = 0u;
+    for (var k = 0u; k < 8u; k++) {
+      packed |= u32(tq_shared[local_idx + k]) << (k * 4u);
+    }
+#if is_fp16
+    let packed_f16x2 = bitcast<vec2<f16>>(packed);
+    dest[dest_base + 2u + group * 2u] = packed_f16x2.x;
+    dest[dest_base + 2u + group * 2u + 1u] = packed_f16x2.y;
+#else
+    let packed_bits = bitcast<vec2<f32>>(vec2<u32>(packed, 0u));
+    dest[dest_base + 2u + group * 2u] = packed_bits.x;
+    dest[dest_base + 2u + group * 2u + 1u] = packed_bits.y;
+#endif
+  }
+
+  // Step 6: Thread 0 writes the f32 norm as first 2 fp16 slots + padding
+  if (local_idx == 0u) {
+#if is_fp16
+    let norm_f16x2 = bitcast<vec2<f16>>(f32(norm));
+    dest[dest_base] = norm_f16x2.x;
+    dest[dest_base + 1u] = norm_f16x2.y;
+    // Write padding zeros at the end
+    dest[dest_base + uniforms.compressed_dim - 2u] = f16(0);
+    dest[dest_base + uniforms.compressed_dim - 1u] = f16(0);
+#else
+    let norm_bits = bitcast<u32>(f32(norm));
+    let lo16 = norm_bits & 0xFFFFu;
+    let hi16 = (norm_bits >> 16u) & 0xFFFFu;
+    dest[dest_base] = bitcast<source_element_t>(lo16);
+    dest[dest_base + 1u] = bitcast<source_element_t>(hi16);
+    dest[dest_base + uniforms.compressed_dim - 2u] = source_element_t(0);
+    dest[dest_base + uniforms.compressed_dim - 1u] = source_element_t(0);
+#endif
+  }
+}

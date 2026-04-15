@@ -85,6 +85,11 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  if (std::string turbo_quant_str;
+      config_options.TryGetConfigEntry(kTurboQuant, turbo_quant_str)) {
+    webgpu_ep_config.turbo_quant = (turbo_quant_str == "1" || turbo_quant_str == "true");
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.

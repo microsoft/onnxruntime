@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
+#include "contrib_ops/webgpu/bert/turbo_quant_hadamard.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -131,13 +132,36 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // parameters.total_sequence_length_ is past_sequence_length + kv_sequence_length.
   // parameters.kv_num_heads_ may be smaller than parameters.num_heads_ when parameters.is_gqa_ is true.
   int num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
-  // Only copy the new kv data for static kv cache
-  int copy_sequence_length = parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
-  TensorShape copy_kv_shape{parameters.batch_size_, num_heads, copy_sequence_length, parameters.head_size_ / components};
-  int64_t copy_size = copy_kv_shape.Size();
+
+  // For TurboQuant:
+  // - shared buffer: past data persists in-place, nothing to copy
+  // - non-shared buffer: copy compressed past data to the new present buffer
+  //   (new tokens are handled later by the quantize shader)
+  int copy_head_size = parameters.turbo_quant_ ? parameters.compressed_head_size_ : parameters.head_size_;
+  int copy_sequence_length;
+  if (parameters.turbo_quant_) {
+    if (!parameters.past_present_share_buffer_ && past_key != nullptr && past_key->SizeInBytes() > 0 &&
+        parameters.past_sequence_length_ > 0) {
+      // Past KV has compressed data — copy it to the new present buffer
+      ORT_RETURN_IF_ERROR(context.CopyTensor(*past_key, *present_key));
+      ORT_RETURN_IF_ERROR(context.CopyTensor(*past_value, *present_value));
+    }
+    copy_sequence_length = 0;  // CopyKVCache not needed for TQ
+  } else {
+    // Only copy the new kv data for static kv cache
+    copy_sequence_length = parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
+  }
 
   // Determine if we need to prepare indirect dispatch
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
+
+  // Early return if nothing to copy (TQ with no past, or empty sequence)
+  if (copy_sequence_length == 0 && !prepare_indirect_dispatch) {
+    return Status::OK();
+  }
+
+  TensorShape copy_kv_shape{parameters.batch_size_, num_heads, std::max(copy_sequence_length, 1), copy_head_size / components};
+  int64_t copy_size = parameters.batch_size_ * num_heads * copy_sequence_length * (copy_head_size / components);
   bool use_seqlen_k = (seqlen_k != nullptr);
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
   CopyKVCacheProgram program{"CopyKVCache", has_past, kv_BNSH, parameters.past_present_share_buffer_,
@@ -219,6 +243,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(turbo_quant, turbo_quant_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_));
 }
 
@@ -241,6 +266,7 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                             WGSL_TEMPLATE_PARAMETER(turbo_quant, turbo_quant_),
                              WGSL_TEMPLATE_PARAMETER(use_indirect_dispatch, use_indirect_dispatch_));
 }
 
@@ -253,7 +279,7 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
   const bool has_attention_bias = attention_bias != nullptr;
   const int components = 4;
 
-  FlashAttentionDecodeQKTProgram program{"FlashAttentionDecodeQKT", has_attention_bias, tile_size, use_indirect_dispatch};
+  FlashAttentionDecodeQKTProgram program{"FlashAttentionDecodeQKT", has_attention_bias, tile_size, use_indirect_dispatch, parameters.turbo_quant_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (use_indirect_dispatch) {
@@ -282,7 +308,7 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
     program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_total_seq_length_tile);
   }
   program.SetWorkgroupSize(64)
-      .CacheHint(tile_size, has_attention_bias, use_indirect_dispatch)
+      .CacheHint(tile_size, has_attention_bias, use_indirect_dispatch, parameters.turbo_quant_)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<float>(alpha)},
@@ -317,6 +343,7 @@ Status FlashAttentionDecodeSplitVxProgram::GenerateShaderCode(ShaderHelper& shad
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, WorkgroupSizeX() / tile_size_k_vec),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                             WGSL_TEMPLATE_PARAMETER(turbo_quant, turbo_quant_),
                              WGSL_TEMPLATE_PARAMETER(use_indirect_dispatch, use_indirect_dispatch_));
 }
 
@@ -337,7 +364,7 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
   const int components = 4;
   const bool has_head_sink = head_sink != nullptr;
   int head_size_vec = parameters.v_head_size_ / components;
-  FlashAttentionDecodeSplitVxProgram program{"FlashAttentionDecodeSplitVx", tile_size, head_size_vec, use_indirect_dispatch, has_head_sink};
+  FlashAttentionDecodeSplitVxProgram program{"FlashAttentionDecodeSplitVx", tile_size, head_size_vec, use_indirect_dispatch, has_head_sink, parameters.turbo_quant_};
   program.AddInputs({{metadata, ProgramTensorMetadataDependency::TypeAndRank, 2},
                      {qk, ProgramTensorMetadataDependency::TypeAndRank},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -352,7 +379,7 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
   if (has_head_sink) {
     program.AddInput({head_sink, ProgramTensorMetadataDependency::Type});
   }
-  program.CacheHint(tile_size, head_size_vec, use_indirect_dispatch, has_head_sink)
+  program.CacheHint(tile_size, head_size_vec, use_indirect_dispatch, has_head_sink, parameters.turbo_quant_)
       .SetWorkgroupSize(64)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(head_size_vec)},
@@ -419,15 +446,16 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Create present_key and present_value tensors if they are nullptr
   Tensor internal_present_key;
   Tensor internal_present_value;
+  const int present_head_dim = parameters.turbo_quant_ ? parameters.compressed_head_size_ : parameters.head_size_;
   if (present_key == nullptr) {
     TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
-                                        parameters.total_sequence_length_, parameters.head_size_});
+                                        parameters.total_sequence_length_, present_head_dim});
     internal_present_key = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_key = &internal_present_key;
   }
   if (present_value == nullptr) {
     TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
-                                        parameters.total_sequence_length_, parameters.head_size_});
+                                        parameters.total_sequence_length_, present_head_dim});
     internal_present_value = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_value = &internal_present_value;
   }
@@ -475,6 +503,74 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
+  // TurboQuant: Apply fused Hadamard rotation + pseudo-quantization to K and V,
+  // and rotation-only to Q.
+  // K and V get rotate+quantize (fused): FWHT → L2 norm → normalize → centroid index.
+  // Q gets rotation only (no quantization — Q is not cached).
+  // Key property: Q'·K'ᵀ = (HQ)·(HK)ᵀ = Q·Hᵀ·H·Kᵀ = Q·Kᵀ (QK scores invariant).
+  // The inverse rotation on the output handles V rotation: inv(H) · softmax(QK') · V'.
+  if (parameters.turbo_quant_) {
+    // For past_present_share_buffer, new tokens start at past_sequence_length.
+    // For dynamic cache, new tokens go at past_sequence_length.
+    const uint32_t start_token = static_cast<uint32_t>(parameters.past_sequence_length_);
+    const uint32_t kv_sequence_length = static_cast<uint32_t>(parameters.kv_sequence_length_);
+    const uint32_t compressed_dim = static_cast<uint32_t>(parameters.compressed_head_size_);
+
+    bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    bool source_BSNH = (parameters.qkv_format_ == Q_K_V_BSNH);
+
+    // Fused rotate+quantize+pack K: reads from K input, writes packed int4 to present_key
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantRotateAndQuantize(context, K, present_key,
+                                                         static_cast<uint32_t>(parameters.head_size_),
+                                                         static_cast<uint32_t>(parameters.num_heads_),
+                                                         static_cast<uint32_t>(parameters.batch_size_),
+                                                         kv_sequence_length,
+                                                         present_sequence_length,
+                                                         start_token,
+                                                         static_cast<uint32_t>(parameters.n_reps),
+                                                         compressed_dim,
+                                                         is_fp16,
+                                                         source_BSNH));
+
+    // Fused rotate+quantize+pack V: reads from V input, writes packed int4 to present_value
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantRotateAndQuantize(context, V, present_value,
+                                                         static_cast<uint32_t>(parameters.head_size_),
+                                                         static_cast<uint32_t>(parameters.num_heads_),
+                                                         static_cast<uint32_t>(parameters.batch_size_),
+                                                         kv_sequence_length,
+                                                         present_sequence_length,
+                                                         start_token,
+                                                         static_cast<uint32_t>(parameters.n_reps),
+                                                         compressed_dim,
+                                                         is_fp16,
+                                                         source_BSNH));
+
+    // Rotate Q — same FWHT transform applied to Q so that QK scores are preserved.
+    // Q is not quantized (not cached), only rotated.
+    if (do_rotary) {
+      // In do_rotary path, Q points to the mutable query_output tensor (BSNH).
+      ORT_RETURN_IF_ERROR(ApplyTurboQuantInverseRotation(context, &query_output,
+                                                         static_cast<uint32_t>(parameters.head_size_),
+                                                         static_cast<uint32_t>(parameters.num_heads_),
+                                                         static_cast<uint32_t>(parameters.batch_size_),
+                                                         static_cast<uint32_t>(parameters.sequence_length_),
+                                                         static_cast<uint32_t>(parameters.n_reps)));
+    } else {
+      // Non-rotary path: Q is the original input tensor (immutable), so we must
+      // create a mutable copy, rotate it, and redirect Q to the copy.
+      query_output = context.CreateGPUTensor(Q->DataType(), Q->Shape());
+      // Copy Q data to the mutable tensor
+      ORT_RETURN_IF_ERROR(context.CopyTensor(*Q, query_output));
+      ORT_RETURN_IF_ERROR(ApplyTurboQuantInverseRotation(context, &query_output,
+                                                         static_cast<uint32_t>(parameters.head_size_),
+                                                         static_cast<uint32_t>(parameters.num_heads_),
+                                                         static_cast<uint32_t>(parameters.batch_size_),
+                                                         static_cast<uint32_t>(parameters.sequence_length_),
+                                                         static_cast<uint32_t>(parameters.n_reps)));
+      Q = &query_output;
+    }
+  }
+
   if (parameters.sequence_length_ > 1) {
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
@@ -492,7 +588,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                   is_nvidia,
                                   q_BNSH,
                                   use_seqlen_k,
-                                  has_head_sink};
+                                  has_head_sink,
+                                  parameters.turbo_quant_};
     program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
@@ -521,7 +618,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
     program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
         .SetWorkgroupSize(tile_size)
-        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, q_BNSH, use_seqlen_k, has_head_sink)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, q_BNSH, use_seqlen_k, has_head_sink, parameters.turbo_quant_)
         .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_)},
                               {static_cast<uint32_t>(present_sequence_length)},
@@ -532,7 +629,20 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                               {attn_bias_dim0},
                               {attn_bias_dim1}});
 
-    return context.RunProgram(program);
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+    // TurboQuant: Apply inverse Hadamard rotation to attention output.
+    // Output is in BSNH format: [batch, sequence_length, num_heads, head_size]
+    if (parameters.turbo_quant_) {
+      ORT_RETURN_IF_ERROR(ApplyTurboQuantInverseRotation(context, output,
+                                                         static_cast<uint32_t>(parameters.head_size_),
+                                                         static_cast<uint32_t>(parameters.num_heads_),
+                                                         static_cast<uint32_t>(parameters.batch_size_),
+                                                         static_cast<uint32_t>(parameters.sequence_length_),
+                                                         static_cast<uint32_t>(parameters.n_reps)));
+    }
+
+    return Status::OK();
   }
 
   // For decode path (sequence_length == 1)
@@ -566,6 +676,17 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeVxReduce(context, &out_split_vx, output, seqlen_k, parameters,
                                                           num_total_seq_length_tile,
                                                           num_present_sequence_length_tile, tile_size, use_indirect_dispatch));
+
+  // TurboQuant: Apply inverse Hadamard rotation to decode output.
+  // Output is in BSNH format: [batch, sequence_length(=1), num_heads, head_size]
+  if (parameters.turbo_quant_) {
+    ORT_RETURN_IF_ERROR(ApplyTurboQuantInverseRotation(context, output,
+                                                       static_cast<uint32_t>(parameters.head_size_),
+                                                       static_cast<uint32_t>(parameters.num_heads_),
+                                                       static_cast<uint32_t>(parameters.batch_size_),
+                                                       static_cast<uint32_t>(parameters.sequence_length_),
+                                                       static_cast<uint32_t>(parameters.n_reps)));
+  }
 
   return Status::OK();
 }

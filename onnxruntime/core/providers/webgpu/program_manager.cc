@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <iostream>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -195,26 +196,36 @@ Status ProgramManager::Build(const ProgramBase& program,
   pipeline_descriptor.label = program.Name().c_str();
 #endif
 
-  struct CreateComputePipelineContext {
+  struct CreateComputePipelineWithCodeContext {
     wgpu::ComputePipeline& pipeline;
     Status status;
-  } create_pipeline_context{compute_pipeline, {}};
+    const std::string& shader_code;
+    const std::string& program_name;
+  } create_pipeline_with_code_context{compute_pipeline, {}, code, program.Name()};
 
   ORT_RETURN_IF_ERROR(
       webgpu_context_.Wait(
           device.CreateComputePipelineAsync(
               &pipeline_descriptor,
               wgpu::CallbackMode::WaitAnyOnly,
-              [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message, CreateComputePipelineContext* context) {
+              [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message, CreateComputePipelineWithCodeContext* context) {
                 if (status == wgpu::CreatePipelineAsyncStatus::Success) {
                   context->pipeline = std::move(pipeline);
                 } else {
+                  // Dump shader source to stderr for debugging
+                  std::cerr << "\n========== SHADER COMPILATION ERROR ==========\n"
+                            << "Program: " << context->program_name << "\n"
+                            << "Error:   " << std::string_view{message} << "\n"
+                            << "---------- WGSL Source ----------\n"
+                            << context->shader_code << "\n"
+                            << "========== END SHADER ==========\n"
+                            << std::endl;
                   context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ", std::string_view{message});
                 }
               },
-              &create_pipeline_context)));
+              &create_pipeline_with_code_context)));
 
-  return create_pipeline_context.status;
+  return create_pipeline_with_code_context.status;
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {

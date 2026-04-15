@@ -6,6 +6,7 @@
 #param head_size_vec
 #param tile_size_k_vec
 #param sub_tile_count
+#param turbo_quant
 #param use_indirect_dispatch
 
 // Note that this shader adopts similar algorithm with dp4a generation shader.
@@ -39,6 +40,13 @@ var<workgroup> tile_qk: array<present_value_element_t, tile_size>;
 var<workgroup> tile_output: array<present_value_value_t, head_size_vec>;
 var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, sub_tile_count>;
 
+#if turbo_quant
+#include "bert/turbo_quant_common.wgsl.template"
+
+const compressed_head_size_vec : u32 = head_size_vec / 4u + 1u;
+var<workgroup> tq_v_norms: array<f32, tile_size>;
+#endif
+
 $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
@@ -53,7 +61,11 @@ $MAIN {
   if (batch_head_idx >= uniforms.batch_heads) {
     return;
   }
+#if turbo_quant
+  let present_offset = u32(batch_head_idx / uniforms.n_reps) * compressed_head_size_vec * uniforms.present_sequence_length;
+#else
   let present_offset = u32(batch_head_idx / uniforms.n_reps) * head_size_vec * uniforms.present_sequence_length;
+#endif
 
   // Calculate the global max and sum in qk.
   var g_max = f32(-3.4028234663852886e+38f);
@@ -82,6 +94,15 @@ $MAIN {
       tile_qk[local_idx] = present_value_element_t(exp(f32(qk[batch_head_idx * uniforms.present_sequence_length + total_seq_offset + local_idx]) - g_max) / g_sum);
     }
 
+#if turbo_quant
+  // Preload f32 norms from first vec4 of each compressed V token in this tile.
+  if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
+    let first_v = present_value[present_offset + (total_seq_offset + local_idx) * compressed_head_size_vec];
+    tq_v_norms[local_idx] = bitcast<f32>(vec2<f16>(present_value_element_t(first_v.x), present_value_element_t(first_v.y)));
+  }
+  workgroupBarrier();
+#endif
+
   for (var k: u32 = 0u; k < head_size_vec; k += tile_size_k_vec) {
     var value = present_value_value_t(0);
     qkv_values[local_row][local_col] = present_value_value_t(0);
@@ -90,7 +111,27 @@ $MAIN {
     if (k + local_col < head_size_vec) {
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         if (total_seq_offset + row_offset + local_row < total_sequence_length) {
+#if turbo_quant
+          let v_vec_idx = k + local_col;
+          let v_norm = tq_v_norms[row_offset + local_row];
+          let element_start = v_vec_idx * 4u;
+          let u32_group = element_start / 8u;
+          let half_sel = (element_start / 4u) % 2u;
+          let compressed_fp16_idx = 2u + u32_group * 2u;
+          let cv_idx = compressed_fp16_idx / 4u;
+          let cv_component_pair = (compressed_fp16_idx % 4u) / 2u;
+          let cv = present_value[present_offset + (total_seq_offset + row_offset + local_row) * compressed_head_size_vec + cv_idx];
+          var packed_u32: u32;
+          if (cv_component_pair == 0u) {
+            packed_u32 = bitcast<u32>(vec2<f16>(present_value_element_t(cv.x), present_value_element_t(cv.y)));
+          } else {
+            packed_u32 = bitcast<u32>(vec2<f16>(present_value_element_t(cv.z), present_value_element_t(cv.w)));
+          }
+          let dequant_v = present_value_value_t(tq_dequant_packed_half(packed_u32, half_sel, v_norm));
+          value += dequant_v * tile_qk[row_offset + local_row];
+#else
           value += present_value[present_offset + (total_seq_offset + row_offset + local_row) * head_size_vec + k + local_col] * tile_qk[row_offset + local_row];
+#endif
         }
       }
     }

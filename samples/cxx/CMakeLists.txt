@@ -19,6 +19,16 @@ endforeach()
 get_filename_component(ORT_LIBRARY_DIR "${ORT_LIBRARY_DIR}" ABSOLUTE)
 get_filename_component(ORT_HEADER_DIR "${ORT_HEADER_DIR}" ABSOLUTE)
 
+# Collect shared library files from the ORT library directory based on platform.
+# This must be at top-level scope so all targets can reference it.
+if (WIN32)
+    file(GLOB ORT_SHARED_LIBS "${ORT_LIBRARY_DIR}/*.dll")
+elseif (APPLE)
+    file(GLOB ORT_SHARED_LIBS "${ORT_LIBRARY_DIR}/*.dylib")
+else()
+    file(GLOB ORT_SHARED_LIBS "${ORT_LIBRARY_DIR}/*.so" "${ORT_LIBRARY_DIR}/*.so.*")
+endif()
+
 #
 # onnxruntime_sample_program
 #
@@ -33,18 +43,33 @@ target_link_directories(onnxruntime_sample_program PRIVATE ${ORT_LIBRARY_DIR})
 target_link_libraries(onnxruntime_sample_program PRIVATE onnxruntime)
 
 # Copy ONNX Runtime shared libraries next to the executable.
-# Collect shared library files from the ORT library directory based on platform.
-if (WIN32)
-    file(GLOB ORT_SHARED_LIBS "${ORT_LIBRARY_DIR}/*.dll")
-elseif (APPLE)
-    file(GLOB ORT_SHARED_LIBS "${ORT_LIBRARY_DIR}/*.dylib")
-else()
-    file(GLOB ORT_SHARED_LIBS "${ORT_LIBRARY_DIR}/*.so" "${ORT_LIBRARY_DIR}/*.so.*")
-endif()
-
+if (ORT_SHARED_LIBS)
 add_custom_command(TARGET onnxruntime_sample_program POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${ORT_SHARED_LIBS}
         $<TARGET_FILE_DIR:onnxruntime_sample_program>
 )
+endif()
+endblock()
+
+#
+# GqaTest – GQA / Flash Attention test on WebGPU EP
+#
+block()
+add_executable(GqaTest)
+
+target_sources(GqaTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/GqaTest.cc)
+
+target_include_directories(GqaTest PRIVATE ${ORT_HEADER_DIR})
+
+target_link_directories(GqaTest PRIVATE ${ORT_LIBRARY_DIR})
+target_link_libraries(GqaTest PRIVATE onnxruntime)
+
+if (ORT_SHARED_LIBS)
+add_custom_command(TARGET GqaTest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${ORT_SHARED_LIBS}
+        $<TARGET_FILE_DIR:GqaTest>
+)
+endif()
 endblock()

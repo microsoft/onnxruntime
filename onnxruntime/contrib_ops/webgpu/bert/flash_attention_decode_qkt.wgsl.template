@@ -5,6 +5,7 @@
 #param tile_size
 #param tile_size_k_vec
 #param sub_tile_count
+#param turbo_quant
 #param use_indirect_dispatch
 
 // Note that this shader adopts similar algorithm with dp4a generation shader.
@@ -33,6 +34,12 @@
 var<workgroup> tile_q: array<q_value_t, tile_size_k_vec>;
 var<workgroup> inner_qk_values: array<array<q_element_t, tile_size_k_vec>, tile_size>;
 var<workgroup> tile_qk: array<q_element_t, tile_size>;
+
+#if turbo_quant
+#include "bert/turbo_quant_common.wgsl.template"
+
+var<workgroup> tq_k_norms: array<f32, tile_size>;
+#endif
 
 #if has_attention_bias
   fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32, total_seq_length: u32) -> q_element_t
@@ -73,7 +80,22 @@ $MAIN {
     return;
   }
   let q_offset = batch_idx * uniforms.num_heads * uniforms.head_size_vec + head_idx * uniforms.head_size_vec;
+#if turbo_quant
+  let compressed_hsv = uniforms.head_size_vec / 4u + 1u;
+  let present_offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * compressed_hsv;
+#else
   let present_offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * uniforms.head_size_vec;
+#endif
+
+#if turbo_quant
+  // Preload f32 norms from first vec4 of each compressed token in this tile.
+  if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
+    let first_k = present_key[present_offset + (total_seq_offset + local_idx) * compressed_hsv];
+    tq_k_norms[local_idx] = bitcast<f32>(vec2<f16>(first_k.x, first_k.y));
+  }
+  workgroupBarrier();
+#endif
+
   for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
     if (local_idx < tile_size_k_vec && k + local_idx < uniforms.head_size_vec) {
       tile_q[local_idx] = q[q_offset + k + local_idx];
@@ -83,7 +105,27 @@ $MAIN {
     if (k + local_col < uniforms.head_size_vec) {
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         if (total_seq_offset + row_offset + local_row < total_sequence_length) {
+#if turbo_quant
+          let k_vec_idx = k + local_col;
+          let k_norm = tq_k_norms[row_offset + local_row];
+          let element_start = k_vec_idx * 4u;
+          let u32_group = element_start / 8u;
+          let half_sel = (element_start / 4u) % 2u;
+          let compressed_fp16_idx = 2u + u32_group * 2u;
+          let cv_idx = compressed_fp16_idx / 4u;
+          let cv_component_pair = (compressed_fp16_idx % 4u) / 2u;
+          let cv = present_key[present_offset + (total_seq_offset + row_offset + local_row) * compressed_hsv + cv_idx];
+          var packed_u32: u32;
+          if (cv_component_pair == 0u) {
+            packed_u32 = bitcast<u32>(vec2<f16>(cv.x, cv.y));
+          } else {
+            packed_u32 = bitcast<u32>(vec2<f16>(cv.z, cv.w));
+          }
+          let dequant_k = q_value_t(tq_dequant_packed_half(packed_u32, half_sel, k_norm));
+          inner_qk_values[row_offset + local_row][local_col] += dot(dequant_k, q_data);
+#else
           inner_qk_values[row_offset + local_row][local_col] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col], q_data);
+#endif
         }
       }
     }
