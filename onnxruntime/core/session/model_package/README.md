@@ -18,6 +18,8 @@ This document describes the model package directory layout and the JSON files us
 
 - Model Variant
   - A ‘model variant’ is a single ONNX or ORT format model.
+  - When multiple component models use the same variant name (for example, `qnn_mixed`),
+    those per-component variant entries form a single logical package-level variant.
 
 ## Directory layout
 
@@ -92,6 +94,10 @@ Schema:
     - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT"`). If omitted, ORT will treat it as an ONNX model by default.
     - `model_file` (string, optional): Path relative to the model variant directory. Can point to an ONNX model file or a directory. If it is a directory, or if `model_file` is omitted, ORT will discover the ONNX model file within that directory.
     - `model_id` (string, optional): Unique identifier for the model variant. It should match a catalog value if the model comes from a catalog. If `model_id` is present, the model will be in the <component_model_name>/`model_id`/ directory.
+    - `package_variant_id` (string, optional): Logical package-level variant id. If omitted, ONNX Runtime uses the local `<variant_name>`.
+    - `execution` (object, optional): Per-component execution hints.
+      - `provider_options` (object, optional): Provider options to apply when creating the component session. Caller-specified values override these values.
+      - `session_config_entries` (object, optional): Session config entries to apply when creating the component session. Caller-specified values override these values.
     - `constraints` (object, required):
       - `ep` (string, required (except base model)): Execution provider name (e.g., `"TensorrtExecutionProvider"`, `"QNNExecutionProvider"`, `"OpenVINOExecutionProvider"`).
       - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
@@ -106,6 +112,7 @@ Schema:
         <variant_1>: {
             "model_type": "onnx",
             "model_file": "model_ctx.onnx",
+            "package_variant_id": "qnn_mixed",
             "constraints": {
                 "ep": "TensorrtExecutionProvider",
                 "ep_compatibility_info": "..."
@@ -114,9 +121,14 @@ Schema:
         <variant_2>: {
             "model_type": "onnx",
             "model_file": "model_ctx.onnx",
+            "execution": {
+                "provider_options": {
+                    "device_type": "CPU"
+                }
+            },
              "constraints": {
-                 "ep": "OpenVINOExecutionProvider",
-                 "device": "cpu",
+                  "ep": "OpenVINOExecutionProvider",
+                  "device": "cpu",
                  "ep_compatibility_info": "..."
              }
         }
@@ -127,8 +139,10 @@ Schema:
 
 ## Processing rules (runtime expectations)
 
-- ONNX Runtime reads `manifest.json` if the path passed in is the package root directory; if `component_models` is present, it uses that to determine which component models to load. If `component_models` is not present, ONNX Runtime discovers component models by enumerating subdirectories under `models/`. (In this case, ONNX Runtime expects only one component model exist in the model package.)
+- ONNX Runtime reads `manifest.json` if the path passed in is the package root directory; if `component_models` is present, it uses that to determine which component models to load. If `component_models` is not present, ONNX Runtime discovers component models by enumerating subdirectories under `models/`.
 - ONNX Runtime reads component model's `metadata.json` and ignores `manifest.json` if the path passed in points directly to a component model directory.
 - For each component model, `metadata.json` supplies the definitive list of variants and constraints.
-- Variant selection is performed by matching constraints (EP, device, `ep_compatibility_info`, and optionally architecture). **The EP’s returned compatibility value (e.g., `EP_SUPPORTED_OPTIMAL`, `EP_SUPPORTED_PREFER_RECOMPILATION`) is used to score and pick the winning model variant.**
+- Component entries that share the same `package_variant_id` (or the same variant name when `package_variant_id` is omitted) form a logical package-level variant. Each component entry may target a different EP/device pair.
+- Package-level selection is performed by matching constraints (EP, device, `ep_compatibility_info`, and optionally architecture) for every required component. **The EP’s returned compatibility value (e.g., `EP_SUPPORTED_OPTIMAL`, `EP_SUPPORTED_PREFER_RECOMPILATION`) is used to score and pick the winning package variant.**
+- Direct `CreateSession(package_root, ...)` remains a convenience path that only works when the resolved package variant contains exactly one component model. Multi-component packages must be resolved first and then loaded as one session per component model.
 - All file paths must be relative paths; avoid absolute paths to keep packages portable

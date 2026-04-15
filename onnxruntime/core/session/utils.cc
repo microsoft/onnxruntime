@@ -3,11 +3,13 @@
 
 #include "core/session/utils.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "core/framework/error_code_helper.h"
@@ -142,74 +144,73 @@ Status PrintAvailableAndSelectedEpInfos(const Environment& env, std::vector<Vari
   return Status::OK();
 }
 
-// Gets EP info needed for model package workflow to select suitable model.
-//
-// For simplicity, there are some constraints in this initial implementation:
-// - Only one EP is supported, skip ORT CPU EP.
-// - All devices should be supported by the same EP
-//
+// Gets EP info needed for model package workflow to select suitable model package components.
+// One VariantSelectionEpInfo is produced per available EP. If CPU fallback is allowed, a CPU entry is synthesized so
+// that component models can explicitly target CPUExecutionProvider without requiring an explicit provider factory.
 Status GetVariantSelectionEpInfo(const OrtSessionOptions* session_options,
                                  std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
                                  std::vector<VariantSelectionEpInfo>& ep_infos) {
-  if (provider_list.empty()) {
-    return Status::OK();
-  }
+  ep_infos.clear();
 
-  // Pick the first non-CPU provider if available; otherwise fall back to the first provider.
-  size_t selected_idx = 0;
-  for (size_t i = 0; i < provider_list.size(); ++i) {
-    const auto& provider = provider_list[i];
-    if (provider && provider->Type() != onnxruntime::kCpuExecutionProvider) {
-      selected_idx = i;
-      break;
+  auto get_provider_options_from_session = [&](const std::string& ep_name) {
+    ProviderOptions provider_options;
+    if (session_options == nullptr) {
+      return provider_options;
     }
-  }
 
-  auto& provider = provider_list[selected_idx];
+    const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_name.c_str());
+    const auto& configs = session_options->value.config_options.configurations;
 
-  if (provider && provider->Type() == onnxruntime::kCpuExecutionProvider) {
-    return Status::OK();
-  }
-
-  ep_infos.push_back(VariantSelectionEpInfo{});
-  auto& ep_info = ep_infos.back();
-
-  // Add ep name to ep_info
-  ep_info.ep_name = provider->Type();
-  ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
-
-  // Add ep devices to ep_info
-  auto& ep_devices = provider->GetEpDevices();
-  ep_info.ep_devices = ep_devices;
-
-  // Add ep factory to ep_info
-  ep_info.ep_factory = ep_devices.empty() ? nullptr : ep_devices.front()->ep_factory;
-
-  // Add hardware devices to ep_info
-  ep_info.hardware_devices.reserve(ep_devices.size());
-  for (const auto& ep_device : ep_devices) {
-    if (ep_device->device != nullptr) {
-      ep_info.hardware_devices.push_back(ep_device->device);
+    for (const auto& kv : configs) {
+      if (kv.first.rfind(ep_options_prefix, 0) == 0) {
+        provider_options.emplace(kv.first.substr(ep_options_prefix.size()), kv.second);
+      }
     }
-  }
 
-  // Add ep metadata to ep_info
-  ep_info.ep_metadata.reserve(ep_devices.size());
-  for (const auto& ep_device : ep_devices) {
-    ep_info.ep_metadata.push_back(&ep_device->ep_metadata);
-  }
+    return provider_options;
+  };
 
-  // Add ep provider options to ep_info
-  ProviderOptions provider_options;
-  const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_info.ep_name.c_str());
-  const auto& configs = session_options->value.config_options.configurations;
+  std::unordered_set<std::string> ep_names_seen;
 
-  for (const auto& kv : configs) {
-    if (kv.first.rfind(ep_options_prefix, 0) == 0) {                                   // starts with prefix
-      provider_options.emplace(kv.first.substr(ep_options_prefix.size()), kv.second);  // strip prefix
+  for (const auto& provider : provider_list) {
+    if (!provider) {
+      continue;
     }
+
+    ep_infos.push_back(VariantSelectionEpInfo{});
+    auto& ep_info = ep_infos.back();
+
+    ep_info.ep_name = provider->Type();
+    ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
+    ep_names_seen.insert(ep_info.ep_name);
+
+    auto& ep_devices = provider->GetEpDevices();
+    ep_info.ep_devices = ep_devices;
+    ep_info.ep_factory = ep_devices.empty() ? nullptr : ep_devices.front()->ep_factory;
+
+    ep_info.hardware_devices.reserve(ep_devices.size());
+    ep_info.ep_metadata.reserve(ep_devices.size());
+    for (const auto& ep_device : ep_devices) {
+      if (ep_device != nullptr && ep_device->device != nullptr) {
+        ep_info.hardware_devices.push_back(ep_device->device);
+      }
+
+      if (ep_device != nullptr) {
+        ep_info.ep_metadata.push_back(&ep_device->ep_metadata);
+      }
+    }
+
+    ep_info.ep_options = get_provider_options_from_session(ep_info.ep_name);
   }
-  ep_info.ep_options = std::move(provider_options);
+
+  const bool disable_ort_cpu_ep = session_options != nullptr &&
+                                  session_options->value.config_options.GetConfigEntry(kOrtSessionOptionsDisableCPUEPFallback) == "1";
+  if (!disable_ort_cpu_ep && ep_names_seen.count(onnxruntime::kCpuExecutionProvider) == 0) {
+    ep_infos.push_back(VariantSelectionEpInfo{});
+    auto& cpu_ep_info = ep_infos.back();
+    cpu_ep_info.ep_name = onnxruntime::kCpuExecutionProvider;
+    cpu_ep_info.ep_options = get_provider_options_from_session(cpu_ep_info.ep_name);
+  }
 
   return Status::OK();
 }
@@ -465,14 +466,11 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
     if (std::filesystem::is_directory(package_root, ec) &&
         !ec) {
 #if !defined(ORT_MINIMAL_BUILD)
-      OrtSessionOptions* options_to_use = nullptr;
       OrtSessionOptions ort_sess_options = options ? *options : OrtSessionOptions();
-      if (options) {
-        options_to_use = &ort_sess_options;
-      }
+      OrtSessionOptions* options_to_use = &ort_sess_options;
 
       std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
-      const bool has_provider_factories = options_to_use != nullptr && !options_to_use->provider_factories.empty();
+      const bool has_provider_factories = !options_to_use->provider_factories.empty();
       ProviderPolicyContext provider_policy_context;
       std::vector<const OrtEpDevice*> execution_devices;
       std::vector<const OrtEpDevice*> devices_selected;
@@ -483,7 +481,7 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
           auto provider = factory->CreateProvider(*options_to_use, *logging::LoggingManager::DefaultLogger().ToExternal());
           provider_list.push_back(std::move(provider));
         }
-      } else if (options_to_use != nullptr && options_to_use->value.ep_selection_policy.enable) {
+      } else if (options_to_use->value.ep_selection_policy.enable) {
         // No model loaded yet, so no model metadata. Pass empty metadata for now.
         // TODO: Pass metadata from manifest json to delegate policy?
         OrtKeyValuePairs model_metadata;
@@ -505,21 +503,58 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
                                      "Check the EP selection policy or explicitly specify EPs.");
       }
 
-      // Select the most suitable model variant based on EP info and model constraints.
+      // Resolve the package variant and per-component execution plan based on EP info and model constraints.
       ModelPackageContext model_package_context(package_root);
-      ModelVariantSelector model_variant_selector;
-      std::optional<std::filesystem::path> selected_model_variant_path;
+      ModelPackageResolver model_package_resolver;
+      std::optional<ResolvedModelPackageInfo> resolved_model_package;
 
-      ORT_API_RETURN_IF_STATUS_NOT_OK(model_variant_selector.SelectVariant(model_package_context, ep_infos, selected_model_variant_path));
+      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_resolver.Resolve(model_package_context, ep_infos, resolved_model_package));
 
-      if (selected_model_variant_path.has_value()) {
-        selected_model_path = *selected_model_variant_path;
-        model_path_to_use = selected_model_path.c_str();
-      } else {
+      if (!resolved_model_package.has_value() || resolved_model_package->resolved_components.empty()) {
         return OrtApis::CreateStatus(ORT_FAIL,
-                                     "No suitable model variant found for the available execution providers."
+                                     "No suitable model variant found for the available execution providers. "
                                      "Try specifying the model file path instead of a model package, or check the "
                                      "model variants' constraints in the manifest json or metadata json.");
+      }
+
+      if (resolved_model_package->resolved_components.size() != 1) {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "Direct session creation only supports model packages that resolve to a single component model. "
+                                     "Resolve the package first and create one session per component model.");
+      }
+
+      const auto& resolved_component = resolved_model_package->resolved_components.front();
+      selected_model_path = resolved_component.model_path;
+      model_path_to_use = selected_model_path.c_str();
+
+      auto& configs = options_to_use->value.config_options.configurations;
+      for (const auto& [key, value] : resolved_component.session_config_entries) {
+        if (configs.count(key) == 0) {
+          ORT_API_RETURN_IF_STATUS_NOT_OK(
+              options_to_use->value.config_options.AddConfigEntry(key.c_str(), value.c_str()));
+        }
+      }
+
+      if (!resolved_component.ep_name.empty()) {
+        const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(resolved_component.ep_name.c_str());
+        for (const auto& [key, value] : resolved_component.provider_options) {
+          const std::string prefixed_key = ep_options_prefix + key;
+          if (configs.count(prefixed_key) == 0) {
+            ORT_API_RETURN_IF_STATUS_NOT_OK(
+                options_to_use->value.config_options.AddConfigEntry(prefixed_key.c_str(), value.c_str()));
+          }
+        }
+      }
+
+      if (resolved_component.ep_name == onnxruntime::kCpuExecutionProvider) {
+        provider_list.clear();
+      } else {
+        provider_list.erase(
+            std::remove_if(provider_list.begin(), provider_list.end(),
+                           [&resolved_component](const std::unique_ptr<IExecutionProvider>& provider) {
+                             return !provider || provider->Type() != resolved_component.ep_name;
+                           }),
+            provider_list.end());
       }
 
       ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
@@ -534,7 +569,6 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
       // Log telemetry for auto EP selection
       if (!has_provider_factories &&
-          options_to_use != nullptr &&
           options_to_use->value.ep_selection_policy.enable) {
         ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(*sess, *options_to_use,
                                                                              execution_devices, devices_selected));

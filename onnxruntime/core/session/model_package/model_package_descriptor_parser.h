@@ -22,7 +22,11 @@ static constexpr const char* kVariantNameKey = "variant_name";
 static constexpr const char* kModelTypeKey = "model_type";
 static constexpr const char* kModelFileKey = "model_file";
 static constexpr const char* kModelIdKey = "model_id";
+static constexpr const char* kPackageVariantIdKey = "package_variant_id";
 static constexpr const char* kConstraintsKey = "constraints";
+static constexpr const char* kExecutionKey = "execution";
+static constexpr const char* kProviderOptionsKey = "provider_options";
+static constexpr const char* kSessionConfigEntriesKey = "session_config_entries";
 static constexpr const char* kEpKey = "ep";
 static constexpr const char* kDeviceKey = "device";
 static constexpr const char* kArchitectureKey = "architecture";
@@ -33,7 +37,8 @@ class ModelPackageDescriptorParser {
   explicit ModelPackageDescriptorParser(const logging::Logger& logger) : logger_(logger) {}
 
   Status ParseVariantsFromRoot(const std::filesystem::path& package_root,
-                               /*out*/ std::vector<ModelVariantInfo>& components) const;
+                               /*out*/ std::vector<ModelVariantInfo>& components,
+                               /*out*/ std::vector<std::string>* component_model_names = nullptr) const;
 
  private:
   Status ParseVariantsFromComponent(const std::string& component_model_name,
