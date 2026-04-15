@@ -214,16 +214,21 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     }
   }
 
-  // constant mode requires a constant_value input
+  // For constant mode, ML Program allows omitted `constant_value` (defaults to 0 per ONNX Pad semantics).
+  // NeuralNetwork path requires explicit `constant_value`.
   if (mode == "constant") {
-    if (input_defs.size() < 3) {
-      LOGS(logger, VERBOSE) << "`constant_value` input is required for constant mode Pad op.";
-      return false;
-    }
+    const bool has_constant_value_input = input_defs.size() > 2 && !input_defs[2]->Name().empty();
 
-    if (!Contains(initializers, input_defs[2]->Name())) {
-      LOGS(logger, VERBOSE) << "constant_value must be a constant initializer.";
-      return false;
+    if (!has_constant_value_input) {
+      if (!input_params.create_mlprogram) {
+        LOGS(logger, VERBOSE) << "`constant_value` input is required for constant mode Pad op in NeuralNetwork mode.";
+        return false;
+      }
+    } else {
+      if (!Contains(initializers, input_defs[2]->Name())) {
+        LOGS(logger, VERBOSE) << "constant_value must be a constant initializer.";
+        return false;
+      }
     }
 
     if (!input_params.create_mlprogram) {

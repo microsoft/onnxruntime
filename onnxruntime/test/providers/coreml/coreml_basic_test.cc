@@ -516,6 +516,53 @@ TEST(CoreMLExecutionProviderTest, PadReflectMLProgram) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
 #endif
 }
+
+TEST(CoreMLExecutionProviderTest, PadConstantDefaultValueMLProgram) {
+  // Build a model: output = Pad(X, pads, mode="constant"), no explicit constant_value input.
+  onnxruntime::Model model("pad_constant_default_value_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(5);
+  output_shape->add_dim()->set_dim_value(7);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto pads_init;
+  pads_init.set_name("pads");
+  pads_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  pads_init.add_dims(8);
+  const std::vector<int64_t> pads_data = {0, 0, 1, 2, 0, 0, 1, 1};
+  for (auto v : pads_data) {
+    pads_init.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(pads_init);
+
+  auto& pads_arg = graph.GetOrCreateNodeArg("pads", nullptr);
+  auto& pad_node = graph.AddNode("pad_constant", "Pad", "constant pad default value",
+                                 {&input_arg, &pads_arg}, {&output_arg});
+  pad_node.AddAttribute("mode", "constant");
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+}
 #endif  // !(ORT_MINIMAL_BUILD)
 
 // Regression test for https://github.com/microsoft/onnxruntime/issues/28005
