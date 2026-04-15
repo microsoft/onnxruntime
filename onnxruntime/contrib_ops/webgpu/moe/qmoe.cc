@@ -237,7 +237,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     // Fused MoE path for 1 token: instead of looping k times with separate dispatches,
     // run a single batched MatMulNBits with M=k where each row uses a different expert's
     // weights via weight_index_indirect. A's single row is broadcast to all k rows.
-    // This reduces dispatches from 1 + k*4 = 17 to 5 (gate + fc1 + swiglu + fc2 + mix).
+    // FC1+SwiGLU and FC2+FinalMix are fused into the matmul output writes.
+    // This reduces dispatches from 1 + k*4 = 17 to 4 (gate + fc1+swiglu + fc2 + mix).
 
     const uint32_t k = static_cast<uint32_t>(k_);
     const uint32_t num_tokens = 1;
@@ -259,37 +260,23 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
         .CacheHint(k_, is_fp16 ? "fp16" : "fp32");
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
-    // Step 2: Batched fc1 MatMulNBits with M=k, per-row expert selection.
-    // A is (1, hidden_size) but dispatched with override_M=k; shader broadcasts A row 0.
-    TensorShape fc1_output_shape({static_cast<int64_t>(k), fc1_output_size});
-    Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
-    status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
-                              K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
-                              &fc1_outputs, 0, &indirect_experts, /*override_M=*/k);
-    ORT_RETURN_IF_ERROR(status);
-
-    // Step 3: SwiGLU on all k rows at once
+    // Step 2: Fused FC1 MatMulNBits + SwiGLU.
+    // The matmul computes [k, 2*inter_size] from the FC1 weights and fuses SwiGLU activation
+    // in the output write, producing [k, inter_size] directly in one dispatch.
     TensorShape fc1_activated_shape({static_cast<int64_t>(k), moe_params.inter_size});
     Tensor fc1_activated = context.CreateGPUTensor(dtype, fc1_activated_shape);
     if (is_swiglu) {
-      SwigLuProgram swiglu;
-      swiglu
-          .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type, 2}})
-          .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
-          .SetWorkgroupSize(128)
-          .SetDispatchGroupSize(((k * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
-          .AddUniformVariables({k,
-                                static_cast<uint32_t>(moe_params.inter_size),
-                                activation_alpha_,
-                                activation_beta_,
-                                swiglu_limit_});
-      ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
+      status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
+                                K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
+                                &fc1_activated, 0, &indirect_experts, /*override_M=*/k,
+                                /*fuse_swiglu=*/true, activation_alpha_, activation_beta_, swiglu_limit_,
+                                /*output_N=*/static_cast<uint32_t>(moe_params.inter_size));
     } else {
       ORT_THROW("only swiglu is supported for WebGPU.");
     }
+    ORT_RETURN_IF_ERROR(status);
 
-    // Step 4: Batched fc2 MatMulNBits with M=k, per-row expert selection
-    // fc1_activated already has k rows (one per expert), no override_M needed.
+    // Step 3: Batched fc2 MatMulNBits with M=k, per-row expert selection
     TensorShape fc2_output_shape({static_cast<int64_t>(k), N_fc2});
     Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
     status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
@@ -297,7 +284,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                               &fc2_outputs, 0, &indirect_experts, /*override_M=*/0);
     ORT_RETURN_IF_ERROR(status);
 
-    // Step 5: Fused FinalMix — accumulate all k expert results weighted by router_values
+    // Step 4: Fused FinalMix — accumulate all k expert results weighted by router_values
     // Dispatch across hidden_size (not k) to avoid race: each thread accumulates all k experts.
     const uint32_t mix_wg_size = 256;
     FusedFinalMix1TokenProgram final_mix;

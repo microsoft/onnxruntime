@@ -11,6 +11,7 @@
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
+#param fuse_swiglu
 
 #use .getByOffset .setByOffset
 
@@ -41,6 +42,10 @@
 const double_tile_size_k_vec = 2 * tile_size_k_vec;
 
 var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+#if fuse_swiglu
+// Shared memory for pairing adjacent gate/up columns in SwiGLU fusion.
+var<workgroup> swiglu_pair: array<output_element_t, tile_size>;
+#endif
 // Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
 var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
 // double_tile_size_k_vec * 16 / 128
@@ -197,6 +202,29 @@ $MAIN {
         output_value += inter_results[local_idx][b];
       }
       let b_global =  b_global_base + local_idx;
+#if fuse_swiglu
+      // Fused SwiGLU: pair adjacent even/odd columns (gate/up).
+      // FC1 output layout: [gate_0, up_0, gate_1, up_1, ...] (N = 2 * inter_size)
+      // After fusion, output layout: [activated_0, activated_1, ...] (output_N = inter_size)
+      if (b_global < uniforms.N) {
+#if has_bias
+        let bias_value = bias[b_global + b_bias_offset];
+        output_value += bias_value;
+#endif
+        swiglu_pair[local_idx] = output_value;
+      }
+      workgroupBarrier();
+      // Only even-indexed threads (gate columns) apply SwiGLU and write output.
+      if ((local_idx & 1u) == 0u && b_global < uniforms.N) {
+        let gate_val = min(swiglu_pair[local_idx], uniforms.swiglu_limit);
+        let up_val = clamp(swiglu_pair[local_idx + 1u], -uniforms.swiglu_limit, uniforms.swiglu_limit);
+        let glu = gate_val * (1.0f / (1.0f + exp(-uniforms.swiglu_alpha * gate_val)));
+        let fused_val = output_element_t(glu * (up_val + uniforms.swiglu_beta));
+        let out_col = b_global >> 1u;
+        let out_idx = batch * uniforms.dispatch_M * uniforms.output_N + a_global * uniforms.output_N + out_col;
+        output.setByOffset(out_idx, fused_val);
+      }
+#else
       let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
       if (b_global < uniforms.N) {
 #if has_bias
@@ -206,5 +234,6 @@ $MAIN {
         output.setByOffset(output_idx, output_value);
 #endif
       }
+#endif
     }
 } // MAIN

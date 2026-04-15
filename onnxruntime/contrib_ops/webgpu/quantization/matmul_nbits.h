@@ -96,7 +96,12 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level, int64_t bits_op,
                         onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index = 0,
                         const Tensor* weight_index_indirect = nullptr,
-                        uint32_t override_M = 0);
+                        uint32_t override_M = 0,
+                        bool fuse_swiglu = false,
+                        float swiglu_alpha = 0.0f,
+                        float swiglu_beta = 0.0f,
+                        float swiglu_limit = 0.0f,
+                        uint32_t output_N = 0);
 
 }  // namespace webgpu
 }  // namespace contrib
