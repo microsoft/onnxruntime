@@ -105,7 +105,7 @@ namespace {
 
 // Parse a spin duration config value (in microseconds) from a string.
 // Returns kSpinDurationDefault (-1) if the config is not explicitly set.
-// Returns the parsed value (>= 0) if valid. Logs a warning and returns
+// Returns the parsed value (>= -1) if valid. Logs a warning and returns
 // kSpinDurationDefault on parse failure.
 constexpr int kSpinDurationWarnThresholdUs = 10000;  // 10ms — warn above this
 int ParseSpinDurationUs(std::string_view str, const char* config_key,
