@@ -81,6 +81,6 @@ It may be customized with `--build_dir`.
 - **Prefer `python tools/ci_build/build.py` directly** over `build.bat`/`build.sh` when redirecting output. The `.bat` wrapper runs in `cmd.exe`, which breaks PowerShell redirection.
 - **Redirect output to a file** (e.g., `> build_log.txt 2>&1`) — build output is large and will overflow terminal buffers. Put output files into a separate directory to avoid cluttering up the repo root.
 - **Builds are long-running** — a full build can take tens of minutes to over an hour. Run builds synchronously with a long timeout, and poll infrequently if the timeout expires.
-- **After a build completes**, check the log for errors and verify expected binaries exist before proceeding.
+- **After a build completes**, check the log for errors and verify expected binaries exist before proceeding. `"Build complete"` means that the build was successful.
 - **Use `--parallel`** by default unless the user says otherwise.
 - Ask the user what they want to build (config, execution providers, wheel, etc.) if not clear from their prompt.
