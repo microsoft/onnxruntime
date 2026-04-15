@@ -1,7 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <vector>
 
 #include "core/common/logging/logging.h"
 #include "core/graph/constants.h"
@@ -17,6 +21,7 @@
 #include "test/util/include/current_test_name.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/temp_dir.h"
 #include "test/util/include/test_environment.h"
 #include "test/util/include/test_utils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -430,5 +435,215 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
   TestModelLoad(model_data, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
 #endif
 }
+
+// Test that CoreML EP can load a model with initializers stored in an external data file.
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28022
+// Verify that Pad(mode=reflect) is handled by the CoreML EP (ML Program) instead of falling back to CPU.
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CoreMLExecutionProviderTest, PadReflectMLProgram) {
+  // Build a model: output = Pad(X, pads, mode="reflect")
+  // Input shape: {1,1,3,4}, pads on last 2 dims: H=[1,1], W=[2,1]
+  // Expected output shape: {1,1,5,7}
+  onnxruntime::Model model("pad_reflect_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  // Input X: {1,1,3,4} float tensor
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(4);
+
+  // Output Y: {1,1,5,7} float tensor
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(5);
+  output_shape->add_dim()->set_dim_value(7);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  // Pads initializer: [0,0,1,2, 0,0,1,1] — pad H by (1,1), W by (2,1)
+  ONNX_NAMESPACE::TensorProto pads_init;
+  pads_init.set_name("pads");
+  pads_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  pads_init.add_dims(8);
+  const std::vector<int64_t> pads_data = {0, 0, 1, 2, 0, 0, 1, 1};
+  for (auto v : pads_data) {
+    pads_init.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(pads_init);
+
+  auto& pads_arg = graph.GetOrCreateNodeArg("pads", nullptr);
+
+  auto& pad_node = graph.AddNode("pad_reflect", "Pad", "reflect pad",
+                                 {&input_arg, &pads_arg}, {&output_arg});
+  pad_node.AddAttribute("mode", "reflect");
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  // Input data for {1,1,3,4}:
+  // [[[ 1,  2,  3,  4],
+  //   [ 5,  6,  7,  8],
+  //   [ 9, 10, 11, 12]]]
+  std::vector<int64_t> dims = {1, 1, 3, 4};
+  std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "PadReflectMLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+#endif  // !(ORT_MINIMAL_BUILD)
+
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28005
+// The bug was that TensorProtoWithExternalDataToTensorProto passed a model file path
+// (e.g. "/path/to/model.onnx") to ReadExternalDataForTensor which expects a directory,
+// causing it to construct an invalid path like "/path/to/model.onnx/model.onnx_data".
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CoreMLExecutionProviderTest, ExternalDataInitializer) {
+  // Create a temp directory for the model and external data file
+  TemporaryDirectory tmp_dir(ORT_TSTR("coreml_external_data_test"));
+  const auto model_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx");
+  const auto external_data_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx_data");
+
+  // Write external data file: 6 floats for a {1,1,3,2} initializer
+  const std::vector<float> initializer_data = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f};
+  {
+    std::ofstream ofs(external_data_path, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open());
+    ofs.write(reinterpret_cast<const char*>(initializer_data.data()),
+              initializer_data.size() * sizeof(float));
+    ofs.close();
+  }
+
+  // Build a simple model: output = X + initializer (Add op)
+  {
+    ONNX_NAMESPACE::ModelProto model_proto;
+    model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+    auto* opset = model_proto.add_opset_import();
+    opset->set_domain("");
+    opset->set_version(13);
+
+    auto* graph_proto = model_proto.mutable_graph();
+    graph_proto->set_name("test_external_data");
+
+    // Input X: {1,1,3,2} float tensor
+    auto* input = graph_proto->add_input();
+    input->set_name("X");
+    auto* input_type = input->mutable_type()->mutable_tensor_type();
+    input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* input_shape = input_type->mutable_shape();
+    input_shape->add_dim()->set_dim_value(1);
+    input_shape->add_dim()->set_dim_value(1);
+    input_shape->add_dim()->set_dim_value(3);
+    input_shape->add_dim()->set_dim_value(2);
+
+    // Output Y: {1,1,3,2} float tensor
+    auto* output = graph_proto->add_output();
+    output->set_name("Y");
+    auto* output_type = output->mutable_type()->mutable_tensor_type();
+    output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* output_shape = output_type->mutable_shape();
+    output_shape->add_dim()->set_dim_value(1);
+    output_shape->add_dim()->set_dim_value(1);
+    output_shape->add_dim()->set_dim_value(3);
+    output_shape->add_dim()->set_dim_value(2);
+
+    // Initializer W with external data
+    auto* initializer = graph_proto->add_initializer();
+    initializer->set_name("W");
+    initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    initializer->add_dims(1);
+    initializer->add_dims(1);
+    initializer->add_dims(3);
+    initializer->add_dims(2);
+    initializer->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+    auto* ext_location = initializer->add_external_data();
+    ext_location->set_key("location");
+    ext_location->set_value("model.onnx_data");
+    auto* ext_offset = initializer->add_external_data();
+    ext_offset->set_key("offset");
+    ext_offset->set_value("0");
+    auto* ext_length = initializer->add_external_data();
+    ext_length->set_key("length");
+    ext_length->set_value(std::to_string(initializer_data.size() * sizeof(float)));
+
+    // Add node: Y = X + W
+    auto* node = graph_proto->add_node();
+    node->set_op_type("Add");
+    node->add_input("X");
+    node->add_input("W");
+    node->add_output("Y");
+
+    // Save model
+    std::ofstream ofs(model_path, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open());
+    ASSERT_TRUE(model_proto.SerializeToOstream(&ofs));
+    ofs.close();
+  }
+
+  // Input data
+  std::vector<int64_t> dims = {1, 1, 3, 2};
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunOptions run_options;
+  run_options.run_tag = "ExternalDataInitializer";
+  std::vector<std::string> output_names = {"Y"};
+
+  // Load the model from a file path (not from memory) with the CoreML EP.
+  // This is the scenario that triggers the bug: CoreML EP must resolve external data
+  // relative to the model file's directory, not treat the model path as a directory.
+  SessionOptions so;
+  so.session_logid = "ExternalDataInitializer";
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(MakeCoreMLExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(model_path.native()));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+
+  // Verify the output: Y = X + W = {1.1, 2.2, 3.3, 4.4, 5.5, 6.6}
+  ASSERT_EQ(fetches.size(), 1u);
+  const auto& output_tensor = fetches[0].Get<Tensor>();
+  auto output_data = output_tensor.DataAsSpan<float>();
+  ASSERT_EQ(static_cast<size_t>(output_data.size()), input_data.size());
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    EXPECT_NEAR(output_data[i], input_data[i] + initializer_data[i], 1e-5f)
+        << "Mismatch at index " << i;
+  }
+}
+#endif  // !(ORT_MINIMAL_BUILD)
+
 }  // namespace test
 }  // namespace onnxruntime
