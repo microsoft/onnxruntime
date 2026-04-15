@@ -165,6 +165,18 @@ class ThreadPool {
              int spin_duration_us = kSpinDurationDefault,
              bool force_hybrid = false);
 
+  // Backward-compatible overload: maps the legacy bool parameter to the new
+  // spin_duration_us semantics so that external callers passing true/false
+  // don't silently get implicit bool-to-int conversion (true -> 1us).
+  ThreadPool(Env* env,
+             const ThreadOptions& thread_options,
+             const NAME_CHAR_TYPE* name,
+             int degree_of_parallelism,
+             bool allow_spinning,
+             bool force_hybrid = false)
+      : ThreadPool(env, thread_options, name, degree_of_parallelism,
+                   allow_spinning ? kSpinDurationDefault : 0, force_hybrid) {}
+
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
   ~ThreadPool();
