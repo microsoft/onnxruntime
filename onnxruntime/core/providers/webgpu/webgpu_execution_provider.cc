@@ -31,7 +31,9 @@
 #include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/tensor/cast.h"
 #include "core/providers/webgpu/tensor/expand.h"
+#include "core/providers/webgpu/generator/constant_of_shape.h"
 #include "core/providers/webgpu/generator/range.h"
+#include "core/providers/webgpu/tensor/space_to_depth.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 
 namespace onnxruntime {
@@ -290,6 +292,14 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, DepthToSpace);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 11, 12, DepthToSpace);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 13, DepthToSpace);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, SpaceToDepth);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, SpaceToDepth);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 1, 12, SpaceToDepth);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 13, SpaceToDepth);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 9, 10, Compress);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, Compress);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Conv);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 21, Conv);
@@ -652,6 +662,14 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 11, 12, DepthToSpace)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 13, DepthToSpace)>,
 
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, SpaceToDepth)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, SpaceToDepth)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 1, 12, SpaceToDepth)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 13, SpaceToDepth)>,
+
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 9, 10, Compress)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, Compress)>,
+
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Conv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 21, Conv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 22, Conv)>,
@@ -848,6 +866,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   // Register Expand kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
+
+  // Register ConstantOfShape kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConstantOfShapeVersionedKernelInfo<9, 19>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConstantOfShapeKernelInfo<20>(enable_int64)));
 
 #ifndef DISABLE_CONTRIB_OPS
   Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
