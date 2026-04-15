@@ -95,17 +95,23 @@ def auditwheel_repair(wheel_dir: Path):
     if not raw_wheels:
         return
 
+    raw_wheel_list = list(raw_wheels)
+    if not raw_wheel_list:
+        return
+
     with tempfile.TemporaryDirectory() as repaired_dir_name:
         repaired_dir = Path(repaired_dir_name)
 
-        for wheel in raw_wheels:
+        for wheel in raw_wheel_list:
             cmd = [sys.executable, "-m", "auditwheel", "repair", str(wheel), "--wheel-dir", str(repaired_dir)]
             for lib in AUDITWHEEL_EXCLUDE:
                 cmd.extend(["--exclude", lib])
             print(f"Running: {' '.join(cmd)}")
             subprocess.check_call(cmd)
+            # Remove the raw wheel so only the repaired one remains
+            wheel.unlink()
 
-        # Replace raw wheels with repaired ones
+        # Move repaired wheels into wheel_dir
         for repaired_wheel in repaired_dir.glob("*.whl"):
             repaired_wheel.replace(wheel_dir / repaired_wheel.name)
 
