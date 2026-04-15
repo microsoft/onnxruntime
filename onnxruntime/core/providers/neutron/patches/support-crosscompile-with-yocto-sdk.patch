@@ -1,0 +1,82 @@
+diff --git a/cmake/CMakeLists.txt b/cmake/CMakeLists.txt
+index e98a0d16f9..27253011f1 100644
+--- a/cmake/CMakeLists.txt
++++ b/cmake/CMakeLists.txt
+@@ -48,6 +48,10 @@ if (MSVC)
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+ endif()
+
++add_compile_options(-Wno-error=range-loop-construct)
++add_compile_options(-Wno-error=maybe-uninitialized)
++add_compile_options(-Wno-error=uninitialized)
++
+ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+ # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
+ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+diff --git a/cmake/external/onnxruntime_external_deps.cmake b/cmake/external/onnxruntime_external_deps.cmake
+index 9feb7772d1..cf70badcfc 100644
+--- a/cmake/external/onnxruntime_external_deps.cmake
++++ b/cmake/external/onnxruntime_external_deps.cmake
+@@ -456,14 +456,29 @@ else()
+ endif()
+
+ #flatbuffers 1.11.0 does not have flatbuffers::IsOutRange, therefore we require 1.12.0+
+-onnxruntime_fetchcontent_declare(
++
++
++# Note: Skip find stage if build uses SDK. `OVERRIDE_FIND_PACKAGE` will ensure that
++# `FetchContent_MakeAvailable` overrides `find_package`, using the declared source
++#  rather than finding the package inside the SDK, which might deviate from required version.
++if(CMAKE_CROSSCOMPILING AND DEFINED ENV{OECORE_NATIVE_SYSROOT} AND DEFINED ENV{OECORE_TARGET_SYSROOT})
++  onnxruntime_fetchcontent_declare(
++    flatbuffers
++    URL ${DEP_URL_flatbuffers}
++    URL_HASH SHA1=${DEP_SHA1_flatbuffers}
++    PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
++    OVERRIDE_FIND_PACKAGE
++  )
++else()
++  onnxruntime_fetchcontent_declare(
+     flatbuffers
+     URL ${DEP_URL_flatbuffers}
+     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
+     PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
+     EXCLUDE_FROM_ALL
+     FIND_PACKAGE_ARGS 23.5.9 NAMES Flatbuffers flatbuffers
+-)
++  )
++endif()
+
+ onnxruntime_fetchcontent_makeavailable(flatbuffers)
+ if(NOT flatbuffers_FOUND)
+diff --git a/setup.py b/setup.py
+index df62fdb786..5a86e8dd9f 100644
+--- a/setup.py
++++ b/setup.py
+@@ -122,6 +122,7 @@ manylinux_tags = [
+ ]
+ is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
+
++is_neutron = bool(environ.get('OECORE_NATIVE_SYSROOT', None))
+
+ class build_ext(_build_ext):  # noqa: N801
+     def build_extension(self, ext):
+@@ -136,11 +137,16 @@ try:
+     class bdist_wheel(_bdist_wheel):  # noqa: N801
+         """Helper functions to create wheel package"""
+
+-        if is_openvino and is_manylinux:
++        if (is_openvino and is_manylinux) or is_neutron:
+
+             def get_tag(self):
+                 _, _, plat = _bdist_wheel.get_tag(self)
+-                if platform.system() == "Linux":
++                if is_neutron:
++                    glibc_major, glibc_minor = popen("ldd --version | head -1").read().split()[-1].split(".")
++                    glibc_ver_cmd = f"{environ['OECORE_NATIVE_SYSROOT']}/usr/bin/pldd --version | head -1"
++                    glibc_major, glibc_minor = popen(glibc_ver_cmd).read().split()[-1].split(".")
++                    plat = f"manylinux_{glibc_major}_{glibc_minor}_aarch64"
++                elif platform.system() == "Linux":
+                     # Get the right platform tag by querying the linker version
+                     glibc_major, glibc_minor = popen("ldd --version | head -1").read().split()[-1].split(".")
+                     """# See https://github.com/mayeut/pep600_compliance/blob/master/

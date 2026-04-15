@@ -9,6 +9,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph_utils.h"
+#include "core/graph/constants.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -277,6 +278,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node,
                                         const KernelRegistryManager& kernel_registries,
                                         InitializedTensorSet& initializers_consumed,
                                         const logging::Logger& logger) {
+  auto node_provider_type = node.GetExecutionProviderType();
   if (IsNodeCompatibleWithProvider(node)) {
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel

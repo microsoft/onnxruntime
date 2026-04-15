@@ -823,6 +823,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     vsi_group = parser.add_argument_group("VSINPU Execution Provider")
     vsi_group.add_argument("--use_vsinpu", action="store_true", help="Enable VSINPU EP.")
 
+    # --- Neutron (NXP NPU) ---
+    neutron_group = parser.add_argument_group("Neutron Execution Provider")
+    neutron_group.add_argument("--use_neutron", action="store_true", help="Enable Neutron EP.")
+
     # --- Azure ---
     azure_group = parser.add_argument_group("Azure Execution Provider")
     azure_group.add_argument("--use_azure", action="store_true", help="Enable Azure EP.")

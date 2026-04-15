@@ -286,6 +286,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, device_id,
                   onnxruntime::kAlloc4KAlignment),
         mem_type1);
+  } else if (strcmp(name1, onnxruntime::NEUTRON_PINNED) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::NEUTRON_PINNED, type,
+        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::NEUTRON_PINNED, OrtDevice::VendorIds::NXP, device_id),
+        mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported. Try CreateMemoryInfo_V2.");
   }
