@@ -9,6 +9,8 @@ redirect_from: /docs/reference/execution-providers/TensorRTRTX-ExecutionProvider
 # NVIDIA TensorRT RTX Execution Provider
 {: .no_toc }
 
+> **⚠️ Deprecation Notice:** The built-in TensorRT RTX Execution Provider in the ONNX Runtime repository is deprecated. We strongly recommend using the standalone EP ABI plugin instead. The open-source TensorRT RTX EP ABI is available at [NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI). Instructions for using the standalone EP ABI are included in the [Usage](#usage) section below. All execution provider options supported by the built-in EP are fully supported by the EP ABI plugin.
+
 The NVIDIA TensorRT-RTX Execution Provider (EP) is an inference deployment solution designed specifically for NVIDIA RTX GPUs. It is optimized for client-centric use cases.. 
 
 TensorRT RTX EP provides the following benefits:
@@ -33,7 +35,13 @@ Currently, TensorRT RTX EP can be built from the source code. Support for instal
 
 ## Build from source
 
-Information on minimum requirements and how to build from source can be found [here](../build/eps.md#nvidia-tensorrt-rtx).
+**Standalone EP ABI Plugin (Recommended)**
+
+To build the standalone TensorRT RTX EP ABI plugin, please refer to the build instructions in the [TensorRT RTX EP ABI repository](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI#build-from-source).
+
+**Built-in EP (Deprecated)**
+
+Information on minimum requirements and how to build the built-in EP from source can be found [here](../build/eps.md#nvidia-tensorrt-rtx).
 
 ## Usage
 
@@ -43,6 +51,47 @@ Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "SampleApp");
 Ort::SessionOptions session_options;
 session_options.AppendExecutionProvider(onnxruntime::kNvTensorRTRTXExecutionProvider, {});
 Ort::Session session(env, model_path, session_options);
+```
+
+**Using the EP ABI (Standalone Plugin)**
+
+If you are using the TensorRT RTX EP as a standalone plugin via the EP ABI (introduced in ORT 1.23.0), use the V2 device-based EP API:
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+OrtApi const& ortApi = Ort::GetApi();
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "MyApp");
+Ort::SessionOptions session_options;
+
+// 1. Register the EP plugin library
+ortApi.RegisterExecutionProviderLibrary(
+    env, "NvTensorRTRTXExecutionProvider",
+    ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
+
+// 2. Enumerate available EP devices and find TensorRT RTX
+const OrtEpDevice* const* ep_devices = nullptr;
+size_t num_ep_devices;
+ortApi.GetEpDevices(env, &ep_devices, &num_ep_devices);
+
+const OrtEpDevice* trt_device = nullptr;
+for (size_t i = 0; i < num_ep_devices; i++) {
+    if (strcmp(ortApi.EpDevice_EpName(ep_devices[i]),
+              "NvTensorRTRTXExecutionProvider") == 0) {
+        trt_device = ep_devices[i];
+        break;
+    }
+}
+
+// 3. Append the EP with provider options
+const char* keys[]   = {"enable_cuda_graph"};
+const char* values[] = {"1"};
+ortApi.SessionOptionsAppendExecutionProvider_V2(
+    session_options, env, &trt_device, 1,
+    keys, values, 1);
+
+// 4. Create session
+Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
 ```
 
 ### Python
@@ -62,29 +111,36 @@ CUDA Graph is a representation of a sequence of GPU operations, such as kernel l
 
 **Usage**
 
-CUDA Graph can be enabled by setting a provider option. By default, ONNX Runtime uses a graph annotation ID of 0 and starts capturing graphs. Users can control the annotation ID at runtime by setting the run option `gpu_graph_id`. If we have `gpu_graph_id` as \-1, it indicates that the graph will not be captured for that specific run.
+CUDA Graph is enabled by default. To completely disable CUDA Graph, you can set the `enable_cuda_graph` provider option to `False` (or `0`).
 
-**Python**
+**Python (Disabling CUDA Graph)**
 
 ```python
-trt_rtx_provider_options = {'enable_cuda_graph': True}
+trt_rtx_provider_options = {'enable_cuda_graph': False}
 providers = [('NvTensorRTRTXExecutionProvider', trt_rtx_provider_options)]
 session = ort.InferenceSession("model.onnx", providers=providers)
 ```
 
-**C/C++**
+**C/C++ (Disabling CUDA Graph)**
 ```cpp
 const auto& api = Ort::GetApi();
 Ort::SessionOptions session_options;
 const char* keys[]   = {onnxruntime::nv::provider_option_names::kCudaGraphEnable};
-const char* values[] = {"1"};
+const char* values[] = {"0"};
 OrtStatus* status = api.SessionOptionsAppendExecutionProvider(session_options, onnxruntime::kNvTensorRTRTXExecutionProvider, keys, values, 1);
 Ort::Session session(env, model_path, session_options);
 ```
 
-**ONNXRuntime Perf Test**
+**ONNXRuntime Perf Test (Disabling CUDA Graph)**
+
+*Using the EP ABI (Standalone Plugin):*
 ```sh
-onnxruntime_perf_test.exe -I -t 5 -e nvtensorrtrtx -i "enable_cuda_graph|1" "model.onnx"
+onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -t 5 --plugin_ep_options "enable_cuda_graph|0"  "model.onnx"
+```
+
+*Using the Built-in EP (Deprecated):*
+```sh
+onnxruntime_perf_test.exe -I -t 5 -e nvtensorrtrtx -i "enable_cuda_graph|0" "model.onnx"
 ```
 
 **Effectively Using CUDA Graphs**
@@ -138,6 +194,12 @@ For a practical example of usage for EP context, please refer to:
 
 ONNXRuntime Perf Test can also be used to quick generate an EP context model:
 
+*Using the EP ABI (Standalone Plugin):*
+```sh
+onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -r 1 --compile_ep_context --compile_model_path "/path/to/model_ctx.onnx" "/path/to/model.onnx"
+```
+
+*Using the Built-in EP (Deprecated):*
 ```sh
 onnxruntime_perf_test.exe -e nvtensorrtrtx -I -r 1 --compile_ep_context --compile_model_path "/path/to/model_ctx.onnx" "/path/to/model.onnx"
 ```
@@ -173,6 +235,8 @@ Runtime caches help reduce JIT compilation time. When a user compiles an EP cont
 ## Execution Provider Options
 TensorRT RTX EP provides the following user configurable options with the [Execution Provider Options](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/providers/nv_tensorrt_rtx/nv_provider_options.h)
 
+> **Note:** All the options listed below apply to both the built-in TensorRT RTX EP and the standalone EP ABI plugin.
+
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
@@ -182,7 +246,7 @@ TensorRT RTX EP provides the following user configurable options with the [Execu
 | nv_max_shared_mem_size | `int` | Maximum TensorRT engine workspace (bytes) | 0 (auto) |
 | nv_dump_subgraphs | `bool` | Enable subgraph dumping for debugging | false |
 | nv_detailed_build_log | `bool` | Enable detailed build logging | false |
-| enable_cuda_graph | `bool` | Enable [CUDA graph](https://developer.nvidia.com/blog/cuda-graphs/) to reduce inference overhead. Helpful for smaller models | false |
+| enable_cuda_graph | `bool` | Enable [CUDA graph](https://developer.nvidia.com/blog/cuda-graphs/) to reduce inference overhead. Helpful for smaller models | true |
 | nv_profile_min_shapes | `str` | Comma-separated list of input tensor shapes for the minimum optimization profile. Format: `"input1:dim1xdim2x...,input2:dim1xdim2x..."` | "" (auto) |
 | nv_profile_max_shapes | `str` | Comma-separated list of input tensor shapes for the maximum optimization profile. Format: `"input1:dim1xdim2x...,input2:dim1xdim2x..."` | "" (auto) |
 | nv_profile_opt_shapes | `str` | Comma-separated list of input tensor shapes for the optimal optimization profile. Format: `"input1:dim1xdim2x...,input2:dim1xdim2x..."` | "" (auto) |
@@ -256,8 +320,20 @@ session_options.AppendExecutionProvider(onnxruntime::kNvTensorRTRTXExecutionProv
 
 ## Performance test
 
-When using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e nvtensorrttrx`
+**Using the EP ABI (Standalone Plugin)**
 
-## Plugins Support
+When using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test) with the standalone EP ABI plugin, use the `--plugin_eps` and `--plugin_ep_libs` flags:
 
-TensorRT RTX doesn’t support plugins
+```sh
+onnxruntime_perf_test.exe --plugin_eps nvtensorrtrtx --plugin_ep_libs "nvtensorrtrtx|/path/to/onnxruntime_providers_nv_tensorrt_rtx.dll" -I -g -t 5 "/path/to/model.onnx" -
+```
+
+**Using the Built-in EP (Deprecated)**
+
+When using the built-in EP, use the flag `-e nvtensorrtrtx`:
+
+```sh
+onnxruntime_perf_test.exe -e nvtensorrtrtx -I -g -t 5 "/path/to/model.onnx" -
+```
+
+
