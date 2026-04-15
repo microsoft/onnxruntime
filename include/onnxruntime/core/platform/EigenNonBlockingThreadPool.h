@@ -870,8 +870,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
-        spin_duration_us_(spin_duration_us),
-        time_check_mask_(spin_duration_us > 0 ? ComputeTimeCheckMask(spin_duration_us) : 0),
+        spin_count_(ComputeSpinCount(spin_duration_us)),
+        steal_interval_(std::max(spin_count_ / 100, 1)),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
         callback_policy_(thread_options),
         worker_data_(num_threads),
@@ -1600,34 +1600,45 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     std::condition_variable cv;
   };
 
-  // Compute a bitmask for the time-check interval (power of 2 minus 1).
-  // Uses spin_duration_us as a proxy for iteration count: round down to
-  // the nearest power of 2, clamped to [128, 4096]. This gives ~3-650
-  // clock reads per spin depending on architecture, well under 1% overhead.
-  static unsigned int ComputeTimeCheckMask(int spin_duration_us) {
-    unsigned int p;
-    if (spin_duration_us < 256) {
-      p = 128;
-    } else if (spin_duration_us < 512) {
-      p = 256;
-    } else if (spin_duration_us < 1024) {
-      p = 512;
-    } else if (spin_duration_us < 2048) {
-      p = 1024;
-    } else if (spin_duration_us < 4096) {
-      p = 2048;
-    } else {
-      p = 4096;
-    }
-    // Since p is a power of 2, only one bit is set.
-    // Subtract 1 to get a bitmask where all lower bits are set.
-    return p - 1;
+  // Measure the average duration of a single SpinPause() call in nanoseconds.
+  // Runs exactly once per process (thread-safe via function-local static init).
+  // The result is used to convert a user-specified spin duration in microseconds
+  // into an iteration count, avoiding clock reads in the hot spin loop.
+  static int CalibrateSpinPauseNs() {
+    static const int ns_per_iter = []() {
+      constexpr int kWarmupIters = 256;
+      constexpr int kCalibrationIters = 1024;
+      for (int i = 0; i < kWarmupIters; i++) {
+        onnxruntime::concurrency::SpinPause();
+      }
+      auto start = std::chrono::steady_clock::now();
+      for (int i = 0; i < kCalibrationIters; i++) {
+        onnxruntime::concurrency::SpinPause();
+      }
+      auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - start)
+                            .count();
+      return static_cast<int>(std::max<int64_t>(elapsed_ns / kCalibrationIters, 1));
+    }();
+    return ns_per_iter;
+  }
+
+  // Convert spin_duration_us into an iteration count for the spin loop.
+  //   -1 (default): use the original fixed iteration count (1 << 20).
+  //    0: no spinning.
+  //   >0: calibrate SpinPause() latency and compute the corresponding count.
+  static int ComputeSpinCount(int spin_duration_us) {
+    if (spin_duration_us == 0) return 0;
+    if (spin_duration_us < 0) return 1 << 20;  // ~1M iterations (original default)
+    int ns_per_iter = CalibrateSpinPauseNs();
+    auto count = static_cast<int64_t>(spin_duration_us) * 1000 / ns_per_iter;
+    return static_cast<int>(std::min<int64_t>(count, 1 << 30));
   }
 
   Environment& env_;
   const unsigned num_threads_;
-  const int spin_duration_us_;          // -1 = default iteration-count, 0 = no spin, >0 = time-based (us)
-  const unsigned int time_check_mask_;  // bitmask for time check interval (only used when spin_duration_us_ > 0)
+  const int spin_count_;      // Number of SpinPause iterations before blocking (0 = no spin)
+  const int steal_interval_;  // Attempt work steal every steal_interval_ iterations
   const bool set_denormal_as_zero_;
   CallbackPolicy callback_policy_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
@@ -1675,66 +1686,23 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     while (!should_exit) {
       Work w = q.PopFront();
       if (!w) {
-        if (spin_duration_us_ < 0) {
-          // Default path: iteration-count-based spinning (original behavior).
-          // The wall-clock duration of this loop depends on the CPU's pause instruction
-          // latency, but it preserves the original throughput characteristics.
-          constexpr int log2_spin = 20;
-          const int spin_count = 1 << log2_spin;
-          const int steal_count = spin_count / 100;
-          for (int i = 0; i < spin_count && !done_; i++) {
-            if (((i + 1) % steal_count == 0)) {
-              w = Steal(StealAttemptKind::TRY_ONE);
-            } else {
-              w = q.PopFront();
-            }
-            if (w) break;
-            if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
-              break;
-            }
-            onnxruntime::concurrency::SpinPause();
+        // Spin waiting for work. spin_count_ is determined at construction:
+        //   default (-1): 1<<20 iterations (original behavior)
+        //   0: no spinning (skip loop entirely)
+        //   >0 us: iteration count derived from one-time SpinPause() calibration
+        // steal_interval_ = max(spin_count_/100, 1), yielding ~100 steal attempts per spin window.
+        for (int i = 0; i < spin_count_ && !done_; i++) {
+          if (((i + 1) % steal_interval_ == 0)) {
+            w = Steal(StealAttemptKind::TRY_ONE);
+          } else {
+            w = q.PopFront();
           }
-        } else if (spin_duration_us_ > 0) {
-          // Time-based spinning: spin for the user-configured duration before blocking.
-          // This gives predictable CPU usage regardless of the pause instruction latency.
-          const auto spin_deadline = std::chrono::steady_clock::now() +
-                                     std::chrono::microseconds(spin_duration_us_);
-          // Steal interval: 512 iterations (power of 2, use bitmask instead of modulo).
-          //
-          // The legacy iteration-count path steals every spin_count/100 = 10,485 iterations,
-          // yielding ~100 total steal attempts over its full ~1M-iteration spin.
-          //
-          // In the time-based path, the total iteration count depends on pause latency:
-          //   _mm_pause (Skylake+ ~47ns/iter):  1ms ≈  21K iters → 512 → ~41 steals
-          //   _mm_pause (pre-Skylake ~3ns/iter): 1ms ≈ 303K iters → 512 → ~592 steals
-          //   _tpause (~333ns/iter):             1ms ≈   3K iters → 512 → ~6 steals
-          //
-          // 512 is a reasonable middle ground: on modern Skylake+ (most common), the
-          // steal count (~41/ms) stays in the same order of magnitude as the legacy path
-          // (~100 total). Steal attempts are cheap (a single CAS on another queue), so
-          // the modest variation across architectures is acceptable for this opt-in path.
-          constexpr unsigned int kStealMask = 512 - 1;
-          // Bitmask for time check interval, computed from spin duration at construction.
-          const unsigned int time_check_mask = time_check_mask_;
-          for (unsigned int i = 1; !done_; i++) {
-            if ((i & kStealMask) == 0) {
-              w = Steal(StealAttemptKind::TRY_ONE);
-            } else {
-              w = q.PopFront();
-            }
-            if (w) break;
-            if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
-              break;
-            }
-            // Check deadline at an independent, lower frequency than stealing.
-            if ((i & time_check_mask) == 0 &&
-                std::chrono::steady_clock::now() >= spin_deadline) {
-              break;
-            }
-            onnxruntime::concurrency::SpinPause();
+          if (w) break;
+          if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
+            break;
           }
+          onnxruntime::concurrency::SpinPause();
         }
-        // spin_duration_us_ == 0: no spinning, fall through directly to blocking.
 
         // Attempt to block
         if (!w) {

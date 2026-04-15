@@ -113,7 +113,7 @@ int ParseSpinDurationUs(std::string_view str, const char* config_key,
   int spin_us = concurrency::kSpinDurationDefault;
   if (!TryParseStringWithClassicLocale(str, spin_us) || spin_us < -1) {
     LOGS(logger, WARNING) << "Invalid value for " << config_key
-                          << ": \"" << str << "\", using default iteration-count spinning";
+                          << ": \"" << str << "\", using default spin duration setting";
     return concurrency::kSpinDurationDefault;
   }
   if (spin_us > kSpinDurationWarnThresholdUs) {
