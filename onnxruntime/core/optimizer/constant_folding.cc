@@ -430,7 +430,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         bool size_exceeded = false;
         try {
           for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-            if (fetches[fetch_idx].IsTensor()) {
+            if (fetches[fetch_idx].IsAllocated() && fetches[fetch_idx].IsTensor()) {
               const auto& tensor = fetches[fetch_idx].Get<Tensor>();
               actual_total_size += tensor.SizeInBytes();
             }
