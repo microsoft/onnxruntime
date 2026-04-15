@@ -456,12 +456,14 @@ def main() -> int:
     kusto_client = _create_kusto_client()
 
     triggered: list[TriggeredRun] = []
+    trigger_failed: list[PipelineConfig] = []
     for cfg in configs:
         run = trigger_pipeline(cfg, branch, token)
         if run:
             triggered.append(run)
             publish_run_status(run, branch, kusto_client)
         else:
+            trigger_failed.append(cfg)
             logger.error("##[error]Failed to trigger '%s'", cfg.name)
 
     if not triggered:
@@ -485,6 +487,12 @@ def main() -> int:
     any_failed = any(run.result != BuildResult.SUCCEEDED for run in triggered)
 
     logger.info("=" * 60)
+    # re-iterate pipelines that failed to trigger so they're not lost at the top of the log
+    for cfg in trigger_failed:
+        logger.error("  [%d] %s (project: %s) - FAILED TO TRIGGER", cfg.id, cfg.name, cfg.project)
+        if cfg.template_parameters:
+            logger.error("       Template params: %s", cfg.template_parameters)
+
     for run in triggered:
         status = "PASS" if run.result == BuildResult.SUCCEEDED else "FAIL"
         if run.result == BuildResult.SUCCEEDED:
