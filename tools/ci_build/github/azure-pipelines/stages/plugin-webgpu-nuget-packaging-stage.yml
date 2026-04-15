@@ -1,0 +1,167 @@
+# NuGet packaging stage for WebGPU plugin EP.
+# Downloads platform-specific build artifacts, packs them into a single multi-platform NuGet package,
+# signs it, and runs a basic test.
+
+parameters:
+- name: package_version
+  type: string
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+
+- name: DoEsrp
+  type: boolean
+  default: true
+
+- name: platforms
+  type: object
+  default:
+    win_x64: false
+    win_arm64: false
+    linux_x64: false
+    macos_arm64: false
+
+stages:
+- stage: NuGet_Packaging
+  displayName: 'NuGet Packaging'
+  dependsOn:
+  - ${{ if eq(parameters.platforms.win_x64, true) }}:
+    - Win_plugin_webgpu_x64_Build
+  - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+    - Win_plugin_webgpu_arm64_Build
+  - ${{ if eq(parameters.platforms.linux_x64, true) }}:
+    - Linux_plugin_webgpu_x64_Build
+  - ${{ if eq(parameters.platforms.macos_arm64, true) }}:
+    - MacOS_plugin_webgpu_arm64_Build
+  jobs:
+  # ---------- Pack job ----------
+  - job: NuGet_Pack
+    displayName: 'Pack NuGet'
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win-CPU-VS2022-Latest
+      os: windows
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: '$(Build.ArtifactStagingDirectory)\nuget'
+        artifactName: webgpu_plugin_nuget
+    variables:
+    - template: ../templates/common-variables.yml
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/set-plugin-build-variables-step.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+
+    # Download platform artifacts
+    - ${{ if eq(parameters.platforms.win_x64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download win-x64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_win_x64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\win_x64'
+
+    - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download win-arm64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_win_arm64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\win_arm64'
+
+    - ${{ if eq(parameters.platforms.linux_x64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download linux-x64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_linux_x64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\linux_x64'
+
+    - ${{ if eq(parameters.platforms.macos_arm64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download macos-arm64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_macos_arm64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\macos_arm64'
+
+    # Stage binaries and pack NuGet
+    - task: PowerShell@2
+      displayName: 'Pack NuGet package'
+      inputs:
+        targetType: filePath
+        filePath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.ps1'
+        pwsh: true
+        arguments: >-
+          -Version "$(PluginPackageVersion)"
+          -ArtifactsDir "$(Build.BinariesDirectory)\artifacts"
+          -OutputDir "$(Build.ArtifactStagingDirectory)\nuget"
+          -Configuration Release
+
+    # ESRP sign
+    - template: ../templates/esrp_nuget.yml
+      parameters:
+        FolderPath: '$(Build.ArtifactStagingDirectory)\nuget'
+        DisplayName: 'ESRP - Sign NuGet package'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
+  # ---------- Test job ----------
+  - ${{ if eq(parameters.platforms.win_x64, true) }}:
+    - job: NuGet_Test
+      displayName: 'Test NuGet Package'
+      dependsOn: NuGet_Pack
+      timeoutInMinutes: 30
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        os: windows
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download NuGet package'
+        inputs:
+          artifactName: webgpu_plugin_nuget
+          targetPath: '$(Build.BinariesDirectory)\nuget_package'
+
+      # Set up local NuGet feed
+      - powershell: |
+          $ErrorActionPreference = 'Stop'
+          $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
+          New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
+
+          # Copy .nupkg to local feed
+          Copy-Item "$(Build.BinariesDirectory)\nuget_package\*.nupkg" $localFeedDir -Force
+
+          # Update nuget.config in test project to point to local feed
+          $nugetConfig = "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\nuget.config"
+          $configContent = @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              <add key="local" value="$localFeedDir" />
+            </packageSources>
+          </configuration>
+          "@
+          Set-Content -Path $nugetConfig -Value $configContent -Encoding UTF8
+          Write-Host "Updated nuget.config with local feed: $localFeedDir"
+          Write-Host "Local feed contents:"
+          Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
+        displayName: 'Set up local NuGet feed'
+
+      - script: |
+          dotnet build "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" --configuration Release
+        displayName: 'Build test project'
+
+      - script: |
+          dotnet run --project "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" --configuration Release --no-build
+        displayName: 'Run NuGet package test'

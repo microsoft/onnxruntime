@@ -77,3 +77,15 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # NuGet packaging (runs after all platform builds)
+    - template: plugin-webgpu-nuget-packaging-stage.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        DoEsrp: true
+        platforms:
+          win_x64: ${{ parameters.build_windows_x64 }}
+          win_arm64: ${{ and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}
+          linux_x64: ${{ parameters.build_linux_x64 }}
+          macos_arm64: ${{ parameters.build_macos_arm64 }}
