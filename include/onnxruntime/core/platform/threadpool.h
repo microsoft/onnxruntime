@@ -154,8 +154,14 @@ class ThreadPool {
   //   -1 (kSpinDurationDefault) = use default iteration-count-based spinning (best throughput,
   //       but spin duration varies by CPU architecture and pause instruction latency)
   //    0 = disable spinning entirely (threads block immediately when idle)
-  //   >0 = use time-based spinning for the specified duration in microseconds
-  //        (deterministic CPU usage, configurable balance between latency and CPU utilization)
+  //   >0 = calibrated iteration-based spinning for the specified duration in microseconds
+  //        (best-effort duration via one-time SpinPause() calibration; actual spin time
+  //         may vary with CPU frequency changes)
+  //
+  // Note: The OrtThreadPoolParams.allow_spinning flag (controlled by the
+  // session.intra_op.allow_spinning / session.inter_op.allow_spinning config keys or
+  // the C API) takes priority. When allow_spinning is false, spin_duration_us is forced
+  // to 0 by CreateThreadPoolHelper regardless of the value passed here.
   //
   // REQUIRES: degree_of_parallelism > 0
   ThreadPool(Env* env,

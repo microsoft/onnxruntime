@@ -3,6 +3,10 @@
 
 #include "core/common/spin_pause.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+
 #if defined(_M_AMD64)
 #include <intrin.h>
 #endif
@@ -40,6 +44,25 @@ void SpinPause() {
     _mm_pause();
   }
 #endif
+}
+
+int CalibrateSpinPauseNs() {
+  static const int ns_per_iter = []() {
+    constexpr int kWarmupIters = 256;
+    constexpr int kCalibrationIters = 1024;
+    for (int i = 0; i < kWarmupIters; i++) {
+      SpinPause();
+    }
+    auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < kCalibrationIters; i++) {
+      SpinPause();
+    }
+    auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::steady_clock::now() - start)
+                          .count();
+    return static_cast<int>(std::max<int64_t>(elapsed_ns / kCalibrationIters, 1));
+  }();
+  return ns_per_iter;
 }
 
 }  // namespace concurrency

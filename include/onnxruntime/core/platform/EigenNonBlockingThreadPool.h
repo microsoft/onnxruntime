@@ -1605,22 +1605,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // The result is used to convert a user-specified spin duration in microseconds
   // into an iteration count, avoiding clock reads in the hot spin loop.
   static int CalibrateSpinPauseNs() {
-    static const int ns_per_iter = []() {
-      constexpr int kWarmupIters = 256;
-      constexpr int kCalibrationIters = 1024;
-      for (int i = 0; i < kWarmupIters; i++) {
-        onnxruntime::concurrency::SpinPause();
-      }
-      auto start = std::chrono::steady_clock::now();
-      for (int i = 0; i < kCalibrationIters; i++) {
-        onnxruntime::concurrency::SpinPause();
-      }
-      auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            std::chrono::steady_clock::now() - start)
-                            .count();
-      return static_cast<int>(std::max<int64_t>(elapsed_ns / kCalibrationIters, 1));
-    }();
-    return ns_per_iter;
+    return onnxruntime::concurrency::CalibrateSpinPauseNs();
   }
 
   // Convert spin_duration_us into an iteration count for the spin loop.
@@ -1691,9 +1676,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         //   0: no spinning (skip loop entirely)
         //   >0 us: iteration count derived from one-time SpinPause() calibration
         // steal_interval_ = max(spin_count_/100, 1), yielding ~100 steal attempts per spin window.
+        int steal_countdown = steal_interval_;
         for (int i = 0; i < spin_count_ && !done_; i++) {
-          if (((i + 1) % steal_interval_ == 0)) {
+          if (--steal_countdown == 0) {
             w = Steal(StealAttemptKind::TRY_ONE);
+            steal_countdown = steal_interval_;
           } else {
             w = q.PopFront();
           }
