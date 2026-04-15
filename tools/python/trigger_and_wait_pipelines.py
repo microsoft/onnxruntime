@@ -144,6 +144,7 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
         key="npm_packaging",
         template_parameters={
             "NpmPublish": "production (@latest)",
+            "EnableReactNative": True,
         },
     ),
     PipelineConfig(
