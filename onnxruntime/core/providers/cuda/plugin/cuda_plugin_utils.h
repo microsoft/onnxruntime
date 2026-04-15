@@ -144,3 +144,13 @@ struct CudaPluginApis {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
 };
+
+/// Program-wide thread-local flag indicating that CUDA graph capture is active
+/// on the current thread. Set by CudaEp::OnRunStartImpl after CaptureBegin and
+/// cleared by CudaEp::OnRunEndImpl before CaptureEnd/Replay. Read by migrated
+/// kernels to avoid cudaSetDevice() on a capturing stream.
+inline thread_local bool g_is_thread_capturing_cuda_graph = false;
+
+inline bool& IsThreadCapturingCudaGraph() {
+  return g_is_thread_capturing_cuda_graph;
+}

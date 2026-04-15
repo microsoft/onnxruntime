@@ -1216,4 +1216,203 @@ TEST(PluginExecutionProviderTest, CreatePreferredAllocators_NonShrinkAllocatorNo
       << "Non-Shrink allocator must not be exposed as IArena";
 }
 
+TEST(PluginExecutionProviderTest, IsGraphCaptureEnabled) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return false (default behavior).
+    ort_ep->IsGraphCaptureEnabled = nullptr;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+  }
+
+  {
+    // Non-NULL implementation returning true.
+    // IsGraphCaptured and ReplayGraph must also be set for IsGraphCaptureEnabled() to return true.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    auto is_graph_captured = [](const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> bool {
+      return false;
+    };
+    auto replay_graph = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = is_graph_captured;
+    ort_ep->ReplayGraph = replay_graph;
+    ASSERT_TRUE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->IsGraphCaptured = nullptr;        // Restore.
+    ort_ep->ReplayGraph = nullptr;            // Restore.
+  }
+
+  {
+    // Non-NULL implementation returning false.
+    auto graph_capture_disabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return false;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_disabled;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+  }
+
+  {
+    // Backward compatibility: version < 26 should return false even if function pointer is set.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->ort_version_supported = 25;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+
+  {
+    // IsGraphCaptureEnabled returns true but IsGraphCaptured is NULL.
+    // Should return false because ORT-managed graph capture requires IsGraphCaptured.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    auto replay_graph = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = nullptr;
+    ort_ep->ReplayGraph = replay_graph;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->ReplayGraph = nullptr;            // Restore.
+  }
+
+  {
+    // IsGraphCaptureEnabled returns true but ReplayGraph is NULL.
+    // Should return false because ORT-managed graph capture requires ReplayGraph.
+    auto graph_capture_enabled = [](const OrtEp* /*this_ptr*/) noexcept -> bool {
+      return true;
+    };
+    auto is_graph_captured = [](const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> bool {
+      return false;
+    };
+    ort_ep->IsGraphCaptureEnabled = graph_capture_enabled;
+    ort_ep->IsGraphCaptured = is_graph_captured;
+    ort_ep->ReplayGraph = nullptr;
+    ASSERT_FALSE(ep->IsGraphCaptureEnabled());
+    ort_ep->IsGraphCaptureEnabled = nullptr;  // Restore.
+    ort_ep->IsGraphCaptured = nullptr;        // Restore.
+  }
+}
+
+TEST(PluginExecutionProviderTest, IsGraphCaptured) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return false (default behavior).
+    ort_ep->IsGraphCaptured = nullptr;
+    ASSERT_FALSE(ep->IsGraphCaptured(0));
+  }
+
+  {
+    // Non-NULL implementation that checks graph_annotation_id.
+    auto graph_captured_for_id_42 = [](const OrtEp* /*this_ptr*/, int graph_annotation_id) noexcept -> bool {
+      return graph_annotation_id == 42;
+    };
+    ort_ep->IsGraphCaptured = graph_captured_for_id_42;
+    ASSERT_TRUE(ep->IsGraphCaptured(42));
+    ASSERT_FALSE(ep->IsGraphCaptured(0));
+    ASSERT_FALSE(ep->IsGraphCaptured(-1));
+  }
+
+  {
+    // Backward compatibility: version < 26 should return false even if function pointer is set.
+    auto always_captured = [](const OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> bool {
+      return true;
+    };
+    ort_ep->IsGraphCaptured = always_captured;
+    ort_ep->ort_version_supported = 25;
+    ASSERT_FALSE(ep->IsGraphCaptured(0));
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+}
+
+TEST(PluginExecutionProviderTest, ReplayGraph) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return OK (default behavior).
+    ort_ep->ReplayGraph = nullptr;
+    ASSERT_STATUS_OK(ep->ReplayGraph(0));
+  }
+
+  {
+    // Non-NULL implementation returning OK.
+    auto replay_ok = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->ReplayGraph = replay_ok;
+    ASSERT_STATUS_OK(ep->ReplayGraph(0));
+  }
+
+  {
+    // Non-NULL implementation returning an error.
+    auto replay_fail = [](OrtEp* this_ptr, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Graph replay failed");
+    };
+    ort_ep->ReplayGraph = replay_fail;
+    auto status = ep->ReplayGraph(0);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Graph replay failed"));
+  }
+
+  {
+    // Backward compatibility: version < 26 should return OK even if function pointer is set.
+    auto replay_fail = [](OrtEp* this_ptr, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Should not be called");
+    };
+    ort_ep->ReplayGraph = replay_fail;
+    ort_ep->ort_version_supported = 25;
+    ASSERT_STATUS_OK(ep->ReplayGraph(0));
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+}
+
+TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return ALL_NODES_ON_EP (strictest default).
+    ort_ep->GetGraphCaptureNodeAssignmentPolicy = nullptr;
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
+  }
+
+  {
+    // Non-NULL implementation returning ALL_NODES_ON_EP.
+    auto all_nodes_on_ep = [](const OrtEp* /*this_ptr*/) noexcept -> OrtGraphCaptureNodeAssignmentPolicy {
+      return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
+    };
+    ort_ep->GetGraphCaptureNodeAssignmentPolicy = all_nodes_on_ep;
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
+  }
+
+  {
+    // Non-NULL implementation returning ALLOW_CPU_FOR_SHAPES.
+    auto allow_cpu = [](const OrtEp* /*this_ptr*/) noexcept -> OrtGraphCaptureNodeAssignmentPolicy {
+      return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+    };
+    ort_ep->GetGraphCaptureNodeAssignmentPolicy = allow_cpu;
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES);
+  }
+
+  {
+    // Backward compatibility: version < 26 should return ALL_NODES_ON_EP even if function pointer is set.
+    auto allow_cpu = [](const OrtEp* /*this_ptr*/) noexcept -> OrtGraphCaptureNodeAssignmentPolicy {
+      return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+    };
+    ort_ep->GetGraphCaptureNodeAssignmentPolicy = allow_cpu;
+    ort_ep->ort_version_supported = 25;
+    ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+}
+
 }  // namespace onnxruntime::test

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cstring>
 #include <climits>
 #include <cstdlib>
 #include <limits>
@@ -112,6 +113,26 @@ void LogWarning(const OrtApi& ort_api, const OrtLogger& logger, const ORTCHAR_T*
   if (st != nullptr) {
     ort_api.ReleaseStatus(st);
   }
+}
+
+bool IsCudaMempoolUnsupportedStatus(const OrtApi& ort_api, const OrtStatus* status) {
+  if (status == nullptr) {
+    return false;
+  }
+
+  const OrtErrorCode code = ort_api.GetErrorCode(status);
+  if (code == ORT_NOT_IMPLEMENTED) {
+    return true;
+  }
+
+  if (code != ORT_EP_FAIL) {
+    return false;
+  }
+
+  const char* msg = ort_api.GetErrorMessage(status);
+  return msg != nullptr &&
+         (std::strstr(msg, "cudaErrorNotSupported") != nullptr ||
+          std::strstr(msg, "operation not supported") != nullptr);
 }
 
 }  // namespace
@@ -484,6 +505,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string cudnn_conv_algo_search_key = ep_options_prefix + "cudnn_conv_algo_search";
   const std::string fuse_conv_bias_key = ep_options_prefix + "fuse_conv_bias";
   const std::string sdpa_kernel_key = ep_options_prefix + "sdpa_kernel";
+  const std::string enable_cuda_graph_key = ep_options_prefix + "enable_cuda_graph";
+  const std::string min_runs_key = ep_options_prefix + "min_num_runs_before_cuda_graph_capture";
 
   // Prefer plugin-provider-option keys, then fall back to the legacy ep.cuda.*
   // aliases and finally to the historical flat session config names.
@@ -510,6 +533,12 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   read_session_config_non_negative_int(
       {sdpa_kernel_key, "ep.cuda.sdpa_kernel", "sdpa_kernel"},
       config.sdpa_kernel);
+  read_session_config_bool(
+      {enable_cuda_graph_key, "ep.cuda.enable_cuda_graph", "enable_cuda_graph"},
+      config.enable_cuda_graph);
+  read_session_config_non_negative_int(
+      {min_runs_key, "ep.cuda.min_num_runs_before_cuda_graph_capture"},
+      config.min_num_runs_before_cuda_graph_capture);
 
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
@@ -574,11 +603,24 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
         status = CudaMempoolOrtAllocator::Create(memory_info, allocator_options,
                                                  factory.ort_api_, factory.default_logger_,
                                                  entry->mempool_allocator);
-        if (status != nullptr) return status;
+        if (status != nullptr) {
+          if (!IsCudaMempoolUnsupportedStatus(factory.ort_api_, status)) {
+            return status;
+          }
+
+          LogWarning(factory.ort_api_, factory.default_logger_, ORT_FILE, __LINE__, __FUNCTION__,
+                     "CUDA mempool requested but not supported on this device/driver. Falling back to default BFCArena with CUDA allocator.");
+          factory.ort_api_.ReleaseStatus(status);
+          status = nullptr;
+          use_mempool = false;
+        }
       }
-      ++entry->num_mempool_users;
-      *allocator = entry->mempool_allocator.get();
-      return nullptr;
+
+      if (use_mempool) {
+        ++entry->num_mempool_users;
+        *allocator = entry->mempool_allocator.get();
+        return nullptr;
+      }
     }
 
     if (!entry->device_arena) {

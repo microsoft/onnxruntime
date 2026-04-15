@@ -275,8 +275,8 @@ class IExecutionProvider {
   }
 
   /**
-     Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
-     the provider.
+     Indicate whether graph capture/replay (for example, CUDA graph capture) is
+     enabled for the provider.
    */
   virtual bool IsGraphCaptureEnabled() const { return false; }
 
@@ -290,6 +290,15 @@ class IExecutionProvider {
    */
   virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
     return Status::OK();
+  }
+
+  /**
+     Get the node assignment validation policy for graph capture.
+     When graph capture is enabled, ORT validates that nodes are assigned to EPs
+     in a way compatible with graph capture. This tells ORT which policy to apply.
+   */
+  virtual OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
   }
 
   /**

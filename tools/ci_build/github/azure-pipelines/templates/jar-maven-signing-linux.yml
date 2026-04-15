@@ -12,10 +12,7 @@ steps:
       SecretsFilter: "java-pgp-pwd,java-pgp-key"
       RunAsPreJob: false
 
-  - task: UsePythonVersion@0
-    displayName: "Use Python 3.12"
-    inputs:
-      versionSpec: "3.12"
+  - template: setup-feeds-and-python-steps.yml
 
   - task: PythonScript@0
     displayName: "Sign files: GnuPG, sha1, and md5"
