@@ -393,11 +393,14 @@ TEST(ExpandOpTest, Expand_NegativeShapeValue) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "All shape values must be >= 0");
 }
 
-// Test that a single negative shape value is rejected
+// Test that a single negative shape value is rejected.
+// AddShapeToTensorData(false) is used to skip ONNX-level shape inference on the output
+// so the kernel's own input validation is reached at execution time.
 TEST(ExpandOpTest, Expand_NegativeShapeValueSingle) {
   OpTester test("Expand", 13);
   test.AddInput<float>("data_0", {3}, {1.0f, 2.0f, 3.0f});
   test.AddInput<int64_t>("data_1", {1}, {-3});
+  test.AddShapeToTensorData(false);
   test.AddOutput<float>("result", {0}, {});
   test.Run(OpTester::ExpectResult::kExpectFailure, "All shape values must be >= 0");
 }
