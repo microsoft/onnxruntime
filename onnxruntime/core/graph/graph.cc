@@ -4164,12 +4164,43 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       const DataTypeImpl* const type =
           DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
       TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
-      auto tensor = Tensor(type, tensor_shape, user_provided_tensor_buffer,
-                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 
-      constexpr const bool use_tensor_buffer_false = false;
-      auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
-      **existing_entry = std::move(new_tensor_proto);
+      // Convert data from little endian before assigning it to tensor.
+      // It would have been better to byteswap it right after loading from file,
+      // but at that moment information about tensor element size was not available.
+      if constexpr (endian::native != endian::little) {
+        size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(
+            static_cast<ONNX_NAMESPACE::TensorProto_DataType>(old_initializer.data_type()));
+
+        // If element size is unknown, set it to 1 to disable byteswapping
+        if (element_size < 1) element_size = 1;
+
+        auto allocator = CPUAllocator::DefaultInstance();
+
+        auto deleter = [allocator](uint8_t* ptr) { allocator->Free(ptr); };
+        std::unique_ptr<uint8_t[], decltype(deleter)> native_data{
+            reinterpret_cast<uint8_t*>(allocator->Alloc(tensor_byte_size)), deleter};
+
+        auto src_span = gsl::make_span(
+            reinterpret_cast<const unsigned char*>(user_provided_tensor_buffer), tensor_byte_size);
+        auto dst_span = gsl::make_span(
+            reinterpret_cast<unsigned char*>(native_data.get()), tensor_byte_size);
+
+        ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span));
+
+        auto tensor = Tensor{type, tensor_shape, native_data.release(), allocator};
+
+        constexpr const bool use_tensor_buffer_false = false;
+        auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
+        **existing_entry = std::move(new_tensor_proto);
+      } else {
+        auto tensor = Tensor(type, tensor_shape, user_provided_tensor_buffer,
+                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+
+        constexpr const bool use_tensor_buffer_false = false;
+        auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
+        **existing_entry = std::move(new_tensor_proto);
+      }
     }
   }
 
