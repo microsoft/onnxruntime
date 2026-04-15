@@ -547,6 +547,8 @@ TEST(CoreMLExecutionProviderTest, PadConstantDefaultValueMLProgram) {
   pads_init.set_name("pads");
   pads_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   pads_init.add_dims(8);
+  // ONNX pads: [dim0_start, dim1_start, dim2_start, dim3_start, dim0_end, dim1_end, dim2_end, dim3_end]
+  // Pads last two dims: H=(1,1), W=(2,1).
   const std::vector<int64_t> pads_data = {0, 0, 1, 2, 0, 0, 1, 1};
   for (auto v : pads_data) {
     pads_init.add_int64_data(v);
