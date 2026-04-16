@@ -3027,7 +3027,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refit engine from main ONNX file after engine build";
     auto status = RefitEngine(model_path_,
                               onnx_model_folder_path_,
-                              false /* path check for security */,
+                              true /* path check for security */,
                               onnx_model_bytestream_,
                               onnx_model_bytestream_size_,
                               onnx_external_data_bytestream_,
