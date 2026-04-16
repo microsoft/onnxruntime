@@ -195,14 +195,19 @@ const persistLocalStorageDeviceId = (rawDeviceId: string): void => {
   }
 };
 
+// The ORT Web project narrows the global `document` type for proxy-worker compatibility.
+// Use a typed accessor to reach the full browser Document interface from telemetry code.
+const getDocument = (): Document | null => (typeof document !== 'undefined' ? (document as unknown as Document) : null);
+
 const getCookieValue = (name: string): string | null => {
-  if (typeof document === 'undefined') {
+  const doc = getDocument();
+  if (!doc) {
     return null;
   }
 
   try {
     const encodedName = `${encodeURIComponent(name)}=`;
-    for (const cookie of document.cookie.split(';')) {
+    for (const cookie of doc.cookie.split(';')) {
       const trimmedCookie = cookie.trim();
       if (trimmedCookie.startsWith(encodedName)) {
         return decodeURIComponent(trimmedCookie.slice(encodedName.length));
@@ -221,7 +226,8 @@ const shouldUseSecureCookies = (): boolean =>
   typeof location !== 'undefined' && (location.protocol === 'https:' || location.origin?.startsWith('https://'));
 
 const setCookieValue = (name: string, value: string, maxAgeSeconds: number, domain?: string): boolean => {
-  if (typeof document === 'undefined') {
+  const doc = getDocument();
+  if (!doc) {
     return false;
   }
 
@@ -239,7 +245,7 @@ const setCookieValue = (name: string, value: string, maxAgeSeconds: number, doma
       attributes.push('Secure');
     }
 
-    document.cookie = attributes.join('; ');
+    doc.cookie = attributes.join('; ');
     return getCookieValue(name) === value;
   } catch {
     return false;
@@ -247,7 +253,8 @@ const setCookieValue = (name: string, value: string, maxAgeSeconds: number, doma
 };
 
 const clearCookieValue = (name: string, domain?: string): void => {
-  if (typeof document === 'undefined') {
+  const doc = getDocument();
+  if (!doc) {
     return;
   }
 
@@ -259,7 +266,7 @@ const clearCookieValue = (name: string, domain?: string): void => {
     if (shouldUseSecureCookies()) {
       attributes.push('Secure');
     }
-    document.cookie = attributes.join('; ');
+    doc.cookie = attributes.join('; ');
   } catch {
     // Ignore cookie failures so telemetry does not disrupt the application.
   }
