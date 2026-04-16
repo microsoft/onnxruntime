@@ -154,6 +154,22 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
 
+// Configure the duration in microseconds that threads spin waiting for work before blocking.
+// This setting is subordinate to the allow_spinning flags (session.intra_op.allow_spinning /
+// session.inter_op.allow_spinning). When allow_spinning is "0", spinning is disabled and
+// the spin duration is forced to 0 regardless of this setting.
+// By default (when this option is not set), the thread pool uses an iteration-count-based spin loop
+// whose wall-clock duration varies by CPU architecture and pause instruction latency. This provides
+// the best throughput but may result in high CPU utilization.
+// Setting a positive value switches to calibrated iteration-based spinning that targets
+// the specified duration. The actual spin time is a best-effort approximation based on a
+// one-time measurement of the pause instruction latency; it may vary with CPU frequency
+// changes. Recommended for power-sensitive or client/on-device workloads.
+// Common values: 500-2000 (0.5-2ms).
+// Setting to "0" with spinning enabled effectively disables spinning (equivalent to allow_spinning = false).
+static const char* const kOrtSessionOptionsConfigIntraOpSpinDurationUs = "session.intra_op.spin_duration_us";
+static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "session.inter_op.spin_duration_us";
+
 // Key for using model bytes directly for ORT format
 // If a session is created using an input byte array contains the ORT format model data,
 // By default we will copy the model bytes at the time of session creation to ensure the model bytes
