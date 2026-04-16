@@ -56,6 +56,12 @@ stages:
       clean: true
       submodules: none
 
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'x64'
+
+    - template: ../templates/set-nightly-build-option-variable-step.yml
+
     - template: ../templates/set-plugin-build-variables-step.yml
       parameters:
         package_version: ${{ parameters.package_version }}
