@@ -69,7 +69,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING_OPS)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
@@ -110,30 +110,6 @@ if (onnxruntime_ENABLE_DLPACK)
   set(onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_srcs})
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
-endif()
-
-if (onnxruntime_ENABLE_TRAINING)
-  file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/*"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
-  )
-
-  # This is already built in framework.cmake
-  file(GLOB_RECURSE onnxruntime_training_framework_excude_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
-  )
-
-  list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs ${onnxruntime_training_framework_excude_srcs})
-
-  source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
@@ -198,19 +174,11 @@ if (onnxruntime_ENABLE_DLPACK)
   onnxruntime_add_include_to_target(onnxruntime_providers dlpack::dlpack)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  add_dependencies(onnxruntime_providers tensorboard)
-  onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
-    onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
-  endif()
-
-  if (onnxruntime_USE_NCCL)
-    target_include_directories(onnxruntime_providers PUBLIC ${MPI_CXX_INCLUDE_DIRS})
-  endif()
+if (onnxruntime_ENABLE_TRITON)
+  onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
 endif()
 
-install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
+install(FILES${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
 install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/resource.h ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/custom_op_context.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")

@@ -1,3 +1,7 @@
+> **⚠️ DEPRECATED — This documentation is for ORTModule, which was removed in v1.27. The code remains in the repository for reference but is no longer compiled, shipped, or maintained. Pin onnxruntime-training<=1.26 if you still need it.**
+
+---
+
 # ONNX Runtime ModuleWithLoss Wrapper
 
 This document provides instructions on implementing a wrapper similar to the ModuleWithLoss Wrapper in Optimum. By implementing this wrapper, you can compute the loss inside ONNX Runtime (ORT), enabling you to leverage additional optimizations such as label sparsity optimization.

@@ -6,7 +6,7 @@ endif()
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
 set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING_OPS)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
 
@@ -425,22 +425,6 @@ if((NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
        "${TEST_SRC_DIR}/optimizer/runtime_optimization/graph_runtime_optimization_test.cc")
 endif()
 
-file(GLOB onnxruntime_test_training_src
-  "${ORTTRAINING_SOURCE_DIR}/test/model/*.h"
-  "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
-  "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.h"
-  "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc"
-  "${ORTTRAINING_SOURCE_DIR}/test/graph/*.h"
-  "${ORTTRAINING_SOURCE_DIR}/test/graph/*.cc"
-  "${ORTTRAINING_SOURCE_DIR}/test/session/*.h"
-  "${ORTTRAINING_SOURCE_DIR}/test/session/*.cc"
-  "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.h"
-  "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
-  "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
-  "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.h"
-  "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
-  )
-
 # TODO (baijumeswani): Remove the minimal build check here.
 #                      The training api tests should be runnable even on a minimal build.
 #                      This requires converting all the *.onnx files to ort format.
@@ -540,11 +524,10 @@ if (NOT onnxruntime_MINIMAL_BUILD)
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
       )
 
-    if (NOT onnxruntime_ENABLE_TRAINING)
-      list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
-        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
-        )
-    endif()
+    # tensorboard ops are excluded from the training ops build
+    list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+      )
 
     list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
@@ -723,10 +706,6 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_common
     onnxruntime_flatbuffers
 )
-
-if (onnxruntime_ENABLE_TRAINING)
-  set(ONNXRUNTIME_TEST_LIBS onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_TEST_LIBS})
-endif()
 
 set(onnxruntime_test_providers_libs
     onnxruntime_test_utils
@@ -924,13 +903,11 @@ if(NOT IOS)
 
     list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
-    # if training is disabled, endian_utils are still used in tests
-    if (NOT onnxruntime_ENABLE_TRAINING)
-      list(APPEND onnx_test_runner_common_srcs
-          ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.cc
-          ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.h
-          )
-    endif ()
+    # endian_utils are used in tests
+    list(APPEND onnx_test_runner_common_srcs
+        ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.cc
+        ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.h
+        )
 
     onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
     if(MSVC)
@@ -993,10 +970,6 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
 endif()
 
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
-
-if (onnxruntime_ENABLE_TRAINING)
-  list(APPEND all_tests ${onnxruntime_test_training_src})
-endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
     list(APPEND all_tests ${onnxruntime_test_training_api_src})
@@ -1165,9 +1138,6 @@ if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  target_link_libraries(onnxruntime_test_all PRIVATE Python::Python)
-endif()
 onnxruntime_apply_emscripten_test_link_settings(onnxruntime_test_all)
 
 if (onnxruntime_ENABLE_ATEN)
@@ -1216,39 +1186,37 @@ add_custom_command(
   ${TEST_SAMPLES_SRC}
   ${TEST_SAMPLES_DES})
 
-if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  if (onnxruntime_USE_SNPE)
-    add_custom_command(
-      TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${SNPE_SO_FILES} $<TARGET_FILE_DIR:${test_data_target}>
-      )
-  endif()
+if (onnxruntime_USE_SNPE)
+  add_custom_command(
+    TARGET ${test_data_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${SNPE_SO_FILES} $<TARGET_FILE_DIR:${test_data_target}>
+    )
+endif()
 
-  if (onnxruntime_USE_DNNL)
-    if(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
-      message(FATAL_ERROR "--dnnl_opencl_root required")
-    elseif(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
-      message(FATAL_ERROR "--dnnl_gpu_runtime required")
-    elseif(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
-      #file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
-      #set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
-      #set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")
-      target_compile_definitions(onnxruntime_test_all PUBLIC -DDNNL_GPU_RUNTIME=OCL)
-    endif()
-    list(APPEND onnx_test_libs dnnl)
-    add_custom_command(
-      TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
-      )
+if (onnxruntime_USE_DNNL)
+  if(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
+    message(FATAL_ERROR "--dnnl_opencl_root required")
+  elseif(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+    message(FATAL_ERROR "--dnnl_gpu_runtime required")
+  elseif(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND NOT (onnxruntime_DNNL_OPENCL_ROOT STREQUAL ""))
+    #file(TO_CMAKE_PATH ${onnxruntime_DNNL_OPENCL_ROOT} onnxruntime_DNNL_OPENCL_ROOT)
+    #set(DNNL_OCL_INCLUDE_DIR ${onnxruntime_DNNL_OPENCL_ROOT}/include)
+    #set(DNNL_GPU_CMAKE_ARGS "-DDNNL_GPU_RUNTIME=OCL " "-DOPENCLROOT=${onnxruntime_DNNL_OPENCL_ROOT}")
+    target_compile_definitions(onnxruntime_test_all PUBLIC -DDNNL_GPU_RUNTIME=OCL)
   endif()
-  if(WIN32)
-    set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
-    onnxruntime_add_static_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
-    target_include_directories(win_getopt_wide INTERFACE ${wide_get_opt_src_dir}/include)
-    set_target_properties(win_getopt_wide PROPERTIES FOLDER "ONNXRuntimeTest")
-    set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
-    set(GETOPT_LIB_WIDE win_getopt_wide)
-  endif()
+  list(APPEND onnx_test_libs dnnl)
+  add_custom_command(
+    TARGET ${test_data_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
+    )
+endif()
+if(WIN32)
+  set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
+  onnxruntime_add_static_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
+  target_include_directories(win_getopt_wide INTERFACE ${wide_get_opt_src_dir}/include)
+  set_target_properties(win_getopt_wide PROPERTIES FOLDER "ONNXRuntimeTest")
+  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
+  set(GETOPT_LIB_WIDE win_getopt_wide)
 endif()
 
 # onnxruntime_provider_test
@@ -1344,9 +1312,6 @@ if (NOT IOS)
     target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
     target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 
-    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-      target_link_libraries(onnx_test_runner PRIVATE Python::Python)
-    endif()
     set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
     install(TARGETS onnx_test_runner
@@ -1356,8 +1321,7 @@ if (NOT IOS)
             RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  if(onnxruntime_BUILD_BENCHMARKS)
+if(onnxruntime_BUILD_BENCHMARKS)
     SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
     onnxruntime_add_executable(onnxruntime_benchmark
       ${BENCHMARK_DIR}/main.cc
@@ -1437,8 +1401,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 
 
-if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  if(NOT IOS)
+if(NOT IOS)
     #perf test runner
     set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
     set(onnxruntime_perf_test_src_patterns
@@ -1836,7 +1799,6 @@ endif()
     )
     set_target_properties(onnxruntime_test_trainer PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
-endif()
 
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL)
 
@@ -1891,10 +1853,9 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
     set_target_properties(custom_op_library PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
   endif()
 
-  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
-      block()
-        message(STATUS "Enabling Java tests")
+  if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
+    block()
+      message(STATUS "Enabling Java tests")
 
         # native-test is added to resources so custom_op_lib can be loaded
         # and we want to copy it there
@@ -1947,7 +1908,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
         set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
       endblock()
     endif()
-  endif()
 
   if (onnxruntime_BUILD_SHARED_LIB AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
     set (onnxruntime_customopregistration_test_SRC
@@ -2301,9 +2261,6 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    target_link_libraries(test_execution_provider PRIVATE Python::Python)
-  endif()
   if(APPLE)
     set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
   elseif(UNIX)

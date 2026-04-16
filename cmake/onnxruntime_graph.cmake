@@ -10,17 +10,10 @@ file(GLOB_RECURSE onnxruntime_graph_src CONFIGURE_DEPENDS
 # start with empty training srcs list
 set(orttraining_graph_src)
 
-if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING_OPS)
   set(orttraining_graph_src
       "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.cc"
       "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.h"
-      )
-endif()
-
-if (onnxruntime_ENABLE_TRAINING)
-  file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.cc"
       )
 endif()
 
@@ -109,12 +102,6 @@ endif()
 if(NOT MSVC)
   target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses" "-Wno-deprecated-declarations")
 endif()
-if (onnxruntime_ENABLE_TRAINING)
-  #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
-  target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})
-  target_link_libraries(onnxruntime_graph PRIVATE nlohmann_json::nlohmann_json)
-endif()
-
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 
 if (onnxruntime_ENABLE_TRAINING_OPS)

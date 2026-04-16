@@ -13,15 +13,6 @@ import contextlib
 __version__ = "1.26.0"
 __author__ = "Microsoft"
 
-# we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
-# in order to know whether the onnxruntime package is for training it needs
-# to do import onnxruntime.training.ortmodule first.
-# onnxruntime.capi._pybind_state is required before import onnxruntime.training.ortmodule.
-# however, import onnxruntime.capi._pybind_state will already raise an exception if a required Cuda version
-# is not found.
-# here we need to save the exception and continue with Cuda version validation in order to post
-# meaningful messages to the user.
-# the saved exception is raised after device version validation.
 try:
     from onnxruntime.capi._pybind_state import (
         ExecutionMode,  # noqa: F401

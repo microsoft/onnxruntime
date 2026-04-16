@@ -85,17 +85,6 @@ else()
   )
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  list(APPEND onnxruntime_optimizer_src_patterns
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.cc"
-  )
-endif()
-
 file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_src_patterns})
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_optimizer_srcs})
@@ -117,13 +106,6 @@ onnxruntime_add_static_library(onnxruntime_optimizer ${onnxruntime_optimizer_src
 
 onnxruntime_add_include_to_target(onnxruntime_optimizer onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT})
-if (onnxruntime_ENABLE_TRAINING)
-  target_include_directories(onnxruntime_optimizer PRIVATE ${ORTTRAINING_ROOT})
-  onnxruntime_add_include_to_target(onnxruntime_optimizer nlohmann_json::nlohmann_json)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime_optimizer Python::Module)
-  endif()
-endif()
 if (onnxruntime_ENABLE_TRITON)
   target_link_libraries(onnxruntime_optimizer PRIVATE nlohmann_json::nlohmann_json)
   onnxruntime_add_include_to_target(onnxruntime_optimizer Python::Module)

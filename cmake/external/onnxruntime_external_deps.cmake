@@ -607,9 +607,7 @@ if(onnxruntime_ENABLE_DLPACK)
   onnxruntime_fetchcontent_makeavailable(dlpack)
 endif()
 
-if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
-  # Once code under orttraining/orttraining/models dir is removed "onnxruntime_ENABLE_TRAINING" should be removed from
-  # this conditional
+if(onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS)
   onnxruntime_fetchcontent_declare(
     cxxopts
     URL ${DEP_URL_cxxopts}

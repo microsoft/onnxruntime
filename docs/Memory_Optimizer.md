@@ -1,3 +1,7 @@
+> **⚠️ DEPRECATED — This documentation is for ORTModule, which was removed in v1.27. The code remains in the repository for reference but is no longer compiled, shipped, or maintained. Pin onnxruntime-training<=1.26 if you still need it.**
+
+---
+
 # Memory Optimizer for ONNX Runtime Training
 
 ## Introduction

@@ -7,23 +7,7 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/framework/*.cc"
 )
 
-if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  file(GLOB_RECURSE onnxruntime_training_framework_torch_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
-  )
-  list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_torch_srcs})
-  if (onnxruntime_ENABLE_TRITON)
-    file(GLOB_RECURSE onnxruntime_training_framework_triton_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
-    )
-    list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_triton_srcs})
-  endif()
-elseif(onnxruntime_ENABLE_TRITON)
-  # Triton executor shares some code from torch_interop, such as python and dlpack related code files.
-  # When torch_interop is enabled, all these dependencies are already included.
-  # But if not, we need to include them explicitly.
+if(onnxruntime_ENABLE_TRITON)
   file(GLOB_RECURSE onnxruntime_training_framework_triton_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.h"
     "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.cc"
@@ -73,7 +57,7 @@ endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
+  if (onnxruntime_ENABLE_TRITON)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module dlpack::dlpack)
   endif()
 endif()

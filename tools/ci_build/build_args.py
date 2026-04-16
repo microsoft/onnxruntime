@@ -238,7 +238,9 @@ def add_training_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--enable_training",
         action="store_true",
-        help="Enable full ORT Training (ORTModule, Training APIs).",
+        help="Deprecated. Use --enable_training_apis instead. "
+        "Sets --enable_training_apis and --enable_training_ops. "
+        "ORTModule has been removed from ONNX Runtime.",
     )
     parser.add_argument("--enable_training_apis", action="store_true", help="Enable ORT Training APIs.")
     parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
@@ -842,7 +844,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
 def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for other miscellaneous features."""
-    parser.add_argument("--enable_lazy_tensor", action="store_true", help="Enable ORT backend for PyTorch LazyTensor.")
+    parser.add_argument(
+        "--enable_lazy_tensor",
+        action="store_true",
+        help="Deprecated. LazyTensor/ORTModule has been removed from ONNX Runtime.",
+    )
     parser.add_argument("--ms_experimental", action="store_true", help="Build Microsoft experimental operators.")
     parser.add_argument(
         "--enable_msinternal", action="store_true", help="[MS Internal] Enable Microsoft internal build features."

@@ -201,7 +201,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     if (kernel_rank < 2) {
       // TODO: Explore padding the provided input shape [N, C, D] to [N, C, 1, D]
       // especially for EXHAUSTIVE algo search which may result in a better algo selection.
-      // ORTModule uses different algo search options (HEURISTIC, and use max workspace size) compared to
+      // Training builds use different algo search options (HEURISTIC, and use max workspace size) compared to
       // inference build (EXHAUSTIVE, 32M workspace size). We observed better perf when we pad input shape
       // [N,C,D] to [N,C,1,D], especially on A100, and especially for ConvGrad.
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems

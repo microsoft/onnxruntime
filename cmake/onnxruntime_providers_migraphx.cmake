@@ -62,9 +62,6 @@
   if (onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_training)
     target_link_libraries(onnxruntime_providers_migraphx PRIVATE onnxruntime_training)
-    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-      onnxruntime_add_include_to_target(onnxruntime_providers_migraphx Python::Module)
-    endif()
   endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Windows")

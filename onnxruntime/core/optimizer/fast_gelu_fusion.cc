@@ -183,7 +183,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
 }
 
 /**
-In case of ORTModule, there are extra Cast nodes exported for fp16. They should be fused into two nodes:
+In case of training, there are extra Cast nodes exported for fp16. They should be fused into two nodes:
 
 x --> Cast --> FastGelu
 

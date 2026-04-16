@@ -15,13 +15,6 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
 .. toctree::
    :maxdepth: 1
-   :caption: LARGE MODEL TRAINING
-
-   ortmodule/overview
-   ortmodule/api
-
-.. toctree::
-   :maxdepth: 1
    :caption: ON-DEVICE TRAINING
 
    on_device_training/overview

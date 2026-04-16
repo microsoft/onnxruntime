@@ -6821,7 +6821,7 @@ TEST_F(GraphTransformationTests, FastGeluFusionWithCastsTest3) {
   ASSERT_TRUE(load_ret.IsOK());
   Graph& graph = p_model->MainGraph();
 
-  // ORTModule for gpt2 model has two casts fused into one before FastGeluFusion
+  // Training export for gpt2 model has two casts fused into one before FastGeluFusion
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
