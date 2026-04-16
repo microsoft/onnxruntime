@@ -13,7 +13,8 @@ fi
 mkdir -p $HOME/.onnx
 docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $BUILD_SOURCESDIRECTORY:/onnxruntime_src \
   --volume $BUILD_BINARIESDIRECTORY:/build --volume /data/models:/build/models:ro \
-  -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc --volume $AGENT_TEMPDIRECTORY/.npmrc:/tmp/.npmrc:ro \
+  -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+  --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
   --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
   --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
   --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build \

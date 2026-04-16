@@ -29,19 +29,16 @@ steps:
 # use `PowerShell@2` instead of `pwsh` as it is available on arm64 agents, whereas `pwsh` is not. (2026-04-15)
 - task: PowerShell@2
   displayName: 'NPM - set NPM_CONFIG_USERCONFIG to agent temp config'
+  env:
+    artifact_feed: ${{ parameters.artifactFeeds }}
   inputs:
     targetType: 'inline'
     script: |
       # ensure we have a clean/empty npm config. config file must exist prior to `npmAuthenticate`.
       $npmrcPath = "${env:AGENT_TEMPDIRECTORY}/.npmrc"
 
-      if (Test-Path $npmrcPath)
-      {
-        Remove-Item $npmrcPath
-      }
-
-      Set-Content -Path $npmrcPath -Value @"
-      registry=https://aiinfra.pkgs.visualstudio.com/_packaging/${{parameters.artifactFeeds}}/npm/registry/
+      Set-Content -Force -Path $npmrcPath -Value @"
+      registry=https://aiinfra.pkgs.visualstudio.com/_packaging/${env:artifact_feed}/npm/registry/
       always-auth=true
       "@
 

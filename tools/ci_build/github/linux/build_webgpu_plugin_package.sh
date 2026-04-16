@@ -25,7 +25,8 @@ docker run --rm \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \
     --volume /data/models:/build/models:ro \
     --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
-    -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc --volume $AGENT_TEMPDIRECTORY/.npmrc:/tmp/.npmrc:ro \
+    -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+    --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
     --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
     --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
     -e NIGHTLY_BUILD \
