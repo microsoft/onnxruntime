@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -166,6 +168,17 @@ TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
       "is too small for sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/4);
+}
+
+// INT32_MAX seqlens_k: rejected by the >= present_kv_seqlen check.
+TEST(GroupQueryAttentionTest, Int32MaxSeqlensK_OOB) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{std::numeric_limits<int32_t>::max()},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k[0]");
 }
 
 // Boundary: seqlens_k == present_kv_seqlen - 1 is max valid value with larger present buffer.
