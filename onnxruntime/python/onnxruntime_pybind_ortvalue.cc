@@ -419,6 +419,10 @@ void addOrtValueMethods(pybind11::module& m) {
                                       /*zero_copy_non_owning=*/true);
 #endif
           default:
+            // OrtValue.numpy() is called by the user who explicitly holds the OrtValue
+            // Python object, so the backing memory lifetime is managed externally.
+            // zero_copy_non_owning=true is safe here (and required to preserve the
+            // zero-copy semantics that OrtValue.numpy() / __array__ rely on).
             return GetPyObjFromTensor(*ml_value, nullptr, nullptr,
                                       /*zero_copy_non_owning=*/true);
         }

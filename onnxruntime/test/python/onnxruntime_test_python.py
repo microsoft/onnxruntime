@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import ctypes
 import gc
+import importlib.util
 import os
 import pathlib
 import platform
@@ -1514,29 +1515,32 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(bool_arr, result_bool)
         self.assertEqual(result_bool.dtype, np.bool_)
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("onnx") is not None,
+        "onnx package is required to build the test model",
+    )
     def test_run_output_does_not_alias_input_passthrough(self):
         """Test that session.run() returns independent numpy arrays when a model
         input passes through as a model output. Reproduces the dangling-pointer
         corruption described in https://github.com/microsoft/onnxruntime/issues/21922
         """
         import onnx  # noqa: PLC0415
-        from onnx import TensorProto, helper  # noqa: PLC0415
 
         # Build a model where 'input_0' is both a graph input and a graph output,
         # plus a computed output (input_0 + 10).
         inp_shape = [1, 2, 2, 2]
-        input_0 = helper.make_tensor_value_info("input_0", TensorProto.FLOAT, inp_shape)
-        output_plus10 = helper.make_tensor_value_info("plus_10", TensorProto.FLOAT, inp_shape)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, inp_shape)
+        output_plus10 = onnx.helper.make_tensor_value_info("plus_10", onnx.TensorProto.FLOAT, inp_shape)
         ten_const = onnx.numpy_helper.from_array(np.array(10, dtype=np.float32), "ten_const")
-        add_node = helper.make_node("Add", ["input_0", "ten_const"], ["plus_10"], name="Add0")
-        graph = helper.make_graph(
+        add_node = onnx.helper.make_node("Add", ["input_0", "ten_const"], ["plus_10"], name="Add0")
+        graph = onnx.helper.make_graph(
             [add_node],
             "PassthroughTest",
             [input_0],
             [output_plus10, input_0],
             initializer=[ten_const],
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 21)])
         model = onnx.shape_inference.infer_shapes(model)
 
         sess_options = onnxrt.SessionOptions()
@@ -1567,6 +1571,10 @@ class TestInferenceSession(unittest.TestCase):
 
             # The pass-through output must NOT alias the input buffer —
             # it must be an independent copy so it survives across runs.
+            self.assertFalse(
+                np.shares_memory(outputs[1], input_data),
+                f"Run {run_index}: 'input_0' unexpectedly aliases the input buffer",
+            )
             all_run_outputs.append(outputs)
 
         # After all runs, every saved output must still hold its original value.
