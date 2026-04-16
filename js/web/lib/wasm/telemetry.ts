@@ -590,6 +590,10 @@ const sendBatchWithRetry: BatchRetrySender = (
     return;
   }
 
+  if (typeof fetch !== 'function') {
+    return;
+  }
+
   fetch(COLLECTOR_URL, {
     method: 'POST',
     headers: getFetchHeaders(),
