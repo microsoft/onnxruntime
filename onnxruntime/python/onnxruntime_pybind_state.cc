@@ -471,24 +471,6 @@ py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data
   return GetPyObjFromTensor(val, data_transfer_manager, mem_cpy_to_host_functions);
 }
 
-static std::shared_ptr<onnxruntime::IExecutionProviderFactory> LoadExecutionProviderFactory(
-    const std::string& ep_shared_lib_path,
-    const ProviderOptions& provider_options = {},
-    const std::string& entry_symbol_name = "GetProvider") {
-  void* handle;
-  const auto path_str = ToPathString(ep_shared_lib_path);
-  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
-  if (!error.IsOK()) {
-    throw std::runtime_error(error.ErrorMessage());
-  }
-
-  Provider* (*PGetProvider)();
-  OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider));
-
-  Provider* provider = PGetProvider();
-  return provider->CreateExecutionProviderFactory(&provider_options);
-}
-
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* cuda_provider_info,
                                                              const ProviderOptionsMap& provider_options_map) {
@@ -1330,25 +1312,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     }
 #endif
 
-    // check whether it is a dynamic load EP:
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
-      if (shared_lib_path_it != it->second.end()) {
-        // this is an EP with dynamic loading
-        // construct the provider option
-        ProviderOptions provider_options;
-        std::string entry_symbol = kDefaultExecutionProviderEntry;
-        for (auto option : it->second) {
-          if (option.first == kExecutionProviderSharedLibraryEntry) {
-            entry_symbol = option.second;
-          } else if (option.first != kExecutionProviderSharedLibraryPath) {
-            provider_options.insert(option);
-          }
-        }
-        return LoadExecutionProviderFactory(shared_lib_path_it->second, provider_options, entry_symbol);
-      }
-    }
     // unknown provider
     throw std::runtime_error("Unknown Provider Type: " + type);
   }
