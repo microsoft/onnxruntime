@@ -605,6 +605,8 @@ const sendBatchWithRetry: BatchRetrySender = (
       if (shouldRetryStatus(res.status)) {
         // eslint-disable-next-line @typescript-eslint/no-use-before-define
         scheduleBatchRetry(batch, allowWhenRuntimeTelemetryDisabled, attempt);
+      } else {
+        removePendingTelemetryEntries(batch);
       }
     },
     () => {
@@ -621,6 +623,7 @@ const scheduleBatchRetry = (
   multiplier = 1,
 ): void => {
   if (attempt >= MAX_RETRIES) {
+    removePendingTelemetryEntries(batch);
     return;
   }
 
