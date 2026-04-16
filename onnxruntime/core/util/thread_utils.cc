@@ -19,6 +19,7 @@ std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params) {
   os << " thread_pool_size: " << params.thread_pool_size;
   os << " auto_set_affinity: " << params.auto_set_affinity;
   os << " allow_spinning: " << params.allow_spinning;
+  os << " spin_duration_us: " << params.spin_duration_us;
   os << " dynamic_block_base_: " << params.dynamic_block_base_;
   os << " stack_size: " << params.stack_size;
   os << " affinity_str: " << params.affinity_str;
