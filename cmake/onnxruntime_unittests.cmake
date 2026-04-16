@@ -2278,8 +2278,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
 endif()
 
-endif()
-
 if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
   AddTest(TARGET onnxruntime_webgpu_external_dawn_test
           SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
