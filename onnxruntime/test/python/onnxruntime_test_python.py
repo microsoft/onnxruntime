@@ -1591,17 +1591,17 @@ class TestInferenceSession(unittest.TestCase):
             )
 
     def test_run_session_owned_output_is_zero_copy(self):
-        """Verify that session-allocated CPU outputs (the common case) still use
-        zero-copy numpy arrays backed by the OrtValue buffer."""
+        """Verify that session-allocated CPU outputs (the common case) expose
+        a backing base object instead of owning a separate numpy buffer."""
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
         input_name = sess.get_inputs()[0].name
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         result = sess.run(None, {input_name: x})
         # The output should be a numpy array; for a session-owned buffer
-        # it should not be a separately-allocated copy.  We can verify that
-        # the output base object is a PyCapsule (the zero-copy indicator).
+        # it should not be a separately-allocated copy.  We verify that by
+        # checking the array is backed by another object via ``output.base``.
         output = result[0]
-        self.assertIsNotNone(output.base, "Session-owned output should be zero-copy (has a base)")
+        self.assertIsNotNone(output.base, "Session-owned output should have a backing base object")
 
     @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
     def test_ort_value_dlpack_protocol(self):
