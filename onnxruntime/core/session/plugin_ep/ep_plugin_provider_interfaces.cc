@@ -15,6 +15,7 @@
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/resource_accountant.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -273,6 +274,26 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   // Host-side resource budget enforcement.
   // The host computes costs and enforces the budget uniformly for all node grouping kinds.
   // Plugin EPs only propose supported nodes; the host decides which to accept.
+
+  // If an accountant exists but has no explicit threshold (i.e., the session option didn't specify a memory limit),
+  // ask the EP for the available device resource (e.g., free GPU memory) and use that as the threshold.
+  // This mirrors the in-tree CUDA EP behavior that calls cudaMemGetInfo as a fallback.
+  if (resource_accountant != nullptr && !resource_accountant->GetThreshold().has_value() &&
+      ort_ep_->ort_version_supported >= 26 && ort_ep_->GetAvailableResource != nullptr) {
+    OrtResourceCount available{};
+    if (auto* ort_status = ort_ep_->GetAvailableResource(ort_ep_.get(), &available); ort_status == nullptr) {
+      if (available.kind == OrtResourceCountKind_TotalBytes) {
+        resource_accountant->SetThreshold(ResourceCount{narrow<size_t>(available.value.total_bytes)});
+        LOGS(logger, VERBOSE) << Type() << " set resource threshold from device: "
+                              << available.value.total_bytes << " bytes";
+      }
+    } else {
+      // Log warning and continue without a device-derived threshold
+      auto status_releaser = Status(ToStatusAndRelease(ort_status));
+      LOGS(logger, WARNING) << Type() << " GetAvailableResource failed: " << status_releaser.ToString();
+    }
+  }
+
   const bool has_budget = resource_accountant != nullptr && resource_accountant->GetThreshold().has_value();
   ResourceCount consumed = resource_accountant != nullptr
                                ? resource_accountant->GetConsumedAmount()
