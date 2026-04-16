@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -550,7 +551,8 @@ TEST(CoreMLExecutionProviderTest, ExternalDataInitializer) {
   ASSERT_STATUS_OK(session.Initialize());
 
 #if defined(__APPLE__)
-  EXPECT_TRUE(session.GetRegisteredProviderTypes().count(kCoreMLExecutionProvider) > 0);
+  const auto& provider_types = session.GetRegisteredProviderTypes();
+  EXPECT_NE(std::find(provider_types.begin(), provider_types.end(), kCoreMLExecutionProvider), provider_types.end());
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
 
