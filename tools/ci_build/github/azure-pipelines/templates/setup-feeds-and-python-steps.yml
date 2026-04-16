@@ -1,8 +1,9 @@
 # Template for setting up the package feeds and installing python.
 # Feeds configured:
-#   - pip
 #   - maven & gradle
+#   - npm
 #   - nuget
+#   - pip
 #
 # n.b. This template writes to user profile files.
 
@@ -31,6 +32,32 @@ steps:
       if (Test-Path ~/.m2/settings.xml) {
         Remove-Item ~/.m2/settings.xml
       }
+
+# use `PowerShell@2` instead of `pwsh` as it is available on arm64 agents, whereas `pwsh` is not. (2026-04-15)
+- task: PowerShell@2
+  displayName: 'NPM - set NPM_CONFIG_USERCONFIG to agent temp config'
+  env:
+    artifact_feed: ${{ parameters.artifactFeeds }}
+  inputs:
+    targetType: 'inline'
+    script: |
+      # ensure we have a clean/empty npm config. config file must exist prior to `npmAuthenticate`.
+      $npmrcPath = "${env:AGENT_TEMPDIRECTORY}/.npmrc"
+
+      Set-Content -Force -Path $npmrcPath -Value @"
+      registry=https://aiinfra.pkgs.visualstudio.com/_packaging/${env:artifact_feed}/npm/registry/
+      always-auth=true
+      "@
+
+      Write-Host "Generated npmrc contents:"
+      Get-Content $npmrcPath | Write-Host
+
+      echo "##vso[task.setvariable variable=NPM_CONFIG_USERCONFIG]${npmrcPath}"
+
+# FUTURE WORK: use `Npm@1` task in pipelines and specify the feed there?
+- task: npmAuthenticate@0
+  inputs:
+    workingFile: $(NPM_CONFIG_USERCONFIG)
 
 - task: NuGetAuthenticate@1 # just auth w/ internal feeds
 
