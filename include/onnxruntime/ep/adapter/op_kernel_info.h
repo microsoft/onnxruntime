@@ -22,7 +22,7 @@
 
 namespace onnxruntime {
 class DataTransferManager;
-struct IExecutionProvider;
+class IExecutionProvider;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -73,6 +73,14 @@ struct OpKernelInfo {
   const DataTransferManager& GetDataTransferManager() const noexcept {
     return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
+
+  // Delegates to the core OpKernelInfo::GetAllocator so the adapter returns
+  // exactly the same allocator the framework would provide for each OrtMemType.
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const {
+    const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(cache_->kernel_info_);
+    return core_kernel_info->GetAllocator(mem_type);
+  }
+
   Node node() const noexcept {
     return Node{cache_->kernel_info_};
   }

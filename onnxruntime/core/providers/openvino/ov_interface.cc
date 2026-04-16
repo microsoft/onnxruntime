@@ -573,23 +573,27 @@ void StatefulOVInferRequest::Infer() {
 }
 
 void StatefulOVInferRequest::PostProcessInferRequest() {
+  CleanReorderKVCacheStatus();
+}
+
+void StatefulOVInferRequest::CleanReorderKVCacheStatus() {
   if (is_kvcache_reorder_added) {
     kv_src_indices.clear();
     kv_dst_indices.clear();
   }
 }
 
-void StatefulOVInferRequest::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+void StatefulOVInferRequest::SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
   // Validate input parameters
   if (src_indices.size() != dst_indices.size()) {
     ORT_THROW(log_tag +
-              "ReorderKVCache: src_indices and dst_indices must have the same size. "
+              "SetReorderKVCacheStatus: src_indices and dst_indices must have the same size. "
               "Got src_indices.size()=" +
               std::to_string(src_indices.size()) +
               ", dst_indices.size()=" + std::to_string(dst_indices.size()));
   }
 
-  LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
+  LOGS_DEFAULT(INFO) << log_tag << "SetReorderKVCacheStatus: Reordering OpenVINO-internal KVCache state with "
                      << src_indices.size() << " index pairs";
 
   kv_src_indices = src_indices;
@@ -598,6 +602,15 @@ void StatefulOVInferRequest::ReorderKVCache(const std::vector<int32_t>& src_indi
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
   LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
+
+  if (is_kvcache_reorder_added) {
+    if (index > 0) {
+      // TODO: Trigger a KVCache eviction inference pass here to physically compact the KV cache
+      // by running infer_request with the src_idx/dst_idx reorder tensors set.
+      ORT_THROW(log_tag + "KVCache eviction via reorder inference is not yet implemented which is required to rewind KVCache with index > 0 when KVCache reorder optimization is enabled. Requested index: " + std::to_string(index));
+    }
+    CleanReorderKVCacheStatus();
+  }
 
   if (prefill_use_full_chat_history) {
     // Clear the internal KVCache state. For NPU device, this operation is a no-op.

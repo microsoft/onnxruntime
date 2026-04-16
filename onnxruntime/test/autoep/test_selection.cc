@@ -223,11 +223,11 @@ TEST(AutoEpSelection, DmlEP) {
 }
 #endif
 
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 TEST(AutoEpSelection, WebGpuEP) {
   RunBasicTest(kWebGpuExecutionProvider, std::nullopt);
 }
-#endif
+#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
 // tests for AutoEP selection related things in the API that aren't covered by the other tests.
 TEST(AutoEpSelection, MiscApiTests) {

@@ -153,7 +153,7 @@ class BasicBackend : public IBackend {
   }
 
   void RewindKVCache(size_t index) override;
-  void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
+  void SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
 
  private:
   void PerfDirCreate(const std::string& perf_count);
