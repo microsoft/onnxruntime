@@ -565,8 +565,12 @@ Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id) {
 
 namespace cuda {
 
+template <>
+KernelCreateInfo BuildKernelCreateInfo<void>() {
+  return {};
+}
+
 #ifndef DISABLE_ML_OPS
-namespace ml {
 // LabelEncoder (ML domain) - numeric types only
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, float_int64, LabelEncoder);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 2, 3, int64_float, LabelEncoder);
@@ -579,12 +583,6 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_double, LabelEncoder);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, double_int64, LabelEncoder);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kMLDomain, 4, int64_double, LabelEncoder);
-
-template <>
-KernelCreateInfo BuildKernelCreateInfo<void>() {
-  KernelCreateInfo info;
-  return info;
-}
 
 Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -613,7 +611,6 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 
   return Status::OK();
 }
-}  // namespace ml
 #endif
 
 // opset 1 to 9
@@ -1816,11 +1813,6 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, S
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Transpose);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Unsqueeze);
 #endif
-
-template <>
-KernelCreateInfo BuildKernelCreateInfo<void>() {
-  return {};
-}
 
 static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -3062,7 +3054,7 @@ void InitializeRegistry() {
   s_kernel_registry = KernelRegistry::Create();
   ORT_THROW_IF_ERROR(cuda::RegisterCudaKernels(*s_kernel_registry));
 #ifndef DISABLE_ML_OPS
-  ORT_THROW_IF_ERROR(cuda::ml::RegisterOnnxMLOperatorKernels(*s_kernel_registry));
+  ORT_THROW_IF_ERROR(cuda::RegisterOnnxMLOperatorKernels(*s_kernel_registry));
 #endif
 }
 

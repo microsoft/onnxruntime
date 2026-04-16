@@ -3,11 +3,14 @@
 
 #include "core/providers/cuda/ml/label_encoder.h"
 #include "core/providers/cuda/ml/label_encoder_impl.h"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/framework/tensorprotoutils.h"
+#endif
 #include "core/common/safeint.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <numeric>
 
@@ -24,37 +27,83 @@ static std::vector<T> GetAttrOrTensor(const OpKernelInfo& info, const std::strin
       return attrs;
     }
   }
-  ONNX_NAMESPACE::TensorProto attr_tensor_proto;
-  auto result = info.GetAttr(tensor_name, &attr_tensor_proto);
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // Plugin EP: use Ort C++ API to read tensor attributes.
+  Ort::AllocatorWithDefaultOptions allocator;
+  Ort::Value tensor_value{nullptr};
+  try {
+    tensor_value = info.GetKernelInfo().GetTensorAttribute(tensor_name.c_str(), allocator);
+  } catch (const Ort::Exception&) {
+    if (name.empty()) {
+      ORT_THROW("LabelEncoder is missing attribute ", tensor_name);
+    }
+    ORT_THROW("LabelEncoder is missing attribute ", tensor_name, " or ", name);
+  }
+  size_t count = tensor_value.GetTensorTypeAndShapeInfo().GetElementCount();
+  std::vector<T> out(count);
+  std::memcpy(out.data(), tensor_value.GetTensorData<T>(), count * sizeof(T));
+  return out;
+#else
+  // Non-plugin shared library EP: use TensorProto to read tensor attributes.
+#ifndef SHARED_PROVIDER
+  ONNX_NAMESPACE::TensorProto t_proto;
+  auto* attr_tensor_proto = &t_proto;
+#else
+  auto t_proto = ONNX_NAMESPACE::TensorProto::Create();
+  auto* attr_tensor_proto = t_proto.get();
+#endif
+  auto result = info.GetAttr(tensor_name, attr_tensor_proto);
   if (name.empty()) {
     ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", tensor_name);
   } else {
     ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", tensor_name, " or ", name);
   }
   SafeInt<int64_t> element_count(1);
-  for (auto dim : attr_tensor_proto.dims()) {
+  for (auto dim : attr_tensor_proto->dims()) {
     element_count *= dim;
   }
   const SafeInt<size_t> tensor_size(element_count);
   std::vector<T> out(tensor_size);
-  result = utils::UnpackTensor<T>(attr_tensor_proto, std::filesystem::path(), out.data(), tensor_size);
+  result = utils::UnpackTensor<T>(*attr_tensor_proto, nullptr, 0, out.data(), tensor_size);
   ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", name);
   return out;
+#endif  // BUILD_CUDA_EP_AS_PLUGIN
 }
 
 // Helper to get default value from default_tensor or a named attribute.
 template <typename T>
 static T GetDefaultValue(const OpKernelInfo& info, const std::string& attr_name, const T& backup) {
-  ONNX_NAMESPACE::TensorProto attr_tensor_proto;
-  auto result = info.GetAttr("default_tensor", &attr_tensor_proto);
-  if (result.IsOK() && utils::HasDataType(attr_tensor_proto)) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // Plugin EP: use Ort C++ API to read default_tensor.
+  try {
+    Ort::AllocatorWithDefaultOptions allocator;
+    auto tensor_value = info.GetKernelInfo().GetTensorAttribute("default_tensor", allocator);
+    if (tensor_value.GetTensorTypeAndShapeInfo().GetElementCount() > 0) {
+      return *tensor_value.GetTensorData<T>();
+    }
+  } catch (const Ort::Exception&) {
+    // default_tensor not present, fall through to scalar/backup.
+  }
+#else
+  // Non-plugin shared library EP: use TensorProto to read default_tensor.
+#ifndef SHARED_PROVIDER
+  ONNX_NAMESPACE::TensorProto d_proto;
+  auto* attr_tensor_proto = &d_proto;
+#else
+  auto d_proto = ONNX_NAMESPACE::TensorProto::Create();
+  auto* attr_tensor_proto = d_proto.get();
+#endif
+  auto result = info.GetAttr("default_tensor", attr_tensor_proto);
+  if (result.IsOK() && utils::HasDataType(*attr_tensor_proto)) {
     T default_value;
-    result = utils::UnpackTensor<T>(attr_tensor_proto, std::filesystem::path(), &default_value, 1);
+    result = utils::UnpackTensor<T>(*attr_tensor_proto, nullptr, 0, &default_value, 1);
     ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack default tensor ", attr_name);
     return default_value;
-  } else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int64_t>) {
+  }
+#endif  // BUILD_CUDA_EP_AS_PLUGIN
+  if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int64_t>) {
     T default_value;
-    result = info.GetAttr<T>(attr_name, &default_value);
+    auto result = info.GetAttr<T>(attr_name, &default_value);
     if (result.IsOK()) {
       return default_value;
     }
@@ -302,7 +351,7 @@ void CudaLabelEncoder_4<int64_t, double>::InitializeAttrFields(const OpKernelInf
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 2, 3, float_int64,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
     CudaLabelEncoder<float, int64_t>);
@@ -310,7 +359,7 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 2, 3, int64_float,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     CudaLabelEncoder<int64_t, float>);
@@ -318,7 +367,7 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 2, 3, float_float,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     CudaLabelEncoder<float, float>);
@@ -326,7 +375,7 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 2, 3, int64_int64,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
     CudaLabelEncoder<int64_t, int64_t>);
@@ -336,7 +385,7 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 4, int64_int64,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
     CudaLabelEncoder_4<int64_t, int64_t>);
@@ -344,7 +393,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 4, int64_float,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     CudaLabelEncoder_4<int64_t, float>);
@@ -352,7 +401,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 4, float_int64,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
     CudaLabelEncoder_4<float, int64_t>);
@@ -360,7 +409,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 4, float_float,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     CudaLabelEncoder_4<float, float>);
@@ -368,7 +417,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 4, double_double,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<double>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<double>()),
     CudaLabelEncoder_4<double, double>);
@@ -376,7 +425,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 4, double_int64,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<double>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
     CudaLabelEncoder_4<double, int64_t>);
@@ -384,7 +433,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     LabelEncoder, kMLDomain, 4, int64_double,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<double>()),
     CudaLabelEncoder_4<int64_t, double>);
