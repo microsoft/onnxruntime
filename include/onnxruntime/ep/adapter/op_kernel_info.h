@@ -17,6 +17,7 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
+#include "allocator.h"
 #include "node.h"
 #include "kernel_def.h"
 #include "tensor_helper.h"
@@ -29,32 +30,6 @@ class IExecutionProvider;
 namespace onnxruntime {
 namespace ep {
 namespace adapter {
-
-// Lightweight allocator adapter.
-// Wraps a non-owned OrtAllocator* (returned by the C API) as an IAllocator.
-class IAllocatorWrappingOrtAllocator final : public IAllocator {
- public:
-  explicit IAllocatorWrappingOrtAllocator(gsl::not_null<OrtAllocator*> ort_allocator)
-      : IAllocator(*ort_allocator->Info(ort_allocator)), ort_allocator_(ort_allocator) {}
-
-  void* Alloc(size_t size) override {
-    return ort_allocator_->Alloc(ort_allocator_, size);
-  }
-
-  void Free(void* p) override {
-    ort_allocator_->Free(ort_allocator_, p);
-  }
-
-  void* Reserve(size_t size) override {
-    if (ort_allocator_->Reserve) {
-      return ort_allocator_->Reserve(ort_allocator_, size);
-    }
-    return Alloc(size);
-  }
-
- private:
-  gsl::not_null<OrtAllocator*> ort_allocator_;
-};
 
 /// <summary>
 /// An adapter class partially implementing the interface of `onnxruntime::OpKernelInfo`.
