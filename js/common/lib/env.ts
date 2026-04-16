@@ -249,7 +249,6 @@ export declare namespace Env {
      * Set or get whether telemetry is enabled.
      *
      * When enabled, ONNX Runtime sends usage and performance telemetry from the browser to Microsoft.
-     * No personally identifiable information (PII) is collected.
      *
      * Telemetry can also be excluded at build time using the `onnxruntime_USE_TELEMETRY` CMake flag and the
      * `BUILD_DEFS.DISABLE_TELEMETRY` esbuild define.
