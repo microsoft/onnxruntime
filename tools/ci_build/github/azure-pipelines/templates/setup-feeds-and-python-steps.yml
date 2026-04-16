@@ -35,11 +35,18 @@ steps:
       # ensure we have a clean/empty npm config. config file must exist prior to `npmAuthenticate`.
       $npmrcPath = "${env:AGENT_TEMPDIRECTORY}/.npmrc"
 
-      if (Test-Path $npmrcPath) { Remove-Item $npmrcPath }
+      if (Test-Path $npmrcPath)
+      {
+        Remove-Item $npmrcPath
+      }
+
       Set-Content -Path $npmrcPath -Value @"
-      registry=https://aiinfra.pkgs.visualstudio.com/Lotus/_packaging/${{parameters.artifactFeeds}}/npm/registry/
+      registry=https://aiinfra.pkgs.visualstudio.com/_packaging/${{parameters.artifactFeeds}}/npm/registry/
       always-auth=true
       "@
+
+      Write-Host "Generated npmrc contents:"
+      Get-Content $npmrcPath | Write-Host
 
       echo "##vso[task.setvariable variable=NPM_CONFIG_USERCONFIG]${npmrcPath}"
 
