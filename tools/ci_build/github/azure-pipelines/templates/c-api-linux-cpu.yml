@@ -76,6 +76,7 @@ jobs:
         docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
         -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc --volume $(Agent.TempDirectory)/.npmrc:/tmp/.npmrc:ro \
         --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
+        --volume $HOME/.gradle:/home/onnxruntimedev/.gradle:ro \
         --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3 \
         /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
         --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
