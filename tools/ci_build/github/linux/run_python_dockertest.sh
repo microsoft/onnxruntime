@@ -22,6 +22,9 @@ docker run -e SYSTEM_COLLECTIONURI --rm \
     --volume $BUILD_BINARIESDIRECTORY:/build \
     --volume /data/models:/build/models:ro \
     --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+    -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc --volume $AGENT_TEMPDIRECTORY/.npmrc:/tmp/.npmrc:ro \
+    --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
+    --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
