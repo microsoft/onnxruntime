@@ -181,7 +181,7 @@ async function downloadArtifactsForRun(run: any): Promise<void> {
 async function main() {
   // Bootstrap global-agent to honor the proxy settings in
   // environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
-  // See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
+  // See the https://github.com/gajus/global-agent ReadMe.md regarding environment variables.
   globalAgentBootstrap();
 
   console.log(
