@@ -104,9 +104,6 @@ const getBrowserMetadata = (): Record<string, unknown> => {
     if ((nav as unknown as Record<string, unknown>).deviceMemory) {
       metadata.deviceMemoryGB = (nav as unknown as Record<string, unknown>).deviceMemory;
     }
-    if (nav.language) {
-      metadata.locale = nav.language;
-    }
     if (nav.userAgent) {
       metadata.userAgent = nav.userAgent;
     }
@@ -135,13 +132,10 @@ const getBrowserMetadata = (): Record<string, unknown> => {
       metadata.webnnAvailable = true;
     }
   }
-  if (typeof location !== 'undefined' && location.origin) {
-    metadata.origin = location.origin;
-  }
-  try {
-    metadata.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    // Intl may not be available in all environments.
+  if (typeof location !== 'undefined') {
+    if (location.origin) {
+      metadata.origin = location.origin;
+    }
   }
   const perfMemory = (performance as unknown as Record<string, unknown>).memory as
     | { jsHeapSizeLimit?: number; totalJSHeapSize?: number; usedJSHeapSize?: number }

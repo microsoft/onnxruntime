@@ -59,6 +59,40 @@ describe('#UnitTest# - Telemetry Bridge', () => {
     restoreGlobalProperty('location', locationDescriptor);
   });
 
+  it('should hash the device id before sending telemetry', async () => {
+    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+    let storedDeviceId: string | null = null;
+
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => storedDeviceId,
+        setItem: (_key: string, value: string) => {
+          storedDeviceId = value;
+        },
+      },
+    });
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value: async (url: string, init?: RequestInit) => {
+        fetchCalls.push({ url, init });
+        return { ok: true, status: 200 };
+      },
+    });
+
+    initTelemetry(asModule(mockModule));
+    mockModule.__ortTelemetryCallback!('ProcessInfo', { runtimeVersion: '1.25.0' });
+    await flushTelemetry();
+
+    expect(storedDeviceId).to.be.a('string');
+    expect(fetchCalls).to.have.length(1);
+    expect(fetchCalls[0].url).to.contain('https://mobile.events.data.microsoft.com/OneCollector/1.0');
+
+    const payload = JSON.parse(fetchCalls[0].init!.body as string);
+    expect(payload.ext.device.localId).to.match(/^c:[0-9a-f]{64}$/);
+    expect(payload.ext.device.localId).to.not.equal(storedDeviceId);
+  });
+
   it('should register callback on module', () => {
     initTelemetry(asModule(mockModule));
     expect(mockModule.__ortTelemetryCallback).to.not.be.undefined;
@@ -99,11 +133,11 @@ describe('#UnitTest# - Telemetry Bridge', () => {
   it('should merge browser metadata into ProcessInfo', () => {
     Object.defineProperty(globalThis, 'navigator', {
       configurable: true,
-      value: { hardwareConcurrency: 8, language: 'en-US', userAgent: 'test-agent' },
+      value: { hardwareConcurrency: 8, userAgent: 'test-agent' },
     });
     Object.defineProperty(globalThis, 'location', {
       configurable: true,
-      value: { origin: 'https://example.test' },
+      value: { origin: 'https://example.test:8443' },
     });
 
     initTelemetry(asModule(mockModule));
@@ -120,9 +154,11 @@ describe('#UnitTest# - Telemetry Bridge', () => {
     expect(receivedEvents[0].data.runtimeVersion).to.equal('1.25.0');
     expect(receivedEvents[0].data.projection).to.equal(1);
     expect(receivedEvents[0].data.cpuCount).to.equal(8);
-    expect(receivedEvents[0].data.locale).to.equal('en-US');
     expect(receivedEvents[0].data.userAgent).to.equal('test-agent');
-    expect(receivedEvents[0].data.origin).to.equal('https://example.test');
+    expect(receivedEvents[0].data.origin).to.equal('https://example.test:8443');
+    expect(receivedEvents[0].data).to.not.have.property('host');
+    expect(receivedEvents[0].data).to.not.have.property('locale');
+    expect(receivedEvents[0].data).to.not.have.property('timezone');
   });
 
   it('should not emit a separate startup metadata event during init', () => {
@@ -134,40 +170,6 @@ describe('#UnitTest# - Telemetry Bridge', () => {
     initTelemetry(asModule(mockModule));
 
     expect(receivedEvents).to.have.length(0);
-  });
-
-  it('should hash the device id before sending telemetry', async () => {
-    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
-    let storedDeviceId: string | null = null;
-
-    Object.defineProperty(globalThis, 'localStorage', {
-      configurable: true,
-      value: {
-        getItem: () => storedDeviceId,
-        setItem: (_key: string, value: string) => {
-          storedDeviceId = value;
-        },
-      },
-    });
-    Object.defineProperty(globalThis, 'fetch', {
-      configurable: true,
-      value: async (url: string, init?: RequestInit) => {
-        fetchCalls.push({ url, init });
-        return { ok: true, status: 200 };
-      },
-    });
-
-    initTelemetry(asModule(mockModule));
-    mockModule.__ortTelemetryCallback!('ProcessInfo', { runtimeVersion: '1.25.0' });
-    await flushTelemetry();
-
-    expect(storedDeviceId).to.be.a('string');
-    expect(fetchCalls).to.have.length(1);
-    expect(fetchCalls[0].url).to.contain('https://mobile.events.data.microsoft.com/OneCollector/1.0');
-
-    const payload = JSON.parse(fetchCalls[0].init!.body as string);
-    expect(payload.ext.device.localId).to.match(/^c:[0-9a-f]{64}$/);
-    expect(payload.ext.device.localId).to.not.equal(storedDeviceId);
   });
 
   it('should not persist a device id when telemetry is disabled', async () => {
