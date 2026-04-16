@@ -1,8 +1,9 @@
 # Template for setting up the package feeds and installing python.
 # Feeds configured:
-#   - pip
 #   - maven & gradle
+#   - npm
 #   - nuget
+#   - pip
 #
 # n.b. This template writes to user profile files.
 
