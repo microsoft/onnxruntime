@@ -464,29 +464,31 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
             }
           }
 
-          // Check if any kept child Cast targets bool when the first cast is lossy.
-          // Bool conversion tests for zero/non-zero, so any lossy intermediate cast
-          // that maps non-zero values to zero (e.g. float truncation) changes the result.
-          bool is_loss_cast_and_child_cast_to_bool = false;
-          if (loss_precision_cast) {
-            for (const auto& n : cast_nodes_to_keep) {
-              const Node& kept_node = n;
-              auto kept_dst_type = kept_node.OutputDefs()[0]->Type();
-              if (kept_dst_type != nullptr && GetTypeGroup(kept_dst_type) == Bool) {
-                is_loss_cast_and_child_cast_to_bool = true;
-                break;
+          if (!cross_ep) {
+            // Check if any kept child Cast targets bool when the first cast is lossy.
+            // Bool conversion tests for zero/non-zero, so any lossy intermediate cast
+            // that maps non-zero values to zero (e.g. float truncation) changes the result.
+            bool is_loss_cast_and_child_cast_to_bool = false;
+            if (loss_precision_cast) {
+              for (const auto& n : cast_nodes_to_keep) {
+                const Node& kept_node = n;
+                auto kept_dst_type = kept_node.OutputDefs()[0]->Type();
+                if (kept_dst_type != nullptr && GetTypeGroup(kept_dst_type) == Bool) {
+                  is_loss_cast_and_child_cast_to_bool = true;
+                  break;
+                }
               }
             }
-          }
 
-          if (!cross_ep && !is_loss_cast_and_child_cast_to_bool) {
-            for (auto& n : cast_nodes_to_keep) {
-              Node& cast_node_to_keep = n;
-              graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
+            if (!is_loss_cast_and_child_cast_to_bool) {
+              for (auto& n : cast_nodes_to_keep) {
+                Node& cast_node_to_keep = n;
+                graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
+              }
+
+              removed = graph_utils::RemoveNode(graph, node);
+              modified = true;
             }
-
-            removed = graph_utils::RemoveNode(graph, node);
-            modified = true;
           }
         }
       }
