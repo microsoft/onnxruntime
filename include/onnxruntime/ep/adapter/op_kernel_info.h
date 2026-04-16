@@ -8,9 +8,11 @@
 #endif
 
 #include <memory>
+#include <shared_mutex>
 
 #include <gsl/gsl>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
@@ -63,6 +65,10 @@ struct OpKernelInfo {
     const OrtEp* ort_ep_{};
     const ::onnxruntime::IExecutionProvider* ep_impl_{};
     std::vector<Tensor> constant_input_tensors;
+
+    mutable std::shared_mutex allocator_cache_mutex_;
+    mutable InlinedHashMap<OrtMemType, AllocatorPtr> allocator_cache_;
+
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelInfoCache);
   };
 
@@ -74,9 +80,31 @@ struct OpKernelInfo {
   }
 
   AllocatorPtr GetAllocator(OrtMemType mem_type) const {
+    {
+      std::shared_lock lock(cache_->allocator_cache_mutex_);
+      auto it = cache_->allocator_cache_.find(mem_type);
+      if (it != cache_->allocator_cache_.end()) {
+        return it->second;
+      }
+    }
+
+    std::unique_lock lock(cache_->allocator_cache_mutex_);
+    // Double-check after acquiring exclusive lock
+    auto it = cache_->allocator_cache_.find(mem_type);
+    if (it != cache_->allocator_cache_.end()) {
+      return it->second;
+    }
+
     OrtAllocator* ort_allocator = nullptr;
-    Ort::ThrowOnError(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator));
-    return std::make_shared<IAllocatorWrappingOrtAllocator>(ort_allocator);
+    Ort::Status status(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator));
+    if (!status.IsOK()) {
+      cache_->allocator_cache_.emplace(mem_type, nullptr);
+      return nullptr;
+    }
+
+    auto allocator = std::make_shared<IAllocatorWrappingOrtAllocator>(ort_allocator);
+    cache_->allocator_cache_.emplace(mem_type, allocator);
+    return allocator;
   }
 
   Node node() const noexcept {
