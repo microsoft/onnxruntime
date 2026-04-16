@@ -373,7 +373,7 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
 
 // Verify that RemoveDuplicateCastTransformer does not fuse Cast(float->int32)->Cast(int32->bool)
 // because the intermediate int32 truncation changes semantics (e.g. -0.1 -> 0 -> false vs -0.1 -> true).
-// Regression test for https://github.com/microsoft/onnxruntime/issues/25269
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28089
 TEST(TransformerTest, CastFloatToIntToBoolNotFused) {
   auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();

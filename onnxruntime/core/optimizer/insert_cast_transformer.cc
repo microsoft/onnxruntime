@@ -352,7 +352,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         //       since there is actual loss of precision.
         //     - if the first cast loses precision and a downstream cast targets bool,
         //       since removing it changes zero/non-zero semantics (e.g., float->int truncation
-        //       before a bool cast). See https://github.com/microsoft/onnxruntime/issues/25269
+        //       before a bool cast). See https://github.com/microsoft/onnxruntime/issues/28089
         // Other cases are OK for this optimization, including below two cases,
         // which are not actual loss of precision:
         //     - (low precision -> high precision -> low precision)
@@ -467,19 +467,19 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           // Check if any kept child Cast targets bool when the first cast is lossy.
           // Bool conversion tests for zero/non-zero, so any lossy intermediate cast
           // that maps non-zero values to zero (e.g. float truncation) changes the result.
-          bool any_child_casts_to_bool = false;
+          bool is_loss_cast_and_child_cast_to_bool = false;
           if (loss_precision_cast) {
             for (const auto& n : cast_nodes_to_keep) {
               const Node& kept_node = n;
               auto kept_dst_type = kept_node.OutputDefs()[0]->Type();
               if (kept_dst_type != nullptr && GetTypeGroup(kept_dst_type) == Bool) {
-                any_child_casts_to_bool = true;
+                is_loss_cast_and_child_cast_to_bool = true;
                 break;
               }
             }
           }
 
-          if (!cross_ep && !(loss_precision_cast && any_child_casts_to_bool)) {
+          if (!cross_ep && !is_loss_cast_and_child_cast_to_bool) {
             for (auto& n : cast_nodes_to_keep) {
               Node& cast_node_to_keep = n;
               graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
