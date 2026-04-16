@@ -47,14 +47,15 @@ steps:
           symbolProject: 'ONNX Runtime'
           subscription: 'OnnxrunTimeCodeSign_20240611'
           searchPattern: |
-            $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb
-            $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_*.pdb
+            $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_*.pdb
 
 
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
       inputs:
         script: |
+          REM Read the API version (minor component) from VERSION_NUMBER for versioned DLL name
+          for /f "delims=. tokens=2" %%a in ($(Build.SourcesDirectory)\VERSION_NUMBER) do set ORT_API_VER=%%a
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
@@ -69,7 +70,7 @@ steps:
           )
 
           echo "Directories created"
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_%ORT_API_VER%.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
@@ -101,8 +102,8 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
 
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_%ORT_API_VER%.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_%ORT_API_VER%.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\framework\provider_options.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include

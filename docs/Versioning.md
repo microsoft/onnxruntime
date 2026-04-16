@@ -63,13 +63,22 @@ npm --version    # Should be v8.0 or newer
 
    The value should be set to the second component of the version string. E.g., `26` for version `1.26.0`.
 
-5. **Review all changes**
+5. **Update versioned shared library name constants (Manual Step)**
+
+   The shared library is version-suffixed (e.g., `onnxruntime_25.dll` on Windows, `libonnxruntime.so.25` on Linux).
+   When the `ORT_API_VERSION` changes, update the following constants to match:
+   - C#: `OrtApiVersionSuffix` in `csharp/src/Microsoft.ML.OnnxRuntime/NativeMethods.shared.cs`
+   - Java: `ORT_LIB_API_VERSION` in `java/src/main/java/ai/onnxruntime/OnnxRuntime.java`
+   - NuGet .props files: `onnxruntime_XX.dll` / `onnxruntime_XX.lib` in `csharp/src/Microsoft.ML.OnnxRuntime/targets/netstandard/props.xml` and `props_qnn.xml`
+   - WinML files: `onnxruntime_XX.dll` in `csharp/src/Microsoft.AI.MachineLearning.Interop/Microsoft.AI.MachineLearning.props` and `csharp/src/Microsoft.AI.MachineLearning/Microsoft.AI.MachineLearning.targets`
+
+6. **Review all changes**
 
    Review all modified files. Verify:
    - Version numbers are correct in all updated files
    - The release notes URL format is correct (e.g., `https://github.com/Microsoft/onnxruntime/releases/tag/vX.Y.Z`)
 
-6. **Commit and create PR**
+7. **Commit and create PR**
 
    Commit all changes and create a PR targeting `main` or a release branch as appropriate.
 

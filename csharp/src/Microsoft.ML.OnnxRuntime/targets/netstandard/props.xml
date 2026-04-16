@@ -12,19 +12,19 @@
 
   <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'ARM64'">
     <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm64/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm64/native/onnxruntime_25.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
   <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'ARM'">
     <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm/native/onnxruntime_25.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
   <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
    <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x64/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x64/native/onnxruntime_25.lib;%(AdditionalDependencies)</AdditionalDependencies>
    </Link>
   </ItemDefinitionGroup>
 
@@ -35,7 +35,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\onnxruntime_25.dll</OnnxRuntimeBinary>
   </PropertyGroup>
 
   <!-- Assume apps using the Microsoft.ML.OnnxRuntime.DirectML package only want the DirectML binaries (no need for a build dependency). -->
@@ -47,10 +47,10 @@
 
   <ItemGroup>
     <!-- x64 -->
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_25.dll"
           Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll')">
-      <Link>onnxruntime.dll</Link>
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_25.dll')">
+      <Link>onnxruntime_25.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -112,10 +112,10 @@
     </None>
 
     <!-- arm64 -->
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime_25.dll"
           Condition="'$(PlatformTarget)' == 'ARM64' AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll')">
-      <Link>onnxruntime.dll</Link>
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime_25.dll')">
+      <Link>onnxruntime_25.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -128,10 +128,10 @@
     </None>
 
     <!-- arm -->
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime_25.dll"
           Condition="'$(PlatformTarget)' == 'ARM' AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime.dll')">
-      <Link>onnxruntime.dll</Link>
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime_25.dll')">
+      <Link>onnxruntime_25.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
