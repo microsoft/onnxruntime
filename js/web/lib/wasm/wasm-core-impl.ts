@@ -29,7 +29,7 @@ import {
 import { getInstance } from './wasm-factory';
 import { allocWasmString, checkLastError } from './wasm-utils';
 import { loadFile } from './wasm-utils-load-file';
-import { initTelemetry, logSessionModelInfo } from './telemetry.js';
+import { initTelemetry, setPendingModelSize } from './telemetry.js';
 
 // #region Initializations
 
@@ -399,6 +399,7 @@ export const createSession = async (
       }
     }
 
+    setPendingModelSize(modelDataLength);
     sessionHandle = await wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
     wasm.webgpuOnCreateSession?.(sessionHandle);
     if (sessionHandle === 0) {
@@ -415,7 +416,6 @@ export const createSession = async (
     }
 
     const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
-    logSessionModelInfo(modelDataLength, inputCount, outputCount);
 
     const enableGraphCapture = !!options?.enableGraphCapture;
 

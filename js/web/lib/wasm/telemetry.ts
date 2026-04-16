@@ -265,8 +265,23 @@ const enqueue = async (eventName: string, eventData: Record<string, unknown>): P
   queue.push(createQueuedTelemetryEvent(eventName, payload));
 };
 
-const getEventData = (eventName: string, eventData: Record<string, unknown>): Record<string, unknown> =>
-  eventName === PROCESS_INFO_EVENT ? { ...getBrowserMetadata(), ...eventData } : eventData;
+let pendingModelSizeKB: number | null = null;
+
+const getEventData = (eventName: string, eventData: Record<string, unknown>): Record<string, unknown> => {
+  if (eventName === PROCESS_INFO_EVENT) {
+    return { ...getBrowserMetadata(), ...eventData };
+  }
+  if (eventName === 'SessionCreation' && pendingModelSizeKB !== null) {
+    const enriched = { ...eventData, modelSizeKB: pendingModelSizeKB };
+    pendingModelSizeKB = null;
+    return enriched;
+  }
+  return eventData;
+};
+
+export const setPendingModelSize = (modelSizeBytes: number): void => {
+  pendingModelSizeKB = Math.round(modelSizeBytes / 1024);
+};
 
 const emitTelemetryEvent = (eventName: string, eventData: Record<string, unknown>): void => {
   if (!shouldEmitEvent(eventName)) {
@@ -476,6 +491,7 @@ export const resetTelemetryForTesting = (): void => {
   protectedDeviceIdInitialized = false;
   protectedDeviceIdPromise = null;
   wasmTelemetrySupported = false;
+  pendingModelSizeKB = null;
   pendingEnqueues.clear();
 };
 
@@ -509,23 +525,4 @@ export const initTelemetry = (module: OrtWasmModule): void => {
   ) => {
     emitTelemetryEvent(eventName, getEventData(eventName, eventData));
   };
-};
-
-export const logSessionModelInfo = (modelSizeBytes: number, inputCount?: number, outputCount?: number): void => {
-  if (!isTelemetrySupported()) {
-    return;
-  }
-
-  try {
-    const info: Record<string, unknown> = { modelSizeBytes };
-    if (inputCount !== undefined) {
-      info.inputCount = inputCount;
-    }
-    if (outputCount !== undefined) {
-      info.outputCount = outputCount;
-    }
-    emitTelemetryEvent('modelinfo', info);
-  } catch {
-    // Telemetry must not disrupt the application.
-  }
 };
