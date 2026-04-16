@@ -1545,11 +1545,12 @@ TEST_F(GraphTransformationTests, ConstantFoldingOutputSizeLimit) {
   }
 }
 
-// Test that the default constant folding limit prevents extremely large outputs.
-TEST_F(GraphTransformationTests, ConstantFoldingDefaultLimitBlocksLargeExpand) {
+// Test that an explicitly configured constant folding output-size limit blocks
+// folding a very large ConstantOfShape output.
+TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConstantOfShape) {
   // Build a model with a ConstantOfShape node producing a huge output.
   // Shape = [16384, 16384] = 268M elements * 4 bytes = 1 GB.
-  // Default limit is 1 GB, so use a smaller limit to test the blocking behavior.
+  // Use an explicit 512 MB limit so the 1 GB output is not folded.
 
   auto build_model = [&](ModelTestBuilder& builder) {
     auto* shape_data = builder.MakeInitializer<int64_t>({2}, {16384, 16384});
