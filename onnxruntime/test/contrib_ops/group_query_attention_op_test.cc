@@ -59,9 +59,9 @@ static void RunGQASeqlensKTest(
   tester.AddOptionalInputEdge<float>();    // attention_bias
   tester.AddOptionalInputEdge<float>();    // head_sink
 
-  // Shape inference derives present_sequence_length from past_key dim 2 when past is
-  // provided, or from total_sequence_length otherwise.
-  int declared_present_seqlen = provide_past ? past_seq_len : static_cast<int>(total_seq_len);
+  // For failure tests with invalid total_seq_len, clamp declared output shape to avoid
+  // negative-sized vectors in test setup. The operator rejects these inputs before using outputs.
+  int declared_present_seqlen = provide_past ? past_seq_len : std::max(1, static_cast<int>(total_seq_len));
   tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
                           std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
   tester.AddOutput<float>("present_key",
@@ -166,6 +166,56 @@ TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
       "is too small for sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/4);
+}
+
+// Boundary: seqlens_k == present_kv_seqlen - 1 is max valid value with larger present buffer.
+TEST(GroupQueryAttentionTest, MaxBoundarySeqlensK) {
+  // past_seq_len=4 → present_kv_seqlen=4; seqlens_k=3 → total_seqlen=4 == present_kv_seqlen
+  // seqlens_k must be < present_kv_seqlen, so seqlens_k=3 is the max valid value.
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{3},
+      /*total_seq_len=*/4,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
+}
+
+// Off-by-one: seqlens_k == present_kv_seqlen should be rejected (one past the valid range).
+TEST(GroupQueryAttentionTest, OffByOneSeqlensK_OOB) {
+  // past_seq_len=4 → present_kv_seqlen=4; seqlens_k=4 is out of range [0, 4).
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{4},
+      /*total_seq_len=*/4,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k[0]",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
+}
+
+// total_sequence_length <= 0 should be rejected in CheckInputs.
+TEST(GroupQueryAttentionTest, TotalSeqLenZero) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/0,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "total_sequence_length must be positive");
+}
+
+TEST(GroupQueryAttentionTest, TotalSeqLenNegative) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/-5,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "total_sequence_length must be positive");
 }
 
 // Shape validation: seqlens_k with wrong rank (2D instead of 1D) must be rejected.
