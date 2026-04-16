@@ -163,13 +163,19 @@ class ThreadPool {
   // the C API) takes priority. When allow_spinning is false, spin_duration_us is forced
   // to 0 by CreateThreadPoolHelper regardless of the value passed here.
   //
+  // "spin_backoff_max" controls an optional exponential-backoff inside the spin
+  // window. 1 (default) keeps the legacy behavior (single SpinPause() per iteration).
+  // Values >= 2 emit 1, 2, 4, ... pause calls per iteration capped at this value,
+  // reducing CPU/power density during the same targeted wall-clock spin duration.
+  //
   // REQUIRES: degree_of_parallelism > 0
   ThreadPool(Env* env,
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,
              int degree_of_parallelism,
              int spin_duration_us = kSpinDurationDefault,
-             bool force_hybrid = false);
+             bool force_hybrid = false,
+             unsigned int spin_backoff_max = 1);
 
   // Backward-compatible overload: maps the legacy bool parameter to the new
   // spin_duration_us semantics so that external callers passing true/false
