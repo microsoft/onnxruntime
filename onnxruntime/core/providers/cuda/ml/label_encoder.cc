@@ -103,8 +103,8 @@ static T GetDefaultValue(const OpKernelInfo& info, const std::string& attr_name,
 #endif  // BUILD_CUDA_EP_AS_PLUGIN
   if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int64_t>) {
     T default_value;
-    auto result = info.GetAttr<T>(attr_name, &default_value);
-    if (result.IsOK()) {
+    auto attr_result = info.GetAttr<T>(attr_name, &default_value);
+    if (attr_result.IsOK()) {
       return default_value;
     }
   }
