@@ -12,19 +12,276 @@ const COLLECTOR_URL = `https://mobile.events.data.microsoft.com/OneCollector/1.0
 const IKEY_PREFIX = `o:${IKEY.split('-')[0]}`;
 const FLUSH_INTERVAL_MS = 30_000;
 const MAX_QUEUE_SIZE = 500;
+const MAX_BATCH_SIZE_BYTES = 100 * 1024;
+const MAX_UNLOAD_BATCH_SIZE_BYTES = 60 * 1024;
 const MAX_RETRIES = 6;
+const BASE_BACKOFF_MS = 3000;
+const MAX_BACKOFF_MS = 600_000;
+const RETRY_RANDOMIZATION_LOWER_THRESHOLD = 0.8;
+const RETRY_RANDOMIZATION_UPPER_THRESHOLD = 1.2;
+const OFFLINE_RETRY_MULTIPLIER = 10;
 const DEVICE_ID_KEY = 'ort_device_id';
+const DEVICE_ID_COOKIE_NAME = DEVICE_ID_KEY;
+const DEVICE_ID_COOKIE_SCOPE_TEST_NAME = 'ort_device_id_scope_test';
+const DEVICE_ID_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 const DEVICE_ID_HASH_PREFIX = 'c:';
+const PENDING_TELEMETRY_SESSION_STORAGE_KEY = 'ort_pending_telemetry';
+const LEGACY_PROCESS_INFO_SESSION_STORAGE_KEY = 'ort_pending_processinfo';
 const BYTES_PER_MEBIBYTE = 1024 * 1024;
+const PROCESS_INFO_EVENT = 'ProcessInfo';
 
-let queue: string[] = [];
+type QueuedTelemetryEvent = {
+  id: string;
+  eventName: string;
+  payload: string;
+  payloadBytes: number;
+};
+
+type StoredQueuedTelemetryEvent = Pick<QueuedTelemetryEvent, 'id' | 'eventName' | 'payload'>;
+
+const queue: QueuedTelemetryEvent[] = [];
+const pendingCachedEvents: QueuedTelemetryEvent[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let deviceId: string | null = null;
 let protectedDeviceId: string | null = null;
 let protectedDeviceIdInitialized = false;
 let protectedDeviceIdPromise: Promise<string | null> | null = null;
 let wasmTelemetrySupported = false;
+let deviceIdCookieDomain: string | null = null;
+let deviceIdCookieAvailable = false;
+let deviceIdCookieResolved = false;
+let nextQueuedTelemetryEventId = 0;
 const pendingEnqueues = new Set<Promise<void>>();
+
+const getPayloadSize = (payload: string): number => {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(payload).byteLength;
+  }
+
+  if (typeof Blob !== 'undefined') {
+    return new Blob([payload]).size;
+  }
+
+  return payload.length;
+};
+
+const createQueuedTelemetryEvent = (
+  eventName: string,
+  payload: string,
+  id = `${Date.now()}-${nextQueuedTelemetryEventId++}`,
+): QueuedTelemetryEvent => ({
+  id,
+  eventName,
+  payload,
+  payloadBytes: getPayloadSize(payload),
+});
+
+const isStoredQueuedTelemetryEvent = (value: unknown): value is StoredQueuedTelemetryEvent => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const entry = value as Record<string, unknown>;
+  return typeof entry.id === 'string' && typeof entry.eventName === 'string' && typeof entry.payload === 'string';
+};
+
+const persistPendingTelemetryCache = (): void => {
+  if (typeof sessionStorage === 'undefined') {
+    return;
+  }
+
+  try {
+    if (pendingCachedEvents.length === 0) {
+      sessionStorage.removeItem(PENDING_TELEMETRY_SESSION_STORAGE_KEY);
+      sessionStorage.removeItem(LEGACY_PROCESS_INFO_SESSION_STORAGE_KEY);
+      return;
+    }
+
+    const storedEntries: StoredQueuedTelemetryEvent[] = pendingCachedEvents.map(({ id, eventName, payload }) => ({
+      id,
+      eventName,
+      payload,
+    }));
+
+    sessionStorage.setItem(PENDING_TELEMETRY_SESSION_STORAGE_KEY, JSON.stringify(storedEntries));
+    sessionStorage.removeItem(LEGACY_PROCESS_INFO_SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures so telemetry does not disrupt the application.
+  }
+};
+
+const removePendingTelemetryEntries = (entries: readonly QueuedTelemetryEvent[]): void => {
+  if (entries.length === 0 || pendingCachedEvents.length === 0) {
+    return;
+  }
+
+  const entryIds = new Set(entries.map((entry) => entry.id));
+  let removed = false;
+  for (let i = pendingCachedEvents.length - 1; i >= 0; i--) {
+    if (entryIds.has(pendingCachedEvents[i].id)) {
+      pendingCachedEvents.splice(i, 1);
+      removed = true;
+    }
+  }
+
+  if (removed) {
+    persistPendingTelemetryCache();
+  }
+};
+
+const restorePendingTelemetryCache = (): void => {
+  if (typeof sessionStorage === 'undefined') {
+    return;
+  }
+
+  try {
+    const storedTelemetryPayload = sessionStorage.getItem(PENDING_TELEMETRY_SESSION_STORAGE_KEY);
+    const legacyProcessInfoPayload =
+      storedTelemetryPayload === null ? sessionStorage.getItem(LEGACY_PROCESS_INFO_SESSION_STORAGE_KEY) : null;
+
+    const restoredEntries: StoredQueuedTelemetryEvent[] = storedTelemetryPayload
+      ? (JSON.parse(storedTelemetryPayload) as unknown[]).filter(isStoredQueuedTelemetryEvent)
+      : legacyProcessInfoPayload
+        ? [{ id: `${Date.now()}-legacy-processinfo`, eventName: PROCESS_INFO_EVENT, payload: legacyProcessInfoPayload }]
+        : [];
+
+    if (restoredEntries.length === 0) {
+      return;
+    }
+
+    const existingIds = new Set([...queue, ...pendingCachedEvents].map((entry) => entry.id));
+    let restoredAny = false;
+    for (const entry of restoredEntries) {
+      if (existingIds.has(entry.id)) {
+        continue;
+      }
+
+      const restoredEntry = createQueuedTelemetryEvent(entry.eventName, entry.payload, entry.id);
+      queue.push(restoredEntry);
+      pendingCachedEvents.push(restoredEntry);
+      existingIds.add(entry.id);
+      restoredAny = true;
+    }
+
+    if (restoredAny || legacyProcessInfoPayload) {
+      persistPendingTelemetryCache();
+    }
+  } catch {
+    // Ignore storage failures so telemetry does not disrupt the application.
+  }
+};
+
+const getLocalStorageDeviceId = (): string | null => {
+  if (typeof localStorage === 'undefined') {
+    return null;
+  }
+
+  try {
+    return localStorage.getItem(DEVICE_ID_KEY);
+  } catch {
+    return null;
+  }
+};
+
+const persistLocalStorageDeviceId = (rawDeviceId: string): void => {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.setItem(DEVICE_ID_KEY, rawDeviceId);
+  } catch {
+    // Ignore storage failures so telemetry does not disrupt the application.
+  }
+};
+
+const getCookieValue = (name: string): string | null => {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  try {
+    const encodedName = `${encodeURIComponent(name)}=`;
+    for (const cookie of document.cookie.split(';')) {
+      const trimmedCookie = cookie.trim();
+      if (trimmedCookie.startsWith(encodedName)) {
+        return decodeURIComponent(trimmedCookie.slice(encodedName.length));
+      }
+    }
+  } catch {
+    // Ignore cookie failures so telemetry does not disrupt the application.
+  }
+
+  return null;
+};
+
+const isIpAddress = (hostname: string): boolean => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':');
+
+const shouldUseSecureCookies = (): boolean =>
+  typeof location !== 'undefined' && (location.protocol === 'https:' || location.origin?.startsWith('https://'));
+
+const setCookieValue = (name: string, value: string, maxAgeSeconds: number, domain?: string): boolean => {
+  if (typeof document === 'undefined') {
+    return false;
+  }
+
+  try {
+    const attributes = [
+      `${encodeURIComponent(name)}=${encodeURIComponent(value)}`,
+      `Max-Age=${maxAgeSeconds}`,
+      'Path=/',
+      'SameSite=Lax',
+    ];
+    if (domain) {
+      attributes.push(`Domain=${domain}`);
+    }
+    if (shouldUseSecureCookies()) {
+      attributes.push('Secure');
+    }
+
+    document.cookie = attributes.join('; ');
+    return getCookieValue(name) === value;
+  } catch {
+    return false;
+  }
+};
+
+const clearCookieValue = (name: string, domain?: string): void => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  try {
+    const attributes = [`${encodeURIComponent(name)}=`, 'Max-Age=0', 'Path=/', 'SameSite=Lax'];
+    if (domain) {
+      attributes.push(`Domain=${domain}`);
+    }
+    if (shouldUseSecureCookies()) {
+      attributes.push('Secure');
+    }
+    document.cookie = attributes.join('; ');
+  } catch {
+    // Ignore cookie failures so telemetry does not disrupt the application.
+  }
+};
+
+const getCookieDomainCandidates = (): string[] => {
+  if (typeof location === 'undefined' || !location.hostname || isIpAddress(location.hostname)) {
+    return [];
+  }
+
+  const hostnameLabels = location.hostname.split('.').filter(Boolean);
+  if (hostnameLabels.length < 2) {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  for (let i = hostnameLabels.length - 2; i >= 0; i--) {
+    candidates.push(hostnameLabels.slice(i).join('.'));
+  }
+
+  return candidates;
+};
 
 const generateUUID = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -41,19 +298,80 @@ const generateUUID = (): string => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
+const resolveDeviceIdCookieStorage = (): { available: boolean; domain: string | null } => {
+  if (deviceIdCookieResolved) {
+    return { available: deviceIdCookieAvailable, domain: deviceIdCookieDomain };
+  }
+
+  const testValue = generateUUID();
+  for (const domain of getCookieDomainCandidates()) {
+    if (setCookieValue(DEVICE_ID_COOKIE_SCOPE_TEST_NAME, testValue, 1, domain)) {
+      clearCookieValue(DEVICE_ID_COOKIE_SCOPE_TEST_NAME, domain);
+      deviceIdCookieDomain = domain;
+      deviceIdCookieAvailable = true;
+      deviceIdCookieResolved = true;
+      return { available: true, domain };
+    }
+  }
+
+  if (setCookieValue(DEVICE_ID_COOKIE_SCOPE_TEST_NAME, testValue, 1)) {
+    clearCookieValue(DEVICE_ID_COOKIE_SCOPE_TEST_NAME);
+    deviceIdCookieDomain = null;
+    deviceIdCookieAvailable = true;
+    deviceIdCookieResolved = true;
+    return { available: true, domain: null };
+  }
+
+  deviceIdCookieDomain = null;
+  deviceIdCookieAvailable = false;
+  deviceIdCookieResolved = true;
+  return { available: false, domain: null };
+};
+
+const getCookieDeviceId = (): string | null => getCookieValue(DEVICE_ID_COOKIE_NAME);
+
+const persistCookieDeviceId = (rawDeviceId: string): void => {
+  const cookieStorage = resolveDeviceIdCookieStorage();
+  if (!cookieStorage.available) {
+    return;
+  }
+
+  if (
+    !setCookieValue(
+      DEVICE_ID_COOKIE_NAME,
+      rawDeviceId,
+      DEVICE_ID_COOKIE_MAX_AGE_SECONDS,
+      cookieStorage.domain ?? undefined,
+    )
+  ) {
+    deviceIdCookieAvailable = false;
+  }
+};
+
 const getDeviceId = (): string => {
   if (deviceId) {
     return deviceId;
   }
-  try {
-    deviceId = localStorage.getItem(DEVICE_ID_KEY);
-    if (!deviceId) {
-      deviceId = generateUUID();
-      localStorage.setItem(DEVICE_ID_KEY, deviceId);
-    }
-  } catch {
-    deviceId = generateUUID();
+
+  const cookieDeviceId = getCookieDeviceId();
+  if (cookieDeviceId) {
+    deviceId = cookieDeviceId;
+    persistCookieDeviceId(deviceId);
+    persistLocalStorageDeviceId(deviceId);
+    return deviceId;
   }
+
+  const localStorageDeviceId = getLocalStorageDeviceId();
+  if (localStorageDeviceId) {
+    deviceId = localStorageDeviceId;
+    persistCookieDeviceId(deviceId);
+    persistLocalStorageDeviceId(deviceId);
+    return deviceId;
+  }
+
+  deviceId = generateUUID();
+  persistCookieDeviceId(deviceId);
+  persistLocalStorageDeviceId(deviceId);
   return deviceId;
 };
 
@@ -158,15 +476,35 @@ const isRuntimeTelemetryEnabled = (): boolean => env.telemetry?.enabled !== fals
 
 const isTelemetrySupported = (): boolean => !BUILD_DEFS.DISABLE_TELEMETRY && wasmTelemetrySupported;
 
-const shouldEmitTelemetry = (): boolean => isTelemetrySupported() && isRuntimeTelemetryEnabled();
+const shouldAlwaysEmitEvent = (eventName: string): boolean => eventName === PROCESS_INFO_EVENT;
+
+const shouldEmitEvent = (eventName: string): boolean =>
+  isTelemetrySupported() && (isRuntimeTelemetryEnabled() || shouldAlwaysEmitEvent(eventName));
+
+const canSendBatch = (allowWhenRuntimeTelemetryDisabled: boolean): boolean =>
+  isTelemetrySupported() && (isRuntimeTelemetryEnabled() || allowWhenRuntimeTelemetryDisabled);
+
+const isBrowserOffline = (): boolean =>
+  typeof navigator !== 'undefined' && 'onLine' in navigator && navigator.onLine === false;
+
+const shouldRetryStatus = (statusCode: number): boolean =>
+  statusCode === 408 || statusCode === 429 || statusCode >= 500;
+
+const getRetryDelayMs = (attempt: number, multiplier = 1): number => {
+  const randomizationFactor =
+    RETRY_RANDOMIZATION_LOWER_THRESHOLD +
+    Math.random() * (RETRY_RANDOMIZATION_UPPER_THRESHOLD - RETRY_RANDOMIZATION_LOWER_THRESHOLD);
+
+  return Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt) * randomizationFactor * multiplier, MAX_BACKOFF_MS);
+};
 
 const enqueue = async (eventName: string, eventData: Record<string, unknown>): Promise<void> => {
-  if (!shouldEmitTelemetry() || queue.length >= MAX_QUEUE_SIZE) {
+  if (!shouldEmitEvent(eventName) || pendingCachedEvents.length >= MAX_QUEUE_SIZE) {
     return;
   }
 
   const localId = await getProtectedDeviceId();
-  if (!shouldEmitTelemetry() || queue.length >= MAX_QUEUE_SIZE) {
+  if (!shouldEmitEvent(eventName) || pendingCachedEvents.length >= MAX_QUEUE_SIZE) {
     return;
   }
 
@@ -177,23 +515,26 @@ const enqueue = async (eventName: string, eventData: Record<string, unknown>): P
     ext.device = { localId };
   }
 
-  queue.push(
-    JSON.stringify({
-      name: eventName.toLowerCase(),
-      time: new Date().toISOString(),
-      ver: '4.0',
-      iKey: IKEY_PREFIX,
-      ext,
-      data: eventData,
-    }),
-  );
+  const payload = JSON.stringify({
+    name: eventName.toLowerCase(),
+    time: new Date().toISOString(),
+    ver: '4.0',
+    iKey: IKEY_PREFIX,
+    ext,
+    data: eventData,
+  });
+
+  const queuedEvent = createQueuedTelemetryEvent(eventName, payload);
+  queue.push(queuedEvent);
+  pendingCachedEvents.push(queuedEvent);
+  persistPendingTelemetryCache();
 };
 
 const getEventData = (eventName: string, eventData: Record<string, unknown>): Record<string, unknown> =>
-  eventName === 'ProcessInfo' ? { ...getBrowserMetadata(), ...eventData } : eventData;
+  eventName === PROCESS_INFO_EVENT ? { ...getBrowserMetadata(), ...eventData } : eventData;
 
 const emitTelemetryEvent = (eventName: string, eventData: Record<string, unknown>): void => {
-  if (!shouldEmitTelemetry()) {
+  if (!shouldEmitEvent(eventName)) {
     return;
   }
 
@@ -210,40 +551,6 @@ const emitTelemetryEvent = (eventName: string, eventData: Record<string, unknown
   void enqueuePromise.finally(() => pendingEnqueues.delete(enqueuePromise));
 };
 
-const sendWithRetry = (payload: string, headers: Record<string, string>, attempt = 0): void => {
-  if (!shouldEmitTelemetry()) {
-    return;
-  }
-
-  fetch(COLLECTOR_URL, {
-    method: 'POST',
-    headers,
-    body: payload,
-    keepalive: true,
-  }).then(
-    (res) => {
-      if (!res.ok && attempt < MAX_RETRIES && (res.status === 429 || res.status >= 500)) {
-        const delay = 3000 * Math.pow(2, attempt) + Math.random() * 1000;
-        setTimeout(() => {
-          if (shouldEmitTelemetry()) {
-            sendWithRetry(payload, headers, attempt + 1);
-          }
-        }, delay);
-      }
-    },
-    () => {
-      if (attempt < MAX_RETRIES) {
-        const delay = 3000 * Math.pow(2, attempt) + Math.random() * 1000;
-        setTimeout(() => {
-          if (shouldEmitTelemetry()) {
-            sendWithRetry(payload, headers, attempt + 1);
-          }
-        }, delay);
-      }
-    },
-  );
-};
-
 /* eslint-disable @typescript-eslint/naming-convention */
 const FETCH_HEADERS: Record<string, string> = {
   'Content-Type': 'application/x-json-stream',
@@ -253,13 +560,122 @@ const FETCH_HEADERS: Record<string, string> = {
 };
 /* eslint-enable @typescript-eslint/naming-convention */
 
-const flush = async (useBeacon = false): Promise<void> => {
-  if (!isTelemetrySupported()) {
+const buildBatchPayload = (batch: readonly QueuedTelemetryEvent[]): string =>
+  batch.map((entry) => entry.payload).join('\n');
+
+const getFetchHeaders = (): Record<string, string> => ({
+  ...FETCH_HEADERS,
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  'upload-time': Date.now().toString(),
+});
+
+type BatchRetrySender = (
+  batch: readonly QueuedTelemetryEvent[],
+  allowWhenRuntimeTelemetryDisabled: boolean,
+  attempt?: number,
+) => void;
+
+const sendBatchWithRetry: BatchRetrySender = (
+  batch: readonly QueuedTelemetryEvent[],
+  allowWhenRuntimeTelemetryDisabled: boolean,
+  attempt = 0,
+): void => {
+  if (!canSendBatch(allowWhenRuntimeTelemetryDisabled)) {
     return;
   }
 
-  if (!isRuntimeTelemetryEnabled()) {
-    queue = [];
+  if (isBrowserOffline()) {
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+    scheduleBatchRetry(batch, allowWhenRuntimeTelemetryDisabled, attempt, OFFLINE_RETRY_MULTIPLIER);
+    return;
+  }
+
+  fetch(COLLECTOR_URL, {
+    method: 'POST',
+    headers: getFetchHeaders(),
+    body: buildBatchPayload(batch),
+    keepalive: true,
+  }).then(
+    (res) => {
+      if (res.ok) {
+        removePendingTelemetryEntries(batch);
+        return;
+      }
+
+      if (shouldRetryStatus(res.status)) {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        scheduleBatchRetry(batch, allowWhenRuntimeTelemetryDisabled, attempt);
+      }
+    },
+    () => {
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      scheduleBatchRetry(batch, allowWhenRuntimeTelemetryDisabled, attempt);
+    },
+  );
+};
+
+const scheduleBatchRetry = (
+  batch: readonly QueuedTelemetryEvent[],
+  allowWhenRuntimeTelemetryDisabled: boolean,
+  attempt: number,
+  multiplier = 1,
+): void => {
+  if (attempt >= MAX_RETRIES) {
+    return;
+  }
+
+  const delay = getRetryDelayMs(attempt, multiplier);
+  setTimeout(() => {
+    if (canSendBatch(allowWhenRuntimeTelemetryDisabled)) {
+      sendBatchWithRetry(batch, allowWhenRuntimeTelemetryDisabled, attempt + 1);
+    }
+  }, delay);
+};
+
+const takeBatch = (maxBatchSizeBytes: number): QueuedTelemetryEvent[] => {
+  const batch: QueuedTelemetryEvent[] = [];
+  let batchSizeBytes = 0;
+
+  while (queue.length > 0) {
+    const nextEntry = queue[0];
+    if (!shouldEmitEvent(nextEntry.eventName)) {
+      queue.shift();
+      removePendingTelemetryEntries([nextEntry]);
+      continue;
+    }
+
+    const entrySizeBytes = nextEntry.payloadBytes + (batch.length > 0 ? 1 : 0);
+    if (batch.length > 0 && batchSizeBytes + entrySizeBytes > maxBatchSizeBytes) {
+      break;
+    }
+
+    queue.shift();
+    batch.push(nextEntry);
+    batchSizeBytes += entrySizeBytes;
+  }
+
+  return batch;
+};
+
+const flushBatch = (batch: readonly QueuedTelemetryEvent[], useBeacon: boolean): void => {
+  const allowWhenRuntimeTelemetryDisabled = batch.every((entry) => shouldAlwaysEmitEvent(entry.eventName));
+  const payload = buildBatchPayload(batch);
+
+  if (useBeacon && typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
+    const blob = new Blob([payload], { type: 'application/x-json-stream' });
+    if (
+      (navigator as unknown as { sendBeacon: (url: string, data: Blob) => boolean }).sendBeacon(COLLECTOR_URL, blob)
+    ) {
+      removePendingTelemetryEntries(batch);
+      return;
+    }
+  }
+
+  sendBatchWithRetry(batch, allowWhenRuntimeTelemetryDisabled);
+};
+
+const flush = async (useBeacon = false): Promise<void> => {
+  if (!isTelemetrySupported()) {
     return;
   }
 
@@ -267,23 +683,19 @@ const flush = async (useBeacon = false): Promise<void> => {
     await Promise.allSettled([...pendingEnqueues]);
   }
 
-  if (queue.length === 0) {
+  if (!useBeacon && isBrowserOffline()) {
     return;
   }
-  const batch = queue.splice(0);
-  const payload = batch.join('\n');
 
-  if (useBeacon && typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
-    const blob = new Blob([payload], { type: 'application/x-json-stream' });
-    if (
-      (navigator as unknown as { sendBeacon: (url: string, data: Blob) => boolean }).sendBeacon(COLLECTOR_URL, blob)
-    ) {
+  const maxBatchSizeBytes = useBeacon ? MAX_UNLOAD_BATCH_SIZE_BYTES : MAX_BATCH_SIZE_BYTES;
+  while (queue.length > 0) {
+    const batch = takeBatch(maxBatchSizeBytes);
+    if (batch.length === 0) {
       return;
     }
-  }
 
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  sendWithRetry(payload, { ...FETCH_HEADERS, 'upload-time': Date.now().toString() });
+    flushBatch(batch, useBeacon);
+  }
 };
 
 const startFlushTimer = (): void => {
@@ -306,11 +718,34 @@ const startFlushTimer = (): void => {
         void flush(true);
       }
     });
+    globalThis.addEventListener('online', () => {
+      void flush();
+    });
   }
 };
 
 export const flushTelemetry = async (useBeacon = false): Promise<void> => {
   await flush(useBeacon);
+};
+
+// Internal test hook to reset module state between unit tests.
+export const resetTelemetryForTesting = (): void => {
+  queue.length = 0;
+  pendingCachedEvents.length = 0;
+  if (flushTimer) {
+    clearInterval(flushTimer);
+    flushTimer = null;
+  }
+  deviceId = null;
+  protectedDeviceId = null;
+  protectedDeviceIdInitialized = false;
+  protectedDeviceIdPromise = null;
+  wasmTelemetrySupported = false;
+  deviceIdCookieDomain = null;
+  deviceIdCookieAvailable = false;
+  deviceIdCookieResolved = false;
+  nextQueuedTelemetryEventId = 0;
+  pendingEnqueues.clear();
 };
 
 export const initTelemetry = (module: OrtWasmModule): void => {
@@ -331,6 +766,7 @@ export const initTelemetry = (module: OrtWasmModule): void => {
     return;
   }
 
+  restorePendingTelemetryCache();
   startFlushTimer();
   if (isRuntimeTelemetryEnabled()) {
     void getProtectedDeviceId();
