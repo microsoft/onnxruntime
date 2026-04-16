@@ -43,7 +43,7 @@ void addObjectMethodsForLazyTensor(py::module& m);
 bool InitArray();
 
 bool GetProviderInstanceHash(const std::string& type,
-                             const ProviderOptionsMap& provider_options_map,
+                             [[maybe_unused]] const ProviderOptionsMap& provider_options_map,
                              size_t& hash) {
   // for built-in execution provider, currently only cpu / cuda support hash.
   if (type == kCpuExecutionProvider) {
