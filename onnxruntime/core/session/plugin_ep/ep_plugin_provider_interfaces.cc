@@ -15,7 +15,8 @@
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/resource_accountant.h"
 #include "core/common/inlined_containers.h"
-#include "core/common/narrow.h"
+#include <limits>
+
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -283,7 +284,12 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     OrtResourceCount available{};
     if (auto* ort_status = ort_ep_->GetAvailableResource(ort_ep_.get(), &available); ort_status == nullptr) {
       if (available.kind == OrtResourceCountKind_TotalBytes) {
-        resource_accountant->SetThreshold(ResourceCount{narrow<size_t>(available.value.total_bytes)});
+        auto bytes = available.value.total_bytes;
+        // Clamp to size_t max on 32-bit builds instead of throwing via narrow<>.
+        size_t clamped = (bytes > std::numeric_limits<size_t>::max())
+                             ? std::numeric_limits<size_t>::max()
+                             : static_cast<size_t>(bytes);
+        resource_accountant->SetThreshold(ResourceCount{clamped});
         LOGS(logger, VERBOSE) << Type() << " set resource threshold from device: "
                               << available.value.total_bytes << " bytes";
       }

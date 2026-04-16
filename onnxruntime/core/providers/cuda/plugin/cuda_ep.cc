@@ -607,6 +607,10 @@ OrtStatus* ORT_API_CALL CudaEp::GetAvailableResourceImpl(
     const OrtEp* this_ptr, OrtResourceCount* available) noexcept {
   EXCEPTION_TO_STATUS_BEGIN
 
+  if (available == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "`available` must not be null");
+  }
+
   auto* ep = static_cast<const CudaEp*>(this_ptr);
   int current_device = 0;
   auto cuda_err = cudaGetDevice(&current_device);

@@ -956,15 +956,16 @@ struct OrtScanKernelHelper {
  */
 typedef enum OrtResourceCountKind {
   OrtResourceCountKind_None = 0,        ///< Unset / zero-cost sentinel.
-  OrtResourceCountKind_TotalBytes = 1,  ///< Single uint64_t: total estimated bytes.
+  OrtResourceCountKind_TotalBytes = 1,  ///< Single uint64_t: byte count (cost or budget).
 } OrtResourceCountKind;
 
 /**
  * \brief ABI-stable tagged union representing a resource cost or budget.
  *
  * This struct is a C-safe variant that can be passed by value across the plugin DLL boundary.
- * The `kind` field selects which union member is active. The `_storage` member reserves space
- * for future resource types without changing the struct layout.
+ * The `kind` field selects which member of the `value` union is active. The
+ * `value.reserved_words` storage reserves space for future resource types without changing
+ * the struct layout.
  *
  * Adding new resource types requires only: (a) a new OrtResourceCountKind enum value,
  * (b) a new union member. No new C API functions are needed.
@@ -1003,7 +1004,6 @@ typedef struct OrtResourceCount {
 
 #ifdef __cplusplus
 static_assert(sizeof(OrtResourceCount) == 56, "OrtResourceCount size must not change to maintain ABI stability");
-static_assert(alignof(OrtResourceCount) == 8, "OrtResourceCount alignment must not change to maintain ABI stability");
 #endif
 
 /**
