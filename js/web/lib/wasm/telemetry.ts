@@ -21,36 +21,23 @@ const RETRY_RANDOMIZATION_LOWER_THRESHOLD = 0.8;
 const RETRY_RANDOMIZATION_UPPER_THRESHOLD = 1.2;
 const OFFLINE_RETRY_MULTIPLIER = 10;
 const DEVICE_ID_KEY = 'ort_device_id';
-const DEVICE_ID_COOKIE_NAME = DEVICE_ID_KEY;
-const DEVICE_ID_COOKIE_SCOPE_TEST_NAME = 'ort_device_id_scope_test';
-const DEVICE_ID_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 const DEVICE_ID_HASH_PREFIX = 'c:';
-const PENDING_TELEMETRY_SESSION_STORAGE_KEY = 'ort_pending_telemetry';
-const LEGACY_PROCESS_INFO_SESSION_STORAGE_KEY = 'ort_pending_processinfo';
 const BYTES_PER_MEBIBYTE = 1024 * 1024;
 const PROCESS_INFO_EVENT = 'ProcessInfo';
 
 type QueuedTelemetryEvent = {
-  id: string;
   eventName: string;
   payload: string;
   payloadBytes: number;
 };
 
-type StoredQueuedTelemetryEvent = Pick<QueuedTelemetryEvent, 'id' | 'eventName' | 'payload'>;
-
 const queue: QueuedTelemetryEvent[] = [];
-const pendingCachedEvents: QueuedTelemetryEvent[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let deviceId: string | null = null;
 let protectedDeviceId: string | null = null;
 let protectedDeviceIdInitialized = false;
 let protectedDeviceIdPromise: Promise<string | null> | null = null;
 let wasmTelemetrySupported = false;
-let deviceIdCookieDomain: string | null = null;
-let deviceIdCookieAvailable = false;
-let deviceIdCookieResolved = false;
-let nextQueuedTelemetryEventId = 0;
 const pendingEnqueues = new Set<Promise<void>>();
 
 const getPayloadSize = (payload: string): number => {
@@ -65,111 +52,11 @@ const getPayloadSize = (payload: string): number => {
   return payload.length;
 };
 
-const createQueuedTelemetryEvent = (
-  eventName: string,
-  payload: string,
-  id = `${Date.now()}-${nextQueuedTelemetryEventId++}`,
-): QueuedTelemetryEvent => ({
-  id,
+const createQueuedTelemetryEvent = (eventName: string, payload: string): QueuedTelemetryEvent => ({
   eventName,
   payload,
   payloadBytes: getPayloadSize(payload),
 });
-
-const isStoredQueuedTelemetryEvent = (value: unknown): value is StoredQueuedTelemetryEvent => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const entry = value as Record<string, unknown>;
-  return typeof entry.id === 'string' && typeof entry.eventName === 'string' && typeof entry.payload === 'string';
-};
-
-const persistPendingTelemetryCache = (): void => {
-  if (typeof sessionStorage === 'undefined') {
-    return;
-  }
-
-  try {
-    if (pendingCachedEvents.length === 0) {
-      sessionStorage.removeItem(PENDING_TELEMETRY_SESSION_STORAGE_KEY);
-      sessionStorage.removeItem(LEGACY_PROCESS_INFO_SESSION_STORAGE_KEY);
-      return;
-    }
-
-    const storedEntries: StoredQueuedTelemetryEvent[] = pendingCachedEvents.map(({ id, eventName, payload }) => ({
-      id,
-      eventName,
-      payload,
-    }));
-
-    sessionStorage.setItem(PENDING_TELEMETRY_SESSION_STORAGE_KEY, JSON.stringify(storedEntries));
-    sessionStorage.removeItem(LEGACY_PROCESS_INFO_SESSION_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures so telemetry does not disrupt the application.
-  }
-};
-
-const removePendingTelemetryEntries = (entries: readonly QueuedTelemetryEvent[]): void => {
-  if (entries.length === 0 || pendingCachedEvents.length === 0) {
-    return;
-  }
-
-  const entryIds = new Set(entries.map((entry) => entry.id));
-  let removed = false;
-  for (let i = pendingCachedEvents.length - 1; i >= 0; i--) {
-    if (entryIds.has(pendingCachedEvents[i].id)) {
-      pendingCachedEvents.splice(i, 1);
-      removed = true;
-    }
-  }
-
-  if (removed) {
-    persistPendingTelemetryCache();
-  }
-};
-
-const restorePendingTelemetryCache = (): void => {
-  if (typeof sessionStorage === 'undefined') {
-    return;
-  }
-
-  try {
-    const storedTelemetryPayload = sessionStorage.getItem(PENDING_TELEMETRY_SESSION_STORAGE_KEY);
-    const legacyProcessInfoPayload =
-      storedTelemetryPayload === null ? sessionStorage.getItem(LEGACY_PROCESS_INFO_SESSION_STORAGE_KEY) : null;
-
-    const restoredEntries: StoredQueuedTelemetryEvent[] = storedTelemetryPayload
-      ? (JSON.parse(storedTelemetryPayload) as unknown[]).filter(isStoredQueuedTelemetryEvent)
-      : legacyProcessInfoPayload
-        ? [{ id: `${Date.now()}-legacy-processinfo`, eventName: PROCESS_INFO_EVENT, payload: legacyProcessInfoPayload }]
-        : [];
-
-    if (restoredEntries.length === 0) {
-      return;
-    }
-
-    const existingIds = new Set([...queue, ...pendingCachedEvents].map((entry) => entry.id));
-    let restoredAny = false;
-    for (const entry of restoredEntries) {
-      if (existingIds.has(entry.id)) {
-        continue;
-      }
-
-      const restoredEntry = createQueuedTelemetryEvent(entry.eventName, entry.payload, entry.id);
-      queue.push(restoredEntry);
-      pendingCachedEvents.push(restoredEntry);
-      existingIds.add(entry.id);
-      restoredAny = true;
-    }
-
-    if (restoredAny || legacyProcessInfoPayload) {
-      persistPendingTelemetryCache();
-    }
-  } catch {
-    // Ignore storage failures so telemetry does not disrupt the application.
-  }
-};
 
 const getLocalStorageDeviceId = (): string | null => {
   if (typeof localStorage === 'undefined') {
@@ -195,101 +82,6 @@ const persistLocalStorageDeviceId = (rawDeviceId: string): void => {
   }
 };
 
-// The ORT Web project narrows the global `document` type for proxy-worker compatibility.
-// Use a typed accessor to reach the full browser Document interface from telemetry code.
-const getDocument = (): Document | null => (typeof document !== 'undefined' ? (document as unknown as Document) : null);
-
-const getCookieValue = (name: string): string | null => {
-  const doc = getDocument();
-  if (!doc) {
-    return null;
-  }
-
-  try {
-    const encodedName = `${encodeURIComponent(name)}=`;
-    for (const cookie of doc.cookie.split(';')) {
-      const trimmedCookie = cookie.trim();
-      if (trimmedCookie.startsWith(encodedName)) {
-        return decodeURIComponent(trimmedCookie.slice(encodedName.length));
-      }
-    }
-  } catch {
-    // Ignore cookie failures so telemetry does not disrupt the application.
-  }
-
-  return null;
-};
-
-const isIpAddress = (hostname: string): boolean => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':');
-
-const shouldUseSecureCookies = (): boolean =>
-  typeof location !== 'undefined' && (location.protocol === 'https:' || location.origin?.startsWith('https://'));
-
-const setCookieValue = (name: string, value: string, maxAgeSeconds: number, domain?: string): boolean => {
-  const doc = getDocument();
-  if (!doc) {
-    return false;
-  }
-
-  try {
-    const attributes = [
-      `${encodeURIComponent(name)}=${encodeURIComponent(value)}`,
-      `Max-Age=${maxAgeSeconds}`,
-      'Path=/',
-      'SameSite=Lax',
-    ];
-    if (domain) {
-      attributes.push(`Domain=${domain}`);
-    }
-    if (shouldUseSecureCookies()) {
-      attributes.push('Secure');
-    }
-
-    doc.cookie = attributes.join('; ');
-    return getCookieValue(name) === value;
-  } catch {
-    return false;
-  }
-};
-
-const clearCookieValue = (name: string, domain?: string): void => {
-  const doc = getDocument();
-  if (!doc) {
-    return;
-  }
-
-  try {
-    const attributes = [`${encodeURIComponent(name)}=`, 'Max-Age=0', 'Path=/', 'SameSite=Lax'];
-    if (domain) {
-      attributes.push(`Domain=${domain}`);
-    }
-    if (shouldUseSecureCookies()) {
-      attributes.push('Secure');
-    }
-    doc.cookie = attributes.join('; ');
-  } catch {
-    // Ignore cookie failures so telemetry does not disrupt the application.
-  }
-};
-
-const getCookieDomainCandidates = (): string[] => {
-  if (typeof location === 'undefined' || !location.hostname || isIpAddress(location.hostname)) {
-    return [];
-  }
-
-  const hostnameLabels = location.hostname.split('.').filter(Boolean);
-  if (hostnameLabels.length < 2) {
-    return [];
-  }
-
-  const candidates: string[] = [];
-  for (let i = hostnameLabels.length - 2; i >= 0; i--) {
-    candidates.push(hostnameLabels.slice(i).join('.'));
-  }
-
-  return candidates;
-};
-
 const generateUUID = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -305,79 +97,18 @@ const generateUUID = (): string => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
-const resolveDeviceIdCookieStorage = (): { available: boolean; domain: string | null } => {
-  if (deviceIdCookieResolved) {
-    return { available: deviceIdCookieAvailable, domain: deviceIdCookieDomain };
-  }
-
-  const testValue = generateUUID();
-  for (const domain of getCookieDomainCandidates()) {
-    if (setCookieValue(DEVICE_ID_COOKIE_SCOPE_TEST_NAME, testValue, 1, domain)) {
-      clearCookieValue(DEVICE_ID_COOKIE_SCOPE_TEST_NAME, domain);
-      deviceIdCookieDomain = domain;
-      deviceIdCookieAvailable = true;
-      deviceIdCookieResolved = true;
-      return { available: true, domain };
-    }
-  }
-
-  if (setCookieValue(DEVICE_ID_COOKIE_SCOPE_TEST_NAME, testValue, 1)) {
-    clearCookieValue(DEVICE_ID_COOKIE_SCOPE_TEST_NAME);
-    deviceIdCookieDomain = null;
-    deviceIdCookieAvailable = true;
-    deviceIdCookieResolved = true;
-    return { available: true, domain: null };
-  }
-
-  deviceIdCookieDomain = null;
-  deviceIdCookieAvailable = false;
-  deviceIdCookieResolved = true;
-  return { available: false, domain: null };
-};
-
-const getCookieDeviceId = (): string | null => getCookieValue(DEVICE_ID_COOKIE_NAME);
-
-const persistCookieDeviceId = (rawDeviceId: string): void => {
-  const cookieStorage = resolveDeviceIdCookieStorage();
-  if (!cookieStorage.available) {
-    return;
-  }
-
-  if (
-    !setCookieValue(
-      DEVICE_ID_COOKIE_NAME,
-      rawDeviceId,
-      DEVICE_ID_COOKIE_MAX_AGE_SECONDS,
-      cookieStorage.domain ?? undefined,
-    )
-  ) {
-    deviceIdCookieAvailable = false;
-  }
-};
-
 const getDeviceId = (): string => {
   if (deviceId) {
-    return deviceId;
-  }
-
-  const cookieDeviceId = getCookieDeviceId();
-  if (cookieDeviceId) {
-    deviceId = cookieDeviceId;
-    persistCookieDeviceId(deviceId);
-    persistLocalStorageDeviceId(deviceId);
     return deviceId;
   }
 
   const localStorageDeviceId = getLocalStorageDeviceId();
   if (localStorageDeviceId) {
     deviceId = localStorageDeviceId;
-    persistCookieDeviceId(deviceId);
-    persistLocalStorageDeviceId(deviceId);
     return deviceId;
   }
 
   deviceId = generateUUID();
-  persistCookieDeviceId(deviceId);
   persistLocalStorageDeviceId(deviceId);
   return deviceId;
 };
@@ -506,12 +237,12 @@ const getRetryDelayMs = (attempt: number, multiplier = 1): number => {
 };
 
 const enqueue = async (eventName: string, eventData: Record<string, unknown>): Promise<void> => {
-  if (!shouldEmitEvent(eventName) || pendingCachedEvents.length >= MAX_QUEUE_SIZE) {
+  if (!shouldEmitEvent(eventName) || queue.length >= MAX_QUEUE_SIZE) {
     return;
   }
 
   const localId = await getProtectedDeviceId();
-  if (!shouldEmitEvent(eventName) || pendingCachedEvents.length >= MAX_QUEUE_SIZE) {
+  if (!shouldEmitEvent(eventName) || queue.length >= MAX_QUEUE_SIZE) {
     return;
   }
 
@@ -531,10 +262,7 @@ const enqueue = async (eventName: string, eventData: Record<string, unknown>): P
     data: eventData,
   });
 
-  const queuedEvent = createQueuedTelemetryEvent(eventName, payload);
-  queue.push(queuedEvent);
-  pendingCachedEvents.push(queuedEvent);
-  persistPendingTelemetryCache();
+  queue.push(createQueuedTelemetryEvent(eventName, payload));
 };
 
 const getEventData = (eventName: string, eventData: Record<string, unknown>): Record<string, unknown> =>
@@ -609,15 +337,12 @@ const sendBatchWithRetry: BatchRetrySender = (
   }).then(
     (res) => {
       if (res.ok) {
-        removePendingTelemetryEntries(batch);
         return;
       }
 
       if (shouldRetryStatus(res.status)) {
         // eslint-disable-next-line @typescript-eslint/no-use-before-define
         scheduleBatchRetry(batch, allowWhenRuntimeTelemetryDisabled, attempt);
-      } else {
-        removePendingTelemetryEntries(batch);
       }
     },
     () => {
@@ -634,7 +359,6 @@ const scheduleBatchRetry = (
   multiplier = 1,
 ): void => {
   if (attempt >= MAX_RETRIES) {
-    removePendingTelemetryEntries(batch);
     return;
   }
 
@@ -654,7 +378,6 @@ const takeBatch = (maxBatchSizeBytes: number): QueuedTelemetryEvent[] => {
     const nextEntry = queue[0];
     if (!shouldEmitEvent(nextEntry.eventName)) {
       queue.shift();
-      removePendingTelemetryEntries([nextEntry]);
       continue;
     }
 
@@ -680,7 +403,6 @@ const flushBatch = (batch: readonly QueuedTelemetryEvent[], useBeacon: boolean):
     if (
       (navigator as unknown as { sendBeacon: (url: string, data: Blob) => boolean }).sendBeacon(COLLECTOR_URL, blob)
     ) {
-      removePendingTelemetryEntries(batch);
       return;
     }
   }
@@ -745,7 +467,6 @@ export const flushTelemetry = async (useBeacon = false): Promise<void> => {
 // Internal test hook to reset module state between unit tests.
 export const resetTelemetryForTesting = (): void => {
   queue.length = 0;
-  pendingCachedEvents.length = 0;
   if (flushTimer) {
     clearInterval(flushTimer);
     flushTimer = null;
@@ -755,10 +476,6 @@ export const resetTelemetryForTesting = (): void => {
   protectedDeviceIdInitialized = false;
   protectedDeviceIdPromise = null;
   wasmTelemetrySupported = false;
-  deviceIdCookieDomain = null;
-  deviceIdCookieAvailable = false;
-  deviceIdCookieResolved = false;
-  nextQueuedTelemetryEventId = 0;
   pendingEnqueues.clear();
 };
 
@@ -780,7 +497,6 @@ export const initTelemetry = (module: OrtWasmModule): void => {
     return;
   }
 
-  restorePendingTelemetryCache();
   startFlushTimer();
   if (isRuntimeTelemetryEnabled()) {
     void getProtectedDeviceId();

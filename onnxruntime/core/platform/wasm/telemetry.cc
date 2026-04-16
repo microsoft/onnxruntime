@@ -203,31 +203,13 @@ void WasmTelemetry::LogProcessInfo() const {
   js_emit_telemetry_event("ProcessInfo", json.c_str());
 }
 
-void WasmTelemetry::LogSessionCreationStart(uint32_t session_id) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Build();
-  js_emit_telemetry_event("SessionCreationStart", json.c_str());
+void WasmTelemetry::LogSessionCreationStart(uint32_t /*session_id*/) const {
 }
 
-void WasmTelemetry::LogEvaluationStop(uint32_t session_id) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Build();
-  js_emit_telemetry_event("EvaluationStop", json.c_str());
+void WasmTelemetry::LogEvaluationStop(uint32_t /*session_id*/) const {
 }
 
-void WasmTelemetry::LogEvaluationStart(uint32_t session_id) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Build();
-  js_emit_telemetry_event("EvaluationStart", json.c_str());
+void WasmTelemetry::LogEvaluationStart(uint32_t /*session_id*/) const {
 }
 
 void WasmTelemetry::LogSessionCreation(
@@ -270,45 +252,22 @@ void WasmTelemetry::LogSessionCreation(
 }
 
 void WasmTelemetry::LogCompileModelStart(
-    uint32_t session_id,
-    const std::string& input_source,
-    const std::string& output_target,
-    uint32_t flags,
-    int graph_optimization_level,
-    bool embed_ep_context,
-    bool has_external_initializers_file,
-    const std::vector<std::string>& execution_provider_ids) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Add("inputSource", input_source)
-                  .Add("outputTarget", output_target)
-                  .Add("flags", flags)
-                  .Add("graphOptimizationLevel", static_cast<int32_t>(graph_optimization_level))
-                  .Add("embedEpContext", embed_ep_context)
-                  .Add("hasExternalInitializersFile", has_external_initializers_file)
-                  .AddStringList("executionProviderIds", execution_provider_ids)
-                  .Build();
-  js_emit_telemetry_event("CompileModelStart", json.c_str());
+    uint32_t /*session_id*/,
+    const std::string& /*input_source*/,
+    const std::string& /*output_target*/,
+    uint32_t /*flags*/,
+    int /*graph_optimization_level*/,
+    bool /*embed_ep_context*/,
+    bool /*has_external_initializers_file*/,
+    const std::vector<std::string>& /*execution_provider_ids*/) const {
 }
 
 void WasmTelemetry::LogCompileModelComplete(
-    uint32_t session_id,
-    bool success,
-    uint32_t error_code,
-    uint32_t error_category,
-    const std::string& error_message) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Add("success", success)
-                  .Add("errorCode", error_code)
-                  .Add("errorCategory", error_category)
-                  .Add("errorMessage", error_message)
-                  .Build();
-  js_emit_telemetry_event("CompileModelComplete", json.c_str());
+    uint32_t /*session_id*/,
+    bool /*success*/,
+    uint32_t /*error_code*/,
+    uint32_t /*error_category*/,
+    const std::string& /*error_message*/) const {
 }
 
 void WasmTelemetry::LogRuntimeError(
@@ -355,65 +314,24 @@ void WasmTelemetry::LogDriverInfoEvent(
 }
 
 void WasmTelemetry::LogAutoEpSelection(
-    uint32_t session_id, const std::string& selection_policy,
-    const std::vector<std::string>& requested_execution_provider_ids,
-    const std::vector<std::string>& available_execution_provider_ids) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Add("selectionPolicy", selection_policy)
-                  .AddStringList("requestedExecutionProviderIds", requested_execution_provider_ids)
-                  .AddStringList("availableExecutionProviderIds", available_execution_provider_ids)
-                  .Build();
-  js_emit_telemetry_event("EpAutoSelection", json.c_str());
+    uint32_t /*session_id*/, const std::string& /*selection_policy*/,
+    const std::vector<std::string>& /*requested_execution_provider_ids*/,
+    const std::vector<std::string>& /*available_execution_provider_ids*/) const {
 }
 
 void WasmTelemetry::LogProviderOptions(
-    const std::string& provider_id,
-    const std::string& provider_options_string,
-    bool captureState) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("providerId", provider_id)
-                  .Add("providerOptions", provider_options_string)
-                  .Add("captureState", captureState)
-                  .Build();
-  js_emit_telemetry_event("ProviderOptions", json.c_str());
+    const std::string& /*provider_id*/,
+    const std::string& /*provider_options_string*/,
+    bool /*captureState*/) const {
 }
 
-void WasmTelemetry::LogModelLoadStart(uint32_t session_id) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Build();
-  js_emit_telemetry_event("ModelLoadStart", json.c_str());
+void WasmTelemetry::LogModelLoadStart(uint32_t /*session_id*/) const {
 }
 
-void WasmTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Add("success", status.IsOK())
-                  .Add("errorCode", static_cast<int32_t>(status.Code()))
-                  .Add("errorMessage", status.ErrorMessage())
-                  .Build();
-  js_emit_telemetry_event("ModelLoadEnd", json.c_str());
+void WasmTelemetry::LogModelLoadEnd(uint32_t /*session_id*/, const common::Status& /*status*/) const {
 }
 
-void WasmTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::Status& status) const {
-  if (!enabled_.load()) return;
-
-  auto json = JsonBuilder()
-                  .Add("sessionId", session_id)
-                  .Add("success", status.IsOK())
-                  .Add("errorCode", static_cast<int32_t>(status.Code()))
-                  .Add("errorMessage", status.ErrorMessage())
-                  .Build();
-  js_emit_telemetry_event("SessionCreationEnd", json.c_str());
+void WasmTelemetry::LogSessionCreationEnd(uint32_t /*session_id*/, const common::Status& /*status*/) const {
 }
 
 void WasmTelemetry::LogRegisterEpLibraryWithLibPath(
