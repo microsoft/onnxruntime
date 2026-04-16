@@ -371,6 +371,53 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
   EXPECT_EQ(ops["Cast"], 4);
 }
 
+// Verify that RemoveDuplicateCastTransformer does not fuse Cast(float->int32)->Cast(int32->bool)
+// because the intermediate int32 truncation changes semantics (e.g. -0.1 -> 0 -> false vs -0.1 -> true).
+// Regression test for https://github.com/microsoft/onnxruntime/issues/25269
+TEST(TransformerTest, CastFloatToIntToBoolNotFused) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float32;
+  tensor_float32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  TypeProto tensor_bool;
+  tensor_bool.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+
+  onnxruntime::NodeArg x_def("X", &tensor_float32);
+  onnxruntime::NodeArg mid_def("mid", &tensor_int32);
+  onnxruntime::NodeArg y_def("Y", &tensor_bool);
+
+  NodeAttributes cast1_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_INT32))}};
+  NodeAttributes cast2_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_BOOL))}};
+
+  graph.AddNode("Cast_1", "Cast", "float to int32",
+                ArgMap{&x_def}, ArgMap{&mid_def}, &cast1_attrs);
+  graph.AddNode("Cast_2", "Cast", "int32 to bool",
+                ArgMap{&mid_def}, ArgMap{&y_def}, &cast2_attrs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // Both Cast nodes must survive — float->int32 truncation is semantically significant.
+  std::map<std::string, int> op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts["Cast"], 2)
+      << "Cast(float->int32)->Cast(int32->bool) must not be fused to Cast(float->bool)";
+}
+
 // Verify that RemoveDuplicateCastTransformer does not fuse consecutive Cast nodes
 // that are assigned to different execution providers.
 // Regression test for https://github.com/microsoft/onnxruntime/issues/27291
