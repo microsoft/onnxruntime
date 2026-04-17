@@ -384,9 +384,10 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
         concurrency::ThreadPool::TrySimpleParallelFor(
             tp, onnxruntime::narrow<std::ptrdiff_t>(C),
             [&](std::ptrdiff_t c) {
+              const SafeInt<size_t> nc = SafeInt<size_t>(n) * SafeInt<size_t>(C) + SafeInt<size_t>(c);
               const T* X_data =
-                  input->Data<T>() + static_cast<size_t>(SafeInt<size_t>(n * C + c) * H_in * W_in);
-              T* Y_data = Y.MutableData<T>() + static_cast<size_t>(SafeInt<size_t>(n * C + c) * H_out * W_out);
+                  input->Data<T>() + static_cast<size_t>(nc * H_in * W_in);
+              T* Y_data = Y.MutableData<T>() + static_cast<size_t>(nc * H_out * W_out);
 
               for (int64_t oy = 0; oy < H_out; oy++) {
                 for (int64_t ox = 0; ox < W_out; ox++) {
@@ -475,10 +476,11 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       concurrency::ThreadPool::TrySimpleParallelFor(
           tp, onnxruntime::narrow<std::ptrdiff_t>(C),
           [&](std::ptrdiff_t c) {
+            const SafeInt<size_t> plane_index = SafeInt<size_t>(n) * SafeInt<size_t>(C) + SafeInt<size_t>(c);
             const T* X_data =
-                input->Data<T>() + static_cast<size_t>(SafeInt<size_t>(n * C + c) * D_in * H_in * W_in);
+                input->Data<T>() + static_cast<size_t>(plane_index * SafeInt<size_t>(D_in) * SafeInt<size_t>(H_in) * SafeInt<size_t>(W_in));
             T* Y_data =
-                Y.MutableData<T>() + static_cast<size_t>(SafeInt<size_t>(n * C + c) * D_out * H_out * W_out);
+                Y.MutableData<T>() + static_cast<size_t>(plane_index * SafeInt<size_t>(D_out) * SafeInt<size_t>(H_out) * SafeInt<size_t>(W_out));
 
             for (int64_t oz = 0; oz < D_out; oz++) {
               for (int64_t oy = 0; oy < H_out; oy++) {
