@@ -8,7 +8,7 @@
 #include <chrono>
 #include <cstdint>
 
-#if defined(_M_AMD64)
+#if defined(_M_AMD64) || defined(_M_ARM64) || defined(_M_ARM64EC)
 #include <intrin.h>
 #endif
 
@@ -44,10 +44,13 @@ void SpinPause() {
   } else {
     _mm_pause();
   }
-#elif defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+#elif defined(_M_ARM64) || defined(_M_ARM64EC)
   // ARM64 hint that yields the pipeline without descheduling the thread.
-  // Emitted as a non-inline asm statement so the optimizer cannot elide it
-  // from the calibration loop in CalibrateSpinPauseNs().
+  // MSVC intrinsic — GCC-style inline asm is not supported by MSVC.
+  __yield();
+#elif defined(__aarch64__)
+  // ARM64 hint (GCC/Clang). Emitted as a non-inline asm statement so the
+  // optimizer cannot elide it from the calibration loop.
   __asm__ __volatile__("yield" ::: "memory");
 #elif defined(__arm__)
   __asm__ __volatile__("yield" ::: "memory");
