@@ -11,6 +11,7 @@
 #include <list>
 #include <type_traits>
 #include <core/framework/allocator.h>
+#include <core/platform/threadpool_config.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
@@ -675,7 +676,17 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       fprintf(stdout, "Ignoring intra-op spin backoff max because spinning is disabled\n");
     } else {
       warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax);
-      auto val = std::to_string(performance_test_config.run_config.spin_backoff_max);
+      const auto requested_spin_backoff_max = performance_test_config.run_config.spin_backoff_max;
+      const auto effective_spin_backoff_max =
+          std::min(static_cast<unsigned int>(requested_spin_backoff_max), concurrency::kSpinBackoffMaxLimit);
+      if (effective_spin_backoff_max != static_cast<unsigned int>(requested_spin_backoff_max)) {
+        fprintf(stdout,
+                "Requested intra-op spin backoff max %d exceeds the runtime limit %u; clamping to %u\n",
+                requested_spin_backoff_max,
+                concurrency::kSpinBackoffMaxLimit,
+                effective_spin_backoff_max);
+      }
+      auto val = std::to_string(effective_spin_backoff_max);
       fprintf(stdout, "Setting intra-op spin backoff max to %s\n", val.c_str());
       session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, val.c_str());
     }

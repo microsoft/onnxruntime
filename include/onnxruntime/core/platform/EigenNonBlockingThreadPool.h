@@ -1657,18 +1657,22 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
    public:
     explicit ThreadPoolWaiter(unsigned max_backoff) : max_backoff_(max_backoff) {}
 
-    void wait() {
-      if (max_backoff_ == 1U) {
-        onnxruntime::concurrency::SpinPause();
-        return;
+    template <typename ShouldInterrupt>
+    bool wait(ShouldInterrupt should_interrupt) {
+      unsigned pause_count = 1U;
+      if (max_backoff_ > 1U) {
+        // Double pause_time_ each call (starting from 1) and cap at max_backoff_.
+        // Produces the sequence 1, 2, 4, ..., max_backoff_, max_backoff_, ...
+        pause_count = (pause_time_ == 0U) ? 1U : std::min(pause_time_ * 2U, max_backoff_);
       }
-
-      // Double pause_time_ each call (starting from 1) and cap at max_backoff_.
-      // Produces the sequence 1, 2, 4, ..., max_backoff_, max_backoff_, ...
-      pause_time_ = (pause_time_ == 0U) ? 1U : std::min(pause_time_ * 2U, max_backoff_);
-      for (unsigned i = 0; i < pause_time_; ++i) {
+      pause_time_ = pause_count;
+      for (unsigned i = 0; i < pause_count; ++i) {
+        if (should_interrupt()) {
+          return true;
+        }
         onnxruntime::concurrency::SpinPause();
       }
+      return should_interrupt();
     }
   };
 
@@ -1746,7 +1750,16 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }
-          waiter.wait();
+          if (waiter.wait([&]() {
+                if (done_.load(std::memory_order_relaxed) ||
+                    spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
+                  return true;
+                }
+                w = q.PopFront();
+                return static_cast<bool>(w);
+              })) {
+            break;
+          }
         }
 
         // Attempt to block

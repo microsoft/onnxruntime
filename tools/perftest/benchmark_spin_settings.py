@@ -132,6 +132,8 @@ class CpuMonitor:
     def start(self, pid: int) -> None:
         if psutil is None:
             return
+        self._samples = []
+        self._stop.clear()
         self._proc_pid = pid
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -142,18 +144,18 @@ class CpuMonitor:
         try:
             p = psutil.Process(self._proc_pid)
             p.cpu_percent(None)  # prime
-        except psutil.NoSuchProcess:
+        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
             return
         while not self._stop.is_set():
             try:
                 self._samples.append(p.cpu_percent(self._interval))
-            except psutil.NoSuchProcess:
+            except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
                 return
 
     def stop(self) -> float | None:
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=1.0)
+            self._thread.join()
         if not self._samples:
             return None
         # Drop the priming sample (first value is often 0).
