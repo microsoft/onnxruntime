@@ -77,6 +77,8 @@ jobs:
 
   - template: set-nightly-build-option-variable-step.yml
   - template: setup-feeds-and-python-steps.yml
+    parameters:
+      architecture: ${{ parameters.arch }}
 
   - template: get-docker-image-steps.yml
     parameters:
