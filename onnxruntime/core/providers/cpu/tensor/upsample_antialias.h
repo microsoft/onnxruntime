@@ -254,8 +254,8 @@ void ComputeInterpolationAtLevel1(int64_t num_channels, int64_t input_height, in
   concurrency::ThreadPool::TrySimpleParallelFor(
       tp, narrow<std::ptrdiff_t>(num_channels),
       [&](std::ptrdiff_t c) {
-        const auto x_start = static_cast<size_t>(SafeInt<size_t>(c) * input_height * input_width);
-        const auto y_start = static_cast<size_t>(SafeInt<size_t>(c) * output_height * output_width);
+        const size_t x_start = SafeInt<size_t>(c) * input_height * input_width;
+        const size_t y_start = SafeInt<size_t>(c) * output_height * output_width;
 
         const InputType* Xdata = Xdata_span.data() + x_start;
         InputType* Ydata = Ydata_span.data() + y_start;
@@ -325,8 +325,8 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, narrow<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
-          const auto x_start = static_cast<size_t>(SafeInt<size_t>(c) * input_height * input_width);
-          const auto y_start = static_cast<size_t>(SafeInt<size_t>(c) * output_height * output_width);
+          const size_t x_start = SafeInt<size_t>(c) * input_height * input_width;
+          const size_t y_start = SafeInt<size_t>(c) * output_height * output_width;
 
           const InputType* Xdata = Xdata_span.data() + x_start;
           InputType* Ydata = Ydata_span.data() + y_start;
@@ -382,8 +382,8 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
             auto c = start / output_height;
             auto y = start % output_height;
 
-            const auto x_start = static_cast<size_t>(SafeInt<size_t>(c) * input_height * input_width);
-            const auto y_start = static_cast<size_t>(SafeInt<size_t>(c) * output_height * output_width);
+            const size_t x_start = SafeInt<size_t>(c) * input_height * input_width;
+            const size_t y_start = SafeInt<size_t>(c) * output_height * output_width;
 
             const InputType* Xdata = Xdata_span.data() + x_start;
             InputType* Ydata = Ydata_span.data() + y_start;
@@ -430,8 +430,8 @@ void HandleExtrapolation(int64_t num_channels,
 
         for (int64_t z = 0; z < output_depth && p.dim_x.out_of_bound_idx.size() > 0; ++z) {
           for (int64_t y = 0; y < output_height; ++y) {
-            const auto offset = static_cast<size_t>((SafeInt<size_t>(z) * output_height + y) * output_width);
-            InputType* Ydata_offset = Ydata_base_nc + offset;
+            const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
+            InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
             for (int64_t idx_x : p.dim_x.out_of_bound_idx) {
               Ydata_offset[narrow<size_t>(idx_x)] = static_cast<InputType>(extrapolation_value);
             }
@@ -440,8 +440,8 @@ void HandleExtrapolation(int64_t num_channels,
 
         for (int64_t z = 0; z < output_depth && p.dim_y.out_of_bound_idx.size() > 0; ++z) {
           for (int64_t y : p.dim_y.out_of_bound_idx) {
-            const auto offset = static_cast<size_t>((SafeInt<size_t>(z) * output_height + y) * output_width);
-            InputType* Ydata_offset = Ydata_base_nc + offset;
+            const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
+            InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
             std::fill_n(Ydata_offset, narrow<size_t>(output_width), static_cast<InputType>(extrapolation_value));
           }
         }
