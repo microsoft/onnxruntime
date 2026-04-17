@@ -2,11 +2,17 @@
 
 ## Build Instructions
 
-To build ONNX Runtime with the CUDA Plugin Execution Provider instead of the statically linked CUDA EP, use the `--build_cuda_ep_as_plugin` flag with the build script.
+To build ONNX Runtime with the CUDA Plugin Execution Provider instead of the statically linked CUDA EP, use the `--cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"` flag with the build script.
 
-```bash
-# Build the core framework and the CUDA Plugin EP
-./build.sh --config RelWithDebInfo --build_shared_lib --use_cuda --build_cuda_ep_as_plugin
+Example command to build the CUDA Plugin EP in Windows:
+```
+build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_wheel ^
+          --parallel --nvcc_threads 1 --build_shared_lib ^
+          --use_cuda --cuda_version "12.8" --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8" ^
+          --cudnn_home "D:\path\to\cudnn-installation-root" ^
+          --use_vcpkg --use_binskim_compliant_compile_flags ^
+          --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=native" ^
+          --cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"
 ```
 
 ## Running
@@ -93,16 +99,61 @@ sess = ort.InferenceSession(
 )
 ```
 
-## Known Limitations
-* The plugin does not currently support CUDA Graphs.
-* The plugin direct-allocates memory using `cudaMalloc` resulting in a potential performance penalty compared to the integrated Memory Arena.
+## Running Tests
+
+The focused validation script for the CUDA Plugin EP is `onnxruntime/test/python/transformers/test_cuda_plugin_ep.py`.
+
+### Test prerequisites
+
+- Build ONNX Runtime with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`.
+- Install the built ONNX Runtime wheel.
+- Install Python test dependencies. `test_cuda_plugin_ep.py` uses PyTorch for CPU-side reference computations, so CPU-only PyTorch is sufficient.
+
+Example dependency install:
+
+```bash
+python -m pip install numpy onnx
+python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+### Point the test to the plugin library
+
+The test helper tries to auto-detect the plugin library from the installed wheel or a local build tree. If you have multiple builds or want to be explicit, set `ORT_CUDA_PLUGIN_PATH` to the plugin library produced by your build.
+
+Linux example:
+
+```bash
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+```
+
+Windows example:
+
+```cmd
+set ORT_CUDA_PLUGIN_PATH=E:\path\to\build\Release\Release\onnxruntime_providers_cuda_plugin.dll
+```
+
+### Run the test script
+
+Run the script from a directory outside the repository checkout to avoid Python module shadowing.
+
+```bash
+cd onnxruntime/test/python/transformers
+python test_cuda_plugin_ep.py
+```
+
+On Windows:
+
+```cmd
+cd /d onnxruntime\test\python\transformers
+python test_cuda_plugin_ep.py
+```
+
+The script validates plugin registration, device enumeration, provider options, operator coverage, and that key nodes are actually assigned to `CudaPluginExecutionProvider`.
+
 
 ## Verification
 You can generate a parity report comparing the kernels available in the plugin EP versus the statically linked CUDA EP.
 ```bash
-# Check static source registration parity:
-python tools/ci_build/cuda_plugin_parity_report.py
-
 # Check runtime registry parity:
 python tools/ci_build/cuda_plugin_parity_report.py --runtime --plugin-ep-lib build/Linux/RelWithDebInfo/libonnxruntime_providers_cuda_plugin.so
 ```

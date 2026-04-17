@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 // CUDA stream and event-based synchronization primitives for the plugin EP.
-// CudaSyncStream wraps a cudaStream_t plus cuBLAS/cuDNN/cuBLASLt handles.
+// CudaSyncStream wraps a cudaStream_t and, for owned streams, cuBLAS/cuDNN/
+// cuBLASLt handles. External graph streams are registered without owning
+// library handles and migrated kernels fall back to thread-local defaults.
 // CudaSyncNotification wraps a cudaEvent_t for cross-stream synchronization.
 // A global stream registry (with TLS-cached lookups) allows migrated kernels
 // to obtain their compute handles from a raw cudaStream_t.
@@ -11,9 +13,9 @@
 
 #include "cuda_plugin_utils.h"
 
-#include <vector>
-#include <unordered_map>
 #include <mutex>
+#include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -22,7 +24,8 @@ class CudaSyncNotification;
 class CudaEpFactory;
 
 /// CUDA stream implementation for the plugin EP.
-/// Owns a cudaStream_t and associated cuBLAS/cuDNN handles.
+/// Owns a cudaStream_t and associated CUDA library handles for owned streams,
+/// or wraps an external stream for graph-mode registration/lifecycle tracking.
 class CudaSyncStream : public OrtSyncStreamImpl {
  public:
   CudaSyncStream(CudaEpFactory& factory, int device_id,
@@ -37,6 +40,11 @@ class CudaSyncStream : public OrtSyncStreamImpl {
 
   void EnqueueDeferredCPUBuffer(void* cpu_buffer);
   OrtStatus* InitHandles();
+
+  /// Initialize with an external (non-owned) CUDA stream. The wrapper is
+  /// registered for stream-aware lookup/cleanup, but CUDA library handles are
+  /// resolved later from thread-local defaults when kernels dispatch.
+  OrtStatus* InitHandlesWithExternalStream(cudaStream_t external_stream);
 
   /// Look up the CudaSyncStream wrapper from a raw cudaStream_t handle.
   /// Uses a thread-local TLS cache with a generation counter to avoid lock
@@ -58,9 +66,15 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   CudaEpFactory& factory_;
   int device_id_;
   cudaStream_t cuda_stream_ = nullptr;
+  bool owns_stream_ = true;  ///< False when wrapping an external stream (e.g., for CUDA graph).
   cublasHandle_t cublas_handle_ = nullptr;
   cudnnHandle_t cudnn_handle_ = nullptr;
   cublasLtHandle_t cublas_lt_handle_ = nullptr;
+
+  // Tracks whether the stream was successfully registered in the global map.
+  // Only registered streams should be unregistered in the destructor to avoid
+  // unnecessarily bumping the TLS generation counter.
+  bool registered_ = false;
 
   // CPU buffers whose deallocation is deferred to OnSessionRunEnd.
   // Pinned memory must remain valid until all async device operations that

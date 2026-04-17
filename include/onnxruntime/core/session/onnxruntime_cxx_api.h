@@ -1048,6 +1048,7 @@ struct AllocatorImpl : Base<T> {
   using B::B;
 
   void* Alloc(size_t size);
+  void* Reserve(size_t size);
   MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
   ConstMemoryInfo GetInfo() const;
@@ -1057,6 +1058,12 @@ struct AllocatorImpl : Base<T> {
    * \return A pointer to a KeyValuePairs object that will be filled with the allocator statistics.
    */
   KeyValuePairs GetStats() const;
+
+  /** \brief Release unused memory held by the allocator.
+   *
+   * Calls the optional Shrink function pointer if available; does nothing otherwise.
+   */
+  void Shrink();
 };
 }  // namespace detail
 
@@ -1381,6 +1388,10 @@ struct Env : detail::Base<OrtEnv> {
   Status CopyTensors(const std::vector<Value>& src_tensors,
                      const std::vector<Value>& dst_tensors,
                      OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
+
+  /// Wraps OrtApi::CopyTensors
+  /// Copies only one src tensor to another dst tensor.
+  Status CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const;
 
   /// \brief Wraps OrtApi::SetPerSessionThreadPoolCallbacks
   /// Stores work callbacks on the Env for per-session thread pools.
@@ -3613,12 +3624,6 @@ struct KernelRegistry : detail::Base<OrtKernelRegistry> {
 };
 
 namespace detail {
-/** \brief Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
- *
- * Holds a single type constraint from an operator schema, providing access to
- * the constraint's name, allowed data types, and associated input/output indices.
- * This is a non-owning view — the lifetime is tied to the parent OrtOpSchema.
- */
 template <typename T>
 struct OpSchemaTypeConstraintImpl : Base<T> {
   using B = Base<T>;
@@ -3639,15 +3644,11 @@ struct OpSchemaTypeConstraintImpl : Base<T> {
 }  // namespace detail
 
 /// Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
+/// Holds a single type constraint from an operator schema, providing access to
+/// the constraint's name, allowed data types, and associated input/output indices.
 using ConstOpSchemaTypeConstraint = detail::OpSchemaTypeConstraintImpl<detail::Unowned<const OrtOpSchemaTypeConstraint>>;
 
 namespace detail {
-/** \brief Owning wrapper around an `OrtOpSchema*`.
- *
- * Provides access to operator schema metadata such as version, input/output names,
- * and type constraints. The underlying OrtOpSchema is owned by this wrapper and
- * released automatically on destruction.
- */
 template <typename T>
 struct OpSchemaImpl : Base<T> {
   using B = Base<T>;
@@ -3685,6 +3686,9 @@ struct OpSchemaImpl : Base<T> {
 }  // namespace detail
 
 /// Owning wrapper around an `OrtOpSchema*`.
+/// Provides access to operator schema metadata such as version, input/output names,
+/// and type constraints. The underlying OrtOpSchema is owned by this wrapper and
+/// released automatically on destruction.
 using OpSchema = detail::OpSchemaImpl<OrtOpSchema>;
 
 /// \brief Get an operator schema from the global schema registry.
@@ -3725,5 +3729,6 @@ using UnownedSharedPrePackedWeightCache =
 
 ///< Wraps OrtEpApi::GetEnvConfigEntries()
 Ort::KeyValuePairs GetEnvConfigEntries();
+
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

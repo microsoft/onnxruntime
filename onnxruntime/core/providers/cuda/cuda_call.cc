@@ -3,7 +3,12 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "shared_inc/cuda_call.h"
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+#include "ep/adapters.h"
+#include "plugin/provider_api_shims.h"
+#else
 #include <core/platform/env.h>
+#endif
 
 #ifdef _WIN32
 #else  // POSIX
