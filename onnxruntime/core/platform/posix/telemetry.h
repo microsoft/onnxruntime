@@ -13,6 +13,8 @@
 // Forward declarations of 1DS SDK types
 namespace Microsoft::Applications::Events {
 class ILogger;
+class ILogManager;
+class ILogConfiguration;
 class EventProperties;
 }  // namespace Microsoft::Applications::Events
 
@@ -81,7 +83,7 @@ class PosixTelemetry : public Telemetry {
 
   void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last,
                       int64_t total_run_duration_since_last,
-                      std::unordered_map<int64_t, long long> duration_per_batch_size) const override;
+                      const std::unordered_map<int64_t, long long>& duration_per_batch_size) const override;
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
   void LogDriverInfoEvent(const std::string_view device_class,
@@ -122,8 +124,13 @@ class PosixTelemetry : public Telemetry {
   // Mutex for thread-safe access
   mutable std::mutex mutex_;
 
-  // Telemetry SDK logger instance (1DS)
-  std::shared_ptr<::Microsoft::Applications::Events::ILogger> logger_;
+  // Telemetry SDK instances.
+  // log_manager_ is owned by LogManagerProvider; logger_ is owned by log_manager_.
+  ::Microsoft::Applications::Events::ILogManager* log_manager_ = nullptr;
+  ::Microsoft::Applications::Events::ILogger* logger_ = nullptr;
+
+  // SDK configuration — must outlive log_manager_ (LogManagerImpl holds a reference).
+  std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> config_;
 
   // State tracking
   mutable std::atomic<bool> enabled_{true};

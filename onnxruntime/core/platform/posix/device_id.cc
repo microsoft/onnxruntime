@@ -94,9 +94,15 @@ std::string DeviceId::GetStorageDirectory(bool mobile) {
   if (!h || !h[0]) return "";
   std::string home(h);
 
+#if defined(__APPLE__) && TARGET_OS_IOS
+  if (mobile) {
+    return home + "/Library/Application Support/.onnxruntime";
+  }
+#else
   if (mobile) {
     return home + "/.onnxruntime";
   }
+#endif
 
 #if defined(__APPLE__)
   return home + "/Library/Application Support/" + kDeviceIdDir;
