@@ -50,29 +50,48 @@ bool ProviderIsCpuBased(const IExecutionProvider& provider) {
   return provider.GetDevice().Type() == OrtDevice::CPU;
 }
 
-// Returns true if no data transfer is needed between the two devices.
-// HOST_ACCESSIBLE memory is a superset — accessible by both host and device — so it can satisfy
-// DEFAULT memory requirements on the same physical device without a copy.
-static bool DevicesAreMemoryCompatible(const OrtDevice& a, const OrtDevice& b) {
-  const bool a_is_cpu_mem = a.UsesCpuMemory();
-  const bool b_is_cpu_mem = b.UsesCpuMemory();
+// Returns true if src memory can satisfy tgt's requirements without a data copy.
+//
+// HOST_ACCESSIBLE → DEFAULT is valid: the device can access HOST_ACCESSIBLE memory directly.
+// DEFAULT → HOST_ACCESSIBLE is NOT valid: HOST_ACCESSIBLE implies CPU consumers, and DEFAULT
+// memory is device-only — the CPU cannot read it.
+//
+// For the mixed case, src alignment must meet tgt's minimum requirement.
+// Alignment 0 means "unspecified" and is treated as compatible with any requirement.
+bool CanSourceSatisfyTarget(const OrtDevice& src, const OrtDevice& tgt) {
+  const bool src_is_cpu_mem = src.UsesCpuMemory();
+  const bool tgt_is_cpu_mem = tgt.UsesCpuMemory();
 
-  // Both CPU-accessible: compatible unless both are HOST_ACCESSIBLE on different physical devices.
-  if (a_is_cpu_mem && b_is_cpu_mem) {
-    if (a.Type() == OrtDevice::CPU || b.Type() == OrtDevice::CPU) {
-      return true;
-    }
-    return a.Type() == b.Type() &&
-           a.Vendor() == b.Vendor() &&
-           a.Id() == b.Id();
+  // Identical devices are always compatible.
+  if (src == tgt) {
+    return true;
   }
 
-  // HOST_ACCESSIBLE <-> DEFAULT: compatible only on the same physical device.
-  if ((a_is_cpu_mem != b_is_cpu_mem) &&
-      a.Type() == b.Type() &&
-      a.Vendor() == b.Vendor() &&
-      a.Id() == b.Id()) {
-    return true;
+  // Alignment 0 means "unspecified" — treat as compatible with any alignment requirement.
+  const bool is_alignment_satisfied = src.GetAlignment() == 0 || tgt.GetAlignment() == 0 ||
+                                      src.GetAlignment() >= tgt.GetAlignment();
+
+  // Both are CPU-accessible (CPU type or HOST_ACCESSIBLE memory).
+  if (src_is_cpu_mem && tgt_is_cpu_mem) {
+    // CPU target can read from any CPU or HOST_ACCESSIBLE source, regardless of the source device
+    if (tgt.Type() == OrtDevice::CPU) {
+      return is_alignment_satisfied;
+    }
+    // Both are HOST_ACCESSIBLE on some device: require the same physical device.
+    return src.Type() == tgt.Type() &&
+           src.Vendor() == tgt.Vendor() &&
+           src.Id() == tgt.Id() && is_alignment_satisfied;
+  }
+
+  // HOST_ACCESSIBLE source can serve a DEFAULT target on the same physical device —
+  // the device can DMA from HOST_ACCESSIBLE memory directly.
+  // The reverse (DEFAULT → HOST_ACCESSIBLE) is unsafe: HOST_ACCESSIBLE implies CPU consumers,
+  // and DEFAULT memory is device-only so the CPU cannot read it.
+  if (src_is_cpu_mem && !tgt_is_cpu_mem &&
+      src.Type() == tgt.Type() &&
+      src.Vendor() == tgt.Vendor() &&
+      src.Id() == tgt.Id()) {
+    return is_alignment_satisfied;
   }
 
   return false;
@@ -146,16 +165,19 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
 }
 
 // Populate device_fetches for the output-copy path.
-// Reuses a pre-allocated user buffer when the memory is compatible (same device or HOST_ACCESSIBLE
-// <-> DEFAULT on the same physical device); otherwise inserts an empty placeholder.
+// When the user pre-allocates a fetch buffer, reuse it directly as the EP's output buffer if
+// the user's buffer (tgt) can satisfy the EP's output device (src) requirements — i.e.,
+// CanSourceSatisfyTarget(tgt, src). This avoids a post-execution copy.
+// Otherwise inserts an empty placeholder for the EP to allocate into.
 static void PopulateDeviceFetches(gsl::span<const MLValueCopyInfo> fetch_copy_info,
                                   const std::vector<OrtValue>& fetches,
                                   std::vector<OrtValue>& device_fetches) {
+  ORT_ENFORCE(fetch_copy_info.size() >= fetches.size());
   device_fetches.reserve(fetches.size());
   for (size_t i = 0; i < fetches.size(); ++i) {
     const auto& src = fetch_copy_info[i].source_device;
     const auto& tgt = fetch_copy_info[i].target_device;
-    if ((src == tgt || DevicesAreMemoryCompatible(src, tgt)) && fetches[i].IsAllocated()) {
+    if (CanSourceSatisfyTarget(tgt, src) && fetches[i].IsAllocated()) {
       device_fetches.push_back(fetches[i]);
     } else {
       device_fetches.push_back({});
@@ -178,10 +200,9 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr)
 #endif
 {
-  // No data transfer needed if devices are the same or memory-compatible
-  // (e.g. HOST_ACCESSIBLE <-> DEFAULT on the same physical device).
-  if (copy_info.source_device == copy_info.target_device ||
-      DevicesAreMemoryCompatible(copy_info.source_device, copy_info.target_device)) {
+  // No data transfer needed if devices are identical, or the source can satisfy the target
+  // (HOST_ACCESSIBLE source serving a DEFAULT target on the same physical device).
+  if (CanSourceSatisfyTarget(copy_info.source_device, copy_info.target_device)) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
   }
@@ -372,8 +393,7 @@ static bool FinalizeCopyInfoForFeeds(gsl::span<const OrtDevice> feed_locations,
   for (size_t i = 0, end = feed_locations.size(); i < end; ++i) {
     copy_info[i].source_device = feed_locations[i];
 
-    if (copy_info[i].source_device != copy_info[i].target_device &&
-        !DevicesAreMemoryCompatible(copy_info[i].source_device, copy_info[i].target_device)) {
+    if (!CanSourceSatisfyTarget(copy_info[i].source_device, copy_info[i].target_device)) {
       copy_needed = true;
     }
   }
@@ -394,8 +414,7 @@ static bool FinalizeCopyInfoForFetches(gsl::span<const OrtDevice* const>& fetch_
       copy_info[i].target_device = *alloc_info;
     }
 
-    if (copy_info[i].source_device != copy_info[i].target_device &&
-        !DevicesAreMemoryCompatible(copy_info[i].source_device, copy_info[i].target_device)) {
+    if (!CanSourceSatisfyTarget(copy_info[i].source_device, copy_info[i].target_device)) {
       copy_needed = true;
     }
   }
@@ -702,9 +721,7 @@ ExecuteGraphImpl(const SessionState& session_state,
       feeds_to_use = device_feeds;
     }
 
-    auto num_outputs = fetches.size();
     const auto& fetch_copy_info = feeds_fetches_manager.GetFetchesDeviceCopyInfo();
-
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       PopulateDeviceFetches(fetch_copy_info, fetches, device_fetches);
       p_fetches = &device_fetches;
@@ -847,7 +864,6 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
       p_feeds = device_feeds;
     }
 
-    auto num_outputs = fetches.size();
     const auto& fetch_copy_info = feeds_fetches_manager.GetFetchesDeviceCopyInfo();
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {

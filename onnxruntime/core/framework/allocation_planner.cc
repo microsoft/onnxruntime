@@ -913,11 +913,6 @@ class PlannerImpl {
           ProcessDef(index, node_output);
           OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-          // Downstream nodes of certain providers may require a CPU accessible location override
-          // to make sure the EP does not incur an unnecessary copy.
-          // We only do it for CPU based EPs. We are not likely to encounter
-          // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
-          // However, we still ignore them.
           if (output_device.UsesCpuMemory()) {
             const auto& output_name = node_output->Name();
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
