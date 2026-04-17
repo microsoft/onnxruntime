@@ -65,7 +65,7 @@ class SpinConfig:
 
     ``spin_duration_us`` maps to ``--spin_duration_us``:
         -1 = legacy iteration-count spinning (PR 27916 default)
-         0 = do not pass the flag (use perf_test default)
+         0 = pass the flag and disable spinning
         >0 = time-based spinning window
 
     ``spin_backoff_max`` maps to ``--spin_backoff_max``:
@@ -180,10 +180,10 @@ class RunResult:
 
 
 # Regexes cover the output lines emitted by ``onnxruntime_perf_test``.
-_RE_AVG = re.compile(r"Average inference time cost:\s+([\d.]+)\s*(\S+)", re.IGNORECASE)
-_RE_THROUGHPUT = re.compile(r"Throughput:\s+([\d.]+)\s*QPS", re.IGNORECASE)
+_RE_AVG = re.compile(r"Average inference time cost(?:\s+\w+)?:\s+([\d.]+)\s*(\S+)", re.IGNORECASE)
+_RE_THROUGHPUT = re.compile(r"(?:Number of inferences per second|Throughput):\s+([\d.]+)", re.IGNORECASE)
 _RE_PCT = re.compile(
-    r"P(?P<pct>\d+)\s+Latency(?:\s+is)?:\s+(?P<val>[\d.]+)\s*(?P<unit>\S+)",
+    r"P(?P<pct>\d+)\s+Latency(?:\s+is)?:?\s+(?P<val>[\d.]+)\s*(?P<unit>\S+)",
     re.IGNORECASE,
 )
 

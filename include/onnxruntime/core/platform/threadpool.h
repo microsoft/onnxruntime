@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include "core/common/common.h"
 #include "core/platform/env.h"
+#include "core/platform/threadpool_config.h"
 
 #include <functional>
 #include <memory>
@@ -133,7 +134,6 @@ namespace concurrency {
 // spinning behavior. This preserves the original spin loop performance characteristics
 // where the spin duration varies by architecture depending on pause instruction latency.
 static constexpr int kSpinDurationDefault = -1;
-
 template <typename Environment, typename CallbackPolicy>
 class ThreadPoolTempl;
 
@@ -167,6 +167,7 @@ class ThreadPool {
   // window. 1 (default) keeps the legacy behavior (single SpinPause() per iteration).
   // Values >= 2 emit 1, 2, 4, ... pause calls per iteration capped at this value,
   // reducing CPU/power density during the same targeted wall-clock spin duration.
+  // Values above kSpinBackoffMaxLimit are clamped to that limit.
   //
   // REQUIRES: degree_of_parallelism > 0
   ThreadPool(Env* env,
@@ -176,18 +177,6 @@ class ThreadPool {
              int spin_duration_us = kSpinDurationDefault,
              bool force_hybrid = false,
              unsigned int spin_backoff_max = 1);
-
-  // Backward-compatible overload: maps the legacy bool parameter to the new
-  // spin_duration_us semantics so that external callers passing true/false
-  // don't silently get implicit bool-to-int conversion (true -> 1us).
-  ThreadPool(Env* env,
-             const ThreadOptions& thread_options,
-             const NAME_CHAR_TYPE* name,
-             int degree_of_parallelism,
-             bool allow_spinning,
-             bool force_hybrid = false)
-      : ThreadPool(env, thread_options, name, degree_of_parallelism,
-                   allow_spinning ? kSpinDurationDefault : 0, force_hybrid) {}
 
   // Backward-compatible overload: maps the legacy bool parameter to the new
   // spin_duration_us semantics so that external callers passing true/false

@@ -167,7 +167,10 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   // Clamp so that invalid negatives (e.g. -5) are treated as the default (-1).
   const int spin_us = options.allow_spinning ? std::max(options.spin_duration_us, -1) : 0;
   // spin_backoff_max is ignored when spinning is disabled.
-  const unsigned int backoff_max = options.allow_spinning ? std::max<unsigned int>(options.spin_backoff_max, 1U) : 1U;
+  const unsigned int backoff_max = options.allow_spinning
+                                       ? std::min(std::max(options.spin_backoff_max, 1U),
+                                                  concurrency::kSpinBackoffMaxLimit)
+                                       : 1U;
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                       spin_us, /*force_hybrid*/ false, backoff_max);
 }

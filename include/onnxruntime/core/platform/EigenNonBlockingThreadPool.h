@@ -51,6 +51,7 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
+#include "core/platform/threadpool_config.h"
 #include "core/session/onnxruntime_c_api.h"
 
 // Forward declaration for callback policy types
@@ -1623,9 +1624,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   }
 
   // Clamp user-supplied backoff cap into a valid range. Any value < 1 is
-  // treated as 1 (no backoff, one SpinPause() per iteration).
+  // treated as 1 (no backoff, one SpinPause() per iteration), and very large
+  // values are capped so a single wait() cannot emit an excessive pause burst.
   static unsigned int NormalizeBackoff(unsigned int spin_backoff_max) {
-    return spin_backoff_max < 1U ? 1U : spin_backoff_max;
+    return std::min(std::max(spin_backoff_max, 1U), onnxruntime::concurrency::kSpinBackoffMaxLimit);
   }
 
   // With exponential backoff capped at M, ThreadPoolWaiter::wait() ramps up to
@@ -1656,20 +1658,16 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     explicit ThreadPoolWaiter(unsigned max_backoff) : max_backoff_(max_backoff) {}
 
     void wait() {
-      switch (max_backoff_) {
-        case 0U:
-          return;
-        case 1U:
-          onnxruntime::concurrency::SpinPause();
-          return;
-        default: {
-          // Double pause_time_ each call (starting from 1) and cap at max_backoff_.
-          // Produces the sequence 1, 2, 4, ..., max_backoff_, max_backoff_, ...
-          pause_time_ = (pause_time_ == 0U) ? 1U : std::min(pause_time_ * 2U, max_backoff_);
-          for (unsigned i = 0; i < pause_time_; ++i) {
-            onnxruntime::concurrency::SpinPause();
-          }
-        }
+      if (max_backoff_ == 1U) {
+        onnxruntime::concurrency::SpinPause();
+        return;
+      }
+
+      // Double pause_time_ each call (starting from 1) and cap at max_backoff_.
+      // Produces the sequence 1, 2, 4, ..., max_backoff_, max_backoff_, ...
+      pause_time_ = (pause_time_ == 0U) ? 1U : std::min(pause_time_ * 2U, max_backoff_);
+      for (unsigned i = 0; i < pause_time_; ++i) {
+        onnxruntime::concurrency::SpinPause();
       }
     }
   };

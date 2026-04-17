@@ -41,6 +41,7 @@ struct OrtThreadPoolParams {
   //                 SpinPause() calls, capped at this value. The iteration count
   //                 is scaled internally so the wall-clock spin window still
   //                 tracks spin_duration_us.
+  // Values above concurrency::kSpinBackoffMaxLimit are clamped to that limit.
   // Ignored when spinning is disabled or when spin_count is forced to zero.
   unsigned int spin_backoff_max = 1;
 

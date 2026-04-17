@@ -180,6 +180,7 @@ static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "sessio
 //   "1" (default) = no backoff, one SpinPause() per iteration (original behavior).
 //   ">= 2"        = enable exponential backoff capped at this value. Typical
 //                   values: 4 (hybrid/E-core friendly) or 8 (desktop/server).
+// Values above 64 are clamped to 64.
 // This setting is subordinate to allow_spinning and spin_duration_us: when
 // spinning is disabled or spin_duration_us forces zero iterations, this value
 // has no effect.
