@@ -126,6 +126,10 @@ stages:
   - Linux_C_API_Packaging_GPU
   jobs:
   - job: Linux_Packaging_combined_CUDA
+    templateContext:
+      sdl:
+        tsa:
+          enabled: false # TSA Fails with multiple checkouts and this stage is just packaging, no code changes or builds happening here.
     condition: succeeded()
     workspace:
       clean: all
