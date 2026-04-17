@@ -38,7 +38,6 @@ onnxruntime_ensure_minimum_language_standard_version(
 onnxruntime_ensure_minimum_language_standard_version(
     CMAKE_CXX_STANDARD ${onnxruntime_MINIMUM_CXX_STANDARD_VERSION})
 
-
 #
 # Define onnxruntime_<lang>_standard interface targets requiring the minimum standard version.
 # These should be used by all onnxruntime targets.
