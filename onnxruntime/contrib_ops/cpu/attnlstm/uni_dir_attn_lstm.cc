@@ -395,8 +395,12 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       previous_state = batched_output;
       previous_state_end = batched_output_end;
 
-      attention_wrapper_.ProcessOutput(outputs.subspan(CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size),
-                                                       batch_hidden_size_size));
+      if (output_sequence) {
+        attention_wrapper_.ProcessOutput(outputs.subspan(CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size),
+                                                         batch_hidden_size_size));
+      } else {
+        attention_wrapper_.ProcessOutput(final_hidden_state);
+      }
     }
   }
 
