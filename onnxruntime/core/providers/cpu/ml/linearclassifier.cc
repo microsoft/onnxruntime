@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/ml/linearclassifier.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
@@ -151,14 +152,16 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
   ptrdiff_t num_features = input_shape.NumDimensions() == 1 ? narrow<ptrdiff_t>(
                                                                   input_shape[0])
                                                             : narrow<ptrdiff_t>(input_shape[1]);
-
-  // Validate coefficients are large enough to prevent OOB read in GEMM.
-  const size_t expected_coefficients_size = SafeInt<size_t>(class_count_) * SafeInt<size_t>(num_features);
-  if (coefficients_.size() < expected_coefficients_size) {
+  size_t expected_coefficients_size = 0;
+  if (!SafeMultiply(static_cast<size_t>(class_count_), static_cast<size_t>(num_features),
+                    expected_coefficients_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "LinearClassifier: coefficients length (", coefficients_.size(),
-                           ") is less than classes (", class_count_, ") * features (", num_features, ")");
+                           "class_count (", class_count_, ") * num_features (", num_features,
+                           ") overflows size_t");
   }
+  ORT_RETURN_IF_NOT(coefficients_.size() >= expected_coefficients_size,
+                    "coefficients size (", coefficients_.size(), ") is less than class_count (", class_count_,
+                    ") * num_features (", num_features, ")");
 
   Tensor* Y = ctx->Output(0, {num_batches});
 

@@ -1,8 +1,9 @@
 # Template for setting up the package feeds and installing python.
 # Feeds configured:
-#   - pip
 #   - maven & gradle
+#   - npm
 #   - nuget
+#   - pip
 #
 # n.b. This template writes to user profile files.
 
@@ -23,8 +24,40 @@ steps:
 # HACK: Ensure there are no leftover m2 settings from previous runs. Agent pools are currently stateful.
 #       Ideally we'd just push/pop/layer specific splices to the settings (auth & mirror stuff), but there's no easy
 #       mechanism for that AFAIK.
-- pwsh: if (Test-Path ~/.m2/settings.xml) { Remove-Item ~/.m2/settings.xml }
+- task: PowerShell@2
   displayName: Maven - remove existing ~/.m2/settings.xml
+  inputs:
+    targetType: 'inline'
+    script: |
+      if (Test-Path ~/.m2/settings.xml) {
+        Remove-Item ~/.m2/settings.xml
+      }
+
+# use `PowerShell@2` instead of `pwsh` as it is available on arm64 agents, whereas `pwsh` is not. (2026-04-15)
+- task: PowerShell@2
+  displayName: 'NPM - set NPM_CONFIG_USERCONFIG to agent temp config'
+  env:
+    artifact_feed: ${{ parameters.artifactFeeds }}
+  inputs:
+    targetType: 'inline'
+    script: |
+      # ensure we have a clean/empty npm config. config file must exist prior to `npmAuthenticate`.
+      $npmrcPath = "${env:AGENT_TEMPDIRECTORY}/.npmrc"
+
+      Set-Content -Force -Path $npmrcPath -Value @"
+      registry=https://aiinfra.pkgs.visualstudio.com/_packaging/${env:artifact_feed}/npm/registry/
+      always-auth=true
+      "@
+
+      Write-Host "Generated npmrc contents:"
+      Get-Content $npmrcPath | Write-Host
+
+      echo "##vso[task.setvariable variable=NPM_CONFIG_USERCONFIG]${npmrcPath}"
+
+# FUTURE WORK: use `Npm@1` task in pipelines and specify the feed there?
+- task: npmAuthenticate@0
+  inputs:
+    workingFile: $(NPM_CONFIG_USERCONFIG)
 
 - task: NuGetAuthenticate@1 # just auth w/ internal feeds
 
@@ -48,24 +81,27 @@ steps:
     ${{ if ne(parameters.architecture, '') }}:
       architecture: ${{ parameters.architecture }}
 
-- pwsh: |
-    # Check if python is available in PATH
-    $pythonCmd = Get-Command "python${env:python_version_spec}" -ErrorAction SilentlyContinue
-    if ($pythonCmd) {
-      Write-Host "Found `python${env:python_version_spec}` at $($pythonCmd.Source)"
-      exit 0
-    }
-
-    $pythonCmd = Get-Command "python" -ErrorAction SilentlyContinue
-    if ($pythonCmd) {
-      Write-Host "Found `python` at $($pythonCmd.Source)."
-      # FUTURE WORK: validate it matches the requested version spec
-      exit 0
-    }
-
-    Write-Host "##vso[task.logissue type=error]Neither `python` nor `python${env:python_version_spec}` are on PATH."
-    exit 1
+- task: PowerShell@2
   displayName: 'Verify Python ${{ parameters.versionSpec }} is on path'
+  inputs:
+    targetType: 'inline'
+    script: |
+      # Check if python is available in PATH
+      $pythonCmd = Get-Command "python${env:python_version_spec}" -ErrorAction SilentlyContinue
+      if ($pythonCmd) {
+        Write-Host "Found `python${env:python_version_spec}` at $($pythonCmd.Source)"
+        exit 0
+      }
+
+      $pythonCmd = Get-Command "python" -ErrorAction SilentlyContinue
+      if ($pythonCmd) {
+        Write-Host "Found `python` at $($pythonCmd.Source)."
+        # FUTURE WORK: validate it matches the requested version spec
+        exit 0
+      }
+
+      Write-Host "##vso[task.logissue type=error]Neither `python` nor `python${env:python_version_spec}` are on PATH."
+      exit 1
   env:
     python_version_spec: ${{ parameters.versionSpec }}
 
@@ -73,47 +109,65 @@ steps:
 #       across all runs.
 #       Proper fix would be to have a post-job task to clean up our junk, but we can't do that without a full task def.
 #       (Or intrusively set GRADLE_USER_HOME env var to an agent temp dir. Maven doesn't have equiv facilities.)
-- pwsh: |
-    # Force everything in Maven to go through & authenticate using the main feed.
-    # HACK: Does not escape `parameters.artifactFeeds`. Assumes pattern is [A-Za-z0-9]+.
-    # HACK: Assumes feed is a org-scoped feed in `aiinfra`.
-    $m2SettingsXmlPath = "~/.m2/settings.xml"
-    $m2SettingsContent = Get-Content $m2SettingsXmlPath -Raw
+- task: PowerShell@2
+  displayName: 'Maven/Gradle - mirror / feed via `${{ parameters.artifactFeeds }}`'
+  env:
+    central_maven_feed_name: ${{ parameters.artifactFeeds }}
+  inputs:
+    targetType: 'inline'
+    script: |
+      # Force everything in Maven to go through & authenticate using the main feed.
+      # HACK: Does not escape `parameters.artifactFeeds`. Assumes pattern is [A-Za-z0-9]+.
+      # HACK: Assumes feed is a org-scoped feed in `aiinfra`.
+      $m2SettingsXmlPath = "~/.m2/settings.xml"
+        $m2SettingsContent = Get-Content $m2SettingsXmlPath -Raw
 
-    if ($m2SettingsContent -match '<mirrors>') {
-      echo "##vso[task.logissue type=error]Configuration already contains `<mirrors>`, cannot inject feed mirror w/o corrupting existing config."
-      exit 1
-    }
+      if ($m2SettingsContent -match '<mirrors>') {
+        echo "##vso[task.logissue type=error]Configuration already contains `<mirrors>`, cannot inject feed mirror w/o corrupting existing config."
+        exit 1
+      }
 
-    echo "Injecting Maven mirrors section for 1ES feed"
-    $( $m2SettingsContent -replace '</settings>', "<mirrors><mirror><id>${env:central_maven_feed_name}</id><name>1ES Feed Override</name><url>https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1</url><mirrorOf>*</mirrorOf></mirror></mirrors></settings>" ) | `
-      Set-Content $m2SettingsXmlPath
+      echo "Injecting Maven mirrors section for 1ES feed"
+      $( $m2SettingsContent -replace '</settings>', "<mirrors><mirror><id>${env:central_maven_feed_name}</id><name>1ES Feed Override</name><url>https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1</url><mirrorOf>*</mirrorOf></mirror></mirrors></settings>" ) | `
+        Set-Content $m2SettingsXmlPath
 
 
-    # gradle - inject 1ES feed repo into all projects/buildscripts. Auth using creds from maven settings.xml.
-    # nb: see HACK note above.
-    $gradleInitDir = if ($env:GRADLE_HOME_DIR) { $env:GRADLE_HOME_DIR } else { "~/.gradle" }
-    if (!(Test-Path -Path "${gradleInitDir}/init.d")) {
-      New-Item -ItemType Directory -Path "${gradleInitDir}/init.d"
-    }
-    Set-Content -Path "${gradleInitDir}/init.d/1es-feed-inject.init.gradle" -Value @"
-    // Use official 1ES feed. Network isolation prevents us from reaching out directly to other feeds.
+      # gradle - inject 1ES feed repo into all projects/buildscripts. Auth using creds from maven settings.xml.
+      # nb: see HACK note above.
+      $gradleInitDir = if ($env:GRADLE_HOME_DIR) { $env:GRADLE_HOME_DIR } else { "~/.gradle" }
+      if (!(Test-Path -Path "${gradleInitDir}/init.d")) {
+        New-Item -ItemType Directory -Path "${gradleInitDir}/init.d"
+      }
+      Set-Content -Path "${gradleInitDir}/init.d/1es-feed-inject.init.gradle" -Value @"
+      // Use official 1ES feed. Network isolation prevents us from reaching out directly to other feeds.
 
-    def mavenSettingsServers = {
-      File mavenSettings = new File(System.getProperty("user.home"), ".m2/settings.xml")
-      return new XmlSlurper().parse(mavenSettings)."servers"."server"
-    }
+      def mavenSettingsServers = {
+        File mavenSettings = new File(System.getProperty("user.home"), ".m2/settings.xml")
+        return new XmlSlurper().parse(mavenSettings)."servers"."server"
+      }
 
-    def oneEsFeedCredentials = {
-      for (x in mavenSettingsServers()) {
-        if (x."id".text() == "${env:central_maven_feed_name}") {
-          return [username: x.username.text(), password: x.password.text()]
+      def oneEsFeedCredentials = {
+        for (x in mavenSettingsServers()) {
+          if (x."id".text() == "${env:central_maven_feed_name}") {
+            return [username: x.username.text(), password: x.password.text()]
+          }
         }
       }
-    }
 
-    allprojects {
-      buildscript {
+      allprojects {
+        buildscript {
+          repositories {
+            maven {
+              name "1ES Feed"
+              url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1")
+              credentials(PasswordCredentials) {
+                username oneEsFeedCredentials().username
+                password oneEsFeedCredentials().password
+              }
+            }
+          }
+        }
+
         repositories {
           maven {
             name "1ES Feed"
@@ -125,42 +179,30 @@ steps:
           }
         }
       }
+      "@
 
-      repositories {
-        maven {
-          name "1ES Feed"
-          url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1")
-          credentials(PasswordCredentials) {
-            username oneEsFeedCredentials().username
-            password oneEsFeedCredentials().password
-          }
-        }
-      }
-    }
-    "@
-  displayName: 'Maven/Gradle - mirror / feed via `${{ parameters.artifactFeeds }}`'
-  env:
-    central_maven_feed_name: ${{ parameters.artifactFeeds }}
-
-- pwsh: |
-    # NuGet appears to fail if any of the pkg sources are unreachable.
-    # Replace the NuGet.config w/ one that only has the internal feed.
-    # HACK: We'd rather splice the structure, not override the file.
-    Set-Content -Path "NuGet.config" -Value @"
-    <?xml version="1.0" encoding="utf-8"?>
-    <configuration>
-      <solution>
-        <add key="disableSourceControlIntegration" value="true" />
-      </solution>
-      <packageSources>
-        <clear />
-        <add key="1ES Feed" value="https://pkgs.dev.azure.com/aiinfra/_packaging/${env:central_maven_feed_name}/nuget/v3/index.json" />
-      </packageSources>
-      <disabledPackageSources>
-        <clear />
-      </disabledPackageSources>
-    </configuration>
-    "@
+- task: PowerShell@2
   displayName: NuGet - override `NuGet.config` to lock feed to `${{ parameters.artifactFeeds }}`
   env:
     central_maven_feed_name: ${{ parameters.artifactFeeds }}
+  inputs:
+    targetType: 'inline'
+    script: |
+      # NuGet appears to fail if any of the pkg sources are unreachable.
+      # Replace the NuGet.config w/ one that only has the internal feed.
+      # HACK: We'd rather splice the structure, not override the file.
+      Set-Content -Path "NuGet.config" -Value @"
+      <?xml version="1.0" encoding="utf-8"?>
+      <configuration>
+        <solution>
+          <add key="disableSourceControlIntegration" value="true" />
+        </solution>
+        <packageSources>
+          <clear />
+          <add key="1ES Feed" value="https://pkgs.dev.azure.com/aiinfra/_packaging/${env:central_maven_feed_name}/nuget/v3/index.json" />
+        </packageSources>
+        <disabledPackageSources>
+          <clear />
+        </disabledPackageSources>
+      </configuration>
+      "@
