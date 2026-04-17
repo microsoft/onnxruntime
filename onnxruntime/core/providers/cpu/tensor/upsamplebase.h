@@ -16,6 +16,7 @@
 #include "core/common/status.h"
 #include <core/common/safeint.h>
 #include <core/common/narrow.h>
+#include <type_traits>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
@@ -166,12 +167,28 @@ inline void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<c
 
 }  // namespace upsamplebase_helper
 
+namespace upsamplebase_detail {
+// SFINAE trait to detect whether a Node type has InputDefs() member function.
+// The framework Node has it; the plugin adapter Node does not.
+template <typename T, typename = void>
+struct has_input_defs : std::false_type {};
+template <typename T>
+struct has_input_defs<T, std::void_t<decltype(std::declval<const T&>().InputDefs())>> : std::true_type {};
+}  // namespace upsamplebase_detail
+
 class UpsampleBase {
  public:
   // Make this available in other EP via provider bridge
   // it works iff output_shape is specified
+#ifdef SHARED_PROVIDER
   void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
                                 InlinedVector<float>& scales) const;
+#else
+  void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                InlinedVector<float>& scales) const {
+    upsamplebase_helper::AdjustOutputSizeAsPolicy(output_dims, input_dims, scales, keep_aspect_ratio_policy_, axes_);
+  }
+#endif
 
  protected:
   template <typename KernelInfoType>
@@ -265,8 +282,15 @@ class UpsampleBase {
     if (scales_input_idx_ > 0) {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
-      auto x_shape = node.InputDefs()[0]->Shape();
-      int64_t rank = x_shape ? x_shape->dim_size() : -1;
+      int64_t rank = -1;
+      if constexpr (upsamplebase_detail::has_input_defs<decltype(node)>::value) {
+        auto x_shape = node.InputDefs()[0]->Shape();
+        rank = x_shape ? x_shape->dim_size() : -1;
+      } else {
+        auto type_info = info.GetKernelInfo().GetInputTypeInfo(0);
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        rank = static_cast<int64_t>(tensor_info.GetDimensionsCount());
+      }
       if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
         ORT_THROW_IF_ERROR(ParseScalesData(scale, scales_, rank));
         scales_cached_ = true;
@@ -642,13 +666,6 @@ class UpsampleBase {
     return lookup_table;
   }
 };  // UpsampleBase
-
-#ifndef SHARED_PROVIDER
-inline void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
-                                                   InlinedVector<float>& scales) const {
-  upsamplebase_helper::AdjustOutputSizeAsPolicy(output_dims, input_dims, scales, keep_aspect_ratio_policy_, axes_);
-}
-#endif
 
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)

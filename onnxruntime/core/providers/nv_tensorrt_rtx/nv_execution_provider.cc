@@ -1280,7 +1280,9 @@ void NvExecutionProvider::HandleCudaGraphStart(cudaStream_t stream, bool require
 }
 
 bool NvExecutionProvider::IsGraphCaptureEnabled() const {
-  return cuda_graph_enable_;
+  // Return false so that ORT's framework does not cache this EP for ORT-managed graph capture/replay.
+  // NvTensorRTRTX manages CUDA graph capture/replay internally.
+  return false;
 }
 
 bool NvExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {

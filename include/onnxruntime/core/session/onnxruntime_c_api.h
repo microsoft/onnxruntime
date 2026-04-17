@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 25
+#define ORT_API_VERSION 26
 
 #ifdef __cplusplus
 extern "C" {
@@ -418,6 +418,22 @@ typedef struct OrtAllocator {
    * \since 1.23
    */
   void*(ORT_API_CALL* AllocOnStream)(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream);
+
+  /** \brief Release unused memory held by the allocator back to the system.
+   *
+   * For arena-based allocators, this frees allocation regions that are completely unused.
+   * For mempool-based allocators, this trims the pool to a configured minimum.
+   * For non-arena allocators this is a no-op.
+   *
+   * \param[in] this_ OrtAllocator instance
+   *
+   * \return nullptr on success, or an OrtStatus* on failure.
+   *
+   * \note Implementation of this function is optional and Shrink may be set to a nullptr.
+   *       Callers must check for nullptr before invoking.
+   * \since 1.25
+   */
+  ORT_API2_STATUS(Shrink, _In_ struct OrtAllocator* this_);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -959,6 +975,69 @@ typedef OrtCustomThreadHandle (*OrtCustomCreateThreadFn)(void* ort_custom_thread
  */
 typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_handle);
 
+/** \brief Thread pool work enqueue callback
+ *
+ * Called when work is about to be enqueued to a thread pool worker thread.
+ * This runs on the thread that is submitting the work.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \return Callback-specific data that will be passed to the configured
+ *         OrtThreadPoolCallbacksConfig::on_start_work and OrtThreadPoolCallbacksConfig::on_stop_work.
+ *         May return NULL.
+ */
+typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context)NO_EXCEPTION;
+
+/** \brief Thread pool work start callback
+ *
+ * Called when a thread is about to start executing work.
+ * This typically runs on a worker thread, but may also run on the submitting thread
+ * when the work queue is full and work is executed synchronously.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
+ */
+typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+
+/** \brief Thread pool work stop callback
+ *
+ * Called when a thread has finished executing work.
+ * This typically runs on a worker thread, but may also run on the submitting thread
+ * when the work queue is full and work is executed synchronously.
+ * Guaranteed to be called regardless of whether the work finishes successfully or not.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
+ */
+typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+
+/** \brief Thread pool work abandon callback
+ *
+ * Called when enqueued work is abandoned (revoked or rejected) without execution.
+ * This allows the caller to free any resources associated with enqueue_data.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
+ */
+typedef void (*OrtThreadPoolWorkAbandonFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+
+/** \brief Configuration for thread pool work callbacks.
+ *
+ * A versioned struct that bundles all thread pool callback function pointers and a user context.
+ * Pass to OrtApi::SetPerSessionThreadPoolCallbacks.
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ * \note New fields MUST only be appended at the end of this struct.
+ *
+ * \since Version 1.25.
+ */
+typedef struct OrtThreadPoolCallbacksConfig {
+  uint32_t version;                       /**< Must be ORT_API_VERSION */
+  OrtThreadPoolWorkEnqueueFn on_enqueue;  /**< Called when work is enqueued. May be NULL. */
+  OrtThreadPoolWorkStartFn on_start_work; /**< Called when work starts. May be NULL. */
+  OrtThreadPoolWorkStopFn on_stop_work;   /**< Called when work completes. May be NULL. */
+  OrtThreadPoolWorkAbandonFn on_abandon;  /**< Called when work is abandoned. May be NULL. */
+  void* user_context;                     /**< User-provided context passed to all callbacks. May be NULL.
+                                               Must remain valid for the lifetime of the session.
+                                               Subject to concurrent invocations from multiple threads
+                                               and must be thread-safe. May affect inference performance. */
+} OrtThreadPoolCallbacksConfig;
+
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
 /** \brief Callback function for RunAsync
@@ -972,15 +1051,15 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
 
 /** \brief External memory handle type for importing GPU resources.
  *
- * \todo Add OPAQUE_WIN32 for Windows Vulkan-specific memory handles
- * \todo Add POSIX file descriptor (OPAQUE_FD) for Linux Vulkan/CUDA/OpenCL interop
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR, non-dedicated allocation */
 } OrtExternalMemoryHandleType;
 
 /** \brief Descriptor for importing external memory.
@@ -1004,7 +1083,9 @@ typedef struct OrtExternalMemoryDescriptor {
  * \since Version 1.24.
  */
 typedef enum OrtExternalSemaphoreType {
-  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0,                     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+  ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32 = 1,     /**< Shared HANDLE from vkGetSemaphoreWin32HandleKHR of a VkSemaphore created as VK_SEMAPHORE_TYPE_TIMELINE */
+  ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD = 2, /**< File descriptor from vkGetSemaphoreFdKHR of a VkSemaphore created as VK_SEMAPHORE_TYPE_TIMELINE */
 } OrtExternalSemaphoreType;
 
 /** \brief Descriptor for importing external semaphores.
@@ -1071,14 +1152,16 @@ typedef struct OrtGraphicsInteropConfig {
    * works; streams use the default context.
    *
    * For D3D12: ID3D12CommandQueue*
-   * For Vulkan: VkQueue (cast to void*)
+   * For Vulkan: pass NULL
    */
   void* command_queue;
 
   /** \brief Additional API-specific options (optional).
    *
    * Can be used for future extensibility without changing the struct layout.
-   * For example, Vulkan-specific queue family index, or D3D12 fence sharing flags.
+   * For example, D3D12 fence sharing flags or provider-specific options like
+   * onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data
+   * for Vulkan interop for the NvTensorRTRTX provider.
    */
   const OrtKeyValuePairs* additional_options;
 } OrtGraphicsInteropConfig;
@@ -7327,6 +7410,33 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size);
+
+  /// @}
+  /// \name OrtEnv
+  /// @{
+
+  /** \brief Set thread pool work callbacks for per-session thread pools.
+   *
+   * Stores callbacks on the Env that will be applied to per-session thread pools
+   * created by subsequent sessions. Does not affect sessions already created or
+   * global thread pools created via OrtApi::CreateEnvWithGlobalThreadPools.
+   *
+   * Requires ORT built with --enable_session_threadpool_callbacks.
+   *
+   * \param[in] env OrtEnv instance.
+   * \param[in] config Versioned callbacks configuration. ORT copies the struct contents;
+   *                   the caller does not need to keep the struct alive after this call returns.
+   *                   However, all pointers within the struct must remain valid for the
+   *                   lifetime of any session that uses these callbacks.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* env,
+                  _In_ const OrtThreadPoolCallbacksConfig* config);
+
+  /// @}
 };
 
 /*

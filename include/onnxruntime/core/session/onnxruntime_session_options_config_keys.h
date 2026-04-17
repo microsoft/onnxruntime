@@ -154,6 +154,22 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
 
+// Configure the duration in microseconds that threads spin waiting for work before blocking.
+// This setting is subordinate to the allow_spinning flags (session.intra_op.allow_spinning /
+// session.inter_op.allow_spinning). When allow_spinning is "0", spinning is disabled and
+// the spin duration is forced to 0 regardless of this setting.
+// By default (when this option is not set), the thread pool uses an iteration-count-based spin loop
+// whose wall-clock duration varies by CPU architecture and pause instruction latency. This provides
+// the best throughput but may result in high CPU utilization.
+// Setting a positive value switches to calibrated iteration-based spinning that targets
+// the specified duration. The actual spin time is a best-effort approximation based on a
+// one-time measurement of the pause instruction latency; it may vary with CPU frequency
+// changes. Recommended for power-sensitive or client/on-device workloads.
+// Common values: 500-2000 (0.5-2ms).
+// Setting to "0" with spinning enabled effectively disables spinning (equivalent to allow_spinning = false).
+static const char* const kOrtSessionOptionsConfigIntraOpSpinDurationUs = "session.intra_op.spin_duration_us";
+static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "session.inter_op.spin_duration_us";
+
 // Key for using model bytes directly for ORT format
 // If a session is created using an input byte array contains the ORT format model data,
 // By default we will copy the model bytes at the time of session creation to ensure the model bytes
@@ -325,12 +341,32 @@ static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "sessi
 /// This is a composite CSV setting formatted as "memory limit in kb,file name for collected stats"
 /// "limit > 0": enables Capacity Aware Partitioning for Cuda EP. `limit` is optional and when absent
 /// the provider may attempt to figure out the memory available automatically.
+/// The setting with no pre-recorded stats is expected to look like: "limit > 0,".
+/// In this case, the EP will calculate memory using the initializers referenced by the node.
+///   This enables an ad-hoc and flexible scenarios with no pre-recorded stats, but may be less accurate.
 /// The setting with no limit is expected to look like: ",file name for collected stats"
-///  The EP will place nodes on device "file name" :
+/// Finally a setting with both limit and pre-recorded stats absent can contain a single comma: ",".
+///  The EP will attempt to place nodes on device (currently only CUDA is supported) :
 /// this file is expected to be found at the same folder with the model. The file contains
 /// pre-recorded stats collected when running with kOrtSessionOptionsCollectNodeMemoryStatsToFile enforce (see above)
 static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
     "session.resource_cuda_partitioning_settings";
+
+/// <summary>
+/// This is a setting that contains string annotations or annotation prefixes to be matched
+/// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.
+/// The value is a semicolon separated list of strings or string prefixes per device.
+/// Format: device1(annotation1, annotation2, ...); device2(annotation1, =annotation3, ...);...
+/// Where:
+/// - device1, device2, ... are the recognized device names to be matched against EPs configured in
+///   the given session.
+/// - annotation1, annotation2, ... are annotation prefixes to be matched against node annotations. Any
+///   node annotation that starts with one of these prefixes will be matched.
+/// - =annotation3 indicates an exact match for annotation3. Only node annotations that are exactly
+///   equal to 'annotation3' will be matched.
+/// TODO: add a list of recognized devices here.
+/// </summary>
+static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.layer_assignment_settings";
 
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
@@ -390,6 +426,13 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// Block size used when converting per-tensor or per-axis DQ + MatMul to MatMulNBits.
+// Only applies to DQ nodes without an existing block_size attribute (i.e., per-tensor or per-axis quantization).
+// Positive value: explicit block_size (must be power-of-2 and >= 16, e.g., 16, 32, 64, 128).
+// "0" or not provided: use default block_size of 32.
+// "-1": heuristic - largest power-of-2 <= min(K, 256) that minimizes padding.
+static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qdq_matmulnbits_block_size";
 
 // Enable the DQ->MatMulNBits fusion graph transformer.
 // "0": disabled (default). "1": enabled.

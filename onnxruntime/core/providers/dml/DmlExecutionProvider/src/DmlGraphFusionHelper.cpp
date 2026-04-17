@@ -3,6 +3,9 @@
 #include "DmlGraphFusionHelper.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 
+#include "core/common/endian.h"
+#include "core/framework/endian_utils.h"
+
 using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
@@ -121,7 +124,31 @@ namespace DmlGraphFusionHelper
             onnxruntime::FileOffsetType fileOffset;
             SafeInt<size_t> safeTensorByteSize;
             THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*initializer,  graph.ModelPath(), /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
-            if (externalFilePath == onnxruntime::utils::kTensorProtoMemoryAddressTag)
+            if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
+            {
+                if constexpr (onnxruntime::endian::native != onnxruntime::endian::little)
+                {
+                    unpackedTensor.reset(new std::byte[safeTensorByteSize]);
+
+                    auto src = gsl::make_span<const unsigned char>(reinterpret_cast<const unsigned char*>(fileOffset), safeTensorByteSize);
+                    auto dst = gsl::make_span<unsigned char>(reinterpret_cast<unsigned char*>(unpackedTensor.get()), safeTensorByteSize);
+                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer->data_type()));
+
+                    // If element size is unknown, set it to 1 to disable byteswapping
+                    if (element_size < 1) element_size = 1;
+
+                    THROW_IF_NOT_OK(onnxruntime::utils::ReadLittleEndian(element_size, src, dst));
+
+                    tensorPtr = unpackedTensor.get();
+                    tensorByteSize = safeTensorByteSize;
+                }
+                else
+                {
+                    tensorPtr = reinterpret_cast<std::byte*>(fileOffset);
+                    tensorByteSize = safeTensorByteSize;
+                }
+            }
+            else if (externalFilePath == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag)
             {
                 tensorPtr = reinterpret_cast<std::byte*>(fileOffset);
                 tensorByteSize = safeTensorByteSize;
@@ -232,8 +259,6 @@ namespace DmlGraphFusionHelper
                     }
                 }
 
-                // Tensor sizes in DML must be a multiple of 4 bytes large.
-                tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
                 if(graphSerializationEnabled)
                 {
                     WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
@@ -264,9 +289,10 @@ namespace DmlGraphFusionHelper
                         initializeInputBuffer = CreateCpuResource(providerImpl, tensorPtr, tensorByteSize);
                     }
 
-                    // Set the binding for operator initialization to the buffer
+                    // Set the binding for operator initialization to the buffer.
+                    // DML requires buffer binding sizes to be a multiple of 4 bytes.
                     initInputBindings[i].Buffer = initializeInputBuffer.Get();
-                    initInputBindings[i].SizeInBytes = tensorByteSize;
+                    initInputBindings[i].SizeInBytes = AlignToPow2<size_t>(tensorByteSize, 4);
                     initializeResourceRefs.push_back(std::move(initializeInputBuffer));
                 }
 

@@ -127,9 +127,16 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
                           bool accept_only_numpy_array = false, bool use_numpy_data_memory = true,
                           const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy);
 
+/// @param zero_copy_non_owning  When false (default), CPU tensors that do not own
+///   their buffer are copied to a new numpy array to prevent dangling pointers
+///   (e.g. when a model output aliases a numpy input array).  Set to true ONLY
+///   when the caller explicitly manages the backing memory lifetime — currently
+///   this is limited to OrtValue.numpy(), where the user holds the OrtValue
+///   Python object and is responsible for keeping it alive.
 pybind11::object GetPyObjFromTensor(const OrtValue& rtensor,
                                     const DataTransferManager* data_transfer_manager = nullptr,
-                                    const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+                                    const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions = nullptr,
+                                    bool zero_copy_non_owning = false);
 
 // The below two functions are used to convert OrtValue to numpy arrays
 

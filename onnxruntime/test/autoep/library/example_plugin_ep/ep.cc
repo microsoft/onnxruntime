@@ -11,9 +11,12 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
 
 #include "ep_factory.h"
 #include "ep_stream_support.h"
+
+extern std::atomic<uint64_t> g_sync_count;
 
 const FloatInitializer* MulKernel::TryGetSavedInitializer(const std::string& name) const {
   auto iter = float_initializers.find(name);
@@ -181,6 +184,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   CreateAllocator = CreateAllocatorImpl;                                      // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;                  // optional. can be nullptr
   GetCompiledModelCompatibilityInfo = GetCompiledModelCompatibilityInfoImpl;  // compatibility info for compiled models
+  Sync = SyncImpl;                                                            // optional. can be nullptr
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -585,6 +589,19 @@ OrtStatus* ORT_API_CALL ExampleEp::CreateSyncStreamForDeviceImpl(_In_ OrtEp* thi
   return nullptr;
 }
 
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::SyncImpl(_In_ OrtEp* this_ptr) noexcept {
+  // Suppress unused parameter warning
+  (void)this_ptr;
+
+  // In a real EP, this would synchronize the device to ensure all work is complete.
+  // Here we just increment a counter to demonstrate that Sync is called and can be
+  // used to trigger synchronization in tests.
+  ++g_sync_count;
+
+  return nullptr;
+}
+
 //
 // Implementation of ExampleNodeComputeInfo
 //
@@ -684,11 +701,12 @@ const char* ORT_API_CALL ExampleEp::GetCompiledModelCompatibilityInfoImpl(OrtEp*
   // - EP name
   // - EP version (from factory)
   // - ORT API version
+  // - Hardware Architecture (It's used for model package test)
   //
   // In a real EP, this might include driver versions, hardware IDs, etc.
   // The string format is EP-defined and should be parseable by ValidateCompiledModelCompatibilityInfo.
   ep->compatibility_info_ = ep->name_ + ";version=" + ep->factory_.GetEpVersionString() + ";ort_api_version=" +
-                            std::to_string(ORT_API_VERSION);
+                            std::to_string(ORT_API_VERSION) + ";hardware_architecture=arch1";
 
   IGNORE_ORTSTATUS(ep->ort_api.Logger_LogMessage(&ep->logger_,
                                                  OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,

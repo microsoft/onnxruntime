@@ -73,6 +73,7 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/slice_concat_to_space_to_depth_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
@@ -841,6 +842,99 @@ TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs)
   // The Resize node is constant folded
   ASSERT_TRUE(op_to_count["Resize"] == 0);
   ASSERT_TRUE(op_to_count["Reshape"] == 1);
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalOutputs) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInitializer<int64_t>(
+        {6}, {5, 5, 5, 10, 10, 20});
+
+    auto* unique_values = builder.MakeOutput<int64_t>(std::nullopt);
+    auto* unique_counts = builder.MakeOutput<int64_t>(std::nullopt);
+
+    auto* missing_indices = builder.MakeEmptyInput();
+    auto* missing_inverse_indices = builder.MakeEmptyInput();
+
+    builder.AddNode(
+        "Unique",
+        {input},
+        {unique_values, missing_indices, missing_inverse_indices, unique_counts});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const auto ops = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(ops.count("Unique") == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto ops = CountOpsInGraph(graph);
+
+    TEST_RETURN_IF(ops.find("Unique") != ops.end());
+
+    const auto& outputs = graph.GetOutputs();
+    TEST_RETURN_IF_NOT(outputs.size() == 2U);
+
+    const auto& init_tensors = graph.GetAllInitializedTensors();
+
+    bool saw_values = false;
+    bool saw_counts = false;
+
+    for (const NodeArg* out : outputs) {
+      auto it = init_tensors.find(out->Name());
+      TEST_RETURN_IF(it == init_tensors.end());
+
+      onnxruntime::Initializer init{
+          graph,
+          *it->second,
+          graph.ModelPath()};
+
+      TEST_RETURN_IF_NOT(init.size() == 3U);
+
+      const int64_t* data = init.data<int64_t>();
+
+      if (data[0] == 5 && data[1] == 10 && data[2] == 20) {
+        if (saw_values) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "Duplicate values output detected");
+        }
+        saw_values = true;
+
+      } else if (data[0] == 3 && data[1] == 2 && data[2] == 1) {
+        if (saw_counts) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "Duplicate counts output detected");
+        }
+        saw_counts = true;
+
+      } else {
+        return Status(common::ONNXRUNTIME, common::FAIL,
+                      "Unexpected tensor content after constant folding");
+      }
+    }
+
+    TEST_RETURN_IF_NOT(saw_values);
+    TEST_RETURN_IF_NOT(saw_counts);
+
+    return Status::OK();
+  };
+
+  const ConfigOptions empty_config_options;
+  auto cpu_ep =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case,
+      13,
+      *logger_,
+      std::make_unique<ConstantFolding>(
+          *cpu_ep,
+          false,
+          empty_config_options),
+      TransformerLevel::Level1,
+      1,
+      pre_graph_checker,
+      post_graph_checker));
 }
 
 static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<std::string, int>& expected_op_count,
@@ -2533,6 +2627,407 @@ TEST_F(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   ASSERT_TRUE(op_to_count["Add"] != 0);
   ASSERT_TRUE(op_to_count["Unsqueeze"] != 0);
 }
+
+// Basic test: Unsqueeze with a single axis on a constant initializer is eliminated.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_BasicConstantInput) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<float>({2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{0});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    // Input shape [2, 3] with axes {0} => output shape [1, 2, 3].
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        auto* shape = node.InputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape != nullptr);
+        TEST_RETURN_IF_NOT(shape->dim_size() == 3);
+        TEST_RETURN_IF_NOT(shape->dim(0).dim_value() == 1);
+        TEST_RETURN_IF_NOT(shape->dim(1).dim_value() == 2);
+        TEST_RETURN_IF_NOT(shape->dim(2).dim_value() == 3);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Unsqueeze with multiple axes on a constant initializer is eliminated.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_MultipleAxes) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<float>({4}, {1.0f, 2.0f, 3.0f, 4.0f});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{0, 2});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    // Input shape [4] with axes {0, 2} => output shape [1, 4, 1].
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        auto* shape = node.InputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape != nullptr);
+        TEST_RETURN_IF_NOT(shape->dim_size() == 3);
+        TEST_RETURN_IF_NOT(shape->dim(0).dim_value() == 1);
+        TEST_RETURN_IF_NOT(shape->dim(1).dim_value() == 4);
+        TEST_RETURN_IF_NOT(shape->dim(2).dim_value() == 1);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Unsqueeze with negative axis on a constant initializer is eliminated.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_NegativeAxis) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<float>({2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    // Input rank 2, axes {-1}: output rank = 3, -1 maps to axis 2.
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    // Input shape [2, 3] with axes {-1} => output shape [2, 3, 1].
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        auto* shape = node.InputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape != nullptr);
+        TEST_RETURN_IF_NOT(shape->dim_size() == 3);
+        TEST_RETURN_IF_NOT(shape->dim(0).dim_value() == 2);
+        TEST_RETURN_IF_NOT(shape->dim(1).dim_value() == 3);
+        TEST_RETURN_IF_NOT(shape->dim(2).dim_value() == 1);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Unsqueeze on a scalar constant initializer is eliminated.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_ScalarInput) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<float>({}, {42.0f});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{0, 1});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    // Scalar with axes {0, 1} => output shape [1, 1].
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        auto* shape = node.InputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape != nullptr);
+        TEST_RETURN_IF_NOT(shape->dim_size() == 2);
+        TEST_RETURN_IF_NOT(shape->dim(0).dim_value() == 1);
+        TEST_RETURN_IF_NOT(shape->dim(1).dim_value() == 1);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Unsqueeze whose input is a graph input (not constant) is NOT eliminated.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_NonConstantInputNotEliminated) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3}});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {input_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{0});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, checker, checker));
+}
+
+// Boundary test: axes at the valid extremes are correctly handled.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_AxisBoundaryValues) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<float>({2}, {1.0f, 2.0f});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    // Input rank 1, axes {-3, 2}: output rank = 3.
+    // -3 is the minimum valid negative axis (maps to 0), 2 is the maximum valid positive axis.
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{-3, 2});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    // Input [2] with axes {-3, 2} => axes {0, 2} => output shape [1, 2, 1].
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        auto* shape = node.InputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape != nullptr);
+        TEST_RETURN_IF_NOT(shape->dim_size() == 3);
+        TEST_RETURN_IF_NOT(shape->dim(0).dim_value() == 1);
+        TEST_RETURN_IF_NOT(shape->dim(1).dim_value() == 2);
+        TEST_RETURN_IF_NOT(shape->dim(2).dim_value() == 1);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Unsqueeze whose output is directly a graph output is NOT eliminated
+// because the generated initializer name won't match the graph output name.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_OutputIsGraphOutput) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<float>({3}, {1.0f, 2.0f, 3.0f});
+    auto* output_arg = builder.MakeOutput();
+
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {output_arg});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{0});
+  };
+
+  auto checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, checker, checker));
+}
+
+// Unsqueeze with non-float data type (int32) constant initializer is eliminated.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_Int32Initializer) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<int32_t>({2, 2}, {10, 20, 30, 40});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{1});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    // Input shape [2, 2] with axes {1} => output shape [2, 1, 2].
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        auto* shape = node.InputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape != nullptr);
+        TEST_RETURN_IF_NOT(shape->dim_size() == 3);
+        TEST_RETURN_IF_NOT(shape->dim(0).dim_value() == 2);
+        TEST_RETURN_IF_NOT(shape->dim(1).dim_value() == 1);
+        TEST_RETURN_IF_NOT(shape->dim(2).dim_value() == 2);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Only the Unsqueeze with a constant initializer input is eliminated in a mixed graph.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_MixedConstantAndNonConstant) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // This one should be eliminated.
+    auto* initializer_arg = builder.MakeInitializer<float>({3}, {1.0f, 2.0f, 3.0f});
+    auto* unsqueeze_out_1 = builder.MakeIntermediate();
+    auto& unsqueeze1 = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out_1});
+    unsqueeze1.AddAttribute("axes", std::vector<int64_t>{0});
+
+    // This one should NOT be eliminated.
+    auto* graph_input = builder.MakeInput<float>({{3}});
+    auto* unsqueeze_out_2 = builder.MakeIntermediate();
+    auto& unsqueeze2 = builder.AddNode("Unsqueeze", {graph_input}, {unsqueeze_out_2});
+    unsqueeze2.AddAttribute("axes", std::vector<int64_t>{0});
+
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("Add", {unsqueeze_out_1, unsqueeze_out_2}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 2);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Unsqueeze with all negative axes.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_AllNegativeAxes) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<float>({2}, {1.0f, 2.0f});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    // Input rank 1, axes {-1, -3}: output rank = 3.
+    // -1 maps to axis 2, -3 maps to axis 0. => output shape [1, 2, 1].
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{-1, -3});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        auto* shape = node.InputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape != nullptr);
+        TEST_RETURN_IF_NOT(shape->dim_size() == 3);
+        TEST_RETURN_IF_NOT(shape->dim(0).dim_value() == 1);
+        TEST_RETURN_IF_NOT(shape->dim(1).dim_value() == 2);
+        TEST_RETURN_IF_NOT(shape->dim(2).dim_value() == 1);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Unsqueeze inserting dimensions at multiple positions on a rank-1 input.
+TEST_F(GraphTransformationTests, UnsqueezeElimination_ManyAxes) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* initializer_arg = builder.MakeInitializer<float>({2}, {1.0f, 2.0f});
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    // Input rank 1, axes {0, 2, 3}: output rank = 4 => shape [1, 2, 1, 1].
+    auto& unsqueeze_node = builder.AddNode("Unsqueeze", {initializer_arg}, {unsqueeze_out});
+    unsqueeze_node.AddAttribute("axes", std::vector<int64_t>{0, 2, 3});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Identity") {
+        auto* shape = node.InputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape != nullptr);
+        TEST_RETURN_IF_NOT(shape->dim_size() == 4);
+        TEST_RETURN_IF_NOT(shape->dim(0).dim_value() == 1);
+        TEST_RETURN_IF_NOT(shape->dim(1).dim_value() == 2);
+        TEST_RETURN_IF_NOT(shape->dim(2).dim_value() == 1);
+        TEST_RETURN_IF_NOT(shape->dim(3).dim_value() == 1);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// NOTE: Duplicate-axis and out-of-range axis error paths in UnsqueezeElimination::Apply
+// are defense-in-depth guards. They cannot be exercised through ModelTestBuilder because
+// ONNX schema validation during graph.Resolve() rejects such invalid models before the
+// optimizer runs.
 
 static void TestFuseConvAddMul(logging::Logger& logger, const PathChar* model_uri) {
   std::shared_ptr<Model> p_model;
@@ -4355,7 +4850,7 @@ TEST_F(GraphTransformationTests, ReshapeFusion_Contiguous_Reshape) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({{8, 16, 32}});
     auto* shape_initializer_1 = builder.MakeInitializer<int64_t>({4}, {2, 4, 16, 32});
-    auto* shape_initializer_2 = builder.MakeInitializer<int64_t>({4}, {2, 64, 32});
+    auto* shape_initializer_2 = builder.MakeInitializer<int64_t>({3}, {2, 64, 32});
     auto* axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
     auto* reshape_out_1 = builder.MakeIntermediate();
     auto* reshape_out_2 = builder.MakeIntermediate();
@@ -4400,6 +4895,601 @@ TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Concat"] == 0);
   ASSERT_TRUE(op_to_count["Slice"] == 0);
+}
+
+// Verifies that ConcatSliceElimination correctly defaults axes to {0} and steps to {1}
+// when Slice nodes omit the optional axes/steps inputs (opset >= 10).
+TEST_F(GraphTransformationTests, ConcatSliceElimination_OpsetGte10_MissingAxesAndSteps) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* init0 = builder.MakeInitializer<float>({2}, {1.0f, 2.0f});
+    auto* init1 = builder.MakeInitializer<float>({2}, {3.0f, 4.0f});
+    auto* init2 = builder.MakeInitializer<float>({2}, {5.0f, 6.0f});
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto& concat_node = builder.AddNode("Concat", {init0, init1, init2}, {concat_out});
+    concat_node.AddAttribute("axis", int64_t{0});
+
+    auto* starts0 = builder.MakeInitializer<int64_t>({1}, {int64_t{0}});
+    auto* ends0 = builder.MakeInitializer<int64_t>({1}, {int64_t{2}});
+    auto* slice0_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {concat_out, starts0, ends0}, {slice0_out});
+
+    auto* starts1 = builder.MakeInitializer<int64_t>({1}, {int64_t{2}});
+    auto* ends1 = builder.MakeInitializer<int64_t>({1}, {int64_t{4}});
+    auto* slice1_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {concat_out, starts1, ends1}, {slice1_out});
+
+    auto* starts2 = builder.MakeInitializer<int64_t>({1}, {int64_t{4}});
+    auto* ends2 = builder.MakeInitializer<int64_t>({1}, {int64_t{6}});
+    auto* slice2_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {concat_out, starts2, ends2}, {slice2_out});
+
+    auto* lhs0 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
+    auto* add0_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs0, slice0_out}, {add0_out});
+
+    auto* lhs1 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
+    auto* add1_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs1, slice1_out}, {add1_out});
+
+    auto* lhs2 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
+    auto* add2_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs2, slice2_out}, {add2_out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 3);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<ConcatSliceElimination>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Same test for opset v1, where axes is an optional attribute on the Slice node.
+TEST_F(GraphTransformationTests, ConcatSliceElimination_OpsetV1_MissingAxesAttribute) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* init0 = builder.MakeInitializer<float>({2}, {1.0f, 2.0f});
+    auto* init1 = builder.MakeInitializer<float>({2}, {3.0f, 4.0f});
+    auto* init2 = builder.MakeInitializer<float>({2}, {5.0f, 6.0f});
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto& concat_node = builder.AddNode("Concat", {init0, init1, init2}, {concat_out});
+    concat_node.AddAttribute("axis", int64_t{0});
+
+    auto* slice0_out = builder.MakeIntermediate();
+    auto& slice0 = builder.AddNode("Slice", {concat_out}, {slice0_out});
+    slice0.AddAttribute("starts", std::vector<int64_t>{0});
+    slice0.AddAttribute("ends", std::vector<int64_t>{2});
+
+    auto* slice1_out = builder.MakeIntermediate();
+    auto& slice1 = builder.AddNode("Slice", {concat_out}, {slice1_out});
+    slice1.AddAttribute("starts", std::vector<int64_t>{2});
+    slice1.AddAttribute("ends", std::vector<int64_t>{4});
+
+    auto* slice2_out = builder.MakeIntermediate();
+    auto& slice2 = builder.AddNode("Slice", {concat_out}, {slice2_out});
+    slice2.AddAttribute("starts", std::vector<int64_t>{4});
+    slice2.AddAttribute("ends", std::vector<int64_t>{6});
+
+    auto* lhs0 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
+    auto* add0_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs0, slice0_out}, {add0_out});
+
+    auto* lhs1 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
+    auto* add1_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs1, slice1_out}, {add1_out});
+
+    auto* lhs2 = builder.MakeInput<float>({2}, {0.0f, 0.0f});
+    auto* add2_out = builder.MakeOutput();
+    builder.AddNode("Add", {lhs2, slice2_out}, {add2_out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 3);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Concat"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Slice"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 3);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<ConcatSliceElimination>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 4, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* ends00 = builder.Make1DInitializer<int64_t>({8, 8});
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* ends01 = builder.Make1DInitializer<int64_t>({8, 8});
+
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* ends10 = builder.Make1DInitializer<int64_t>({8, 8});
+
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+    auto* ends11 = builder.Make1DInitializer<int64_t>({8, 8});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends00, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts01, ends01, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts10, ends10, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts11, ends11, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
+    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
+    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "SpaceToDepth") {
+        const auto* blocksize_attr = graph_utils::GetNodeAttribute(node, "blocksize");
+        TEST_RETURN_IF_NOT(blocksize_attr != nullptr && utils::HasInt(*blocksize_attr) && blocksize_attr->i() == 2);
+      }
+    }
+
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNodesTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto make_int64_constant = [&](const std::vector<int64_t>& values) -> NodeArg* {
+      ONNX_NAMESPACE::TensorProto tensor_proto;
+      tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      if (!values.empty()) {
+        tensor_proto.add_dims(gsl::narrow<int64_t>(values.size()));
+      }
+      utils::SetRawDataInTensorProto(tensor_proto,
+                                     reinterpret_cast<const char*>(values.data()),
+                                     values.size() * sizeof(int64_t));
+
+      NodeArg* output = builder.MakeIntermediate();
+      tensor_proto.set_name(output->Name());
+      builder.AddNode("Constant", {}, {output}).AddAttribute("value", tensor_proto);
+      return output;
+    };
+
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+
+    auto* axes_hw = make_int64_constant({2, 3});
+    auto* steps2 = make_int64_constant({2, 2});
+    auto* ends = make_int64_constant({8, 8});
+
+    auto* starts00 = make_int64_constant({0, 0});
+    auto* starts01 = make_int64_constant({0, 1});
+    auto* starts10 = make_int64_constant({1, 0});
+    auto* starts11 = make_int64_constant({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("Constant") == 7);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
+    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
+    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithPermutedBlockOrderTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+    auto* ends = builder.Make1DInitializer<int64_t>({std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()});
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice10_out, slice01_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    TEST_RETURN_IF(get_op_count(op_to_count, "Gather") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
+    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
+    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
+    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "Gather") == 1);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForDynamicChannelPermutedBlockOrderTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{1, -1, 8, 8}});
+
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+    auto* ends = builder.Make1DInitializer<int64_t>({std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()});
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice10_out, slice01_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    TEST_RETURN_IF(get_op_count(op_to_count, "Gather") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    TEST_RETURN_IF(get_op_count(op_to_count, "Gather") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForSpatialCropTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+    auto* ends = builder.Make1DInitializer<int64_t>({6, 8});
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForChannelSliceTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+
+    auto* axes_chw = builder.Make1DInitializer<int64_t>({1, 2, 3});
+    auto* steps = builder.Make1DInitializer<int64_t>({1, 2, 2});
+    auto* ends = builder.Make1DInitializer<int64_t>({2, 8, 8});
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0, 0});
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 0, 1});
+    auto* starts10 = builder.Make1DInitializer<int64_t>({0, 1, 0});
+    auto* starts11 = builder.Make1DInitializer<int64_t>({0, 1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_chw, steps}, {slice00_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_chw, steps}, {slice01_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_chw, steps}, {slice10_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_chw, steps}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForUnknownRankInputTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{});
+
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+    auto* ends = builder.Make1DInitializer<int64_t>({8, 8});
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForRank5InputTest) {
+  auto get_op_count = [](const OpCountMap& op_to_count, std::string_view op_type) {
+    const auto it = op_to_count.find(std::string(op_type));
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 2, 8, 8}, -1.0f, 1.0f);
+
+    auto* axes_hw = builder.Make1DInitializer<int64_t>({2, 3});
+    auto* steps2 = builder.Make1DInitializer<int64_t>({2, 2});
+    auto* ends = builder.Make1DInitializer<int64_t>({2, 8});
+
+    auto* starts00 = builder.Make1DInitializer<int64_t>({0, 0});
+    auto* starts01 = builder.Make1DInitializer<int64_t>({0, 1});
+    auto* starts10 = builder.Make1DInitializer<int64_t>({1, 0});
+    auto* starts11 = builder.Make1DInitializer<int64_t>({1, 1});
+
+    auto* slice00_out = builder.MakeIntermediate();
+    auto* slice01_out = builder.MakeIntermediate();
+    auto* slice10_out = builder.MakeIntermediate();
+    auto* slice11_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Slice", {input, starts00, ends, axes_hw, steps2}, {slice00_out});
+    builder.AddNode("Slice", {input, starts01, ends, axes_hw, steps2}, {slice01_out});
+    builder.AddNode("Slice", {input, starts10, ends, axes_hw, steps2}, {slice10_out});
+    builder.AddNode("Slice", {input, starts11, ends, axes_hw, steps2}, {slice11_out});
+    builder.AddNode("Concat", {slice00_out, slice01_out, slice10_out, slice11_out}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto pre_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [get_op_count](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
+    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
+    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, ExpandElimination) {
@@ -4827,6 +5917,363 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Softmax"], 0);
   EXPECT_EQ(op_to_count["Shape"], 0);
+}
+
+enum class MobileClipProjectionType {
+  MatMulAdd,
+  GemmWithReshapes,
+};
+
+struct MobileClipAttentionShapeConfig {
+  int64_t input_channels = 512;
+  int64_t hidden_size = 512;
+  int64_t num_heads = 16;
+  int64_t head_size = 32;
+  int64_t qkv_weight_input_dim = 512;
+};
+
+static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
+                                             MobileClipProjectionType projection_type,
+                                             const MobileClipAttentionShapeConfig& shape_config = {},
+                                             bool use_non_default_projection_gemm_attributes = false,
+                                             bool use_runtime_projection_shape_input = false) {
+  const int64_t input_channels = shape_config.input_channels;
+  const int64_t hidden_size = shape_config.hidden_size;
+  const int64_t num_heads = shape_config.num_heads;
+  const int64_t head_size = shape_config.head_size;
+  const int64_t qkv_weight_input_dim = shape_config.qkv_weight_input_dim;
+  const int64_t qkv_hidden_size = num_heads * head_size;
+  const int64_t qkv_output_size = 3 * qkv_hidden_size;
+
+  auto* input_x = builder.MakeInput<float>({1, input_channels, 8, 8}, -1.0f, 1.0f);
+  auto* input_skip = builder.MakeInput<float>({1, hidden_size, 8, 8}, -1.0f, 1.0f);
+
+  auto* reshape0_shape = builder.Make1DInitializer<int64_t>({1, input_channels, 64});
+  auto* qkv_weight = builder.MakeInitializer<float>({qkv_weight_input_dim, qkv_output_size}, -0.05f, 0.05f);
+  auto* qkv_reshape_shape = builder.Make1DInitializer<int64_t>({1, 64, 3, num_heads, head_size});
+  auto* split_sizes = builder.Make1DInitializer<int64_t>({1, 1, 1});
+  auto* squeeze_axis_0 = builder.Make1DInitializer<int64_t>({0});
+  auto* squeeze_axis_2 = builder.Make1DInitializer<int64_t>({2});
+  auto* scale = builder.MakeScalarInitializer<float>(1.0f / std::sqrt(static_cast<float>(head_size)));
+  auto* reshape2_shape = use_runtime_projection_shape_input
+                             ? builder.MakeInput<int64_t>({3}, {1, 64, hidden_size})
+                             : builder.Make1DInitializer<int64_t>({1, 64, hidden_size});
+  auto* proj_gemm_input_shape = builder.Make1DInitializer<int64_t>({64, hidden_size});
+  auto* proj_weight = builder.MakeInitializer<float>({hidden_size, hidden_size}, -0.05f, 0.05f);
+  auto* proj_bias = builder.MakeInitializer<float>({hidden_size}, -0.02f, 0.02f);
+  auto* proj_gemm_output_shape = builder.Make1DInitializer<int64_t>({1, 64, hidden_size});
+  auto* reshape3_shape = builder.Make1DInitializer<int64_t>({1, hidden_size, 8, 8});
+  auto* layer_scale = builder.MakeInitializer<float>({hidden_size, 1, 1}, 0.9f, 1.1f);
+
+  auto* reshape0_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, input_channels, 64});
+  auto* transpose0_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, input_channels});
+  auto* qkv_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, qkv_output_size});
+  auto* qkv_reshape_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 3, num_heads, head_size});
+  auto* split_q = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 1, num_heads, head_size});
+  auto* split_k = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 1, num_heads, head_size});
+  auto* split_v = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, 1, num_heads, head_size});
+  auto* q_transpose_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 1, num_heads, 64, head_size});
+  auto* q_squeeze_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, head_size});
+  auto* k_squeeze_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, num_heads, head_size});
+  auto* k_transpose_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, head_size, 64});
+  auto* q_scaled_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, head_size});
+  auto* qk_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, 64});
+  auto* softmax_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, 64});
+  auto* v_transpose_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 1, num_heads, 64, head_size});
+  auto* v_squeeze_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, head_size});
+  auto* attn_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, num_heads, 64, head_size});
+  auto* transpose3_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, num_heads, head_size});
+  auto* reshape2_out = use_runtime_projection_shape_input
+                           ? builder.MakeIntermediate<float>(std::nullopt)
+                           : builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, hidden_size});
+  auto* proj_gemm_input_out = builder.MakeIntermediate<float>(std::vector<int64_t>{64, hidden_size});
+  auto* proj_gemm_out = builder.MakeIntermediate<float>(std::vector<int64_t>{64, hidden_size});
+  auto* proj_linear_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, hidden_size});
+  auto* transpose4_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, hidden_size, 64});
+  auto* reshape3_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, hidden_size, 8, 8});
+  auto* layer_scale_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, hidden_size, 8, 8});
+  auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, hidden_size, 8, 8});
+
+  auto& reshape0 = builder.AddNode("Reshape", std::vector<NodeArg*>{input_x, reshape0_shape}, std::vector<NodeArg*>{reshape0_out});
+  reshape0.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+  auto& transpose0 = builder.AddNode("Transpose", std::vector<NodeArg*>{reshape0_out}, std::vector<NodeArg*>{transpose0_out});
+  transpose0.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+
+  builder.AddNode("MatMul", std::vector<NodeArg*>{transpose0_out, qkv_weight}, std::vector<NodeArg*>{qkv_out});
+
+  auto& qkv_reshape = builder.AddNode("Reshape", std::vector<NodeArg*>{qkv_out, qkv_reshape_shape}, std::vector<NodeArg*>{qkv_reshape_out});
+  qkv_reshape.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+  auto& split = builder.AddNode("Split", std::vector<NodeArg*>{qkv_reshape_out, split_sizes}, std::vector<NodeArg*>{split_q, split_k, split_v});
+  split.AddAttribute("axis", static_cast<int64_t>(2));
+
+  auto& q_transpose = builder.AddNode("Transpose", std::vector<NodeArg*>{split_q}, std::vector<NodeArg*>{q_transpose_out});
+  q_transpose.AddAttribute("perm", std::vector<int64_t>{2, 0, 3, 1, 4});
+
+  builder.AddNode("Squeeze", std::vector<NodeArg*>{q_transpose_out, squeeze_axis_0}, std::vector<NodeArg*>{q_squeeze_out});
+  builder.AddNode("Squeeze", std::vector<NodeArg*>{split_k, squeeze_axis_2}, std::vector<NodeArg*>{k_squeeze_out});
+
+  auto& k_transpose = builder.AddNode("Transpose", std::vector<NodeArg*>{k_squeeze_out}, std::vector<NodeArg*>{k_transpose_out});
+  k_transpose.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+
+  builder.AddNode("Mul", std::vector<NodeArg*>{q_squeeze_out, scale}, std::vector<NodeArg*>{q_scaled_out});
+  builder.AddNode("MatMul", std::vector<NodeArg*>{q_scaled_out, k_transpose_out}, std::vector<NodeArg*>{qk_out});
+
+  auto& softmax = builder.AddNode("Softmax", std::vector<NodeArg*>{qk_out}, std::vector<NodeArg*>{softmax_out});
+  softmax.AddAttribute("axis", static_cast<int64_t>(-1));
+
+  auto& v_transpose = builder.AddNode("Transpose", std::vector<NodeArg*>{split_v}, std::vector<NodeArg*>{v_transpose_out});
+  v_transpose.AddAttribute("perm", std::vector<int64_t>{2, 0, 3, 1, 4});
+
+  builder.AddNode("Squeeze", std::vector<NodeArg*>{v_transpose_out, squeeze_axis_0}, std::vector<NodeArg*>{v_squeeze_out});
+  builder.AddNode("MatMul", std::vector<NodeArg*>{softmax_out, v_squeeze_out}, std::vector<NodeArg*>{attn_out});
+
+  auto& transpose3 = builder.AddNode("Transpose", std::vector<NodeArg*>{attn_out}, std::vector<NodeArg*>{transpose3_out});
+  transpose3.AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+
+  auto& reshape2 = builder.AddNode("Reshape", std::vector<NodeArg*>{transpose3_out, reshape2_shape}, std::vector<NodeArg*>{reshape2_out});
+  reshape2.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+  if (projection_type == MobileClipProjectionType::GemmWithReshapes) {
+    auto& proj_gemm_input = builder.AddNode("Reshape", std::vector<NodeArg*>{reshape2_out, proj_gemm_input_shape},
+                                            std::vector<NodeArg*>{proj_gemm_input_out});
+    proj_gemm_input.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+    auto& proj_gemm = builder.AddNode("Gemm", std::vector<NodeArg*>{proj_gemm_input_out, proj_weight, proj_bias},
+                                      std::vector<NodeArg*>{proj_gemm_out});
+    if (use_non_default_projection_gemm_attributes) {
+      proj_gemm.AddAttribute("transB", static_cast<int64_t>(1));
+    }
+
+    auto& proj_gemm_output = builder.AddNode("Reshape", std::vector<NodeArg*>{proj_gemm_out, proj_gemm_output_shape},
+                                             std::vector<NodeArg*>{proj_linear_out});
+    proj_gemm_output.AddAttribute("allowzero", static_cast<int64_t>(0));
+  } else {
+    auto* proj_matmul_out = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 64, hidden_size});
+    builder.AddNode("MatMul", std::vector<NodeArg*>{reshape2_out, proj_weight}, std::vector<NodeArg*>{proj_matmul_out});
+    builder.AddNode("Add", std::vector<NodeArg*>{proj_bias, proj_matmul_out}, std::vector<NodeArg*>{proj_linear_out});
+  }
+
+  auto& transpose4 = builder.AddNode("Transpose", std::vector<NodeArg*>{proj_linear_out}, std::vector<NodeArg*>{transpose4_out});
+  transpose4.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+
+  auto& reshape3 = builder.AddNode("Reshape", std::vector<NodeArg*>{transpose4_out, reshape3_shape}, std::vector<NodeArg*>{reshape3_out});
+  reshape3.AddAttribute("allowzero", static_cast<int64_t>(0));
+
+  builder.AddNode("Mul", std::vector<NodeArg*>{layer_scale, reshape3_out}, std::vector<NodeArg*>{layer_scale_out});
+  builder.AddNode("Add", std::vector<NodeArg*>{input_skip, layer_scale_out}, std::vector<NodeArg*>{output});
+}
+
+static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
+  auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Softmax"] == 0);
+  TEST_RETURN_IF_NOT(op_to_count["Squeeze"] == 0);
+  TEST_RETURN_IF_NOT(op_to_count["Split"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 2);
+  TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 4);
+  TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
+
+  int mha_nodes = 0;
+  int gemm_nodes = 0;
+  int split_nodes = 0;
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "MultiHeadAttention" && node.Domain() == kMSDomain) {
+      ++mha_nodes;
+      TEST_RETURN_IF_NOT(node.GetAttributes().at("num_heads").i() == 16);
+      TEST_RETURN_IF_NOT(std::abs(node.GetAttributes().at("scale").f() - (1.0f / std::sqrt(32.0f))) < 1e-6f);
+      TEST_RETURN_IF_NOT(node.OutputDefs().size() == 1);
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape() != nullptr);
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape()->dim_size() == 3);
+    } else if (node.OpType() == "Split") {
+      ++split_nodes;
+    } else if (node.OpType() == "Gemm") {
+      ++gemm_nodes;
+      TEST_RETURN_IF_NOT(node.InputDefs().size() == 3);
+      TEST_RETURN_IF_NOT(node.OutputDefs().size() == 1);
+      TEST_RETURN_IF_NOT(node.InputDefs()[0]->Shape() != nullptr);
+      TEST_RETURN_IF_NOT(node.InputDefs()[0]->Shape()->dim_size() == 2);
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape() != nullptr);
+      TEST_RETURN_IF_NOT(node.OutputDefs()[0]->Shape()->dim_size() == 2);
+
+      const Node* gemm_input_node = graph_utils::GetInputNode(node, 0);
+      TEST_RETURN_IF_NOT(gemm_input_node != nullptr);
+      TEST_RETURN_IF_NOT(gemm_input_node->OpType() == "Reshape");
+
+      bool has_output_reshape = false;
+      for (const Node& consumer : graph.Nodes()) {
+        for (const NodeArg* input_def : consumer.InputDefs()) {
+          if (input_def != nullptr && input_def->Name() == node.OutputDefs()[0]->Name()) {
+            has_output_reshape = consumer.OpType() == "Reshape";
+            break;
+          }
+        }
+
+        if (has_output_reshape) {
+          break;
+        }
+      }
+
+      TEST_RETURN_IF_NOT(has_output_reshape);
+    }
+  }
+
+  TEST_RETURN_IF_NOT(mha_nodes == 1);
+  TEST_RETURN_IF_NOT(gemm_nodes == 1);
+  TEST_RETURN_IF_NOT(split_nodes == 1);
+  return Status::OK();
+}
+
+static Status CheckMobileClipAttentionFusedGraphOnProvider(Graph& graph, const char* provider) {
+  ORT_RETURN_IF_ERROR(CheckMobileClipAttentionFusedGraph(graph));
+
+  for (Node& node : graph.Nodes()) {
+    TEST_RETURN_IF_NOT(node.GetExecutionProviderType() == provider);
+  }
+
+  return Status::OK();
+}
+
+static Status CheckMobileClipAttentionUnfusedProjectionGemmGraph(Graph& graph) {
+  auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 0);
+  TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Softmax"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Squeeze"] == 3);
+  TEST_RETURN_IF_NOT(op_to_count["Split"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 3);
+  TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 6);
+  TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 6);
+  TEST_RETURN_IF_NOT(op_to_count["Mul"] == 2);
+  TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
+
+  int gemm_nodes = 0;
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() != "Gemm") {
+      continue;
+    }
+
+    ++gemm_nodes;
+    const auto& attrs = node.GetAttributes();
+    auto trans_b_attr = attrs.find("transB");
+    TEST_RETURN_IF_NOT(trans_b_attr != attrs.end());
+    TEST_RETURN_IF_NOT(trans_b_attr->second.i() == 1);
+  }
+
+  TEST_RETURN_IF_NOT(gemm_nodes == 1);
+  return Status::OK();
+}
+
+static Status CheckMobileClipAttentionUnfusedMatMulGraph(Graph& graph) {
+  auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 0);
+  TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 0);
+  TEST_RETURN_IF_NOT(op_to_count["Softmax"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["Squeeze"] == 3);
+  TEST_RETURN_IF_NOT(op_to_count["Split"] == 1);
+  TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 4);
+  TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 6);
+  TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 4);
+  TEST_RETURN_IF_NOT(op_to_count["Mul"] == 2);
+  TEST_RETURN_IF_NOT(op_to_count["Add"] == 2);
+  return Status::OK();
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCudaEpTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    for (Node& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    return CheckMobileClipAttentionFusedGraphOnProvider(graph, kCudaExecutionProvider);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
+      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmCudaEpTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    for (Node& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    return CheckMobileClipAttentionFusedGraphOnProvider(graph, kCudaExecutionProvider);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
+      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaInvalidQkvWeightShapeTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder,
+                                     MobileClipProjectionType::MatMulAdd,
+                                     MobileClipAttentionShapeConfig{512, 510, 15, 34, 512});
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionUnfusedMatMulGraph));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmNonDefaultAttributesTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes, {}, true);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr,
+                                        CheckMobileClipAttentionUnfusedProjectionGemmGraph));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionRewriteFailureLeavesGraphUnfusedTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd, {}, false, true);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr,
+                                        CheckMobileClipAttentionUnfusedMatMulGraph));
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {

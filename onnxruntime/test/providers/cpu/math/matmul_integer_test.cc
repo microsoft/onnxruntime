@@ -504,5 +504,250 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
 }
 #endif
 
+// Regression test: 1D vector dot product with matching K dimension should succeed.
+// A=[K], B=[K] -> scalar output (dot product).
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1", {4}, {1, 2, 3, 4});
+  test.AddInput<uint8_t>("T2", {4}, {5, 6, 7, 8});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  // dot product: 1*5 + 2*6 + 3*7 + 4*8 = 5 + 12 + 21 + 32 = 70
+  test.AddOutput<int32_t>("T3", {}, {70});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+// Same 1D vector dot product test with int8_t types.
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct_int8) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1", {3}, {1, -2, 3});
+  test.AddInput<int8_t>("T2", {3}, {4, 5, -6});
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+  test.AddInput<int8_t>("b_zero_point", {}, {0});
+  // dot product: 1*4 + (-2)*5 + 3*(-6) = 4 - 10 - 18 = -24
+  test.AddOutput<int32_t>("T3", {}, {-24});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+// Regression test: 1D vectors with mismatched K dimension must fail safely.
+// Covers prior invalid-shape handling for A=[K], B=[1] where K > 1.
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_KDimensionMismatch) {
+  OpTester test("MatMulInteger", 10);
+  test.AddShapeToTensorData(false);
+  test.AddInput<uint8_t>("T1", {4}, {1, 1, 1, 1});
+  test.AddInput<uint8_t>("T2", {1}, {5});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {}, {0});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "MatMul dimension mismatch", {kDmlExecutionProvider});
+}
+
+// Same regression test with int8_t types.
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_1D_Vector_KDimensionMismatch) {
+  OpTester test("MatMulInteger", 10);
+  test.AddShapeToTensorData(false);
+  test.AddInput<int8_t>("T1", {8}, {1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<int8_t>("T2", {1}, {5});
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+  test.AddInput<int8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {}, {0});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "MatMul dimension mismatch", {kDmlExecutionProvider});
+}
+
+// 1D dot product: uint8 A x int8 B (mixed types).
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct_uint8_int8) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1", {3}, {10, 20, 30});
+  test.AddInput<int8_t>("T2", {3}, {1, -1, 2});
+  test.AddInput<uint8_t>("a_zero_point", {}, {0});
+  test.AddInput<int8_t>("b_zero_point", {}, {0});
+  // dot product: 10*1 + 20*(-1) + 30*2 = 10 - 20 + 60 = 50
+  test.AddOutput<int32_t>("T3", {}, {50});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+// 1D dot product: int8 A x uint8 B (mixed types).
+TEST(MatmulIntegerOpTest, MatMulInteger_1D_Vector_DotProduct_int8_uint8) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1", {3}, {-1, 2, -3});
+  test.AddInput<uint8_t>("T2", {3}, {10, 20, 30});
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  // dot product: (-1)*10 + 2*20 + (-3)*30 = -10 + 40 - 90 = -60
+  test.AddOutput<int32_t>("T3", {}, {-60});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+// int8 A x uint8 B, 2D with zero points.
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_uint8_2D_WithZeroPoints) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 3},
+                        {-3, 7, 5,
+                         4, -5, 8});
+  test.AddInput<uint8_t>("T2",
+                         {3, 2},
+                         {15, 22,
+                          17, 12,
+                          19, 16});
+  test.AddInput<int8_t>("a_zero_point", {}, {2});
+  test.AddInput<uint8_t>("b_zero_point", {}, {10});
+  // A_offset = A - 2:  {-5, 5, 3, 2, -7, 6}
+  // B_offset = B - 10: {5, 12, 7, 2, 9, 6}
+  // C[0,0] = (-5)*5 + 5*7 + 3*9 = -25 + 35 + 27 = 37
+  // C[0,1] = (-5)*12 + 5*2 + 3*6 = -60 + 10 + 18 = -32
+  // C[1,0] = 2*5 + (-7)*7 + 6*9 = 10 - 49 + 54 = 15
+  // C[1,1] = 2*12 + (-7)*2 + 6*6 = 24 - 14 + 36 = 46
+  test.AddOutput<int32_t>("T3",
+                          {2, 2},
+                          {37, -32,
+                           15, 46});
+  test.Run();
+}
+
+// int8 A x uint8 B, A=ND B=ND with broadcasting.
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_uint8_A_ND_B_ND) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 2, 3},
+                        {1, -2, 3,
+                         -1, 4, -2,
+
+                         1, -2, 3,
+                         -1, 4, -2});
+  test.AddInput<uint8_t>("T2",
+                         {2, 3, 2},
+                         {10, 20,
+                          30, 40,
+                          50, 60,
+
+                          10, 20,
+                          30, 40,
+                          50, 60});
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  // batch 0: [[1,-2,3],[−1,4,−2]] x [[10,20],[30,40],[50,60]]
+  // [0,0] = 1*10+(-2)*30+3*50 = 10-60+150 = 100
+  // [0,1] = 1*20+(-2)*40+3*60 = 20-80+180 = 120
+  // [1,0] = (-1)*10+4*30+(-2)*50 = -10+120-100 = 10
+  // [1,1] = (-1)*20+4*40+(-2)*60 = -20+160-120 = 20
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 2},
+                          {100, 120,
+                           10, 20,
+
+                           100, 120,
+                           10, 20});
+  test.Run();
+}
+
+// int8 A x uint8 B, A=ND B=2D (broadcast B across batches).
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_uint8_A_ND_B_2D) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1",
+                        {2, 2, 3},
+                        {1, -2, 3,
+                         -1, 4, -2,
+
+                         2, 0, -1,
+                         0, 3, 1});
+  test.AddInput<uint8_t>("T2",
+                         {3, 2},
+                         {10, 20,
+                          30, 40,
+                          50, 60});
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  // batch 0: same as above = {100,120,10,20}
+  // batch 1: [[2,0,-1],[0,3,1]] x [[10,20],[30,40],[50,60]]
+  // [0,0] = 2*10+0*30+(-1)*50 = 20-50 = -30
+  // [0,1] = 2*20+0*40+(-1)*60 = 40-60 = -20
+  // [1,0] = 0*10+3*30+1*50 = 90+50 = 140
+  // [1,1] = 0*20+3*40+1*60 = 120+60 = 180
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 2},
+                          {100, 120,
+                           10, 20,
+
+                           -30, -20,
+                           140, 180});
+  test.Run();
+}
+
+// [M x N] = [M x K] x [K x N] with int8 A, parameterized on B type.
+template <typename WeightType>
+void RunMatMulIntegerS8X8Test(const int M, const int N, const int K, bool B_is_initializer) {
+  OpTester test("MatMulInteger", 10);
+  static std::default_random_engine e(456);
+  static std::uniform_int_distribution<int> n_signed(-64, 63);
+  static std::uniform_int_distribution<int> n_xint8(std::numeric_limits<WeightType>::min(), std::numeric_limits<WeightType>::max());
+
+  Eigen::MatrixXi matrix_a = Eigen::MatrixXi::Random(K, M)
+                                 .unaryExpr([](int) { return n_signed(e); });
+  std::vector<int8_t> matrix_a_data = ToVector<int8_t>(matrix_a.data(), M * K);
+  int8_t a_zero_point = 0;
+  Eigen::MatrixXi matrix_a_offset = matrix_a - a_zero_point * Eigen::MatrixXi::Ones(K, M);
+
+  Eigen::MatrixXi matrix_b = Eigen::MatrixXi::Random(N, K)
+                                 .unaryExpr([](int) { return n_xint8(e); });
+  std::vector<WeightType> matrix_b_data = ToVector<WeightType>(matrix_b.data(), N * K);
+  WeightType b_zero_point = 0;
+  Eigen::MatrixXi b_zp_matrix = b_zero_point * Eigen::MatrixXi::Ones(N, K);
+  Eigen::MatrixXi matrix_c = ((matrix_b - b_zp_matrix) * matrix_a_offset).eval();
+
+  test.AddInput<int8_t>("T1", {M, K}, std::move(matrix_a_data));
+  test.AddInput<WeightType>("T2", {K, N}, std::move(matrix_b_data), B_is_initializer);
+
+  test.AddOutput<int32_t>("T3", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
+  test.Run();
+}
+
+void RunMatMulIntegerS8X8TestBatch(const int M, const int N, const int K) {
+  RunMatMulIntegerS8X8Test<int8_t>(M, N, K, false);
+  RunMatMulIntegerS8X8Test<int8_t>(M, N, K, true);
+  RunMatMulIntegerS8X8Test<uint8_t>(M, N, K, false);
+  RunMatMulIntegerS8X8Test<uint8_t>(M, N, K, true);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_Int8_X8_Scalar) {
+  RunMatMulIntegerS8X8TestBatch(1, 1, 32);
+  RunMatMulIntegerS8X8TestBatch(1, 1, 260);
+  RunMatMulIntegerS8X8TestBatch(1, 1, 288);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_Int8_X8_GEMV) {
+  RunMatMulIntegerS8X8TestBatch(1, 2, 16);
+  RunMatMulIntegerS8X8TestBatch(1, 2, 64);
+  RunMatMulIntegerS8X8TestBatch(1, 8, 36);
+  RunMatMulIntegerS8X8TestBatch(1, 8, 68);
+  RunMatMulIntegerS8X8TestBatch(1, 8, 400);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_Int8_X8_GEMM) {
+  RunMatMulIntegerS8X8TestBatch(2, 2, 40);
+  RunMatMulIntegerS8X8TestBatch(2, 48, 33);
+  RunMatMulIntegerS8X8TestBatch(2, 51, 40);
+  RunMatMulIntegerS8X8TestBatch(4, 8, 68);
+}
+
+// Per-row A zero point is not supported by the CPU implementation.
+// Verify it is rejected gracefully.
+TEST(MatmulIntegerOpTest, MatMulInteger_PerRow_A_ZeroPoint_Rejected) {
+  OpTester test("MatMulInteger", 10);
+  test.AddShapeToTensorData(false);
+  test.AddInput<uint8_t>("T1",
+                         {2, 3},
+                         {11, 7, 3,
+                          10, 6, 2});
+  test.AddInput<uint8_t>("T2",
+                         {3, 2},
+                         {1, 4, 2, 5, 3, 6});
+  // per-row A zero point: shape {2, 1} — not scalar
+  test.AddInput<uint8_t>("a_zero_point", {2, 1}, {12, 10});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+  test.AddOutput<int32_t>("T3", {2, 2}, {0, 0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kDmlExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
