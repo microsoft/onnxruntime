@@ -267,16 +267,8 @@ def _run_once(
     return_code, stdout, result.wall_time_s, result.cpu_percent = _run_command(cmd)
 
     if return_code != 0:
-        # Retry without the -r flag, which older binaries may not accept in
-        # combination with -t. Remove the "-r"/"0" pair by index so we don't
-        # strip unrelated "0" tokens (e.g. --intra_op 0).
-        if "-r" in cmd:
-            r_idx = cmd.index("-r")
-            cmd_retry = cmd[:r_idx] + cmd[r_idx + 2 :]
-            return_code, stdout, result.wall_time_s, result.cpu_percent = _run_command(cmd_retry)
-        if return_code != 0:
-            result.stdout_tail = stdout[-2000:]
-            return result
+        result.stdout_tail = stdout[-2000:]
+        return result
 
     _parse_output(stdout, result)
     result.stdout_tail = stdout[-2000:]
