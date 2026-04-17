@@ -80,7 +80,7 @@ steps:
     versionSpec: ${{ parameters.versionSpec }}
     ${{ if eq(parameters.architecture, 'x86_64') }}:
       architecture: 'x64'
-    ${{ elif ne(parameters.architecture, '') }}:
+    ${{ elseif ne(parameters.architecture, '') }}:
       architecture: ${{ parameters.architecture }}
 
 - task: PowerShell@2
