@@ -234,11 +234,7 @@ def _run_once(
         "-x",
         str(intra_op),
         "-I",  # generate model input binding
-        "-r",
-        "0",  # duration-based; required by some builds
     ]
-    # Some builds require repetitions; -r 0 means "use -t only". If the binary
-    # rejects it, fall back silently.
     cmd += config.to_cli_args()
     cmd += extra_args
     cmd += [model, os.devnull if os.name != "nt" else "NUL"]
