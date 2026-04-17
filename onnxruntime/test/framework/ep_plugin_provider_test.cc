@@ -1448,7 +1448,7 @@ static IResourceAccountant* CallGetCapabilityWithAccountant(
   ep.SetLogger(&logger);
   ep.GetCapability(graph_viewer,
                    test_plugin_ep::MockKernelLookup(),
-                   GraphOptimizerRegistry(nullptr, nullptr, logger),
+                   GraphOptimizerRegistry(nullptr, nullptr, &logger),
                    accountant);
   return accountant;
 }
