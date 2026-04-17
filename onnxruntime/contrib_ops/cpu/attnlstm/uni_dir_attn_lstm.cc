@@ -38,12 +38,12 @@ int CheckedMulToInt(int lhs, int rhs) {
   return static_cast<int>(SafeInt<int>(lhs) * rhs);
 }
 
-size_t CheckedMulToSizeT(int lhs, int rhs) {
-  return CheckedMulToSizeT(CheckedToSizeT(lhs), CheckedToSizeT(rhs));
-}
-
 size_t CheckedMulToSizeT(size_t lhs, size_t rhs) {
   return static_cast<size_t>(SafeInt<size_t>(lhs) * rhs);
+}
+
+size_t CheckedMulToSizeT(int lhs, int rhs) {
+  return CheckedMulToSizeT(CheckedToSizeT(lhs), CheckedToSizeT(rhs));
 }
 
 }  // namespace
