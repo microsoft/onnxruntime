@@ -72,6 +72,7 @@ struct RunConfig {
   bool disable_spinning_between_run = false;
   int spin_duration_us = -1;  // -1 means use default (not set by user)
   int spin_backoff_max = 1;   // 1 means no backoff (default)
+  bool spin_backoff_max_set = false;
   bool exit_after_session_creation = false;
   std::basic_string<ORTCHAR_T> register_custom_op_path;
   bool enable_cuda_io_binding{false};

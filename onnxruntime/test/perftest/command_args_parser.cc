@@ -373,7 +373,11 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   auto is_option_specified = [&](std::string option) {
     for (int i = 1; i < argc; ++i) {
       auto utf8_arg = ToUTF8String(argv[i]);
-      if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
+      const auto short_option = "-" + option;
+      const auto long_option = "--" + option;
+      if (utf8_arg == short_option || utf8_arg == long_option ||
+          utf8_arg.rfind(short_option + "=", 0) == 0 ||
+          utf8_arg.rfind(long_option + "=", 0) == 0) {
         return true;
       }
     }
@@ -520,6 +524,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --spin_backoff_max
   test_config.run_config.spin_backoff_max = absl::GetFlag(FLAGS_spin_backoff_max);
+  test_config.run_config.spin_backoff_max_set = is_option_specified("spin_backoff_max");
 
   // -n
   test_config.run_config.exit_after_session_creation = absl::GetFlag(FLAGS_n);

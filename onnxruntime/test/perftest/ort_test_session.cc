@@ -669,7 +669,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     }
   }
 
-  if (performance_test_config.run_config.spin_backoff_max > 1) {
+  if (performance_test_config.run_config.spin_backoff_max_set &&
+      performance_test_config.run_config.spin_backoff_max >= 1) {
     if (performance_test_config.run_config.disable_spinning) {
       fprintf(stdout, "Ignoring intra-op spin backoff max because spinning is disabled\n");
     } else {
@@ -678,7 +679,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       fprintf(stdout, "Setting intra-op spin backoff max to %s\n", val.c_str());
       session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, val.c_str());
     }
-  } else if (performance_test_config.run_config.spin_backoff_max < 1) {
+  } else if (performance_test_config.run_config.spin_backoff_max_set) {
     fprintf(stderr,
             "Warning: --spin_backoff_max must be >= 1; got %d. Ignoring (using default).\n",
             performance_test_config.run_config.spin_backoff_max);

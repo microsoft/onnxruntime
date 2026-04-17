@@ -243,45 +243,40 @@ def _run_once(
     cmd += extra_args
     cmd += [model, os.devnull if os.name != "nt" else "NUL"]
 
+    def _run_command(command: list[str]) -> tuple[int, str, float, float | None]:
+        monitor = CpuMonitor() if sample_cpu else None
+        start = time.monotonic()
+        try:
+            proc = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        except FileNotFoundError:
+            print(f"error: perf_test binary not found: {perf_test}", file=sys.stderr)
+            sys.exit(2)
+
+        if monitor is not None:
+            monitor.start(proc.pid)
+
+        stdout, _ = proc.communicate()
+        wall_time_s = time.monotonic() - start
+        cpu_percent = monitor.stop() if monitor is not None else None
+        return proc.returncode, stdout, wall_time_s, cpu_percent
+
     result = RunResult(config_name=config.name)
-    monitor = CpuMonitor() if sample_cpu else None
+    return_code, stdout, result.wall_time_s, result.cpu_percent = _run_command(cmd)
 
-    start = time.monotonic()
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-    except FileNotFoundError:
-        print(f"error: perf_test binary not found: {perf_test}", file=sys.stderr)
-        sys.exit(2)
-
-    if monitor is not None:
-        monitor.start(proc.pid)
-
-    stdout, _ = proc.communicate()
-    result.wall_time_s = time.monotonic() - start
-
-    if monitor is not None:
-        result.cpu_percent = monitor.stop()
-
-    if proc.returncode != 0:
+    if return_code != 0:
         # Retry without the -r flag, which older binaries may not accept in
         # combination with -t. Remove the "-r"/"0" pair by index so we don't
         # strip unrelated "0" tokens (e.g. --intra_op 0).
         if "-r" in cmd:
             r_idx = cmd.index("-r")
             cmd_retry = cmd[:r_idx] + cmd[r_idx + 2 :]
-            proc = subprocess.Popen(
-                cmd_retry,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            stdout, _ = proc.communicate()
-        if proc.returncode != 0:
+            return_code, stdout, result.wall_time_s, result.cpu_percent = _run_command(cmd_retry)
+        if return_code != 0:
             result.stdout_tail = stdout[-2000:]
             return result
 
