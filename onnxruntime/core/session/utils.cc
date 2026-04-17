@@ -378,9 +378,9 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
 
   int32_t model_data_length_int = 0;
   if (model_path == nullptr) {
-    ORT_RETURN_IF(model_data == nullptr, "Model data pointer is null.");
-    ORT_RETURN_IF(model_data_length > static_cast<size_t>(std::numeric_limits<int32_t>::max()),
-                  "Model data size exceeds maximum supported size (2GB).");
+    ORT_API_RETURN_IF(model_data == nullptr, ORT_INVALID_ARGUMENT, "Model data pointer is null.");
+    ORT_API_RETURN_IF(model_data_length > static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+                      ORT_INVALID_ARGUMENT, "Model data size exceeds maximum supported size (2GB).");
     model_data_length_int = narrow<int32_t>(model_data_length);
   }
 
