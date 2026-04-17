@@ -284,14 +284,18 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     OrtResourceCount available{};
     if (auto* ort_status = ort_ep_->GetAvailableResource(ort_ep_.get(), &available); ort_status == nullptr) {
       if (available.kind == OrtResourceCountKind_TotalBytes) {
-        auto bytes = available.value.total_bytes;
+        const auto bytes = available.value.total_bytes;
         // Clamp to size_t max on 32-bit builds instead of throwing via narrow<>.
-        size_t clamped = (bytes > std::numeric_limits<size_t>::max())
-                             ? std::numeric_limits<size_t>::max()
-                             : static_cast<size_t>(bytes);
+        const size_t clamped = (bytes > std::numeric_limits<size_t>::max())
+                                   ? std::numeric_limits<size_t>::max()
+                                   : static_cast<size_t>(bytes);
         resource_accountant->SetThreshold(ResourceCount{clamped});
         LOGS(logger, VERBOSE) << Type() << " set resource threshold from device: "
-                              << available.value.total_bytes << " bytes";
+                              << clamped << " bytes"
+                              << (clamped != bytes ? " (clamped from " + std::to_string(bytes) + " bytes)" : "");
+      } else if (available.kind != OrtResourceCountKind_None) {
+        LOGS(logger, WARNING) << Type() << " GetAvailableResource returned unsupported kind: "
+                              << static_cast<int>(available.kind);
       }
     } else {
       // Log warning and continue without a device-derived threshold

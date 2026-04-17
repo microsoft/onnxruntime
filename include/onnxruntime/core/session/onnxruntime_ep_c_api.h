@@ -982,6 +982,9 @@ typedef struct OrtResourceCount {
   } value;
 
 #ifdef __cplusplus
+  /** Default-construct a None (unset) resource count. */
+  OrtResourceCount() noexcept : kind{OrtResourceCountKind_None}, reserved{0}, value{} {}
+
   /** Construct a zero/unset resource count. */
   static OrtResourceCount None() noexcept {
     return OrtResourceCount{};
