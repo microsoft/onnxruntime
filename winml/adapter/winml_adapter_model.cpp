@@ -12,6 +12,7 @@
 #include "winml_adapter_apis.h"
 #include "core/framework/error_code_helper.h"
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 
 #include <io.h>
 #include <fcntl.h>
@@ -179,7 +180,7 @@ OrtStatus* OrtModelImpl::CreateOrtModelFromPath(const char* path, size_t len, Or
 OrtStatus* OrtModelImpl::CreateOrtModelFromData(void* data, size_t len, ::OrtModel** model) {
   auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
 
-  auto parse_succeeded = model_proto->ParseFromArray(data, static_cast<int>(len));
+  auto parse_succeeded = model_proto->ParseFromArray(data, onnxruntime::narrow<int32_t>(len));
   if (!parse_succeeded) {
     return OrtApis::CreateStatus(ORT_INVALID_PROTOBUF, "Failed to parse model stream!");
   }
