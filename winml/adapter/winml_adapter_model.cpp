@@ -182,7 +182,8 @@ OrtStatus* OrtModelImpl::CreateOrtModelFromData(void* data, size_t len, ::OrtMod
   constexpr int32_t kProtobufMaxArraySize = std::numeric_limits<int32_t>::max();
   if (len > static_cast<size_t>(kProtobufMaxArraySize)) {
     const auto error_message = onnxruntime::MakeString(
-      "Model data size (", len, " bytes) exceeds maximum supported size (INT32_MAX bytes, approximately 2GB).");
+      "Model data size (", len, " bytes) exceeds maximum supported size (INT32_MAX bytes, approximately 2GB)."
+    );
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_message.c_str());
   }
 
