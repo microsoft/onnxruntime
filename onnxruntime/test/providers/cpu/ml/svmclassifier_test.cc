@@ -4,6 +4,9 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
+#include <cstddef>
+#include <limits>
+
 namespace onnxruntime {
 namespace test {
 
@@ -292,6 +295,51 @@ TEST(MLOpTest, SVMClassifierUndersizedCoefficients) {
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients attribute size");
+}
+
+TEST(MLOpTest, SVMClassifierInvalidInputFeatureCount) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 1.f, 1.f, 1.f};
+  std::vector<float> support_vectors = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};
+  std::vector<float> rho = {0.1f, 0.1f, 0.1f};
+  std::vector<float> kernel_params = {0.01f, 0.f, 3.f};
+  std::vector<int64_t> classes = {0, 1, 2};
+  std::vector<int64_t> vectors_per_class = {1, 1, 0};
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("vectors_per_class", vectors_per_class);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 3}, {0.f, 0.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {1});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid input for SVMClassifier");
+}
+
+TEST(MLOpTest, SVMClassifierCoefficientsSizeOverflow) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  const int64_t max_vector_count = static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max());
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", std::vector<float>{1.f});
+  test.AddAttribute("support_vectors", std::vector<float>{1.f});
+  test.AddAttribute("vectors_per_class", std::vector<int64_t>{max_vector_count, 0, 0, 0});
+  test.AddAttribute("rho", std::vector<float>{0.f});
+  test.AddAttribute("kernel_params", std::vector<float>{0.01f, 0.f, 3.f});
+  test.AddAttribute("classlabels_ints", std::vector<int64_t>{0, 1, 2, 3});
+
+  test.AddInput<float>("X", {1, 1}, {0.f});
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 4}, {0.f, 0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "overflows size_t");
 }
 
 TEST(MLOpTest, SVMClassifierUndersizedRho) {
