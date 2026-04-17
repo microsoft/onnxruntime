@@ -58,9 +58,13 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
     return false;
   }
 
-  // handle edge case where the total size of the initializer is 0
+  // A zero-element initializer (shape with a 0 dim) is not a proven identity
+  // value for Add/Sub/Mul/Div: the only graphs in which the unfused op is
+  // equivalent to a no-op are those where the other input is also empty at
+  // runtime, which we cannot generally prove here. Removing the node would
+  // broaden the model's accepted shapes. Skip elimination in that case.
   if (tensor_size == 0) {
-    return true;
+    return false;
   }
 
   if (op_type == "Add" ||
