@@ -803,6 +803,97 @@ TEST(ConvTest, Conv2D_MatMul_SplitK_With_Bias) {
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvTest, Conv2D_MatMul_SplitK_Batched_No_Bias) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  constexpr int64_t B = 2;  // batch_size > 1
+  constexpr int64_t M = 16;
+  constexpr int64_t K = 768;
+  constexpr int64_t N = 64;
+
+  vector<int64_t> X_shape = {B, K, M, 1};
+  vector<int64_t> W_shape = {N, K, 1, 1};
+  vector<int64_t> Y_shape = {B, N, M, 1};
+
+  RandomValueGenerator random{5678};
+  vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+
+  vector<float> expected_vals(B * N * M, 0.0f);
+  for (int64_t b = 0; b < B; ++b) {
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t n = 0; n < N; ++n) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          int x_index = static_cast<int>(b * K * M + k * M + m);
+          int w_index = static_cast<int>(n * K + k);
+          sum += X[x_index] * W[w_index];
+        }
+        int y_index = static_cast<int>(b * N * M + n * M + m);
+        expected_vals[y_index] = sum;
+      }
+    }
+  }
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Conv2D_MatMul_SplitK_Batched_With_Bias) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  constexpr int64_t Batch = 2;
+  constexpr int64_t M = 16;
+  constexpr int64_t K = 768;
+  constexpr int64_t N = 64;
+
+  vector<int64_t> X_shape = {Batch, K, M, 1};
+  vector<int64_t> W_shape = {N, K, 1, 1};
+  vector<int64_t> Y_shape = {Batch, N, M, 1};
+  vector<int64_t> B_shape = {N};
+
+  RandomValueGenerator random{5678};
+  vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+  vector<float> B(random.Gaussian<float>(AsSpan(B_shape), 0.0f, 0.25f));
+
+  vector<float> expected_vals(Batch * N * M, 0.0f);
+  for (int64_t b = 0; b < Batch; ++b) {
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t n = 0; n < N; ++n) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          int x_index = static_cast<int>(b * K * M + k * M + m);
+          int w_index = static_cast<int>(n * K + k);
+          sum += X[x_index] * W[w_index];
+        }
+        sum += B[static_cast<size_t>(n)];
+        int y_index = static_cast<int>(b * N * M + n * M + m);
+        expected_vals[y_index] = sum;
+      }
+    }
+  }
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
 // Conv10
 TEST(ConvTest, Conv3D_1) {
   ConvOpAndTestAttributes attrs = {

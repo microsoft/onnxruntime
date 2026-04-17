@@ -115,6 +115,7 @@ class SplitKConfig {
   bool enable_split_k_ = false;
   uint32_t split_dim_inner_ = 0;
   uint32_t min_dim_inner_with_split_k_ = 0;
+  uint32_t max_batch_size_ = 0;
 
   uint32_t GetMaxDimInnerWithSplitK() const;
 

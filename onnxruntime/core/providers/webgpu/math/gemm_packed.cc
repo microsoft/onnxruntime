@@ -169,7 +169,8 @@ Status ApplyGemmPacked(const Tensor* a,
                             {K},          /*dim_inner */
                             {dispatch_x}, /* logical_dispatch_x */
                             {dispatch_y}, /* logical_dispatch_y */
-                            {dispatch_z}} /* logical_dispatch_z */
+                            {dispatch_z}, /* logical_dispatch_z */
+                            {1}}          /* num_k_splits */
       );
 
   return context.RunProgram(program);

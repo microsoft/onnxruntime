@@ -39,6 +39,7 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       // Below thresholds are only verified on Intel discreate GPUs and Lunar Lake iGPUs.
       enable_split_k_ = true;
 
+      max_batch_size_ = 8;
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
@@ -51,6 +52,7 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       // Intel "gen-12lp" GPU with 32EUs.
       enable_split_k_ = true;
 
+      max_batch_size_ = 8;
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
@@ -87,7 +89,10 @@ bool SplitKConfig::UseSplitK(
   // TODO: support the cases below.
   use_split_k &= activation_kind == ActivationKind::None;
   use_split_k &= is_vec4;
-  use_split_k &= batch_size == 1;
+
+  // Larger batches increase parallelism on their own, so we temporarily set a batch size threshold
+  // for using Split-K.
+  use_split_k &= batch_size <= max_batch_size_;
 
   // `is_channels_last` should only affect Split-K gating when bias is applied in the non-GEMM
   // MatMul/Conv|MatMul path. For GEMM and for MatMul or Conv|MatMul without bias, we need to
@@ -106,7 +111,7 @@ bool SplitKConfig::UseSplitK(
     return false;
   }
 
-  const float rate = dim_a_outer * dim_b_outer * 1.0f / dim_inner;
+  const float rate = dim_a_outer * dim_b_outer * batch_size * 1.0f / dim_inner;
   for (const auto& config_at_range : configs_per_dim_inner_range_) {
     if (dim_inner <= config_at_range.max_dim_inner_with_rate) {
       return rate <= config_at_range.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner;
