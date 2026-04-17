@@ -1571,6 +1571,204 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple_OpSet13) {
   EmbedLayerNormFusionFormatMultiple(MODEL_FOLDER "fusion/embed_layer_norm_multiple_opset13.onnx", logger_.get());
 }
 
+// Test: LayerNormFusion gracefully handles a zero-element epsilon initializer.
+// A zero-element constant (shape [0], 0 bytes) is valid ONNX.
+// The optimizer must check size() before accessing data<float>().
+TEST_F(GraphTransformationTests, LayerNormFusion_ZeroElementEpsilon) {
+  // Build a minimal LayerNorm pattern with a zero-element epsilon.
+  // Use dynamic input shapes so shape inference doesn't reject the model.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(8);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);  // Use opset 17 so ReduceMean uses the 'axes' attribute (moved to input in opset 18)
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("LayerNormFusion_ZeroElem");
+
+  // Input with dynamic shape
+  {
+    auto* input = graph_proto->add_input();
+    input->set_name("X");
+    auto* type = input->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    // No shape = dynamic
+  }
+
+  // Zero-element epsilon initializer
+  {
+    auto* init = graph_proto->add_initializer();
+    init->set_name("epsilon");
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    init->add_dims(0);
+    // Note: epsilon is intentionally NOT added as a graph input so it remains a constant initializer.
+  }
+
+  // Scalar initializers
+  auto add_scalar_init = [&](const char* name, float value) {
+    auto* init = graph_proto->add_initializer();
+    init->set_name(name);
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    init->add_float_data(value);
+    // scalar = no dims
+  };
+  add_scalar_init("pow_exp", 2.0f);
+
+  // 1D scale and bias
+  auto add_1d_init = [&](const char* name, int size, float value) {
+    auto* init = graph_proto->add_initializer();
+    init->set_name(name);
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    init->add_dims(size);
+    for (int i = 0; i < size; i++) init->add_float_data(value);
+  };
+  add_1d_init("scale", 4, 1.0f);
+  add_1d_init("bias", 4, 0.0f);
+
+  // Output
+  {
+    auto* output = graph_proto->add_output();
+    output->set_name("output");
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  }
+
+  // ReduceMean1 -> Sub -> Pow -> ReduceMean2 -> Add(epsilon) -> Sqrt -> Div -> Mul -> Add
+  auto add_node = [&](const char* op, const std::vector<std::string>& inputs,
+                      const std::vector<std::string>& outputs) -> ONNX_NAMESPACE::NodeProto* {
+    auto* node = graph_proto->add_node();
+    node->set_op_type(op);
+    for (auto& i : inputs) node->add_input(i);
+    for (auto& o : outputs) node->add_output(o);
+    return node;
+  };
+
+  auto* rm1 = add_node("ReduceMean", {"X"}, {"rm1_out"});
+  auto* axes1 = rm1->add_attribute();
+  axes1->set_name("axes");
+  axes1->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+  axes1->add_ints(-1);
+  auto* kd1 = rm1->add_attribute();
+  kd1->set_name("keepdims");
+  kd1->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  kd1->set_i(1);
+
+  add_node("Sub", {"X", "rm1_out"}, {"sub_out"});
+  add_node("Pow", {"sub_out", "pow_exp"}, {"pow_out"});
+
+  auto* rm2 = add_node("ReduceMean", {"pow_out"}, {"rm2_out"});
+  auto* axes2 = rm2->add_attribute();
+  axes2->set_name("axes");
+  axes2->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+  axes2->add_ints(-1);
+  auto* kd2 = rm2->add_attribute();
+  kd2->set_name("keepdims");
+  kd2->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  kd2->set_i(1);
+
+  add_node("Add", {"rm2_out", "epsilon"}, {"add_eps_out"});
+  add_node("Sqrt", {"add_eps_out"}, {"sqrt_out"});
+  add_node("Div", {"sub_out", "sqrt_out"}, {"div_out"});
+  add_node("Mul", {"div_out", "scale"}, {"mul_out"});
+  add_node("Add", {"mul_out", "bias"}, {"output"});
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_proto, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level1));
+  // Must handle zero-element epsilon gracefully.
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+}
+
+// Test: SimplifiedLayerNormFusion gracefully handles a zero-element epsilon initializer.
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ZeroElementEpsilon) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(8);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("SimplifiedLayerNormFusion_ZeroElem");
+
+  // Input with dynamic shape
+  {
+    auto* input = graph_proto->add_input();
+    input->set_name("X");
+    auto* type = input->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  }
+
+  // Zero-element epsilon
+  {
+    auto* init = graph_proto->add_initializer();
+    init->set_name("epsilon");
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    init->add_dims(0);
+    // Note: epsilon is intentionally NOT added as a graph input so it remains a constant initializer.
+  }
+
+  // Scalar pow exponent
+  {
+    auto* init = graph_proto->add_initializer();
+    init->set_name("pow_exp");
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    init->add_float_data(2.0f);
+  }
+
+  // 1D scale
+  {
+    auto* init = graph_proto->add_initializer();
+    init->set_name("scale");
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    init->add_dims(4);
+    for (int i = 0; i < 4; i++) init->add_float_data(1.0f);
+  }
+
+  // Output
+  {
+    auto* output = graph_proto->add_output();
+    output->set_name("output");
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  }
+
+  // Pow -> ReduceMean -> Add(epsilon) -> Sqrt -> Div -> Mul
+  auto add_node = [&](const char* op, const std::vector<std::string>& inputs,
+                      const std::vector<std::string>& outputs) -> ONNX_NAMESPACE::NodeProto* {
+    auto* node = graph_proto->add_node();
+    node->set_op_type(op);
+    for (auto& i : inputs) node->add_input(i);
+    for (auto& o : outputs) node->add_output(o);
+    return node;
+  };
+
+  add_node("Pow", {"X", "pow_exp"}, {"pow_out"});
+
+  auto* rm = add_node("ReduceMean", {"pow_out"}, {"rm_out"});
+  auto* axes = rm->add_attribute();
+  axes->set_name("axes");
+  axes->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+  axes->add_ints(-1);
+  auto* kd = rm->add_attribute();
+  kd->set_name("keepdims");
+  kd->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  kd->set_i(1);
+
+  add_node("Add", {"rm_out", "epsilon"}, {"add_eps_out"});
+  add_node("Sqrt", {"add_eps_out"}, {"sqrt_out"});
+  add_node("Div", {"X", "sqrt_out"}, {"div_out"});
+  add_node("Mul", {"div_out", "scale"}, {"output"});
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_proto, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+}
+
 #endif
 
 }  // namespace test
