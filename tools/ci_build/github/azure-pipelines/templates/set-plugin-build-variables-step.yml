@@ -1,0 +1,85 @@
+# This file is used to set variables for plugin build stages. It sets the package version
+# variable based on the build type (nightly, official, or dev).
+
+parameters:
+- name: package_version
+  type: string
+
+steps:
+# Set package version string
+- task: PythonScript@0
+  displayName: 'Set plugin package version string'
+  inputs:
+    scriptSource: inline
+    script: |
+      import os
+      import re
+      import subprocess
+      import sys
+
+      package_version = "${{ parameters.package_version }}"
+
+      src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
+      version_file = os.path.join(src_root, "VERSION_NUMBER")
+      if not os.path.isfile(version_file):
+          print("##vso[task.logissue type=error]Cannot find VERSION_NUMBER at: {}".format(version_file))
+          sys.exit(1)
+
+      with open(version_file, "r") as f:
+          original_ver = f.read().strip()
+
+      if not original_ver:
+          print("##vso[task.logissue type=error]VERSION_NUMBER is empty.")
+          sys.exit(1)
+
+      print("Original version: {}".format(original_ver))
+      print("Package version type: {}".format(package_version))
+
+      if package_version == "release":
+          version_string = original_ver
+          universal_version = original_ver
+
+      elif package_version == "RC":
+          # RC versioning is not yet implemented. Fail the build to prevent publishing
+          # an ambiguous version without an RC number.
+          print("##vso[task.logissue type=error]RC versioning is not yet implemented. Use 'dev' or 'release' instead.")
+          sys.exit(1)
+
+      elif package_version == "dev":
+          try:
+              commit_sha = subprocess.check_output(
+                  ["git", "rev-parse", "--short=8", "HEAD"],
+                  cwd=src_root
+              ).decode("utf-8").strip()
+              date_str = subprocess.check_output(
+                  ["git", "show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"],
+                  cwd=src_root
+              ).decode("utf-8").strip()
+          except Exception as e:
+              print("##vso[task.logissue type=error]Failed to get git info: {}".format(e))
+              sys.exit(1)
+          version_string = "{}-dev.{}+{}".format(original_ver, date_str, commit_sha)
+          universal_version = "{}-dev.{}.{}".format(original_ver, date_str, commit_sha)
+
+      else:
+          print("##vso[task.logissue type=error]Unknown package_version '{}'. Must be 'release', 'RC', or 'dev'.".format(package_version))
+          sys.exit(1)
+
+      print("Plugin package version string: {}".format(version_string))
+      print("Plugin universal package version string: {}".format(universal_version))
+
+      # Validate semver 2.0.0 format
+      semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+      if not re.match(semver_pattern, version_string):
+          print("##vso[task.logissue type=error]Version string '{}' is not valid semver 2.0.0.".format(version_string))
+          sys.exit(1)
+
+      # Validate universal version (SemVer 1.0.0 - no build metadata)
+      universal_semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
+      if not re.match(universal_semver_pattern, universal_version):
+          print("##vso[task.logissue type=error]Universal version string '{}' is not valid semver 1.0.0.".format(universal_version))
+          sys.exit(1)
+
+      print("##vso[task.setvariable variable=PluginPackageVersion]{}".format(version_string))
+      print("##vso[task.setvariable variable=PluginUniversalPackageVersion]{}".format(universal_version))
+      print("##vso[task.setvariable variable=PluginEpVersionDefine]onnxruntime_PLUGIN_EP_VERSION={}".format(version_string))
