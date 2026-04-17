@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #if !defined(__wasm__)
-#include <tuple>
 
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
@@ -45,25 +44,45 @@ static_assert(ValidateComponentTypeName<4>({wgpu::SubgroupMatrixComponentType::F
                                             wgpu::SubgroupMatrixComponentType::I32}),
               "The elements' sequence of ComponentTypeName array do not match wgpu::SubgroupMatrixComponentType");
 
-// std::tuple<architecture, backendType, componentType, resultComponentType, M, N, K, subgroupMinSize, subgroupMaxSize>
-static const std::tuple<std::string_view, wgpu::BackendType, wgpu::SubgroupMatrixComponentType, wgpu::SubgroupMatrixComponentType,
-                        uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>
-    intel_supported_subgroup_matrix_configs[] = {
-        {"xe-2lpg", wgpu::BackendType::Vulkan, wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 16, 32},
-        {"xe-3lpg", wgpu::BackendType::Vulkan, wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 16, 32}};
+// Vendor-agnostic subgroup matrix config: {componentType, resultComponentType, M, N, K, subgroupMinSize, subgroupMaxSize, needsPrepack}
+// Any GPU reporting a matching config from wgpu::AdapterPropertiesSubgroupMatrixConfigs is supported.
+struct SupportedSubgroupMatrixConfig {
+  wgpu::SubgroupMatrixComponentType componentType;
+  wgpu::SubgroupMatrixComponentType resultComponentType;
+  uint32_t M;
+  uint32_t N;
+  uint32_t K;
+  uint32_t subgroupMinSize;
+  uint32_t subgroupMaxSize;
+  bool needsPrepack;  // Whether input A needs layout optimization for subgroupMatrixLoad
+};
 
-bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext& context, int32_t& config_index) {
+static const SupportedSubgroupMatrixConfig supported_subgroup_matrix_configs[] = {
+    // 16x16x16 config (NVIDIA Blackwell, subgroup size 32)
+    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 16, 16, 16, 32, 32, true},
+    // 8x16x16 configs
+    // 8x16x16 config (Intel Xe2/Xe3, subgroup size 16-32)
+    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 16, 32, true},
+    // 8x16x16 config (subgroup size 32)
+    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 32, 32, true},
+    // 8x8x8 config (Apple M-series, etc.)
+    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 8, 8, 32, 32, false},
+};
+
+bool IsSubgroupMatrixConfigSupported(onnxruntime::webgpu::ComputeContext& context, int32_t& config_index) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& subgroup_matrix_configs = context.SubgroupMatrixConfigs();
   int32_t index = 0;
-  for (auto& supported_config : intel_supported_subgroup_matrix_configs) {
+  for (const auto& supported_config : supported_subgroup_matrix_configs) {
     for (size_t i = 0; i < subgroup_matrix_configs.configCount; i++) {
-      auto& subgroup_matrix_config = subgroup_matrix_configs.configs[i];
-      auto&& config = std::make_tuple(adapter_info.architecture, adapter_info.backendType,
-                                      subgroup_matrix_config.componentType, subgroup_matrix_config.resultComponentType,
-                                      subgroup_matrix_config.M, subgroup_matrix_config.N, subgroup_matrix_config.K,
-                                      adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize);
-      if (config == supported_config) {
+      const auto& device_config = subgroup_matrix_configs.configs[i];
+      if (device_config.componentType == supported_config.componentType &&
+          device_config.resultComponentType == supported_config.resultComponentType &&
+          device_config.M == supported_config.M &&
+          device_config.N == supported_config.N &&
+          device_config.K == supported_config.K &&
+          adapter_info.subgroupMinSize >= supported_config.subgroupMinSize &&
+          adapter_info.subgroupMaxSize >= supported_config.subgroupMaxSize) {
         config_index = index;
         return true;
       }
@@ -117,31 +136,52 @@ Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(sg_mat_m, m_));
 }
 
-Status GenerateShaderCodeOnIntel(ShaderHelper& shader,
-                                 const ShaderVariableHelper& b,
-                                 const ShaderVariableHelper& scales_b,
-                                 const ShaderVariableHelper& output,
-                                 uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
-  auto& config = intel_supported_subgroup_matrix_configs[config_index];
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_intel.wgsl.template",
+Status GenerateShaderCode16x16x16(ShaderHelper& shader,
+                                  const ShaderVariableHelper& b,
+                                  const ShaderVariableHelper& scales_b,
+                                  const ShaderVariableHelper& output,
+                                  uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+  const auto& config = supported_subgroup_matrix_configs[config_index];
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_16x16x16.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
-                             WGSL_TEMPLATE_PARAMETER(sg_mat_k, std::get<6>(config)),
-                             WGSL_TEMPLATE_PARAMETER(sg_mat_m, std::get<4>(config)),
-                             WGSL_TEMPLATE_PARAMETER(sg_mat_n, std::get<5>(config)),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_k, config.K),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_m, config.M),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_n, config.N),
                              WGSL_TEMPLATE_VARIABLE(input_b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
-Status GenerateShaderCodeOnApple(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
+Status GenerateShaderCode8x16x16(ShaderHelper& shader,
+                                 const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
-                                 const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_apple.wgsl.template",
+                                 const ShaderVariableHelper& output,
+                                 uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+  const auto& config = supported_subgroup_matrix_configs[config_index];
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x16x16.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
+                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
+                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits),
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_k, config.K),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_m, config.M),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_n, config.N),
+                             WGSL_TEMPLATE_VARIABLE(input_b, b),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+}
+
+Status GenerateShaderCode8x8x8(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
+                               const ShaderVariableHelper& scales_b,
+                               const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x8x8.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
@@ -169,13 +209,16 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  if (!vendor_.compare("apple")) {
-    return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
-  } else if (!vendor_.compare("intel")) {
-    return GenerateShaderCodeOnIntel(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+  const auto& config = supported_subgroup_matrix_configs[config_index_];
+  if (config.M == 8 && config.N == 8 && config.K == 8) {
+    return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+  } else if (config.M == 8 && config.N == 16 && config.K == 16) {
+    return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+  } else if (config.M == 16 && config.N == 16 && config.K == 16) {
+    return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
-                  "onnxruntime does not support subgroup matrix on this vendor.");
+                  "Unsupported subgroup matrix config dimensions.");
   }
 }
 
@@ -193,10 +236,10 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       const Tensor* weight_index_indirect) {
   // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
   Tensor a_prepack;
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    const auto& config = intel_supported_subgroup_matrix_configs[config_index];
-    const auto m = std::get<4>(config);
-    const auto k = std::get<6>(config);
+  const auto& config = supported_subgroup_matrix_configs[config_index];
+  if (config.needsPrepack) {
+    const auto m = config.M;
+    const auto k = config.K;
 
     // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
     PrepackProgram prepack_program{m, k};
@@ -228,10 +271,15 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
+  if (config.M == 8 && config.N == 16 && config.K == 16) {
+    // 8x16x16 config: 8 subgroups, 256 threads, 64x64 tiles
     tile_size_a = 64;
     work_group_size = 256;
+  } else if (config.M == 16 && config.N == 16 && config.K == 16) {
+    // 16x16x16 config: 4 subgroups, 128 threads, 64x64 tiles
+    tile_size_a = 64;
+    work_group_size = 128;
   }
   mul_program.SetWorkgroupSize(work_group_size);
   mul_program.SetDispatchGroupSize(
@@ -271,15 +319,14 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
 
   bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
   if (has_subgroup_matrix) {
-    if (context.AdapterInfo().vendor == std::string_view{"apple"}) {
-      // For now SubgroupMatrixMatMulNBits is only supported for accuracy level 4, because with Fp16 there are
-      // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
-      // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
-      // FP32 is around 7s.
-      has_subgroup_matrix = accuracy_level == 4;
-    } else if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-      // Intel subgroup matrix config is f16-only.
-      has_subgroup_matrix = is_fp16 && IsSubgroupMatrixConfigSupportedOnIntel(context, config_index);
+    // Check if the adapter reports a subgroup matrix config we support.
+    has_subgroup_matrix = IsSubgroupMatrixConfigSupported(context, config_index);
+    if (has_subgroup_matrix) {
+      const auto& config = supported_subgroup_matrix_configs[config_index];
+      // F16 component type requires FP16 output and accuracy level 4 (FP16 precision).
+      if (config.componentType == wgpu::SubgroupMatrixComponentType::F16) {
+        has_subgroup_matrix = is_fp16 && accuracy_level == 4;
+      }
     }
   }
 
