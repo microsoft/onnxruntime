@@ -225,26 +225,39 @@ $MAIN {
         }
     }
 #else
-    // Non-bias path: store results directly to output with bounds checking.
-    // Use scratch to handle M bounds - subgroupMatrixStore to scratch first,
-    // then scalar copy only valid rows.
-    let scratch_m_base = sg_idx * kSgMatM;
-    subgroupMatrixStore(&scratch, scratch_m_base * kTileN, sg_mat_c0, false, kTileN);
-    subgroupMatrixStore(&scratch, scratch_m_base * kTileN + kSgMatN, sg_mat_c1, false, kTileN);
-    subgroupMatrixStore(&scratch, scratch_m_base * kTileN + 2 * kSgMatN, sg_mat_c2, false, kTileN);
-    subgroupMatrixStore(&scratch, scratch_m_base * kTileN + 3 * kSgMatN, sg_mat_c3, false, kTileN);
+    // Non-bias path: write results to output.
+    let sg_m_base = global_base_a + sg_idx * kSgMatM;
+    let full_block = sg_m_base + kSgMatM <= uniforms.M;
+
+    if (full_block) {
+        // All rows in this block are within bounds - use fast subgroupMatrixStore to output.
+        let sg_mat_offset_c = sg_m_base * uniforms.N + global_base_b;
+        subgroupMatrixStore(&output, sg_mat_offset_c, sg_mat_c0, false, uniforms.N);
+        subgroupMatrixStore(&output, sg_mat_offset_c + kSgMatN, sg_mat_c1, false, uniforms.N);
+        subgroupMatrixStore(&output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, false, uniforms.N);
+        subgroupMatrixStore(&output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, false, uniforms.N);
+    } else {
+        // Partial block: store to scratch for bounds-checked scalar write.
+        let scratch_m_base = sg_idx * kSgMatM;
+        subgroupMatrixStore(&scratch, scratch_m_base * kTileN, sg_mat_c0, false, kTileN);
+        subgroupMatrixStore(&scratch, scratch_m_base * kTileN + kSgMatN, sg_mat_c1, false, kTileN);
+        subgroupMatrixStore(&scratch, scratch_m_base * kTileN + 2 * kSgMatN, sg_mat_c2, false, kTileN);
+        subgroupMatrixStore(&scratch, scratch_m_base * kTileN + 3 * kSgMatN, sg_mat_c3, false, kTileN);
+    }
     workgroupBarrier();
 
-    let out_m = local_idx / 2;
-    let out_n_base = (local_idx % 2) * 32;
-    let global_m = global_base_a + out_m;
-    if (global_m < uniforms.M) {
-        let global_n_base = global_base_b + out_n_base;
-        let scratch_base = out_m * kTileN + out_n_base;
-        let out_base = global_m * uniforms.N + global_n_base;
-        for (var i: u32 = 0; i < 32; i++) {
-            if (global_n_base + i < uniforms.N) {
-                output.setByOffset(out_base + i, output_element_t(scratch[scratch_base + i]));
+    if (!full_block) {
+        let out_m = local_idx / 2;
+        let out_n_base = (local_idx % 2) * 32;
+        let global_m = global_base_a + out_m;
+        if (global_m < uniforms.M) {
+            let global_n_base = global_base_b + out_n_base;
+            let scratch_base = out_m * kTileN + out_n_base;
+            let out_base = global_m * uniforms.N + global_n_base;
+            for (var i: u32 = 0; i < 32; i++) {
+                if (global_n_base + i < uniforms.N) {
+                    output.setByOffset(out_base + i, output_element_t(scratch[scratch_base + i]));
+                }
             }
         }
     }
