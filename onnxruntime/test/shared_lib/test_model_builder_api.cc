@@ -1083,3 +1083,180 @@ TEST(ModelEditorCompileAPITest, EmbedModeWithBufferOutputSatisfiesValidation) {
     allocator->Free(output_buffer);
   }
 }
+
+//
+// Regression tests for double-free / ownership-transfer bugs in OrtModelEditorApi.
+// These test that the API rejects attempts to transfer ownership of the same object twice.
+//
+
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicateName_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  // Create two small ORT-allocated tensors (< 128 bytes, so data_is_external = false)
+  std::vector<int64_t> dims = {2, 2};
+  OrtAllocator* allocator = nullptr;
+  Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
+
+  OrtValue* tensor1 = nullptr;
+  OrtValue* tensor2 = nullptr;
+  Ort::ThrowOnError(api.CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor1));
+  Ort::ThrowOnError(api.CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor2));
+
+  // First add should succeed
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddInitializerToGraph(graph, "W", tensor1, false));
+
+  // Second add with same name should fail
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", tensor2, false)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+
+  // Clean up tensor2 since ownership was NOT transferred
+  api.ReleaseValue(tensor2);
+  api.ReleaseGraph(graph);
+}
+
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicatePointer_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  std::vector<int64_t> dims = {2, 2};
+  OrtAllocator* allocator = nullptr;
+  Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
+
+  OrtValue* tensor = nullptr;
+  Ort::ThrowOnError(api.CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor));
+
+  // First add should succeed
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddInitializerToGraph(graph, "W1", tensor, false));
+
+  // Second add with same pointer but different name should fail (prevents double-free)
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W2", tensor, false)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+
+  api.ReleaseGraph(graph);
+}
+
+TEST(ModelEditorAPITest, AddNodeToGraph_DuplicateNode_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  OrtNode* node = CreateNode(model_editor_api, "Relu", "relu1", {"X"}, {"Y"});
+
+  // First add should succeed
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddNodeToGraph(graph, node));
+
+  // Second add of same node should fail (prevents double-free)
+  Ort::Status status{model_editor_api.AddNodeToGraph(graph, node)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+
+  api.ReleaseGraph(graph);
+}
+
+TEST(ModelEditorAPITest, AddGraphToModel_DuplicateGraph_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph1 = nullptr;
+  OrtGraph* graph2 = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph1));
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph2));
+
+  std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
+  std::vector<int> opset_versions = {18};
+  OrtModel* model = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(),
+                                                 domain_names.size(), &model));
+
+  // First add should succeed
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddGraphToModel(model, graph1));
+
+  // Second add should fail (model already has a graph)
+  Ort::Status status{model_editor_api.AddGraphToModel(model, graph2)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already has a graph"));
+
+  // Clean up graph2 since ownership was NOT transferred
+  api.ReleaseGraph(graph2);
+  api.ReleaseModel(model);
+}
+
+TEST(ModelEditorAPITest, SetGraphInputs_DuplicatePointer_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  // Create a single OrtValueInfo
+  OrtTensorTypeAndShapeInfo* tensor_type_info = nullptr;
+  std::vector<int64_t> dims = {3, 4};
+  Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&tensor_type_info));
+  Ort::ThrowOnError(api.SetTensorElementType(tensor_type_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  Ort::ThrowOnError(api.SetDimensions(tensor_type_info, dims.data(), dims.size()));
+
+  OrtTypeInfo* type_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(tensor_type_info, &type_info));
+  api.ReleaseTensorTypeAndShapeInfo(tensor_type_info);
+
+  OrtValueInfo* value_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateValueInfo("X", type_info, &value_info));
+  api.ReleaseTypeInfo(type_info);
+
+  // Pass the same pointer twice in the inputs array — should fail
+  std::vector<OrtValueInfo*> inputs = {value_info, value_info};
+  Ort::Status status{model_editor_api.SetGraphInputs(graph, inputs.data(), inputs.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+
+  // Clean up — ownership was NOT transferred
+  api.ReleaseValueInfo(value_info);
+  api.ReleaseGraph(graph);
+}
+
+TEST(ModelEditorAPITest, SetGraphOutputs_DuplicatePointer_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  // Create a single OrtValueInfo
+  OrtTensorTypeAndShapeInfo* tensor_type_info = nullptr;
+  std::vector<int64_t> dims = {3, 4};
+  Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&tensor_type_info));
+  Ort::ThrowOnError(api.SetTensorElementType(tensor_type_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  Ort::ThrowOnError(api.SetDimensions(tensor_type_info, dims.data(), dims.size()));
+
+  OrtTypeInfo* type_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(tensor_type_info, &type_info));
+  api.ReleaseTensorTypeAndShapeInfo(tensor_type_info);
+
+  OrtValueInfo* value_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateValueInfo("Y", type_info, &value_info));
+  api.ReleaseTypeInfo(type_info);
+
+  // Pass the same pointer twice in the outputs array — should fail
+  std::vector<OrtValueInfo*> outputs = {value_info, value_info};
+  Ort::Status status{model_editor_api.SetGraphOutputs(graph, outputs.data(), outputs.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+
+  // Clean up — ownership was NOT transferred
+  api.ReleaseValueInfo(value_info);
+  api.ReleaseGraph(graph);
+}

@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core/common/inlined_containers_fwd.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/onnx_protobuf.h"
@@ -154,6 +154,7 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting the parent graph for OrtNode");
   }
 
+  bool owned_ = false;  // true after ownership transferred to a graph
   size_t id = 0;
   std::string operator_name;
   std::string domain_name;
@@ -237,6 +238,7 @@ struct ModelEditorGraph : public OrtGraph {
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> outputs;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
+  onnxruntime::InlinedHashSet<const OrtValue*> owned_initializer_ptrs_;  // tracks owned OrtValue pointers to prevent double-free
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
   std::string name = "ModelEditorGraph";
   std::filesystem::path model_path;
