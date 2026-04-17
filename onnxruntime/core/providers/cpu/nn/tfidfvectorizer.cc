@@ -382,7 +382,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     // TfidfVectorizer returns a zero tensor of shape
     // {b_dim, output_size} when b_dim is the number of received observations
     // and output_size the is the maximum value in ngram_indexes attribute plus 1.
-    memset(output_data, 0, static_cast<size_t>(output_shape.Size() * sizeof(float)));
+    memset(output_data, 0, static_cast<size_t>(SafeInt<size_t>(output_shape.Size()) * sizeof(float)));
     return Status::OK();
   }
 
