@@ -16,6 +16,7 @@
 
 #include <io.h>
 #include <fcntl.h>
+#include <limits>
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 
@@ -178,6 +179,10 @@ OrtStatus* OrtModelImpl::CreateOrtModelFromPath(const char* path, size_t len, Or
 }
 
 OrtStatus* OrtModelImpl::CreateOrtModelFromData(void* data, size_t len, ::OrtModel** model) {
+  if (len > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Model data size exceeds maximum supported size (2GB).");
+  }
+
   auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
 
   auto parse_succeeded = model_proto->ParseFromArray(data, onnxruntime::narrow<int32_t>(len));
