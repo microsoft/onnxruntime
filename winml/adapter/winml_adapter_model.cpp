@@ -180,7 +180,8 @@ OrtStatus* OrtModelImpl::CreateOrtModelFromPath(const char* path, size_t len, Or
 
 OrtStatus* OrtModelImpl::CreateOrtModelFromData(void* data, size_t len, ::OrtModel** model) {
   if (len > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Model data size exceeds maximum supported size (2GB).");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Model data size exceeds maximum supported size (2147483647 bytes, approximately 2GB).");
   }
 
   auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
