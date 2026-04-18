@@ -18,11 +18,43 @@ set(onnxruntime_MINIMUM_CXX_STANDARD_VERSION 20)
 # E.g., this is important for Abseil.
 #
 
+# "Normalize" means make suitable for comparison.
+function(onnxruntime_normalize_language_standard_version
+         language_standard_version_var_name
+         version
+         normalized_version_var_name)
+  set(normalized_version ${version})
+
+  # Note: For CMAKE_C_STANDARD and CMAKE_CXX_STANDARD, we assume two-digit versions based on years.
+  if("${language_standard_version_var_name}" STREQUAL "CMAKE_C_STANDARD")
+    if("${version}" EQUAL "90" OR "${version}" EQUAL "99")
+      set(base_year 1900)
+    else()
+      set(base_year 2000)
+    endif()
+    math(EXPR normalized_version "${base_year} + ${version}")
+  elseif("${language_standard_version_var_name}" STREQUAL "CMAKE_CXX_STANDARD")
+    if("${version}" EQUAL "98")
+      set(base_year 1900)
+    else()
+      set(base_year 2000)
+    endif()
+    math(EXPR normalized_version "${base_year} + ${version}")
+  endif()
+
+  set(${normalized_version_var_name} ${normalized_version} PARENT_SCOPE)
+endfunction()
+
 function(onnxruntime_ensure_minimum_language_standard_version
          language_standard_version_var_name
          minimum_version)
   if(DEFINED ${language_standard_version_var_name})
-    if(${language_standard_version_var_name} VERSION_LESS "${minimum_version}")
+    onnxruntime_normalize_language_standard_version(
+        ${language_standard_version_var_name} "${minimum_version}" required_minimum_version)
+    onnxruntime_normalize_language_standard_version(
+        ${language_standard_version_var_name} "${${language_standard_version_var_name}}" actual_minimum_version)
+
+    if(actual_minimum_version VERSION_LESS required_minimum_version)
       message(FATAL_ERROR "${language_standard_version_var_name} must be at least ${minimum_version}. "
                           "It is ${${language_standard_version_var_name}}.")
     endif()
@@ -32,11 +64,8 @@ function(onnxruntime_ensure_minimum_language_standard_version
   endif()
 endfunction()
 
-onnxruntime_ensure_minimum_language_standard_version(
-    CMAKE_C_STANDARD ${onnxruntime_MINIMUM_C_STANDARD_VERSION})
-
-onnxruntime_ensure_minimum_language_standard_version(
-    CMAKE_CXX_STANDARD ${onnxruntime_MINIMUM_CXX_STANDARD_VERSION})
+onnxruntime_ensure_minimum_language_standard_version(CMAKE_C_STANDARD ${onnxruntime_MINIMUM_C_STANDARD_VERSION})
+onnxruntime_ensure_minimum_language_standard_version(CMAKE_CXX_STANDARD ${onnxruntime_MINIMUM_CXX_STANDARD_VERSION})
 
 #
 # Define onnxruntime_<lang>_standard interface targets requiring the minimum standard version.
