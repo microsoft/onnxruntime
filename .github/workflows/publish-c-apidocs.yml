@@ -54,7 +54,7 @@ jobs:
       - name: Move C/C++ docs into site
         run: |
           mkdir -p _site/docs/api
-          rm -rf site/docs/api/c
+          rm -rf _site/docs/api/c
           mv build/doxygen/html _site/docs/api/c
       - name: Upload new site
         if: github.ref == 'refs/heads/main'
