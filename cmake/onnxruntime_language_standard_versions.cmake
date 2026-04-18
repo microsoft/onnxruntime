@@ -5,7 +5,7 @@
 # Minimum required language standard versions.
 #
 
-set(onnxruntime_MINIMUM_C_STANDARD_VERSION 99)
+set(onnxruntime_MINIMUM_C_STANDARD_VERSION   99)
 set(onnxruntime_MINIMUM_CXX_STANDARD_VERSION 20)
 
 #
@@ -64,18 +64,13 @@ function(onnxruntime_ensure_minimum_language_standard_version
   endif()
 endfunction()
 
-onnxruntime_ensure_minimum_language_standard_version(CMAKE_C_STANDARD ${onnxruntime_MINIMUM_C_STANDARD_VERSION})
+onnxruntime_ensure_minimum_language_standard_version(CMAKE_C_STANDARD   ${onnxruntime_MINIMUM_C_STANDARD_VERSION})
 onnxruntime_ensure_minimum_language_standard_version(CMAKE_CXX_STANDARD ${onnxruntime_MINIMUM_CXX_STANDARD_VERSION})
 
 #
-# Define onnxruntime_<lang>_standard interface targets requiring the minimum standard version.
-# These should be used by all onnxruntime targets.
+# Define onnxruntime_<lang>_std_compile_feature variables specifying the <lang> standard version compile feature name.
+# These should be used by all onnxruntime targets via target_compile_features().
 #
 
-add_library(onnxruntime_c_standard INTERFACE)
-target_compile_features(onnxruntime_c_standard INTERFACE
-                        c_std_${onnxruntime_MINIMUM_C_STANDARD_VERSION})
-
-add_library(onnxruntime_cxx_standard INTERFACE)
-target_compile_features(onnxruntime_cxx_standard INTERFACE
-                        cxx_std_${onnxruntime_MINIMUM_CXX_STANDARD_VERSION})
+set(onnxruntime_c_std_compile_feature   c_std_${onnxruntime_MINIMUM_C_STANDARD_VERSION})
+set(onnxruntime_cxx_std_compile_feature cxx_std_${onnxruntime_MINIMUM_CXX_STANDARD_VERSION})

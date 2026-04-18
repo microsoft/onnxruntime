@@ -1235,10 +1235,10 @@ function(onnxruntime_configure_target target_name)
     target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>")
   endif()
 
-  # Link to minimum language standard version targets.
-  target_link_libraries(${target_name} PUBLIC
-                        $<BUILD_INTERFACE:onnxruntime_c_standard>
-                        $<BUILD_INTERFACE:onnxruntime_cxx_standard>)
+  # Add compile features for minimum required language standard versions.
+  target_compile_features(${target_name} PUBLIC
+                          ${onnxruntime_c_std_compile_feature}
+                          ${onnxruntime_cxx_std_compile_feature})
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
