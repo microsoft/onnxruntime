@@ -1138,9 +1138,9 @@ struct DeviceEpIncompatibilityDetailsImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
-  uint32_t GetReasonsBitmask() const;   ///< Wraps DeviceEpIncompatibilityDetails_GetReasonsBitmask
-  const char* GetNotes() const;         ///< Wraps DeviceEpIncompatibilityDetails_GetNotes
-  int32_t GetErrorCode() const;         ///< Wraps DeviceEpIncompatibilityDetails_GetErrorCode
+  uint32_t GetReasonsBitmask() const;  ///< Wraps DeviceEpIncompatibilityDetails_GetReasonsBitmask
+  const char* GetNotes() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetNotes
+  int32_t GetErrorCode() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetErrorCode
 };
 }  // namespace detail
 

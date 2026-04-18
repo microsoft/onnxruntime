@@ -11,9 +11,9 @@ import onnx
 
 from onnxruntime.capi.onnxruntime_pybind11_state import (
     OrtCompiledModelCompatibility,
+    OrtDeviceEpIncompatibilityReason,
     get_compatibility_info_from_model,
     get_compatibility_info_from_model_bytes,
-    OrtDeviceEpIncompatibilityReason,
     get_ep_devices,
     get_hardware_device_ep_incompatibility_details,
     get_hardware_devices,
