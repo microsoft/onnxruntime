@@ -1236,9 +1236,10 @@ function(onnxruntime_configure_target target_name)
   endif()
 
   # Add compile features for minimum required language standard versions.
+  # Wrap in $<BUILD_INTERFACE:...> so the requirement is not exported to consumers of installed ORT targets.
   target_compile_features(${target_name} PUBLIC
-                          ${onnxruntime_c_std_compile_feature}
-                          ${onnxruntime_cxx_std_compile_feature})
+                          $<BUILD_INTERFACE:${onnxruntime_c_std_compile_feature}>
+                          $<BUILD_INTERFACE:${onnxruntime_cxx_std_compile_feature}>)
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
