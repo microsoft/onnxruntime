@@ -50,11 +50,11 @@ function(onnxruntime_ensure_minimum_language_standard_version
          minimum_version)
   if(DEFINED ${language_standard_version_var_name})
     onnxruntime_normalize_language_standard_version(
-        ${language_standard_version_var_name} "${minimum_version}" required_minimum_version)
+        ${language_standard_version_var_name} "${minimum_version}" normalized_minimum_version)
     onnxruntime_normalize_language_standard_version(
-        ${language_standard_version_var_name} "${${language_standard_version_var_name}}" actual_minimum_version)
+        ${language_standard_version_var_name} "${${language_standard_version_var_name}}" normalized_version)
 
-    if(actual_minimum_version VERSION_LESS required_minimum_version)
+    if(normalized_version VERSION_LESS normalized_minimum_version)
       message(FATAL_ERROR "${language_standard_version_var_name} must be at least ${minimum_version}. "
                           "It is ${${language_standard_version_var_name}}.")
     endif()
