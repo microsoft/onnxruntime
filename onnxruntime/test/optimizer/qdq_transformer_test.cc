@@ -718,7 +718,8 @@ TEST(QDQTransformerTests, MatMul_S8S8U8) {
 }
 
 template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
-void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one = false) {
+void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one = false,
+                             bool alpha_not_one = false) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape,
                        bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -791,12 +792,17 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
       if (beta_not_one) {
         gemm_node->AddAttribute("beta", 2.0f);
       }
+
+      if (alpha_not_one) {
+        gemm_node->AddAttribute("alpha", 2.0f);
+      }
     };
 
     auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
-      if ((!has_output_q || std::is_same_v<Input1Type, OutputType>) && (!has_bias || (std::is_same_v<BiasType, int32_t> && !beta_not_one)) &&
+      if ((!has_output_q || std::is_same_v<Input1Type, OutputType>) &&
+          (!has_bias || (std::is_same_v<BiasType, int32_t> && !beta_not_one && !alpha_not_one)) &&
           (std::is_same_v<Input1Type, uint8_t> || std::is_same_v<Input2Type, int8_t>)) {
         EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 1);
         EXPECT_EQ(op_to_count["Gemm"], 0);
@@ -860,6 +866,10 @@ void QDQTransformerGemmTests() {
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, false, false, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, false, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, false, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, false, true);
 }
 
 TEST(QDQTransformerTests, Gemm_U8U8U8) {
