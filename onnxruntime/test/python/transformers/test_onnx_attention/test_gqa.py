@@ -610,7 +610,7 @@ def gqa_prompt_test_cases():
     seqs = [(16, 16), (64, 64), (128, 128)]
     heads = [(8, 2), (8, 4)]
     h_sizes = [128] if quick_build else [64, 128]
-    softcap_opts = [0.0]
+    softcap_opts = [0.0, 50.0]
 
     h_sizes_to_test = h_sizes[:1] if pipeline_mode else h_sizes
 
@@ -645,7 +645,7 @@ def gqa_past_test_cases():
     seqs = [(1, 32), (1, 128), (1, 512)]
     heads = [(8, 2), (8, 4)]
     h_sizes = [128] if quick_build else [64, 128]
-    softcap_opts = [0.0]
+    softcap_opts = [0.0, 50.0]
 
     h_sizes_to_test = h_sizes[:1] if pipeline_mode else h_sizes
 
@@ -863,22 +863,26 @@ class TestONNXAttentionMemoryEfficientGQA(unittest.TestCase):
     # flash attention.
 
 
+# TODO(titaiwang): Re-enable once PR #27851 merges (MEA supports past_key for GQA).
+# Flash now rejects attn_mask (requires attn_mask==nullptr). GQA + bool mask + past_key
+# has no runner until MEA supports past_key. See issue #27885.
+@unittest.skip(
+    "Flash now rejects attn_mask. GQA + bool mask + past_key has no runner "
+    "until PR #27851 (MEA with past_key). See issue #27885."
+)
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "0"})
 class TestONNXAttentionPaddingMaskGQA(unittest.TestCase):
     """
     Test ONNX Attention op (opset 23) GQA path with boolean padding masks.
 
-    Requires SM80+: decode+padding tests explicitly force Flash via
-    ORT_DISABLE_FLASH_ATTENTION=0.  Prompt+padding uses MEA fallback and is
-    tested separately in TestONNXAttentionPaddingMaskMemoryEfficientGQA.
+    SKIPPED: Flash now requires attn_mask == nullptr. GQA + bool attn_mask +
+    past_key currently has no runner (Flash rejected, unfused doesn't support GQA,
+    MEA blocked by past_key != nullptr). Will be re-enabled when PR #27851 lands.
 
     These tests verify that the boolean attn_mask is correctly converted to
     sequence lengths on GPU and that the attention computation respects the
     padding. Tests cover 2D, 3D, and 4D mask shapes.
-
-    Note: prompt+bool_mask is ineligible for flash (routed to MEA), so prompt
-    padding tests live in TestONNXAttentionPaddingMaskMemoryEfficientGQA only.
     """
 
     @parameterized.expand(gqa_past_padding_test_cases())

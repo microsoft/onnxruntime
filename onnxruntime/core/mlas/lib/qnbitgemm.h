@@ -530,6 +530,52 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     QuantizeA_Packed_CompInt8_Fn* QuantizeA_Packed_CompInt8 = nullptr;
 
     /**
+     * @brief Compute float-domain block sums of A for zero-point correction.
+     *        Used when KleidiAI handles asymmetric quantization.
+     *
+     * @param       A               Supplies the float A matrix.
+     * @param       CountM          Number of rows of A.
+     * @param       CountK          Number of columns of A.
+     * @param       BlkLen          Number of values in a block.
+     * @param       lda             Leading dimension of A.
+     * @param[out]  AFloatBlkSum    Output: M * BlockCountK float sums.
+     */
+    typedef void(ComputeAFloatBlkSum_Fn)(
+        const float* A,
+        size_t CountM,
+        size_t CountK,
+        size_t BlkLen,
+        size_t lda,
+        float* AFloatBlkSum
+    );
+
+    ComputeAFloatBlkSum_Fn* ComputeAFloatBlkSum = nullptr;
+
+    /**
+     * @brief Apply zero-point correction: C += ABlkSum * BCorr^T
+     *        Used after KleidiAI GEMM for asymmetric quantization.
+     *
+     * @param       ABlkSum         Float block sums of A, [RangeCountM, BlockCountK] row-major.
+     * @param       BCorr           BZpCorrection, [RangeCountN, BlockCountK] row-major (pre-offset).
+     * @param[out]  C               Output matrix tile (pre-offset), accumulated.
+     * @param       RangeCountM     Number of M rows in this tile.
+     * @param       RangeCountN     Number of N columns in this tile.
+     * @param       BlockCountK     Number of blocks along K.
+     * @param       ldc             Leading dimension of C.
+     */
+    typedef void(ApplyBZpCorrection_Fn)(
+        const float* ABlkSum,
+        const float* BCorr,
+        float* C,
+        size_t RangeCountM,
+        size_t RangeCountN,
+        size_t BlockCountK,
+        size_t ldc
+    );
+
+    ApplyBZpCorrection_Fn* ApplyBZpCorrection = nullptr;
+
+    /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
      *
      * @param       BlkLen  Number of values in a block.

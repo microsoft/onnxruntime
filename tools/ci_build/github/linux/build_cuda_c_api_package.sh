@@ -12,6 +12,10 @@ fi
 
 docker run -e SYSTEM_COLLECTIONURI --rm --volume \
 $BUILD_SOURCESDIRECTORY:/onnxruntime_src --volume $BUILD_BINARIESDIRECTORY:/build \
+-e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+--volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+--volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
+--volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
 -e NIGHTLY_BUILD onnxruntimecuda${CUDA_VERSION_MAJOR}build \
 /bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs \
 --build_dir /build --config Release --skip_submodule_sync  --parallel --use_binskim_compliant_compile_flags --build_shared_lib \

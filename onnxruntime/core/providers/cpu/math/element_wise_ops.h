@@ -243,9 +243,25 @@ template <typename T>
 class Div final : public OpKernel {
  public:
   Div(const OpKernelInfo& info) : OpKernel(info) {
+    // If the divisor is a constant initializer, validate for integer division by zero once
+    // during kernel creation instead of on every Compute call.
+    if constexpr (std::is_integral<T>::value) {
+      const Tensor* constant_divisor = nullptr;
+      if (info.TryGetConstantInput(1, &constant_divisor)) {
+        const T* b_data = constant_divisor->Data<T>();
+        const int64_t b_size = constant_divisor->Shape().Size();
+        for (int64_t i = 0; i < b_size; ++i) {
+          ORT_ENFORCE(b_data[i] != T{0}, "Integer division by zero");
+        }
+        divisor_is_validated_constant_ = true;
+      }
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  bool divisor_is_validated_constant_{false};
 };
 
 class Pow final : public OpKernel {

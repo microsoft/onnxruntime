@@ -374,7 +374,7 @@ ThreadPool::ThreadPool(Env* env,
                        const ThreadOptions& thread_options,
                        const NAME_CHAR_TYPE* name,
                        int degree_of_parallelism,
-                       bool low_latency_hint,
+                       int spin_duration_us,
                        bool force_hybrid)
     : thread_options_(thread_options), force_hybrid_(force_hybrid) {
   // In the current implementation, a thread pool with degree_of_parallelism==1 uses
@@ -390,12 +390,15 @@ ThreadPool::ThreadPool(Env* env,
       assert(thread_options_.affinities.size() >= size_t(threads_to_create));
     }
 
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+    using PoolType = ThreadPoolTempl<Env, WorkWithCallbackPolicy>;
+#else
+    using PoolType = ThreadPoolTempl<Env, WorkNoCallbackPolicy>;
+#endif
     extended_eigen_threadpool_ =
-        std::make_unique<ThreadPoolTempl<Env> >(name,
-                                                threads_to_create,
-                                                low_latency_hint,
-                                                *env,
-                                                thread_options_);
+        std::make_unique<PoolType>(name, threads_to_create,
+                                   spin_duration_us,
+                                   *env, thread_options_);
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
 }

@@ -27,6 +27,14 @@ struct OrtThreadPoolParams {
   bool allow_spinning = false;
 #endif
 
+  // Duration in microseconds that threads spin waiting for work before blocking.
+  // Subordinate to allow_spinning: when allow_spinning is false, this value is
+  // ignored and spinning is disabled (equivalent to spin_duration_us = 0).
+  //   -1 (kSpinDurationDefault) = use default iteration-count-based spinning
+  //    0 = disable spinning (equivalent to allow_spinning = false)
+  //   >0 = calibrated iteration-based spinning for specified duration (best-effort)
+  int spin_duration_us = onnxruntime::concurrency::kSpinDurationDefault;
+
   // It it is non-negative, thread pool will split a task by a decreasing block size
   // of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)
   int dynamic_block_base_ = 0;
@@ -52,6 +60,12 @@ struct OrtThreadPoolParams {
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  // Optional callbacks for thread pool work scheduling.
+  // When set, these callbacks are invoked around work execution.
+  OrtThreadPoolCallbacksConfig work_callbacks{};
+#endif
 };
 
 std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params);

@@ -30,6 +30,7 @@ class QLinearConv : public OpKernel {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
@@ -250,7 +251,8 @@ class QLinearConv : public OpKernel {
         //
         // Note: The size of this buffer is less than or equal to the size of the original
         // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-        auto* group_reordered_W = static_cast<int8_t*>(alloc->Alloc(group_output_channels * group_input_channels * kernel_size));
+        auto* group_reordered_W = static_cast<int8_t*>(alloc->Alloc(
+            static_cast<size_t>(SafeInt<size_t>(group_output_channels) * group_input_channels * kernel_size)));
         BufferUniquePtr group_reordered_W_buffer(group_reordered_W, BufferDeleter(alloc));
 
         const size_t W_offset = group_output_channels * kernel_dim;
@@ -438,7 +440,9 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
       //
       // Note: The size of this buffer is less than or equal to the size of the original
       // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-      auto group_reordered_W_buffer = IAllocator::MakeUniquePtr<void>(alloc, group_output_channels * group_input_channels * kernel_size, true);
+      auto group_reordered_W_buffer = IAllocator::MakeUniquePtr<void>(
+          alloc, static_cast<size_t>(SafeInt<size_t>(group_output_channels) * group_input_channels * kernel_size),
+          true);
       auto* group_reordered_W = static_cast<uint8_t*>(group_reordered_W_buffer.get());
 
       const size_t W_offset = group_output_channels * kernel_dim;
@@ -495,6 +499,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
 template <typename ActType>
 Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                        int input_idx,
                                                        /*out*/ bool& used_shared_buffers) {
   if (input_idx != 3) {

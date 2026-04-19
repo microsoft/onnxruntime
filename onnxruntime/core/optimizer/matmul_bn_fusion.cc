@@ -227,6 +227,7 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
       "Generated from Matmul BatchNormalization fusion",
       {matmul_node.MutableInputDefs()[0], &new_gemm_b_node_arg, &new_gemm_bias_node_arg},
       matmul_node.MutableOutputDefs(),
+      matmul_node,
       nullptr,
       kOnnxDomain);
 
