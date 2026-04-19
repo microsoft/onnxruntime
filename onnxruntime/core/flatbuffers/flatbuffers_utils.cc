@@ -200,7 +200,6 @@ static Status LoadTensorShapeOrtFormat(const fbs::Shape& fbs_shape, TensorShapeP
     dims->Reserve(fbs_dims->size());
     for (const auto fbs_dim : *fbs_dims) {
       ORT_RETURN_IF(nullptr == fbs_dim, "Null entry in dimensions. Invalid ORT format model.");
-      TensorShapeProto_Dimension dim;
       ORT_RETURN_IF_ERROR(LoadTensorDimensionOrtFormat(*fbs_dim, *dims->Add()));
     }
   }

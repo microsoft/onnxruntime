@@ -3419,7 +3419,6 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetTensorAttributeAsOrtValue, _In_ const Ort
 
 ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type) {
   API_IMPL_BEGIN
-  const auto attr = attribute->attr_proto;
   auto onnx_attr_type = attribute->attr_proto.type();
   switch (onnx_attr_type) {
     case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_UNDEFINED: {
