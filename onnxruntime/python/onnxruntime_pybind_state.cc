@@ -1624,6 +1624,11 @@ void addGlobalMethods(py::module& m) {
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
   m.def(
+      "get_default_logger_severity", []() -> int {
+        return static_cast<int>(logging::LoggingManager::DefaultLogger().GetSeverity());
+      },
+      "Gets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+  m.def(
       "set_default_logger_verbosity", [](int vlog_level) {
         logging::LoggingManager* default_logging_manager = GetEnv().GetLoggingManager();
         default_logging_manager->SetDefaultLoggerVerbosity(vlog_level);
