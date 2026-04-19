@@ -670,5 +670,51 @@ TEST(LabelEncoder, DoubleToDoubleOpset4) {
   test.Run();
 }
 
+// Test empty input tensor (zero elements) to exercise the early-return path.
+TEST(LabelEncoder, EmptyInputOpset2) {
+  std::vector<std::int64_t> dims{0};
+
+  std::vector<float> input{};
+  std::vector<int64_t> output{};
+
+  OpTester test("LabelEncoder", 2, onnxruntime::kMLDomain);
+
+  const std::vector<float> keys{1.0f, 2.0f};
+  const std::vector<int64_t> values{10, 20};
+
+  test.AddAttribute("keys_floats", keys);
+  test.AddAttribute("values_int64s", values);
+  test.AddAttribute("default_int64", static_cast<int64_t>(-1));
+
+  test.AddInput<float>("X", dims, input);
+  test.AddOutput<int64_t>("Y", dims, output);
+
+  test.Run();
+}
+
+TEST(LabelEncoder, EmptyInputOpset4) {
+  std::vector<std::int64_t> dims{1, 0};
+
+  std::vector<float> input{};
+  std::vector<float> output{};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  test.AddAttribute("keys_floats", std::vector<float>{1.0f, 2.0f});
+  test.AddAttribute("values_floats", std::vector<float>{10.0f, 20.0f});
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  default_proto.add_dims(1);
+  default_proto.add_float_data(-1.0f);
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<float>("X", dims, input);
+  test.AddOutput<float>("Y", dims, output);
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

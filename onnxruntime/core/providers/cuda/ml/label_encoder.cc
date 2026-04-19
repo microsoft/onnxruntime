@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <filesystem>
 #include <numeric>
 
 namespace onnxruntime {
@@ -159,10 +158,12 @@ static void CopyToGpu(const OpKernelInfo& info,
   auto alloc = info.GetAllocator(OrtMemTypeDefault);
   if (!keys.empty()) {
     keys_gpu = IAllocator::MakeUniquePtr<TKey>(alloc, keys.size());
-    CUDA_CALL_THROW(cudaMemcpy(keys_gpu.get(), keys.data(), keys.size() * sizeof(TKey),
+    CUDA_CALL_THROW(cudaMemcpy(keys_gpu.get(), keys.data(),
+                               SafeInt<size_t>(keys.size()) * sizeof(TKey),
                                cudaMemcpyHostToDevice));
     values_gpu = IAllocator::MakeUniquePtr<TValue>(alloc, values.size());
-    CUDA_CALL_THROW(cudaMemcpy(values_gpu.get(), values.data(), values.size() * sizeof(TValue),
+    CUDA_CALL_THROW(cudaMemcpy(values_gpu.get(), values.data(),
+                               SafeInt<size_t>(values.size()) * sizeof(TValue),
                                cudaMemcpyHostToDevice));
   }
 }
