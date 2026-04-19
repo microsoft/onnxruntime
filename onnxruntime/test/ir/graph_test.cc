@@ -2828,5 +2828,80 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   ASSERT_TRUE(second_resolve.IsOK()) << "Second resolve failed: " << second_resolve.ErrorMessage();
 }
 
+// Regression test: ConvertInitializersIntoOrtValues must skip string tensors because their
+// raw buffer contains std::string objects (with internal pointers), not serializable data.
+// Without the fix, string initializer data was lost when the TensorProto was replaced with
+// one using external data in memory, breaking ORT format model serialization.
+TEST_F(GraphTest, ConvertInitializersIntoOrtValuesSkipsStringTensors) {
+  auto model_proto = ONNX_NAMESPACE::ModelProto::default_instance();
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_string_initializer_conversion");
+
+  // Create a string initializer with enough elements to exceed kSmallTensorExternalDataThreshold (127 bytes).
+  // sizeof(std::string) is typically 32 bytes, so 5+ elements will exceed 127 bytes.
+  const int num_strings = 20;
+  auto* string_initializer = graph_proto->add_initializer();
+  string_initializer->set_name("string_data");
+  string_initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  string_initializer->add_dims(num_strings);
+  for (int i = 0; i < num_strings; ++i) {
+    string_initializer->add_string_data("value_" + std::to_string(i));
+  }
+
+  // Create a Gather node: Gather(string_data, indices) -> output
+  auto* gather_node = graph_proto->add_node();
+  gather_node->set_op_type("Gather");
+  gather_node->add_input("string_data");
+  gather_node->add_input("indices");
+  gather_node->add_output("output");
+  auto* axis_attr = gather_node->add_attribute();
+  axis_attr->set_name("axis");
+  axis_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  axis_attr->set_i(0);
+
+  // Add graph input for indices
+  auto* input = graph_proto->add_input();
+  input->set_name("indices");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  input_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // Add graph output
+  auto* output = graph_proto->add_output();
+  output->set_name("output");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  output_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // Load and resolve
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Verify string initializer has string_data before conversion
+  const ONNX_NAMESPACE::TensorProto* init_before = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("string_data", init_before));
+  ASSERT_EQ(init_before->string_data_size(), num_strings);
+  ASSERT_FALSE(utils::HasExternalDataInMemory(*init_before));
+
+  // Convert initializers into OrtValues
+  ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues());
+
+  // After conversion, string initializer should still have string_data intact
+  // (i.e., it should NOT have been replaced with external data in memory).
+  const ONNX_NAMESPACE::TensorProto* init_after = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("string_data", init_after));
+  ASSERT_EQ(init_after->string_data_size(), num_strings)
+      << "String initializer data was lost during ConvertInitializersIntoOrtValues";
+  ASSERT_FALSE(utils::HasExternalDataInMemory(*init_after))
+      << "String tensor should not use external data in memory";
+
+  // Verify the string content is preserved
+  for (int i = 0; i < num_strings; ++i) {
+    EXPECT_EQ(init_after->string_data(i), "value_" + std::to_string(i));
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

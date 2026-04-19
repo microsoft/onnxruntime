@@ -3775,6 +3775,13 @@ Status Graph::ConvertInitializersIntoOrtValues() {
         continue;
       }
 
+      // String tensors cannot use the raw buffer in-memory optimization because their raw data
+      // contains std::string objects (with internal pointers), not serializable content.
+      // They are kept as regular TensorProtos and deserialized normally during inference.
+      if (utils::HasString(tensor_proto)) {
+        continue;
+      }
+
       size_t size_in_bytes = 0;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_in_bytes));
       if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
