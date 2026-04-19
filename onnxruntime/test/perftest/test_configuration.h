@@ -70,6 +70,7 @@ struct RunConfig {
   std::string intra_op_thread_affinities;
   bool disable_spinning = false;
   bool disable_spinning_between_run = false;
+  int spin_duration_us = -1;  // -1 means use default (not set by user)
   bool exit_after_session_creation = false;
   std::basic_string<ORTCHAR_T> register_custom_op_path;
   bool enable_cuda_io_binding{false};
