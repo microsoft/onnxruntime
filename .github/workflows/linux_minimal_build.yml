@@ -69,7 +69,7 @@ jobs:
         uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
 
       - name: Upload Test Data Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: test_data
           path: ${{ runner.temp }}/minimal_build_test_data/
