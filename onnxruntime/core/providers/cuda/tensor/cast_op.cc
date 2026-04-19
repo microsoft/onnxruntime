@@ -425,10 +425,10 @@ SPECIALIZE_IMPL(BFloat16)
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#define SPECIALIZE_IMPL_19_TO_25(T)                        \
-  REGISTER_KERNEL_TYPED_19_TO_22(T)                        \
+#define SPECIALIZE_IMPL_19_TO_25(T)                          \
+  REGISTER_KERNEL_TYPED_19_TO_22(T)                          \
   REGISTER_KERNEL_TYPED_23_TO_24(T, CastOpTypeConstraints()) \
-  REGISTER_KERNEL_TYPED_25(T, CastOpTypeConstraints())     \
+  REGISTER_KERNEL_TYPED_25(T, CastOpTypeConstraints())       \
   template Status Cast<T>::ComputeInternal(OpKernelContext* context) const;
 
 SPECIALIZE_IMPL_19_TO_25(Float8E4M3FN)
