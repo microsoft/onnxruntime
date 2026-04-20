@@ -325,13 +325,15 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     int64_t num_axes = axes_tensor_data.size();
 
     // NeuralNetwork PaddingLayerParams only supports padding on last two dimensions [H,W].
-    // ML Program's MIL pad op supports padding on any dimensions.
+    // ML Program's MIL pad op supports padding on any dimensions for constant mode,
+    // but only the last two dimensions for reflect/edge modes.
     // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
-    if (!input_params.create_mlprogram) {
+    if (!input_params.create_mlprogram || mode != "constant") {
       for (int64_t i = 0; i < num_axes; i++) {
         if (axes_tensor_data[i] < input_rank - 2) {
           if (pads_tensor_data[i] != 0 || pads_tensor_data[i + num_axes] != 0) {
-            LOGS(logger, VERBOSE) << "NeuralNetwork only supports padding on last two dimensions.";
+            LOGS(logger, VERBOSE) << "Only padding on the last two dimensions is supported for "
+                                  << (input_params.create_mlprogram ? "non-constant" : "NeuralNetwork") << " mode.";
             return false;
           }
         }
