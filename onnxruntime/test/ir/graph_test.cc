@@ -5,10 +5,14 @@
 #include <fstream>
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
+#include "core/flatbuffers/ort_format_version.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/graph/ort_format_load_options.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 #include "test/providers/provider_test_utils.h"
@@ -2903,6 +2907,45 @@ TEST_F(GraphTest, ConvertInitializersIntoOrtValuesSkipsStringTensors) {
   // Verify the string content is preserved
   for (int i = 0; i < num_strings; ++i) {
     EXPECT_EQ(init_after->string_data(i), "value_" + std::to_string(i));
+  }
+
+  // End-to-end: save to ORT format and reload, verifying string data survives the round-trip.
+  flatbuffers::FlatBufferBuilder builder;
+  {
+    flatbuffers::Offset<fbs::Model> fbs_model_offset;
+    ASSERT_STATUS_OK(model->SaveToOrtFormat(builder, fbs_model_offset));
+    flatbuffers::Offset<fbs::InferenceSession> fbs_session_offset =
+        fbs::CreateInferenceSessionDirect(builder,
+                                          std::to_string(kOrtModelVersion).c_str(),
+                                          fbs_model_offset,
+                                          0);
+    builder.Finish(fbs_session_offset);
+  }
+
+  // Load back from ORT format buffer
+  {
+    const auto* fbs_buffer = builder.GetBufferPointer();
+    const auto* fbs_session = fbs::GetInferenceSession(fbs_buffer);
+    ASSERT_NE(fbs_session, nullptr);
+    ASSERT_NE(fbs_session->model(), nullptr);
+
+    OrtFormatLoadOptions load_options;
+    std::unique_ptr<Model> loaded_model;
+    ASSERT_STATUS_OK(Model::LoadFromOrtFormat(*fbs_session->model(),
+                                              nullptr,  // local_registries
+                                              load_options,
+                                              *logger_,
+                                              loaded_model));
+
+    // Verify the string initializer survived the ORT format round-trip
+    const auto& loaded_graph = loaded_model->MainGraph();
+    const ONNX_NAMESPACE::TensorProto* loaded_init = nullptr;
+    ASSERT_TRUE(loaded_graph.GetInitializedTensor("string_data", loaded_init));
+    ASSERT_EQ(loaded_init->string_data_size(), num_strings)
+        << "String initializer data was lost during ORT format save/load round-trip";
+    for (int i = 0; i < num_strings; ++i) {
+      EXPECT_EQ(loaded_init->string_data(i), "value_" + std::to_string(i));
+    }
   }
 }
 
