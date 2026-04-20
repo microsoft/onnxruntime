@@ -63,10 +63,10 @@ static InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& ini
 void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs = node.InputDefs();
   model_builder.AddInitializerToSkip(input_defs[1]->Name());  // pads
-  if (input_defs.size() > 2) {
+  if (input_defs.size() > 2 && input_defs[2]->Exists()) {
     model_builder.AddInitializerToSkip(input_defs[2]->Name());  // constant_value
   }
-  if (input_defs.size() > 3) {
+  if (input_defs.size() > 3 && input_defs[3]->Exists()) {
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // axes
   }
 }
@@ -100,9 +100,25 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     // ONNX: [x1_start, x2_start, ..., xN_start, x1_end, x2_end, ..., xN_end] for N axes
     // MIL:  [x1_start, x1_end, x2_start, x2_end, ...] interleaved, for last N padded dims
     // MIL pads the last N dimensions where N = len(pad) / 2.
-    // We only need to include dimensions that are actually padded (last 2 dims).
+    // Find the first dimension that has non-zero padding to minimize the pad vector size.
+    int64_t first_padded_dim = input_rank;
+    for (int64_t dim = 0; dim < input_rank; ++dim) {
+      for (int64_t i = 0; i < num_axes; ++i) {
+        if (axes_tensor_data[i] == dim && (pads_span[i] != 0 || pads_span[i + num_axes] != 0)) {
+          first_padded_dim = dim;
+          break;
+        }
+      }
+      if (first_padded_dim < input_rank) break;
+    }
+
+    // MIL requires at least 1 pair. If no padding, default to last dim. Pad op is meaningless in this case though.
+    if (first_padded_dim == input_rank) {
+      first_padded_dim = input_rank - 1;
+    }
+
     std::vector<int64_t> mil_pads;
-    for (int64_t dim = input_rank - 2; dim < input_rank; ++dim) {
+    for (int64_t dim = first_padded_dim; dim < input_rank; ++dim) {
       int64_t pad_start = 0;
       int64_t pad_end = 0;
       for (int64_t i = 0; i < num_axes; ++i) {
@@ -241,7 +257,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
   // For constant mode, ML Program allows omitted `constant_value` (defaults to 0 per ONNX Pad semantics).
   // NeuralNetwork path requires explicit `constant_value`.
   if (mode == "constant") {
-    const bool has_constant_value = input_defs.size() > 2 && !input_defs[2]->Name().empty();
+    const bool has_constant_value = input_defs.size() > 2 && input_defs[2]->Exists();
 
     if (!has_constant_value) {
       if (!input_params.create_mlprogram) {
@@ -289,7 +305,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     }
 
     // Check if provided, `axes` input must be a constant initializer
-    if (input_defs.size() > 3) {
+    if (input_defs.size() > 3 && input_defs[3]->Exists()) {
       const auto axes_initializer_it = initializers.find(input_defs[3]->Name());
       if (axes_initializer_it == initializers.end()) {
         LOGS(logger, VERBOSE) << "if provided, `axes` input is required to a constant initializer";
@@ -297,17 +313,20 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
       }
     }
 
-    // Check that only supports padding on last two dimensions - [H,W].
-    // CoreML PaddinglayerParams: https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
     const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
     InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(initializers, node, input_rank);
     int64_t num_axes = axes_tensor_data.size();
 
-    for (int64_t i = 0; i < num_axes; i++) {
-      if (axes_tensor_data[i] < input_rank - 2) {
-        if (pads_tensor_data[i] != 0 || pads_tensor_data[i + num_axes] != 0) {
-          LOGS(logger, VERBOSE) << "CoreML only supports padding on last two dimensions.";
-          return false;
+    // NeuralNetwork PaddingLayerParams only supports padding on last two dimensions [H,W].
+    // ML Program's MIL pad op supports padding on any dimensions.
+    // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
+    if (!input_params.create_mlprogram) {
+      for (int64_t i = 0; i < num_axes; i++) {
+        if (axes_tensor_data[i] < input_rank - 2) {
+          if (pads_tensor_data[i] != 0 || pads_tensor_data[i + num_axes] != 0) {
+            LOGS(logger, VERBOSE) << "NeuralNetwork only supports padding on last two dimensions.";
+            return false;
+          }
         }
       }
     }
