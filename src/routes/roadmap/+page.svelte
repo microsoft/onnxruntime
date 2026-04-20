@@ -178,7 +178,56 @@
 			<div class="collapse-title text-xl font-bold">Key Stories</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>To be determined</li>
+				</ul>
+			</div>
+		</div>
+
+		<!-- Core Section -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="core-126" />
+			<div class="collapse-title text-xl font-bold">Core</div>
+			<div class="collapse-content">
+				<ul class="list-disc ml-8">
+				</ul>
+			</div>
+		</div>
+
+		<!-- Plugin EP Section -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="plugin-ep-126" />
+			<div class="collapse-title text-xl font-bold">Plugin EP</div>
+			<div class="collapse-content">
+				<ul class="list-disc ml-8">
+				</ul>
+			</div>
+		</div>
+
+		<!-- EP Section -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="ep-126" />
+			<div class="collapse-title text-xl font-bold">EP</div>
+			<div class="collapse-content">
+				<ul class="list-disc ml-8">
+				</ul>
+			</div>
+		</div>
+
+		<!-- TRT EP Section -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="trt-ep-126" />
+			<div class="collapse-title text-xl font-bold">TRT EP</div>
+			<div class="collapse-content">
+				<ul class="list-disc ml-8">
+				</ul>
+			</div>
+		</div>
+
+		<!-- ONNX Section -->
+		<div class="collapse collapse-arrow join-item border-base-300 border">
+			<input type="checkbox" name="onnx-126" />
+			<div class="collapse-title text-xl font-bold">ONNX</div>
+			<div class="collapse-content">
+				<ul class="list-disc ml-8">
 				</ul>
 			</div>
 		</div>
