@@ -509,7 +509,7 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
     // calculate 'Ht'
     const size_t output_row_offset = CheckedMulToSizeT(CheckedToSizeT(row + b), hidden_size);
     float* pH = SafeRawPointer<T>(batched_output + output_row_offset,
-                    batched_output_end, hidden_size);
+                                  batched_output_end, hidden_size);
 
     // the C_prev_clipped location is not actually used as input - it's temporary storage for writing
     // the clipped Ct value to, before calling h(). As such a) it could just be a local variable
