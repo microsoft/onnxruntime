@@ -17,7 +17,7 @@
     {\
         if ((x) == false)\
         {\
-            ORT_THROW_HR_MSG(E_INVALIDARG, fmt, __VA_ARGS__);\
+            ORT_THROW_HR_MSG(E_INVALIDARG, fmt __VA_OPT__(,) __VA_ARGS__);\
         }\
     }
 
