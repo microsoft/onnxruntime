@@ -695,10 +695,30 @@ TEST(CoreMLExecutionProviderTest, PadConstantDefaultValueMLProgram) {
 
   ASSERT_STATUS_OK(graph.Resolve());
 
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 1, 3, 4};
+  std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "PadConstantDefaultValueMLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
   gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
 }
 
 // Verify that ML Program supports padding on dimensions other than the last two.
