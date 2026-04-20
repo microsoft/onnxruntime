@@ -14,13 +14,23 @@ if os.path.exists(os.path.join(file_path, "../tools/symbolic_shape_infer.py")):
 else:
     sys.path.append(os.path.join(file_path, ".."))
 
-from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy  # noqa: E402
+try:
+    from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy  # noqa: E402
+
+    _symbolic_shape_infer_available = True
+except ImportError:
+    SymbolicShapeInference = object  # type: ignore[assignment,misc]
+    get_shape_from_type_proto = None  # type: ignore[assignment]
+    sympy = None  # type: ignore[assignment]
+    _symbolic_shape_infer_available = False
 
 logger = logging.getLogger(__name__)
 
 
 class SymbolicShapeInferenceHelper(SymbolicShapeInference):
     def __init__(self, model, verbose=0, int_max=2**31 - 1, auto_merge=True, guess_output_rank=False):
+        if not _symbolic_shape_infer_available:
+            raise ImportError("sympy is required for SymbolicShapeInferenceHelper. Install it with: pip install sympy")
         super().__init__(int_max, auto_merge, guess_output_rank, verbose)
         self.model_ = model
         self.all_shapes_inferred_: bool = False
