@@ -1,0 +1,132 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Dedicated matrix-vector kernel for MatMulNBits when M=1 (token generation/decode).
+// Inspired by llama.cpp's mul_mat_vec: each workgroup computes kTileN output elements,
+// threads within workgroup split K dimension, subgroupAdd for fast reduction.
+//
+// Design:
+//   - Workgroup: 128 threads, kTileN=2 N rows, 64 threads per row
+//   - 64 threads per N row → 2 subgroups (sg_size=32 on NVIDIA) → subgroupAdd + shared mem
+//   - No shared memory for A (direct global reads, only 1 row for M=1)
+//   - Shared memory only for cross-subgroup reduction
+//
+// Layout:
+//   A: [batch, 1, K] f16/f32 (single row vector, component_a=4 → vec4 access)
+//   B: [N, K/32] vec4<u32> (4-bit quantized, 32 values per load)
+//   scales: [N, blocks_per_col] f16/f32
+//   output: [batch, 1, N] f16/f32
+
+#param n_bits
+#param has_zero_points
+#param has_bias
+#param has_weight_idx
+#param has_weight_idx_indirect
+#param output_type_i32
+#param tile_n
+
+#use .getByOffset .setByOffset
+
+#include "quantization/matmul_nbits_zero_pt.wgsl.template"
+
+const kTileN: u32 = u32(tile_n);
+const kThreadsPerN: u32 = workgroup_size_x / kTileN;
+
+// Shared memory for cross-subgroup reduction
+var<workgroup> reduction: array<output_type, workgroup_size_x>;
+
+$MAIN {
+    let n_tile_idx = workgroup_idx % uniforms.num_N_tile;
+    let batch = workgroup_idx / uniforms.num_N_tile;
+    let local_n = local_idx / kThreadsPerN;       // which N row within tile [0, kTileN)
+    let k_thread = local_idx % kThreadsPerN;       // K partition index [0, kThreadsPerN)
+    let n_global = n_tile_idx * kTileN + local_n;
+
+#if has_weight_idx
+#if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[0];
+#else
+    let actual_weight_idx = uniforms.weight_idx;
+#endif
+    let b_base_offset = actual_weight_idx * uniforms.K_of_b * uniforms.N;
+    let b_scale_offset = actual_weight_idx * uniforms.N * uniforms.blocks_per_col;
+#else
+    const b_base_offset: u32 = 0;
+    const b_scale_offset: u32 = 0;
+    const actual_weight_idx: u32 = 0;
+#endif
+
+    // Accumulate partial dot product for this thread's K partition.
+    var sum = output_type(0);
+
+    if (n_global < uniforms.N && batch < uniforms.batch_count) {
+        let a_base = batch * uniforms.K_of_a;
+        let b_row_base = n_global * uniforms.K_of_b + b_base_offset;
+
+        // Each thread processes every kThreadsPerN-th block, striding across K.
+        for (var k_offset = k_thread; k_offset < uniforms.K_of_b; k_offset += kThreadsPerN) {
+            var b_value = b.getByOffset(b_row_base + k_offset);
+
+#if n_bits == 4
+            // k_offset maps to K element index: k_offset * 32 (32 values per vec4<u32>)
+            let k_elem = k_offset * 32u;
+            let block_idx = k_elem / uniforms.block_size;
+            let scale_b = output_type(scales_b.getByOffset(n_global * uniforms.blocks_per_col + block_idx + b_scale_offset));
+            let zero = mm_read_zero(n_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+
+            // Dequantize 4 u32 values (32 elements total) and dot with A row
+            var a_off = a_base + k_elem / 4u;
+            for (var i = 0u; i < 4u; i++) {
+                let packed = b_value[i];
+                let b_lower = vec4<output_type>(unpack4xU8(packed & 0x0F0F0F0Fu)) - vec4<output_type>(zero);
+                let b_upper = vec4<output_type>(unpack4xU8((packed >> 4) & 0x0F0F0F0Fu)) - vec4<output_type>(zero);
+                let b0 = vec4<output_type>(b_lower[0], b_upper[0], b_lower[1], b_upper[1]) * scale_b;
+                let b1 = vec4<output_type>(b_lower[2], b_upper[2], b_lower[3], b_upper[3]) * scale_b;
+                let a_val0 = vec4<output_type>(a.getByOffset(a_off));
+                let a_val1 = vec4<output_type>(a.getByOffset(a_off + 1u));
+                sum += dot(a_val0, b0) + dot(a_val1, b1);
+                a_off += 2u;
+            }
+#elif n_bits == 8
+            let k_elem = k_offset * 16u;
+            let block_idx = k_elem / uniforms.block_size;
+            let scale_b = output_type(scales_b.getByOffset(n_global * uniforms.blocks_per_col + block_idx + b_scale_offset));
+            let zero = mm_read_zero(n_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+
+            var a_off = a_base + k_elem / 4u;
+            for (var i = 0u; i < 4u; i++) {
+                let packed = b_value[i];
+                let b_unpacked = (vec4<output_type>(unpack4xU8(packed)) - vec4<output_type>(zero)) * scale_b;
+                let a_val = vec4<output_type>(a.getByOffset(a_off));
+                sum += dot(a_val, b_unpacked);
+                a_off += 1u;
+            }
+#endif
+        }
+    }
+
+    // === Reduction via subgroupAdd + shared memory ===
+    // subgroupAdd sums within each subgroup (sg_size lanes → 1 value).
+    let sg_sum = subgroupAdd(sum);
+
+    // Write subgroup result to shared memory (first lane of each subgroup writes)
+    if (sg_id == 0u) {
+        reduction[local_idx] = sg_sum;
+    }
+    workgroupBarrier();
+
+    // First thread per N row sums the subgroup results and writes output
+    if (k_thread == 0u && n_global < uniforms.N && batch < uniforms.batch_count) {
+        var final_sum = output_type(0);
+        let n_offset = local_n * kThreadsPerN;
+        for (var s = 0u; s < kThreadsPerN; s += sg_size) {
+            final_sum += reduction[n_offset + s];
+        }
+
+#if has_bias
+        let b_bias_offset = actual_weight_idx * uniforms.N;
+        final_sum += output_type(bias[n_global + b_bias_offset]);
+#endif
+        output.setByOffset(batch * uniforms.N + n_global, final_sum);
+    }
+}  // MAIN

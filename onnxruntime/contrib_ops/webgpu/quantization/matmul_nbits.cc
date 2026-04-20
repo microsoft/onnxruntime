@@ -115,6 +115,35 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
+Status MatMulNBitsMatVecProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
+  const auto& b = shader.AddInput("input_b");
+  const auto& scales_b = shader.AddInput("scales_b");
+  if (has_zero_points_) {
+    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+  }
+  if (has_bias_) {
+    shader.AddInput("bias", ShaderUsage::UseUniform);
+  }
+  if (has_weight_idx_indirect_) {
+    shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
+  }
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_matvec.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
+                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                             WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
+                             WGSL_TEMPLATE_VARIABLE(a, a),
+                             WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+}
+
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input(0);
   const Tensor* b = context.Input(1);
@@ -231,6 +260,41 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   if ((M >= kMinMForTileOptimization && !has_weight_idx_indirect) &&
       CanApplySubgroupMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, static_cast<uint32_t>(nbits), y->DataType() == DataTypeImpl::GetType<MLFloat16>(), subgroup_matrix_config_index)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index, weight_index_indirect);
+  }
+
+  // Dedicated mat-vec kernel for decode (M=1): inspired by llama.cpp's mul_mat_vec.
+  // Uses subgroupAdd for fast K reduction, 64 threads per N row, no shared memory for A.
+  if (M == 1 && !has_weight_idx_indirect && !single_scale_weights &&
+      nbits == 4 && components_a == 4 &&
+      context.HasFeature(wgpu::FeatureName::Subgroups)) {
+    constexpr uint32_t kWorkgroupSize = 128;
+    constexpr uint32_t kU32Components = 4;
+    // 4 N rows per workgroup, 32 threads per row (more N parallelism, fewer dispatches)
+    constexpr uint32_t tile_n = 4;
+    const uint32_t num_N_tile = (N + tile_n - 1) / tile_n;
+    // For 4-bit: each vec4<u32> = 32 values.
+    const uint32_t elements_per_load = kU32Components * (32 / static_cast<uint32_t>(nbits));
+    const uint32_t K_of_b = K / elements_per_load;
+
+    MatMulNBitsMatVecProgram program{static_cast<uint32_t>(nbits), tile_n, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
+    program.SetWorkgroupSize(kWorkgroupSize);
+    program.SetDispatchGroupSize(num_N_tile * batch_count);
+    program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
+                       {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kU32Components * kU32Components)},
+                       {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+        .AddUniformVariables({{N}, {K}, {K / components_a}, {K_of_b}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}, {num_N_tile}, {batch_count}, {weight_index}})
+        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
+        .CacheHint("matvec", nbits, tile_n, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect);
+    if (has_zero_points) {
+      program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+    }
+    if (has_bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::None});
+    }
+    if (has_weight_idx_indirect) {
+      program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
+    }
+    return context.RunProgram(program);
   }
 #endif
 

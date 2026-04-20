@@ -92,6 +92,32 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t bits_;
 };
 
+class MatMulNBitsMatVecProgram final : public Program<MatMulNBitsMatVecProgram> {
+ public:
+  MatMulNBitsMatVecProgram(uint32_t nbits, uint32_t tile_n, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect)
+      : Program{"MatMulNBitsMatVec"}, nbits_(nbits), tile_n_(tile_n), has_zero_points_(has_zero_points), has_bias_(has_bias), has_weight_idx_(has_weight_idx), has_weight_idx_indirect_(has_weight_idx_indirect) {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K_of_a", ProgramUniformVariableDataType::Uint32},
+      {"K_of_b", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
+      {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+      {"batch_count", ProgramUniformVariableDataType::Uint32},
+      {"weight_idx", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t nbits_;
+  uint32_t tile_n_;
+  bool has_zero_points_;
+  bool has_bias_;
+  bool has_weight_idx_;
+  bool has_weight_idx_indirect_;
+};
+
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
                         int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level, int64_t bits_op,
                         onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index = 0,
