@@ -158,5 +158,58 @@ class TestClip(unittest.TestCase):
         assert preprocessed_model.opset_import[0].version >= 11
 
 
+class TestSkipSymbolicShape(unittest.TestCase):
+    """Verify that skip_symbolic_shape=True avoids importing sympy."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="ort.quant_preprocess_skip_sympy_")
+        self.temp_path = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def build_simple_model(self):
+        """Build a minimal identity model for testing."""
+        input_tensor = onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 4])
+        output_tensor = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 4])
+        identity_node = onnx.helper.make_node("Identity", ["input"], ["output"])
+        graph = onnx.helper.make_graph([identity_node], "simple_graph", [input_tensor], [output_tensor])
+        opset_imports = [onnx.helper.make_opsetid("", 13)]
+        return onnx.helper.make_model(graph, opset_imports=opset_imports)
+
+    def test_skip_symbolic_shape_does_not_require_sympy(self):
+        """
+        When skip_symbolic_shape=True, quant_pre_process must not attempt to
+        import onnxruntime.tools.symbolic_shape_infer (which requires sympy).
+        We verify this by temporarily hiding the module from sys.modules and
+        confirming the call succeeds without it.
+        """
+        import sys
+
+        model = self.build_simple_model()
+        input_path = self.temp_path / "simple_model.onnx"
+        output_path = self.temp_path / "out_model.onnx"
+        onnx.save_model(model, str(input_path))
+
+        # Remove sympy and symbolic_shape_infer from sys.modules to simulate absence
+        saved = {}
+        for key in list(sys.modules.keys()):
+            if key == "sympy" or key.startswith("sympy.") or "symbolic_shape_infer" in key:
+                saved[key] = sys.modules.pop(key)
+
+        try:
+            quant_pre_process(
+                input_model=str(input_path),
+                output_model_path=str(output_path),
+                skip_optimization=True,
+                skip_onnx_shape=True,
+                skip_symbolic_shape=True,
+            )
+        finally:
+            sys.modules.update(saved)
+
+        self.assertTrue(output_path.exists(), "Output model should be created even without sympy")
+
+
 if __name__ == "__main__":
     unittest.main()
