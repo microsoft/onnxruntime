@@ -120,10 +120,6 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
         ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp
-        ${MLAS_SRC_DIR}/erf_neon_fp16.h
-        ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
-        ${MLAS_SRC_DIR}/gelu_neon_fp16.h
-        ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -508,9 +504,6 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
           ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp
-          ${MLAS_SRC_DIR}/erf_neon_fp16.h
-          ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
-          ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
         )
 
         # Conditionally add the SVE implementation if compiler supports it
@@ -558,6 +551,10 @@ else()
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/erf_neon_fp16.h
+            ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/gelu_neon_fp16.h
+            ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
           )
           if (onnxruntime_USE_ARM_NEON_NCHWC)
             list(APPEND mlas_platform_srcs

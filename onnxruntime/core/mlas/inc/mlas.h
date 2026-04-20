@@ -2259,6 +2259,10 @@ typedef enum MLAS_GELU_ALGORITHM {
  *
  * @param Input   Pointer to input buffer of N FP16 elements.
  * @param Output  Pointer to output buffer of N FP16 elements.
+ * @param Input_tmp_fp32   Pointer to caller-allocated scratch buffer of N floats
+ *                    for FP32 input conversion (used only on fallback path).
+ * @param Output_tmp_fp32  Pointer to caller-allocated scratch buffer of N floats
+ *                    for FP32 output conversion (used only on fallback path).
  * @param N       Number of elements to process.
  */
 void
@@ -2266,6 +2270,8 @@ MLASCALL
 MlasComputeFP16Erf(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
+    float* Input_tmp_fp32,
+    float* Output_tmp_fp32,
     size_t N
 );
 

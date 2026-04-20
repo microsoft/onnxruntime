@@ -18,7 +18,6 @@ Abstract:
 #pragma once
 
 #include "fp16_common.h"
-#include "../inc/mlas.h"
 #include "erf_neon_fp16.h"
 
 void

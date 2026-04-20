@@ -2054,7 +2054,10 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
         const int64_t count = std::min(length_per_task, elem_count - start);
         const MLFloat16* p_input = input_data + start;
         MLFloat16* p_output = output_data + start;
-        MlasComputeFP16Erf(p_input, p_output, static_cast<size_t>(count));
+        // allocate temp buffers for fp32 input and output
+        IAllocatorUniquePtr<float> input_tmp_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(count));
+        IAllocatorUniquePtr<float> output_tmp_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(count));
+        MlasComputeFP16Erf(p_input, p_output, input_tmp_fp32.get(), output_tmp_fp32.get(), static_cast<size_t>(count));
       },
       0);
 

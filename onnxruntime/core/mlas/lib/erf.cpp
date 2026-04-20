@@ -21,8 +21,12 @@ Abstract:
 
 --*/
 
+#include "core/util/math.h"
+#include "core/mlas/inc/mlas.h"
+
 #include "mlasi.h"
 #include <vector>
+#include "core/framework/allocator.h"
 //
 // Bundles the constants for use by kernels written in assembly.
 //
@@ -273,6 +277,8 @@ MLASCALL
 MlasComputeFP16Erf(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
+    float* Input_tmp_fp32,
+    float* Output_tmp_fp32,
     size_t N
     )
 {
@@ -280,11 +286,8 @@ MlasComputeFP16Erf(
         GetMlasPlatform().ErfFP16KernelRoutine(Input, Output, N);
         return;
     }
-    std::vector<float> input_fp32(N);
-    std::vector<float> output_fp32(N);
 
-    MlasConvertHalfToFloatBuffer(Input, input_fp32.data(), N);
-    MlasComputeErf(input_fp32.data(), output_fp32.data(), N);
-    MlasConvertFloatToHalfBuffer(output_fp32.data(), Output, N);
+    MlasConvertHalfToFloatBuffer(Input, Input_tmp_fp32, N);
+    MlasComputeErf(Input_tmp_fp32, Output_tmp_fp32, N);
+    MlasConvertFloatToHalfBuffer(Output_tmp_fp32, Output, N);
 }
- 

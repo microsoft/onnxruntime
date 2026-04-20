@@ -662,7 +662,7 @@ Return Value:
     }
 #endif
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(_WIN32)
     #if defined(MLAS_USE_SVE)
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
             this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;
@@ -697,8 +697,8 @@ Return Value:
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
-        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
+    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
+    this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
 #endif
 
 #endif // MLAS_TARGET_ARM64
