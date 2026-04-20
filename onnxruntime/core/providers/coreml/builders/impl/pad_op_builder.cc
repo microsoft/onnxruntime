@@ -225,8 +225,15 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
 
-  if (input_shape.empty() || input_shape.size() < 2) {
-    LOGS(logger, VERBOSE) << "Pad requires input shape to be at least 2d, input is "
+  if (input_shape.empty()) {
+    LOGS(logger, VERBOSE) << "Pad requires input to have a shape.";
+    return false;
+  }
+
+  // NeuralNetwork PaddingLayerParams requires at least 2D input (H,W dimensions).
+  // ML Program's MIL pad op supports any rank >= 1.
+  if (!input_params.create_mlprogram && input_shape.size() < 2) {
+    LOGS(logger, VERBOSE) << "NeuralNetwork Pad requires input shape to be at least 2d, input is "
                           << input_shape.size() << "d shape";
     return false;
   }
