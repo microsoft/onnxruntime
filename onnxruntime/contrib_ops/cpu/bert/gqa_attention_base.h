@@ -270,7 +270,7 @@ class GQAAttentionBase {
                    static_cast<int>(present_buffer_sequence_length),
                    MLFloat16(alpha).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
         } else {
-          size_t bytes = head_size * (sequence_length + total_seqlen) * sizeof(float);
+          size_t bytes = SafeInt<size_t>(head_size) * (sequence_length + total_seqlen) * sizeof(float);
           auto q_k_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(q_k_fp32, BufferDeleter(allocator));
 
