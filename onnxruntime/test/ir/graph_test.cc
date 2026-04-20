@@ -2833,7 +2833,10 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
 // Without the fix, string initializer data was lost when the TensorProto was replaced with
 // one using external data in memory, breaking ORT format model serialization.
 TEST_F(GraphTest, ConvertInitializersIntoOrtValuesSkipsStringTensors) {
-  auto model_proto = ONNX_NAMESPACE::ModelProto::default_instance();
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
   auto* graph_proto = model_proto.mutable_graph();
   graph_proto->set_name("test_string_initializer_conversion");
 
