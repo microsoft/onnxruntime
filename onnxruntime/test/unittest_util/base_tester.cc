@@ -698,13 +698,13 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       if (ctx_.excluded_provider_types.count(kCoreMLExecutionProvider) > 0) {
         ctx_.excluded_provider_types.insert(kCoreMLExecutionProviderMLProgram);
       }
+#endif
 
       // If the provider-bridge TensorRT EP is excluded, also exclude the TensorRT plugin EP
       // (which is loaded as a dynamic plugin EP under a distinct name).
       if (ctx_.excluded_provider_types.count(kTensorrtExecutionProvider) > 0) {
         ctx_.excluded_provider_types.insert(kTensorrtPluginExecutionProviderName);
       }
-#endif
 
       const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
       const bool route_cuda_to_dynamic_plugin_ep = ShouldRouteCudaToDynamicPluginEp(dynamic_plugin_ep_name);
