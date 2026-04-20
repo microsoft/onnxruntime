@@ -110,7 +110,8 @@ static T GetDefaultValue(const OpKernelInfo& info, const std::string& attr_name,
   return backup;
 }
 
-// Sort key-value pairs by key, handling NaN for floating-point types.
+// Sort key-value pairs by key, deduplicate (first occurrence wins to match CPU
+// emplace semantics), and handle NaN for floating-point types.
 // Returns the index of the NaN key in the sorted arrays, or -1 if no NaN key.
 template <typename TKey, typename TValue>
 static int64_t SortKeysValues(std::vector<TKey>& keys, std::vector<TValue>& values) {
@@ -120,8 +121,10 @@ static int64_t SortKeysValues(std::vector<TKey>& keys, std::vector<TValue>& valu
 
   int64_t nan_key_index = -1;
 
-  // Sort indices by key value, placing NaN at the end
-  std::sort(indices.begin(), indices.end(), [&keys](size_t a, size_t b) {
+  // Stable-sort indices by key value, placing NaN at the end.
+  // Stable sort preserves the original order among equal keys so that the
+  // first occurrence ends up first — matching CPU LabelEncoder's emplace().
+  std::stable_sort(indices.begin(), indices.end(), [&keys](size_t a, size_t b) {
     if constexpr (std::is_floating_point_v<TKey>) {
       // NaN goes to end
       if (std::isnan(keys[a])) return false;
@@ -130,12 +133,24 @@ static int64_t SortKeysValues(std::vector<TKey>& keys, std::vector<TValue>& valu
     return keys[a] < keys[b];
   });
 
-  // Apply the sorted order
-  std::vector<TKey> sorted_keys(keys.size());
-  std::vector<TValue> sorted_values(values.size());
+  // Apply the sorted order and deduplicate, keeping only the first occurrence
+  // of each key (which stable_sort guarantees is the original first).
+  std::vector<TKey> sorted_keys;
+  std::vector<TValue> sorted_values;
+  sorted_keys.reserve(keys.size());
+  sorted_values.reserve(values.size());
+
   for (size_t i = 0; i < indices.size(); ++i) {
-    sorted_keys[i] = keys[indices[i]];
-    sorted_values[i] = values[indices[i]];
+    TKey k = keys[indices[i]];
+    if (!sorted_keys.empty()) {
+      if constexpr (std::is_floating_point_v<TKey>) {
+        // Two NaNs are considered duplicates — keep only the first.
+        if (std::isnan(k) && std::isnan(sorted_keys.back())) continue;
+      }
+      if (k == sorted_keys.back()) continue;
+    }
+    sorted_keys.push_back(k);
+    sorted_values.push_back(values[indices[i]]);
   }
 
   // Find NaN key index (at the end if present)
@@ -188,8 +203,8 @@ CudaLabelEncoder<TKey, TValue>::CudaLabelEncoder(const OpKernelInfo& info)
               " attributes in LabelEncoder (name: ", info.node().Name(),
               ") must have the same length.");
 
-  num_keys_ = static_cast<int64_t>(keys.size());
   nan_key_index_ = SortKeysValues(keys, values);
+  num_keys_ = static_cast<int64_t>(keys.size());
   CopyToGpu(info, keys, values, keys_gpu_, values_gpu_);
 }
 
@@ -262,8 +277,8 @@ CudaLabelEncoder_4<TKey, TValue>::CudaLabelEncoder_4(const OpKernelInfo& info)
 
   ORT_ENFORCE(keys.size() == values.size(), "Keys and values must have the same length.");
 
-  num_keys_ = static_cast<int64_t>(keys.size());
   nan_key_index_ = SortKeysValues(keys, values);
+  num_keys_ = static_cast<int64_t>(keys.size());
   CopyToGpu(info, keys, values, keys_gpu_, values_gpu_);
 }
 
