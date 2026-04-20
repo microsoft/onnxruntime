@@ -5,7 +5,6 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
-using namespace std;
 namespace onnxruntime {
 namespace test {
 
@@ -19,17 +18,12 @@ TYPED_TEST_SUITE(PoolTest, PoolTestTypes);
 // Disable TensorRT on some of the tests because "pads" attribute is not supported
 
 TEST(PoolTest, MaxPool) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("MaxPool");
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{8, 8});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
 
   std::vector<float> x_vals = {
       0.19151945412158966, 0.6221087574958801, 0.43772774934768677, 0.7853586077690125, 0.7799758315086365, 0.27259260416030884, 0.2764642536640167, 0.801872193813324,
@@ -65,7 +59,8 @@ TEST(PoolTest, MaxPool) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // TensorRT: result differs
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // TODO: Re-enable DML when fixed #41968513
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 // Only CUDA kernel has float 16 support
@@ -83,8 +78,8 @@ TEST(PoolTest, MaxPool_F16) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{8, 8});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
 
   std::vector<float> x_vals = {
       0.19151945412158966, 0.6221087574958801, 0.43772774934768677, 0.7853586077690125, 0.7799758315086365, 0.27259260416030884, 0.2764642536640167, 0.801872193813324,
@@ -135,8 +130,8 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{8, 8});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
   test.AddAttribute("storage_order", storage_order);
 
   std::vector<float> x_vals = {
@@ -179,17 +174,13 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
                        : test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_col);
   }
   // TODO: Enable the case for WebGPU once WGSL can support int64.
+  // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
-            kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
+            kOpenVINOExecutionProvider, kWebGpuExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_8_With_Index) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   MaxPool_8_WithIndexTest(false);                      // row major
   MaxPool_8_WithIndexTest(true, 0 /*storage_order*/);  // row major
   MaxPool_8_WithIndexTest(true, 1 /*storage_order*/);  // col major
@@ -200,8 +191,8 @@ TEST(PoolTest, MaxPool1D_case1) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("pads", vector<int64_t>{0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
 
   std::vector<float> x_vals = {1, 2, 3, 4, 5, 6, 7, 8};
   std::vector<int64_t> x_dims = {1, 2, 4};
@@ -218,8 +209,8 @@ TEST(PoolTest, MaxPool1D_case2) {
   // no padding
   test.AddAttribute("auto_pad", "VALID");
   test.AddAttribute("strides", std::vector<int64_t>{1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
 
   std::vector<float> x_vals = {1, 2, 3, 4, 5};
   std::vector<int64_t> x_dims = {1, 1, 5};
@@ -238,8 +229,8 @@ TEST(PoolTest, MaxPool1D_case3) {
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1});
   // Pad one element
-  test.AddAttribute("pads", vector<int64_t>{0, 1});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
 
   std::vector<float> x_vals = {1, 2, 3, 4, 5};
   std::vector<int64_t> x_dims = {1, 1, 5};
@@ -257,8 +248,8 @@ static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("pads", vector<int64_t>{0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
   test.AddAttribute("storage_order", storage_order);
 
   std::vector<float> x_vals = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -286,8 +277,8 @@ static void MaxPool1D_12_WithIndexTest_int8(int64_t storage_order) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("pads", vector<int64_t>{0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
   test.AddAttribute("storage_order", storage_order);
 
   std::vector<int8_t> x_vals = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -308,8 +299,8 @@ static void MaxPool1D_12_WithIndexTest_uint8(int64_t storage_order) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("pads", vector<int64_t>{0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
   test.AddAttribute("storage_order", storage_order);
 
   std::vector<uint8_t> x_vals = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -367,18 +358,13 @@ TEST(PoolTest, MaxPool2D_uint8) {
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_1d) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("MaxPool", 10);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{3});
-  test.AddAttribute("dilations", vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("dilations", std::vector<int64_t>{3});
 
   std::vector<float> x_vals = {
       1, 3, 2, 4, -1, -3, -2, -4, -6, -5, -4, -2};
@@ -388,7 +374,8 @@ TEST(PoolTest, MaxPool_10_Dilation_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // TODO: Re-enable DML when fixed #41968513
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DefaultDilations) {
@@ -452,18 +439,13 @@ TEST(PoolTest, MaxPool_DefaultDilations_uint8) {
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("MaxPool", 10);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1});
-  test.AddAttribute("pads", vector<int64_t>{1, 1});
-  test.AddAttribute("kernel_shape", vector<int64_t>{3});
-  test.AddAttribute("dilations", vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("dilations", std::vector<int64_t>{3});
 
   std::vector<float> x_vals = {
       1, 3, 2, 4, -1, -3, -2, -4, -6, -5, -4, -2};
@@ -473,23 +455,20 @@ TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+  // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
+            kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_2d) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("MaxPool", 10);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
-  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
 
   std::vector<float> x_vals = {
       1, 3, 2, 4, -1,
@@ -502,22 +481,18 @@ TEST(PoolTest, MaxPool_10_Dilation_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // TODO: Re-enable DML when fixed #41968513
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_2d_int8) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("MaxPool", 12);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
-  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
 
   std::vector<int8_t> x_vals = {
       1, 3, 2, 4, -1,
@@ -530,7 +505,8 @@ TEST(PoolTest, MaxPool_10_Dilation_2d_int8) {
 
   test.AddInput<int8_t>("X", x_dims, x_vals);
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // TODO: Re-enable DML when fixed #41968513
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
@@ -538,9 +514,9 @@ TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{1, 1, 1, 1});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
-  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
 
   std::vector<float> x_vals = {
       1, 3, 2, 4, -1,
@@ -562,18 +538,13 @@ TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("MaxPool", 10);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
-  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
 
   std::vector<float> x_vals = {
       1, 3, 2, 4, -1,
@@ -586,23 +557,19 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+  // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_12_Dilation_Ceil0_2d_int8) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("MaxPool", 12);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
-  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
 
   std::vector<int8_t> x_vals = {
       1, 3, 2, 4, -1,
@@ -615,23 +582,19 @@ TEST(PoolTest, MaxPool_12_Dilation_Ceil0_2d_int8) {
 
   test.AddInput<int8_t>("X", x_dims, x_vals);
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
+  // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("MaxPool", 10);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
-  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
   test.AddAttribute("ceil_mode", (int64_t)1);
 
   std::vector<float> x_vals = {
@@ -646,8 +609,9 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
 
+  // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
@@ -655,9 +619,9 @@ TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1, 1});
-  test.AddAttribute("pads", vector<int64_t>{1, 1, 1, 1, 1, 1});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2, 2});
-  test.AddAttribute("dilations", vector<int64_t>{2, 2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2, 2});
 
   std::vector<float> x_vals = {
       1, 3, 2, 4, -1,
@@ -865,8 +829,8 @@ TEST(PoolTest, AveragePool) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{8, 8});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
 
   std::vector<float> x_vals = {0.3337382376194, 0.8794041872024536, 0.33745908737182617,
                                0.666634202003479, 0.44255536794662476, 0.6473854184150696,
@@ -946,8 +910,8 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{1, 1, 1, 1});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
   test.AddAttribute("count_include_pad", (int64_t)1);
   std::vector<float> x_vals = {0.3337f, 0.8794f, 0.3375f,
                                0.6666f, 0.4426f, 0.6474f,
@@ -974,8 +938,8 @@ TEST(PoolTest, AveragePool_CountIncludePad_AsymmetricPads) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 1, 1});  // no top/left, 1 bottom, 1 right
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 1, 1});  // no top/left, 1 bottom, 1 right
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
   test.AddAttribute("count_include_pad", (int64_t)1);
 
   // Input: 2x2 all ones
@@ -1041,7 +1005,7 @@ TEST(PoolTest, AveragePool3D_CountIncludePad_AsymmetricPads) {
 // test 'strides' attribute not specified
 TEST(PoolTest, AveragePool_DefaultStrides) {
   OpTester test("AveragePool");
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
   std::vector<float> x_vals = {0.f, 1.f, 2.f,
                                3.f, 4.f, 5.f,
                                6.f, 7.f, 8.f};
@@ -1062,8 +1026,8 @@ TEST(PoolTest, AveragePool_10_ceil1_2d) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{3, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
   test.AddAttribute("ceil_mode", (int64_t)1);
 
   std::vector<float> x_vals = {
@@ -1088,8 +1052,8 @@ TEST(PoolTest, AveragePool_19_dilation_2d) {
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
   test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
   test.AddAttribute("ceil_mode", (int64_t)1);
 
   std::vector<float> x_vals = {
@@ -1109,17 +1073,12 @@ TEST(PoolTest, AveragePool_19_dilation_2d) {
 }
 
 TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("AveragePool", 19);
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{3});
-  test.AddAttribute("pads", vector<int64_t>{3, 3});
-  test.AddAttribute("kernel_shape", vector<int64_t>{7});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
   test.AddAttribute("ceil_mode", (int64_t)1);
   test.AddAttribute("count_include_pad", (int64_t)1);
 
@@ -1130,7 +1089,9 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+  // TODO: Re-enable DML when fixed #41968513
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, GlobalAveragePool) {
@@ -1265,8 +1226,8 @@ TEST(PoolTest, LpPool) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{3, 3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
 
   std::vector<float> x_vals = {0.688458621501922607421875,
                                0.8835647106170654296875,
@@ -1639,7 +1600,7 @@ TEST(PoolTest, LpPoolCeilMode) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("kernel_shape", vector<int64_t>{3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
   test.AddAttribute("ceil_mode", static_cast<int64_t>(1));
   test.AddAttribute("p", static_cast<int64_t>(1));
   test.AddInput<float>("X", {1, 1, 4}, {1, 2, 3, 4});
@@ -1910,8 +1871,8 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
   OpTester test("MaxPool", 10);
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("pads", vector<int64_t>{0, 0});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
 
   std::vector<float> x_vals = {};
   std::vector<int64_t> x_dims = {0, 2, 4};  // N of 0 should be handled
@@ -1924,6 +1885,129 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
   // TODO: Fix WebGPU Transpose error: "Invalid dispatch group size (0, 1, 1)".
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Verify that non-positive stride/dilation values are rejected by PoolAttributes kernel validation.
+// AddShapeToTensorData(false) omits input shape from the graph so ONNX shape inference is bypassed
+// (convPoolShapeInference returns early when hasInputShape is false). This lets the model pass
+// Graph::Resolve() and reach kernel construction where our ORT_ENFORCE checks fire.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_ZeroStride) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{0, 0});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All stride values must be positive",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_ZeroStride) {
+  OpTester test("AveragePool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{0, 0});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("count_include_pad", static_cast<int64_t>(0));
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All stride values must be positive",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, LpPool_ZeroStride) {
+  OpTester test("LpPool", 18);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{0, 0});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All stride values must be positive",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_ZeroDilation) {
+  OpTester test("MaxPool", 10);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("dilations", std::vector<int64_t>{0, 0});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All dilation values must be positive",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// DML EP has its own stride/dilation validation in OperatorHelper.cpp via ML_CHECK_VALID_ARGUMENT.
+// These tests verify that DML's validation also rejects invalid values.
+TEST(PoolTest, MaxPool_ZeroStride_Dml) {
+  if (DefaultDmlExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "DML EP not available";
+  }
+
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{0, 0});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.ConfigEp(DefaultDmlExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure, "All stride values must be positive")
+      .RunWithConfig();
+}
+
+TEST(PoolTest, MaxPool_ZeroDilation_Dml) {
+  if (DefaultDmlExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "DML EP not available";
+  }
+
+  OpTester test("MaxPool", 10);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("dilations", std::vector<int64_t>{0, 0});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.ConfigEp(DefaultDmlExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure, "All dilation values must be positive")
+      .RunWithConfig();
 }
 
 }  // namespace test
