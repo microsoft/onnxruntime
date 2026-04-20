@@ -5,6 +5,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -184,8 +185,6 @@ class TestSkipSymbolicShape(unittest.TestCase):
         We verify this by temporarily hiding the module from sys.modules and
         confirming the call succeeds without it.
         """
-        import sys
-
         model = self.build_simple_model()
         input_path = self.temp_path / "simple_model.onnx"
         output_path = self.temp_path / "out_model.onnx"

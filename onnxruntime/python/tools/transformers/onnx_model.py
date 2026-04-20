@@ -10,6 +10,10 @@ import os
 import sys
 from collections import deque
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from shape_infer_helper import SymbolicShapeInferenceHelper
 
 from float16 import convert_float_to_float16
 from onnx import (

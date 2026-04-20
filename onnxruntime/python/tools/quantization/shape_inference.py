@@ -88,7 +88,7 @@ def quant_pre_process(
 
         if not skip_symbolic_shape:
             try:
-                from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+                from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference  # noqa: PLC0415
             except ImportError as e:
                 raise ImportError(
                     "sympy is required for symbolic shape inference in quantization preprocessing. "

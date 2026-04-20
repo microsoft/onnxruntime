@@ -15,7 +15,7 @@ else:
     sys.path.append(os.path.join(file_path, ".."))
 
 try:
-    from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy  # noqa: E402
+    from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy
 
     _symbolic_shape_infer_available = True
 except ImportError:
