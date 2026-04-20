@@ -25,8 +25,6 @@ Abstract:
 #include "core/mlas/inc/mlas.h"
 
 #include "mlasi.h"
-#include <vector>
-#include "core/framework/allocator.h"
 //
 // Bundles the constants for use by kernels written in assembly.
 //
