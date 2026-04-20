@@ -374,8 +374,8 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       for (int lrow = 0; lrow < batch_size_; lrow++) {
         if ((step + 1) == sequence_lengths[lrow]) {
           const size_t row_offset = CheckedMulToSizeT(CheckedToSizeT(lrow), hidden_size);
-          auto src = batched_internal_memory_prev_.subspan(row_offset, hidden_size_);
-          auto dst = final_cell_state.subspan(row_offset, hidden_size_);
+          auto src = batched_internal_memory_prev_.subspan(row_offset, hidden_size);
+          auto dst = final_cell_state.subspan(row_offset, hidden_size);
           gsl::copy(src, dst);
         }
       }
@@ -387,7 +387,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
             const size_t row_offset = CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size) +
                                       CheckedMulToSizeT(CheckedToSizeT(lrow), hidden_size);
             auto dst = outputs.data() + row_offset;
-            std::fill_n(dst, hidden_size_, T{});
+            std::fill_n(dst, hidden_size, T{});
           }
         }
       }
@@ -411,8 +411,8 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       const size_t src_offset = CheckedMulToSizeT(CheckedToSizeT(seq_len - 1), output_step_length_size) +
                                 CheckedMulToSizeT(CheckedToSizeT(i), hidden_size);
       const size_t dst_offset = CheckedMulToSizeT(CheckedToSizeT(i), hidden_size);
-      auto src = outputs.subspan(src_offset, hidden_size_);
-      auto dest = final_hidden_state.subspan(dst_offset, hidden_size_);
+      auto src = outputs.subspan(src_offset, hidden_size);
+      auto dest = final_hidden_state.subspan(dst_offset, hidden_size);
       gsl::copy(src, dest);
     }
 
@@ -434,13 +434,15 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
                                                  const int row,
                                                  const int local_fused_hidden_rows,
                                                  bool output_sequence) {
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
+
   // Activation gates.
   for (int b = 0; b < local_fused_hidden_rows; b++) {
-    const size_t gate_row_offset = CheckedMulToSizeT(b, hidden_size_);
+    const size_t gate_row_offset = CheckedMulToSizeT(CheckedToSizeT(b), hidden_size);
     if (step >= min_sequence_length && step >= seq_lengths[row + b]) {
       if (output_sequence) {
-        auto fill_output = batched_output + CheckedMulToSizeT(row + b, hidden_size_);
-        std::fill(fill_output, fill_output + hidden_size_, T{});
+        auto fill_output = batched_output + CheckedMulToSizeT(CheckedToSizeT(row + b), hidden_size);
+        std::fill(fill_output, fill_output + hidden_size, T{});
       }
 
       continue;
@@ -454,7 +456,7 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
     float* pf = po + hidden_size_;
     float* pc = pf + hidden_size_;
 
-    float* pCprev_hidden_size = SafeRawPointer<T>(C_prev + gate_row_offset, C_prev_end, hidden_size_);
+    float* pCprev_hidden_size = SafeRawPointer<T>(C_prev + gate_row_offset, C_prev_end, hidden_size);
 
     // Input Gate
     if (use_peepholes_) {
@@ -505,15 +507,15 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
     // DumpMatrix("o" + row_str, po, 1, hidden_size_);
 
     // calculate 'Ht'
-    const size_t output_row_offset = CheckedMulToSizeT(row + b, hidden_size_);
+    const size_t output_row_offset = CheckedMulToSizeT(CheckedToSizeT(row + b), hidden_size);
     float* pH = SafeRawPointer<T>(batched_output + output_row_offset,
-                                  batched_output_end, hidden_size_);
+                    batched_output_end, hidden_size);
 
     // the C_prev_clipped location is not actually used as input - it's temporary storage for writing
     // the clipped Ct value to, before calling h(). As such a) it could just be a local variable
     // of std::vector<float> with size of hidden_size_, b) the previous version wasn't 'broken' by never
     // incrementing what C_prev_clipped pointed to.
-    float* pC_prev_clipped = SafeRawPointer<T>(C_prev_clipped + gate_row_offset, C_prev_clipped_end, hidden_size_);
+    float* pC_prev_clipped = SafeRawPointer<T>(C_prev_clipped + gate_row_offset, C_prev_clipped_end, hidden_size);
 
     activation_h_.func(pC_cur, pC_prev_clipped, po, pH, hidden_size_, activation_h_.alpha, activation_h_.beta);
   }
