@@ -6,7 +6,7 @@
 	// Added release metadata variables
 	const previousRelease = { version: '1.25.0', date: 'Apr 2026' };
 	const inProgressRelease = { version: 'None', date: '' };
-	const nextRelease = { version: '1.26', date: 'May 2026' };
+	const nextRelease = { version: 'None', date: 'May 2026' };
 </script>
 
 <svelte:head>
