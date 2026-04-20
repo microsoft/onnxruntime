@@ -654,6 +654,11 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       // synthetic EP name for testing CoreML EP with ML Program
       constexpr const char* kCoreMLExecutionProviderMLProgram = "CoreMLExecutionProvider_MLProgram";
 
+      // Name used by the TensorRT plugin EP (dynamic plugin EP). It must NOT match
+      // kTensorrtExecutionProvider, but tests that exclude the provider-bridge TRT EP should
+      // also exclude the plugin version.
+      constexpr const char* kTensorrtPluginExecutionProviderName = "TensorRTPluginExecutionProvider";
+
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
       static const std::vector<std::string> all_provider_types = {
@@ -692,6 +697,12 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       // need to special case any synthetic EP names in the exclude list
       if (ctx_.excluded_provider_types.count(kCoreMLExecutionProvider) > 0) {
         ctx_.excluded_provider_types.insert(kCoreMLExecutionProviderMLProgram);
+      }
+
+      // If the provider-bridge TensorRT EP is excluded, also exclude the TensorRT plugin EP
+      // (which is loaded as a dynamic plugin EP under a distinct name).
+      if (ctx_.excluded_provider_types.count(kTensorrtExecutionProvider) > 0) {
+        ctx_.excluded_provider_types.insert(kTensorrtPluginExecutionProviderName);
       }
 #endif
 
