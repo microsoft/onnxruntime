@@ -2,11 +2,11 @@
 	let description =
 		'ONNX Runtime Release Roadmap - find the latest release information for ONNX Runtime.';
 	let keywords =
-		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.23, onnx runtime 1.23.2, onnx runtime 1.24.0, onnx runtime 1.24';
+		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.25, onnx runtime 1.25.0, onnx runtime 1.26';
 	// Added release metadata variables
-	const previousRelease = { version: '1.23.2', date: 'Oct 2025' };
+	const previousRelease = { version: '1.25.0', date: 'Apr 2026' };
 	const inProgressRelease = { version: 'None', date: '' };
-	const nextRelease = { version: '1.24', date: 'Jan 2026' };
+	const nextRelease = { version: '1.26', date: 'May 2026' };
 </script>
 
 <svelte:head>
@@ -174,75 +174,11 @@
 	<div class="join join-vertical w-full p-2">
 		<!-- Key Stories Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="key-stories-124" />
+			<input type="checkbox" name="key-stories-126" />
 			<div class="collapse-title text-xl font-bold">Key Stories</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Feature complete Plugin EP</li>
-					<li>Memory Optimization</li>
-					<li>Low-bit Precision</li>
-				</ul>
-			</div>
-		</div>
-
-		<!-- Core Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="core-124" />
-			<div class="collapse-title text-xl font-bold">Core</div>
-			<div class="collapse-content">
-				<ul class="list-disc ml-8">
-					<li>DirectX Inter-operability</li>
-					<li>ARM Improvements</li>
-					<li>2-bit precision</li>
-					<li>Weightless EP Context</li>
-					<li>Graph partitioning improvements</li>
-				</ul>
-			</div>
-		</div>
-
-		<!-- Plugin EP Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="plugin-ep-124" />
-			<div class="collapse-title text-xl font-bold">Plugin EP</div>
-			<div class="collapse-content">
-				<ul class="list-disc ml-8">
-					<li>Offline Compilation</li>
-					<li>Kernel Registry EP</li>
-					<li>Language Bindings</li>
-					<li>Testsuite and tooling</li>
-				</ul>
-			</div>
-		</div>
-
-		<!-- EP Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="ep-124" />
-			<div class="collapse-title text-xl font-bold">EP</div>
-			<div class="collapse-content">
-				<ul class="list-disc ml-8">
-					<li>WebGPU Improvements</li>
-				</ul>
-			</div>
-		</div>
-
-		<!-- TRT EP Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="trt-ep-124" />
-			<div class="collapse-title text-xl font-bold">TRT EP</div>
-			<div class="collapse-content">
-				<ul class="list-disc ml-8">
-					<li>Update TRT version used by the TRT EP</li>
-				</ul>
-			</div>
-		</div>
-
-		<!-- ONNX Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="onnx-124" />
-			<div class="collapse-title text-xl font-bold">ONNX</div>
-			<div class="collapse-content">
-				<ul class="list-disc ml-8">
-					<li>Update ONNXruntime support for ONNX Opset/IR (TBD)</li>
+					<li>To be determined</li>
 				</ul>
 			</div>
 		</div>
