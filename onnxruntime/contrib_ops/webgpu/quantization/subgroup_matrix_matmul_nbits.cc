@@ -58,7 +58,7 @@ struct SupportedSubgroupMatrixConfig {
 };
 
 static const SupportedSubgroupMatrixConfig supported_subgroup_matrix_configs[] = {
-    // 16x16x16 config (NVIDIA Blackwell, subgroup size 32)
+    // 16x16x16 config with 128x128 tiles (NVIDIA Blackwell, subgroup size 32) - highest priority
     {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 16, 16, 16, 32, 32, true},
     // 8x16x16 configs
     // 8x16x16 config (Intel Xe2/Xe3, subgroup size 16-32)
@@ -142,7 +142,8 @@ Status GenerateShaderCode16x16x16(ShaderHelper& shader,
                                   const ShaderVariableHelper& output,
                                   uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
   const auto& config = supported_subgroup_matrix_configs[config_index];
-  return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_16x16x16.wgsl.template",
+  // Use 128x128 tile shader for 16x16x16 config (index 0)
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_16x16x16_128.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
@@ -263,8 +264,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   }
 
   uint32_t tile_size_a = 32;
+  uint32_t tile_size_b = 64;
   uint32_t work_group_size = 128;
-  constexpr uint32_t kTileSizeB = 64;
   constexpr uint32_t kU32Components = 4;
   TensorShape y_shape{1, M, N};
   const bool has_zero_points = zero_points != nullptr;
@@ -277,13 +278,14 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     tile_size_a = 64;
     work_group_size = 256;
   } else if (config.M == 16 && config.N == 16 && config.K == 16) {
-    // 16x16x16 config: 4 subgroups, 128 threads, 64x64 tiles
-    tile_size_a = 64;
+    // 16x16x16 config: 4 subgroups, 128 threads, 128x128 tiles
+    tile_size_a = 128;
+    tile_size_b = 128;
     work_group_size = 128;
   }
   mul_program.SetWorkgroupSize(work_group_size);
   mul_program.SetDispatchGroupSize(
-      (N + kTileSizeB - 1) / kTileSizeB,
+      (N + tile_size_b - 1) / tile_size_b,
       (M + tile_size_a - 1) / tile_size_a, 1);
   mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
