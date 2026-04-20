@@ -32,6 +32,10 @@
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 
+#ifdef USE_NEUTRON
+#include "core/providers/neutron/neutron_provider_factory.h"
+#endif
+
 #ifdef _WIN32
 #define strdup _strdup
 #endif
@@ -607,6 +611,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.AppendExecutionProvider_VitisAI(provider_options);
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
+#endif
+  } else if (provider_name_ == onnxruntime::kNeutronExecutionProvider) {
+#ifdef USE_NEUTRON
+    Ort::ThrowOnError(
+        OrtSessionOptionsAppendExecutionProvider_Neutron(session_options, {0, 0, 0}));
+#else
+    ORT_THROW("Neutron is not supported in this build\n");
 #endif
   } else if (!provider_name_.empty() &&
              provider_name_ != onnxruntime::kCpuExecutionProvider &&

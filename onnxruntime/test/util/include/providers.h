@@ -34,3 +34,6 @@
 #ifdef USE_CANN
 #include "core/providers/cann/cann_provider_factory.h"
 #endif
+#ifdef USE_NEUTRON
+#include "core/providers/neutron/neutron_provider_factory.h"
+#endif

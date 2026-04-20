@@ -87,6 +87,8 @@ constexpr const char* OpenVINO_RT_NPU = "OpenVINO_RT_NPU";
 constexpr const char* QNN_HTP_SHARED = "QnnHtpShared";
 constexpr const char* WEBGPU_BUFFER = "WebGPU_Buf";  // limited to 10 chars to ensure std::string SSO for web
 constexpr const char* WEBNN_TENSOR = "WebNN_Ten";    // limited to 10 chars to ensure std::string SSO for web
+constexpr const char* NEUTRON = "Neutron";
+constexpr const char* NEUTRON_PINNED = "NeutronPinned";
 
 constexpr size_t kAllocAlignment = 256;
 constexpr const size_t kAlloc4KAlignment = 4096;

@@ -685,6 +685,10 @@ if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
 
+if(onnxruntime_USE_NEUTRON)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_neutron)
+endif()
+
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
@@ -698,6 +702,7 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
+    ${PROVIDERS_NEUTRON}
 )
 
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
@@ -830,6 +835,13 @@ if (onnxruntime_USE_OPENVINO)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/openvino/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
+endif()
+
+if(onnxruntime_USE_NEUTRON)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/neutron/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_neutron)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_neutron)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_neutron)
 endif()
 
 file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
@@ -1172,6 +1184,14 @@ onnxruntime_apply_emscripten_test_link_settings(onnxruntime_test_all)
 
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_test_all PRIVATE ENABLE_ATEN)
+endif()
+
+if(onnxruntime_USE_NEUTRON)
+  if("$ENV{OECORE_TARGET_ARCH}" MATCHES "aarch64")
+    message(STATUS " Link Neutron specific libs to onnxruntime_test_all")
+    set(NEUTRON_DRIVER_LIB "NeutronDriver")
+    target_link_libraries(onnxruntime_test_all PRIVATE ${NEUTRON_DRIVER_LIB})
+  endif()
 endif()
 
 set(test_data_target onnxruntime_test_all)
@@ -1818,6 +1838,7 @@ endif()
       onnxruntime_session
       ${onnxruntime_libs}
       # CUDA is dynamically loaded at runtime
+      ${PROVIDERS_NEUTRON}
       onnxruntime_optimizer
       onnxruntime_providers
       onnxruntime_util
