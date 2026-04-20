@@ -25,11 +25,18 @@ struct VariantConstraintsSchema {
   std::optional<std::string> ep_compatibility_info;
 };
 
+struct ExecutionSchema {
+  std::optional<ProviderOptions> provider_options;
+  std::optional<std::unordered_map<std::string, std::string>> session_config_entries;
+};
+
 struct VariantSchema {
   std::optional<std::string> model_type;
   std::optional<std::string> model_file;
   std::optional<std::string> model_id;
+  std::optional<std::string> package_variant_id;
   std::optional<VariantConstraintsSchema> constraints;
+  std::optional<ExecutionSchema> execution;
 };
 
 struct ManifestSchema {
@@ -52,12 +59,28 @@ void from_json(const json& j, VariantConstraintsSchema& c) {
   }
 }
 
+void from_json(const json& j, ExecutionSchema& e) {
+  if (j.contains(kProviderOptionsKey) && j[kProviderOptionsKey].is_object()) {
+    e.provider_options = j[kProviderOptionsKey].get<ProviderOptions>();
+  }
+
+  if (j.contains(kSessionConfigEntriesKey) && j[kSessionConfigEntriesKey].is_object()) {
+    e.session_config_entries = j[kSessionConfigEntriesKey].get<std::unordered_map<std::string, std::string>>();
+  }
+}
+
 void from_json(const json& j, VariantSchema& v) {
   if (j.contains(kModelTypeKey) && j[kModelTypeKey].is_string()) v.model_type = j[kModelTypeKey].get<std::string>();
   if (j.contains(kModelFileKey) && j[kModelFileKey].is_string()) v.model_file = j[kModelFileKey].get<std::string>();
   if (j.contains(kModelIdKey) && j[kModelIdKey].is_string()) v.model_id = j[kModelIdKey].get<std::string>();
+  if (j.contains(kPackageVariantIdKey) && j[kPackageVariantIdKey].is_string()) {
+    v.package_variant_id = j[kPackageVariantIdKey].get<std::string>();
+  }
   if (j.contains(kConstraintsKey) && j[kConstraintsKey].is_object()) {
     v.constraints = j[kConstraintsKey].get<VariantConstraintsSchema>();
+  }
+  if (j.contains(kExecutionKey) && j[kExecutionKey].is_object()) {
+    v.execution = j[kExecutionKey].get<ExecutionSchema>();
   }
 }
 
@@ -121,6 +144,16 @@ void ApplyVariantConstraints(const VariantConstraintsSchema& c, ModelVariantInfo
   if (c.ep_compatibility_info.has_value()) variant.compatibility_info = *c.ep_compatibility_info;
 }
 
+void ApplyVariantExecution(const ExecutionSchema& execution, ModelVariantInfo& variant) {
+  if (execution.provider_options.has_value()) {
+    variant.provider_options = *execution.provider_options;
+  }
+
+  if (execution.session_config_entries.has_value()) {
+    variant.session_config_entries = *execution.session_config_entries;
+  }
+}
+
 std::string SanitizeModelIdForPath(std::string model_id) {
   for (char& ch : model_id) {
     switch (ch) {
@@ -148,11 +181,11 @@ std::string SanitizeModelIdForPath(std::string model_id) {
 // manifest.json). The parsing logic will first check for metadata.json to see if it's a component model root, and if
 // not found, it will look for manifest.json to treat it as a model package root.
 //
-// This function parses information from manifest.json and/or metadata.json for the model variants from the same
-// component model, producing a unified list of ModelVariantInfo.
+// This function parses information from manifest.json and/or metadata.json, producing a unified list of component
+// model entries. Component entries that share the same package_variant_id form a logical package-level variant.
 //
-// Note: If the package_root is a model package root, currently it only supports one component model.
-// #TODO: In the future we may want ORT to support running multiple component models in a single "virtual" session.
+// If package_root refers to a package root, multiple component models are allowed. Direct session creation remains a
+// single-component convenience path that resolves exactly one component model from the package.
 //
 // A manifest.json may look like this:
 //
@@ -189,8 +222,12 @@ std::string SanitizeModelIdForPath(std::string model_id) {
 //     }
 // }
 Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem::path& package_root,
-                                                           /*out*/ std::vector<ModelVariantInfo>& variants) const {
+                                                           /*out*/ std::vector<ModelVariantInfo>& variants,
+                                                           /*out*/ std::vector<std::string>* component_model_names_out) const {
   variants.clear();
+  if (component_model_names_out != nullptr) {
+    component_model_names_out->clear();
+  }
 
   // package_root could be either a component model root (contains metadata.json) or a model package root (contains manifest.json).
 
@@ -229,6 +266,10 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
         metadata_schema.component_model_name.has_value()
             ? *metadata_schema.component_model_name
             : package_root.filename().string();
+
+    if (component_model_names_out != nullptr) {
+      component_model_names_out->push_back(component_model_name);
+    }
 
     // component-root mode
     ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
@@ -344,10 +385,8 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
     }
   }
 
-  if (component_model_names.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json should contain exactly one component model name in \"component_models\" array "
-                           "or the models directory should contain exactly one component model.");
+  if (component_model_names_out != nullptr) {
+    *component_model_names_out = component_model_names;
   }
 
   for (const auto& component_model_name : component_model_names) {
@@ -434,6 +473,9 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
     const VariantSchema& variant_schema = kv.second;
 
     ModelVariantInfo variant{};
+    variant.component_model_name = component_model_name;
+    variant.variant_name = variant_name;
+    variant.package_variant_id = variant_schema.package_variant_id.value_or(variant_name);
     std::filesystem::path model_dir = component_model_root / variant_name;
 
     if (variant_schema.model_id.has_value() && !variant_schema.model_id->empty()) {
@@ -469,6 +511,10 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
 
     if (variant_schema.constraints.has_value()) {
       ApplyVariantConstraints(*variant_schema.constraints, variant);
+    }
+
+    if (variant_schema.execution.has_value()) {
+      ApplyVariantExecution(*variant_schema.execution, variant);
     }
 
     variants.push_back(std::move(variant));

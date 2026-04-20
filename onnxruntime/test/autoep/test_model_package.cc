@@ -11,6 +11,8 @@
 
 #include "gtest/gtest.h"
 
+#include "core/framework/execution_provider.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_descriptor_parser.h"
 #include "core/session/abi_devices.h"
@@ -94,6 +96,60 @@ std::string MakeManifestJson(std::string_view model_name,
       << component_model_name << R"("]
   })";
   return oss.str();
+}
+
+std::string MakeManifestJson(std::string_view model_name,
+                             std::initializer_list<std::string_view> component_model_names) {
+  std::ostringstream oss;
+  oss << R"({
+    "model_name": ")"
+      << model_name << R"(",
+    "model_version": "1.0",
+    "component_models": [)";
+
+  size_t index = 0;
+  for (std::string_view component_model_name : component_model_names) {
+    if (index++ > 0) {
+      oss << ", ";
+    }
+    oss << "\"" << component_model_name << "\"";
+  }
+
+  oss << R"(]
+  })";
+  return oss.str();
+}
+
+std::filesystem::path CreateComponentVariantModel(const std::filesystem::path& package_root,
+                                                  std::string_view component_model_name,
+                                                  std::string_view variant_name,
+                                                  const std::filesystem::path& source_model) {
+  const auto variant_dir = package_root / "models" / component_model_name / variant_name;
+  std::filesystem::create_directories(variant_dir);
+
+  std::error_code ec;
+  const auto variant_model_path = variant_dir / source_model.filename();
+  std::filesystem::copy_file(source_model, variant_model_path,
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  return variant_model_path;
+}
+
+VariantSelectionEpInfo MakeEpInfoFromEpDevice(const OrtEpDevice* ep_device) {
+  VariantSelectionEpInfo ep_info{};
+  ep_info.ep_name = ep_device->ep_name;
+  ep_info.ep_factory = ep_device->ep_factory;
+  ep_info.ep_devices = {ep_device};
+  if (ep_device->device != nullptr) {
+    ep_info.hardware_devices = {ep_device->device};
+  }
+  ep_info.ep_metadata = {&ep_device->ep_metadata};
+  return ep_info;
+}
+
+VariantSelectionEpInfo MakeCpuEpInfo() {
+  VariantSelectionEpInfo ep_info{};
+  ep_info.ep_name = onnxruntime::kCpuExecutionProvider;
+  return ep_info;
 }
 
 }  // namespace
@@ -480,6 +536,171 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
 
   // Cleanup
   std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageTest, ResolveModelPackage_MultiComponentSharedVariant) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_multi_component_resolve";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+
+  CreateManifestJson(package_root, MakeManifestJson("decoder", {"embedding", "iterator", "context", "lm_head"}));
+  CreateComponentVariantModel(package_root, "embedding", "qnn_mixed", std::filesystem::path{"testdata/mul_1.onnx"});
+  CreateComponentVariantModel(package_root, "iterator", "qnn_mixed", std::filesystem::path{"testdata/mul_1.onnx"});
+  CreateComponentVariantModel(package_root, "context", "qnn_mixed", std::filesystem::path{"testdata/mul_1.onnx"});
+  CreateComponentVariantModel(package_root, "lm_head", "qnn_mixed", std::filesystem::path{"testdata/mul_1.onnx"});
+
+  CreateComponentModelMetadata(package_root, "embedding", R"({
+    "component_model_name": "embedding",
+    "model_variants": {
+      "qnn_mixed": {
+        "model_file": "mul_1.onnx",
+        "constraints": {
+          "ep": "CPUExecutionProvider",
+          "device": "cpu"
+        }
+      }
+    }
+  })");
+
+  CreateComponentModelMetadata(package_root, "iterator", R"({
+    "component_model_name": "iterator",
+    "model_variants": {
+      "qnn_mixed": {
+        "model_file": "mul_1.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "cpu"
+        },
+        "execution": {
+          "provider_options": {
+            "run_really_fast": "false"
+          },
+          "session_config_entries": {
+            "session.disable_cpu_ep_fallback": "1"
+          }
+        }
+      }
+    }
+  })");
+
+  CreateComponentModelMetadata(package_root, "context", R"({
+    "component_model_name": "context",
+    "model_variants": {
+      "qnn_mixed": {
+        "model_file": "mul_1.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "cpu"
+        }
+      }
+    }
+  })");
+
+  CreateComponentModelMetadata(package_root, "lm_head", R"({
+    "component_model_name": "lm_head",
+    "model_variants": {
+      "qnn_mixed": {
+        "model_file": "mul_1.onnx",
+        "constraints": {
+          "ep": "CPUExecutionProvider",
+          "device": "cpu"
+        }
+      }
+    }
+  })");
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+
+  ModelPackageContext context(package_root);
+  ASSERT_EQ(context.GetComponentModelNames().size(), 4u);
+
+  std::vector<VariantSelectionEpInfo> ep_infos;
+  ep_infos.push_back(MakeCpuEpInfo());
+  ep_infos.push_back(MakeEpInfoFromEpDevice(example_ep.get()));
+
+  ModelPackageResolver resolver;
+  std::optional<ResolvedModelPackageInfo> resolved_package;
+  auto status = resolver.Resolve(context, ep_infos, resolved_package);
+
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_TRUE(resolved_package.has_value());
+  EXPECT_EQ(resolved_package->package_variant_id, "qnn_mixed");
+  ASSERT_EQ(resolved_package->resolved_components.size(), 4u);
+
+  std::unordered_map<std::string, const ResolvedModelComponentInfo*> components_by_name;
+  for (const auto& component : resolved_package->resolved_components) {
+    components_by_name.emplace(component.component_model_name, &component);
+    EXPECT_EQ(component.package_variant_id, "qnn_mixed");
+  }
+
+  ASSERT_EQ(components_by_name.count("embedding"), 1u);
+  ASSERT_EQ(components_by_name.count("iterator"), 1u);
+  ASSERT_EQ(components_by_name.count("context"), 1u);
+  ASSERT_EQ(components_by_name.count("lm_head"), 1u);
+
+  EXPECT_EQ(components_by_name.at("embedding")->ep_name, onnxruntime::kCpuExecutionProvider);
+  EXPECT_EQ(components_by_name.at("iterator")->ep_name, "example_ep");
+  EXPECT_EQ(components_by_name.at("context")->ep_name, "example_ep");
+  EXPECT_EQ(components_by_name.at("lm_head")->ep_name, onnxruntime::kCpuExecutionProvider);
+  EXPECT_EQ(components_by_name.at("iterator")->provider_options.at("run_really_fast"), "false");
+  EXPECT_EQ(components_by_name.at("iterator")->session_config_entries.at("session.disable_cpu_ep_fallback"), "1");
+
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageTest, LoadMultiComponentModelPackageRequiresExplicitResolve) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_multi_component_session";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+
+  CreateManifestJson(package_root, MakeManifestJson("decoder", {"embedding", "iterator"}));
+  CreateComponentVariantModel(package_root, "embedding", "qnn_mixed", std::filesystem::path{"testdata/mul_1.onnx"});
+  CreateComponentVariantModel(package_root, "iterator", "qnn_mixed", std::filesystem::path{"testdata/mul_1.onnx"});
+
+  CreateComponentModelMetadata(package_root, "embedding", R"({
+    "component_model_name": "embedding",
+    "model_variants": {
+      "qnn_mixed": {
+        "model_file": "mul_1.onnx",
+        "constraints": {
+          "ep": "CPUExecutionProvider",
+          "device": "cpu"
+        }
+      }
+    }
+  })");
+
+  CreateComponentModelMetadata(package_root, "iterator", R"({
+    "component_model_name": "iterator",
+    "model_variants": {
+      "qnn_mixed": {
+        "model_file": "mul_1.onnx",
+        "constraints": {
+          "ep": "example_ep",
+          "device": "cpu"
+        }
+      }
+    }
+  })");
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  try {
+    Ort::Session session(*ort_env, package_root.c_str(), session_options);
+    FAIL() << "Expected multi-component model package load to fail";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_THAT(ex.what(),
+                ::testing::HasSubstr("Direct session creation only supports model packages that resolve to a single component model"));
+  }
+
   std::filesystem::remove_all(package_root, ec);
 }
 
