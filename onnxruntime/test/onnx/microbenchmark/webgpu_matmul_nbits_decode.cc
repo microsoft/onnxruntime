@@ -17,8 +17,10 @@
 
 #include <core/graph/onnx_protobuf.h>
 #include <core/platform/env.h>
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include <core/session/onnxruntime_c_api.h>
 #include <core/session/onnxruntime_cxx_api.h>
+#include "core/session/onnxruntime_run_options_config_keys.h"
 
 #include <dawn/dawn_proc.h>
 #include <dawn/native/DawnNative.h>
@@ -31,8 +33,10 @@ namespace {
 constexpr const char* kMatMulNBitsAutoTunerEnvVar = "ORT_WEBGPU_MATMUL_NBITS_ENABLE_AUTO_TUNER";
 constexpr const char* kDecodeBenchmarkModeEnvVar = "ORT_WEBGPU_MATMUL_NBITS_BENCHMARK_MODE";
 constexpr const char* kDecodeBenchmarkGpuEnvVar = "ORT_WEBGPU_MATMUL_NBITS_BENCHMARK_GPU";
+constexpr const char* kDecodeBenchmarkGraphCaptureEnvVar = "ORT_WEBGPU_MATMUL_NBITS_ENABLE_GRAPH_CAPTURE";
 constexpr float kDecodeCorrectnessAbsTolerance = 0.1f;
 constexpr float kDecodeCorrectnessRelTolerance = 0.01f;
+constexpr const char* kBenchmarkGraphCaptureAnnotationId = "1";
 
 enum class DecodeBenchmarkMode {
   kPerf,
@@ -45,6 +49,7 @@ enum class DecodeBenchmarkGpu {
 };
 
 bool IsMatMulNBitsAutoTunerEnabled();
+bool IsGraphCaptureBenchmarkEnabled();
 
 struct DecodeBenchConfig {
   int64_t n;
@@ -165,9 +170,10 @@ std::string GetDecodeBenchmarkLabel() {
   const char* mode_label = IsDecodeBenchmarkPerfMode() ? "perf" : "correctness";
   const char* adapter_label = GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kRtx5060Ti ? "rtx" : "t";
   const char* tuner_label = IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off";
+  const char* graph_label = IsGraphCaptureBenchmarkEnabled() ? "graph_on" : "graph_off";
 
   std::ostringstream stream;
-  stream << "fp16_decode_" << mode_label << '_' << adapter_label << '_' << tuner_label;
+  stream << "fp16_decode_" << mode_label << '_' << adapter_label << '_' << tuner_label << '_' << graph_label;
   return stream.str();
 }
 
@@ -180,6 +186,26 @@ bool IsMatMulNBitsAutoTunerEnabled() {
   std::transform(auto_tuner_env.begin(), auto_tuner_env.end(), auto_tuner_env.begin(),
                  [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
   return auto_tuner_env != "0" && auto_tuner_env != "false" && auto_tuner_env != "off";
+}
+
+bool IsGraphCaptureBenchmarkEnabled() {
+  std::string graph_capture_env = onnxruntime::Env::Default().GetEnvironmentVar(kDecodeBenchmarkGraphCaptureEnvVar);
+  if (graph_capture_env.empty()) {
+    return false;
+  }
+
+  std::transform(graph_capture_env.begin(), graph_capture_env.end(), graph_capture_env.begin(),
+                 [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+  return graph_capture_env != "0" && graph_capture_env != "false" && graph_capture_env != "off";
+}
+
+Ort::RunOptions CreateBenchmarkRunOptions() {
+  Ort::RunOptions run_options;
+  if (IsGraphCaptureBenchmarkEnabled()) {
+    run_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, kBenchmarkGraphCaptureAnnotationId);
+  }
+
+  return run_options;
 }
 
 std::vector<wgpu::FeatureName> GetRequiredDeviceFeatures(const wgpu::Adapter& adapter) {
@@ -729,7 +755,8 @@ std::string GetMlpDecodeBenchmarkLabel(MlpDecodeBenchmarkVariant variant) {
   stream << "fp16_mlp_decode_" << GetMlpVariantLabel(variant) << '_'
          << (IsDecodeBenchmarkPerfMode() ? "perf" : "correctness") << '_'
          << (GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kRtx5060Ti ? "rtx" : "t") << '_'
-         << (IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off");
+         << (IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off") << '_'
+         << (IsGraphCaptureBenchmarkEnabled() ? "graph_on" : "graph_off");
   return stream.str();
 }
 
@@ -853,6 +880,10 @@ Ort::Session CreateSessionFromModelData(const std::vector<uint8_t>& model_data,
   session_options.DisableMemPattern();
   session_options.SetGraphOptimizationLevel(graph_optimization_level);
   if (provider_options != nullptr) {
+    if (IsGraphCaptureBenchmarkEnabled()) {
+      session_options.AddConfigEntry(onnxruntime::webgpu::options::kEnableGraphCapture,
+                                     onnxruntime::webgpu::options::kEnableGraphCapture_ON);
+    }
     session_options.AppendExecutionProvider("WebGPU", *provider_options);
   }
 
@@ -1010,6 +1041,7 @@ static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
                                                                   activation.size(),
                                                                   input_shape.data(),
                                                                   input_shape.size());
+    Ort::RunOptions run_options = CreateBenchmarkRunOptions();
 
     if (!IsDecodeBenchmarkPerfMode()) {
       ValidateDecodeOutputs(model_data, session, input_names, &input_tensor, output_names);
@@ -1017,14 +1049,14 @@ static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
 
     // Warm up shader compilation, allocations, and caches before measured iterations.
     for (int i = 0; i < kDecodeWarmupRuns; ++i) {
-      auto warmup_outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
+      auto warmup_outputs = session.Run(run_options, input_names, &input_tensor, 1, output_names, 1);
       benchmark::DoNotOptimize(warmup_outputs);
     }
 
     double total_kernel_seconds = 0.0;
     for (auto _ : state) {
       const auto kernel_start = std::chrono::steady_clock::now();
-      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
+      auto outputs = session.Run(run_options, input_names, &input_tensor, 1, output_names, 1);
       const auto kernel_end = std::chrono::steady_clock::now();
       total_kernel_seconds += std::chrono::duration<double>(kernel_end - kernel_start).count();
       benchmark::DoNotOptimize(outputs);
@@ -1050,6 +1082,7 @@ static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
     state.counters["PackedW_MB"] = benchmark::Counter(traffic.packed_weight_bytes / 1.0e6);
     state.counters["Scales_MB"] = benchmark::Counter(traffic.scale_bytes / 1.0e6);
     state.counters["Output_MB"] = benchmark::Counter(traffic.output_bytes / 1.0e6);
+    state.counters["GraphReplay"] = benchmark::Counter(IsGraphCaptureBenchmarkEnabled() ? 1.0 : 0.0);
   } catch (const std::exception& ex) {
     state.SkipWithError(ex.what());
   }
@@ -1097,6 +1130,7 @@ void BenchmarkWebGpuMatMulNBitsMlpDecode(benchmark::State& state, MlpDecodeBench
                                                                   activation.size(),
                                                                   input_shape.data(),
                                                                   input_shape.size());
+    Ort::RunOptions run_options = CreateBenchmarkRunOptions();
 
     if (!IsDecodeBenchmarkPerfMode()) {
       ValidateMlpDecodeOutputs(SerializeMatMulNBitsMlpModel(config, MlpDecodeBenchmarkVariant::kUnfused),
@@ -1108,14 +1142,14 @@ void BenchmarkWebGpuMatMulNBitsMlpDecode(benchmark::State& state, MlpDecodeBench
     }
 
     for (int i = 0; i < kDecodeWarmupRuns; ++i) {
-      auto warmup_outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
+      auto warmup_outputs = session.Run(run_options, input_names, &input_tensor, 1, output_names, 1);
       benchmark::DoNotOptimize(warmup_outputs);
     }
 
     double total_kernel_seconds = 0.0;
     for (auto _ : state) {
       const auto kernel_start = std::chrono::steady_clock::now();
-      auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, 1);
+      auto outputs = session.Run(run_options, input_names, &input_tensor, 1, output_names, 1);
       const auto kernel_end = std::chrono::steady_clock::now();
       total_kernel_seconds += std::chrono::duration<double>(kernel_end - kernel_start).count();
       benchmark::DoNotOptimize(outputs);
@@ -1138,6 +1172,7 @@ void BenchmarkWebGpuMatMulNBitsMlpDecode(benchmark::State& state, MlpDecodeBench
     state.counters["Scales_MB"] = benchmark::Counter(traffic.scale_bytes / 1.0e6);
     state.counters["Intermediate_MB"] = benchmark::Counter(traffic.intermediate_bytes / 1.0e6);
     state.counters["Output_MB"] = benchmark::Counter(traffic.output_bytes / 1.0e6);
+    state.counters["GraphReplay"] = benchmark::Counter(IsGraphCaptureBenchmarkEnabled() ? 1.0 : 0.0);
   } catch (const std::exception& ex) {
     state.SkipWithError(ex.what());
   }

@@ -24,22 +24,32 @@ constexpr unsigned int kMinMForTileOptimization = 4;
 constexpr uint32_t kFusedDecodeFastPathBits = 4u;
 constexpr uint32_t kFusedDecodeFastPathBlockSize = 32u;
 
-bool IsFusedDecodeFastPathEnabled() {
-  return true;
+bool CanApplyDP4AFusedDecodePath(const Tensor* y,
+                                 onnxruntime::webgpu::ComputeContext& context,
+                                 uint64_t accuracy_level,
+                                 uint32_t block_size,
+                                 uint32_t N,
+                                 uint32_t K) {
+  if (y->DataType() == DataTypeImpl::GetType<float>()) {
+    return false;
+  }
+
+  return CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, 4);
 }
 
-Status WouldApplyGenericMatMulNBitsInCurrentDispatch(const Tensor* a,
-                                                     int64_t K_op,
-                                                     int64_t N_op,
-                                                     int64_t block_size_op,
-                                                     int64_t accuracy_level,
-                                                     int64_t nbits,
-                                                     onnxruntime::webgpu::ComputeContext& context,
-                                                     Tensor* y,
-                                                     bool& would_apply_generic) {
+bool WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(const Tensor* a,
+                                                          int64_t K_op,
+                                                          int64_t N_op,
+                                                          int64_t block_size_op,
+                                                          int64_t accuracy_level,
+                                                          int64_t nbits,
+                                                          onnxruntime::webgpu::ComputeContext& context,
+                                                          Tensor* y) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
+  if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
+    return false;
+  }
 
   const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
   const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
@@ -47,51 +57,51 @@ Status WouldApplyGenericMatMulNBitsInCurrentDispatch(const Tensor* a,
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
 
-  const bool single_scale_weights = (block_size == K * N);
-  const uint32_t block_size_per_col = single_scale_weights ? K : block_size;
-  const uint32_t blob_size = (block_size_per_col / 8) * static_cast<uint32_t>(nbits);
-  const uint32_t blob_size_in_words = blob_size / 4;
-  const uint32_t components_a = GetMaxComponents(K);
-  const uint32_t components_b = GetMaxComponents(blob_size_in_words);
-
 #if !defined(__wasm__)
   int32_t subgroup_matrix_config_index = -1;
-  const bool would_apply_subgroup =
-      (M >= kMinMForTileOptimization) &&
-      (context.AdapterInfo().vendor == std::string_view{"apple"} ||
-       context.AdapterInfo().vendor == std::string_view{"intel"}) &&
-      CanApplySubgroupMatrixMatMulNBits(context,
-                                        accuracy_level,
-                                        block_size,
-                                        batch_count,
-                                        N,
-                                        K,
-                                        static_cast<uint32_t>(nbits),
-                                        y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                        subgroup_matrix_config_index);
-  if (would_apply_subgroup) {
-    would_apply_generic = false;
-    return Status::OK();
-  }
+  return (M >= kMinMForTileOptimization) &&
+         (context.AdapterInfo().vendor == std::string_view{"apple"} ||
+          context.AdapterInfo().vendor == std::string_view{"intel"}) &&
+         CanApplySubgroupMatrixMatMulNBits(context,
+                                           accuracy_level,
+                                           block_size,
+                                           batch_count,
+                                           N,
+                                           K,
+                                           static_cast<uint32_t>(nbits),
+                                           y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
+                                           subgroup_matrix_config_index);
 #endif
 
-  const bool would_apply_dp4a =
-      ((M >= kMinMForTileOptimization ||
-        y->DataType() == DataTypeImpl::GetType<float>() ||
-        context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
-       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a));
-  if (would_apply_dp4a) {
-    would_apply_generic = false;
-    return Status::OK();
+  return false;
+}
+
+bool WouldApplyWideTileMatMulNBitsInCurrentDispatch(const Tensor* a,
+                                                    int64_t K_op,
+                                                    int64_t N_op,
+                                                    int64_t block_size_op,
+                                                    int64_t nbits) {
+  TensorShape b_shape({N_op, K_op});
+  MatMulComputeHelper helper;
+  if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
+    return false;
   }
 
-  const bool would_apply_wide_tile = block_size == 32 &&
-                                     components_a == 4 &&
-                                     components_b == 4 &&
-                                     nbits != 2 &&
-                                     M >= kMinMForTileOptimization;
-  would_apply_generic = !would_apply_wide_tile;
-  return Status::OK();
+  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
+  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
+
+  const uint32_t components_a = GetMaxComponents(K);
+  const uint32_t block_size_per_col = block_size;
+  const uint32_t blob_size = (block_size_per_col / 8) * static_cast<uint32_t>(nbits);
+  const uint32_t blob_size_in_words = blob_size / 4;
+  const uint32_t components_b = GetMaxComponents(blob_size_in_words);
+
+  return block_size == 32 &&
+         components_a == 4 &&
+         components_b == 4 &&
+         nbits != 2 &&
+         M >= kMinMForTileOptimization;
 }
 
 class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulDecodeProgram> {
@@ -168,6 +178,155 @@ class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulD
   uint32_t tile_size_k_vec_;
 };
 
+class DP4AMatMulNBitsSiluMulDecodeProgram final : public Program<DP4AMatMulNBitsSiluMulDecodeProgram> {
+ public:
+  DP4AMatMulNBitsSiluMulDecodeProgram(uint32_t tile_size_k_vec,
+                                      uint32_t tile_size,
+                                      bool has_gate_bias,
+                                      bool has_up_bias,
+                                      bool single_scale_weights)
+      : Program{"DP4AMatMulNBitsSiluMulDecode"},
+        tile_size_k_vec_(tile_size_k_vec),
+        tile_size_(tile_size),
+        has_gate_bias_(has_gate_bias),
+        has_up_bias_(has_up_bias),
+        single_scale_weights_(single_scale_weights) {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform);
+    const auto& scales_a = shader.AddInput("scales_a", ShaderUsage::UseUniform);
+    const auto& gate_b = shader.AddInput("gate_b", ShaderUsage::UseUniform);
+    const auto& gate_scales_b = shader.AddInput("gate_scales_b", ShaderUsage::UseUniform);
+    const auto& up_b = shader.AddInput("up_b", ShaderUsage::UseUniform);
+    const auto& up_scales_b = shader.AddInput("up_scales_b", ShaderUsage::UseUniform);
+    if (has_gate_bias_) {
+      shader.AddInput("gate_bias", ShaderUsage::UseUniform);
+    }
+    if (has_up_bias_) {
+      shader.AddInput("up_bias", ShaderUsage::UseUniform);
+    }
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+    return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_matmul_silu_mul.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(has_gate_bias, has_gate_bias_),
+                               WGSL_TEMPLATE_PARAMETER(has_up_bias, has_up_bias_),
+                               WGSL_TEMPLATE_PARAMETER(has_zero_points, false),
+                               WGSL_TEMPLATE_PARAMETER(n_bits, 4),
+                               WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                               WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
+                               WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+                               WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_),
+                               WGSL_TEMPLATE_VARIABLE(a, a),
+                               WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
+                               WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
+                               WGSL_TEMPLATE_VARIABLE(up_b, up_b),
+                               WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_count", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K16", ProgramUniformVariableDataType::Uint32},
+      {"K32", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t tile_size_k_vec_;
+  uint32_t tile_size_;
+  bool has_gate_bias_;
+  bool has_up_bias_;
+  bool single_scale_weights_;
+};
+
+Status ApplyDP4AFusedDecodeMatMulNBitsSiluMul(const Tensor* a,
+                                              const Tensor* gate_b,
+                                              const Tensor* gate_scales,
+                                              const Tensor* gate_bias,
+                                              const Tensor* up_b,
+                                              const Tensor* up_scales,
+                                              const Tensor* up_bias,
+                                              uint32_t batch_count,
+                                              uint32_t N,
+                                              uint32_t K,
+                                              uint32_t block_size,
+                                              uint32_t nbits,
+                                              onnxruntime::webgpu::ComputeContext& context,
+                                              Tensor* y) {
+  ORT_ENFORCE(nbits == 4u, "DP4A fused decode path is specialized for 4-bit weights.");
+
+  constexpr uint32_t kVec4Components = 4;
+  constexpr uint32_t kU32Components = 4;
+  constexpr uint32_t kBlockSizeA = 128;
+
+  DP4AMatMulQuantizeProgram quantize_program;
+  quantize_program.SetWorkgroupSize(64);
+  constexpr uint32_t quantize_tile_size = 64 * kVec4Components;
+  quantize_program.SetDispatchGroupSize((batch_count * K + quantize_tile_size - 1) / quantize_tile_size, 1, 1);
+
+  TensorShape a_quant_shape{batch_count, 1, K / kU32Components};
+  Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
+  TensorShapeVector a_scales_dims({batch_count, 1, 1, K / kBlockSizeA});
+  Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
+
+  quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
+      .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
+                   {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
+      .AddUniformVariable({batch_count * K / kU32Components});
+  ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
+
+  const bool has_gate_bias = gate_bias != nullptr;
+  const bool has_up_bias = up_bias != nullptr;
+  const bool single_scale_weights = (block_size == K * N);
+  const uint32_t block_size_per_col = single_scale_weights ? K : block_size;
+  const uint32_t n_blocks_per_col = (K + block_size_per_col - 1) / block_size_per_col;
+  const uint32_t blob_size = (block_size_per_col / 8) * nbits;
+  const uint32_t blob_size_in_words = blob_size / 4;
+  const uint32_t components_b = GetMaxComponents(blob_size_in_words);
+  const uint32_t components_b_with_u32 = components_b * kU32Components;
+
+  constexpr uint32_t workgroup_size = 128;
+  constexpr uint32_t tile_size = 4;
+  const uint32_t tile_size_k_vec = 32;
+  const uint32_t num_N_tile = CeilDiv(N, tile_size);
+
+  DP4AMatMulNBitsSiluMulDecodeProgram program{tile_size_k_vec,
+                                              tile_size,
+                                              has_gate_bias,
+                                              has_up_bias,
+                                              single_scale_weights};
+  program.SetWorkgroupSize(workgroup_size);
+  program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
+  program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
+                     {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                     {gate_b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
+                     {gate_scales, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                     {up_b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
+                     {up_scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
+      .AddUniformVariables({batch_count,
+                            N,
+                            K,
+                            K / 16,
+                            K / 32,
+                            block_size,
+                            n_blocks_per_col,
+                            num_N_tile})
+      .CacheHint(tile_size_k_vec, tile_size, has_gate_bias, has_up_bias, single_scale_weights, "dp4a_decode_4bit");
+  if (has_gate_bias) {
+    program.AddInput({gate_bias, ProgramTensorMetadataDependency::None});
+  }
+  if (has_up_bias) {
+    program.AddInput({up_bias, ProgramTensorMetadataDependency::None});
+  }
+
+  return context.RunProgram(program);
+}
+
 class MatMulNBitsSiluMulProgram final : public Program<MatMulNBitsSiluMulProgram> {
  public:
   MatMulNBitsSiluMulProgram() : Program{"MatMulNBitsSiluMul"} {}
@@ -227,30 +386,47 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
     return Status::OK();
   }
 
-  bool gate_would_use_generic_matmul = false;
-  bool up_would_use_generic_matmul = false;
-  ORT_RETURN_IF_ERROR(WouldApplyGenericMatMulNBitsInCurrentDispatch(a,
-                                                                    K_,
-                                                                    N_,
-                                                                    block_size_,
-                                                                    accuracy_level_,
-                                                                    bits_,
-                                                                    context,
-                                                                    y,
-                                                                    gate_would_use_generic_matmul));
-  ORT_RETURN_IF_ERROR(WouldApplyGenericMatMulNBitsInCurrentDispatch(a,
-                                                                    K_,
-                                                                    N_,
-                                                                    block_size_,
-                                                                    accuracy_level_,
-                                                                    bits_,
-                                                                    context,
-                                                                    y,
-                                                                    up_would_use_generic_matmul));
+  const bool would_use_subgroup_unfused =
+      WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(a,
+                                                           K_,
+                                                           N_,
+                                                           block_size_,
+                                                           accuracy_level_,
+                                                           bits_,
+                                                           context,
+                                                           y);
+    const bool would_use_wide_tile_unfused =
+      WouldApplyWideTileMatMulNBitsInCurrentDispatch(a,
+                             K_,
+                             N_,
+                             block_size_,
+                             bits_);
 
-  if (IsFusedDecodeFastPathEnabled() && M == 1 && bits_ == kFusedDecodeFastPathBits &&
-      block_size == kFusedDecodeFastPathBlockSize && gate_would_use_generic_matmul &&
-      up_would_use_generic_matmul) {
+  /*
+  if (!would_use_subgroup_unfused &&
+      M == 1 && bits_ == 4 &&
+      CanApplyDP4AFusedDecodePath(y, context, accuracy_level_, block_size, N, K)) {
+    return ApplyDP4AFusedDecodeMatMulNBitsSiluMul(a,
+                                                  gate_b,
+                                                  gate_scales,
+                                                  gate_bias,
+                                                  up_b,
+                                                  up_scales,
+                                                  up_bias,
+                                                  batch_count,
+                                                  N,
+                                                  K,
+                                                  block_size,
+                                                  onnxruntime::narrow<uint32_t>(bits_),
+                                                  context,
+                                                  y);
+  }
+  */
+
+  if (!would_use_subgroup_unfused &&
+      !would_use_wide_tile_unfused &&
+      M == 1 && bits_ == kFusedDecodeFastPathBits &&
+      block_size == kFusedDecodeFastPathBlockSize) {
     ORT_ENFORCE(bits_ == kFusedDecodeFastPathBits,
                 "MatMulNBitsSiluMulDecodeProgram is specialized for 4-bit weights only.");
     ORT_ENFORCE(block_size == kFusedDecodeFastPathBlockSize,

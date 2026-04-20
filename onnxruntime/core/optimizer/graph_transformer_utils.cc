@@ -13,6 +13,7 @@
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
+#include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/threadpool.h"
 
@@ -102,12 +103,13 @@ namespace onnxruntime::optimizer_utils {
 
 namespace {
 
-bool IsMatMulNBitsSiluFusionEnabled(const SessionOptions& session_options) {
-  const auto config_value = session_options.config_options.GetConfigOrDefault(
-      kOrtSessionOptionsEnableMatMulNBitsSiluFusion,
-      "0");
-  return config_value != "0";
+constexpr const char* kOrtEnableMatMulNBitsSiluFusionEnvVar = "ORT_ENABLE_MATMUL_NBITS_SILU_FUSION";
+
+#if !defined(ORT_MINIMAL_BUILD)
+bool IsMatMulNBitsSiluFusionEnabled() {
+  return ParseEnvironmentVariableWithDefault<int>(kOrtEnableMatMulNBitsSiluFusionEnvVar, 0) == 1;
 }
+#endif
 
 }  // namespace
 
@@ -448,9 +450,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
-      if (IsMatMulNBitsSiluFusionEnabled(session_options)) {
-        transformers.emplace_back(std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
-      }
+  if (IsMatMulNBitsSiluFusionEnabled()) {
+    transformers.emplace_back(std::make_unique<MatMulNBitsSiluFusion>(
+    InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+  }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

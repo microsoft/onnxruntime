@@ -39,40 +39,6 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
   uint32_t nbits_;
 };
 
-class MatMulNBitsM1Program final : public Program<MatMulNBitsM1Program> {
- public:
-  MatMulNBitsM1Program(uint32_t tile_size,
-                       bool has_bias,
-                       bool has_weight_idx,
-                       bool single_scale_weights,
-                       uint32_t tile_size_k_vec = 32)
-      : Program{"MatMulNBitsM1"},
-        tile_size_(tile_size),
-        has_bias_(has_bias),
-        has_weight_idx_{has_weight_idx},
-        single_scale_weights_(single_scale_weights),
-        tile_size_k_vec_(tile_size_k_vec) {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"K_of_a", ProgramUniformVariableDataType::Uint32},
-      {"K_of_b", ProgramUniformVariableDataType::Uint32},
-      {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32});
-
- private:
-  uint32_t tile_size_;
-  bool has_bias_;
-  bool has_weight_idx_;
-  bool single_scale_weights_;
-  uint32_t tile_size_k_vec_;
-};
-
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
   MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16)

@@ -68,43 +68,6 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
                              WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
-Status MatMulNBitsM1Program::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
-  const auto& b = shader.AddInput("input_b");
-  const auto& scales_b = shader.AddInput("scales_b");
-  if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-
-  const uint32_t components_a = a.NumComponents();
-  const uint32_t components_b = b.NumComponents() / 4;
-  const uint32_t elements_in_value_b = components_b * 8u;
-  const uint32_t a_length_per_lane = elements_in_value_b / components_a;
-  const uint32_t tile_size_k = tile_size_k_vec_ * elements_in_value_b;
-  ORT_ENFORCE(tile_size_ % 4u == 0u, "tile_size must be divisible by 4 for MatMulNBitsM1Program.");
-
-  return WGSL_TEMPLATE_APPLY(shader,
-                             "quantization/matmul_nbits_m1.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(a_length_per_lane, a_length_per_lane),
-                             WGSL_TEMPLATE_PARAMETER(component_a, components_a),
-                             WGSL_TEMPLATE_PARAMETER(component_b, components_b),
-                             WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
-                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
-                             WGSL_TEMPLATE_PARAMETER(has_zero_points, false),
-                             WGSL_TEMPLATE_PARAMETER(n_bits, 4),
-                             WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
-                             WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
-                             WGSL_TEMPLATE_PARAMETER(subgroup_tile_size, tile_size_ / 4u),
-                             WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
-                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_),
-                             WGSL_TEMPLATE_VARIABLE(a, a),
-                             WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
-}
-
 // Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
@@ -338,54 +301,6 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
     return context.RunProgram(program);
   }
-
-  // Disabled for now so decode uses the existing generic fallback path that is
-  // already deployed in production. We can reintroduce M1-specific ideas when
-  // tuning the fused implementation.
-  // const bool use_m1_subgroup_program = M == 1 &&
-  //                                      batch_count >= 1 &&
-  //                                      static_cast<uint32_t>(nbits) == 4u &&
-  //                                      !has_zero_points &&
-  //                                      !has_weight_idx_indirect &&
-  //                                      context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
-  //                                      context.HasFeature(wgpu::FeatureName::Subgroups);
-  //
-  // if (use_m1_subgroup_program) {
-  //   constexpr uint32_t workgroup_size = 128;
-  //   constexpr uint32_t tile_size = 8;
-  //   constexpr uint32_t tile_size_k_vec = 32;
-  //   constexpr uint32_t kU32Components = 4;
-  //   const uint32_t components_b_with_u32 = components_b * kU32Components;
-  //   const uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  //
-  //   MatMulNBitsM1Program program{tile_size,
-  //                                has_bias,
-  //                                has_weight_idx,
-  //                                single_scale_weights,
-  //                                tile_size_k_vec};
-  //   program.SetWorkgroupSize(workgroup_size);
-  //   const uint32_t num_N_tile = CeilDiv(N, tile_size);
-  //   program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
-  //   program
-  //       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
-  //                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
-  //                   {scales, ProgramTensorMetadataDependency::TypeAndRank}})
-  //       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-  //       .AddUniformVariables({{N},
-  //                             {K},
-  //                             {K / components_a},
-  //                             {K_of_b},
-  //                             {block_size},
-  //                             {n_blocks_per_col},
-  //                             {num_N_tile},
-  //                             {batch_count},
-  //                             {weight_index}})
-  //       .CacheHint(has_bias, has_weight_idx, single_scale_weights, tile_size_k_vec);
-  //   if (has_bias) {
-  //     program.AddInput({bias, ProgramTensorMetadataDependency::None});
-  //   }
-  //   return context.RunProgram(program);
-  // }
 
   // Use tile_size_k_vec=32 by default for better K-dimension parallelism.
   // Intel devices use 16 as they have different subgroup/cache characteristics.
