@@ -78,8 +78,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_vitisai"):
     package_name = "onnxruntime-vitisai"
 elif parse_arg_remove_boolean(sys.argv, "--use_acl"):
     package_name = "onnxruntime-acl"
-elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
-    package_name = "onnxruntime-armnn"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
@@ -401,6 +399,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libHtpPrepare.so",
     ]
     dl_libs.extend(qnn_deps)
+    libs.extend(qnn_deps)
     # NV TensorRT RTX
     nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
     dl_libs.extend(nv_tensorrt_rtx_deps)

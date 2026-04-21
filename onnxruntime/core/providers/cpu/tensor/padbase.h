@@ -35,7 +35,42 @@ class PadBase {
   /// <param name="input_shape">actual input shape</param>
   /// <param name="output_shape">output_shape</param>
   /// <returns>Error if current mode padding can not be achieved with zero dim values</returns>
+#ifdef SHARED_PROVIDER
   static Status HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape);
+#else
+  static inline Status HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
+    switch (mode) {
+      case Mode::Constant: {
+        // default behavior is fine
+        break;
+      }
+      case Mode::Edge: {
+        for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
+          if (input_shape[i] == 0 && output_shape[i] > 0) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:",
+                                   input_shape);
+          }
+        }
+        break;
+      }
+      case Mode::Reflect: {
+        for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
+          if (input_shape[i] == 0 && output_shape[i] > 0) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:",
+                                   input_shape);
+          }
+        }
+        break;
+      }
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode of ", static_cast<int>(mode));
+    }
+
+    return Status::OK();
+  }
+#endif  // SHARED_PROVIDER
 
   /// <summary>
   /// Compute Pads by applying axes if specified otherwise copy the supplied pads.
@@ -90,8 +125,15 @@ class PadBase {
     }
   }
 
+#ifdef SHARED_PROVIDER
   static void ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
                           PadsVector& pads);
+#else
+  static inline void ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                                 PadsVector& pads) {
+    ComputePadsImpl(ctx, data_rank, pads_data, pads);
+  }
+#endif  // SHARED_PROVIDER
 
   /// <summary>
   /// Separates negative pad values to slices and zeros them out in original pads.

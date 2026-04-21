@@ -461,6 +461,11 @@ if(WIN32)
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
 endif()
 
+if(LINUX)
+  list(APPEND onnxruntime_test_framework_src_patterns
+    "${TEST_SRC_DIR}/platform/linux/*.cc" )
+endif()
+
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
   if(onnxruntime_USE_CUDA)
@@ -503,6 +508,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
+
+  if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    file(GLOB onnxruntime_test_providers_cuda_plugin_src CONFIGURE_DEPENDS
+      "${TEST_SRC_DIR}/providers/cuda/plugin/*.cc"
+    )
+    list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
+  endif()
 
   if (onnxruntime_USE_CUDA_NHWC_OPS AND CUDNN_MAJOR_VERSION GREATER 8)
     file(GLOB onnxruntime_test_providers_cuda_nhwc_src CONFIGURE_DEPENDS
@@ -673,10 +685,6 @@ if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
 
-if(onnxruntime_USE_ARMNN)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
-endif()
-
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
@@ -687,7 +695,6 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
@@ -696,7 +703,7 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
 endif()
-if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
 
@@ -734,10 +741,21 @@ if(onnxruntime_USE_TENSORRT)
 endif()
 
 if(onnxruntime_USE_NV)
+  # If an external project (e.g. dawn from Webgpu EP has already added a Vulkan::Headers target we shouldn't try to import another version of the Vulkan headers)
+  if (NOT TARGET Vulkan::Headers)
+    onnxruntime_fetchcontent_declare(
+      vulkan_headers
+      URL ${DEP_URL_vulkan_headers}
+      URL_HASH SHA1=${DEP_SHA1_vulkan_headers}
+      EXCLUDE_FROM_ALL
+    )
+    onnxruntime_fetchcontent_makeavailable(vulkan_headers)
+  endif()
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nv_tensorrt_rtx/*)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h")
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nv_tensorrt_rtx onnxruntime_providers_shared)
   list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
+  list(APPEND onnxruntime_test_providers_libs Vulkan::Headers)
 endif()
 
 
@@ -757,7 +775,7 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
@@ -906,6 +924,14 @@ if(NOT IOS)
 
     list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
+    # if training is disabled, endian_utils are still used in tests
+    if (NOT onnxruntime_ENABLE_TRAINING)
+      list(APPEND onnx_test_runner_common_srcs
+          ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.cc
+          ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.h
+          )
+    endif ()
+
     onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
     if(MSVC)
       target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
@@ -1042,6 +1068,18 @@ function(onnxruntime_apply_test_target_workarounds target)
   endif()
 endfunction()
 
+# Set environment variables for plugin EP tests when run via CTest.
+function(onnxruntime_set_plugin_ep_test_environment target)
+  if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+    set(ORT_PLUGIN_EP_JSON_CONFIG "{\"ep_library_registration_name\": \"WebGPU_PluginEP\", \"ep_library_path\": \"$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>\", \"selected_ep_name\": \"WebGpuExecutionProvider\"}")
+    set_tests_properties(${target} PROPERTIES
+      ENVIRONMENT "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON=${ORT_PLUGIN_EP_JSON_CONFIG}"
+    )
+  # TODO: add for other plugin EPs if needed
+  # elseif()
+  endif()
+endfunction()
+
 function(onnxruntime_apply_emscripten_test_link_settings target)
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(${target} PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_adapter.js)
@@ -1077,6 +1115,10 @@ AddTest(
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
 
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
+
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  target_compile_definitions(onnxruntime_test_all PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+endif()
 
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
@@ -1250,6 +1292,11 @@ block()
   )
 
   onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
+  onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
+
+  if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  endif()
 
   # Expose QNN SDK headers to unit tests via an interface target
   if(onnxruntime_USE_QNN)
@@ -1461,6 +1508,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       endif()
     else()
       target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common absl::flags absl::flags_parse ${onnx_test_libs})
+      #  When onnxruntime_BUILD_SHARED_LIB is OFF (the plugin build path), perf test was missing CUDA include directories and CUDA::cudart linkage.
+      if (onnxruntime_USE_CUDA OR onnxruntime_USE_NV OR onnxruntime_USE_TENSORRT)
+        target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+        target_link_libraries(onnxruntime_perf_test PRIVATE CUDA::cudart)
+      endif()
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -1786,7 +1838,7 @@ endif()
   endif()
 endif()
 
-if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL)
 
   set(custom_op_src_patterns
     "${TEST_SRC_DIR}/testdata/custom_op_library/*.h"
@@ -2103,6 +2155,8 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_data_transfer.cc"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_kernel_registration.h"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_kernel_registration.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_profiling.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_profiling.cc"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/utils.h"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/squeeze.h"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/squeeze.cc"
@@ -2222,45 +2276,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
 
   set_property(TARGET custom_op_openvino_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
-endif()
-
-# limit to only test on windows first, due to a runtime path issue on linux
-if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
-                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  file(GLOB_RECURSE test_execution_provider_srcs
-    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
-    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
-  )
-
-  onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx ${ABSEIL_LIBS})
-  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    target_link_options(test_execution_provider PRIVATE -Wl,-brtl -lonnxruntime_providers_shared)
-    target_link_libraries(test_execution_provider PRIVATE ${ABSEIL_LIBS} Boost::mp11)
-  else()
-    target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared ${ABSEIL_LIBS} Boost::mp11)
-  endif()
-  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
-  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
-  target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    target_link_libraries(test_execution_provider PRIVATE Python::Python)
-  endif()
-  if(APPLE)
-    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
-  elseif(UNIX)
-    if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
-     endif()
-  elseif(WIN32)
-    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
-  else()
-    message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
-  endif()
 endif()
 
 if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)

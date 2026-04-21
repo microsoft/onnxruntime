@@ -17,12 +17,12 @@ namespace webgpu {
 // The first element is the loop header, the second element is the loop body, and the third element is the loop footer.
 // The loop header is the code that is executed before the loop starts. The loop body is the code that is executed for each element in the loop.
 // The loop footer is the code that is executed after the loop ends. The loop body should contain the code that accumulates the result of the reduction and
-// the loop footer should contain the code that assigins output_value the result of the reduction.
-typedef struct ReduceOpSpecificCode {
+// the loop footer should contain the code that assigns output_value the result of the reduction.
+struct ReduceOpSpecificCode {
   std::string loop_header_;
   std::string loop_body_;
   std::string loop_footer_;
-} ReduceOpSpecificCode;
+};
 
 enum class ReduceOpType {
   Max,

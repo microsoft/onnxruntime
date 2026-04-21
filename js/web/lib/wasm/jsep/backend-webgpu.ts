@@ -278,7 +278,7 @@ export class WebGpuBackend {
       value: this.device,
       writable: false,
       enumerable: true,
-      configurable: false,
+      configurable: true, // Allow deletion when device is destroyed
     });
     Object.defineProperty(this.env.webgpu, 'adapter', {
       value: adapter,
@@ -296,6 +296,14 @@ export class WebGpuBackend {
       this.querySet.destroy();
     }
     this.gpuDataManager.dispose();
+
+    // Clear the device reference when it's lost to allow new sessions to create a fresh device
+    // This handles the case where preserve_device=false (default) causes the C++ side to destroy the device
+    if (this.device && this.env?.webgpu) {
+      void this.device.lost.then(() => {
+        delete (this.env.webgpu as unknown as Record<string, unknown>).device;
+      });
+    }
   }
 
   getCommandEncoder(): GPUCommandEncoder {
