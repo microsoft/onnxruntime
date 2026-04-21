@@ -201,6 +201,16 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =
     "session.use_ort_model_bytes_for_initializers";
 
+// <summary>
+// Key for using memory-mapped I/O to load ORT format model files.
+// When set to "1" and the session is created from a file path, ORT will use memory-mapped I/O
+// to load the .ort model file instead of reading it into a heap-allocated buffer.
+// Usage with session.use_ort_model_bytes_for_initializers will ensure Tensors point directly to the mapped bytes,
+// although the mapping must remain valid and model weights will be immutable.
+// The model load will fail if the mapping fails; fallbacks should be caller-handled.
+// </summary>
+static const char* const kOrtSessionOptionsConfigUseMemoryMappedOrtModel = "session.use_memory_mapped_ort_model";
+
 // This should only be specified when exporting an ORT format model for use on a different platform.
 // If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
 // Available since version 1.11.

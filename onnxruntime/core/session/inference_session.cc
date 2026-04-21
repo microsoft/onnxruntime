@@ -1706,10 +1706,35 @@ static Status LoadOrtModelBytes(const PathString& model_uri,
   return Status::OK();
 }
 
+static Status LoadOrtModelBytesMapped(const PathString& model_uri,
+                                      gsl::span<const uint8_t>& bytes,
+                                      Env::MappedMemoryPtr& mapped_memory) {
+  size_t num_bytes = 0;
+  ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(model_uri.c_str(), num_bytes));
+
+  ORT_RETURN_IF_ERROR(Env::Default().MapFileIntoMemory(model_uri.c_str(), 0, num_bytes, mapped_memory));
+
+  bytes = gsl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(mapped_memory.get()), num_bytes);
+
+  return Status::OK();
+}
+
 Status InferenceSession::LoadOrtModel(const PathString& model_uri) {
   return LoadOrtModelWithLoader(
       [&]() {
         model_location_ = model_uri;
+
+        const auto& config_options = GetSessionOptions().config_options;
+        const bool use_mmap =
+            config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseMemoryMappedOrtModel, "0") == "1";
+
+        if (use_mmap) {
+          ORT_RETURN_IF_ERROR(
+              LoadOrtModelBytesMapped(model_location_, ort_format_model_bytes_, ort_format_model_mapped_memory_));
+          LOGS(*session_logger_, INFO) << "ORT model loaded via memory-mapped I/O.";
+          return Status::OK();
+        }
+
         ORT_RETURN_IF_ERROR(
             LoadOrtModelBytes(model_location_, ort_format_model_bytes_, ort_format_model_bytes_data_holder_));
         return Status::OK();
@@ -1817,8 +1842,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
 
   // if we're using the bytes directly because kOrtSessionOptionsConfigUseORTModelBytesDirectly was set and the user
-  // provided an existing buffer of bytes when creating the InferenceSession, ort_format_model_bytes_data_holder_
-  // will be empty.
+  // provided an existing buffer of bytes when creating the InferenceSession, or because we memory-mapped the file,
+  // ort_format_model_bytes_data_holder_ will be empty.
   // if that is the case we also allow creating initializers that directly use those bytes.
   const auto& config_options = session_options_.config_options;
   using_ort_model_bytes_for_initializers_ =
@@ -2640,6 +2665,7 @@ common::Status InferenceSession::Initialize() {
     if (!using_ort_model_bytes_for_initializers_) {
       ort_format_model_bytes_ = gsl::span<const uint8_t>();
       std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
+      ort_format_model_mapped_memory_.reset();
     }
 
     // once the model is saved, we may remove unnecessary attributes for inference
