@@ -48,12 +48,12 @@
 	<meta name="theme-color" content="#B2B2B2" />
 	<meta property="og:type" content="website" />
 </svelte:head>
-<div class="selection:bg-info">
+<div class="selection:bg-info min-h-screen flex flex-col">
 	{#if !$page.url.pathname.startsWith('/blogs/')}
 		<Header />
 	{/if}
 	{#key data.pathname}
-		<div id="main-content" in:fade={{ duration: 300, delay: 400 }} out:fade={{ duration: 300 }}>
+		<div id="main-content" class="flex-grow" in:fade={{ duration: 300, delay: 400 }} out:fade={{ duration: 300 }}>
 			<slot />
 		</div>
 	{/key}
