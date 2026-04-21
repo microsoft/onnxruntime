@@ -32,7 +32,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 
 def parse_perf_test_output(output: str) -> dict:
@@ -63,6 +62,7 @@ def get_process_memory_info() -> dict:
     """Get current process memory info (Windows)."""
     try:
         import psutil
+
         proc = psutil.Process()
         mem = proc.memory_info()
         return {
@@ -77,7 +77,7 @@ def get_process_memory_info() -> dict:
 def run_perf_test(
     perf_test_exe: str,
     model_path: str,
-    session_configs: Optional[dict] = None,
+    session_configs: dict | None = None,
     session_only: bool = False,
     num_runs: int = 10,
     duration_seconds: int = 0,
@@ -108,6 +108,7 @@ def run_perf_test(
         # Single run: capture both timing (from stdout) and memory (from psutil) simultaneously
         try:
             import psutil
+
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             ps = psutil.Process(proc.pid)
             peak_private = 0
@@ -116,15 +117,15 @@ def run_perf_test(
                 while proc.poll() is None:
                     try:
                         mem = ps.memory_info()
-                        private = getattr(mem, 'private', mem.rss)
-                        ws = getattr(mem, 'wset', mem.rss)
+                        private = getattr(mem, "private", mem.rss)
+                        ws = getattr(mem, "wset", mem.rss)
                         peak_private = max(peak_private, private)
                         peak_ws = max(peak_ws, ws)
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         break
                     time.sleep(0.001)  # 1ms polling for better peak capture
             except psutil.NoSuchProcess:
-                pass
+                pass  # process exited during polling, peak already captured
             stdout, _ = proc.communicate(timeout=30)
             if proc.returncode != 0:
                 print(f"  ERROR: perf_test failed (exit code {proc.returncode})")
@@ -137,7 +138,7 @@ def run_perf_test(
         except ImportError:
             pass  # fall through to non-psutil path
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=300)
 
     if result.returncode != 0:
         print(f"  ERROR: perf_test failed (exit code {result.returncode})")
@@ -157,16 +158,16 @@ def run_configuration(
     warmup_iterations: int = 2,
 ) -> dict:
     """Run a single configuration multiple times and aggregate results."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Configuration: {config_name}")
     print(f"  Session configs: {session_configs}")
     print(f"  Warmup: {warmup_iterations}, Iterations: {num_iterations}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Warmup runs (not included in results)
     for i in range(warmup_iterations):
         run_perf_test(perf_test_exe, model_path, session_configs=session_configs, session_only=True)
-        print(f"  Warmup {i+1}: done")
+        print(f"  Warmup {i + 1}: done")
 
     # Phase 1: Session creation time (run with -n flag, multiple iterations)
     session_times = []
@@ -174,7 +175,8 @@ def run_configuration(
     peak_private_session = []
     for i in range(num_iterations):
         metrics = run_perf_test(
-            perf_test_exe, model_path,
+            perf_test_exe,
+            model_path,
             session_configs=session_configs,
             session_only=True,
         )
@@ -184,21 +186,24 @@ def run_configuration(
             peak_private_session.append(metrics.get("peak_private_bytes", 0))
             ws_mb = peak_ws_session[-1] / 1024 / 1024
             priv_mb = peak_private_session[-1] / 1024 / 1024
-            print(f"  Run {i+1}: session={session_times[-1]:.2f}ms, peak_ws={ws_mb:.1f}MB, private={priv_mb:.1f}MB")
+            print(f"  Run {i + 1}: session={session_times[-1]:.2f}ms, peak_ws={ws_mb:.1f}MB, private={priv_mb:.1f}MB")
 
     # Phase 2: Inference performance (run with inference)
     inference_metrics_list = []
     for i in range(min(num_iterations, 3)):  # fewer inference runs
         metrics = run_perf_test(
-            perf_test_exe, model_path,
+            perf_test_exe,
+            model_path,
             session_configs=session_configs,
             session_only=False,
             num_runs=num_inference_runs,
         )
         if metrics:
             inference_metrics_list.append(metrics)
-            print(f"  Inference run {i+1}: avg={metrics.get('avg_inference_time_ms', 0):.2f}ms, "
-                  f"peak_ws={metrics.get('peak_working_set_bytes', 0) / 1024 / 1024:.1f}MB")
+            print(
+                f"  Inference run {i + 1}: avg={metrics.get('avg_inference_time_ms', 0):.2f}ms, "
+                f"peak_ws={metrics.get('peak_working_set_bytes', 0) / 1024 / 1024:.1f}MB"
+            )
 
     # Aggregate
     result = {
@@ -265,10 +270,10 @@ def run_multi_process_benchmark(
         print("  Install with: pip install psutil")
         return {}
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Multi-Process Benchmark: {config_name}")
     print(f"  Processes: {num_processes}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Build the perf_test command
     cmd = [perf_test_exe]
@@ -296,7 +301,7 @@ def run_multi_process_benchmark(
             ps_processes.append((i, proc, ps))
         except psutil.NoSuchProcess:
             ps_processes.append((i, proc, None))
-        print(f"  Started process {i+1} (PID={proc.pid})")
+        print(f"  Started process {i + 1} (PID={proc.pid})")
 
     # Wait for all wrapper processes to finish session creation and stabilize
     time.sleep(3)
@@ -310,28 +315,32 @@ def run_multi_process_benchmark(
             try:
                 # Get memory of the wrapper process and its children (the perf_test subprocess)
                 mem = ps.memory_info()
-                private = getattr(mem, 'private', mem.rss)
-                ws = getattr(mem, 'wset', mem.rss)
+                private = getattr(mem, "private", mem.rss)
+                ws = getattr(mem, "wset", mem.rss)
                 # Also check children
                 for child in ps.children(recursive=True):
                     try:
                         cmem = child.memory_info()
-                        private += getattr(cmem, 'private', cmem.rss)
-                        ws += getattr(cmem, 'wset', cmem.rss)
+                        private += getattr(cmem, "private", cmem.rss)
+                        ws += getattr(cmem, "wset", cmem.rss)
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
+                        pass  # child process exited or inaccessible, skip it
                 total_private += private
                 total_working_set += ws
-                per_process.append({
-                    "pid": proc.pid,
-                    "private_mb": private / 1024 / 1024,
-                    "working_set_mb": ws / 1024 / 1024,
-                })
-                print(f"  Process {i+1} (PID={proc.pid}): private={private/1024/1024:.1f}MB, ws={ws/1024/1024:.1f}MB")
+                per_process.append(
+                    {
+                        "pid": proc.pid,
+                        "private_mb": private / 1024 / 1024,
+                        "working_set_mb": ws / 1024 / 1024,
+                    }
+                )
+                print(
+                    f"  Process {i + 1} (PID={proc.pid}): private={private / 1024 / 1024:.1f}MB, ws={ws / 1024 / 1024:.1f}MB"
+                )
             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                print(f"  Process {i+1}: could not read memory ({e})")
+                print(f"  Process {i + 1}: could not read memory ({e})")
         else:
-            print(f"  Process {i+1}: not running")
+            print(f"  Process {i + 1}: not running")
 
     # Signal all wrappers to exit
     for _, proc, _ in ps_processes:
@@ -339,7 +348,7 @@ def run_multi_process_benchmark(
             proc.stdin.write(b"\n")
             proc.stdin.flush()
         except (BrokenPipeError, OSError):
-            pass
+            pass  # wrapper already exited, nothing to signal
     for _, proc, _ in ps_processes:
         try:
             proc.wait(timeout=10)
@@ -371,8 +380,7 @@ def convert_onnx_to_ort(onnx_path: str) -> str:
 
     print(f"  Converting {onnx_path} to .ort format...")
     script = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "python", "util", "convert_onnx_models_to_ort.py"
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "python", "util", "convert_onnx_models_to_ort.py"
     )
 
     if not os.path.exists(script):
@@ -381,7 +389,7 @@ def convert_onnx_to_ort(onnx_path: str) -> str:
         script = str(repo_root / "tools" / "python" / "util" / "convert_onnx_models_to_ort.py")
 
     cmd = [sys.executable, script, os.path.dirname(onnx_path)]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=120)
     if result.returncode != 0:
         print(f"  Conversion failed: {result.stderr[:500]}")
         raise RuntimeError(f"Failed to convert {onnx_path} to .ort")
@@ -397,9 +405,9 @@ def convert_onnx_to_ort(onnx_path: str) -> str:
 
 def print_summary_table(results: list[dict]):
     """Print a formatted comparison table."""
-    print(f"\n{'='*100}")
+    print(f"\n{'=' * 100}")
     print("BENCHMARK RESULTS SUMMARY")
-    print(f"{'='*100}")
+    print(f"{'=' * 100}")
 
     # Header
     header = f"{'Configuration':<45} {'Session (ms)':<15} {'Peak WS (MB)':<15} {'Private (MB)':<15}"
@@ -482,13 +490,19 @@ def main():
     # Define configurations to benchmark
     configs = [
         ("1. .ort standard load (baseline)", {}),
-        ("2. .ort memory-mapped load", {
-            "session.use_memory_mapped_ort_model": "1",
-        }),
-        ("3. .ort mmap + direct initializers", {
-            "session.use_memory_mapped_ort_model": "1",
-            "session.use_ort_model_bytes_for_initializers": "1",
-        }),
+        (
+            "2. .ort memory-mapped load",
+            {
+                "session.use_memory_mapped_ort_model": "1",
+            },
+        ),
+        (
+            "3. .ort mmap + direct initializers",
+            {
+                "session.use_memory_mapped_ort_model": "1",
+                "session.use_ort_model_bytes_for_initializers": "1",
+            },
+        ),
     ]
 
     # Also test .onnx baseline if the .onnx file exists
@@ -505,7 +519,10 @@ def main():
     # Run .onnx baseline if available
     for config_name, session_configs in onnx_configs:
         result = run_configuration(
-            perf_test, onnx_path, config_name, session_configs,
+            perf_test,
+            onnx_path,
+            config_name,
+            session_configs,
             num_iterations=args.iterations,
             num_inference_runs=args.inference_runs,
         )
@@ -514,7 +531,10 @@ def main():
     # Run .ort configurations
     for config_name, session_configs in configs:
         result = run_configuration(
-            perf_test, ort_model_path, config_name, session_configs,
+            perf_test,
+            ort_model_path,
+            config_name,
+            session_configs,
             num_iterations=args.iterations,
             num_inference_runs=args.inference_runs,
         )
@@ -528,16 +548,18 @@ def main():
     if args.multi_process:
         for config_name, session_configs in configs:
             mp_result = run_multi_process_benchmark(
-                perf_test, ort_model_path, session_configs,
+                perf_test,
+                ort_model_path,
+                session_configs,
                 num_processes=args.num_processes,
                 config_name=f"MP: {config_name}",
             )
             mp_results.append(mp_result)
 
         if mp_results:
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("MULTI-PROCESS MEMORY SHARING RESULTS")
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
             for r in mp_results:
                 if r:
                     print(f"\n  {r.get('config_name', '?')} ({r.get('num_processes', 0)} processes):")
