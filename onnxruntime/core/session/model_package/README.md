@@ -25,8 +25,8 @@ This document describes the model package directory layout and the JSON files us
 <model>.ortpackage/ 
 ├── manifest.json
 ├── pipeline.json
-├── configs/ 
-|   ├── genai_config.json 
+├── configs/
+|   ├── genai_config.json
 |   └── chat_template.jinja
 └── models/ 
     └── model_name/ 
@@ -132,3 +132,173 @@ Schema:
 - For each component model, `metadata.json` supplies the definitive list of variants and constraints.
 - Variant selection is performed by matching constraints (EP, device, `ep_compatibility_info`, and optionally architecture). **The EP’s returned compatibility value (e.g., `EP_SUPPORTED_OPTIMAL`, `EP_SUPPORTED_PREFER_RECOMPILATION`) is used to score and pick the winning model variant.**
 - All file paths must be relative paths; avoid absolute paths to keep packages portable
+
+# Proposed Model Package APIs
+```C++
+ORT_RUNTIME_CLASS(ModelPackageOptions);
+ORT_RUNTIME_CLASS(ModelPackageContext);
+
+/** \brief APIs for loading, inspecting, and creating sessions from ONNX model packages.
+ *
+ * Obtain via OrtApi::GetModelPackageApi. Mirrors the shape of OrtCompileApi.
+ *
+ * Typical flow:
+ *
+ *   const OrtModelPackageApi* pkg = g_ort->GetModelPackageApi();
+ *
+ *   // 1. Capture EP selection (and other session-level settings) from session_options.
+ *   OrtModelPackageOptions* options = nullptr;
+ *   pkg->CreateModelPackageOptionsFromSessionOptions(env, session_options, &options);
+ *
+ *   // 2. Open the package and resolve variants using the captured EP selection.
+ *   OrtModelPackageContext* ctx = nullptr;
+ *   pkg->CreateModelPackageContext(env, package_root, options, &ctx);
+ *
+ *   // 3. Optionally inspect the package via query APIs.
+ *   size_t component_count = 0;
+ *   pkg->ModelPackageContext_GetComponentModelCount(ctx, &component_count);
+ *
+ *   const char* component_name = nullptr;
+ *   pkg->ModelPackageContext_GetComponentModelName(ctx, 0, &component_name);
+ *
+ *   // 4. Create a session for a specific component model (and file, if the variant
+ *   //    declares multiple files). Pass NULL for session_options to reuse the options
+ *   //    captured in step 1 plus any variant-specific settings from the package metadata.
+ *   OrtSession* session = nullptr;
+ *   pkg->CreateSession(env, ctx, component_name, /*file_identifier*/ nullptr,
+ *                      /*session_options*/ nullptr, &session);
+ *
+ *   // 5. Release in reverse order of creation.
+ *   g_ort->ReleaseSession(session);
+ *   pkg->ReleaseModelPackageContext(ctx);
+ *   pkg->ReleaseModelPackageOptions(options);
+ *
+ * \since Version 1.XX.
+ */
+struct OrtModelPackageApi {
+  ORT_CLASS_RELEASE(ModelPackageOptions);
+
+  /** \brief Create an OrtModelPackageOptions from an OrtSessionOptions.
+   *
+   * Captures (by copy) the session-level settings that will be needed when creating a
+   * session from the package. In particular, EP selection is captured from
+   * `session_options`:
+   *  - if `SessionOptionsAppendExecutionProvider_V2` was used, the appended OrtEpDevices
+   *    and their EP options are captured directly;
+   *  - else if `SessionOptionsSetEpSelectionPolicy` was used, the policy is resolved
+   *    against `env`'s currently registered OrtEpDevices and the resulting OrtEpDevices
+   *    are captured;
+   *  - otherwise, no EP selection is captured (only unconstrained variants are
+   *    eligible and the session falls back to CPU).
+   *
+   * After this call returns, `session_options` may be released by the caller.
+   *
+   * The resolved OrtEpDevices are cached on the options and reused by:
+   *  - `CreateModelPackageContext` for variant selection;
+   *  - `CreateSession` for actual session creation,
+   *
+   * ensuring the two never drift.
+   */
+  ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
+                  _In_ const OrtEnv* env,
+                  _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtModelPackageOptions** out);
+
+  ORT_CLASS_RELEASE(ModelPackageContext);
+
+  /** \brief Open and parse a model package, resolving variants against `options`.
+   *
+   * On success, the returned context caches the parsed manifest/metadata and the
+   * variant chosen (per component model) using the EP selection captured on
+   * `options`. `options` must have been created via
+   * `CreateModelPackageOptionsFromSessionOptions`.
+   *
+   * `options` may be released by the caller after this call; the context captures
+   * what it needs internally.
+   */
+  ORT_API2_STATUS(CreateModelPackageContext,
+                  _In_ const OrtEnv* env,
+                  _In_ const ORTCHAR_T* package_root,
+                  _In_ const OrtModelPackageOptions* options,
+                  _Outptr_ OrtModelPackageContext** out);
+
+  // -- Query APIs (on the context) --------------------------------------------
+  // Names kept in line with the proposed design doc.
+
+  /** \brief Number of component models discovered in the package. */
+  ORT_API2_STATUS(ModelPackageContext_GetComponentModelCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Out_ size_t* out_count);
+
+  /** \brief Name of the component model at `index` (UTF-8). Pointer is owned by `ctx`. */
+  ORT_API2_STATUS(ModelPackageContext_GetComponentModelName,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ size_t index,
+                  _Outptr_ const char** out_name);
+
+  /** \brief Number of variants declared for the component model at `component_index`. */
+  ORT_API2_STATUS(ModelPackageContext_GetModelVariantCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ size_t component_index,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get descriptive info for a given variant (ep/device/architecture/path). */
+  ORT_API2_STATUS(ModelPackageContext_GetModelVariantInfo,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ size_t component_index,
+                  _In_ size_t variant_index,
+                  _Outptr_ const OrtModelVariantInfo** out_info);
+
+  /** \brief Path of the variant selected for component model `component_index`.
+   *
+   * Two-call idiom: pass `path_buf=NULL` first to get `*required_size` in ORTCHARs.
+   * Returns an error if no variant was selectable for the given EP selection.
+   */
+  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantPath,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ size_t component_index,
+                  _Out_writes_opt_(path_buf_size) ORTCHAR_T* path_buf,
+                  _In_ size_t path_buf_size,
+                  _Out_ size_t* required_size);
+};
+
+struct OrtApi {
+  ...
+
+  /** \brief Create an OrtSession from a specific file within a component model variant.
+   *
+   * Session options precedence:
+   *   1. session_options == NULL (default path):
+   *      ORT uses the OrtSessionOptions that was captured when `context` was created.
+   *      Any variant-specific session and provider options declared in the variant
+   *      metadata are merged on top.
+   *
+   *   2. session_options != NULL (advanced path):
+   *      ORT uses the caller-provided OrtSessionOptions as-is. Variant-specific
+   *      session and provider options from the variant metadata are NOT applied.
+   *      Use this when custom EP setup is required (e.g., shared CUDA streams,
+   *      shared QNN EP contexts, custom allocators).
+   *
+   * \param env             Environment. Must be the same OrtEnv used to create `context`.
+   * \param context         Loaded model package providing the resolved EP selection and
+   *                        the chosen variant for `component_name`.
+   * \param component_name  Component model whose selected variant should be loaded.
+   * \param file_identifier Optional. Selects a file within the variant when the variant
+   *                        declares multiple files. May be NULL if the variant has
+   *                        exactly one file.
+   * \param session_options Optional. See "Session options precedence" above.
+   * \param[out] session    The created session.
+   */
+  ORT_API2_STATUS(CreateSession,
+                  _In_ const OrtEnv* env,
+                  _In_ const OrtModelPackageContext* context,
+                  _In_ const char* component_name,
+                  _In_opt_ const char* file_identifier,
+                  _In_opt_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtSession** session);
+
+  ...
+
+}
+
+```
