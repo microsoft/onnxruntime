@@ -866,6 +866,21 @@ endif()
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
     endif()
+    if(RISCV64 AND MLAS_SOURCE_IS_NOT_SET)
+        # RISC-V 64: FP32 SGEMM uses the upstream scalar fallback
+        # (scalar/*.cpp -> MlasSgemmKernelZero/Add), invoked via the #else
+        # branch in sgemm.cpp. Only the RVV INT8 GEMM kernel is added here.
+        file(GLOB_RECURSE mlas_platform_srcs_scalar "${MLAS_SRC_DIR}/scalar/*.cpp")
+        set(mlas_platform_srcs
+            ${mlas_platform_srcs_scalar}
+            ${MLAS_SRC_DIR}/qgemm_kernel_rvv.cpp
+        )
+        set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_rvv.cpp
+            PROPERTIES COMPILE_FLAGS "-march=rv64gcv")
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
+            set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
     if(LOONGARCH64 AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/qgemm_kernel_lsx.cpp

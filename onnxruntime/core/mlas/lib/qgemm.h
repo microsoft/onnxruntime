@@ -916,6 +916,11 @@ MlasGemmQuantGetDispatch(
     if (GetMlasPlatform().GemmU8X8Dispatch == &MlasGemm8X8DispatchZVECTOR) {
         GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }
+#elif defined(MLAS_TARGET_RISCV64)
+    // RISC-V 64: a single RVV INT8 dispatch covers U8S8/S8S8/U8U8/S8U8.
+    // See onnxruntime/core/mlas/lib/qgemm_kernel_rvv.cpp.
+    extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchRvv;
+    GemmQuantDispatch = &MlasGemmU8S8DispatchRvv;
 #endif
 #endif // !defined(FORCE_GENERIC_ALGORITHMS)
 
