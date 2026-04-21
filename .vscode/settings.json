@@ -32,5 +32,6 @@
         "**/cmake/external/**": true,
         "**/node_modules/**": true,
         "**/.git/**": true
-    }
+    },
+    "git.ignoreLimitWarning": true
 }
