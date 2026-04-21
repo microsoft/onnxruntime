@@ -28,7 +28,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                           {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
                                           {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
                                           {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32},
-                                          {"num_k_splits", ProgramUniformVariableDataType::Uint32});
+                                          {"splits_per_batch", ProgramUniformVariableDataType::Uint32});
 
   bool NeedSplitK() const;
 

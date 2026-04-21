@@ -307,19 +307,28 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     //     - `num_tiles` is computed with `kSplitK`, and `kStart` is computed with `logical_global_id.z`
     //     - When the computation in each workgroup is completed, add the result to Y with several
     //       atomic built-in functions in `HandleMatMulWithSplitK()`.
-    // With Split-K and batch > 1, `logical_global_id.z` encodes both the batch index and
-    // the split-k index: dispatch_z = num_k_splits * batch_size.
-    // We decompose them as:
-    //   split_index = logical_global_id.z % num_k_splits
-    //   batch       = logical_global_id.z / num_k_splits
     shader.MainFunctionBody()
         << "const kSplitK = " << split_dim_inner << ";\n"
-        << "  let num_k_splits = uniforms.num_k_splits;\n"
-        << "  let split_index = i32(logical_global_id.z) % i32(num_k_splits);\n"
-        << "  let num_tiles = (kSplitK - 1) / tileInner + 1;\n"
-        << "  var kStart = kSplitK * split_index;\n"
-        << "  let batch = i32(logical_global_id.z) / i32(num_k_splits);\n"
-        << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "");
+        << "  let num_tiles = (kSplitK - 1) / tileInner + 1;\n";
+    if (nullptr != batch_dims) {
+      // With Split-K and batch (in MatMul and Conv2D|MatMul), `logical_global_id.z` encodes both
+      // the batch index and the Split-K index: logical_global_id.z = splits_per_batch * batch_size
+      // We decompose them as:
+      //   split_index = logical_global_id.z % splits_per_batch
+      //   batch       = logical_global_id.z / splits_per_batch
+      shader.MainFunctionBody()
+          << "  let splits_per_batch = uniforms.splits_per_batch;\n"
+          << "  let split_index = i32(logical_global_id.z) % i32(splits_per_batch);\n"
+          << "  var kStart = kSplitK * split_index;\n"
+          << "  let batch = i32(logical_global_id.z) / i32(splits_per_batch);\n"
+          << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "");
+    } else {
+      // With Split-K without batch (in Gemm), `logical_global_id.z` is exactly the Split-K index.
+      shader.MainFunctionBody()
+          << "  var kStart = kSplitK * i32(logical_global_id.z);\n"
+          << "  let batch = 0;\n"
+          << "  let batchIndices = 0u;\n";
+    }
   } else {
     shader.MainFunctionBody()
         << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"

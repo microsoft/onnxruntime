@@ -318,7 +318,7 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   const uint32_t dispatch_x = (total_outputs + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
   const uint32_t dim_b_outer_components = narrow<uint32_t>(dim_b_outer * output_components);
-  program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar, batch_size)
+  program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar)
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, static_cast<int32_t>(output_components)})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer_components}, {beta}, {batch_size}})
       .SetDispatchGroupSize(dispatch_x);
