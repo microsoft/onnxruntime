@@ -1872,6 +1872,13 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
+            for (size_t i = 0; i < shapeData.size(); ++i)
+            {
+                ML_CHECK_VALID_ARGUMENT_MSG(
+                    shapeData[i] > 0,
+                    "All dilation values must be positive, got: %d",
+                    shapeData[i]);
+            }
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_dilations);
             ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
         }
@@ -1886,6 +1893,13 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Strides, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
+            for (size_t i = 0; i < shapeData.size(); ++i)
+            {
+                ML_CHECK_VALID_ARGUMENT_MSG(
+                    shapeData[i] > 0,
+                    "All stride values must be positive, got: %d",
+                    shapeData[i]);
+            }
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_strides);
             ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
         }
