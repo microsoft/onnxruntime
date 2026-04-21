@@ -244,7 +244,7 @@ Status ComputeMatMul(ComputeContext* context,
   const Tensor* bias = has_bias ? inputs[2] : nullptr;
   bool use_bias_in_matmul = has_bias;
   uint32_t split_dim_inner = 1;
-  uint32_t num_k_splits = 1;
+  uint32_t splits_per_batch = 1;
 
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
   if (!context->KernelContext().GetUseDeterministicCompute()) {
@@ -266,10 +266,10 @@ Status ComputeMatMul(ComputeContext* context,
       use_bias_in_matmul = false;
 
       // With Split-K, `dim_inner` will be split into multiple parts. `dispatch_z` encodes
-      // both the split-k index and the batch index: dispatch_z = num_k_splits * batch_size.
+      // both the split-k index and the batch index: dispatch_z = splits_per_batch * batch_size.
       split_dim_inner = split_k_config.GetSplitDimInner();
-      num_k_splits = (dim_inner + split_dim_inner - 1) / split_dim_inner;
-      dispatch_z = narrow<uint32_t>(batch_size) * num_k_splits;
+      splits_per_batch = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+      dispatch_z = narrow<uint32_t>(batch_size) * splits_per_batch;
 
       // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
       // built-in functions.
@@ -282,7 +282,7 @@ Status ComputeMatMul(ComputeContext* context,
       .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {num_k_splits}})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
