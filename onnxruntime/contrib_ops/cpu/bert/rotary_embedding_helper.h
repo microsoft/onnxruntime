@@ -107,6 +107,10 @@ Status CheckInputs(const T* input,
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[1], "cache_width", cache_width));
     ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "head_size", head_size));
   } else {
+    if (!transposed && num_heads <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: num_heads must be greater than 0 for rank-3 input");
+    }
     if (!transposed && hidden_size % num_heads != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "RotaryEmbedding: hidden_size=", hidden_size,

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <limits>
 
+#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
@@ -112,8 +113,7 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
 
-  std::ptrdiff_t position_count = 0;
-  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(batch_size, sequence_length, "position_ids element count", position_count));
+  std::ptrdiff_t position_count = SafeInt<std::ptrdiff_t>(batch_size) * sequence_length;
 
   // Validate position_ids values are within cos/sin cache bounds
   if (position_ids_format == 0) {

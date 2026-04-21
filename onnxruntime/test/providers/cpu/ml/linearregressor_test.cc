@@ -84,7 +84,7 @@ TEST(MLOpTest, LinearRegressorInvalidCoefficientsSize) {
   test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
   test.AddOutput<float>("Y", {1, 2}, {0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients size");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients length");
 }
 
 // For PROBIT, all the output values are NaN.
