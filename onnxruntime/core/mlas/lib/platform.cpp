@@ -317,6 +317,10 @@ Return Value:
 
 #if defined(MLAS_TARGET_RISCV64)
     this->GemmFloatKernel = nullptr;
+    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchDefault;
     this->ErfKernelRoutine = MlasErfKernel;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
@@ -334,6 +338,10 @@ Return Value:
     }
     if (has_rvv) {
         this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+        this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchRvv;
+        this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchRvv;
+        this->GemmS8S8Dispatch = &MlasGemmU8S8DispatchRvv;
+        this->GemmS8U8Dispatch = &MlasGemmU8S8DispatchRvv;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
