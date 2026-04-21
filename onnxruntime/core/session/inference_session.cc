@@ -781,6 +781,12 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 InferenceSession::~InferenceSession() {
+  // Signal that no new Run() calls should be accepted and wait for active ones to finish.
+  is_shutting_down_.store(true, std::memory_order_release);
+  while (current_num_runs_.load(std::memory_order_acquire) > 0) {
+    std::this_thread::yield();
+  }
+
   // Flush any remaining RuntimePerf counters
   ORT_TRY {
     std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
@@ -3113,6 +3119,11 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse the cuda graph annotation id: ",
                              graph_annotation_str);
     }
+  }
+
+  // Reject new runs if the session is being destroyed.
+  if (is_shutting_down_.load(std::memory_order_acquire)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Session is being destroyed. New Run() calls are rejected.");
   }
 
   // Increment/decrement concurrent_num_runs_ and control

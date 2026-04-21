@@ -970,6 +970,9 @@ class InferenceSession {
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;
 
+  // Set to true in destructor to reject new Run() calls and drain active ones.
+  std::atomic<bool> is_shutting_down_{false};
+
   mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                   // GUARDED_BY(session_mutex_)
