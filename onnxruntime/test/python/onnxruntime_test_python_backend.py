@@ -130,9 +130,7 @@ class TestBackendKwargsAllowlist(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_blocked_run_option_terminate_raises(self):
-        """terminate is a known RunOptions attr but is not in _ALLOWED_RUN_OPTIONS.
-        Since run_model() now splits kwargs, terminate arrives only in the RunOptions path
-        and must raise RuntimeError."""
+        """terminate is a known RunOptions attr excluded from the allowlist; it must raise RuntimeError."""
         name = get_name("mul_1.onnx")
         rep = backend.prepare(name)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -157,23 +155,20 @@ class TestBackendKwargsAllowlist(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model_with_blocked_run_option_raises(self):
-        """run_model() must raise RuntimeError when a blocked RunOptions attr is passed.
-        With kwargs split, terminate arrives only in the RunOptions path and raises."""
+        """run_model() must raise RuntimeError when given a blocked RunOptions attribute."""
         name = get_name("mul_1.onnx")
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         with self.assertRaises(RuntimeError):
             backend.run(name, [x], terminate=True)
 
     def test_run_model_with_blocked_session_option_raises(self):
-        """run_model() must raise RuntimeError when a blocked SessionOptions attr is passed.
-        Previously, run_model() pre-filtered kwargs and silently dropped dangerous attrs like
-        optimized_model_filepath without raising. Now kwargs are passed directly to prepare()
-        which validates them."""
+        """run_model() must raise RuntimeError when given a blocked SessionOptions attribute."""
         name = get_name("mul_1.onnx")
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        with self.assertRaises(RuntimeError) as ctx:
-            backend.run(name, [x], optimized_model_filepath="/tmp/evil.bin")
-        self.assertIn("not permitted", str(ctx.exception))
+        with tempfile.NamedTemporaryFile(suffix=".bin") as tmp:
+            with self.assertRaises(RuntimeError) as ctx:
+                backend.run(name, [x], optimized_model_filepath=tmp.name)
+            self.assertIn("not permitted", str(ctx.exception))
 
 
 if __name__ == "__main__":
