@@ -659,8 +659,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="hardwareDevice">The hardware device to check for incompatibility.</param>
         /// <returns>Details about incompatibility including reasons and notes.</returns>
         /// <remarks>
-        /// This method should only be called when the OrtEnv has been initialized with execution
-        /// providers (after RegisterExecutionProviderLibrary is called).
+        /// This method can be used with built-in execution providers without calling
+        /// RegisterExecutionProviderLibrary.
+        /// For execution providers supplied by external libraries, the provider library must be
+        /// registered before calling this method.
         /// If the returned details have non-zero reasons, the device is not compatible.
         /// However, zero reasons don't guarantee 100% compatibility for all models.
         /// </remarks>

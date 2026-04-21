@@ -1779,6 +1779,10 @@ Returns:
         Ort::ThrowOnError(Ort::GetApi().GetHardwareDeviceEpIncompatibilityDetails(
             ort_env, ep_name.c_str(), hw, &details));
 
+        // Use unique_ptr with custom deleter to ensure details is always released
+        auto details_releaser = std::unique_ptr<OrtDeviceEpIncompatibilityDetails, decltype(&Ort::GetApi().ReleaseDeviceEpIncompatibilityDetails)>(
+            details, Ort::GetApi().ReleaseDeviceEpIncompatibilityDetails);
+
         // Extract details into a Python dictionary
         uint32_t reasons_bitmask = 0;
         Ort::ThrowOnError(Ort::GetApi().DeviceEpIncompatibilityDetails_GetReasonsBitmask(details, &reasons_bitmask));
@@ -1789,9 +1793,6 @@ Returns:
 
         int32_t error_code = 0;
         Ort::ThrowOnError(Ort::GetApi().DeviceEpIncompatibilityDetails_GetErrorCode(details, &error_code));
-
-        // Release the details object before building Python objects
-        Ort::GetApi().ReleaseDeviceEpIncompatibilityDetails(details);
 
         py::dict result;
         result["reasons_bitmask"] = reasons_bitmask;
@@ -2008,7 +2009,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("EP_SUPPORTED_PREFER_RECOMPILATION", OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION)
       .value("EP_UNSUPPORTED", OrtCompiledModelCompatibility_EP_UNSUPPORTED);
 
-  py::enum_<OrtDeviceEpIncompatibilityReason>(m, "OrtDeviceEpIncompatibilityReason")
+  py::enum_<OrtDeviceEpIncompatibilityReason>(m, "OrtDeviceEpIncompatibilityReason", py::arithmetic())
       .value("NONE", OrtDeviceEpIncompatibility_NONE)
       .value("DRIVER_INCOMPATIBLE", OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE)
       .value("DEVICE_INCOMPATIBLE", OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE)
