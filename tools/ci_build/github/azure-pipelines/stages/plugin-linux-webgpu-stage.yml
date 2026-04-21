@@ -182,6 +182,7 @@ stages:
         docker run --rm --gpus all \
           --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
           --volume "$(Build.BinariesDirectory):/build" \
+          --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
           onnxruntimewebgpuplugin \
           /bin/bash -c "
             set -e -x
