@@ -1780,8 +1780,9 @@ Returns:
             ort_env, ep_name.c_str(), hw, &details));
 
         // Use unique_ptr with custom deleter to ensure details is always released
-        auto details_releaser = std::unique_ptr<OrtDeviceEpIncompatibilityDetails, decltype(&Ort::GetApi().ReleaseDeviceEpIncompatibilityDetails)>(
-            details, Ort::GetApi().ReleaseDeviceEpIncompatibilityDetails);
+        auto release_fn = Ort::GetApi().ReleaseDeviceEpIncompatibilityDetails;
+        auto details_releaser = std::unique_ptr<OrtDeviceEpIncompatibilityDetails, decltype(release_fn)>(
+            details, release_fn);
 
         // Extract details into a Python dictionary
         uint32_t reasons_bitmask = 0;
