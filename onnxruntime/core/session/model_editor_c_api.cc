@@ -228,12 +228,18 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
                                  "Each OrtValue can only be added once.");
   }
 
+  // Track the pointer before transferring ownership to the map.
+  // This ensures exception safety: if the map insertion throws, the tracking set
+  // is already updated but no ownership was transferred, so the caller still owns the pointer.
+  graph->owned_initializer_ptrs_.insert(tensor);
+
   if (data_is_external) {
     // enforce that an external initializer is not used if the data size is < 128 bytes.
     // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
     // input involved in that. the ONNX shape inferencing does not support external data for those values.
     // e.g. Reshape's `shape` input, Reduce's `axes', Slice's `starts`, `ends`, `steps`, Clip's `min`, `max`, etc.
     if (t.SizeInBytes() < 128) {
+      graph->owned_initializer_ptrs_.erase(tensor);
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "External initializer should only be used for data >= 128 bytes. "
                                    "Please use CreateTensorAsOrtValue instead.");
@@ -243,8 +249,6 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
   } else {
     graph->initializers[name] = std::unique_ptr<OrtValue>(tensor);  // take ownership
   }
-
-  graph->owned_initializer_ptrs_.insert(tensor);
 
   return nullptr;
   API_IMPL_END
