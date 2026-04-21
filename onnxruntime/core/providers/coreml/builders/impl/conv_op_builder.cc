@@ -77,10 +77,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto groups = helper.GetInt64("group");
 
     for (auto s : strides) {
-      ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive.");
+      ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive, got: ", s);
     }
     for (auto d : dilations) {
-      ORT_RETURN_IF_NOT(d > 0, "All dilation values must be positive.");
+      ORT_RETURN_IF_NOT(d > 0, "All dilation values must be positive, got: ", d);
     }
 
     AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", strides));
@@ -104,10 +104,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     const auto group = helper.Get("group", static_cast<int64_t>(1));
 
     for (auto s : strides) {
-      ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive.");
+      ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive, got: ", s);
     }
     for (auto d : dilations) {
-      ORT_RETURN_IF_NOT(d > 0, "All dilation values must be positive.");
+      ORT_RETURN_IF_NOT(d > 0, "All dilation values must be positive, got: ", d);
     }
 
     std::vector<int64_t> input_shape;
