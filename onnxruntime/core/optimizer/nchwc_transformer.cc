@@ -324,13 +324,17 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
 void NchwcTransformerImpl::TransformConv(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
+  NchwcArgument* nchwc_sum_input = nullptr;
 
   // The internal NCHWc Conv kernel can consume an optional fused Sum input, but it expects
-  // that tensor to already be in NCHWc layout. This transform only legalizes the main Conv
-  // input and static weights/bias, so a pre-existing FusedConv(X, W, B, Sum) would feed a
-  // plain NCHW tensor into the NCHWc kernel and produce incorrect results.
+  // that tensor to already be in NCHWc layout. Only allow transforming a pre-existing
+  // FusedConv(X, W, B, Sum) when the Sum input already has a tracked NCHWc variant that
+  // can be wired through directly.
   if (node.OpType() == "FusedConv" && input_defs.size() >= 4 && input_defs[3] != nullptr && input_defs[3]->Exists()) {
-    return;
+    nchwc_sum_input = LookupNchwcArgument(input_defs[3]);
+    if (nchwc_sum_input == nullptr) {
+      return;
+    }
   }
 
   // Require that the weights tensor be static.
@@ -496,6 +500,11 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   if (nchwc_conv_B_arg != nullptr) {
     nchwc_node.MutableInputDefs()[2] = nchwc_conv_B_arg;
+  }
+
+  if (nchwc_sum_input != nullptr) {
+    nchwc_node.MutableInputDefs()[3] = nchwc_sum_input->nchwc_arg_;
+    nchwc_sum_input->remaining_original_uses_--;
   }
 
   NchwcArgument::Shape output_shape(output_defs[0]);
