@@ -29,7 +29,7 @@ parameters:
 - name: build_linux_aarch64
   displayName: 'Build Linux aarch64 (CUDA 13.0 only)'
   type: boolean
-  default: true
+  default: false
 
 - name: cuda_version
   displayName: 'CUDA Version'

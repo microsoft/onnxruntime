@@ -110,41 +110,42 @@ stages:
             artifact_name: cuda_plugin_linux_aarch64_${{ replace(config.python_version, '.', '_') }}
 
     # Merge per-version Linux artifacts into a single combined artifact
-    - stage: Linux_plugin_cuda_Merge_Artifacts
-      dependsOn:
-      - ${{ if eq(parameters.build_linux_x64, true) }}:
-        - ${{ each config in parameters.LinuxX64PythonConfigurations }}:
-          - Linux_plugin_cuda_x64_${{ replace(config.python_version, '.', '_') }}
-      - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-        - ${{ each config in parameters.LinuxAArch64PythonConfigurations }}:
-          - Linux_plugin_cuda_aarch64_${{ replace(config.python_version, '.', '_') }}
-      jobs:
-      - job: Linux_plugin_cuda_Merge_Artifacts
-        workspace:
-          clean: all
-        pool:
-          name: 'onnxruntime-Ubuntu2204-AMD-CPU'
-          os: linux
-        templateContext:
-          outputs:
-          - output: pipelineArtifact
-            targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
-            artifactName: cuda_plugin_linux
-        steps:
-        - checkout: none
-
+    - ${{ if or(eq(parameters.build_linux_x64, true), eq(parameters.build_linux_aarch64, true)) }}:
+      - stage: Linux_plugin_cuda_Merge_Artifacts
+        dependsOn:
         - ${{ if eq(parameters.build_linux_x64, true) }}:
           - ${{ each config in parameters.LinuxX64PythonConfigurations }}:
-            - task: DownloadPipelineArtifact@2
-              displayName: 'Download - x64 Python ${{ config.python_version }}'
-              inputs:
-                artifact: cuda_plugin_linux_x64_${{ replace(config.python_version, '.', '_') }}
-                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
-
+            - Linux_plugin_cuda_x64_${{ replace(config.python_version, '.', '_') }}
         - ${{ if eq(parameters.build_linux_aarch64, true) }}:
           - ${{ each config in parameters.LinuxAArch64PythonConfigurations }}:
-            - task: DownloadPipelineArtifact@2
-              displayName: 'Download - aarch64 Python ${{ config.python_version }}'
-              inputs:
-                artifact: cuda_plugin_linux_aarch64_${{ replace(config.python_version, '.', '_') }}
-                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
+            - Linux_plugin_cuda_aarch64_${{ replace(config.python_version, '.', '_') }}
+        jobs:
+        - job: Linux_plugin_cuda_Merge_Artifacts
+          workspace:
+            clean: all
+          pool:
+            name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+            os: linux
+          templateContext:
+            outputs:
+            - output: pipelineArtifact
+              targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
+              artifactName: cuda_plugin_linux
+          steps:
+          - checkout: none
+
+          - ${{ if eq(parameters.build_linux_x64, true) }}:
+            - ${{ each config in parameters.LinuxX64PythonConfigurations }}:
+              - task: DownloadPipelineArtifact@2
+                displayName: 'Download - x64 Python ${{ config.python_version }}'
+                inputs:
+                  artifact: cuda_plugin_linux_x64_${{ replace(config.python_version, '.', '_') }}
+                  targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
+
+          - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+            - ${{ each config in parameters.LinuxAArch64PythonConfigurations }}:
+              - task: DownloadPipelineArtifact@2
+                displayName: 'Download - aarch64 Python ${{ config.python_version }}'
+                inputs:
+                  artifact: cuda_plugin_linux_aarch64_${{ replace(config.python_version, '.', '_') }}
+                  targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
