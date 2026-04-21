@@ -46,12 +46,10 @@ jobs:
     clean: true
     submodules: none
 
-  - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
-    # Only need to install Python on x64 agents as Python is pre-installed on arm64 agents
-    - task: UsePythonVersion@0
-      displayName: Use Python 3.12
-      inputs:
-        versionSpec: 3.12
+  # Authenticate to Lotus to pull pip in UsePythonVersion task
+  - template: ../templates/setup-feeds-and-python-steps.yml
+    parameters:
+      architecture: ${{ parameters.OnnxruntimeArch }}
 
   - template: set-version-number-variables-step.yml
   - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
@@ -76,6 +74,10 @@ jobs:
         set -e -x
         mkdir -p $HOME/.onnx
         docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+        -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+        --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+        --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
+        --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
         --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3 \
         /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
         --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"

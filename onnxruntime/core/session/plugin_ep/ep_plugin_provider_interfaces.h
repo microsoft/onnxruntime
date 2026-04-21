@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,6 +15,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/providers.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
@@ -115,6 +117,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
 
+  Status Sync() const override;
+
   Status SetEpDynamicOptions(gsl::span<const char* const> keys,
                              gsl::span<const char* const> values) override;
 
@@ -136,7 +140,18 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   const OrtEp* GetOrtEp() const override;
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
+  ProviderOptions GetProviderOptions() const override;
+
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  common::Status ReplayGraph(int graph_annotation_id) override;
+  OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override;
+
  private:
+  const logging::Logger& GetEpLoggerOrDefault() const;
+
   struct FusedNodeState {
     FusedNodeState() = default;
     FusedNodeState(FusedNodeState&& other) = default;
@@ -152,6 +167,14 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
   bool generate_ep_ctx_model_ = false;
+
+  // Provider options extracted from session-level config (ep.<ep_name>.* keys, excluding arena.*).
+  // Exposed through GetProviderOptions() so the framework reports the effective EP configuration.
+  ProviderOptions provider_options_;
+
+  // Arena options extracted from session-level config (ep.<ep_name>.arena.* keys).
+  // Built once at construction; passed directly to ep_factory_.CreateAllocator.
+  std::optional<OrtKeyValuePairs> session_arena_options_;
 
   std::vector<OrtNodeComputeInfo*> api_node_compute_infos_;
 

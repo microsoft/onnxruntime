@@ -8,45 +8,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Convert a boolean attention mask to sequence lengths with a configurable offset.
-//
-// The mask is expected to have the following properties:
-// 1. It represents right-padding only (valid tokens first, padding at the end)
-// 2. All-false masks (zero-length sequence) are valid; otherwise mask should start with True
-// 3. True values should be contiguous, followed by contiguous False (padding) values
-// 4. The mask must be broadcastable to (batch_size, num_heads, q_seq_len, total_seq_len)
-//
-// For 2D mask (q_seq_len, total_seq_len): broadcasts over batch; uses first query position (row 0)
-// For 3D mask (num_heads, q_seq_len, total_seq_len): broadcasts across batches, uses first head/q
-// For 4D mask (B, H, q_seq_len, total_seq_len): uses first head, first q position
-//
-// seqlen_offset adjusts the raw token count:
-//   seqlens_k[b] = num_true_tokens + seqlen_offset
-//
-// Common offsets:
-//   0: total valid token count (for decode Step 4 where mha_fwd_kvcache reads from
-//      pre-populated cache with k_new=nullptr, and for MEA custom right padding)
-//  -N: subtract N from count (for decode with mha_fwd_kvcache where N=kv_sequence_length,
-//      giving the number of tokens already in cache BEFORE appending new ones)
-//
-// Note: Mask validity (right-padding convention, contiguous True/False)
-//   is checked via CUDA_KERNEL_ASSERT inside the kernel (debug builds only).
-//   In release builds, non-contiguous masks produce memory-safe but semantically incorrect output:
-//   seqlens_k is computed as the count of leading True values (up to the first False),
-//   ignoring any True values that appear after the first False.
-Status LaunchConvertMaskToFlashSeqlensK(
-    const bool* attn_mask_bool,
-    int* seqlens_k,
-    int batch_size,
-    int total_seq_len,
-    int mask_dims,
-    int64_t mask_dim0,
-    int64_t mask_dim1,
-    int64_t mask_dim2,
-    cudaStream_t stream,
-    int max_threads_per_block,
-    int seqlen_offset = 0);
-
 // Convert a boolean attention mask to an additive attention bias for the MHA path.
 // Maps true -> 0.0 (attend) and false -> mask_filter_value (mask out).
 // The output has the same shape as the input mask.
@@ -95,6 +56,20 @@ Status LaunchAddBiasInPlace(
     const T* addend,
     int64_t total_elements,
     int64_t addend_elements,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+// Zero output elements for batches where seqlens_k == 0 (fully masked).
+// Used in the MEA path only: CUTLASS epilogue computes 1/s_prime where s_prime=0,
+// producing NaN for fully-masked batches. This kernel overwrites those NaN outputs
+// with zeros. The unfused path produces valid finite output (mean-of-V via uniform
+// softmax) and does not need this. Flash handles it natively with an early-exit.
+template <typename T>
+Status LaunchZeroOutputForFullyMaskedBatches(
+    T* output,
+    const int* seqlens_k,
+    int batch_size,
+    int64_t elements_per_batch,
     cudaStream_t stream,
     int max_threads_per_block);
 

@@ -262,7 +262,7 @@ Status CheckInputs(const T* query,
   }
 
   const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
-  if (seqlens_k_dim.size() != 1 && seqlens_k_dim[0] != batch_size) {
+  if (seqlens_k_dim.size() != 1 || seqlens_k_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens_k must be shape (batch_size).");
   }
@@ -275,6 +275,10 @@ Status CheckInputs(const T* query,
   // When graph capture is enabled, total_seqlen is on GPU and cannot be read. Skip validation.
   const bool is_total_seqlen_on_cpu = (total_seqlen->Location().device.Type() == OrtDevice::CPU);
   int total_sequence_length = is_total_seqlen_on_cpu ? *((*total_seqlen).template Data<int32_t>()) : 0;
+  if (is_total_seqlen_on_cpu && total_sequence_length <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length must be positive, got ", total_sequence_length, ".");
+  }
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
 
   int rotary_dim = 0;
