@@ -303,10 +303,24 @@ static Status CreateAndRegisterExecutionProviders(_In_ const OrtSessionOptions* 
 
   if (has_provider_factories) {
     std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
+
+    // Create OrtSessionOptions wrapper for the CreateProvider call.
+    // Once the InferenceSession is created, its SessionOptions is the source of truth
+    // and contains all the values from the user provided OrtSessionOptions.
+    // We wrap the session's copy so any modifications made by the EP (e.g., DisableMemPattern)
+    // will affect the actual session options that will be used.
+    auto& session_options = sess.GetMutableSessionOptions();
+    OrtSessionOptions ort_so;
+    ort_so.value = session_options;
+
     for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider(*options, *session_logger->ToExternal());
+      auto provider = factory->CreateProvider(ort_so, *session_logger->ToExternal());
       provider_list.push_back(std::move(provider));
     }
+
+    // Copy any modifications made by the EP back to the session's options
+    session_options = ort_so.value;
+
     // register the providers
     for (auto& provider : provider_list) {
       if (provider) {
