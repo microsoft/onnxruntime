@@ -104,11 +104,11 @@ Microsoft.ML.OnnxRuntime.Tests.Common project -->
     <PackageReference Include="DeviceRunners.XHarness.Xunit" Version="0.1.0-preview.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="Microsoft.DotNet.XHarness.TestRunners.Xunit" Version="9.0.0-prerelease.24374.1" />
-    <PackageReference Include="Microsoft.Maui.Controls" Version="9.0.120" />
-    <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="9.0.120" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.utility" Version="2.9.3" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.70" />
+    <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="8.0.70" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.utility" Version="2.9.0" />
   </ItemGroup>
 
   <ItemGroup Condition="$(IsIOSTarget)=='true' OR $(IsMacCatalystTarget)=='true'">
