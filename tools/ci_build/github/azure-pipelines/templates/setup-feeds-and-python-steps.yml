@@ -200,6 +200,8 @@ steps:
         <packageSources>
           <clear />
           <add key="1ES Feed" value="https://pkgs.dev.azure.com/aiinfra/_packaging/${env:central_maven_feed_name}/nuget/v3/index.json" />
+          <!-- dotnet-eng hosts prerelease packages (e.g. Microsoft.DotNet.XHarness.*) needed by the MAUI test project -->
+          <add key="dotnet-eng" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-eng/nuget/v3/index.json" />
         </packageSources>
         <disabledPackageSources>
           <clear />
