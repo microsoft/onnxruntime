@@ -611,13 +611,13 @@ ORT_API_STATUS_IMPL(
   input.set_name(input_name);
 
   if (info->type == ONNXType::ONNX_TYPE_TENSOR) {
-    auto num_dims = info->tensor_type_info->shape.NumDimensions();
+    auto num_dims = info->tensor_type_info->HasShape() ? info->tensor_type_info->GetShape()->GetDims().size() : 0;
     CreateTypeProto_Tensor(
       input.mutable_type()->mutable_tensor_type(),
       input_name,
-      (num_dims == 0) ? nullptr : &info->tensor_type_info->shape[0],
+      (num_dims == 0) ? nullptr : info->tensor_type_info->GetShape()->GetDims().data(),
       num_dims,
-      ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->type)
+      ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->GetElementType())
     );
   }
   return nullptr;
@@ -638,14 +638,14 @@ ORT_API_STATUS_IMPL(
   ONNX_NAMESPACE::TensorProto& input = *graph.add_initializer();
   input.set_name(input_name);
 
-  auto num_dims = info->tensor_type_info->shape.NumDimensions();
+  auto num_dims = info->tensor_type_info->HasShape() ? info->tensor_type_info->GetShape()->GetDims().size() : 0;
   for (size_t i = 0; i < num_dims; i++) {
-    input.add_dims(info->tensor_type_info->shape[i]);
+    input.add_dims(info->tensor_type_info->GetShape()->GetDims()[i]);
   }
 
-  input.set_data_type(ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->type));
+  input.set_data_type(ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->GetElementType()));
   auto tensor = value->GetMutable<onnxruntime::Tensor>();
-  input.set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
+  onnxruntime::utils::SetRawDataInTensorProto(input, tensor->DataRaw(), tensor->SizeInBytes());
 
   return nullptr;
   API_IMPL_END
@@ -661,13 +661,14 @@ ORT_API_STATUS_IMPL(
   ONNX_NAMESPACE::ValueInfoProto& output = *graph.add_output();
   output.set_name(output_name);
 
+  auto num_dims = info->tensor_type_info->HasShape() ? info->tensor_type_info->GetShape()->GetDims().size() : 0;
   if (info->type == ONNXType::ONNX_TYPE_TENSOR) {
     CreateTypeProto_Tensor(
       output.mutable_type()->mutable_tensor_type(),
       output_name,
-      &info->tensor_type_info->shape[0],
-      info->tensor_type_info->shape.NumDimensions(),
-      ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->type)
+      (num_dims == 0) ? nullptr : info->tensor_type_info->GetShape()->GetDims().data(),
+      num_dims,
+      ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->GetElementType())
     );
   }
   return nullptr;
@@ -765,7 +766,7 @@ ORT_API_STATUS_IMPL(
           return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Undefined tensor type!");
         }
         tensor_proto->set_data_type(prim_type->GetDataType());
-        tensor_proto->set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
+        onnxruntime::utils::SetRawDataInTensorProto(*tensor_proto, tensor->DataRaw(), tensor->SizeInBytes());
         break;
       }
     }
@@ -830,7 +831,7 @@ ORT_API_STATUS_IMPL(
 ) {
   API_IMPL_BEGIN
   auto tensor_shape = onnxruntime::TensorShape(dim_values, dim_count);
-  auto type_and_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(type, std::move(tensor_shape), nullptr);
+  auto type_and_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(type, &tensor_shape, nullptr);
   *ort_type_info = OrtTypeInfo::MakePtr(ONNX_TYPE_TENSOR, std::move(type_and_shape)).release();
   return nullptr;
   API_IMPL_END

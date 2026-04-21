@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <utility>
+#include <cstring>
 #include <limits>
 
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
@@ -194,10 +195,6 @@ class Clip final : public UnaryElementwise {
                          "Clip",
                          std::is_same_v<T, MLFloat16> ? ClipF16Impl : ClipImpl,
                          "", ShaderUsage::UseElementTypeAlias} {}
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
 
   Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
     const auto* clip_min_tensor = context.Input<Tensor>(1);
@@ -209,7 +206,9 @@ class Clip final : public UnaryElementwise {
                                       : std::numeric_limits<T>::max()};
     if constexpr (std::is_same_v<T, MLFloat16>) {
       // F16: stores span<f16, 2> as a single float
-      float encoded_value = *reinterpret_cast<const float*>(attr);
+      float encoded_value;
+      static_assert(sizeof(encoded_value) == 2 * sizeof(MLFloat16));
+      std::memcpy(&encoded_value, attr, sizeof(encoded_value));
       program.AddUniformVariable({encoded_value});
     } else {
       static_assert(sizeof(T) == sizeof(float), "T must be f32, i32 or u32");
@@ -218,9 +217,6 @@ class Clip final : public UnaryElementwise {
     }
     return Status::OK();
   }
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
   // uniforms.attr is a f32 value. It is encoded as a float for 2 f16 values.
   // bitcast<vec2<f16>>(uniforms.attr)[0] is clip_min, bitcast<vec2<f16>>(uniforms.attr)[1] is clip_max
@@ -290,6 +286,32 @@ WEBGPU_ELEMENTWISE_KERNEL(LeakyRelu, 16, WebGpuSupportedFloatTypes())
 
 WEBGPU_LU_IMPL(ThresholdedRelu, "select(vec4<x_element_t>(0), a, a > vec4<x_element_t>(uniforms.attr))", "", 1.0f)
 WEBGPU_ELEMENTWISE_KERNEL(ThresholdedRelu, 10, WebGpuSupportedFloatTypes())
+
+// For large a, softplus(a) = log(1 + exp(a)) ≈ a. Use a threshold to return a directly,
+// avoiding unnecessary exp/log computation and potential overflow.
+// PyTorch uses threshold=20 for float32. For float16, exp overflows at ~11.09 so use 11.
+class Softplus final : public UnaryElementwise {
+ public:
+  Softplus(const OpKernelInfo& info)
+      : UnaryElementwise{info, "Softplus",
+                         "select("
+                         "select(log(1.0 + exp(a)), a + log(1.0 + exp(-a)), a > x_value_t(0)),"
+                         "a,"
+                         "a > x_value_t(x_element_t(uniforms.attr))"
+                         ")",
+                         "",
+                         ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias} {}
+
+  Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
+    const auto* input_tensor = context.Input<Tensor>(0);
+    float threshold = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? 11.0f : 20.0f;
+    program.AddUniformVariables({threshold});
+    return Status::OK();
+  }
+};
+
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Softplus, 1, 21, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Softplus, 22, WebGpuSupportedFloatTypes())
 
 }  // namespace webgpu
 }  // namespace onnxruntime

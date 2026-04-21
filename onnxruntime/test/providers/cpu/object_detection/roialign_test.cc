@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/common/trt_op_test_utils.h"
@@ -812,5 +813,232 @@ TEST(RoiAlignTest, MismatchNumRois) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Dimension mismatch in unification between 4 and 5");
 }
+
+TEST(RoiAlignTest, BatchIndicesOutOfRange) {
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 4, 4},
+                       {0.f, 1.f, 2.f, 3.f,
+                        4.f, 5.f, 6.f, 7.f,
+                        8.f, 9.f, 10.f, 11.f,
+                        12.f, 13.f, 14.f, 15.f});
+  test.AddInput<float>("rois", {1, 4}, {0.f, 0.f, 3.f, 3.f});
+  test.AddInput<int64_t>("batch_indices", {1}, {1});  // <-- failure condition
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value 1 at index 0 is out of range [0, 1)", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, BatchIndicesNegative) {
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 4, 4},
+                       {0.f, 1.f, 2.f, 3.f,
+                        4.f, 5.f, 6.f, 7.f,
+                        8.f, 9.f, 10.f, 11.f,
+                        12.f, 13.f, 14.f, 15.f});
+  test.AddInput<float>("rois", {1, 4}, {0.f, 0.f, 3.f, 3.f});
+  test.AddInput<int64_t>("batch_indices", {1}, {-1});  // <-- failure condition
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value -1 at index 0 is out of range [0, 1)", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, BatchIndicesOutOfRange_CUDA) {
+#if !defined(NDEBUG)
+  GTEST_SKIP() << "Skipping in Debug builds because CUDA device-side asserts poison the CUDA context.";
+#else
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 10);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  test.AddInput<float>("rois", {1, 4}, {0, 0, 3, 3});
+  test.AddInput<int64_t>("batch_indices", {1}, {1});  // batch_size is 1, so 1 is out of range
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#endif
+}
+
+TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
+#if !defined(NDEBUG)
+  GTEST_SKIP() << "Skipping in Debug builds because CUDA device-side asserts poison the CUDA context.";
+#else
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 10);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  test.AddInput<float>("rois", {1, 4}, {0, 0, 3, 3});
+  test.AddInput<int64_t>("batch_indices", {1}, {-1});
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#endif
+}
+
+TEST(RoiAlignTest, Float16_Opset16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 1);
+  test.AddAttribute<int64_t>("output_width", 1);
+  test.AddAttribute<int64_t>("sampling_ratio", 1);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "output_half_pixel");
+
+  test.AddInput<MLFloat16>("X", {1, 1, 2, 2}, ToFloat16({1., 2., 1., 1.}));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 1., 1.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1}, ToFloat16({1.25f}));
+
+  test.SetOutputTolerance(0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, Float16_Opset22) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 22);
+  test.AddAttribute<int64_t>("output_height", 1);
+  test.AddAttribute<int64_t>("output_width", 1);
+  test.AddAttribute<int64_t>("sampling_ratio", 1);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "output_half_pixel");
+
+  test.AddInput<MLFloat16>("X", {1, 1, 2, 2}, ToFloat16({1., 2., 1., 1.}));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 1., 1.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1}, ToFloat16({1.25f}));
+
+  test.SetOutputTolerance(0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, BFloat16_Opset22) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 22);
+  test.AddAttribute<int64_t>("output_height", 1);
+  test.AddAttribute<int64_t>("output_width", 1);
+  test.AddAttribute<int64_t>("sampling_ratio", 1);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "output_half_pixel");
+
+  test.AddInput<BFloat16>("X", {1, 1, 2, 2}, ToBFloat16({1., 2., 1., 1.}));
+  test.AddInput<BFloat16>("rois", {1, 4}, ToBFloat16({0., 0., 1., 1.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<BFloat16>("Y", {1, 1, 1, 1}, ToBFloat16({1.25f}));
+
+  test.SetOutputTolerance(0.05f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test half_pixel mode (default for Opset 16+) with Float16 on larger spatial dimensions.
+// Uses 8x8 input (0..63), ROI [0,0,7,7], output 2x2, sampling_ratio=2.
+// Expected values from ONNX reference implementation: {11.25, 14.75, 39.25, 42.75}
+TEST(RoiAlignTest, Float16_HalfPixel_Opset16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "half_pixel");
+
+  std::vector<float> X_val(64);
+  for (int i = 0; i < 64; ++i) X_val[i] = static_cast<float>(i);
+  test.AddInput<MLFloat16>("X", {1, 1, 8, 8}, ToFloat16(X_val));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 7., 7.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 2, 2}, ToFloat16({11.25f, 14.75f, 39.25f, 42.75f}));
+
+  test.SetOutputTolerance(0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test adaptive sampling (sampling_ratio=0) with Float16 on larger spatial dimensions.
+// Uses 8x8 input (0..63), ROI [0,0,7,7], output 2x2, half_pixel mode.
+// Adaptive: ceil(3.0/2)=2 samples per dim.
+// Expected values from ONNX reference implementation: {11.39062, 14.875, 39.26562, 42.75}
+TEST(RoiAlignTest, Float16_AdaptiveSampling_Opset16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 0);  // adaptive
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "half_pixel");
+
+  std::vector<float> X_val(64);
+  for (int i = 0; i < 64; ++i) X_val[i] = static_cast<float>(i);
+  test.AddInput<MLFloat16>("X", {1, 1, 8, 8}, ToFloat16(X_val));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 7., 7.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 2, 2},
+                            ToFloat16({11.39062f, 14.875f, 39.26562f, 42.75f}));
+
+  test.SetOutputTolerance(0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

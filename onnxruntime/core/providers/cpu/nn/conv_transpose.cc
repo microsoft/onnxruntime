@@ -102,6 +102,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
 template <typename T>
 Status ConvTranspose<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                    int /*input_idx*/,
                                                    /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -110,6 +111,7 @@ Status ConvTranspose<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>&
 
 template <>
 Status ConvTranspose<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                        int input_idx,
                                                        /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -276,7 +278,8 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
           Xdata + group_id * X_offset,
           0,
           col_buffer_data,
-          thread_pool);
+          thread_pool,
+          &mlas_backend_kernel_selector_config_);
 
       if (p.X->Shape().NumDimensions() == 4) {
         math::Col2im<float, CPUMathUtil, StorageOrder::NCHW>(

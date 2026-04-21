@@ -9,6 +9,7 @@
 #param has_zero_points
 #param has_bias
 #param has_weight_idx
+#param has_weight_idx_indirect
 
 #use .getByOffset .setByOffset
 
@@ -73,22 +74,43 @@ $MAIN {
 
 #if has_bias
 #if has_weight_idx
-    let b_bias_offset = uniforms.weight_idx * uniforms.N;
+#if has_weight_idx_indirect
+    let actual_weight_idx_bias = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx_bias = uniforms.weight_idx;
+#endif
+    let b_bias_offset = actual_weight_idx_bias * uniforms.N;
 #else
     const b_bias_offset : u32 = 0;
 #endif
 #endif
 
 #if n_bits == 2
+#if has_zero_points
+    // The workgroup size is 128, LoadDequantizationTable needs to load 1024 entries.
+    LoadDequantizationTable(local_idx);
+    LoadDequantizationTable(local_idx + 128);
+    LoadDequantizationTable(local_idx + 256);
+    LoadDequantizationTable(local_idx + 384);
+    LoadDequantizationTable(local_idx + 512);
+    LoadDequantizationTable(local_idx + 640);
+    LoadDequantizationTable(local_idx + 768);
+    LoadDequantizationTable(local_idx + 896);
+#else
     // The workgroup size is 128, LoadDequantizationTable needs to be called twice.
     LoadDequantizationTable(local_idx);
-    LoadDequantizationTable(local_idx+127);
+    LoadDequantizationTable(local_idx+128);
+#endif
     workgroupBarrier();
 #endif
 #if single_scale_weights
     let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #if has_weight_idx
+#if has_weight_idx_indirect
+    let own_scale_b = scales_b.getByOffset(weight_index_indirect[uniforms.weight_idx]);
+#else
     let own_scale_b = scales_b.getByOffset(uniforms.weight_idx);
+#endif
 #else
     let own_scale_b = scales_b.getByOffset(0);
 #endif
@@ -114,9 +136,14 @@ $MAIN {
             if (b_global < uniforms.N && k_offset < uniforms.K32)
             {
 #if has_weight_idx
-                let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K32;
+#if has_weight_idx_indirect
+                let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+                let actual_weight_idx = uniforms.weight_idx;
+#endif
+                let b_weight_offset = actual_weight_idx * uniforms.N * uniforms.K32;
                 let b_offset = b_weight_offset + b_global * uniforms.K32 + k_offset;
-                let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / uniforms.block_size);
+                let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / uniforms.block_size);
                 let own_scale_b = scales_b.getByOffset(b_scale_offset + b_global * uniforms.K / uniforms.block_size + block_idx);
 #else
                 let b_offset = b_global * uniforms.K32 + k_offset;
@@ -141,8 +168,13 @@ $MAIN {
 
 #elif n_bits == 2
                 let b_value = b.getByOffset(b_offset);
+#if has_zero_points
+                let own_b = DequantizedFrom2BitsTo8Bits(b_value.x, zero);
+                let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y, zero);
+#else
                 let own_b = DequantizedFrom2BitsTo8Bits(b_value.x);
                 let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y);
+#endif
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #endif
             }

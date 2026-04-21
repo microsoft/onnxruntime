@@ -104,6 +104,11 @@ if (onnxruntime_CLIENT_PACKAGE_BUILD)
   add_compile_definitions(ORT_CLIENT_PACKAGE_BUILD)
 endif()
 
+# Enable optional callbacks around per-session thread pool work execution.
+if (onnxruntime_ENABLE_SESSION_THREADPOOL_CALLBACKS)
+  add_compile_definitions(ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS)
+endif()
+
 if (onnxruntime_ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
@@ -208,10 +213,8 @@ endif()
 
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
-    execute_process(COMMAND ${CUDAToolkit_BIN_DIR}/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
-    message("NVCC_ERROR = ${NVCC_ERROR}")
-    message("NVCC_OUT = ${NVCC_OUT}")
-    if ("${NVCC_OUT}" MATCHES "0")
+    execute_process(COMMAND ${CMAKE_CUDA_COMPILER} --compiler-options "${_FLAG}" -c ${REPO_ROOT}/cmake/empty.c -o ${CMAKE_CURRENT_BINARY_DIR}/empty.o RESULT_VARIABLE NVCC_OUT ERROR_QUIET OUTPUT_QUIET)
+    if (NVCC_OUT EQUAL 0)
         set(${_RESULT} 1)
     else()
         set(${_RESULT} 0)

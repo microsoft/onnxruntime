@@ -189,6 +189,15 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     params.arena_cfg = default_memory_arena_cfg;
     return CUDAExecutionProvider::CreateCudaAllocator(params);
   }
+
+  std::shared_ptr<IAllocator> CreateCudaPinnedAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, const OrtArenaCfg* default_memory_arena_cfg) override {
+    CUDAExecutionProvider::CUDAAllocatorParams params{};
+    params.device_id = device_id;
+    params.cuda_mem_threshold = gpu_mem_limit;
+    params.arena_extend_strategy = arena_extend_strategy;
+    params.arena_cfg = default_memory_arena_cfg;
+    return CUDAExecutionProvider::CreateCudaPinnedAllocator(params);
+  }
 } g_info;
 
 struct CUDA_Provider : Provider {
@@ -364,6 +373,7 @@ struct CudaOrtAllocator : OrtAllocator {
     Reserve = AllocImpl;      // no special behavior for Reserve so use AllocImpl
     GetStats = nullptr;       // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
     AllocOnStream = nullptr;  // TODO. Plugin EP arena to provide this.
+    Shrink = nullptr;
 
     const OrtEpApi& ep_api = *api.GetEpApi();
     const OrtMemoryDevice* mem_device = ep_api.MemoryInfo_GetMemoryDevice(mem_info);
@@ -673,8 +683,8 @@ struct CudaEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 
   CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
-                                                                                default_logger{default_logger_in},
                                                                                 ep_api{*ort_api_in.GetEpApi()},
+                                                                                default_logger{default_logger_in},
                                                                                 data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
@@ -937,8 +947,8 @@ struct CudaEpFactory : OrtEpFactory {
   CudaEpFactory(const CudaEpFactory&) = delete;
   CudaEpFactory& operator=(const CudaEpFactory&) = delete;
 
-  CudaEpFactory(CudaEpFactory&&) = default;
-  CudaEpFactory& operator=(CudaEpFactory&&) = default;
+  CudaEpFactory(CudaEpFactory&&) = delete;
+  CudaEpFactory& operator=(CudaEpFactory&&) = delete;
 };
 
 extern "C" {

@@ -50,7 +50,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Squeeze)
 
 Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag)
-    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl members to NULL/zero
       info_{info},
       data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
   ort_version_supported = ORT_API_VERSION;
@@ -59,10 +59,12 @@ Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag)
 }
 
 /*static*/
-OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel) noexcept {
+OrtStatus* Squeeze::CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
-  kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
+  auto squeeze_kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
+
+  kernel = squeeze_kernel.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

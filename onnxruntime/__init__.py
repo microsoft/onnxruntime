@@ -10,7 +10,7 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
 import contextlib
 
-__version__ = "1.24.0"
+__version__ = "1.25.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -34,6 +34,8 @@ try:
         OrtArenaCfg,  # noqa: F401
         OrtCompileApiFlags,  # noqa: F401
         OrtDeviceMemoryType,  # noqa: F401
+        OrtEpAssignedNode,  # noqa: F401
+        OrtEpAssignedSubgraph,  # noqa: F401
         OrtEpDevice,  # noqa: F401
         OrtExecutionProviderDevicePolicy,  # noqa: F401
         OrtExternalInitializerInfo,  # noqa: F401
@@ -81,6 +83,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     IOBinding,  # noqa: F401
     ModelCompiler,  # noqa: F401
     OrtDevice,  # noqa: F401
+    OrtDeviceVendorId,  # noqa: F401
     OrtValue,  # noqa: F401
     SparseTensor,  # noqa: F401
     copy_tensors,  # noqa: F401

@@ -11,10 +11,10 @@
       6
     ]
   },
-  "version": "1.24.0",
+  "version": "1.25.0",
   "dependencies": {
     "adm-zip": "^0.5.16",
-    "global-agent": "^3.0.0",
+    "global-agent": "^4.1.3",
     "onnxruntime-common": "file:../common"
   },
   "scripts": {
@@ -37,7 +37,7 @@
   ],
   "devDependencies": {
     "@types/minimist": "^1.2.2",
-    "cmake-js": "^7.2.1",
+    "cmake-js": "^8.0.0",
     "jsonc": "^2.0.0",
     "minimist": "^1.2.8",
     "node-addon-api": "^6.0.0",

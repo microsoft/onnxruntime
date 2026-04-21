@@ -6,7 +6,6 @@
 #include <algorithm>
 
 #include "core/providers/cuda/shared_inc/cuda_call.h"  // ORT CudaCall helpers
-#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace cuda {

@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <queue>
+#include <iomanip>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
@@ -28,14 +29,17 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/kernel_type_str_resolver_utils.h"
+#include "core/framework/layering_annotations.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
@@ -111,13 +115,15 @@ inline const wchar_t* GetDateFormatString<wchar_t>() {
   return L"%Y-%m-%d_%H-%M-%S";
 }
 #endif
-// TODO: use LoggingManager::GetTimestamp and date::operator<<
+// TODO: use LoggingManager::GetTimestamp and operator<<
 // (see ostream_sink.cc for an example)
 // to simplify this and match the log file timestamp format.
 template <typename T>
 inline std::basic_string<T> GetCurrentTimeString() {
   auto now = std::chrono::system_clock::now();
   auto in_time_t = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
   std::tm local_tm;  // NOLINT
 
 #ifdef _WIN32
@@ -128,7 +134,10 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
   T time_str[32];
   OrtStrftime<T>(time_str, sizeof(time_str), GetDateFormatString<T>(), &local_tm);
-  return std::basic_string<T>(time_str);
+
+  std::basic_stringstream<T> ss;
+  ss << time_str << T('_') << std::setfill(T('0')) << std::setw(3) << ms.count();
+  return ss.str();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -419,6 +428,16 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+    auto apply_work_callbacks = [&session_env](OrtThreadPoolParams& params) {
+      const auto* env_cbs = session_env.GetPerSessionWorkCallbacks();
+      if (env_cbs != nullptr) {
+        params.work_callbacks = *env_cbs;
+      }
+    };
+#endif
+
     {
       if (!external_intra_op_thread_pool_) {
         bool allow_intra_op_spinning =
@@ -459,6 +478,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
         }
 
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+        apply_work_callbacks(to);
+#endif
+
         thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
       }
@@ -494,6 +517,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         if (to.custom_create_thread_fn) {
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
         }
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+        apply_work_callbacks(to);
+#endif
+
         inter_op_thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
         if (inter_op_thread_pool_ == nullptr) {
@@ -729,6 +757,25 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 InferenceSession::~InferenceSession() {
+  // Flush any remaining RuntimePerf counters
+  ORT_TRY {
+    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+    if (telemetry_.total_runs_since_last_ > 0) {
+      Env::Default().GetTelemetryProvider().LogRuntimePerf(session_id_,
+                                                           telemetry_.total_runs_since_last_,
+                                                           telemetry_.total_run_duration_since_last_,
+                                                           telemetry_.duration_per_batch_size_);
+    }
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS(*session_logger_, ERROR) << "Error during telemetry flush: " << e.what();
+    });
+  }
+  ORT_CATCH(...) {
+    LOGS(*session_logger_, ERROR) << "Unknown error during telemetry flush";
+  }
+
   if (session_options_.enable_profiling) {
     ORT_TRY {
       EndProfiling();
@@ -968,7 +1015,10 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
+  const Env& env = Env::Default();
   ORT_TRY {
+    env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+
     std::lock_guard<std::mutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
@@ -1003,6 +1053,8 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
+
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status);
 
   return status;
 }
@@ -1287,6 +1339,32 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
   return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static std::unique_ptr<OrtEpAssignedSubgraph> CreateEpAssignedSubgraph(const Graph& graph,
+                                                                       const ComputeCapability& capability,
+                                                                       const std::string& ep_name) {
+  auto assigned_subgraph = std::make_unique<OrtEpAssignedSubgraph>();
+  assigned_subgraph->ep_name = ep_name;
+
+  gsl::span<NodeIndex> node_indices = capability.sub_graph->nodes;
+
+  for (NodeIndex node_index : node_indices) {
+    const Node* node = graph.GetNode(node_index);
+    if (node != nullptr) {
+      auto assigned_node = std::make_unique<OrtEpAssignedNode>();
+      assigned_node->name = node->Name();
+      assigned_node->domain = node->Domain();
+      assigned_node->op_type = node->OpType();
+
+      assigned_subgraph->nodes.push_back(assigned_node.get());
+      assigned_subgraph->nodes_storage.push_back(std::move(assigned_node));
+    }
+  }
+
+  return assigned_subgraph;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. Ensure we inline as many functions as possible. We refer to it as Ahead Of Time (AOT) function inlining.
@@ -1301,12 +1379,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 8. Repeat steps 5 to 7 depending on the graph optimizations loop level.
   // 9. insert copy nodes (required transformer).
 
+  OnPartitionAssignmentFunction on_partition_assignment_fn;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool record_ep_graph_assignment =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+  if (record_ep_graph_assignment) {
+    on_partition_assignment_fn = [this](const Graph& graph, const ComputeCapability& compute_capability,
+                                        const std::string& ep_name) {
+      std::unique_ptr<OrtEpAssignedSubgraph> assigned_subgraph = CreateEpAssignedSubgraph(graph,
+                                                                                          compute_capability,
+                                                                                          ep_name);
+
+      this->ep_graph_assignment_info_.push_back(assigned_subgraph.get());
+      this->ep_graph_assignment_info_storage_.push_back(std::move(assigned_subgraph));
+    };
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
                                                                            execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                                                            session_logger_);
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry),
-                               check_load_cancellation_fn_);
+                               check_load_cancellation_fn_, on_partition_assignment_fn);
 
   // Run Ahead Of time function inlining
   if (const bool disable_aot_function_inlining =
@@ -1324,7 +1419,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   //
   // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
   // with a TensorProto that has the same data type, shape and name. However, its external data
-  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoNativeEndianMemoryAddressTag,
   // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
   // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it. For this reason,
   // we do not convert them at the graph constructor because Node::ToProto() reconstructs Graph instances for subgraphs
@@ -1443,10 +1538,32 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 
+  LayeringIndex* layering_index = nullptr;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  std::optional<LayeringIndex> layering_index_storage;
+  const auto layering_config = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsLayerAssignmentSettings, "");
+  if (!layering_config.empty()) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(LayeringIndex::Create(graph, layering_config, {}, execution_providers_,
+                                                         *session_logger_, layering_index_storage));
+    if (layering_index_storage) {
+      layering_index = &layering_index_storage.value();
+    }
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
-                                                       session_options_.config_options, *session_logger_,
+                                                       session_options_.config_options, *session_logger_, layering_index,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (layering_index) {
+    // Layering annotations maybe present even if index is not built although unlikely.
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph.RemoveAllLayeringAnnotations());
+    // We are currently not using it beyond this point. Clear it to free up memory.
+    layering_index = nullptr;
+    layering_index_storage.reset();
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
   // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
@@ -1597,6 +1714,9 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+
   std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
@@ -1717,6 +1837,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
   is_model_loaded_ = true;
 
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, Status::OK());
+
   return Status::OK();
 }
 
@@ -1768,15 +1890,16 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 #if !defined(ORT_MINIMAL_BUILD)
 [[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
   std::string data_type_list;
+  auto weight_freq = graph.GetWeightDataTypeFrequency();
 
-  for (int i = 0; i < ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE; ++i) {
-    if (graph.weight_data_type_freq_[i] > 0) {
+  for (size_t i = 0; i < weight_freq.size(); ++i) {
+    if (weight_freq[i] > 0) {
       if (!data_type_list.empty()) {
         data_type_list += ", ";
       }
-      data_type_list += TensorProto_DataType_Name(i);
+      data_type_list += TensorProto_DataType_Name(static_cast<int>(i));
       data_type_list += ": ";
-      data_type_list += std::to_string(graph.weight_data_type_freq_[i]);
+      data_type_list += std::to_string(weight_freq[i]);
     }
   }
 
@@ -1958,6 +2081,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             transform_layout_fn,
                                             sess_options.config_options,
                                             logger,
+                                            nullptr /*layering_index*/,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1990,6 +2114,14 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+std::basic_string<ORTCHAR_T> GenerateProfileFilePath(std::basic_string<ORTCHAR_T> profile_file_prefix) {
+  profile_file_prefix.append(ORT_TSTR("_"));
+  profile_file_prefix.append(GetCurrentTimeString<ORTCHAR_T>());
+  profile_file_prefix.append(ORT_TSTR(".json"));
+  return profile_file_prefix;
+}
+
 }  // namespace
 
 static void ResolveMemoryPatternFlags(SessionState& session_state) {
@@ -2218,6 +2350,16 @@ common::Status InferenceSession::Initialize() {
         saved_runtime_optimization_produced_node_op_schemas_.insert(&op_schema);
         return Status::OK();
       };
+
+      // Enable DQ->MatMulNBits fusion if NvTensorRTRTX EP is registered.
+      if (execution_providers_.Get(onnxruntime::kNvTensorRTRTXExecutionProvider) != nullptr) {
+        if (session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsEnableDQMatMulNBitsFusion, "") == "") {
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              session_options_.config_options.AddConfigEntry(
+                  kOrtSessionOptionsEnableDQMatMulNBitsFusion, "1"));
+        }
+      }
 
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
@@ -2513,7 +2655,7 @@ common::Status InferenceSession::Initialize() {
 
     // and log telemetry
     std::filesystem::path model_path = graph.ModelPath();
-    std::string model_file_name = model_path.filename().string();
+    std::string model_file_name = PathToUTF8String(model_path.filename().native());
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
@@ -2557,6 +2699,12 @@ common::Status InferenceSession::Initialize() {
         status = end_status;
       }
     }
+  }
+
+  // Log session creation end telemetry
+  {
+    const Env& init_env = Env::Default();
+    init_env.GetTelemetryProvider().LogSessionCreationEnd(session_id_, status);
   }
 
   return status;
@@ -2925,9 +3073,27 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  // Ignore run-level profiling request if session-level profiling is already enabled.
+  std::optional<profiling::Profiler> run_profiler;
+  if (run_options.enable_profiling && session_profiler_.IsEnabled()) {
+    LOGS(*session_logger_, WARNING) << "RunOptions requests profiling but session-level profiling is already enabled. "
+                                       "Ignoring run-level profiling request.";
+  }
+  if (run_options.enable_profiling && !session_profiler_.IsEnabled()) {
+    run_profiler.emplace();
+    run_profiler->Initialize(session_logger_);
+    std::basic_string<ORTCHAR_T> profile_file = GenerateProfileFilePath(run_options.profile_file_prefix);
+    for (auto& ep : execution_providers_) {
+      run_profiler->AddEpProfilers(ep->GetProfiler());
+    }
+    run_profiler->StartProfiling(profile_file);
+  }
+
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
+  } else if (run_profiler) {
+    tp = run_profiler->Start();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -3050,6 +3216,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
 #ifdef ORT_ENABLE_STREAM
       DeviceStreamCollectionHolder device_stream_collection_holder(session_state_.get());
+      if (run_options.sync_stream != nullptr) {
+        if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+          // XXX: Not tested in Parallel execution mode and disabled at this time.
+          LOGS(*session_logger_, WARNING) << "Setting sync stream is not supported in parallel execution mode.";
+        } else {
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              device_stream_collection_holder.p_->SetStreamOverride(run_options.sync_stream));
+        }
+      }
 #endif
 
       if (retval.IsOK()) {
@@ -3059,7 +3234,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
                                      device_stream_collection_holder,
 #endif
-                                     run_logger);
+                                     run_logger,
+                                     run_profiler ? &*run_profiler : nullptr);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3067,6 +3243,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
         bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
+      }
+
+      if (run_profiler) {
+        run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+        run_profiler->EndProfiling();
       }
 
       // Move stream cleanup from ExecuteGraph to here for cuda graph capture.
@@ -3110,24 +3291,31 @@ Status InferenceSession::Run(const RunOptions& run_options,
     break;
   }
 
-  // time to send telemetry?
-  {
-    // Adding lock_guard here to ensure that telemetry updates are thread-safe.
-    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
-    ++telemetry_.total_runs_since_last_;
-    telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
-    telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
+  // Only include successful inferences in batch since failed inferences can skew the metric
+  if (retval.IsOK()) {
+    // time to send telemetry?
+    {
+      // Adding lock_guard here to ensure that telemetry updates are thread-safe.
+      std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+      ++telemetry_.total_runs_since_last_;
+      telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+      telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
-      // send the telemetry
-      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                                telemetry_.total_run_duration_since_last_,
-                                                telemetry_.duration_per_batch_size_);
-      // reset counters
-      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-      telemetry_.total_runs_since_last_ = 0;
-      telemetry_.total_run_duration_since_last_ = 0;
-      telemetry_.duration_per_batch_size_.clear();
+      // Emit RuntimePerf on scheduled interval
+      if ((TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_)) {
+        env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                                  telemetry_.total_run_duration_since_last_,
+                                                  telemetry_.duration_per_batch_size_);
+        // reset counters
+        telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+        telemetry_.total_runs_since_last_ = 0;
+        telemetry_.total_run_duration_since_last_ = 0;
+        telemetry_.duration_per_batch_size_.clear();
+
+        // Double the interval, capping at kRuntimePerfMaxInterval
+        telemetry_.runtime_perf_interval_ = std::min(telemetry_.runtime_perf_interval_ * 2,
+                                                     Telemetry::kRuntimePerfMaxInterval);
+      }
     }
   }
 
@@ -3161,7 +3349,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
-    ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+    // Disable run-level profiling for internal runs used for memory allocation or graph capture
+    RunOptions recursive_run_options{run_options};
+    recursive_run_options.enable_profiling = false;
+    ORT_RETURN_IF_ERROR(Run(recursive_run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
 
   // Log runtime error telemetry if the return value is not OK
@@ -3480,6 +3671,48 @@ common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpD
 #endif
 }
 
+common::Status InferenceSession::GetEpDeviceForOutputs(InlinedVector<const OrtEpDevice*>& ep_devices) const {
+  ep_devices.clear();
+
+#if defined(ORT_MINIMAL_BUILD)
+  return common::Status(common::ONNXRUNTIME, common::FAIL,
+                        "GetEpDeviceForOutputs is not available in a minimal build.");
+#else
+  if (!is_inited_) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Session has not been initialized.");
+  }
+
+  std::pair<common::Status, const OutputDefList*> outputs = GetModelOutputs();
+
+  ORT_RETURN_IF_ERROR(outputs.first);
+
+  const auto& def_list = *outputs.second;
+  ep_devices.reserve(def_list.size());
+
+  const auto& available_eps = environment_.GetOrtEpDevices();
+
+  for (const auto* def : def_list) {
+    InlinedVector<SessionState::NodeInfo> node_info_vec;
+    ORT_RETURN_IF_ERROR(session_state_->GetOutputNodeInfo(def->Name(), node_info_vec));
+    assert(!node_info_vec.empty());
+    // If we have an output that is not produced by any node,
+    // then we return nullptr.
+    const auto* p_node = node_info_vec.front().p_node;
+    if (p_node != nullptr) {
+      const auto ep_name = p_node->GetExecutionProviderType();
+      auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
+        return entry->ep_name == ep_name;
+      });
+      ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+    } else {
+      ep_devices.push_back(nullptr);
+    }
+  }
+
+  return Status::OK();
+#endif
+}
+
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
   {
     std::lock_guard<std::mutex> l(session_mutex_);
@@ -3639,12 +3872,12 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
       ++iter;
     }
 
-    // Shrink if it is a BFCArena allocator
-    // Iterate through the registered allocators as we could have multiple allocators for the device+type
-    // if they differ by vendor_id.
+    // Shrink if it is an arena allocator.
+    // Both in-tree arenas (BFCArena) and plugin EP arenas (IArenaImplWrappingOrtAllocator)
+    // inherit IArena, so AsArena() returns non-null for both.
     for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
       if (device.Type() == device_type && device.MemType() == memory_type && device.Id() == device_id) {
-        if (allocator_ptr->Info().alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+        if (allocator_ptr->AsArena() != nullptr) {
           arenas_to_shrink.push_back(allocator_ptr);
           break;
         }
@@ -3663,7 +3896,13 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<IArena*>(alloc.get())->Shrink();
+    auto* arena = alloc->AsArena();
+    if (!arena) {
+      LOGS(*session_logger_, WARNING) << "Allocator is not an IArena, skipping Shrink: " << alloc->Info().ToString();
+      continue;
+    }
+
+    auto status = arena->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()
@@ -3906,7 +4145,7 @@ void InferenceSession::LogAllSessions() {
     if (nullptr != model) {
       onnxruntime::Graph& graph = model->MainGraph();
       std::filesystem::path model_path = graph.ModelPath();
-      std::string model_file_name = model_path.filename().string();
+      std::string model_file_name = PathToUTF8String(model_path.filename().native());
       bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
       std::string model_weight_type = session->GetWeightDataType();
       std::string model_graph_hash = session->GetGraphHash();

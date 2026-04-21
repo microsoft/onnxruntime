@@ -202,6 +202,12 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
     }
   }
 
+#if defined(__aarch64__) && defined(__linux__)
+  const bool use_bf16 = use_fastmath_mode_;
+#else
+  const bool use_bf16 = false;
+#endif
+
   MlasNchwcConv(
       X_shape.GetDims().data(),
       kernel_shape.data(),
@@ -216,7 +222,9 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
       y_data.data(),
       &activation_,
       Sum == nullptr,
-      context->GetOperatorThreadPool());
+      context->GetOperatorThreadPool(),
+      &mlas_backend_kernel_selector_config_,
+      use_bf16);
 
   return Status::OK();
 }

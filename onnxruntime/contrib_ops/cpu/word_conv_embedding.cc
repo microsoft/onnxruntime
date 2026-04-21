@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstring>
+
 #include <core/common/safeint.h>
 #include "word_conv_embedding.h"
 
@@ -14,6 +16,7 @@ namespace contrib {
 void WordConvEmbedding::CharEmbeddingLookup(
     const int* seq_ptr,
     const float* char_embedding_weight_p,
+    size_t char_embedding_table_size,
     size_t seq_len,
     size_t word_len,
     size_t char_embedding_size,
@@ -26,7 +29,12 @@ void WordConvEmbedding::CharEmbeddingLookup(
       float* cur_dst_ptr = dst + word_inx * word_len * char_embedding_size;
       size_t char_length_to_lookup = std::max<size_t>(words_len_ptr[word_inx], filter_width);
       for (size_t char_inx = 0; char_inx < char_length_to_lookup; char_inx++) {
-        memcpy(cur_dst_ptr, char_embedding_weight_p + (*cur_seq_ptr) * char_embedding_size, sizeof(float) * char_embedding_size);
+        const int char_index = *cur_seq_ptr;
+        if (char_index >= 0 && static_cast<size_t>(char_index) < char_embedding_table_size) {
+          memcpy(cur_dst_ptr,
+                 char_embedding_weight_p + static_cast<size_t>(char_index) * char_embedding_size,
+                 sizeof(float) * char_embedding_size);
+        }
         cur_dst_ptr += char_embedding_size;
         cur_seq_ptr++;
       }
@@ -88,7 +96,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
         static_cast<int>(words_unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f,
         unfolded_buffer_p.get(), static_cast<int>(unfolded_kernal_size),
         weights, static_cast<int>(unfolded_kernal_size), 0.0f,
-        conv_buf_p, static_cast<int>(num_filters), tp);
+        conv_buf_p, static_cast<int>(num_filters), tp, &mlas_backend_kernel_selector_config_);
 
     for (int64_t unfolded_inx = 0; unfolded_inx < words_unfolded_width; unfolded_inx++)
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
@@ -131,7 +139,23 @@ void WordConvEmbedding::CalculateLengthOfEachWordInSequence(
   }
 }
 
-Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, const TensorShape& w_char_embedding_shape) const {
+Status WordConvEmbedding::ValidateInputShape(const TensorShape& sequence_shape, const TensorShape& w_conv_shape,
+                                             const TensorShape& w_char_embedding_shape) const {
+  if (sequence_shape.NumDimensions() <= 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Sequence input must have rank greater than 1.",
+                           " Sequence rank: ", sequence_shape.NumDimensions());
+  }
+
+  if (w_conv_shape.NumDimensions() <= 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv weight input must have rank greater than 3.",
+                           " Conv weight rank: ", w_conv_shape.NumDimensions());
+  }
+
+  if (w_char_embedding_shape.NumDimensions() <= 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Char embedding input must have rank greater than 1.",
+                           " Char embedding rank: ", w_char_embedding_shape.NumDimensions());
+  }
+
   if (embedding_size_ != -1 && w_conv_shape[0] != embedding_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv filter size does not match embedding_size attribute.",
                            " embedding_size attribute: ", embedding_size_,
@@ -156,6 +180,12 @@ Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, co
                            " Conv kernal size 2 : ", w_conv_shape[3]);
   }
 
+  if (w_conv_shape[2] > sequence_shape[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv kernel width must not exceed word length.",
+                           " Conv kernel width: ", w_conv_shape[2],
+                           " Word length: ", sequence_shape[1]);
+  }
+
   return Status::OK();
 }
 
@@ -170,7 +200,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   const TensorShape& w_conv_shape = w_conv.Shape();
   const TensorShape& w_char_embedding_shape = w_char_embedding.Shape();
 
-  ORT_RETURN_IF_ERROR(ValidateInputShape(w_conv_shape, w_char_embedding_shape));
+  ORT_RETURN_IF_ERROR(ValidateInputShape(sequence_shape, w_conv_shape, w_char_embedding_shape));
 
   int64_t seq_len = sequence_shape[0];
   int64_t word_len = sequence_shape[1];
@@ -198,6 +228,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
 
   CharEmbeddingLookup(seq_ptr,
                       w_char_embedding.Data<float>(),
+                      onnxruntime::narrow<size_t>(w_char_embedding_shape[0]),
                       onnxruntime::narrow<size_t>(seq_len),
                       onnxruntime::narrow<size_t>(word_len),
                       onnxruntime::narrow<size_t>(char_embedding_size),

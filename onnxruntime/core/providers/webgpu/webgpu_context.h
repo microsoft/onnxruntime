@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
@@ -25,13 +26,47 @@ class WebGpuContext;
 class ComputeContextBase;
 class ProgramBase;
 
+// PendingKernelInfo stores profiling information for a kernel execution
+struct PendingKernelInfo {
+  PendingKernelInfo(std::string_view kernel_name,
+                    std::string_view kernel_type,
+                    std::string_view program_name,
+                    std::string_view cache_key,
+                    const std::vector<ProgramInput>& inputs,
+                    const std::vector<ProgramOutput>& outputs)
+      : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key} {
+    // Store shape information instead of tensor pointers to avoid accessing released tensors
+    input_shapes.reserve(inputs.size());
+    for (const auto& input : inputs) {
+      input_shapes.emplace_back(input.use_override_shape ? input.override_shape : input.tensor->Shape());
+    }
+    output_shapes.reserve(outputs.size());
+    for (const auto& output : outputs) {
+      output_shapes.emplace_back(output.use_override_shape ? output.override_shape : output.tensor->Shape());
+    }
+  }
+
+  PendingKernelInfo(const PendingKernelInfo&) = default;
+  PendingKernelInfo& operator=(const PendingKernelInfo&) = default;
+  PendingKernelInfo(PendingKernelInfo&&) = default;
+  PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
+
+  std::string name;
+  std::string cache_key;
+  std::vector<TensorShape> input_shapes;
+  std::vector<TensorShape> output_shapes;
+};
+
 // Definition for CapturedCommandInfo in the webgpu namespace
 struct CapturedCommandInfo {
   wgpu::ComputePipeline compute_pipeline;
   WGPUBindGroup bind_group;
   WGPUBindGroupLayout bind_group_layout;
   std::array<uint32_t, 3> dispatch_group;
-  WGPUBuffer indirect_buffer;  // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
+  // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
+  WGPUBuffer indirect_buffer;
+  // Optional profiling data
+  std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -112,10 +147,18 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
-  static std::unordered_map<int32_t, WebGpuContextInfo> contexts_;
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;
-  static wgpu::Instance default_instance_;
+
+  // Use pointers to heap-allocated objects so that their destructors do NOT run
+  // during static destruction at process exit. This avoids crashes when dependent
+  // DLLs (e.g. dxcompiler.dll) have already been unloaded by the OS.
+  // Cleanup() explicitly deletes them during normal unload. In the shared-library
+  // build this is reached via ReleaseEpFactory, and in the WebGPU static-lib build
+  // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
+  // On abnormal/process termination they simply leak, which is safe.
+  static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
+  static WGPUInstance default_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
@@ -127,7 +170,7 @@ class WebGpuContext final {
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
-  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.find(feature) != device_features_.end(); }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
 #if !defined(__wasm__)
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 #endif
@@ -145,7 +188,7 @@ class WebGpuContext final {
 
       wgpu::ComputePassDescriptor compute_pass_desc{};
 
-      if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses) {
+      if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses && graph_capture_state_ != GraphCaptureState::Capturing) {
         wgpu::PassTimestampWrites timestampWrites = {
             nullptr,
             query_set_,
@@ -196,8 +239,11 @@ class WebGpuContext final {
   }
 
   void StartProfiling();
+  // Collect pending GPU profiling data into the given events vector.
   void CollectProfilingData(profiling::Events& events);
-  void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
+  // Collect pending GPU profiling data into the shared events_ vector (run-level).
+  void CollectProfilingData();
+  void EndProfiling(TimePoint, profiling::Events& events);
 
   //
   // Push error scope.
@@ -261,25 +307,6 @@ class WebGpuContext final {
   wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
 
-  struct PendingKernelInfo {
-    PendingKernelInfo(std::string_view kernel_name,
-                      std::string_view kernel_type,
-                      std::string_view program_name,
-                      std::string_view cache_key,
-                      const std::vector<ProgramInput>& inputs,
-                      const std::vector<ProgramOutput>& outputs)
-        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs} {}
-
-    PendingKernelInfo(PendingKernelInfo&&) = default;
-    PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
-    ORT_DISALLOW_COPY_AND_ASSIGNMENT(PendingKernelInfo);
-
-    std::string name;
-    std::string cache_key;
-    std::vector<ProgramInput> inputs;
-    std::vector<ProgramOutput> outputs;
-  };
-
   struct PendingQueryInfo {
     PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
         : kernels{std::move(kernels)}, query_buffer{query_buffer} {}
@@ -333,6 +360,8 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+  // Shared GPU profiling events for run-level profiling.
+  profiling::Events events_;
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};

@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -34,6 +35,8 @@ class SparseAttentionBase {
     int64_t sparse_block_size = 0;
     ORT_ENFORCE(info.GetAttr("sparse_block_size", &sparse_block_size).IsOK());
     sparse_block_size_ = static_cast<int>(sparse_block_size);
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -42,6 +45,8 @@ class SparseAttentionBase {
   bool do_rotary_;    // whether or not to use rotary embeddings
   bool rotary_interleaved_;
   int sparse_block_size_;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
   template <typename T>
   Status ApplyAttention(const T* Q,                             // Q data with shape BxNxSxH
@@ -228,7 +233,7 @@ class SparseAttentionBase {
         if constexpr (std::is_same<T, float>::value) {
           math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size, alpha, q,
                                       head_size, k, head_size, 0.0f /*bata*/, output, total_seq_len,
-                                      nullptr);
+                                      nullptr, &mlas_backend_kernel_selector_config_);
         } else if constexpr (std::is_same<U, MLFloat16>::value) {
           MlasGemm(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size,
                    q, head_size, k, head_size, output, total_seq_len,
@@ -246,7 +251,7 @@ class SparseAttentionBase {
 
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seq_len, head_size,
                                           alpha, q_fp32, head_size, k_fp32, head_size, 0.0f /*bata*/,
-                                          output, total_seq_len, nullptr);
+                                          output, total_seq_len, nullptr, &mlas_backend_kernel_selector_config_);
         }
 
         DUMP_CPU_TENSOR("QK", output, sequence_length, total_seq_len);
@@ -441,7 +446,7 @@ class SparseAttentionBase {
               math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
                                           1.f, /*alpha*/
                                           attention_probs + attention_probs_offset, total_seq_len, v,
-                                          head_size, 0.0f /*beta*/, output_current, hidden_size, nullptr);
+                                          head_size, 0.0f /*beta*/, output_current, hidden_size, nullptr, &mlas_backend_kernel_selector_config_);
             } else if constexpr (std::is_same<U, MLFloat16>::value) {
               MlasGemm(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seq_len,
                        attention_probs + attention_probs_offset, total_seq_len,
@@ -461,7 +466,7 @@ class SparseAttentionBase {
                                               1.f, /*alpha*/ attention_probs + attention_probs_offset,
                                               total_seq_len, v_fp32_ptr,
                                               head_size, 0.0f /*beta*/, output_fp32_current,
-                                              hidden_size, nullptr);
+                                              hidden_size, nullptr, &mlas_backend_kernel_selector_config_);
             }
 
             DUMP_CPU_TENSOR("out", attention_probs + attention_probs_offset, sequence_length, head_size);

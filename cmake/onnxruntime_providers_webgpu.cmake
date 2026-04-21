@@ -6,9 +6,6 @@
   endif()
 
   add_compile_definitions(USE_WEBGPU=1)
-  if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
-    add_compile_definitions(BUILD_WEBGPU_EP_STATIC_LIB=1)
-  endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
@@ -33,7 +30,7 @@
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
 
-  if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  if(NOT onnxruntime_USE_EP_API_ADAPTERS)
     #
     # Build WebGPU EP as a static library
     #
@@ -59,7 +56,7 @@
     endif()
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
 
-    onnxruntime_add_shared_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_shared_library_module(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
         ${REPO_ROOT}/include/onnxruntime/core/session
         onnxruntime_common
@@ -122,6 +119,12 @@
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       message(FATAL_ERROR "WebGPU EP shared library build is not supported on Emscripten. Please use static library build.")
     endif()
+
+    # Configure precompiled headers for shared library build
+    # PCH ensures ep/adapters.h is included first and improves compilation speed
+    target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
+      "${REPO_ROOT}/include/onnxruntime/ep/adapters.h"
+    )
   endif()
 
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
@@ -245,7 +248,6 @@
     endif()
   endif()
 
-  target_compile_features(onnxruntime_providers_webgpu PRIVATE cxx_std_20)
   add_dependencies(onnxruntime_providers_webgpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   if (onnxruntime_WGSL_TEMPLATE)

@@ -9,6 +9,7 @@ vcpkg_from_github(
     SHA512 4ee1a217203933382e728d354a149253a517150eee7580a0abecc69584b2eb200d91933ef424487e3a3fe0e8ab5e77b0288485cac982171b3585314a4417e7d4
     HEAD_REF master
     PATCHES absl_windows.patch
+            absl_cuda_warnings.patch
 )
 
 

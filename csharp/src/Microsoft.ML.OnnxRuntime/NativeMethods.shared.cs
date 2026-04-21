@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using static Microsoft.ML.OnnxRuntime.NativeMethods;
 
@@ -451,6 +452,36 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Graph_GetModelMetadata;
         public IntPtr GetModelCompatibilityForEpDevices;
         public IntPtr CreateExternalInitializerInfo;
+
+        // v1.24 APIs
+        public IntPtr TensorTypeAndShape_HasShape;
+        public IntPtr KernelInfo_GetConfigEntries;
+        public IntPtr KernelInfo_GetOperatorDomain;
+        public IntPtr KernelInfo_GetOperatorType;
+        public IntPtr KernelInfo_GetOperatorSinceVersion;
+        public IntPtr GetInteropApi;
+        public IntPtr SessionGetEpDeviceForOutputs;
+        public IntPtr GetNumHardwareDevices;
+        public IntPtr GetHardwareDevices;
+        public IntPtr GetHardwareDeviceEpIncompatibilityDetails;
+        public IntPtr DeviceEpIncompatibilityDetails_GetReasonsBitmask;
+        public IntPtr DeviceEpIncompatibilityDetails_GetNotes;
+        public IntPtr DeviceEpIncompatibilityDetails_GetErrorCode;
+        public IntPtr ReleaseDeviceEpIncompatibilityDetails;
+        public IntPtr GetCompatibilityInfoFromModel;
+        public IntPtr GetCompatibilityInfoFromModelBytes;
+        public IntPtr CreateEnvWithOptions;
+        public IntPtr Session_GetEpGraphAssignmentInfo;
+        public IntPtr EpAssignedSubgraph_GetEpName;
+        public IntPtr EpAssignedSubgraph_GetNodes;
+        public IntPtr EpAssignedNode_GetName;
+        public IntPtr EpAssignedNode_GetDomain;
+        public IntPtr EpAssignedNode_GetOperatorType;
+        public IntPtr RunOptionsSetSyncStream;
+        public IntPtr GetTensorElementTypeAndShapeDataReference;
+        // v1.25 APIs
+        public IntPtr RunOptionsEnableProfiling;
+        public IntPtr RunOptionsDisableProfiling;
     }
 
     internal static class NativeMethods
@@ -474,6 +505,28 @@ namespace Microsoft.ML.OnnxRuntime
 
         static NativeMethods()
         {
+#if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
+            if (!OrtEnv.DisableDllImportResolver)
+            {
+                try
+                {
+                    // Register a custom DllImportResolver to handle platform-specific library loading.
+                    // Replaces default resolution specifically on Windows for case-sensitivity.
+                    NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, DllImportResolver);
+                }
+                catch (InvalidOperationException)
+                {
+                    // A resolver is already registered for this assembly (e.g., by the host application).
+                    // This is not fatal — the host's resolver will handle library loading.
+                    System.Diagnostics.Trace.WriteLine(
+                        "[OnnxRuntime] A DllImportResolver is already registered for this assembly. "
+                        + "OnnxRuntime's built-in resolver will not be used. "
+                        + "To suppress this message, set OrtEnv.DisableDllImportResolver = true "
+                        + "before using any OnnxRuntime APIs.");
+                }
+            }
+#endif
+
 #if NETSTANDARD2_0
             IntPtr ortApiBasePtr = OrtGetApiBase();
             OrtApiBase ortApiBase = (OrtApiBase)Marshal.PtrToStructure(ortApiBasePtr, typeof(OrtApiBase));
@@ -847,7 +900,7 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.CreateSyncStreamForEpDevice,
                     typeof(DOrtCreateSyncStreamForEpDevice));
 
-            OrtSyncStream_GetHandle = 
+            OrtSyncStream_GetHandle =
                 (DOrtSyncStream_GetHandle)Marshal.GetDelegateForFunctionPointer(
                     api_.SyncStream_GetHandle,
                     typeof(DOrtSyncStream_GetHandle));
@@ -861,6 +914,16 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtCopyTensors)Marshal.GetDelegateForFunctionPointer(
                     api_.CopyTensors,
                     typeof(DOrtCopyTensors));
+
+            OrtGetCompatibilityInfoFromModel =
+                (DOrtGetCompatibilityInfoFromModel)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetCompatibilityInfoFromModel,
+                    typeof(DOrtGetCompatibilityInfoFromModel));
+
+            OrtGetCompatibilityInfoFromModelBytes =
+                (DOrtGetCompatibilityInfoFromModelBytes)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetCompatibilityInfoFromModelBytes,
+                    typeof(DOrtGetCompatibilityInfoFromModelBytes));
         }
 
         internal class NativeLib
@@ -872,10 +935,142 @@ namespace Microsoft.ML.OnnxRuntime
             // Define the library name required for iOS
             internal const string DllName = "__Internal";
 #else
-            // Note: the file name in ONNX Runtime nuget package must be onnxruntime.dll instead of onnxruntime.DLL(Windows filesystem can be case sensitive)
-            internal const string DllName = "onnxruntime.dll";
+            // For desktop platforms (including .NET Standard 2.0), we use the simple name
+            // to allow .NET's automatic platform-specific resolution (lib*.so, lib*.dylib, *.dll).
+            // For .NET Core 3.0+, case-sensitivity on Windows is handled by DllImportResolver.
+            internal const string DllName = "onnxruntime";
 #endif
         }
+
+#if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
+        /// <summary>
+        /// Custom DllImportResolver to handle platform-specific library loading.
+        /// On Windows, it explicitly loads the library with a lowercase .dll extension to handle
+        /// case-sensitive filesystems.
+        /// </summary>
+#if NET5_0_OR_GREATER
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000:Avoid accessing Assembly file path when publishing as a single file", Justification = "We also check AppContext.BaseDirectory as a fallback")]
+#endif
+        private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+        {
+            try
+            {
+                if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
+                {
+                    string mappedName = null;
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
+                        mappedName = libraryName + ".dll";
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    {
+                        // Explicitly load with .so extension and lib prefix
+                        mappedName = "lib" + libraryName + ".so";
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                    {
+                        // Explicitly load with .dylib extension and lib prefix
+                        mappedName = "lib" + libraryName + ".dylib";
+                    }
+
+                    if (mappedName != null)
+                    {
+                        // 1. Try default loading (name only)
+                        if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
+                        {
+                            return handle;
+                        }
+
+                        // 2. Try relative to assembly location (look into runtimes subfolders)
+                        string assemblyLocation = null;
+                        try { assemblyLocation = assembly.Location; } catch { }
+                        if (!string.IsNullOrEmpty(assemblyLocation))
+                        {
+                            string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
+                            string rid = RuntimeInformation.RuntimeIdentifier;
+
+                            // Probe the specific RID first, then common fallbacks for the current OS
+                            string[] ridsToTry;
+                            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                            {
+                                ridsToTry = new[] { rid, "win-x64", "win-arm64" };
+                            }
+                            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                            {
+                                ridsToTry = new[] { rid, "linux-x64", "linux-arm64" };
+                            }
+                            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                            {
+                                // We no longer provide osx-x64 in official package since 1.24.
+                                // However, we keep it in the list for build-from-source users.
+                                ridsToTry = new[] { rid, "osx-arm64", "osx-x64" };
+                            }
+                            else
+                            {
+                                ridsToTry = new[] { rid };
+                            }
+
+                            foreach (var tryRid in ridsToTry)
+                            {
+                                string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
+                                if (System.IO.File.Exists(probePath) && NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
+                            }
+                        }
+
+                        // 3. Try AppContext.BaseDirectory as a fallback
+                        try
+                        {
+                            string baseDir = AppContext.BaseDirectory;
+                            if (!string.IsNullOrEmpty(baseDir))
+                            {
+                                string probePath = System.IO.Path.Combine(baseDir, mappedName);
+                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
+
+                                string rid = RuntimeInformation.RuntimeIdentifier;
+                                probePath = System.IO.Path.Combine(baseDir, "runtimes", rid, "native", mappedName);
+                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
+                            }
+                        }
+                        catch { } // Ignore AppDomainUnloadedException or similar from AppContext.BaseDirectory
+
+                        LogLibLoad($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
+
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Unhandled exceptions inside DllImportResolver can result in TypeInitializationException.
+                // Log and swallow the error, returning IntPtr.Zero to fall back to default CLR logic.
+                try { System.Diagnostics.Trace.WriteLine($"[DllImportResolver] Exception during resolution: {ex}"); } catch { }
+            }
+
+            // Fall back to default resolution
+            return IntPtr.Zero;
+        }
+
+        private static void LogLibLoad(string message)
+        {
+            System.Diagnostics.Trace.WriteLine(message);
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ORT_LOADER_VERBOSITY")))
+            {
+                Console.WriteLine(message);
+            }
+        }
+#endif
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
 #if NETSTANDARD2_0
@@ -2644,7 +2839,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                  byte[] /* const char* */ value);
 
         /// <summary>
-        /// Get the value for the provided key. 
+        /// Get the value for the provided key.
         /// </summary>
         /// <returns>Value. Returns IntPtr.Zero if key was not found.</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -2767,7 +2962,7 @@ namespace Microsoft.ML.OnnxRuntime
         // Auto Selection EP registration and selection customization
 
         /// <summary>
-        /// Register an execution provider library. 
+        /// Register an execution provider library.
         /// The library must implement CreateEpFactories and ReleaseEpFactory.
         /// </summary>
         /// <param name="env">Environment to add the EP library to.</param>
@@ -2937,6 +3132,31 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
 
+        /// <summary>
+        /// Extract EP compatibility info from a precompiled model file.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetCompatibilityInfoFromModel(
+            byte[] /* const ORTCHAR_T* */ model_path,
+            byte[] /* const char* */ ep_type,
+            IntPtr /* OrtAllocator* */ allocator,
+            out IntPtr /* char** */ compatibility_info);
+
+        public static DOrtGetCompatibilityInfoFromModel OrtGetCompatibilityInfoFromModel;
+
+        /// <summary>
+        /// Extract EP compatibility info from precompiled model bytes in memory.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetCompatibilityInfoFromModelBytes(
+            byte[] /* const void* */ model_data,
+            UIntPtr /* size_t */ model_data_length,
+            byte[] /* const char* */ ep_type,
+            IntPtr /* OrtAllocator* */ allocator,
+            out IntPtr /* char** */ compatibility_info);
+
+        public static DOrtGetCompatibilityInfoFromModelBytes OrtGetCompatibilityInfoFromModelBytes;
+
         #endregion
     } // class NativeMethods
 
@@ -2952,9 +3172,10 @@ namespace Microsoft.ML.OnnxRuntime
 #elif __IOS__
         internal const string ExtensionsDllName = "__Internal";
 #else
-        // For desktop platforms, explicitly specify the DLL name with extension to avoid
-        // issues on case-sensitive filesystems. See NativeLib.DllName for detailed explanation.
-        internal const string ExtensionsDllName = "ortextensions.dll";
+        // For desktop platforms, use the simple name to allow .NET's
+        // automatic platform-specific resolution (lib*.so, lib*.dylib, *.dll).
+        // Case-sensitivity on Windows is handled by DllImportResolver.
+        internal const string ExtensionsDllName = "ortextensions";
 #endif
 
         [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,

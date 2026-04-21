@@ -17,6 +17,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
@@ -54,7 +55,7 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
   }
 
   is_weight_signed = weights.IsDataType<int8_t>();
-  const size_t packed_weights_size = MlasGemmPackBSize(N, K, false /*AIsSigned*/, is_weight_signed);
+  const size_t packed_weights_size = MlasGemmPackBSize(N, K, false /*AIsSigned*/, is_weight_signed, &mlas_backend_kernel_selector_config_);
   if (packed_weights_size == 0) {
     return Status::OK();
   }
@@ -117,6 +118,7 @@ Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, Allocat
 }
 
 Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                      gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                       int input_idx,
                                                       /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;

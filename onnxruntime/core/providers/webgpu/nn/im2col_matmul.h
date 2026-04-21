@@ -18,22 +18,6 @@
 namespace onnxruntime {
 namespace webgpu {
 
-// Transpose OIHW Weight to OHWI
-class OIHW2OHWIProgram final : public Program<OIHW2OHWIProgram> {
- public:
-  OIHW2OHWIProgram() : Program("OIHW2OHWI") {}
-
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"O", ProgramUniformVariableDataType::Uint32},
-      {"I", ProgramUniformVariableDataType::Uint32},
-      {"H", ProgramUniformVariableDataType::Uint32},
-      {"W", ProgramUniformVariableDataType::Uint32},
-      {"Ci_tiles", ProgramUniformVariableDataType::Uint32},
-      {"H_W_tiles", ProgramUniformVariableDataType::Uint32});
-};
-
 class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
  public:
   Im2ColMatMulProgram(bool has_bias,
@@ -78,7 +62,6 @@ bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
                                  const bool is_fused,
                                  const TensorShape kernel_shape,
-                                 const AutoPadType auto_pad,
                                  const uint32_t group);
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,

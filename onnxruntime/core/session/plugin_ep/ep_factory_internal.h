@@ -87,8 +87,23 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->ValidateCompiledModelCompatibilityInfo(devices, num_devices, compatibility_info, model_compatibility);
   }
 
-  OrtStatus* SetEnvironmentOptions(_In_ const OrtKeyValuePairs* options) noexcept {
-    return impl_->SetEnvironmentOptions(options);
+  OrtStatus* CreateExternalResourceImporterForDevice(_In_ const OrtEpDevice* ep_device,
+                                                     _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
+    return impl_->CreateExternalResourceImporterForDevice(ep_device, importer);
+  }
+
+  OrtStatus* GetHardwareDeviceIncompatibilityDetails(_In_ const OrtHardwareDevice* hw,
+                                                     _Inout_ OrtDeviceEpIncompatibilityDetails* details) noexcept {
+    return impl_->GetHardwareDeviceIncompatibilityDetails(hw, details);
+  }
+
+  OrtStatus* InitGraphicsInterop(_In_ const OrtEpDevice* ep_device,
+                                 _In_ const OrtGraphicsInteropConfig* config) noexcept {
+    return impl_->InitGraphicsInterop(ep_device, config);
+  }
+
+  OrtStatus* DeinitGraphicsInterop(_In_ const OrtEpDevice* ep_device) noexcept {
+    return impl_->DeinitGraphicsInterop(ep_device);
   }
 
   // Function ORT calls to release an EP instance.

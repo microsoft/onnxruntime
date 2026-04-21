@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "core/framework/op_kernel.h"
 #include "re2/re2.h"
 
@@ -18,3 +20,5 @@ class RegexFullMatch final : public OpKernel {
 };
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)

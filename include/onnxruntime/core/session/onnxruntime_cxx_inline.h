@@ -225,6 +225,19 @@ inline void* AllocatorImpl<T>::Alloc(size_t size) {
 }
 
 template <typename T>
+inline void* AllocatorImpl<T>::Reserve(size_t size) {
+  // Reserve was added in version 18. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 18 && this->p_->Reserve) {
+    return this->p_->Reserve(this->p_, size);
+  }
+  // Fall back to Alloc() for allocators that don't implement Reserve,
+  // matching the ORT-core adapter behavior (IAllocatorImplWrappingOrtAllocator,
+  // IArenaImplWrappingOrtAllocator).
+  return this->p_->Alloc(this->p_, size);
+}
+
+template <typename T>
 inline MemoryAllocation AllocatorImpl<T>::GetAllocation(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));
@@ -249,6 +262,15 @@ inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
   OrtKeyValuePairs* out;
   ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
   return KeyValuePairs(out);
+}
+
+template <typename T>
+inline void AllocatorImpl<T>::Shrink() {
+  // Shrink was added in version 25. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 25 && this->p_->Shrink) {
+    ThrowOnError(this->p_->Shrink(this->p_));
+  }
 }
 }  // namespace detail
 
@@ -747,6 +769,153 @@ inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardwar
   ThrowOnError(GetEpApi().CreateEpDevice(&ep_factory, hardware_device, ep_metadata, ep_options, &p_));
 }
 
+namespace detail {
+template <typename T>
+inline std::string EpAssignedSubgraphImpl<T>::GetEpName() const {
+  const char* ep_name = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetEpName(this->p_, &ep_name));
+  return std::string(ep_name);
+}
+
+template <typename T>
+inline std::vector<ConstEpAssignedNode> EpAssignedSubgraphImpl<T>::GetNodes() const {
+  size_t num_ep_nodes = 0;
+  const OrtEpAssignedNode* const* ep_node_ptrs = nullptr;
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetNodes(this->p_, &ep_node_ptrs, &num_ep_nodes));
+
+  std::vector<ConstEpAssignedNode> ep_nodes;
+  if (num_ep_nodes > 0) {
+    ep_nodes.reserve(num_ep_nodes);
+    for (size_t i = 0; i < num_ep_nodes; ++i) {
+      ep_nodes.emplace_back(ep_node_ptrs[i]);
+    }
+  }
+
+  return ep_nodes;
+}
+
+template <typename T>
+inline std::string EpAssignedNodeImpl<T>::GetName() const {
+  const char* node_name = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetName(this->p_, &node_name));
+  return std::string(node_name);
+}
+
+template <typename T>
+inline std::string EpAssignedNodeImpl<T>::GetDomain() const {
+  const char* domain = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetDomain(this->p_, &domain));
+  return std::string(domain);
+}
+
+template <typename T>
+inline std::string EpAssignedNodeImpl<T>::GetOperatorType() const {
+  const char* op_type = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetOperatorType(this->p_, &op_type));
+  return std::string(op_type);
+}
+}  // namespace detail
+
+// ProfilingEvent implementations
+namespace detail {
+template <typename T>
+inline OrtProfilingEventCategory ConstProfilingEventImpl<T>::GetCategory() const {
+  OrtProfilingEventCategory out{};
+  ThrowOnError(GetEpApi().ProfilingEvent_GetCategory(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline const char* ConstProfilingEventImpl<T>::GetName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetName(this->p_, &name));
+  return name;
+}
+
+template <typename T>
+inline int64_t ConstProfilingEventImpl<T>::GetTimestampUs() const {
+  int64_t out = 0;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetTimestampUs(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline int64_t ConstProfilingEventImpl<T>::GetDurationUs() const {
+  int64_t out = 0;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetDurationUs(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline const char* ConstProfilingEventImpl<T>::GetArgValue(const char* key) const {
+  const char* value = nullptr;
+  ThrowOnError(GetEpApi().ProfilingEvent_GetArgValue(this->p_, key, &value));
+  return value;
+}
+}  // namespace detail
+
+inline ProfilingEvent::ProfilingEvent(OrtProfilingEventCategory category,
+                                      int32_t process_id,
+                                      int32_t thread_id,
+                                      const char* event_name,
+                                      int64_t timestamp_us,
+                                      int64_t duration_us,
+                                      const std::unordered_map<std::string, std::string>& args) {
+  const size_t num_args = args.size();
+  std::vector<const char*> arg_keys;
+  std::vector<const char*> arg_vals;
+
+  arg_keys.reserve(num_args);
+  arg_vals.reserve(num_args);
+  for (const auto& [k, v] : args) {
+    arg_keys.push_back(k.c_str());
+    arg_vals.push_back(v.c_str());
+  }
+
+  ThrowOnError(GetEpApi().CreateProfilingEvent(category, process_id, thread_id, event_name,
+                                               timestamp_us, duration_us,
+                                               arg_keys.data(), arg_vals.data(), num_args, &p_));
+}
+
+inline ProfilingEvent::ProfilingEvent(OrtProfilingEventCategory category,
+                                      int32_t process_id,
+                                      int32_t thread_id,
+                                      const char* event_name,
+                                      int64_t timestamp_us,
+                                      int64_t duration_us,
+                                      const char* const* arg_keys,
+                                      const char* const* arg_values,
+                                      size_t num_args) {
+  ThrowOnError(GetEpApi().CreateProfilingEvent(category, process_id, thread_id, event_name,
+                                               timestamp_us, duration_us,
+                                               arg_keys, arg_values, num_args, &p_));
+}
+
+// ProfilingEventsContainer implementations
+namespace detail {
+template <typename T>
+inline Status ProfilingEventsContainerImpl<T>::AddEvents(const OrtProfilingEvent* const* events, size_t num_events) {
+  return Status{GetEpApi().ProfilingEventsContainer_AddEvents(this->p_, events, num_events)};
+}
+
+template <typename T>
+inline Status ProfilingEventsContainerImpl<T>::AddEvents(const std::vector<ProfilingEvent>& events) {
+  static_assert(sizeof(ProfilingEvent) == sizeof(OrtProfilingEvent*) &&
+                    alignof(ProfilingEvent) == alignof(OrtProfilingEvent*),
+                "ProfilingEvent must have the same size and alignment as a raw pointer for reinterpret_cast");
+  const auto* event_ptrs = reinterpret_cast<const OrtProfilingEvent* const*>(events.data());
+  return AddEvents(event_ptrs, events.size());
+}
+}  // namespace detail
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -778,6 +947,15 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction loggin
                 OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnvWithCustomLoggerAndGlobalThreadPools(logging_function, logger_param, logging_level, logid, tp_options, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
+  } else {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+  }
+}
+
+inline Env::Env(const OrtEnvCreationOptions* options) {
+  ThrowOnError(GetApi().CreateEnvWithOptions(options, &p_));
+  if (strcmp(options->log_id, "onnxruntime-node") == 0) {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
   } else {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
@@ -837,6 +1015,11 @@ inline Env& Env::RegisterExecutionProviderLibrary(const char* registration_name,
 
 inline Env& Env::UnregisterExecutionProviderLibrary(const char* registration_name) {
   ThrowOnError(GetApi().UnregisterExecutionProviderLibrary(p_, registration_name));
+  return *this;
+}
+
+inline Env& Env::SetPerSessionThreadPoolCallbacks(const OrtThreadPoolCallbacksConfig& config) {
+  ThrowOnError(GetApi().SetPerSessionThreadPoolCallbacks(p_, &config));
   return *this;
 }
 
@@ -919,6 +1102,20 @@ inline OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
   return status;
 }
 
+inline AllocatedStringPtr GetCompatibilityInfoFromModelAllocated(const ORTCHAR_T* model_path, const char* ep_type,
+                                                                 OrtAllocator* allocator) {
+  char* compat_info = nullptr;
+  ThrowOnError(GetApi().GetCompatibilityInfoFromModel(model_path, ep_type, allocator, &compat_info));
+  return AllocatedStringPtr(compat_info, detail::AllocatedFree(allocator));
+}
+
+inline AllocatedStringPtr GetCompatibilityInfoFromModelBytesAllocated(const void* model_data, size_t model_data_length,
+                                                                      const char* ep_type, OrtAllocator* allocator) {
+  char* compat_info = nullptr;
+  ThrowOnError(GetApi().GetCompatibilityInfoFromModelBytes(model_data, model_data_length, ep_type, allocator, &compat_info));
+  return AllocatedStringPtr(compat_info, detail::AllocatedFree(allocator));
+}
+
 inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                                   OrtAllocator* allocator) {
   OrtLoraAdapter* p;
@@ -991,6 +1188,21 @@ inline RunOptions& RunOptions::UnsetTerminate() {
 
 inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) {
   ThrowOnError(GetApi().RunOptionsAddActiveLoraAdapter(p_, adapter));
+  return *this;
+}
+
+inline RunOptions& RunOptions::SetSyncStream(OrtSyncStream* stream) {
+  GetApi().RunOptionsSetSyncStream(p_, stream);
+  return *this;
+}
+
+inline RunOptions& RunOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
+  ThrowOnError(GetApi().RunOptionsEnableProfiling(p_, profile_file_prefix));
+  return *this;
+}
+
+inline RunOptions& RunOptions::DisableProfiling() {
+  ThrowOnError(GetApi().RunOptionsDisableProfiling(p_));
   return *this;
 }
 
@@ -1084,6 +1296,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetGraphOptimizationLev
     GraphOptimizationLevel graph_optimization_level) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetGraphOptimizationLevel(this->p_,
                                                                                       graph_optimization_level));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const OrtModel* model) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModel(this->p_, model));
   return *this;
 }
 
@@ -1661,6 +1878,19 @@ inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() co
 }
 
 template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForOutputs() const {
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstEpDevice> output_devices;
+  if (num_outputs > 0) {
+    output_devices.resize(num_outputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtEpDevice**>(output_devices.data()),
+                                                       num_outputs));
+  }
+  return output_devices;
+}
+
+template <typename T>
 inline uint64_t ConstSessionImpl<T>::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(this->p_, &out));
@@ -1732,6 +1962,23 @@ std::vector<ValueInfo> ConstSessionImpl<T>::GetOutputs() const {
   }
 
   return outputs;
+}
+
+template <typename T>
+inline std::vector<ConstEpAssignedSubgraph> ConstSessionImpl<T>::GetEpGraphAssignmentInfo() const {
+  size_t num_ep_subgraphs = 0;
+  const OrtEpAssignedSubgraph* const* ep_subgraph_ptrs = nullptr;
+  ThrowOnError(GetApi().Session_GetEpGraphAssignmentInfo(this->p_, &ep_subgraph_ptrs, &num_ep_subgraphs));
+
+  std::vector<ConstEpAssignedSubgraph> ep_subgraphs;
+  if (num_ep_subgraphs > 0) {
+    ep_subgraphs.reserve(num_ep_subgraphs);
+    for (size_t i = 0; i < num_ep_subgraphs; ++i) {
+      ep_subgraphs.emplace_back(ep_subgraph_ptrs[i]);
+    }
+  }
+
+  return ep_subgraphs;
 }
 
 template <typename T>
@@ -2263,6 +2510,13 @@ inline const R* ConstValueImpl<T>::GetSparseTensorValues() const {
 }
 
 #endif
+
+template <typename T>
+void ConstValueImpl<T>::GetTensorElementTypeAndShapeDataReference(ONNXTensorElementDataType& elem_type,
+                                                                  Shape& shape) const {
+  ThrowOnError(GetApi().GetTensorElementTypeAndShapeDataReference(this->p_, &elem_type, &shape.shape,
+                                                                  &shape.shape_len));
+}
 
 template <typename T>
 void ValueImpl<T>::FillStringTensor(const char* const* s, size_t s_len) {
@@ -2927,6 +3181,39 @@ inline void attr_utils::GetAttrs(const OrtKernelInfo* p, const char* name, std::
   out.resize(size);
   Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_int64(p, name, out.data(), &size));
   out.swap(result);
+}
+
+inline void attr_utils::GetAttrs(const OrtKernelInfo* p, const char* name, std::vector<std::string>& result) {
+  AllocatorWithDefaultOptions allocator;
+  char** out = nullptr;
+  size_t size = 0;
+
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_string(p, name, allocator, nullptr, &size));
+  if (size == 0) {
+    result.clear();
+    return;
+  }
+
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_string(p, name, allocator, &out, &size));
+
+  auto deleter = detail::AllocatedFree(allocator);
+  std::unique_ptr<void, decltype(deleter)> array_guard(out, deleter);
+  auto strings_deleter = [&deleter, size](char** values) {
+    for (size_t i = 0; i < size; ++i) {
+      if (values[i] != nullptr) {
+        deleter(values[i]);
+      }
+    }
+  };
+  std::unique_ptr<char*, decltype(strings_deleter)> strings_guard(out, strings_deleter);
+
+  std::vector<std::string> strings;
+  strings.reserve(size);
+  for (size_t i = 0; i < size; ++i) {
+    strings.emplace_back(out[i]);
+  }
+
+  strings.swap(result);
 }
 }  // namespace detail
 
@@ -3766,4 +4053,120 @@ inline Status SharedPrePackedWeightCacheImpl<T>::StoreWeightData(void** buffer_d
                                                                       num_buffers)};
 }
 }  // namespace detail
+
+inline Ort::KeyValuePairs GetEnvConfigEntries() {
+  OrtKeyValuePairs* entries = nullptr;
+  Ort::ThrowOnError(GetEpApi().GetEnvConfigEntries(&entries));
+
+  return Ort::KeyValuePairs{entries};
+}
+
+namespace detail {
+template <typename T>
+inline int OpSchemaImpl<T>::GetSinceVersion() const {
+  int version = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetSinceVersion(this->p_, &version));
+  return version;
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetNumInputs() const {
+  size_t num = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetNumInputs(this->p_, &num));
+  return num;
+}
+
+template <typename T>
+inline std::string OpSchemaImpl<T>::GetInputName(size_t index) const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputName(this->p_, index, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetInputTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetInputTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetNumOutputs() const {
+  size_t num = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetNumOutputs(this->p_, &num));
+  return num;
+}
+
+template <typename T>
+inline std::string OpSchemaImpl<T>::GetOutputName(size_t index) const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputName(this->p_, index, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetOutputTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetOutputTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline size_t OpSchemaImpl<T>::GetTypeConstraintCount() const {
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraintCount(this->p_, &count));
+  return count;
+}
+
+template <typename T>
+inline Ort::ConstOpSchemaTypeConstraint OpSchemaImpl<T>::GetTypeConstraint(size_t index) const {
+  const OrtOpSchemaTypeConstraint* tc = nullptr;
+  ThrowOnError(GetEpApi().OpSchema_GetTypeConstraint(this->p_, index, &tc));
+  return Ort::ConstOpSchemaTypeConstraint{tc};
+}
+
+template <typename T>
+inline std::string OpSchemaTypeConstraintImpl<T>::GetTypeParamName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetTypeParamName(this->p_, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline std::vector<std::string> OpSchemaTypeConstraintImpl<T>::GetAllowedTypes() const {
+  const char* const* types = nullptr;
+  size_t num_types = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetAllowedTypes(this->p_, &types, &num_types));
+  std::vector<std::string> result;
+  result.reserve(num_types);
+  for (size_t i = 0; i < num_types; ++i) {
+    result.emplace_back(types[i]);
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetInputIndices() const {
+  const size_t* indices = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetInputIndices(this->p_, &indices, &count));
+  if (count == 0) return {};
+  return std::vector<size_t>(indices, indices + count);
+}
+
+template <typename T>
+inline std::vector<size_t> OpSchemaTypeConstraintImpl<T>::GetOutputIndices() const {
+  const size_t* indices = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetEpApi().OpSchemaTypeConstraint_GetOutputIndices(this->p_, &indices, &count));
+  if (count == 0) return {};
+  return std::vector<size_t>(indices, indices + count);
+}
+}  // namespace detail
+
+inline OpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain) {
+  OrtOpSchema* schema = nullptr;
+  ThrowOnError(GetEpApi().GetOpSchema(name, max_inclusive_version, domain, &schema));
+  return OpSchema{schema};
+}
 }  // namespace Ort

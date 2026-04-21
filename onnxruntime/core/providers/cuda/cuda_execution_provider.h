@@ -115,6 +115,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   static AllocatorPtr CreateCudaAllocator(const CUDAAllocatorParams& cuda_allocator_params);
 
+  static AllocatorPtr CreateCudaPinnedAllocator(const CUDAAllocatorParams& cuda_allocator_params);
+
   ITuningContext* GetTuningContext() const override;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;

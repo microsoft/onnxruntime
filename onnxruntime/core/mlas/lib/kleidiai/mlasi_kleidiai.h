@@ -17,14 +17,14 @@
 #endif
 
 // Logging macros.
-#ifndef onnxruntime_KLEIDIAI_DEBUG_LOGGING
-#define onnxruntime_KLEIDIAI_DEBUG_LOGGING 0
+#ifndef KLEIDIAI_DEBUG_LOGGING
+#define KLEIDIAI_DEBUG_LOGGING 0
 #endif
-#ifndef onnxruntime_KLEIDIAI_KERNEL_LOGGING
-#define onnxruntime_KLEIDIAI_KERNEL_LOGGING 0
+#ifndef KLEIDIAI_KERNEL_LOGGING
+#define KLEIDIAI_KERNEL_LOGGING 0
 #endif
 
-#if onnxruntime_KLEIDIAI_DEBUG_LOGGING || onnxruntime_KLEIDIAI_KERNEL_LOGGING
+#if KLEIDIAI_DEBUG_LOGGING ||KLEIDIAI_KERNEL_LOGGING
 #define KLEIDIAI_LOG(tag, msg) \
     do { \
         std::cout << "[KLEIDIAI " << tag << "]: " << __FILE__ << " : " << __LINE__ << " : " << msg << std::endl; \
@@ -32,14 +32,14 @@
 #endif
 
 // General logging. "tag" is expected to qualify the type of message.
-#if onnxruntime_KLEIDIAI_DEBUG_LOGGING
+#if KLEIDIAI_DEBUG_LOGGING
     // General debug messages.
     #define KLEIDIAI_DEBUG_LOG(msg) KLEIDIAI_LOG("DEBUG", msg)
 #else
     #define KLEIDIAI_DEBUG_LOG(msg)
 #endif
 
-#if onnxruntime_KLEIDIAI_KERNEL_LOGGING
+#if KLEIDIAI_KERNEL_LOGGING
     // Messages specifically written before a call to kai_run.
     // Note: In cases where a kernel is called in multiple threads, for example MlasTrySimpleParallel,
     // the output order can be inconsistient. The solution is to set the intra-node thread size to 1.
@@ -53,6 +53,8 @@ namespace ArmKleidiAI {
 
 // By default we should try for SME2 first before falling back to SME.
 inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+inline const bool UseSME = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+inline const std::string_view vendor_name = MLAS_CPUIDINFO::GetCPUIDInfo().GetCPUVendor();
 
 // Buffer packing routines.
 //
@@ -103,16 +105,52 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
+#if defined(__aarch64__) && defined(__linux__)
 size_t
 MLASCALL
-MlasDynamicQgemmPackBSize(
+MlasSBGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K
+    );
+
+bool
+MLASCALL
+MlasSBGemmPackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+bool
+MLASCALL
+MlasSBGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SBGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+#endif
+
+size_t
+MLASCALL
+MlasDynamicQGemmPackBSize(
     size_t N,
     size_t K
 );
 
 void
 MLASCALL
-MlasDynamicQgemmPackB(
+MlasDynamicQGemmPackB(
     size_t N,
     size_t K,
     const int8_t* B,

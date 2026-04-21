@@ -20,6 +20,9 @@
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
     )
   endif()
+  # Exclude plugin directory if it was picked up by GLOB_RECURSE
+  list(FILTER onnxruntime_providers_cuda_cc_srcs EXCLUDE REGEX "core/providers/cuda/plugin/.*")
+
   # Remove pch files
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
@@ -43,6 +46,8 @@
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
         )
   endif()
+  # Exclude plugin directory if it was picked up by GLOB_RECURSE
+  list(FILTER onnxruntime_providers_cuda_cu_srcs EXCLUDE REGEX "core/providers/cuda/plugin/.*")
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
@@ -149,6 +154,17 @@
     onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_all_srcs})
   endif()
 
+  if (MSVC)
+    # Use /permissive to work around compilation error from CUTLASS header cute/tensor.hpp:
+    #   cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type
+    #     template argument
+    # See https://github.com/NVIDIA/cutlass/issues/3065
+    target_compile_options(onnxruntime_providers_cuda PRIVATE
+      "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
+      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+    )
+  endif()
+
   if(WIN32)
     # FILE_NAME preprocessor definition is used in onnxruntime_providers_cuda.rc
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE FILE_NAME=\"onnxruntime_providers_cuda.dll\")
@@ -170,15 +186,21 @@
     endif()
 
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
+      if (NOT "${ORT_FLAG}" STREQUAL "-Wshorten-64-to-32")
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
+      endif()
     endforeach()
 
+    # Note: The minimum required CUDA version is greater than 11.3.
     # CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
-    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
-      set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-    endif()
+    set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
+    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
+
+    # suppress warnings like this:
+    #   cutlass-src\include\cute/arch/mma_sm120.hpp(3128): error #177-D: variable "tidA" was declared but never
+    #     referenced
+    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
 
     # Since CUDA 12.8, compiling diagnostics become stricter
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
@@ -198,7 +220,7 @@
       endif()
 
       if (MSVC)
-          target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
       endif()
     endif()
 
@@ -207,6 +229,38 @@
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+      if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "IBMClang")
+        foreach(CLANG_WARNING
+          braced-scalar-init
+          defaulted-function-deleted
+          inconsistent-missing-override
+          instantiation-after-specialization
+          logical-op-parentheses
+          mismatched-tags
+          shorten-64-to-32
+          unneeded-internal-declaration
+          unknown-warning-option
+          unused-private-field
+          unused-variable)
+          target_compile_options(${target} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=${CLANG_WARNING}>")
+        endforeach()
+        if (CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "Clang" OR CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "IBMClang")
+          foreach(CLANG_WARNING
+            braced-scalar-init
+            defaulted-function-deleted
+            inconsistent-missing-override
+            instantiation-after-specialization
+            logical-op-parentheses
+            mismatched-tags
+            shorten-64-to-32
+            unneeded-internal-declaration
+            unknown-warning-option
+            unused-private-field
+            unused-variable)
+            target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=${CLANG_WARNING}>")
+          endforeach()
+        endif()
+      endif()
     else()
       #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
@@ -217,6 +271,10 @@
         # be used due to `&& not_a_const`. This affects too many places for it to be reasonable to disable at a finer
         # granularity.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
+
+        # Warning C4211: nonstandard extension used: redefined extern to static
+        # non_max_suppression_impl.cu
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>")
       endif()
     endif()
 
@@ -257,6 +315,17 @@
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
     target_link_libraries(${target} PRIVATE Eigen3::Eigen)
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+
+    # Handle CUDA 13.0 CCCL header directory move
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+      foreach(inc_dir ${CUDAToolkit_INCLUDE_DIRS})
+        if (EXISTS "${inc_dir}/cccl")
+          # Add the cccl subdirectory to the include path so <cuda/std/utility> can be found
+          target_include_directories(${target} PRIVATE "${inc_dir}/cccl")
+        endif()
+      endforeach()
+    endif()
+
     # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
     set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)
     set_target_properties(${target} PROPERTIES FOLDER "ONNXRuntime")
@@ -266,7 +335,6 @@
       target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
       if (MSVC)
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
-        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
     endif()

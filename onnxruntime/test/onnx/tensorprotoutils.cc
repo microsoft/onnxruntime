@@ -14,6 +14,7 @@
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
+#include "core/framework/int2.h"
 #include "core/common/endian.h"
 #include "core/framework/endian_utils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -120,6 +121,48 @@ void UnpackTensorWithRawData<UInt4x2>(const void* raw_data, size_t raw_data_len,
   gsl::span<UInt4x2> dst_span = gsl::make_span(p_data, num_packed_pairs);
 
   std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);
+}
+
+template <>
+void UnpackTensorWithRawData<Int2x4>(const void* raw_data, size_t raw_data_len, size_t expected_num_elements,
+                                     /*out*/ Int2x4* p_data) {
+  static_assert(std::is_trivially_copyable<Int2x4>::value, "T must be trivially copyable");
+
+  if (p_data == nullptr) {
+    ORT_CXX_API_THROW("nullptr == p_data", OrtErrorCode::ORT_FAIL);
+  }
+
+  size_t num_packed_quads = (expected_num_elements + 3) / 4;
+
+  if (num_packed_quads != raw_data_len) {
+    ORT_CXX_API_THROW("Unexpected number of packed int2 quads", OrtErrorCode::ORT_FAIL);
+  }
+
+  gsl::span<const Int2x4> src_span = gsl::make_span(reinterpret_cast<const Int2x4*>(raw_data), num_packed_quads);
+  gsl::span<Int2x4> dst_span = gsl::make_span(p_data, num_packed_quads);
+
+  std::memcpy(dst_span.data(), src_span.data(), num_packed_quads);
+}
+
+template <>
+void UnpackTensorWithRawData<UInt2x4>(const void* raw_data, size_t raw_data_len, size_t expected_num_elements,
+                                      /*out*/ UInt2x4* p_data) {
+  static_assert(std::is_trivially_copyable<UInt2x4>::value, "T must be trivially copyable");
+
+  if (p_data == nullptr) {
+    ORT_CXX_API_THROW("nullptr == p_data", OrtErrorCode::ORT_FAIL);
+  }
+
+  size_t num_packed_quads = (expected_num_elements + 3) / 4;
+
+  if (num_packed_quads != raw_data_len) {
+    ORT_CXX_API_THROW("Unexpected number of packed uint2 quads", OrtErrorCode::ORT_FAIL);
+  }
+
+  gsl::span<const UInt2x4> src_span = gsl::make_span(reinterpret_cast<const UInt2x4*>(raw_data), num_packed_quads);
+  gsl::span<UInt2x4> dst_span = gsl::make_span(p_data, num_packed_quads);
+
+  std::memcpy(dst_span.data(), src_span.data(), num_packed_quads);
 }
 
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -373,6 +416,41 @@ DEFINE_UNPACK_TENSOR_FLOAT8(Float8E5M2FNUZ, TensorProto_DataType_FLOAT8E5M2FNUZ)
 DEFINE_UNPACK_TENSOR_INT4(Int4x2, TensorProto_DataType_INT4)
 DEFINE_UNPACK_TENSOR_INT4(UInt4x2, TensorProto_DataType_UINT4)
 
+#define DEFINE_UNPACK_TENSOR_INT2(INT2_TYPE, ONNX_TYPE)                                                   \
+  template <>                                                                                             \
+  void UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, \
+                    /*out*/ INT2_TYPE* p_data, size_t expected_num_elems) {                               \
+    if (nullptr == p_data) {                                                                              \
+      const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();                  \
+      if (size == 0) {                                                                                    \
+        return;                                                                                           \
+      }                                                                                                   \
+      ORT_CXX_API_THROW("p_data == nullptr, but size != 0", OrtErrorCode::ORT_INVALID_ARGUMENT);          \
+    }                                                                                                     \
+    if (ONNX_NAMESPACE::ONNX_TYPE != tensor.data_type()) {                                                \
+      ORT_CXX_API_THROW("TensorProto data type is not INT2", OrtErrorCode::ORT_INVALID_ARGUMENT);         \
+    }                                                                                                     \
+                                                                                                          \
+    size_t expected_int2_quads = (expected_num_elems + 3) / 4;                                            \
+                                                                                                          \
+    if (raw_data != nullptr) {                                                                            \
+      UnpackTensorWithRawData(raw_data, raw_data_len, expected_num_elems, p_data);                        \
+      return;                                                                                             \
+    }                                                                                                     \
+                                                                                                          \
+    if (static_cast<size_t>(tensor.int32_data_size()) != expected_int2_quads) {                           \
+      ORT_CXX_API_THROW("UnpackTensor: the pre-allocated size does not match the size in proto",          \
+                        OrtErrorCode::ORT_FAIL);                                                          \
+    }                                                                                                     \
+                                                                                                          \
+    for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {                                \
+      p_data[i] = INT2_TYPE(static_cast<std::byte>(tensor.int32_data()[i]));                              \
+    }                                                                                                     \
+  }
+
+DEFINE_UNPACK_TENSOR_INT2(Int2x4, TensorProto_DataType_INT2)
+DEFINE_UNPACK_TENSOR_INT2(UInt2x4, TensorProto_DataType_UINT2)
+
 #if !defined(DISABLE_FLOAT4_TYPES)
 template <>
 void UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
@@ -426,6 +504,13 @@ void UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_dat
     }                                                                           \
     break;
 
+#define CASE_PROTO_TRACE_INT2(X)                                                \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:          \
+    if (!CalcMemSizeForArrayWithAlignment((size + 3) / 4, 1, alignment, out)) { \
+      ORT_CXX_API_THROW("Invalid TensorProto", OrtErrorCode::ORT_FAIL);         \
+    }                                                                           \
+    break;
+
 #if !defined(DISABLE_FLOAT4_TYPES)
 #define CASE_PROTO_TRACE_FLOAT4(X)                                              \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:          \
@@ -474,6 +559,8 @@ Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_p
     CASE_PROTO_TRACE(STRING, std::string);
     CASE_PROTO_TRACE_INT4(UINT4);
     CASE_PROTO_TRACE_INT4(INT4);
+    CASE_PROTO_TRACE_INT2(UINT2);
+    CASE_PROTO_TRACE_INT2(INT2);
     default:
       return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
   }
@@ -561,6 +648,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(FLOAT4E2M1)
     CASE_TYPE(UINT4)
     CASE_TYPE(INT4)
+    CASE_TYPE(UINT2)
+    CASE_TYPE(INT2)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -630,6 +719,8 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
 #endif
         CASE_PROTO(INT4, Int4x2);
         CASE_PROTO(UINT4, UInt4x2);
+        CASE_PROTO(INT2, Int2x4);
+        CASE_PROTO(UINT2, UInt2x4);
         case onnx::TensorProto_DataType::TensorProto_DataType_STRING:
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
@@ -765,6 +856,14 @@ Status MLValueToTensorProto(Ort::Value& value, onnx::TensorProto& tensor_proto) 
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
       tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4;
+      tensor_elem_bytes = 1;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT2;
+      tensor_elem_bytes = 1;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT2;
       tensor_elem_bytes = 1;
       break;
     default: {
