@@ -166,8 +166,13 @@ class ThreadPool {
   // "spin_backoff_max" controls an optional exponential-backoff inside the spin
   // window. 1 (default) keeps the legacy behavior (single SpinPause() per iteration).
   // Values >= 2 emit 1, 2, 4, ... pause calls per iteration capped at this value,
-  // reducing CPU/power density during the same targeted wall-clock spin duration.
-  // Values above kSpinBackoffMaxLimit are clamped to that limit.
+  // reducing CPU/power density during the same targeted spin budget. For
+  // explicit spin_duration_us > 0 this keeps the wall-clock spin duration close
+  // to the requested value. On the legacy default path
+  // (spin_duration_us == kSpinDurationDefault), it preserves only an
+  // approximate pause budget rather than the exact historical outer-loop
+  // iteration count. Values above kSpinBackoffMaxLimit are clamped to that
+  // limit.
   //
   // REQUIRES: degree_of_parallelism > 0
   ThreadPool(Env* env,

@@ -1632,10 +1632,15 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   // With exponential backoff capped at M, ThreadPoolWaiter::wait() ramps up to
   // M SpinPause() calls per iteration and then stays at M. To preserve the
-  // wall-clock spin window targeted by spin_duration_us, divide the iteration
-  // budget by M so that (iterations) x (steady-state pauses per iter) ~=
-  // original pause budget. The ramp-up phase is O(log M) iterations and is
-  // negligible for typical M (<=64).
+  // targeted spin budget, divide the iteration budget by M so that
+  // (iterations) x (steady-state pauses per iter) ~= original pause budget.
+  // For explicit spin_duration_us > 0 this keeps the wall-clock spin window
+  // close to the requested duration. For the legacy default path
+  // (spin_duration_us < 0), the original semantic was "spin for ~1M
+  // iterations", so this scaling intentionally preserves only an approximate
+  // pause budget rather than the historical outer-loop iteration count. The
+  // ramp-up phase is O(log M) iterations and is negligible for typical M
+  // (<=64).
   static int ScaleSpinCountForBackoff(int spin_count, unsigned int spin_backoff_max) {
     if (spin_count <= 0 || spin_backoff_max <= 1U) {
       return spin_count;
@@ -1737,6 +1742,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         // density; spin_count_ has already been scaled to preserve the
         // targeted wall-clock window.
         // steal_interval_ = max(spin_count_/100, 1), yielding ~100 steal attempts per spin window.
+        // When backoff stretches each outer iteration, the wall-clock spacing
+        // between steal attempts also grows. We keep the same approximate
+        // number of steal attempts per spin window to preserve the legacy
+        // steal-vs-block trade-off.
         ThreadPoolWaiter waiter{spin_backoff_max_};
         int steal_countdown = steal_interval_;
         for (int i = 0; i < spin_count_ && !done_; i++) {

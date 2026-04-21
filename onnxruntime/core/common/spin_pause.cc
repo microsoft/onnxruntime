@@ -84,7 +84,7 @@ int CalibrateSpinPauseNs() {
     // Use a volatile sink so the optimizer cannot conclude SpinPause() is
     // side-effect-free and delete the calibration loops. This is belt-and-
     // suspenders on top of the fallback barrier inside SpinPause() above.
-    volatile int sink = 0;
+    [[maybe_unused]] volatile int sink = 0;
     for (int i = 0; i < kWarmupIters; i++) {
       SpinPause();
       sink = sink + 1;
@@ -97,7 +97,6 @@ int CalibrateSpinPauseNs() {
     auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::steady_clock::now() - start)
                           .count();
-    (void)sink;
     return static_cast<int>(std::max<int64_t>(elapsed_ns / kCalibrationIters, 1));
   }();
   return ns_per_iter;
