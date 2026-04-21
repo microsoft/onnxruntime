@@ -76,7 +76,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // values as the actual model compilation tends to require them.
       const auto strides = helper.Get("strides", std::vector<int64_t>(num_spatial_dims, 1));
       for (auto s : strides) {
-        ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive.");
+        ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive, got: ", s);
       }
       const bool ceil_mode = helper.Get("ceil_mode", int64_t(0));  // convert int64_t to bool
 
@@ -121,7 +121,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       const auto kernel_shape = helper.Get("kernel_shape", std::vector<int64_t>{0, 0});
       const auto strides = helper.Get("strides", std::vector<int64_t>{1, 1});
       for (auto s : strides) {
-        ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive.");
+        ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive, got: ", s);
       }
       const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
 
