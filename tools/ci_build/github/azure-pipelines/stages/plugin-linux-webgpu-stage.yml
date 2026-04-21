@@ -164,6 +164,8 @@ stages:
       clean: true
       submodules: none
 
+    - template: ../templates/setup-feeds-and-python-steps.yml
+
     - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
