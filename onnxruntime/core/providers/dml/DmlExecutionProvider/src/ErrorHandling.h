@@ -63,7 +63,7 @@
 #define ORT_THROW_HR_MSG(hr, fmt, ...) ORT_THROW(hr)
 #else
 #define ORT_THROW_HR_MSG(hr, fmt, ...) \
-    THROW_HR_MSG(hr, fmt __VA_OPT__(,) __VA_ARGS__)
+    THROW_HR_MSG(hr, fmt, __VA_ARGS__)
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
