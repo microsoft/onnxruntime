@@ -73,7 +73,7 @@ struct RunConfig {
   int spin_duration_us = -1;  // -1 means use default (not set by user)
   // Keep this signed in the CLI layer so negative user input can be diagnosed
   // before clamping/conversion to the unsigned runtime option.
-  int spin_backoff_max = 1;   // 1 means no backoff (default)
+  int spin_backoff_max = 1;  // 1 means no backoff (default)
   bool spin_backoff_max_set = false;
   bool exit_after_session_creation = false;
   std::basic_string<ORTCHAR_T> register_custom_op_path;
