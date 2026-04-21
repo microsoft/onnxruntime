@@ -644,6 +644,35 @@ TEST(NchwcOptimizerTests, FusedConvAddFusion) {
   test_case(true, true, 1);
 }
 
+TEST(NchwcOptimizerTests, PreExistingFusedConvWithNchwcSumInput) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 32, 28, 28});
+    auto* sum_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, sum_arg, {32, 32, 3, 3});
+
+    auto* weights_arg = helper.MakeInitializer({32, 32, 3, 3});
+    auto* bias_arg = helper.MakeInitializer({32});
+    auto& fused_conv_node =
+        helper.AddNode("FusedConv", {input_arg, weights_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.FusedConv"], 0);
+  };
+
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
 TEST(NchwcOptimizerTests, ConvBinary) {
   auto test_case = [&](const std::string& op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
