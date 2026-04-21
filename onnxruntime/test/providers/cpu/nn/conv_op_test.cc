@@ -484,22 +484,22 @@ TEST(ConvTest, Conv2D_3) {
 
 TEST(ConvTest, Conv2D_4) {
   ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{2, 2},        // kernel_shape
-      vector<int64_t>{1, 2, 3, 1},  // pads
-      vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      "",                                // auto_pad
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      std::vector<int64_t>{2, 2},        // kernel_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      {}                                 // excluded EPs
   };
 
-  vector<int64_t> X_shape = {1, 4, 3, 3};
-  vector<float> X(36, 1.f);
-
-  vector<int64_t> W_shape = {2, 4, 2, 2};
-  vector<float> W(32, 1.f);
-
-  vector<int64_t> Y_shape = {1, 2, 6, 5};
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> X_shape = {1, 1, 3, 3};
+  std::vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<int64_t> W_shape = {2, 1, 2, 2};
+  std::vector<int64_t> Y_shape = {1, 2, 2, 2};
+  std::vector<float> B = {1.0f, -1.0f};
+  std::vector<int64_t> B_shape = {2};
 
   auto Y = {
       0.f, 4.f, 8.f, 8.f, 4.f,
