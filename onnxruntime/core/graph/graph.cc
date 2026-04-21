@@ -1671,73 +1671,75 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-Status Graph::BuildConnectionsSubgraph(Node* node, Graph* subgraph, std::unordered_set<std::string>& outer_scope_node_args_consumed, bool& removed_node_with_subgraph) {
-        std::unordered_set<std::string> node_args_consumed;
-        ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed, removed_node_with_subgraph));
+Status Graph::BuildConnectionsSubgraph(Node* node, Graph* subgraph,
+                                       std::unordered_set<std::string>& outer_scope_node_args_consumed,
+                                       bool& removed_node_with_subgraph) {
+  std::unordered_set<std::string> node_args_consumed;
+  ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed, removed_node_with_subgraph));
 
-        for (auto& node_arg_name : node_args_consumed) {
-          auto node_arg = GetNodeArg(node_arg_name);
+  for (auto& node_arg_name : node_args_consumed) {
+    auto node_arg = GetNodeArg(node_arg_name);
 
-          if (node_arg == nullptr) {
-            // it's a node arg from outside this graph's scope, so add that to the list we return
-            // so that we can add the dependency at the next level up. this happens if you have multiple
-            // levels of subgraphs between the graph with the original NodeArg and the subgraph with implicit usage.
-            ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
+    if (node_arg == nullptr) {
+      // it's a node arg from outside this graph's scope, so add that to the list we return
+      // so that we can add the dependency at the next level up. this happens if you have multiple
+      // levels of subgraphs between the graph with the original NodeArg and the subgraph with implicit usage.
+      ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
 
-            if (!parent_graph_) {
-              return ORT_MAKE_STATUS(
-                  ONNXRUNTIME, INVALID_GRAPH,
-                  "This is an invalid model. At top level graph without matching NodeArg that subgraph consumes. Name=",
-                  node_arg_name,
-                  " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
-            }
+      if (!parent_graph_) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_GRAPH,
+            "This is an invalid model. At top level graph without matching NodeArg that subgraph consumes. Name=",
+            node_arg_name,
+            " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
+      }
 
-            node_arg = parent_graph_->GetNodeArgIncludingParentGraphs(node_arg_name);
+      node_arg = parent_graph_->GetNodeArgIncludingParentGraphs(node_arg_name);
 
-            // make sure the node arg is found in the parent graph/s
-            if (!node_arg) {
-              return ORT_MAKE_STATUS(
-                  ONNXRUNTIME, INVALID_GRAPH,
-                  "This is an invalid model. Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
-                  " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
-            }
-          } else {
-            // as we create a NodeArg instance for all Node inputs the value could be produced by this graph,
-            // or could be coming from outer scope. check the valid values for just this Graph using resolve_context_.
-            // if none are found, it's an outer scope value.
-            if (resolve_context_.IsLocalValue(node_arg_name) == false) {
-              ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
-            }
-          }
+      // make sure the node arg is found in the parent graph/s
+      if (!node_arg) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_GRAPH,
+            "This is an invalid model. Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
+            " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
+      }
+    } else {
+      // as we create a NodeArg instance for all Node inputs the value could be produced by this graph,
+      // or could be coming from outer scope. check the valid values for just this Graph using resolve_context_.
+      // if none are found, it's an outer scope value.
+      if (resolve_context_.IsLocalValue(node_arg_name) == false) {
+        ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
+      }
+    }
 
-          // add it to the Node's list of implicit inputs
-          auto& implicit_inputs = node->MutableDefinitions().implicit_input_defs;
-          int input_slot_index = static_cast<int>(node->GetDefinitions().input_defs.size());
-          auto iter = std::find(implicit_inputs.cbegin(), implicit_inputs.cend(), node_arg);
-          if (implicit_inputs.cend() == iter) {
-            implicit_inputs.push_back(node_arg);
-            input_slot_index += static_cast<int>(implicit_inputs.size() - 1);
-          } else {
-            input_slot_index += static_cast<int>(iter - implicit_inputs.cbegin());
-          }
+    // add it to the Node's list of implicit inputs
+    auto& implicit_inputs = node->MutableDefinitions().implicit_input_defs;
+    int input_slot_index = static_cast<int>(node->GetDefinitions().input_defs.size());
+    auto iter = std::find(implicit_inputs.cbegin(), implicit_inputs.cend(), node_arg);
+    if (implicit_inputs.cend() == iter) {
+      implicit_inputs.push_back(node_arg);
+      input_slot_index += static_cast<int>(implicit_inputs.size() - 1);
+    } else {
+      input_slot_index += static_cast<int>(iter - implicit_inputs.cbegin());
+    }
 
-          auto entry = resolve_context_.output_args.find(node_arg_name);
-          if (entry != resolve_context_.output_args.end()) {
-            // Create relationship between this node (node), and the node providing the output (output_node).
-            Node& output_node = *entry->second.first;
-            AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
+    auto entry = resolve_context_.output_args.find(node_arg_name);
+    if (entry != resolve_context_.output_args.end()) {
+      // Create relationship between this node (node), and the node providing the output (output_node).
+      Node& output_node = *entry->second.first;
+      AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
-            // If this Graph was built manually and the outputs were not manually set, remove the implicit input from
-            // the graph outputs if it is present there.
-            //
-            // Otherwise, if the Graph was loaded from a GraphProto or the outputs were manually set, honor the
-            // explicit graph outputs and leave as is.
-            if (!is_loaded_from_model_file_ && !graph_outputs_manually_set_) {
-              graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
-                                   graph_outputs_.end());
-            }
-          }
-        }
+      // If this Graph was built manually and the outputs were not manually set, remove the implicit input from
+      // the graph outputs if it is present there.
+      //
+      // Otherwise, if the Graph was loaded from a GraphProto or the outputs were manually set, honor the
+      // explicit graph outputs and leave as is.
+      if (!is_loaded_from_model_file_ && !graph_outputs_manually_set_) {
+        graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
+                             graph_outputs_.end());
+      }
+    }
+  }
   return Status::OK();
 }
 
@@ -1748,7 +1750,8 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
-        ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(node, subgraph.get(), outer_scope_node_args_consumed, removed_node_with_subgraph));
+        ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(node, subgraph.get(), outer_scope_node_args_consumed,
+                                                     removed_node_with_subgraph));
       }
     }
   }
@@ -1756,7 +1759,8 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
 #ifdef ENABLE_TRAINING
   if (!resolve_context_.isolated_graph.empty())
     for (auto subgraph : resolve_context_.isolated_graph) {
-      ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(nullptr, subgraph, outer_scope_node_args_consumed, removed_node_with_subgraph));
+      ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(nullptr, subgraph, outer_scope_node_args_consumed,
+                                                   removed_node_with_subgraph));
     }
 #endif
 
