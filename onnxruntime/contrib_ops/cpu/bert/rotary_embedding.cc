@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <limits>
 
-#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
@@ -113,8 +112,6 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
 
-  std::ptrdiff_t position_count = SafeInt<std::ptrdiff_t>(batch_size) * sequence_length;
-
   // Validate position_ids values are within cos/sin cache bounds
   if (position_ids_format == 0) {
     // Format 0: single offset, effective positions are [base_pos, base_pos + sequence_length - 1].
@@ -128,6 +125,9 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
                              " exceeds cos/sin cache range [0, ", max_sequence_length, ")");
     }
   } else if (position_ids_format == 1) {
+    std::ptrdiff_t position_count = 0;
+    ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(batch_size, sequence_length, "position_ids element count", position_count));
+
     // Format 1: 2D array (batch_size, sequence_length)
     for (std::ptrdiff_t i = 0; i < position_count; ++i) {
       int64_t pos = position_ids[i];
