@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -4536,6 +4537,53 @@ void CallbackFail(void*, OrtValue**, size_t, OrtStatusPtr) {
   EXPECT_TRUE(false);  // the callback is not supposed to be invoked
 }
 
+struct RunAsyncReleaseState {
+  std::mutex mutex;
+  std::condition_variable cv;
+  bool first_callback_started = false;
+  bool allow_first_callback_finish = false;
+  bool second_callback_invoked = false;
+  bool destroy_completed = false;
+  std::string second_callback_error;
+};
+
+void BlockingCallbackSucceed(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status_ptr) {
+  auto* state = reinterpret_cast<RunAsyncReleaseState*>(user_data);
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->first_callback_started = true;
+  }
+  state->cv.notify_all();
+
+  {
+    std::unique_lock<std::mutex> lock(state->mutex);
+    state->cv.wait(lock, [state] { return state->allow_first_callback_finish; });
+  }
+
+  Ort::Status status(status_ptr);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_EQ(num_outputs, 1UL);
+  Ort::Value output_value(outputs[0]);
+  EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
+  output_value.release();
+}
+
+void RecordShutdownCallback(void* user_data, OrtValue**, size_t num_outputs, OrtStatusPtr status_ptr) {
+  auto* state = reinterpret_cast<RunAsyncReleaseState*>(user_data);
+  Ort::Status status(status_ptr);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(num_outputs, 0UL);
+  EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("Session is being destroyed"));
+
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->second_callback_invoked = true;
+    state->second_callback_error = status.GetErrorMessage();
+  }
+  state->cv.notify_all();
+}
+
 TEST(CApiTest, RunAsyncFail) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);  // This will cause RunAsync fail
@@ -4555,6 +4603,79 @@ TEST(CApiTest, RunAsyncFail) {
 
   Ort::RunOptions run_options;
   EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
+}
+
+TEST(CApiTest, RunAsyncQueuedCallBlocksSessionDestruction) {
+  RunAsyncReleaseState state;
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(2);
+  auto session = std::make_unique<Ort::Session>(*ort_env, MODEL_URI, session_options);
+
+  const char* input_names[] = {"X"};
+  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  int64_t x_dim[] = {3, 2};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
+  };
+
+  const char* output_names[] = {"Y"};
+  Ort::RunOptions run_options;
+  Ort::Value first_output_values[1] = {Ort::Value{nullptr}};
+  Ort::Value second_output_values[1] = {Ort::Value{nullptr}};
+
+  ASSERT_NO_THROW(session->RunAsync(run_options,
+                                    input_names,
+                                    input_tensors,
+                                    1,
+                                    output_names,
+                                    first_output_values,
+                                    1,
+                                    BlockingCallbackSucceed,
+                                    &state));
+
+  {
+    std::unique_lock<std::mutex> lock(state.mutex);
+    ASSERT_TRUE(state.cv.wait_for(lock, std::chrono::seconds(10), [&state] { return state.first_callback_started; }));
+  }
+
+  ASSERT_NO_THROW(session->RunAsync(run_options,
+                                    input_names,
+                                    input_tensors,
+                                    1,
+                                    output_names,
+                                    second_output_values,
+                                    1,
+                                    RecordShutdownCallback,
+                                    &state));
+
+  std::thread destroy_thread([&session, &state]() {
+    session.reset();
+    {
+      std::lock_guard<std::mutex> lock(state.mutex);
+      state.destroy_completed = true;
+    }
+    state.cv.notify_all();
+  });
+
+  {
+    std::unique_lock<std::mutex> lock(state.mutex);
+    EXPECT_FALSE(state.cv.wait_for(lock, std::chrono::milliseconds(100), [&state] { return state.destroy_completed; }));
+    state.allow_first_callback_finish = true;
+  }
+  state.cv.notify_all();
+
+  {
+    std::unique_lock<std::mutex> lock(state.mutex);
+    ASSERT_TRUE(state.cv.wait_for(lock, std::chrono::seconds(10), [&state] {
+      return state.second_callback_invoked && state.destroy_completed;
+    }));
+    EXPECT_THAT(state.second_callback_error, testing::HasSubstr("Session is being destroyed"));
+  }
+
+  destroy_thread.join();
 }
 
 static void TestRunWithLoraAdapter(const Ort::LoraAdapter& adapter) {

@@ -968,13 +968,16 @@ class InferenceSession {
   // External data loader manager.
   ExternalDataLoaderManager external_data_loader_mgr_;
 
-  // Number of concurrently running executors
+  // Number of runs or queued async callbacks that still hold session state during teardown.
+  std::atomic<int> active_session_runs_ = 0;
+
+  // Number of concurrently running executors. Used for thread-pool spinning control.
   std::atomic<int> current_num_runs_ = 0;
 
   // Set to true in destructor to reject new Run() calls and drain active ones.
   std::atomic<bool> is_shutting_down_{false};
 
-  // Signaled when current_num_runs_ drops to zero so the destructor can stop waiting.
+  // Signaled when active_session_runs_ drops to zero so the destructor can stop waiting.
   std::mutex runs_drain_mutex_;
   std::condition_variable runs_drain_cv_;
 

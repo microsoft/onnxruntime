@@ -786,7 +786,7 @@ InferenceSession::~InferenceSession() {
   {
     std::unique_lock<std::mutex> lock(runs_drain_mutex_);
     runs_drain_cv_.wait(lock, [this] {
-      return current_num_runs_.load(std::memory_order_acquire) == 0;
+      return active_session_runs_.load(std::memory_order_acquire) == 0;
     });
   }
 
@@ -3028,18 +3028,61 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 #endif
 
 namespace {
+constexpr const char* kSessionShuttingDownError =
+    "Session is being destroyed. New Run() calls are rejected.";
+
+// Tracks session usage that must finish before teardown can destroy session-owned state.
+class SessionAccessGuard {
+ public:
+  SessionAccessGuard(std::atomic<int>& active_session_runs,
+                     std::atomic<bool>& is_shutting_down,
+                     std::condition_variable* drain_cv) noexcept
+      : active_session_runs_(active_session_runs), drain_cv_(drain_cv) {
+    active_session_runs_.fetch_add(1, std::memory_order_acq_rel);
+    holds_ref_ = true;
+    if (is_shutting_down.load(std::memory_order_acquire)) {
+      Release();
+    }
+  }
+
+  SessionAccessGuard(const SessionAccessGuard&) = delete;
+  SessionAccessGuard& operator=(const SessionAccessGuard&) = delete;
+
+  ~SessionAccessGuard() {
+    Release();
+  }
+
+  bool HoldsRef() const noexcept {
+    return holds_ref_;
+  }
+
+  void Release() noexcept {
+    if (!holds_ref_) {
+      return;
+    }
+
+    holds_ref_ = false;
+    if (1 == active_session_runs_.fetch_sub(1, std::memory_order_acq_rel) && drain_cv_) {
+      drain_cv_->notify_one();
+    }
+  }
+
+ private:
+  std::atomic<int>& active_session_runs_;
+  std::condition_variable* drain_cv_{nullptr};
+  bool holds_ref_{false};
+};
+
 // Concurrent runs counting and thread-pool spin control
 struct ThreadPoolSpinningSwitch {
   concurrency::ThreadPool* intra_tp_{nullptr};
   concurrency::ThreadPool* inter_tp_{nullptr};
   std::atomic<int>& concurrent_num_runs_;
-  std::condition_variable* drain_cv_{nullptr};
   // __Ctor Refcounting and spinning control
   ThreadPoolSpinningSwitch(concurrency::ThreadPool* intra_tp,
                            concurrency::ThreadPool* inter_tp,
-                           std::atomic<int>& ref,
-                           std::condition_variable* drain_cv = nullptr) noexcept
-      : intra_tp_(intra_tp), inter_tp_(inter_tp), concurrent_num_runs_(ref), drain_cv_(drain_cv) {
+                           std::atomic<int>& ref) noexcept
+      : intra_tp_(intra_tp), inter_tp_(inter_tp), concurrent_num_runs_(ref) {
     if (concurrent_num_runs_.fetch_add(1, std::memory_order_relaxed) == 0) {
       if (intra_tp_) intra_tp_->EnableSpinning();
       if (inter_tp_) inter_tp_->EnableSpinning();
@@ -3049,7 +3092,6 @@ struct ThreadPoolSpinningSwitch {
     if (1 == concurrent_num_runs_.fetch_sub(1, std::memory_order_acq_rel)) {
       if (intra_tp_) intra_tp_->DisableSpinning();
       if (inter_tp_) inter_tp_->DisableSpinning();
-      if (drain_cv_) drain_cv_->notify_one();
     }
   }
 };
@@ -3077,6 +3119,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  SessionAccessGuard session_access_guard(active_session_runs_, is_shutting_down_, &runs_drain_cv_);
+  if (!session_access_guard.HoldsRef()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kSessionShuttingDownError);
+  }
+
   return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
                  /*graph_capture_depth=*/0);
 }
@@ -3134,15 +3181,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                 !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id);
   auto* intra_tp = (control_spinning) ? thread_pool_.get() : nullptr;
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
-  ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_, &runs_drain_cv_);
-
-  // Reject new runs if the session is being destroyed.
-  // Checked AFTER incrementing current_num_runs_ to close the race window where a thread
-  // could pass this check, get preempted, and the destructor proceeds seeing zero active runs.
-  // The RAII guard above will decrement and notify the destructor on early return.
-  if (is_shutting_down_.load(std::memory_order_acquire)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Session is being destroyed. New Run() calls are rejected.");
-  }
+  ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
   // Check if this Run() can skip normal execution and replay a previously captured graph.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
@@ -3394,6 +3433,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const OrtValue* const> feeds,
                              gsl::span<const char* const> fetch_names,
                              gsl::span<OrtValue*> fetches) {
+  SessionAccessGuard session_access_guard(active_session_runs_, is_shutting_down_, &runs_drain_cv_);
+  if (!session_access_guard.HoldsRef()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kSessionShuttingDownError);
+  }
+
   size_t num_feeds = feed_names.size();
   size_t num_fetches = fetch_names.size();
   InlinedVector<std::string> feed_name_vec;
@@ -3435,7 +3479,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   Status status;
-  status = Run(run_options, feed_name_vec, feed_vec, fetch_name_vec, &fetch_vec, nullptr);
+  status = RunImpl(run_options, feed_name_vec, feed_vec, fetch_name_vec, &fetch_vec, nullptr,
+                   /*graph_capture_depth=*/0);
 
   if (!status.IsOK())
     return status;
@@ -3467,13 +3512,19 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
                                           gsl::span<OrtValue*> fetches,
                                           RunAsyncCallbackFn callback,
                                           void* user_data) {
+  auto session_access_guard =
+      std::make_shared<SessionAccessGuard>(active_session_runs_, is_shutting_down_, &runs_drain_cv_);
+  if (!session_access_guard->HoldsRef()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kSessionShuttingDownError);
+  }
+
   size_t num_fetches = fetch_names.size();
   auto* tp = GetIntraOpThreadPoolToUse();
   if (!tp || concurrency::ThreadPool::DegreeOfParallelism(tp) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
   std::function<void()> run_fn = [run_options, feed_names, feeds, fetch_names, fetches, num_fetches,
-                                  callback, user_data, this]() {
+                                  callback, user_data, this, session_access_guard]() mutable {
     Status status = Status::OK();
     ORT_TRY {
       if (run_options) {
@@ -3491,6 +3542,8 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
     ORT_CATCH(...) {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "unknown exception");
     }
+
+    session_access_guard.reset();
     callback(user_data, fetches.data(), status.IsOK() ? num_fetches : 0, ToOrtStatus(status));
   };  // run_fn
   concurrency::ThreadPool::Schedule(tp, run_fn);
@@ -3504,6 +3557,11 @@ common::Status InferenceSession::Run(const NameMLValMap& feeds, gsl::span<const 
 
 common::Status InferenceSession::Run(const RunOptions& run_options, const NameMLValMap& feeds_map,
                                      gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches) {
+  SessionAccessGuard session_access_guard(active_session_runs_, is_shutting_down_, &runs_drain_cv_);
+  if (!session_access_guard.HoldsRef()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kSessionShuttingDownError);
+  }
+
   InlinedVector<std::string> feed_names;
   InlinedVector<OrtValue> feeds;
 
@@ -3516,7 +3574,8 @@ common::Status InferenceSession::Run(const RunOptions& run_options, const NameML
     feeds.push_back(pair.second);
   }
 
-  return Run(run_options, feed_names, feeds, output_names, p_fetches, nullptr);
+  return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, nullptr,
+                 /*graph_capture_depth=*/0);
 }
 
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
@@ -3756,10 +3815,15 @@ common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_bin
 }
 
 common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
+  SessionAccessGuard session_access_guard(active_session_runs_, is_shutting_down_, &runs_drain_cv_);
+  if (!session_access_guard.HoldsRef()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kSessionShuttingDownError);
+  }
+
   // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
   // io_binding.SynchronizeInputs();
-  return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
-             &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
+  return RunImpl(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
+                 &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo(), /*graph_capture_depth=*/0);
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {
