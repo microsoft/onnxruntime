@@ -63,6 +63,8 @@ docker run --rm \
         --cudnn_home=\${CUDA_HOME} \
         --update \
         --build \
+        --use_vcpkg \
+        --use_vcpkg_ms_internal_asset_cache \
         --skip_tests \
         --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHS}' \
         --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON \
