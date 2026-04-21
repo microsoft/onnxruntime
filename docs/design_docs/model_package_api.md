@@ -26,6 +26,7 @@
   - [Two Parameters for Component + File (Not a Dotted String)](#two-parameters-for-component--file-not-a-dotted-string)
   - [No OrtEnv for Context Creation](#no-ortenv-for-context-creation)
   - [Partial Match Is Not an Error](#partial-match-is-not-an-error)
+  - [NULL Criteria Means "Single-Variant Package"](#null-criteria-means-single-variant-package)
   - [Per-File EP Compatibility List](#per-file-ep-compatibility-list)
   - [`ep: null` for Neutral/CPU Files](#ep-null-for-neutralcpu-files)
   - [Variant Score Is the File-Score Average](#variant-score-is-the-file-score-average)
@@ -448,9 +449,11 @@ A matching entry's score is computed from:
 
 | Criteria | Behavior |
 |---|---|
-| NULL | Every file must have a null entry. All such variants score 0 and tie-break deterministically. Variants that require a specific EP are rejected. |
+| NULL | "I don't know or care about the EP." Each component is resolved by count: if the component has exactly one variant, that variant is selected regardless of its EP requirements. If the component has more than one variant, context creation fails with an ambiguity error — the consumer must supply `ep_name` to disambiguate. Intended for cases like the legacy flat ORT-GenAI directory where the EP is already implied by the on-disk contents. |
 | `ep_name` = "CPUExecutionProvider" | Variants where every file has either a `CPUExecutionProvider` entry or a null entry are candidates. |
 | `ep_name` = any other EP | Variants where every file has either a matching entry or a null entry are candidates. |
+
+Note: `ep: null` entries in a file's `ep_compatibility` list (CPU-resident files in a mixed variant) are independent of NULL *criteria*. The former is a per-file declaration in metadata; the latter is a per-call statement from the consumer.
 
 **Worked example** — package with three variants (`cpu`, `gpu`, `qnn-npu`) from the schema above:
 
@@ -468,10 +471,9 @@ A matching entry's score is computed from:
   - `cpu`, `gpu`: rejected.
   - Winner: `qnn-npu`. Selected EP per file: `null` (CPU), QNN, QNN, `null` (CPU). The null-EP files still contribute their own session options to their CPU sessions.
 - Criteria NULL:
-  - `cpu`: `decoder` requires CPU EP (not null) → rejected.
-  - `gpu`: requires CUDA/WebGPU → rejected.
-  - `qnn-npu`: requires QNN for `context`/`iterator` → rejected.
-  - Result: component excluded from context.
+  - Each component is resolved by variant count, not by scoring.
+  - If a component has a single variant, it is selected regardless of the EPs declared in its files (this is the "flat directory" case — the consumer trusts what's on disk).
+  - If any component has more than one variant, `CreateModelPackageContext` fails with an ambiguity error and the consumer must retry with an `ep_name`.
 
 Filtering is at the variant level, not the file level. Once a variant is selected, **all** files in that variant are visible via the query APIs — including files running on CPU via a null entry. The consumer sees the complete set of files needed to run the component.
 
@@ -691,6 +693,17 @@ Context creation is pure parsing — manifest, metadata, variant matching. There
 If a package contains components that don't have a matching variant for the consumer's EP criteria, those components are silently excluded from the context. The consumer sees only what's usable. This matches the mental model of the API: "tell me what's available for my EP."
 
 Components that *are* available can still be loaded. If a consumer expects a specific component and it's missing, that shows up at session creation time with a clear error.
+
+One exception: when the consumer passes **NULL criteria** and any component has more than one variant, context creation fails. That's ambiguity, not absence — see below.
+
+### NULL Criteria Means "Single-Variant Package"
+
+NULL criteria is for consumers that don't know or don't want to specify an EP — for example, a legacy ORT-GenAI flat directory that's been repackaged, where the EP is already implied by what's on disk. In that case, each component is resolved purely by variant count:
+
+- Exactly one variant → selected, regardless of the EPs it declares.
+- More than one variant → ambiguity error at `CreateModelPackageContext`; the consumer must supply an `ep_name`.
+
+This keeps the NULL path predictable (no silent EP guessing) while preserving the single-variant ergonomics needed for the flat-directory migration case. It also means NULL criteria is a *package-level* precondition — if even one component is multi-variant, the consumer can't use NULL and must disambiguate.
 
 ### Per-File EP Compatibility List
 
