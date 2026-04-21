@@ -130,7 +130,7 @@ class TestBackendKwargsAllowlist(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_blocked_run_option_terminate_raises(self):
-        """terminate is a known RunOptions attr excluded from the allowlist; it must raise RuntimeError."""
+        """terminate is a known RunOptions attr excluded from the allowlist; BackendRep.run() must raise RuntimeError when it is passed."""
         name = get_name("mul_1.onnx")
         rep = backend.prepare(name)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
