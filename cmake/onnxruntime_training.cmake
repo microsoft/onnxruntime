@@ -31,7 +31,9 @@ list(REMOVE_ITEM onnxruntime_training_srcs ${onnxruntime_training_framework_excl
 onnxruntime_add_static_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard ${PROTOBUF_LIB} flatbuffers::flatbuffers re2::re2 Boost::mp11 safeint_interface Eigen3::Eigen)
-target_link_libraries(onnxruntime_training PRIVATE onnxruntime_optimizer)
+if (onnxruntime_BUILD_SHARED_LIB)
+  target_link_libraries(onnxruntime_training PRIVATE onnxruntime_optimizer)
+endif()
 
 # fix event_writer.cc 4100 warning
 if(WIN32)
