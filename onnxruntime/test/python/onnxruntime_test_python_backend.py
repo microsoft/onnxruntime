@@ -158,8 +158,26 @@ class TestBackendKwargsAllowlist(unittest.TestCase):
         """run_model() must raise RuntimeError when given a blocked RunOptions attribute."""
         name = get_name("mul_1.onnx")
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(RuntimeError) as ctx:
             backend.run(name, [x], terminate=True)
+        self.assertIn("not permitted", str(ctx.exception))
+
+    def test_unknown_kwarg_is_silently_ignored_in_run(self):
+        """A kwarg unknown to RunOptions must be silently ignored by rep.run()."""
+        name = get_name("mul_1.onnx")
+        rep = backend.prepare(name)
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        res = rep.run(x, completely_unknown_key="bar")
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
+
+    def test_unknown_kwarg_is_silently_ignored_in_run_model(self):
+        """An unknown kwarg must be silently ignored by both prepare() and rep.run() in run_model()."""
+        name = get_name("mul_1.onnx")
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        res = backend.run(name, [x], completely_unknown_key="baz")
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model_with_blocked_session_option_raises(self):
         """run_model() must raise RuntimeError when given a blocked SessionOptions attribute."""

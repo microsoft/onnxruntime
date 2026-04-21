@@ -42,7 +42,7 @@ for k, v in kwargs.items():
 
 1. **Use the existing object** in `hasattr(options, k)` — never `hasattr(ClassName(), k)` (creates throwaway C++ objects per iteration)
 2. **RuntimeError** is the ORT convention for API misuse errors (not ValueError)
-3. **Silent ignore for RunOptions** when the same kwargs are forwarded from a SessionOptions path (e.g. `run_model()` sends kwargs to both `prepare` and `rep.run`)
+3. **Silent ignore for one path is OK when kwargs are forwarded to both paths**: `run_model()` passes the same kwargs dict to both `prepare()` (validates SessionOptions) and `rep.run()` (validates RunOptions). A RunOptions kwarg unknown to SessionOptions is silently ignored by `prepare()` — this is correct because `rep.run()` will validate it. Only raise RuntimeError when the attr exists on the target object but is blocked.
 4. **Frozenset constant naming**: `_ALLOWED_<CLASSNAME>` — ALL_CAPS, Google Style
 5. **No type annotations** on module-level constants (ORT Python convention)
 

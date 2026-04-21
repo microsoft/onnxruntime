@@ -18,8 +18,10 @@ from onnxruntime import InferenceSession, SessionOptions, get_available_provider
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 
 # Allowlist of SessionOptions attributes that are safe to set via the backend API.
-# Dangerous attributes (e.g. optimized_model_filepath, profile_file_prefix, enable_profiling)
-# are intentionally excluded to prevent arbitrary file writes through user-controlled kwargs.
+# Dangerous attributes intentionally excluded:
+#   optimized_model_filepath  — triggers Model::Save(), overwrites arbitrary files
+#   profile_file_prefix       — writes profiling JSON to arbitrary path
+#   enable_profiling          — causes uncontrolled file writes to cwd
 _ALLOWED_SESSION_OPTIONS = frozenset(
     {
         "enable_cpu_mem_arena",
@@ -140,6 +142,7 @@ class OnnxRuntimeBackend(Backend):
                         f"SessionOptions attribute '{k}' is not permitted via the backend API. "
                         f"Allowed attributes: {', '.join(sorted(_ALLOWED_SESSION_OPTIONS))}"
                     )
+                # else: silently ignore unknown keys
 
             excluded_providers = os.getenv("ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS", default="").split(",")
             providers = [x for x in get_available_providers() if (x not in excluded_providers)]
@@ -182,7 +185,7 @@ class OnnxRuntimeBackend(Backend):
             None means the default one which depends on
             the compilation settings
         :param kwargs: accepted keys are the union of ``_ALLOWED_SESSION_OPTIONS``
-            (see ``backend.py``) and ``_ALLOWED_RUN_OPTIONS`` (see ``backend_rep.py``).
+            (defined in this module) and ``_ALLOWED_RUN_OPTIONS`` (see ``backend_rep.py``).
             Kwargs are passed directly to both ``prepare()`` and ``rep.run()``; each
             validates against its own allowlist and raises ``RuntimeError`` for blocked
             attributes. Logging-related kwargs (``log_severity_level``,
