@@ -10,6 +10,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
 #include "core/mlas/lib/mlasi.h"
@@ -460,6 +461,42 @@ TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
                     /*opset_version*/ 12,
                     /*per_sample_tolerance*/ 1e-6,
                     /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvFloat_RespectsKleidiDisableConfig) {
+  if (!HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1})) {
+    GTEST_SKIP() << "Float NHWC KleidiAI path is not available on this configuration.";
+  }
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  auto add_session_options = [](SessionOptions& session_options) {
+    const auto status = session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasDisableKleidiAi, "1");
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6,
+                    nullptr,
+                    add_session_options);
 }
 
 TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {

@@ -5,6 +5,7 @@
 
 #include <functional>
 #include "core/common/common.h"
+#include "core/framework/config_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/optimizer/graph_transformer.h"
@@ -82,7 +83,7 @@ class NhwcTransformer : public GraphTransformer {
  private:
  public:
   explicit NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<KernelRegistry> cpu_kernel_registry,
-                           const logging::Logger& logger) noexcept;
+                           const logging::Logger& logger, const ConfigOptions& config_options) noexcept;
 
   /**
    * @brief Usually called right after constructor, it shows whether

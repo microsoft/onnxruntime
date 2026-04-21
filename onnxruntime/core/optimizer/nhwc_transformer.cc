@@ -17,6 +17,7 @@
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -28,6 +29,8 @@ namespace onnxruntime {
 using namespace layout_transformation;
 
 #ifdef USE_KLEIDIAI
+namespace {
+
 bool TryGetDimValueAsSizeT(const ONNX_NAMESPACE::TensorShapeProto& shape, int index, size_t& value) {
   if (shape.dim_size() <= index || !shape.dim(index).has_dim_value()) {
     return false;
@@ -230,6 +233,8 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
       /*Beta*/ 0.0f);
 #endif
 }
+
+}  // namespace
 #endif
 
 static inline const OpTransformInfo*
@@ -264,12 +269,16 @@ NhwcConvLookup(
 
 NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
                                  std::shared_ptr<KernelRegistry> cpu_kernel_registry,
-                                 const logging::Logger& logger) noexcept
+                                 const logging::Logger& logger,
+                                 const ConfigOptions& config_options) noexcept
     : GraphTransformer("NhwcTransformer"), cpu_allocator_(std::move(cpu_allocator)) {
   if (!cpu_kernel_registry) {
     // This is a CPU op nodes optimizer, not useful if cpu EP is not available.
     return;
   }
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config{};
+  SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config, config_options);
 
   //
   // Constructing a mapping table from operators to be transformed to their target.
@@ -355,7 +364,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
 
 #ifdef USE_KLEIDIAI
   // KleidiAI specific block for NhwcFusedConvolutions
-  {
+  if (mlas_backend_kernel_selector_config.use_kleidiai) {
     // F32 Conv -> F32 NHWC Conv
     OpKernelRegistryId nhwc_conv_fp32{
         "NhwcFusedConv", kMSDomain, 1, {{"T", {DataTypeImpl::GetTensorType<float>()}}}};
