@@ -4604,6 +4604,8 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   }
 }
 
+// Verifies that layout transformation preserves an existing NHWC-native
+// NhwcFusedConv as-is instead of retargeting it or inserting Transpose nodes.
 TEST(TransposeOptimizerTests, LayoutTransformDoesNotRetargetNhwcFusedConv) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
   Model model("LayoutTransformDoesNotRetargetNhwcFusedConv", false, ModelMetaData(), PathString(),
